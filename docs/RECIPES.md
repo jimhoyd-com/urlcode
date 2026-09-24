@@ -23,24 +23,34 @@ urlcode validate --local --project ./orders-hook
 | `redirect` | starter | Permanent redirect forwarding one allowlisted query key | nothing |
 | `health-page` | starter | Native `/health` text and `/status` JSON, no-store | nothing |
 | `static-page` | starter | One HTML file served natively as a page | nothing |
-| `json-api` | starter | Bounded JSON body echoed by a sandboxed function | self-hosted runtime |
-| `webhook-receiver` | starter | JSON event with a type header, shape-checked, `202` | self-hosted runtime |
-| `typescript` | intermediate | Typed guest transpiled by `build-typescript` | build step |
-| `static-plus-api` | intermediate | Page, static directory and one JSON function | self-hosted runtime |
-| `cors-api` | intermediate | Preflight and CORS headers from route middleware | self-hosted runtime |
-| `contact-form` | intermediate | Validated message, fixed signal to a hook after the response | signal grant (`--policy`) |
+| `json-endpoint` | starter | POST fields validated by `request.body.schema`, answers from `respond`, no project code | nothing |
+| `json-api` | starter | Bounded JSON body echoed by a trusted function | self-hosted runtime |
+| `webhook-receiver` | starter | HMAC-signed JSON event: header parameters and body schema declared, signature checked with `node:crypto` in a trusted function, `202` | secret grant (`--policy`) |
+| `typescript` | intermediate | Typed function transpiled by `build-typescript` | build step |
+| `static-plus-api` | intermediate | Page, static directory and one JSON endpoint declared with `respond`, no project code | nothing (self-hosted, AWS, Vercel) |
+| `cors-api` | intermediate | Preflight and CORS headers from route middleware around a declared `respond` | self-hosted runtime |
+| `contact-form` | intermediate | Message checked by `request.body.schema`, `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
-| `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | verified `store` extension bundle, `--host-file`, `--origin`; initialize with `--bundle-release extension-bundles@v…` |
+| `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | verified `store` extension bundle, `--host-file`, `--origin`; initialize with `urlcode init --with ui,auth,store` |
 
 Each recipe contains a README, `tests/requests.json` and editable files.
 Replace example destinations and review the resulting files before use. The
 authenticated recipes declare `extensions.auth` and protect their route with
 the short form described in [extensions](EXTENSIONS.md); their README shows the
-minimal host-file fixture that reproduces the bundled tests. Nothing in the
-catalog verifies webhook signatures: the sandbox has no crypto or network API,
-so signed webhooks belong behind an operator extension or a trusted host.
+minimal host-file fixture that reproduces the bundled tests.
+
+Recipes are declarative first ([project direction](PROJECT-DIRECTION.md)): a
+field check is `request.body.schema` or a parameter `pattern`, a fixed answer is
+`respond`, and a function appears only for what YAML cannot express. The
+`webhook-receiver` function is the example: everything but the signature is
+declared, and the HMAC check runs in a trusted function with `node:crypto` and a
+granted secret. A `sandbox: true` route has no crypto API, so it cannot verify
+a signature; untrusted input alone is not a reason to sandbox
+([AI authoring](AI-AUTHORING.md)). `urlcode review` reports a function that
+duplicates `request.body.schema` or answers a constant response
+([tooling](TOOLING.md#project-review)).
 
 ## `recipe.yaml`
 
@@ -49,7 +59,8 @@ Every recipe carries `recipe.yaml`, validated against
 
 - `id`, `description`, `tags`, `complexity` (`starter`, `intermediate`,
   `advanced`): written by hand; `search` matches id, description, tags and
-  capabilities, every word must match, and whole-tag or id hits rank first.
+  capabilities, every word must match, and whole-tag or id hits rank first;
+  at an equal score a recipe that runs no project code ranks first.
 - `capabilities`, `targets`, `routes`: derived from the capability preflight
   (`analyzeProjectCapabilities` per target after site expansion). The check
   refuses a hand-edited value that differs, so a recipe cannot claim a target
@@ -98,6 +109,7 @@ arbitrary paths/URLs fail closed. The stdio MCP server adds `search_recipes` and
 ([tooling](TOOLING.md)). Integration tests run every recipe through the real
 runtime with its fixtures and audit it with its declared route count (after
 building the TypeScript recipe, with a fixture registry for the authenticated
-ones and the generated policy for the contact form). `store-crud` runs against the
+ones, the generated policy for the contact form and the webhook receiver, and
+the webhook fixtures' test key in the process environment). `store-crud` runs against the
 real `storeExtension` from `packages/store` with a temporary data directory, and a
 separate test drives its full lifecycle across a restart.

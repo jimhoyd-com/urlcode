@@ -400,8 +400,12 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             }
                             if (path === '/register' && registrationMode === 'waitlist') {
                                 const requested = await service.requestRegistration({ email: fields.email || '', password: fields.password || '', profile: profileInput(fields) });
+                                // Not awaited: only a duplicate sends this notice, so waiting for
+                                // delivery would make the reply slower exactly when the address
+                                // already has an account (#548). notice() is best-effort and never
+                                // rejects; the catch only keeps an unexpected fault off the event loop.
                                 if (requested.duplicate)
-                                    await notice(fields.email || '', 'registration-attempt', presentation.locale);
+                                    void notice(fields.email || '', 'registration-attempt', presentation.locale).catch(() => undefined);
                                 return jsonResponse(202, { message: presentation.textSource('Registration request received.') });
                             }
                             const device = http.device(request);

@@ -48,6 +48,29 @@ test('feature planning reports only a verified locked artifact for a required ex
  assert.equal(plan.extensions.required.find(item=>item.name==='store')?.artifact,'cached');
 });
 
+test('feature planning steers a simple JSON endpoint to respond plus request.body.schema, with matched terms and an outline (#587)',async t=>{
+ const root=await project(t,{});
+ const plan=await planFeature(root,'POST /signup validates email and name and returns 202');
+ assert.equal(plan.applicable.recipes[0]?.name,'json-endpoint');
+ assert.ok(plan.applicable.recipes.every(recipe=>recipe.matched.length>0),'every listed recipe says which goal terms it answers');
+ assert.ok(!plan.applicable.capabilities.some(item=>item.name==='function'),'no recipe steers this goal to function code');
+ assert.ok(plan.applicable.capabilities.some(item=>item.name==='respond')&&plan.applicable.capabilities.some(item=>item.name==='request.body'));
+ assert.equal(plan.outline.length,plan.applicable.recipes.length);
+ assert.match(plan.outline[0]!.note,/request\.body\.schema/);assert.match(plan.outline[0]!.note,/respond/);
+ assert.ok(!plan.extensions.required.some(item=>item.name==='auth'));
+});
+
+test('feature planning for a signed webhook names secret bindings and trusted node:crypto, never the sandbox or auth (#586)',async t=>{
+ const root=await project(t,{});
+ const plan=await planFeature(root,'verify an HMAC-signed webhook');
+ assert.equal(plan.applicable.recipes[0]?.name,'webhook-receiver');
+ assert.ok(plan.applicable.recipes[0]!.matched.includes('hmac')&&plan.applicable.recipes[0]!.matched.includes('webhook'));
+ const signature=plan.applicationCode.find(item=>item.requirement==='Signature verification');
+ assert.ok(signature);assert.match(signature!.reason,/node:crypto/);assert.match(signature!.reason,/secret/);assert.match(signature!.reason,/trusted/);
+ assert.ok(!plan.extensions.required.some(item=>item.name==='auth'),'signed is not sign-in');
+ assert.ok(!plan.applicable.recipes.some(recipe=>recipe.name==='authenticated-json-api'));
+});
+
 test('feature planning bounds adversarial goal text before any output is constructed',async t=>{
  const root=await project(t,{});
  const plan=await planFeature(root,`${'contact '.repeat(60)}`);

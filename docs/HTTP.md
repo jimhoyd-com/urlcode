@@ -1,6 +1,6 @@
 # HTTP request and response configuration
 
-Implemented in alpha.4. This is a documented HTTP subset, not a promise that every
+This is a documented HTTP subset, not a promise that every
 HTTP feature is configurable. It builds on [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html).
 
 ```yaml
@@ -151,7 +151,12 @@ Parameter schemas (path, query, header) also accept `format: uuid` and `pattern`
 on string inputs, rejecting a mismatch with 400. `pattern` runs on every request
 in the host process, so it is restricted: 1 to 128 characters, `maxLength` of at
 most 128 on the same schema, no group repeated by `*`, `+` or `{n,}`, no
-lookaround, no backreference and at most three unbounded quantifiers. That
+lookaround, no backreference and at most three unbounded quantifiers. Every
+variable-width part (`*`, `+`, `?`, `{n,}`, `{n,m}` with `m > n`, and each
+alternation) also counts against one budget of backtracking paths on a
+128-character value, so a long flat run of optional or bounded atoms is refused
+like its grouped form, and an unanchored pattern (one not starting with `^`)
+gets less room because it is retried from every position. That
 restriction is conservative, not a proof of linear time. It is what stands
 between an author regex and a backtracking stall, so prefer `format` or `enum`
 when either fits.
@@ -186,8 +191,9 @@ declared response; merely adding a header does not implement CORS preflight.
 
 ## Still outside this contract
 
-Automatic CORS/preflight policy, cookie parsing/signing, authentication, body JSON
-Schema validation, multipart/file uploads, streaming, content negotiation,
+Automatic CORS/preflight policy, cookie parsing/signing, authentication
+(beyond the operator-installed auth extension), JSON Schema beyond the
+`request.body.schema` subset above, multipart/file uploads, streaming, content negotiation,
 WebSocket upgrades and proxies are not implemented. Do not advertise these as
 supported just because raw headers can be declared. Compression negotiation,
 security-header profiles, per-client throttling, User-Agent policy and HTTP

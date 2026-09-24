@@ -5,8 +5,8 @@
 > two-person cases, support impersonation, health. Delivered as a signed
 > executable bundle. Apache-2.0.
 
-Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin
---bundle-release extension-bundles@v…` with the supported immutable release.
+Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin`;
+it resolves `extension-bundles@v<core>` unless `--bundle-release` pins another.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 

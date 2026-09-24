@@ -11,7 +11,8 @@ function same(actual, expected) {
   return mismatch === 0 && length > 0;
 }
 
-// The guest exposes no atob; a small decoder handles standard Basic credentials.
+// This route runs trusted, where Buffer and atob exist. The small decoder keeps
+// the module portable to a `sandbox: true` route, whose API has no atob.
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 function decodeBase64(text) {
   const clean = String(text).replace(/=+$/, '');

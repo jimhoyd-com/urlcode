@@ -5,17 +5,18 @@ Run `urlcode validate --local --project .`, `urlcode test --project .` and
 
 `/` serves `public/index.html`, `/assets/*` serves everything under
 `public/assets` (with `index.html` for the directory itself), and `/api/info`
-is a function returning JSON built from literal `args`. Pages and
-assets are native: no project code runs for them at all, and they are snapshotted at
-activation, so new files need a reload. Edit the HTML, add files under
-`public/assets`, and change or extend `functions/info.mjs`.
+answers literal JSON declared with `respond`. Every route is native: no project
+code runs at all, and pages and assets are snapshotted at activation, so new
+files need a reload. Edit the HTML, add files under `public/assets`, and change
+the `respond.json` value in `urlcode.yaml`.
 
-The function needs the self-hosted runtime; drop `/api/info` to deploy the
-static part on a serverless target. Static mounts cannot escape their
-directory, and the recipe sets explicit caching so nothing is guessed.
+Static mounts cannot escape their directory, and the recipe sets explicit
+caching so nothing is guessed. Because nothing here needs the Node lifecycle,
+the AWS and Vercel targets activate the whole project.
 
-Adding a function that writes files or accepts a POST body? Filesystem access
-only exists in trusted (default) routes, since `sandbox: true` has no
-filesystem, so keep the route trusted and state why with `sandboxReason`, as
-`/api/info` does. `audit` advises when a POST route with a body policy has
-neither `sandbox: true` nor `sandboxReason`.
+Replace `respond` with a `function` only when the answer has to be computed per
+request. That function runs trusted by default, with the filesystem, `fetch`
+and npm packages available; a POST route with a body policy then gets an
+`audit` advisory until it records the decision with `sandboxReason` (see
+[AI authoring](../../docs/AI-AUTHORING.md)). A function needs the self-hosted
+runtime.

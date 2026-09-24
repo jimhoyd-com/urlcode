@@ -6,11 +6,14 @@ and admin implementations live in `urlcode-auth` and `urlcode-admin`; the runtim
 supplies only the generic integration contract. No project file can import a host
 extension, choose a bundle release, or choose an npm package.
 
-Stored short links moved out of core this way too: a `urlcode-dynamic-link`
-package (mount-based, like `auth`/`admin`) owned the durable link store, its CLI
-and management API. That package has since been retired and unpublished, so no
-supported stored-link extension ships today. Core no longer has a native `link`
-handler or a `dynamicLinks` project flag.
+Stored short links moved out of core this way too. Core no longer has a native
+`link` handler or a `dynamicLinks` project flag, and the separate
+`urlcode-dynamic-link` package that briefly replaced them is retired. Stored
+short links are now declared through the `store` extension's
+`extensions.store.config.shortLinks`: a collection with a bounded unique key, a
+required HTTP(S) destination field and one counter, served on a public
+`GET`/`HEAD` redirect mount with no function. See
+[short links in the data store](STORE.md).
 
 The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See
@@ -412,6 +415,10 @@ from the set. Host setup should be self-contained (own identifiers, such as
 
 Assembly rules, in the resolved order:
 
+- Before any network call, every `--with` name (and the name given to
+  `urlcode extension-bundles install`) is checked against the bundles this
+  core release builds, the list `urlcode extension-bundles list` prints; a
+  typo such as `auht` refuses locally with a `did you mean auth?` suggestion.
 - Every requested bundle is resolved against the signed catalog and every
   `scaffold` is called before anything is written. A name that is not in the
   catalog for the resolved release refuses and lists the valid names found
@@ -424,7 +431,12 @@ Assembly rules, in the resolved order:
   `--bundle-release <tag>` as the way to pin an explicit, already-published
   release instead, and notes that a core release's matching bundle release
   publishes on a separate workflow and can take a few minutes (commonly under
-  ten) to appear after a brand-new core version ships.
+  ten) to appear after a brand-new core version ships. When GitHub cannot be
+  reached at all, the error says so and names the release it was fetching.
+- An attestation refusal quotes a short, sanitized excerpt of the `gh
+  attestation verify` output together with the policy applied (signer
+  workflow and `refs/tags/<release>` source ref), for example `expected
+  SourceRepositoryRef to be refs/tags/…, got refs/heads/main`.
 - `extensions` fragments are declared in `app/urlcode.yaml`; `routes`
   fragments are written to `app/routes/extensions.yaml`, appended to the
   starter's `includes`, so the starter's own routes load first. A route or
@@ -551,7 +563,7 @@ An operator explicitly installs one named bundle from an immutable release:
 
 ```sh
 urlcode extension-bundles install store \
-  --bundle-release extension-bundles@v1.0.0 --project app
+  --bundle-release extension-bundles@vX.Y.Z --project app
 ```
 
 For a new composed site, `init --with` can perform that verified installation
@@ -561,7 +573,7 @@ host loads only the names recorded in the bundle lockfile.
 
 ```sh
 urlcode init site --with ui,auth,admin \
-  --bundle-release extension-bundles@v1.0.0
+  --bundle-release extension-bundles@vX.Y.Z   # optional: defaults to extension-bundles@v<core>
 ```
 
 `init` verifies each requested bundle in a temporary operator staging root,

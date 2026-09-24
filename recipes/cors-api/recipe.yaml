@@ -1,18 +1,18 @@
 id: cors-api
-description: JSON endpoint for one allowed browser origin; middleware answers preflight and adds CORS headers.
-tags: [cors, preflight, options, browser, origin, api, json, middleware, access-control, vary]
+description: JSON endpoint for one allowed browser origin; the answer is a declared respond and middleware answers preflight and adds CORS headers.
+tags: [cors, preflight, options, browser, origin, api, json, respond, middleware, access-control, vary]
 complexity: intermediate
-capabilities: [enabled, function, methods, middleware, response.headers]
+capabilities: [enabled, methods, middleware, respond, response.headers]
 targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 inputs:
   - name: allowedOrigins
     file: middleware/cors.mjs
     description: The browser origins allowed to read the response.
-  - name: handler
-    file: functions/items.mjs
-    description: Replace the literal list with the real data.
-files: [urlcode.yaml, middleware/cors.mjs, functions/items.mjs, tests/requests.json, README.md]
+  - name: answer
+    file: urlcode.yaml
+    description: The literal list in respond.json; replace respond with a function only when the data must be computed per request.
+files: [urlcode.yaml, middleware/cors.mjs, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:

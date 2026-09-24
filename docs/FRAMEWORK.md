@@ -19,9 +19,9 @@ claim here is implemented in the linked repository; nothing is roadmap.
 All six are Apache-2.0. Core is published through npm, GitHub Releases and
 Homebrew. The first-party executable extensions are published as signed,
 immutable GitHub Release bundles; their source remains in these workspace
-packages, but new sites do not install them from npm. The forms package is an
-unreleased bundle source and is not implied by the currently recorded bundle
-release. The legacy extension npm
+packages, but new sites do not install them from npm. Forms ships only as a
+bundle: it is a member of every `extension-bundles@v…` catalog built by
+`scripts/prepare-extension-bundles.ts` and was never an npm package. The legacy extension npm
 packages are deprecated migration artifacts. A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
@@ -86,13 +86,14 @@ exact requirement.
 
 ## The composition contract
 
-An extended project starts from core and an immutable bundle release. The
-release is an explicit operator choice; use the current verified tag from
-[package and channel alignment](VERSION-ALIGNMENT.md):
+An extended project starts from core and an immutable bundle release. By
+default `init --with` uses `extension-bundles@v<core>` for the installed core
+version; `--bundle-release extension-bundles@vX.Y.Z` pins a different verified
+tag from [package and channel alignment](VERSION-ALIGNMENT.md):
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,admin --bundle-release extension-bundles@v…
+npx urlcode init my-site --with ui,auth,admin
 ```
 
 This produces a manifest with core only and a bundle lockfile for extensions.
@@ -124,9 +125,7 @@ routes:
   /admin/*:     { extension: admin, methods: [GET, HEAD, POST] }
   /private:
     respond: { text: Signed in }
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 ```
 
 The operator host explicitly registers the packages. Registration is an
@@ -177,8 +176,7 @@ host remain the executable extension path. See [signed declarative artifacts](EX
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```
 
-`urlcode init <dir> --with ui,auth,admin --bundle-release
-extension-bundles@v…` writes this layout in one step. It verifies and locks the
+`urlcode init <dir> --with ui,auth,admin` writes this layout in one step. It verifies and locks the
 named GitHub Release bundles, calls each verified module's `scaffold` export,
 and merges fragments into `app/urlcode.yaml`, one
 explicit `host.mjs` and one `README.md`, refusing before writing a site when a
@@ -195,7 +193,7 @@ and admin bundles add their namespaces, so `list`,
 `doctor`, `eject`, `preview` and `copy --missing` cover the `auth/*` and
 `admin/*` templates and copy the host registers, and a project override of an
 extension template is checked against the shipped view model. `urlcode init
---with --bundle-release` writes the release pin into the generated README.
+--with` writes the resolved release pin into the generated README.
 
 ## Rules an agent must follow
 

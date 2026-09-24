@@ -9,7 +9,7 @@ import type { ScaffoldRequest, ScaffoldResult } from './extensions.ts';
 import { collectDependencySet, installSteps, renderPackageManifest } from './project-dependencies.ts';
 import type { DependencyPin, DependencySet } from './project-dependencies.ts';
 import { ConfigError, assert } from './errors.ts';
-import { installBundle, loadExtensionBundle, runningCoreVersion, type BundleTransport } from './extension-bundles.ts';
+import { assertKnownBundleNames, installBundle, loadExtensionBundle, runningCoreVersion, type BundleTransport } from './extension-bundles.ts';
 import { isRecord as record, isCode } from './object-guards.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
@@ -181,6 +181,8 @@ export async function initProjectWith(destination: string, requested: readonly s
   assert(new Set(requested).size === requested.length, 'Duplicate --with names');
   // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
   const sorted = [...requested].sort();
+  // Every name is checked locally before the first network call; an injected (test) transport brings its own catalog.
+  if (!bundleTransport) assertKnownBundleNames(sorted);
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
   assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
   const acked = [...new Set(acknowledgements)].sort();
@@ -274,7 +276,7 @@ export async function initProjectWith(destination: string, requested: readonly s
       await write(join(directory, '.gitignore'), 'node_modules/\ndata/\n.env\n.env.*\n');
       // The read-only MCP server for agents opened at the site root; --host-file and --allow-authoring stay operator choices.
       await write(join(directory, mcpConfigFile), renderMcpConfig(PROJECT_DIRECTORY, { local: dependencies !== undefined }));
-      // AGENTS.md: initProject writes the application-level file into app/ once it produces one (NEXT-STEPS 1.1);
+      // AGENTS.md: initProject already writes the application-level file into app/ (authoring.ts);
       // nothing here overrides it. A site-level agent note would be assembled beside README.md at this point.
       return { directory, project, hostFile, extensions: [...names], projectSha256,
         nextSteps: [...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps)],

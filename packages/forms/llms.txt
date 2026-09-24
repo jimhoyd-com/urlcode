@@ -3,8 +3,9 @@
 > Operator-installed declarative HTML form flows for URLCode. Renders escaped
 > fields through `urlcode-ui`, admits only bounded URL-encoded POST bodies,
 > validates declared fields, returns 422 with field errors, and redirects a
-> valid submission to a fixed confirmation page. Not yet published to npm or
-> included in a signed `extension-bundles@v…` release. Apache-2.0.
+> valid submission to a fixed confirmation page. Ships in the signed
+> `extension-bundles@v…` GitHub Release (`urlcode init --with forms` or
+> `urlcode extension-bundles install forms`); it is never published to npm. Apache-2.0.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 

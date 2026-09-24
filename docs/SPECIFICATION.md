@@ -1,7 +1,7 @@
 # Implemented project contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-the source contract, including additions since 0.3.0.
+the implemented source contract.
 `version: "1"` remains the project-format contract. Unsupported fields
 are rejected rather than interpreted as future behavior.
 
@@ -190,9 +190,10 @@ keys preserve repeated values. Headers are forwarded only through explicit maps.
 
 Core has no native `link` handler or `dynamicLinks` project flag; both were
 removed. The `urlcode-dynamic-link` extension package that replaced them has
-been retired and unpublished, so a project needing stored short links owns that
-storage itself; there is no in-core replacement or deprecation shim for
-`link`/`dynamicLinks`.
+been retired and unpublished; there is no in-core replacement or deprecation
+shim for `link`/`dynamicLinks`. Stored short links are declared through the
+operator-installed `store` extension's `extensions.store.config.shortLinks`
+([data store](STORE.md)).
 
 ## Functions
 

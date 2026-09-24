@@ -11,7 +11,7 @@ policies:                        # project defaults, or per route under routes.<
   agents:
     deny: [ai-crawlers]          # bundled list names, or project-relative .json files
     allow: [monitoring]          # allow always wins over deny
-    denyPatterns: ["^curl/"]     # linear-time regex subset, matched case-insensitively
+    denyPatterns: ["^curl/"]     # bounded-cost regex subset, matched case-insensitively
     allowPatterns: ["^Mozilla/5\\.0 \\(compatible; Googlebot"]
     denyEmpty: false             # deny a missing or blank User-Agent
     status: 403                  # 400-599
@@ -25,7 +25,9 @@ override any key, or set `agents: false` to switch the policy off for itself.
 
 - Matching is against the `User-Agent` request header only and is
   case-insensitive. Nothing else about the request (address, path, other
-  headers) takes part.
+  headers) takes part. Only the first 512 bytes of the header are matched;
+  real browser and crawler agents fit, and anything a pattern would find
+  further along is ignored.
 - Evaluation order: if any `allow` list or `allowPatterns` entry matches, the
   request passes and nothing is logged. Otherwise the first `deny` list (in
   the order written) or `denyPatterns` entry that matches denies it.
@@ -141,14 +143,28 @@ turn the matcher into a denial-of-service vector by editing YAML. Allowed:
 - quantifiers `*`, `+`, `?`, `{n}` and `{n,m}` with `m <= 64`, on a single
   atom (a literal, escape, class or `.`); `?` may also follow a group that
   contains no quantifier, for optional words such as `(?:bot)?`
+- at most one unbounded quantifier (`*` or `+`) per pattern; use `{n,m}` for
+  the others, as in `Chrome/\d{1,4}.*Safari`
+- a backtracking-path budget: every `*`, `+`, `?` and `{n,m}` with `m > n`,
+  and every alternation, is charged against one budget per pattern on a
+  512-byte header, so long runs of optional or bounded atoms (`a?a?a?...`,
+  several wide `{0,64}` repeats, or an unbounded repeat next to a wide
+  bounded one) are refused
 - at most 256 bytes
 
 Rejected: backreferences (`\1`, `\k<name>`), lookahead and lookbehind, named
 groups, unicode property escapes, `\c` control escapes, nested character
 classes, `{n,}` and bounds above 64, lazy or stacked quantifiers (`+?`, `**`),
-quantifiers on anchors, and `*`, `+` or `{n,m}` on a group (so `(a+)+` and
-`(ab)*` fail). Each list is compiled into one alternated `RegExp` with the `i`
-flag, so a request costs one pass per list rather than one per pattern.
+quantifiers on anchors, `*`, `+` or `{n,m}` on a group (so `(a+)+` and
+`(ab)*` fail), a second unbounded quantifier (so `.*a.*` and `\d+\.\d+`
+fail; write `\d{1,4}\.\d{1,4}`), and patterns over the path budget.
+
+The subset has no backreferences or lookaround, but the matcher is still the
+platform's backtracking `RegExp`, so these limits bound its cost rather than
+make it linear: an admitted pattern costs a small, bounded amount on any
+header, and a project with many author patterns pays that for each. Each list
+is compiled into one alternated `RegExp` with the `i` flag, so a request costs
+one pass per list rather than one per pattern.
 
 ## robots.txt
 

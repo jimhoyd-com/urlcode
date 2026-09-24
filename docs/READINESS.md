@@ -1,6 +1,6 @@
 # Test every route, then measure it
 
-Alpha.5 includes a local coverage gate and an assertion-aware project benchmark.
+The runtime includes a local coverage gate and an assertion-aware project benchmark.
 These validate a local snapshot, not the reachability of external redirect
 services or the correctness of an entire production deployment.
 
@@ -95,6 +95,24 @@ affects `ready`. It means this local gate passed, not that all branches, paramet
 have independent business assertions. Function routes intentionally serving only
 errors cannot satisfy normal-response coverage in this release, and a waiver cannot hide them. Time-dependent
 expiry is evaluated at audit start; avoid running a gate exactly at expiry.
+
+### Deployment advisories
+
+`deploymentAdvisories` lists findings about how the project will be served, not
+about one route. They never affect `ready` or the exit code. Pass `audit` the
+same `--trusted-proxies` and `--metrics` flags the deployment passes to
+`serve`; the audit's own probe server applies neither, they only describe the
+deployment under review (the JS API takes `auditProject(app, { deployment:
+{ trustedProxies, metrics } })`).
+
+- `client-throttle-without-trusted-proxies` (with the affected `routes`): a
+  [throttle](policies/throttle.md) partitions by `client` or `client-route`
+  and no trusted proxies are declared. Behind a load balancer every caller then
+  resolves to the proxy's address and shares one budget. A server that takes
+  connections directly from clients can ignore it.
+- `metrics-on-public-listener`: `--metrics` serves `/_urlcode/metrics` on the
+  same listener as public traffic. Block the path at the proxy or network edge.
+  There is no separate metrics listener yet.
 
 ### Waive a method covered elsewhere
 
@@ -221,7 +239,7 @@ Choose a latency budget from repeatable measurements on your intended host.
 | Invalid inputs | Missing/duplicate/wrong-type inputs; malformed paths/encoding; wrong methods; bad JSON/media type; oversized bodies |
 | Response contracts | HEAD empty bodies, Allow headers, cookies, cache policy, download names/MIME; ETag/304 and range/206/416 fixtures |
 | Configuration changes | Invalid candidate keeps last-good routes; valid reload updates behavior; removed routes are intentional |
-| Code containment | Runtime security suite passes; no ambient filesystem/network access; grants narrow and revision-pinned |
+| Code containment | Runtime security suite passes; every trusted (default) `function`/`middleware` reviewed as first-party Node code with full ambient filesystem/network/`process.env` access; code needing isolation declares `sandbox: true` and has no ambient filesystem/network access; grants narrow and revision-pinned |
 | Capacity and failure | Representative mix and concurrency; low errors and repeatable latency; timeouts, overload recovery and memory over sustained runs |
 | Deployment | Fresh install; real HTTPS/domain/health smoke; rollback; shutdown; logs/alerts; explicitly authorized destination reachability checks |
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
@@ -108,8 +108,8 @@ test('real git history selects the lane for pull requests, main pushes, renames 
   assert.deepEqual(at('push', 'c'.repeat(40), deletedProse), { lane: 'full', paths: null });
 });
 test('required gate fails closed for failed, canceled, missing and unexpected skipped jobs', () => {
-  const always = ['plan', 'docs', 'audit', 'container'];
-  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity'];
+  const always = ['plan', 'docs', 'audit'];
+  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity', 'container'];
   for (const plan of ['docs', 'full']) {
     const results = Object.fromEntries([...always, ...conditional].map(name => [name, { result: plan === 'docs' && conditional.includes(name) ? 'skipped' : 'success' }]));
     gate(plan, results);
@@ -127,7 +127,7 @@ test('required gate fails closed for failed, canceled, missing and unexpected sk
 test('workflow gate covers every producer and full jobs depend on the classifier', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert.deepEqual(workflow.jobs['verify-complete'].needs.sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
-  for (const name of ['static', 'verify', 'checks', 'workspace-verify', 'action', 'build-fidelity']) {
+  for (const name of ['static', 'verify', 'checks', 'workspace-verify', 'action', 'build-fidelity', 'container']) {
     assert.deepEqual(workflow.jobs[name].needs, 'plan');
     assert.equal(workflow.jobs[name].if, "needs.plan.outputs.lane == 'full'");
   }
@@ -143,7 +143,37 @@ test('workflow gate covers every producer and full jobs depend on the classifier
   assert.match(plan.env.HEAD, /pull_request\.head\.sha \|\| github\.event\.after/);
   assert.equal(workflow.jobs.plan.steps[0].with['fetch-depth'], 0);
   // Prose can never skip these, whatever lane is selected.
-  for (const name of ['docs', 'audit', 'container']) assert.equal(workflow.jobs[name].if, undefined);
+  for (const name of ['docs', 'audit']) assert.equal(workflow.jobs[name].if, undefined);
+  // `container` is a required check by name: gating it on the plan must not rename or drop it.
+  assert.equal(workflow.jobs.container.name, undefined);
+});
+test('every workflow job that runs steps has a timeout, and extension publishers serialize per tag', async () => {
+  const directory = '.github/workflows';
+  for (const name of (await readdir(directory)).filter(file => file.endsWith('.yml'))) {
+    const workflow = parse(await readFile(join(directory, name), 'utf8'));
+    // A job that only calls a reusable workflow (`uses:`) cannot set its own timeout.
+    for (const [job, definition] of Object.entries(workflow.jobs as Record<string, { steps?: unknown; 'timeout-minutes'?: number }>)) {
+      if (definition.steps !== undefined) assert.equal(typeof definition['timeout-minutes'], 'number', `${name} ${job}`);
+    }
+  }
+  for (const name of ['extension-artifacts.yml', 'extension-bundles.yml']) {
+    const { concurrency } = parse(await readFile(join(directory, name), 'utf8')).jobs.publish;
+    assert.equal(concurrency['cancel-in-progress'], false, name);
+  }
+});
+test('CI installs without lifecycle scripts and builds once, except build-fidelity', async () => {
+  const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+  const runs = (job: string): string[] => workflow.jobs[job].steps.map((step: { run?: string }) => step.run).filter(Boolean);
+  for (const job of Object.keys(workflow.jobs)) {
+    const installs = runs(job).filter(run => /^npm (?:ci|install)\b/.test(run));
+    if (job === 'build-fidelity') assert.deepEqual(installs, ['npm ci'], job);
+    else for (const install of installs) assert.equal(install, 'npm ci --ignore-scripts', job);
+    assert(runs(job).filter(run => run === 'npm run build').length <= 1, job);
+  }
+  // The example-project checks are an npm script contributors can run locally.
+  assert(runs('checks').includes('npm run test:examples:built'));
+  const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.equal(scripts['test:examples'], 'npm run build && npm run test:examples:built');
 });
 
 // Expand a package script into the underlying commands it actually runs, so a
@@ -159,7 +189,7 @@ test('CI runs each documentation check once while local `check` stays complete',
   // A developer running `npm run check` still gets every check, once each.
   assert.deepEqual(expand(scripts, 'check').sort(), [...docs, ...code].sort());
   assert.equal(new Set([...docs, ...code]).size, docs.length + code.length);
-  assert.equal(docs.length, 8);
+  assert.equal(docs.length, 9);
 
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   const runs = (job: string): string[] => workflow.jobs[job].steps.map((step: { run?: string }) => step.run).filter(Boolean);

@@ -83,3 +83,26 @@ export function normalizeAddress(address: unknown): string | undefined {
   if (mapped) value = mapped[1]!;
   return isIP(value) ? value.toLowerCase() : undefined;
 }
+
+/** Bits of an IPv6 client address that identify one client for rate limits. */
+export const clientKeyIpv6Prefix = 64;
+
+/**
+ * Rate-limit identity for a client address. An IPv4 address, including an
+ * IPv4-mapped IPv6 address (`::ffff:a.b.c.d` or its hex form), is its own key.
+ * An IPv6 address is grouped by its /64 network, because one subscriber or
+ * cloud host routinely holds a whole /64 and could otherwise rotate addresses
+ * for fresh budgets. The key is the network prefix, e.g. `2001:db8:0:1::/64`.
+ * Anything that is not an address yields undefined. packages/auth keeps an
+ * equivalent function (it may not require a newer core); both are pinned to
+ * test/fixtures/client-key-vectors.json.
+ */
+export function clientKey(address: unknown): string | undefined {
+  const normalized = normalizeAddress(address);
+  if (!normalized || isIP(normalized) !== 6) return normalized;
+  const bytes = toBytes(normalized)!;
+  if (bytes.subarray(0, 10).every(b => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff) return Array.from(bytes.subarray(12)).join('.');
+  const groups: string[] = [];
+  for (let i = 0; i < clientKeyIpv6Prefix / 8; i += 2) groups.push(((bytes[i]! << 8) | bytes[i + 1]!).toString(16));
+  return `${groups.join(':')}::/${clientKeyIpv6Prefix}`;
+}

@@ -87,9 +87,8 @@ in the guides above and the [specification](SPECIFICATION.md).
   distinguish implementation from evidence still missing.
 - [Version alignment](VERSION-ALIGNMENT.md) and [release security](RELEASE-SECURITY.md)
   describe peer compatibility and publication.
-- Framework-comparison research and evidence live in the separate
-  [URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark);
-  they are not implementation promises.
+- Framework-comparison research and evidence are kept in a private maintainer
+  repository; they are not implementation promises or public evidence.
 - Historical maintainer planning and review records are maintained privately; current roadmap, open decisions, and public contracts are authoritative.
 
 Examples are educational unless backed by runnable fixtures. Infrastructure

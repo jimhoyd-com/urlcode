@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented source contract, including additions since 0.3.0,
+Use this as project-authoring context. It describes the implemented source contract,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
@@ -120,7 +120,9 @@ the starter, a few thousand for the cookbook), not with the framework.
 - Choose exactly one handler: function, redirect, respond, page, static, download, proxy, conditional, or an extension mount.
   Add optional middleware around it. Prefer native handlers when code is unnecessary.
 - Declare each path placeholder as a required string. Paths use whole segments;
-  no regex, greedy captures or general-purpose wildcard functions.
+  no regex or greedy captures. The only wildcards are terminal and
+  handler-specific: `/**` on a redirect, a required `/*` on a static route, and a
+  required non-root `/*` on an extension mount; nothing else accepts one.
 - Bind typed inputs through args or context; never invent `${...}` interpolation.
 - Create every referenced module/asset before validation. All paths resolve from
   the project root. Functions/middleware use relative ES-module imports only.
@@ -183,7 +185,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
-| File authoring and snapshot reload | General guest storage broker; stored short links (no supported package; the `urlcode-dynamic-link` extension was retired) |
+| File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store](STORE.md)) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
 | Optional top-level `site` (`robots`, `sitemap`, `favicon`, `securityTxt`, `llms`) generating native routes | Per-route `noindex` field, sitemap index files, `humans.txt`, signed `security.txt` |
 
@@ -248,6 +250,7 @@ Which handler serves the response:
 | The response is | Handler | Recipe |
 |---|---|---|
 | Fixed text or JSON | `respond` | `health-page` |
+| A fixed answer to a POST whose JSON fields are validated | `respond` plus `request.body.schema` | `json-endpoint` |
 | A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](HTTP.md) |
 | One HTML file | `page` | `static-page` |
 | A directory of files | `static` | `static-plus-api` |
@@ -257,7 +260,7 @@ Data persistence has no native handler. The operator-installed `store` extension
 serves declared collections as a CRUD API, and `urlcode recipes search "crud store
 persist"` finds the `store-crud` recipe. It needs the operator to install
 an attested executable bundle and a host file. `init --with
-ui,auth,store --bundle-release extension-bundles@v…` scaffolds the supported
+ui,auth,store` scaffolds the supported
 npm-free form; a no-auth
 `--with store` needs `--ack store:public-write`, which only a core release after the
 store's first publication has, so say so rather than promising it. Report anything beyond that recipe (filtering, sorting, per-record
@@ -339,7 +342,11 @@ independent of how trustworthy its input is. A route can receive webhooks
 and stay trusted, as long as its own code is reviewed, first-party and
 handles untrusted input carefully; conversely, a route with no untrusted
 input at all can still warrant `sandbox: true` if its own code is what
-you don't trust.
+you don't trust. A signed webhook is the common case: declare the header
+parameters and `request.body.schema`, bind the signing key with
+`secrets: {KEY: {secret: NAME}}` and verify the HMAC in a trusted function
+with `node:crypto`. A `sandbox: true` route has no crypto API and could not
+check the signature at all. The `webhook-receiver` recipe is that route.
 
 Do not add `sandbox: true` reflexively to every route "for safety" — it costs
 the route the worker-pool capacity ceiling (docs/CAPACITY.md) and the ability
@@ -381,27 +388,38 @@ reviewable trail without reading every route's source file:
 
 ```yaml
 routes:
-  webhooks/stripe:
+  /webhook:
+    methods: [POST]
+    sandboxReason: Reviewed first-party code; trusted so node:crypto can verify the HMAC signature.
+    request: { body: { maxBytes: 65536, contentTypes: [application/json], format: json } }
+    secrets: { WEBHOOK_SECRET: { secret: WEBHOOK_SIGNING_SECRET } }
+    function: { source: functions/receive.mjs }
+  /plugins/run:
     methods: [POST]
     sandbox: true
-    sandboxReason: Verifies a third-party signature over unreviewed contributed code; isolate it.
-    request: { body: { maxBytes: 65536 } }
-    function: { source: functions/stripe-webhook.mjs, export: handle }
+    sandboxReason: Runs a submitted plugin nobody on the team has reviewed yet; isolate it.
+    request: { body: { maxBytes: 16384 } }
+    function: { source: plugins/submitted.mjs }
 ```
 
 `urlcode audit` also runs a non-blocking heuristic: a route that runs project
 code, accepts `POST` with a declared `request.body` policy, and declares
 neither `sandbox: true` nor `sandboxReason` looks plausibly
 webhook/callback/third-party-input-shaped, and the audit report lists it
-under `advisories` with "consider whether this route needs `sandbox: true`".
-This is a nudge to look, the same advisory spirit as the rest of `audit`'s
-non-blocking findings — it never fails the check, never sets `ready: false`
-and never infers the actual answer; setting `sandboxReason` (with `sandbox`
-either `true` or `false`) or `sandbox: true` is enough to silence it. The
-advisory prints the exact line to add. Anything that touches the filesystem
-(a persistent app writing files, for example) must be a trusted route,
-because a sandbox has no filesystem: declare `sandboxReason` with the default
-`sandbox: false` and say why it is trusted, as the `static-plus-api` recipe does.
+under `advisories`, asking the author to record the trust decision. The
+advisory restates the criteria above: untrusted input alone is not a reason to
+sandbox, reviewed first-party code stays trusted (the filesystem,
+`node:crypto` signature checks, `fetch` and npm packages exist only there),
+and `sandbox: true` is for unreviewed or contributed code, or code that must
+not be able to leak a granted secret. This is a nudge to look, the same
+advisory spirit as the rest of `audit`'s non-blocking findings — it never
+fails the check, never sets `ready: false` and never infers the actual answer;
+setting `sandboxReason` (with `sandbox` either `true` or `false`) or
+`sandbox: true` is enough to silence it. The advisory prints the exact line to
+add. Anything that touches the filesystem (a persistent app writing files, for
+example) or verifies a signature must be a trusted route: declare
+`sandboxReason` with the default `sandbox: false` and say why it is trusted, as
+the `webhook-receiver` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
 extension invokes (`onSignUp`, `beforeRegister` and the like) — it is

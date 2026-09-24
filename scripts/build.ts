@@ -32,7 +32,7 @@ async function walk(dir: string, files: string[] = []): Promise<string[]> {
 }
 await rm(out, { recursive: true, force: true });
 const manifest: Record<string, string> = {};
-// The container CI job mounts and runs the operational drills against the image.
+// CI's `checks` job runs the emitted operational drills (dist/scripts/operational-drills.js) on its full leg.
 for (const file of [...await walk(join(root, 'packages', 'core', 'src')), join(root, 'scripts', 'operational-drills.ts')]) {
   const rel = relative(root, file), target = emitted(file);
   await mkdir(dirname(target), { recursive: true });

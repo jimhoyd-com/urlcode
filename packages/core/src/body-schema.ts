@@ -19,6 +19,8 @@ export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a
 const types = ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'];
 const keywords = new Set(['type','properties','required','additionalProperties','items','enum','minLength','maxLength','pattern','format','minimum','maximum','minItems','maxItems']);
 const limits = { depth: 6, nodes: 128, properties: 64, enums: 64, length: 8192, items: 10000 };
+/** The supported subset, stated up front by the capability catalog and checked against the schema description (#587). */
+export const bodySchemaSubset = { keywords: [...keywords], types: [...types], formats: ['uuid'], patternMaxLength: maxPatternInputLength, limits: { ...limits } } as const;
 const patterns = new WeakMap<BodySchema, RegExp>();
 
 /** Rejects, at load time, any schema outside the supported subset or its limits. */

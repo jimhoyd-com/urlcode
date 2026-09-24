@@ -116,7 +116,7 @@ test('only core has an npm publisher with the immutable publication helpers', as
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /group: urlcode-publication/);
   assert.doesNotMatch(workflow, /--clobber|NODE_AUTH_TOKEN|NPM_TOKEN/);
-  assert.ok(workflow.indexOf('name: Publish to npm') < workflow.indexOf('name: Publish the GitHub release'));
+  assert.ok(workflow.indexOf('Publish to npm') < workflow.indexOf('Publish the GitHub release'));
   for (const retired of ['release-ui.yml', 'release-auth.yml', 'release-admin.yml', 'release-store.yml']) {
     await assert.rejects(read(`.github/workflows/${retired}`));
   }
@@ -135,14 +135,18 @@ test('a core npm release synchronizes its measured formula to the Homebrew tap b
   // whole job; the token is supplied explicitly only on the push command.
   assert.match(workflow,/repository: jimhoyd-com\/homebrew-urlcode\n {10}token: \$\{\{ secrets\.HOMEBREW_TAP_TOKEN \}\}\n(?:.*\n)*? {10}persist-credentials: false/);
 
-  const publishNpm = workflow.indexOf('name: Publish to npm via trusted publishing');
-  const requireCredential = workflow.indexOf('name: Require Homebrew tap credential');
-  const synchronizeFormula = workflow.indexOf('name: Synchronize Homebrew formula');
-  const publishGitHub = workflow.indexOf('name: Publish the GitHub release');
+  const publishNpm = workflow.indexOf('. Publish to npm via trusted publishing');
+  const requireCredential = workflow.indexOf('. Require Homebrew tap credential');
+  const synchronizeFormula = workflow.indexOf('. Synchronize Homebrew formula');
+  const publishGitHub = workflow.indexOf('. Publish the GitHub release');
+  assert.ok([publishNpm, requireCredential, synchronizeFormula, publishGitHub].every(index => index >= 0), 'every ordered step is present');
+  // Steps are numbered in run order, every one of them, so a log reads in sequence.
+  const numbers = [...workflow.matchAll(/^ {6}- name: (?:(\d+)\. )?/gm)].map(match => match[1]);
+  assert.deepEqual(numbers, numbers.map((_, index) => String(index + 1)));
   assert.ok(requireCredential < publishNpm,'require the tap credential before npm publication');
   assert.ok(requireCredential < synchronizeFormula,'require a credential before synchronizing the formula');
   assert.ok(synchronizeFormula < publishGitHub,'synchronize the formula before the GitHub release');
-  assert.match(workflow,/name: Synchronize Homebrew formula\n {8}if: vars\.PUBLISH_NPM == 'true'/);
+  assert.match(workflow,/name: \d+\. Synchronize Homebrew formula\n {8}if: vars\.PUBLISH_NPM == 'true'/);
 });
 
 test('the installer downloads the asset name npm actually packs', async () => {

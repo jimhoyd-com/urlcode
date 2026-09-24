@@ -1,6 +1,7 @@
 import { hasExtensionPolicy, effectiveExtensionPolicies } from './extensions.ts';
 import type { RuntimeExtension } from './extensions.ts';
 import { ConfigError } from './errors.ts';
+import { bodySchemaSubset } from './body-schema.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocument, PolicyName, PolicyModule, PolicySupport, ProjectDocument, RouteConfig, TargetName } from './types.ts';
 
@@ -228,13 +229,13 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   conditions: { kind: 'routing', summary: 'Route-level `match` on query, headers or cookies.', schema: ['match'],
     constraints: ['At least one of query, headers, cookies; at most 16 entries each with values up to 1024 characters', 'Refused on Cloudflare until artifact lowering exists'], grants: [] },
   redirect: { kind: 'handler', summary: 'HTTP redirect to a URL template with optional query passing or mapping.', schema: ['redirect'],
-    constraints: ['`url` required, at most 8192 characters', 'status one of 301, 302, 303, 307, 308', '`query.pass` is `false` or an explicit list; `query.map` maps from path, query or header inputs'], grants: [] },
+    constraints: ['`url` required, at most 8192 characters', 'status one of 301, 302, 303, 307, 308', '`query.pass` is `false` or an explicit list; `query.map` maps from path, query or header inputs', 'The path may end in `/**` to redirect a whole subtree: a literal prefix, one terminal `**`, no path placeholders, no conditional; no other wildcard is accepted'], grants: [] },
   respond: { kind: 'handler', summary: 'Static text or JSON reply with a status code.', schema: ['respond'],
     constraints: ['status 200 to 599', '`text` at most 1 MiB; `text` and `json` are mutually exclusive'], grants: [] },
   page: { kind: 'handler', summary: 'Serve one HTML file from the project.', schema: ['page'],
     constraints: ['`file` required, project-relative, 1 to 1024 characters', 'Fixed `cacheControl` choices; `contentType` must be a media type', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
   static: { kind: 'handler', summary: 'Serve a project directory as a static mount.', schema: ['static'],
-    constraints: ['`directory` required, project-relative, 1 to 1024 characters; `index` must be a .html name', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
+    constraints: ['The route path must end in a terminal `/*` (for example `/assets/*`); a static route without it is rejected', '`directory` required, project-relative, 1 to 1024 characters; `index` must be a .html name', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
   download: { kind: 'handler', summary: 'Serve a project file as an attachment.', schema: ['download'],
     constraints: ['`file` required, project-relative, 1 to 1024 characters; `filename` at most 255 characters', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
   function: { kind: 'handler', summary: 'Project function producing the reply; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['function'],
@@ -248,7 +249,10 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   enabled: { kind: 'routing', summary: 'Route on/off switch; disabled routes are still validated.', schema: ['enabled'], constraints: ['Boolean; defaults to true'], grants: [] },
   expires: { kind: 'routing', summary: 'Timestamp after which the route stops matching.', schema: ['expires'], constraints: ['UTC timestamp YYYY-MM-DDTHH:MM:SS[.mmm]Z; expired routes are still validated'], grants: [] },
   'request.body': { kind: 'request', summary: 'Request body admission limits and format.', schema: ['request.body'],
-    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return 422'], grants: [] },
+    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return 422',
+      `\`schema\` keywords: ${bodySchemaSubset.keywords.join(', ')}; anything else (such as $ref, oneOf, default) fails activation`,
+      `\`schema\` types: ${bodySchemaSubset.types.join(', ')}; \`format\` only ${bodySchemaSubset.formats.join(', ')}; \`additionalProperties\` true or false; \`enum\` scalar values`,
+      `\`schema\` \`pattern\` needs \`maxLength\` of at most ${bodySchemaSubset.patternMaxLength} on the same node; at most ${bodySchemaSubset.limits.depth} levels, ${bodySchemaSubset.limits.nodes} nodes and ${bodySchemaSubset.limits.properties} properties per object`], grants: [] },
   'response.headers': { kind: 'request', summary: 'Static response headers added to the reply.', schema: ['response.headers'],
     constraints: ['At most 64 headers; values up to 4096 characters or lists of at most 16', 'Cloudflare coalesces duplicate headers'], grants: [] },
   bindings: { kind: 'binding', summary: 'Route `env` literals/references and `secrets` references.', schema: ['env', 'secrets'],

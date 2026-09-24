@@ -56,6 +56,13 @@ test('the committed starter AGENTS.md equals what init generates from this runti
   for (const name of ['redirect','respond','page','static','download','function','proxy','conditional']) assert.ok(guide.includes(`\`${name}\``));
   assert.ok(guide.includes('## Feedback'));
   assert.ok(guide.includes("user's explicit approval"));
+  // #539: the trust section must separate the injected-context limit from trusted
+  // Node's ambient authority, and must never read as a confinement guarantee.
+  const trust = guide.slice(guide.indexOf('## Functions and middleware'), guide.indexOf('## Checks'));
+  assert.match(trust, /injected context holds only declared `args`\/`env`\/`secrets`/);
+  assert.match(trust, /ambient authority \(`process\.env`, filesystem, network, installed modules\)/);
+  assert.match(trust, /not confinement/);
+  assert.doesNotMatch(trust, /Node with only declared/);
   assert.ok(guide.split('\n').length <= 80, 'generated project guidance must remain concise');
   assert.throws(() => renderAgentsGuide({ routes:-1 }));
 });

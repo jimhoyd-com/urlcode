@@ -4,8 +4,9 @@
 > store, a `urlcode links` CLI and a private management API for links. All three
 > were removed from core when `link` was extracted, and the `urlcode-short` and
 > `urlcode-dynamic-link` packages that received them have since been retired,
-> unpublished and their repositories deleted. No supported package provides
-> stored short links. Everything below about links — the "Links" console section
+> unpublished and their repositories deleted. Stored short links are now
+> declared through the `store` extension's `extensions.store.config.shortLinks`
+> (docs/STORE.md), which the admin console does not manage. Everything below about links — the "Links" console section
 > and the sentences that mention the site's live links or a link management API
 > (the introduction and sections 1, 2, 3, 6 and 8) — therefore describes
 > **withdrawn scope, not
@@ -47,6 +48,13 @@ authenticated by `urlcode-auth`. In a later release it may render a view
 over the link management API, but it does not replace or re-implement it.
 
 ## 2. How a project adds it
+
+<!-- local-links: historical -->
+> **Historical:** this section predates the monorepo. Auth and admin now live
+> in `packages/auth` and `packages/admin` of the URLCode repository and new
+> sites get them as signed extension bundles through
+> `urlcode init --with ui,auth,admin`; the npm install below is not a supported
+> path.
 
 ```sh
 npm install @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin

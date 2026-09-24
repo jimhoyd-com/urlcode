@@ -18,8 +18,11 @@ of two lanes:
 - **Prose:** root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`
   and each
   package's `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `GOVERNANCE.md` run
-  guidance/generated-resource checks, runtime audit, and the required container
-  job. CodeQL retains its repository policy.
+  guidance/generated-resource checks and the runtime audit. The required
+  `container` job is skipped: no admitted prose path is in the image's build
+  context, and a job skipped by its own `if` satisfies the required check,
+  while `verify-complete` accepts that skip only for a successful docs plan.
+  CodeQL retains its repository policy.
 - **Full:** all other changes, mixed changes, and empty, unclassifiable or
   unavailable diffs run static checks once and core and workspace suites
   separately. Both suites retain Linux on Node 22/24/26. Main adds
@@ -28,8 +31,8 @@ of two lanes:
   presentation-only changes omit them. Package, action, cookbook,
   reproducibility and operational checks retain their coverage.
   The `build-fidelity` job also runs `scripts/pack-sources.mjs` at the
-  checked-out commit (offline, output outside the checkout) and asserts all five
-  archives and the source manifest exist, so the operator reproducible-build path
+  checked-out commit (offline, output outside the checkout) and asserts all six
+  archives (core and the five extension workspaces) and the source manifest exist, so the operator reproducible-build path
   cannot break unnoticed; it adds about ten seconds to an existing job.
 
 A pull request is classified against its merge base; a push to main is
@@ -77,7 +80,7 @@ job per leg; only `verify-complete` and `container` are required checks.
 store, forms) runs one package per `workspace-verify` job instead of serially
 in one job: `auth`'s own SQLite-backed suite alone was over half of the
 several-minute serial windows-latest run. `workspace-integration` then rebuilds
-the four consumed packages and runs the publish audit and the workspace
+the five extension packages and runs the publish audit and the workspace
 integration suite once per leg, after every `workspace-verify` job for that
 plan has completed.
 
@@ -95,9 +98,18 @@ npm run ci:report -- RUN_ID         # read GitHub job/step durations
 npm run ci:history -- 100 2026-09-19 # group historical timing samples
 npm run verify                    # full local validation remains available
 npm run test:package              # builds and installs a real archive
+npm run test:examples             # builds, then tests the starter and example projects
 ```
 
-CI uses `test:package:built` only after building in that same job. Core tests and
+CI uses `test:package:built` and `test:examples:built` only after building in
+that same job. Every CI install is `npm ci --ignore-scripts`, so the root
+`prepare` build does not run on top of the job's own `npm run build`; jobs that
+never read `dist/` (docs, audit) do not build at all. `build-fidelity`
+keeps a plain `npm ci` because its reproducibility checks start from the tree
+an ordinary install leaves. `npm run check:code` syntax-checks only what no
+other gate parses the way Node will: JavaScript under `examples/`, `recipes/`,
+`starters/`, `action/` and `scripts/` with `node --check`, and TypeScript
+outside the `tsc` project with Node's type stripper; `dist/` is skipped. Core tests and
 workspace tests run in separate jobs to shorten their serial critical path;
 this increases job setup overhead and needs monitoring for runner queue pressure.
 After rebuilding the four extensions it needs, `workspace-integration` also runs
@@ -119,15 +131,17 @@ package-specific design/status documents stay in the source repository.
 `llms-full.txt` is the single offline documentation bundle; the authored
 `docs/` tree is not duplicated into the npm archive.
 
-`npm run audit:packages` discovers core and every publishable workspace under
-`packages/`, then runs `npm pack --dry-run` without package hooks and enforces
+`npm run audit:packages` discovers core and every workspace under `packages/`
+with a reviewed budget (the extension workspaces are private, but their packed
+trees are the signed-bundle build input), then runs `npm pack --dry-run` without package hooks and enforces
 this boundary. A new extension fails until its reviewed policy is added. The
 audit rejects unexpected top-level
 paths, source/tests/maps/environment files, missing export or executable
 targets, and archives over the reviewed compressed, unpacked or file-count
 budgets. `test:package:built` applies it to core before installing the actual
-archive. Every extension release applies the same check to its selected
-workspace immediately before packing. Increase a budget only with a reviewed
+archive. Only core is an npm release target (`scripts/release.ts`); the
+extension workspaces are audited by CI's `workspace-integration` job on every
+change, and the signed bundle workflow does not re-run the audit. Increase a budget only with a reviewed
 explanation of the new installed requirement; do not use budget headroom as a
 substitute for updating the allowlist.
 
@@ -237,7 +251,7 @@ flowchart LR
 | Goal | Find this workflow in Actions | How it starts | Gate before a release-affecting action |
 | --- | --- | --- | --- |
 | Publish a core release | **Release — core: operator start** (`release-core-dispatch.yml`) | Select `main`, click **Run workflow**, supply the exact version and Changesets choice | `release` approval before PR/tag coordination; another `release` approval before the tag-triggered publisher receives release credentials |
-| Publish executable first-party bundles | **Release — extensions: operator start** (`extension-bundles.yml`) | Select `main`, click **Run workflow**, supply a new bundle version | `release` approval before it creates `extension-bundles@v…` and publishes its attested assets |
+| Publish executable first-party bundles | **Release — extensions: operator start** (`extension-bundles.yml`) | Select `main`, click **Run workflow**, supply a new bundle version | `release` approval before it creates `extension-bundles@v…`; another `release` approval for the build it then dispatches on that tag, which attests, verifies with the CLI policy and publishes |
 | Publish declarative-only artifacts | **Release — extensions: op — publish declarative artifacts** (`extension-artifacts.yml`) | Create the reviewed, immutable `extensions@v…` tag; the workflow starts from that push | `release` approval before artifact publication |
 | Exercise the non-publishing release path | **Release — rehearsal: operator run (no publication)** (`release-rehearsal.yml`) | Select the intended ref and click **Run workflow** | No `release` approval; it cannot tag, sign, retain, or publish |
 
@@ -319,10 +333,20 @@ The **Release — extensions: operator start** workflow runs for an
 `extension-bundles@v*` tag, or can be dispatched from the Actions page with a
 new version while `main` is selected. A manual dispatch creates that immutable
 tag at the selected `main` commit only after the protected `release` environment
-is approved. It builds exact-commit package inputs, installs their locked
+is approved, then dispatches the same workflow on that tag; nothing is built or
+signed by the run on `main`. The build always runs on `refs/tags/extension-bundles@v…`
+because the attestation certificate records the run's own ref and the consumer
+verifies `--source-ref refs/tags/<release>`: a bundle attested from a run on
+`main` can never be installed ([#579](https://github.com/jimhoyd-com/urlcode/issues/579)).
+The tag build needs its own `release` approval. It builds exact-commit package inputs, installs their locked
 production dependency closure only in the release runner, rejects links and
 special files, emits deterministic USTAR/gzip archives, verifies every catalog
-digest and member path, then attests and publishes the catalog and each bundle.
+digest and member path, then attests the catalog and each bundle. Before
+publishing, and again on the assets downloaded back from the published release,
+`scripts/verify-extension-bundles.ts` checks them with the consumer's own
+transport (signer workflow, source ref, catalog tag, core pin and archive
+checks), so a release the CLI would refuse fails the workflow instead of
+reaching users.
 The consumer never uses npm to install these assets; it verifies the exact tag
 attestation before loading a locked entry from an explicit operator host.
 
@@ -331,7 +355,8 @@ controls for `extension-bundles@v*` and the protected release environment cover
 this workflow. To release from GitHub Actions, choose **Release — extensions:
 operator start**, select `main`, click **Run workflow**, and enter a new version
 such
-as `0.5.2`; then approve the release environment. Do not reuse a published tag.
+as `0.5.2`; then approve the release environment for the tagging run and again
+for the tag build it dispatches. Do not reuse a published tag.
 The signed bundle consumer flow is the supported distribution for first-party
 executable extensions; keep the fresh composed consumer evidence with the
 release record. This scoped build does not prove an independent security review.

@@ -522,6 +522,7 @@
           "maxItems": 64
         },
         "redirect": {
+          "description": "HTTP redirect. The route path may end in /** to redirect a whole subtree (literal prefix, one terminal **, no path placeholders, no conditional); no other wildcard is accepted.",
           "type": "object",
           "properties": {
             "url": {
@@ -796,6 +797,7 @@
           "additionalProperties": false
         },
         "static": {
+          "description": "Serve a project directory. The route path must end in a terminal /* (for example /assets/*); a static route without it is rejected.",
           "type": "object",
           "properties": {
             "directory": {
@@ -1808,7 +1810,8 @@
               ]
             },
             "schema": {
-              "type": "object"
+              "type": "object",
+              "description": "A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object."
             }
           },
           "additionalProperties": false

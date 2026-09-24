@@ -1,7 +1,8 @@
 # Pages, static files and downloads
 
-Native file handlers are implemented in 0.1.0-alpha.3. They work in the local
-Node runtime and self-hosted process/container. Provider adapters remain planned.
+Native file handlers are implemented. They work in the local Node runtime and
+self-hosted process/container; each provider target supports them only as far
+as [capabilities](CAPABILITIES.md) states.
 They do not run user functions or expose filesystem APIs to guest code, trusted
 or sandboxed.
 

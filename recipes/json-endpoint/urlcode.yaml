@@ -1,0 +1,30 @@
+version: "1"
+routes:
+  /api/status:
+    description: A fixed JSON answer declared with respond; no project code runs.
+    respond:
+      json: {service: example, ready: true}
+  /api/signups:
+    description: Accept a JSON sign-up whose fields the runtime checks against request.body.schema, and answer 202 with respond.
+    methods: [POST]
+    request:
+      body:
+        required: true
+        maxBytes: 4096
+        contentTypes: [application/json]
+        format: json
+        # Checked before anything else runs; a body that breaks a rule answers 422.
+        schema:
+          type: object
+          additionalProperties: false
+          required: [email, name]
+          properties:
+            email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^\\s@]+@[^\\s@]+$"}
+            name: {type: string, minLength: 1, maxLength: 100}
+            plan: {type: string, enum: [free, team]}
+    respond:
+      status: 202
+      json: {accepted: true}
+    response:
+      headers:
+        Cache-Control: no-store

@@ -4,8 +4,9 @@ The runtime is written in TypeScript and the published package ships
 declarations for every export, so an operator application, a plugin, an
 observer, a compliance rules module or a build script can be type-checked
 against the same contract the runtime enforces at load time. Nothing in the
-project format changes: YAML and sandboxed functions are unaffected, and a
-JavaScript application keeps working exactly as before.
+project format changes: YAML and project functions/middleware (trusted by
+default, or `sandbox: true`) are unaffected, and a JavaScript application keeps
+working exactly as before.
 
 ## What ships
 
@@ -125,8 +126,8 @@ builds twice and diffs the trees. See [release security](RELEASE-SECURITY.md).
 Because the shipped JavaScript is the stripped source, the installed package
 runs `dist/`, not TypeScript source. Running `.ts` source directly through
 `npm run dev` is only the developer loop and never ships. Historical comparison
-code and results live in the separate
-[URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark).
+code and results are kept privately by the maintainers and are not public
+evidence.
 
 ## Contributing in TypeScript
 

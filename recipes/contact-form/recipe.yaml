@@ -1,8 +1,8 @@
 id: contact-form
-description: Validate a JSON contact message in a function and notify an operator-granted hook with a fixed signal after the response.
-tags: [contact, form, message, email, post, json, validation, signal, notify, hook, egress, "422"]
+description: Validate a JSON contact message with a declared body schema, answer 202 natively and notify an operator-granted hook with a fixed signal after the response.
+tags: [contact, form, message, email, post, json, validation, schema, signal, notify, hook, egress, "422", no-code]
 complexity: intermediate
-capabilities: [enabled, function, methods, request.body, response.headers, signals]
+capabilities: [enabled, methods, request.body, respond, response.headers, signals]
 targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 services:
@@ -16,9 +16,9 @@ inputs:
     file: urlcode.yaml
     description: The hook that is notified after each response.
   - name: field rules
-    file: functions/contact.mjs
-    description: The name, email and message limits.
-files: [urlcode.yaml, functions/contact.mjs, tests/requests.json, README.md]
+    file: urlcode.yaml
+    description: The name, email and message limits in request.body.schema.
+files: [urlcode.yaml, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
@@ -27,7 +27,7 @@ tests:
     - urlcode test --project . --policy /operator/contact-policy.json
     - urlcode audit --project . --expect-routes 1 --policy /operator/contact-policy.json
 behavior:
-  - POST /contact with a valid name, email and message answers 202 {"accepted":true}
-  - invalid fields answer 422 with one error line per field; a non-object body answers 422
+  - POST /contact with a valid name, email and message answers 202 {"accepted":true} from respond, with no project code
+  - a missing or invalid field, or a body that is not an object, answers 422 from the runtime before the reply is built
   - form-encoded bodies answer 415 and GET answers 405
   - the signal carries route, method and status only, best effort; the message itself is never included
