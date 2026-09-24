@@ -1,5 +1,5 @@
 // The one place a version changes. Core and every add-on share one version; a release is a pull request that
-// contains only `npm run release:bump -- <version>` (the Release workflow, .github/workflows/release.yml, prepares
+// contains only `npm run release:bump -- <version>` (the Create release workflow, .github/workflows/release.yml, prepares
 // it as a branch), and merging it releases (.github/workflows/publish.yml).
 //
 //   node scripts/release-bump.ts <version>   rewrite every version declaration to <version>
