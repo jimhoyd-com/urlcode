@@ -25,8 +25,14 @@ const docs=[
   {id:'tooling',title:'Tooling and local MCP',file:'docs/TOOLING.md',summary:'Bounded local project inspection, validation and MCP tool behavior.'},
   {id:'security',title:'Function security',file:'docs/FUNCTION-SECURITY.md',summary:'Trusted versus sandboxed function behavior, bindings and operator grants.'},
 ] as const;
+// The canonical inventory of every shipped skill (#590): the loop skill plus the two Claude Code
+// packaged skills, all three published in the npm `files` list. Each entry's `description` is read
+// from its own SKILL.md frontmatter at call time rather than duplicated here, so this inventory
+// cannot drift from the skill it describes the way the single-skill, hand-written description once did.
 const skills=[
-  {name:'urlcode',description:'Author URLCode projects declaratively, retrieve only the required contract, and validate the result.',file:'skills/urlcode/SKILL.md'},
+  {name:'urlcode',file:'skills/urlcode/SKILL.md'},
+  {name:'urlcode-authoring',file:'.claude/skills/urlcode-authoring/SKILL.md'},
+  {name:'urlcode-operations',file:'.claude/skills/urlcode-operations/SKILL.md'},
 ] as const;
 const maxExcerpt=1800;
 
@@ -38,12 +44,21 @@ function excerpt(text:string, query:string):string {
   return text.slice(start,start+maxExcerpt);
 }
 async function content(file:string):Promise<string> {return readFile(packageRoot+file,'utf8');}
+/** The `description:` line from a SKILL.md's YAML frontmatter, the same text Claude Code itself
+ * reads to decide whether to load the skill. */
+function frontmatterDescription(text:string):string {
+  const frontmatter=/^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]??'';
+  return /^description:\s*(.+)$/m.exec(frontmatter)?.[1]?.trim()??'';
+}
 
-export function listSkills() {return skills.map(({name,description})=>({name,description}));}
+export async function listSkills() {
+  return Promise.all(skills.map(async skill=>({name:skill.name,description:frontmatterDescription(await content(skill.file))})));
+}
 export async function getSkill(name:string) {
   const skill=skills.find(candidate=>candidate.name===name);
   if(!skill)throw new Error('Unknown bundled skill');
-  return {name:skill.name,description:skill.description,content:await content(skill.file)};
+  const text=await content(skill.file);
+  return {name:skill.name,description:frontmatterDescription(text),content:text};
 }
 
 /** Deterministic lexical search over a deliberately small, agent-facing corpus. */

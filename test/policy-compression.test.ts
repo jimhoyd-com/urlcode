@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
 import { startServer } from '../packages/core/src/server.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { negotiate, zstdAvailable } from '../packages/core/src/policies/compression.ts';
 import { project, request, approveBindings } from './helpers.ts';
 import type { TestContext } from 'node:test';
@@ -132,4 +133,22 @@ test('zstd is honoured only when node:zlib provides it; serverless targets deleg
   assert.deepEqual(delegated.testPlan().policies['/v']?.compression, { target: 'delegated' });
   const bad = await project(t, { '/b': { respond: { text } } }, {}, { policies: { compression: { types: ['not a type'] } } });
   await assert.rejects(createRuntime(bad, { log: () => {} }), /not a media type/);
+});
+
+test('non-default compression settings are refused, not silently dropped, on targets that cannot enforce them (#553)', async t => {
+  for (const key of ['encodings', 'minBytes', 'types', 'level', 'allowWithSecrets'] as const) {
+    const config = { encodings: ['gzip'], minBytes: 16, types: ['text/plain'], level: 3, allowWithSecrets: true };
+    const only = { [key]: config[key] };
+    const root = await project(t, { '/r': { respond: { text }, policies: { compression: only } } });
+    for (const target of ['vercel', 'aws'] as const) {
+      await assert.rejects(createRuntime(root, { log: () => {}, target }),
+        /\/r[\s\S]*capability: policies\.compression[\s\S]*unsupported by target: \w+/, `${key} on ${target}`);
+    }
+    await assert.rejects(buildCloudflare(root, { out: `${root}/dist-${key}` }), /capability: policies\.compression/, `${key} on cloudflare`);
+  }
+  // Bare `compression: {}` (no explicit settings) still delegates: the
+  // provider's own default compression is what the project asked for.
+  const bare = await project(t, { '/v': { respond: { text }, policies: { compression: {} } } });
+  const delegated = await createRuntime(bare, { log: () => {}, target: 'aws' }); t.after(() => delegated.close());
+  assert.deepEqual(delegated.testPlan().policies['/v']?.compression, { target: 'delegated' });
 });

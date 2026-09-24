@@ -95,10 +95,10 @@ test('coordinator dry-run only reads release state and does not dispatch, tag or
   assert.equal(JSON.parse(result.rootManifest).version, '0.4.0-alpha.4');
 });
 
-test('coordinator rejects a retired extension npm scope before inspecting state', async () => {
+test('coordinator has no package selector; core is its only npm scope', async () => {
   const result = await scenario(['--package', 'auth']);
   assert.notEqual(result.status, 0);
-  assert.match(result.output, /Only core is released through the npm coordinator/);
+  assert.match(result.output, /Unknown release option: --package/);
   assert.deepEqual(result.calls, []);
 });
 

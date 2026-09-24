@@ -8,6 +8,16 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import type { HandlerResult } from './http-response.ts';
 import type { ProjectDocument, RouteConfig, TargetName } from './types.ts';
 export type { HandlerResult } from './http-response.ts';
+/**
+ * The same conservative regex admission core uses for route and body
+ * patterns (docs/RUNTIME-IMPLEMENTATION.md), exposed so a workspace package
+ * that accepts author-supplied patterns admits them by the identical rule
+ * instead of maintaining its own copy that can drift. `maxPatternInputLength`
+ * is the input-length bound the guard's cost model assumes; callers must
+ * enforce it themselves (for example as a JSON Schema `maxLength`) on any
+ * value the pattern will run against.
+ */
+export { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**

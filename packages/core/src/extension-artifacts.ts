@@ -3,7 +3,7 @@ import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ConfigError, assert } from './errors.ts';
-import { type UnknownRecord, isRecord as record, digestHex as digest, textField, exactKeys as sharedExactKeys, listCachedFiles, writeLockAtomic, createGithubTransport, verifiedReleaseAsset, type ReleaseAsset } from './extension-transport.ts';
+import { type UnknownRecord, isRecord as record, digestHex as digest, textField, exactKeys as sharedExactKeys, listCachedFiles, writeLockAtomic, createGithubTransport, verifiedReleaseAsset, peekCatalogCommit, type ReleaseAsset } from './extension-transport.ts';
 
 /** Offline, declarative extension bundles. These are deliberately not Node packages. */
 const ARTIFACT_REPOSITORY = 'jimhoyd-com/urlcode';
@@ -88,13 +88,13 @@ export async function writeLock(project:string, lock:ExtensionLock):Promise<void
 export function cachePath(project:string, sha256:string):string { assert(hex.test(sha256),'Invalid extension digest'); return join(project,'.urlcode','extensions',sha256); }
 
 export type { ReleaseAsset };
-export interface ArtifactTransport { release(tag:string):Promise<ReleaseAsset[]>; download(url:string):Promise<Uint8Array>; attest(path:string,release:string):Promise<void>; }
+export interface ArtifactTransport { release(tag:string):Promise<ReleaseAsset[]>; download(url:string):Promise<Uint8Array>; attest(path:string,release:string,commit?:string):Promise<void>; }
 /** The default transport accepts only GitHub Release asset URLs and verifies every downloaded subject. */
 const githubTransport:ArtifactTransport=createGithubTransport({repository:ARTIFACT_REPOSITORY,workflow:ARTIFACT_WORKFLOW,tagPattern:tag,exampleTag:'extensions@v1.0.0',maxAssetSize:MAX_ARCHIVE,itemLabel:'extension artifact'});
-async function resolveCatalog(release:string, transport:ArtifactTransport=githubTransport):Promise<{catalog:Catalog;assets:ReleaseAsset[]}> { const assets=await transport.release(release); const bytes=await verifiedReleaseAsset(assets,'extensions-catalog.json',release,transport,'extension artifact','urlcode-attest'); return {catalog:parseCatalog(bytes,release),assets}; }
+async function resolveCatalog(release:string, transport:ArtifactTransport=githubTransport):Promise<{catalog:Catalog;assets:ReleaseAsset[]}> { const assets=await transport.release(release); const bytes=await verifiedReleaseAsset(assets,'extensions-catalog.json',release,transport,'extension artifact','urlcode-attest',peekCatalogCommit); return {catalog:parseCatalog(bytes,release),assets}; }
 export async function installArtifact(project:string, release:string, artifactName:string, transport:ArtifactTransport=githubTransport):Promise<ExtensionLock> {
   assert(name.test(artifactName),'Invalid extension artifact name'); const {catalog,assets}=await resolveCatalog(release,transport); const entry=catalog.artifacts.find(item=>item.name===artifactName); assert(entry,`Extension artifact ${artifactName} is not in the signed catalog`); const revoked=catalog.revoked.find(item=>item.sha256===entry.sha256); assert(!revoked,`Extension artifact ${artifactName} is revoked: ${revoked?.reason ?? 'unknown reason'}`);
-  const bytes=await verifiedReleaseAsset(assets,entry.asset,release,transport,'extension artifact','urlcode-attest'); await extractArtifact(bytes,entry,cachePath(project,entry.sha256));
+  const bytes=await verifiedReleaseAsset(assets,entry.asset,release,transport,'extension artifact','urlcode-attest',catalog.commit); await extractArtifact(bytes,entry,cachePath(project,entry.sha256));
   let prior:ExtensionLock|undefined; try { prior=await readLock(project); } catch { /* first install */ }
   const artifacts=(prior?.artifacts ?? []).filter(item=>item.name!==entry.name); artifacts.push({...entry,catalog:{tag:catalog.tag,commit:catalog.commit}}); artifacts.sort((a,b)=>a.name.localeCompare(b.name)); const lock:ExtensionLock={format:1,artifacts}; await writeLock(project,lock); return lock;
 }

@@ -245,7 +245,7 @@ async function dispatchShortLink(short: ShortLink, request: ExtensionRequest): P
     // answers 404 without incrementing rather than a 302 to `Location: undefined`.
     const target = short.collection.getByKey(rest);
     if (typeof target[short.destination] !== 'string') throw new StoreError(404, 'not_found', 'No such record');
-    const record = method === 'HEAD' ? target : await short.collection.increment(target.id as string, short.clicks);
+    const record = method === 'HEAD' ? target : await short.collection.recordClick(target.id as string, short.clicks);
     return { status: 302, headers: [['location', record[short.destination] as string], ['cache-control', 'no-store']] };
   } catch (error) {
     if (error instanceof StoreError) return failure(error);

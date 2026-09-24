@@ -1,4 +1,4 @@
-name: "Release — extensions: operator start"
+name: "Release: extensions: op start"
 on:
   push:
     tags:
@@ -35,33 +35,8 @@ jobs:
       - name: Create or resume the immutable bundle release tag, then build from it
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
-        run: |-
-          set -euo pipefail
-          test "$GITHUB_REF_TYPE" = branch
-          test "$GITHUB_REF" = refs/heads/main
-          case "$VERSION" in
-            [0-9]*) ;;
-            *) echo "Use a version beginning with a digit, such as 0.5.2" >&2; exit 1 ;;
-          esac
-          case "$VERSION" in
-            *[!0-9A-Za-z._-]*) echo "Use only letters, digits, dots, underscores and hyphens in the version" >&2; exit 1 ;;
-          esac
-          test "${#VERSION}" -le 100
-          tag="extension-bundles@v$VERSION"
-          if commit="$(gh api --jq .object.sha "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" 2>/dev/null)"; then
-            if gh release view "$tag" >/dev/null 2>&1; then
-              echo "Release already exists: $tag" >&2
-              exit 1
-            fi
-            echo "Resuming incomplete release $tag at $commit"
-          else
-            commit="$GITHUB_SHA"
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$commit"
-          fi
-          gh workflow run extension-bundles.yml --ref "$tag" -f "version=$VERSION"
-          echo "Dispatched the build of $tag on refs/tags/$tag; approve that run to publish."
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts tag
   publish:
     # This approval boundary is intentionally separate from core/package
     # publication: its assets contain trusted executable operator code.
@@ -95,69 +70,19 @@ jobs:
         id: source
         env:
           VERSION: ${{ inputs.version }}
-        run: |-
-          set -euo pipefail
-          test "$GITHUB_REF_TYPE" = tag
-          tag="$GITHUB_REF_NAME"
-          case "$tag" in
-            extension-bundles@v[0-9]*) ;;
-            *) echo "Not an extension bundle release tag: $tag" >&2; exit 1 ;;
-          esac
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            test "$tag" = "extension-bundles@v$VERSION"
-          fi
-          commit="$GITHUB_SHA"
-          printf 'tag=%s\ncommit=%s\n' "$tag" "$commit" >> "$GITHUB_OUTPUT"
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts source
       - name: Build frozen bundle archives from the immutable tagged source
         env:
           RELEASE_TAG: ${{ steps.source.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.source.outputs.commit }}
-        run: |-
-          set -euo pipefail
-          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$RELEASE_COMMIT"
-          git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main
-          node --disable-warning=ExperimentalWarning scripts/prepare-extension-bundles.ts \
-            --tag "$RELEASE_TAG" \
-            --commit "$RELEASE_COMMIT" \
-            --output "$RUNNER_TEMP/urlcode-extension-bundles"
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts build
       - name: Require the generated catalog pin, digests and complete inventory
         env:
           RELEASE_TAG: ${{ steps.source.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.source.outputs.commit }}
-        run: |-
-          set -euo pipefail
-          node --input-type=module -e '
-            import fs from "node:fs";
-            import {createHash} from "node:crypto";
-            const dir=process.env.RUNNER_TEMP+"/urlcode-extension-bundles";
-            const c=JSON.parse(fs.readFileSync(dir+"/extension-bundles-catalog.json","utf8"));
-            if(c.format!==1 || c.tag!==process.env.RELEASE_TAG || c.commit!==process.env.RELEASE_COMMIT || !Array.isArray(c.bundles) || !Array.isArray(c.revoked)) process.exit(1);
-            const names=new Set(), assets=new Set();
-            for(const b of c.bundles) {
-              if(!/^[a-z][a-z0-9-]{0,63}$/.test(b.name) || names.has(b.name) || !/^[a-f0-9]{64}$/.test(b.sha256) || !/^[A-Za-z0-9._-]+\.tgz$/.test(b.asset) || assets.has(b.asset)) process.exit(1);
-              names.add(b.name); assets.add(b.asset);
-              const bytes=fs.readFileSync(dir+"/"+b.asset);
-              if(createHash("sha256").update(bytes).digest("hex")!==b.sha256) process.exit(1);
-            }
-            const present=fs.readdirSync(dir).filter(file=>file.endsWith(".tgz"));
-            if(present.length!==assets.size || present.some(file=>!assets.has(file))) process.exit(1);
-          '
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts inventory
       - name: Require only regular frozen module-tree members
-        run: |-
-          set -euo pipefail
-          for archive in "$RUNNER_TEMP/urlcode-extension-bundles"/*.tgz; do
-            # Consume the complete listing: grep -q would close the pipe after
-            # bundle.json and make tar fail under pipefail with SIGPIPE.
-            tar -tzf "$archive" | awk '$0 == "bundle.json" { found = 1 } END { exit found ? 0 : 1 }'
-            if tar -tvzf "$archive" | awk 'substr($0,1,1)!="-" {exit 1}'; then :; else
-              echo "Bundle contains a non-regular member: $archive" >&2
-              exit 1
-            fi
-            if tar -tzf "$archive" | grep -Eqv '^(bundle\.json|node_modules/.+)$'; then
-              echo "Bundle contains a member outside its frozen module tree: $archive" >&2
-              exit 1
-            fi
-          done
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts archives
       - name: Attest catalog and bundle archives
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
@@ -173,18 +98,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.source.outputs.tag }}
-        run: node --disable-warning=ExperimentalWarning scripts/verify-extension-bundles.ts --tag "$RELEASE_TAG" --dir "$RUNNER_TEMP/urlcode-extension-bundles"
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts verify-local
       - name: Publish immutable release assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.source.outputs.tag }}
-        run: gh release create "$RELEASE_TAG" "$RUNNER_TEMP/urlcode-extension-bundles/extension-bundles-catalog.json" "$RUNNER_TEMP/urlcode-extension-bundles"/*.tgz --title "$RELEASE_TAG" --verify-tag
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts publish
       - name: Verify the published release with the CLI policy
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.source.outputs.tag }}
-        run: |-
-          set -euo pipefail
-          published="$RUNNER_TEMP/urlcode-extension-bundles-published"
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$published"
-          node --disable-warning=ExperimentalWarning scripts/verify-extension-bundles.ts --tag "$RELEASE_TAG" --dir "$published"
+        run: node --disable-warning=ExperimentalWarning scripts/extension-bundle-release.ts verify-published

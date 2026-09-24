@@ -35,7 +35,7 @@ rather than a blanket answer. See [egress](EGRESS.md) and
 | native | Implemented by the local runtime or Node adapter |
 | compiled | Implemented by the Cloudflare or static-hosting compiler and its runtime/build output |
 | conditional | Depends on configuration; inspect the actual project |
-| delegated | Existing policy contract relies on provider behavior |
+| delegated | Enforced, but not verifiably equivalent to a single-instance/operator-selected result: usually because the provider does it instead (compression, cache), occasionally because this runtime's own code does it but only per deployment instance (`policies.throttle`'s `partition: route`) |
 | refused | No implementation that this target can activate |
 | unknown | No support evidence; fail closed during project analysis |
 
@@ -47,10 +47,16 @@ no server at all, so it refuses every capability that needs one (parameters,
 request bodies, response headers, bindings, every `policies.*`) in addition to
 `function`/`middleware`. See [Cloudflare](CLOUDFLARE.md), [AWS](AWS.md),
 [Vercel](VERCEL.md) and [static hosting](STATIC.md) for transport and fidelity
-limits. Compression is explicitly delegated, not verified equivalent to
-operator-selected settings. Route throttle counters and caches remain per
-instance. No supported entry bypasses semantic validation, required operator
-grants or deployment prerequisites.
+limits. Compression is delegated only for the settings-free form
+(`compression: {}`); an explicit `encodings`, `minBytes`, `types`, `level` or
+`allowWithSecrets` is refused on Vercel, AWS and Cloudflare, because the
+provider has no channel to receive it and dropping it silently would change
+the project's behavior. Route throttle counters and caches remain per
+instance; `policies.throttle`'s `partition: route` on Vercel/AWS is reported
+`delegated`, not `native`, because the quota it enforces is effectively
+quota × instance count once the target scales past one instance. No
+supported entry bypasses semantic validation, required operator grants or
+deployment prerequisites.
 
 ## One capability or one schema fragment
 
@@ -116,10 +122,15 @@ requirements. Explicit delegation and transport limitations still apply.
 
 Requirements include effective inherited/profile policies after route overrides
 and `false` removals. Policy modules' existing `targets(config)` functions remain
-the source of policy decisions. The catalog says serverless throttle is
-conditional; a project report resolves `partition: route` to native and the
-client partitions to refused. Reports contain paths and capability facts, not
-sources, destinations, binding names/values, code, validator closures or assets.
+the source of policy decisions, except where a target's capability report must
+say more than a policy module's fixed `native`/`compiled`/`delegated`/`refused`
+table can: `policies.throttle` on Vercel/AWS resolves `partition: route` to
+`delegated` (real in-process enforcement, per instance, so the effective quota
+is quota × instance count — never `native`, which would claim a single global
+counter) and the `client`/`client-route` partitions to `refused`; a project
+that has not resolved which partition it uses reports `conditional`, the same
+as the catalog. Reports contain paths and capability facts, not sources,
+destinations, binding names/values, code, validator closures or assets.
 
 Build/activation refusals aggregate all incompatible requirements and name each
 route, capability, target and reason before any artifact files are written.

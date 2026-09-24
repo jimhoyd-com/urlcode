@@ -59,6 +59,44 @@ test('resolveBundleExecutable refuses a locked bundle that packages no command-l
   await assert.rejects(()=>resolveBundleExecutable(project,'sample'),/missing its package manifest/);
 });
 
+test('installBundle binds the catalog commit to the attestation source digest and fails closed on a mismatch (#577)',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-commit-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const bytes=archive(),item=entry(bytes),trueCommit='b'.repeat(40);
+  // The catalog claims commit 'a'.repeat(40), but the attestation's own cert-derived source digest -- what
+  // `gh attestation verify --source-digest` actually checks, and cannot be forged by the release script -- is
+  // 'b'.repeat(40). A fake transport stands in for that unforgeable check: it refuses whenever the caller passes
+  // a commit that disagrees with the real one, exactly as `gh` would refuse a mismatched --source-digest.
+  const mismatchedCatalog=Buffer.from(JSON.stringify({format:1,tag:'extension-bundles@v1.0.0',commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]}));
+  const seenRefused:(string|undefined)[]=[];
+  const refusing:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:item.asset,url:'bundle'}],download:async url=>url==='catalog'?mismatchedCatalog:bytes,attest:async(_path:string,_release:string,commit?:string)=>{seenRefused.push(commit);if(commit!==undefined&&commit!==trueCommit)throw new ConfigError(`GitHub attestation verification refused the extension bundle: source digest mismatch (expected ${trueCommit}, got ${commit})`);}};
+  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','sample',refusing),/source digest mismatch \(expected b{40}, got a{40}\)/);
+
+  // A catalog whose commit field agrees with the true attested commit installs normally, and both the catalog's
+  // and the bundle asset's attestation are bound to that same commit.
+  const matchingCatalog=Buffer.from(JSON.stringify({format:1,tag:'extension-bundles@v1.0.0',commit:trueCommit,coreVersion,bundles:[item],revoked:[]}));
+  const seenAccepted:(string|undefined)[]=[];
+  const accepting:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:item.asset,url:'bundle'}],download:async url=>url==='catalog'?matchingCatalog:bytes,attest:async(_path:string,_release:string,commit?:string)=>{seenAccepted.push(commit);if(commit!==undefined&&commit!==trueCommit)throw new ConfigError('unexpected source digest');}};
+  const lock=await installBundle(project,'extension-bundles@v1.0.0','sample',accepting);
+  assert.equal(lock.bundles[0]?.catalog.commit,trueCommit);
+
+  // Caught on the catalog's own attestation (peeked ahead of the full parse), before any asset is ever fetched;
+  // the accepted install binds the same commit for both the catalog and the bundle asset attestations.
+  assert.deepEqual(seenRefused,['a'.repeat(40)]);
+  assert.deepEqual(seenAccepted,[trueCommit,trueCommit]);
+});
+
+test('the GitHub transport binds --source-digest to the expected commit, and omits the flag when none is given (#577)',{skip:process.platform==='win32'&&'uses a POSIX shell script as a fake gh'},async t=>{
+  const bin=await mkdtemp(join(tmpdir(),'urlcode-fake-gh-source-digest-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(bin,{recursive:true,force:true}));});
+  const argvLog=join(bin,'argv.log');
+  await writeFile(join(bin,'gh'),`#!/bin/sh\necho "$@" >> "${argvLog}"\nexit 0\n`,{mode:0o755});
+  const path=process.env.PATH;process.env.PATH=`${bin}:${path??''}`;t.after(()=>{process.env.PATH=path;});
+  await githubBundleTransport.attest(join(bin,'subject'),'extension-bundles@v1.0.0','c'.repeat(40));
+  await githubBundleTransport.attest(join(bin,'subject'),'extension-bundles@v1.0.0');
+  const [withCommit,withoutCommit]=(await readFile(argvLog,'utf8')).trim().split('\n');
+  assert.match(withCommit!,/--source-digest c{40}(?:\s|$)/);
+  assert.doesNotMatch(withoutCommit!,/--source-digest/);
+});
+
 test('bundle catalog refuses tag changes, duplicate names and a core mismatch',()=>{
   const item={...entry(Buffer.from('bundle')),sha256:'b'.repeat(64)},base={format:1,tag:'extension-bundles@v1.0.0',commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]};
   assert.equal(parseBundleCatalog(Buffer.from(JSON.stringify(base)),'extension-bundles@v1.0.0').bundles.length,1);
@@ -90,18 +128,18 @@ test('installBundle enriches a failed release fetch with --bundle-release and th
 });
 
 test('BUNDLE_CATALOG_NAMES lists every first-party bundle this release builds',()=>{
-  assert.deepEqual(BUNDLE_CATALOG_NAMES.map(item=>item.name).sort(),['admin','auth','forms','store','ui']);
+  assert.deepEqual(BUNDLE_CATALOG_NAMES.map(item=>item.name).sort(),['admin','auth','forms','store','ui','ui-presentation']);
   for(const item of BUNDLE_CATALOG_NAMES)assert.ok(item.description.length>0);
 });
 
 test('bundle names are checked locally, with a suggestion, before the GitHub transport touches the network (#579)',async t=>{
   const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-typo-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
   const original=globalThis.fetch;let fetched=0;globalThis.fetch=(async()=>{fetched++;throw new Error('network must not be reached');}) as typeof fetch;t.after(()=>{globalThis.fetch=original;});
-  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','auht'),/Unknown extension bundle auht; did you mean auth\? Known bundles: ui, auth, admin, store, forms/);
+  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','auht'),/Unknown extension bundle auht; did you mean auth\? Known bundles: ui, ui-presentation, auth, admin, store, forms/);
   await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','formz'),/did you mean forms\?/);
   await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','zzz'),/Unknown extension bundle zzz\. Known bundles/);
   assert.equal(fetched,0);
-  assert.doesNotThrow(()=>assertKnownBundleNames(['ui','auth','admin','store','forms']));
+  assert.doesNotThrow(()=>assertKnownBundleNames(['ui','ui-presentation','auth','admin','store','forms']));
   assert.throws(()=>assertKnownBundleNames(['xy']),(error:unknown)=>error instanceof ConfigError&&!/did you mean/.test(error.message));
 });
 

@@ -350,6 +350,22 @@ test('email sign-in codes and signup codes are capped by a long-window per-accou
     }
     await assert.rejects(service.beginSignup({ email: 'daily-signup-cap@example.com', browserHash }), { code: 'authentication_rate_limited' });
 });
+test('a single client cannot alone exhaust or repeatedly cancel another account\'s sign-in codes (#548)', async (t) => {
+    const { service } = await setup(t), user = await service.register({ email: 'code-target@example.com', password });
+    // The per-email daily budget (#462) is shared across every caller, so one client could
+    // otherwise spend most or all of it alone against a victim's address — and since issuing a
+    // fresh code invalidates whichever one was still in flight (see the store's `issueEmailCode`),
+    // even a handful of calls from that one client can keep cancelling the victim's own pending
+    // code. A trusted client now also gets its own, tighter per-email budget, so it alone cannot
+    // reach the shared ceiling.
+    for (let index = 0; index < 5; index++)
+        assert.match((await service.issueEmailCode({ email: user.user.email, client: '203.0.113.9' })).flowId, /^[A-Za-z0-9_-]{43}$/);
+    await assert.rejects(service.issueEmailCode({ email: user.user.email, client: '203.0.113.9' }), { code: 'authentication_rate_limited' });
+    // A different client's budget for the same address is unaffected.
+    assert.match((await service.issueEmailCode({ email: user.user.email, client: '198.51.100.4' })).flowId, /^[A-Za-z0-9_-]{43}$/);
+    // An untrusted/absent client still falls back to the pre-existing per-email budget alone.
+    assert.match((await service.issueEmailCode({ email: user.user.email })).flowId, /^[A-Za-z0-9_-]{43}$/);
+});
 test('email changes retain the old login during cooldown, allow cancellation and commit once with stable identity', async (t) => {
     const { service, advance } = await setup(t, { sessionTtlMs: 172800000 }), user = await service.register({ email: 'old@example.com', password });
     const cancelled = await service.requestEmailChange({ token: user.token, email: 'new@example.com', password });
@@ -1210,4 +1226,38 @@ test('method removal preserves an independent primary and passkey factor combina
     const methods=await service.inspectAccountAuthentication({actorToken:admin.token,accountId:account.user.id,reason:'Review remaining methods'});
     await assert.rejects(service.stageAccountAdministration({...base,action:'remove-external',externalId:methods.external[0]!.id}),{code:'last_sign_in_method'});
     assert.ok(await service.getPasskey('factor-method'));
+});
+test('bearer/API-key issuance, verification, expiry, revocation and secret secrecy', async (t) => {
+    const { service, advance, database } = await setup(t);
+    const issued = await service.issueApiKey({ name: 'ci-deploy-bot', scopes: ['deploys.write', 'deploys.write'] });
+    assert.equal(issued.name, 'ci-deploy-bot');
+    assert.deepEqual(issued.scopes, ['deploys.write']);
+    assert.equal(issued.expires, null);
+    assert.match(issued.key, /^uak_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/);
+    const listed = await service.listApiKeys();
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]!.id, issued.id);
+    assert.equal(listed[0]!.revoked, false);
+    assert.equal(listed[0]!.lastUsed, null);
+    assert.ok(!('key' in listed[0]!) && !('secretHash' in listed[0]!));
+    const authenticated = await service.authenticateApiKey(issued.key);
+    assert.deepEqual(authenticated, { id: issued.id, name: 'ci-deploy-bot', scopes: ['deploys.write'] });
+    // Wrong secret against a real id, garbage input, and an unknown id all fail closed.
+    assert.equal(await service.authenticateApiKey(`uak_${issued.id}.${'x'.repeat(43)}`), null);
+    assert.equal(await service.authenticateApiKey('not-a-key'), null);
+    assert.equal(await service.authenticateApiKey(''), null);
+    assert.equal(await service.authenticateApiKey(`uak_${'0'.repeat(36)}.${'x'.repeat(43)}`), null);
+    assert.ok((await service.listApiKeys())[0]!.lastUsed !== null);
+    await service.revokeApiKey(issued.id);
+    assert.equal(await service.authenticateApiKey(issued.key), null);
+    assert.equal((await service.listApiKeys())[0]!.revoked, true);
+    const expiring = await service.issueApiKey({ name: 'short-lived', scopes: ['read'], expiresInMs: 60000 });
+    assert.ok(await service.authenticateApiKey(expiring.key));
+    advance(120000);
+    assert.equal(await service.authenticateApiKey(expiring.key), null);
+    await assert.rejects(service.issueApiKey({ name: '', scopes: ['read'] }), { code: 'invalid_api_key_name' });
+    await assert.rejects(service.issueApiKey({ name: 'bad-scope', scopes: ['Invalid Scope'] }), { code: 'invalid_api_key_scopes' });
+    await assert.rejects(service.issueApiKey({ name: 'bad-expiry', scopes: ['read'], expiresInMs: 1 }), { code: 'invalid_api_key_expiry' });
+    await assert.rejects(service.revokeApiKey(''), { code: 'invalid_api_key_id' });
+    assert.equal((await readFile(database)).includes(Buffer.from(issued.key.split('.')[1]!)), false);
 });

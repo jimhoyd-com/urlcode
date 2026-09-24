@@ -20,6 +20,8 @@ const expected: Record<string, string[]> = {
   './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse'],
   './extension-bundles': ['installBundle','loadExtensionBundle','readBundleLock','parseBundleCatalog'],
   './sandbox': ['SandboxPool','functionFile'],
+  './body-schema': ['assertBodySchema','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaSubset','uuidFormat'],
+  './skills': ['listShippedSkills'],
 };
 
 test('every package.json subpath resolves to shipped code and exposes its named exports', async () => {

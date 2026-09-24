@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { npmCommand } from './release-npm.ts';
+import { npmCommand } from './npm-command.ts';
 
 interface PublishedPackage { name: string; version: string }
 interface InstallabilityOptions {

@@ -1,6 +1,7 @@
 # Runnable YAML cookbook
 
-40 routes covering all six handlers, middleware, inputs, body validation, response
+40 routes covering six of URLCode's nine handler types (`redirect`, `respond`,
+`page`, `static`, `download`, `function`), middleware, inputs, body validation, response
 headers, cookies, methods, expiry, assets, included files and host policies
 (security headers, agent denial, caching and a request budget) plus generated site
 conventions (robots.txt, favicon, security.txt, llms.txt). Fifteen of the routes

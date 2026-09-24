@@ -11,10 +11,11 @@ import { loadDocument } from '../packages/core/src/config.ts';
 import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
 import { initProjectWith } from '../packages/core/src/init-with.ts';
+import { installBundle, loadExtensionBundle } from '../packages/core/src/extension-bundles.ts';
 import type { RuntimeExtension } from '../packages/core/src/extensions.ts';
 import type { HandlerResult } from '../packages/core/src/http-response.ts';
 import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
-import { npmCommand } from '../scripts/release-npm.ts';
+import { npmCommand } from '../scripts/npm-command.ts';
 import { project } from './helpers.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000 });
@@ -78,7 +79,13 @@ async function packSource(directory: string): Promise<string> {
 }
 const packedCore = await packSource(coreDirectory);
 const packedCompanions = Object.fromEntries(await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(async name => [name, await packSource(companions[`urlcode-${name}`]!)] as const)));
-async function packBundle(bundle: BundleName): Promise<{ name: BundleName; asset: string; entry: string; sha256: string; bytes: Buffer }> {
+type PackedEntry = { name: string; asset: string; entry: string; sha256: string; bytes: Buffer };
+/**
+ * `extras` mirrors scripts/prepare-extension-bundles.ts's own extra-catalog-entry handling (#522): additional
+ * named, independently signed and locked entries built from the same already-staged module tree as `bundle`,
+ * with no second npm install. `ui-presentation` uses this to lock `ui`'s root `dist/index.js` under its own name.
+ */
+async function packBundle(bundle: BundleName, extras: readonly { name: string; entry: string }[] = []): Promise<PackedEntry[]> {
   const staging = await mkdtemp(join(tmpdir(), `urlcode-bundle-stage-${bundle}-`));
   try {
     const dependencies: Record<string, string> = { '@jimhoyd/urlcode': `file:${packedCore}` };
@@ -90,12 +97,19 @@ async function packBundle(bundle: BundleName): Promise<{ name: BundleName; asset
     const tree = (await walk(join(staging, 'node_modules'))).map(file => ({ path: `node_modules/${file.path}`, bytes: file.bytes }));
     const entry = entryFor(bundle);
     assert.ok(tree.some(file => file.path === entry), `packed ${bundle} is missing its entry module`);
-    const bundleJson = Buffer.from(JSON.stringify({ format: 1, coreVersion, bundles: [{ name: bundle, version: '0.5.0', entry }] }));
-    const bytes = gzipSync(tar([{ path: 'bundle.json', bytes: bundleJson }, ...tree]));
-    return { name: bundle, asset: `${bundle}-0.5.0.tgz`, entry, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
+    const pack = (name: string, entryPath: string): PackedEntry => {
+      const bundleJson = Buffer.from(JSON.stringify({ format: 1, coreVersion, bundles: [{ name, version: '0.5.0', entry: entryPath }] }));
+      const bytes = gzipSync(tar([{ path: 'bundle.json', bytes: bundleJson }, ...tree]));
+      return { name, asset: `${name}-0.5.0.tgz`, entry: entryPath, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
+    };
+    return [pack(bundle, entry), ...extras.map(extra => {
+      assert.ok(tree.some(file => file.path === extra.entry), `packed ${bundle} is missing the ${extra.name} entry module`);
+      return pack(extra.name, extra.entry);
+    })];
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
-const packedBundles = await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(packBundle));
+const packedBundles = (await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(bundle =>
+  packBundle(bundle, bundle === 'ui' ? [{ name: 'ui-presentation', entry: 'node_modules/@jimhoyd/urlcode-ui/dist/index.js' }] : [])))).flat();
 const bundleReleaseTag = `extension-bundles@v${coreVersion}`;
 const bundleTransport: BundleTransport = {
   release: async () => [{ name: 'extension-bundles-catalog.json', url: 'catalog' }, ...packedBundles.map(b => ({ name: b.asset, url: b.asset }))],
@@ -244,6 +258,25 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   assert.ok(kitHost.includes('sources: [], extensions: []'));
   assert.ok(!kitHost.includes("'auth'") && !kitHost.includes("'admin'"));
   t.diagnostic('Serving the composed host needs a patched SQLite for the auth store; this test checks composition only.');
+});
+
+/**
+ * #522: `ui-presentation` locks `ui`'s root `dist/index.js` (the safe, Node-free presentation primitives) as its
+ * own signed, independently versioned and integrity-locked catalog entry, distinct from `ui`'s host-activation
+ * entry (`dist/host/index.js`). It installs and loads directly -- no `init --with`, no host file, no
+ * `extensions.ui` configuration, no `/assets/ui/*` mount -- straight into a plain trusted function.
+ */
+test('extension-bundles install ui-presentation locks the ui primitives entry and loads real exports (#522)', async t => {
+  const root = await project(t, {});
+  const lock = await installBundle(root, bundleReleaseTag, 'ui-presentation', bundleTransport);
+  assert.equal(lock.bundles.find(item => item.name === 'ui-presentation')?.entry, 'node_modules/@jimhoyd/urlcode-ui/dist/index.js');
+  const module = await loadExtensionBundle(root, 'ui-presentation');
+  assert.equal(typeof module.escapeHtml, 'function');
+  assert.equal((module.escapeHtml as (value: unknown) => string)('<b>&"\''), '&lt;b&gt;&amp;&quot;&#39;');
+  assert.equal(typeof module.renderDocument, 'function');
+  assert.equal(typeof module.createPresentation, 'function');
+  // Host-activation-only exports never land in this entry: it is a distinct locked module tree from `ui`.
+  assert.equal(module.createUiExtension, undefined);
 });
 
 // The single source of truth for the SQLite the auth store needs; the composed host cannot start without it.
