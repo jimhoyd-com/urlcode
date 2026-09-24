@@ -67,7 +67,7 @@ maintained; do not use them in onboarding or publish further subtree updates.
 When changing YAML fields, update schema and semantics, run `npm run docs:reference`,
 and add a runnable example/response fixture in `examples/cookbook` where appropriate.
 `npm run verify` rejects a stale generated field reference. `npm run docs:llms`
-regenerates the consolidated `llms-full.txt`, and verify rejects a stale copy of it too. CI runs cookbook tests
+regenerates the consolidated `llms-full.txt`, and verify rejects a stale copy of it too. For a documentation PR, rebase onto current `main` and run `npm run docs:llms` as the final pre-merge step; do not hand-merge the generated bundle. CI runs cookbook tests
 and its expected-count audit on supported Node/OS combinations; package checks
 verify the cookbook and AI authoring resources ship. Keep unsupported features
 explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid YAML.
