@@ -101,9 +101,8 @@ jobs:
       # packages/auth/scripts pulls in packages/auth/src, which imports
       # @jimhoyd/urlcode-ui's types through its built dist/ exports map (the
       # same self-import resolution `npm run typecheck` above relies on for
-      # `@jimhoyd/urlcode/*`), so ui needs a real build first, unlike the
-      # source-only checks above.
-      - run: npm run build --workspace @jimhoyd/urlcode-ui
+      # `@jimhoyd/urlcode/*`), so the script itself builds ui first — see
+      # `typecheck:tooling` in package.json.
       - run: npm run typecheck:tooling
       # `npm run check` stays complete for local use, but in CI the seven
       # documentation checks it contains already ran in the always-run `docs`
@@ -199,7 +198,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm run test:package:built
-      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms
+      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
   # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
   # packages, one package per job instead of the five run serially in one job.
   # `auth`'s own SQLite-backed suite alone was over half of the ~6-7 minute
