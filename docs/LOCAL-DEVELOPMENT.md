@@ -29,6 +29,16 @@ invalid edits leave the last valid snapshot running. Ctrl+C drains and stops it.
 Runtime source changes under `packages/core/src/` require restarting the dev command; project
 reload is not a runtime-code watcher.
 
+Run at a terminal (stdout is a TTY, no `--json`), `dev` and `serve` print short
+readable lines instead of the JSON event stream: a startup line naming the
+listening URL and route count, then one line per request (`GET /go 302 0.9ms`),
+a reload summary, and a one-line hint on an unmatched request when the project
+declares no routes yet. Piping stdout, or passing `--json`, always gets the raw
+JSON event stream documented in [observability](OBSERVABILITY.md); scripts and
+agents should use one of those, not the TTY text. `urlcode init` similarly
+prints the created path and any manifest next steps as text on a TTY, and the
+same fields as a `created` JSON event otherwise.
+
 ## Own an application
 
 Run `make init DEST=../my-links`, then
