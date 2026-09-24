@@ -2,5 +2,11 @@
   "kind": "artifact",
   "name": "store-schema",
   "description": "The store extension's configuration schema and a minimal example configuration, as inert JSON for tooling",
-  "requires": []
+  "requires": [],
+  "agent": {
+    "description": "Inert store configuration material for local agent inspection.",
+    "references": [
+      {"name": "configuration schema", "description": "JSON Schema for the store extension configuration.", "path": "schemas/config.json"}
+    ]
+  }
 }
