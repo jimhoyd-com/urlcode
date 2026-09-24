@@ -41,9 +41,9 @@ A release is a reviewed pull request containing only a version bump; merging it
 to `main` releases it ([release operations](docs/RELEASE-OPERATIONS.md)). Only
 the publishing job runs in the protected `release` environment, which is
 limited to `main` and holds the publishing credentials; merging the reviewed
-bump is the approval. Release tag creation is restricted to the maintainer and
-GitHub Actions, and a separate no-bypass ruleset prevents every actor from
-updating or deleting an existing release tag.
+bump is the approval. The publishing job creates the release tag, and a
+no-bypass ruleset prevents every actor from updating or deleting an existing
+release tag.
 
 Only current reviewed main receives fixes; there is no LTS/backport guarantee or
 release SLA. The current self-hosted baseline is the latest core release in

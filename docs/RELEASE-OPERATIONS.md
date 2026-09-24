@@ -77,9 +77,11 @@ npm run ci:build-fidelity                    # two clean builds must pack identi
 
 ## One-time repository settings
 
-- **Tag rulesets** (`.github/rulesets/`): only the maintainer and GitHub
-  Actions (integration 15368) may create a `v*` tag, which `gh release create`
-  does in the `publish` job; nobody may update or delete one.
+- **Tag ruleset** (`.github/rulesets/release-tags.json`): nobody may update or
+  delete a `v*` tag. Creation is not restricted by a ruleset (GitHub Actions
+  cannot be a bypass actor on a user-owned repository); the `publish` job
+  creates the tag with `gh release create`, and it is the only job with
+  `contents: write`, running in the `release` environment limited to `main`.
 - **Immutable releases** enabled for the repository, so a published release's
   tag and assets cannot change.
 - **`release` environment**: deployment branches limited to `main`, no required
