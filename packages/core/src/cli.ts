@@ -15,6 +15,7 @@ import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
 import { initSiteWith, parseWithNames } from './init-with.ts';
 import { validateDeclaredExtensions } from './addon-install.ts';
+import { planUpgrade, upgradeSite } from './upgrade.ts';
 import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
@@ -147,6 +148,12 @@ const helpEntries: HelpEntry[] = [
     # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
     # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
     # list --strict exits 1 on a pin mismatch, a nested copy or drift between package.json, app/urlcode.yaml and host.mjs
+` },
+  { name:'upgrade', group:'Extensions', text:
+`  urlcode upgrade [--check] [--to X.Y.Z] [--site directory] [--json]
+    # moves the runtime and every installed extension and artifact to one version together: the latest stable release (npm's latest dist-tag) unless --to names another, including a prerelease or an older version
+    # installs core first, then the add-ons its own addons.json pins; validates the project with the new runtime; moves the site's workflow to the same action release; any failure restores package.json, package-lock.json and the workflows
+    # --check: report the current and target versions and change nothing
 ` },
   { name:'artifacts', group:'Extensions', text:
 `  urlcode artifacts available [--json]
@@ -300,7 +307,9 @@ try {
     if (values.ack !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--ack is only supported by init --with and extensions add');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
-    if ((values.site !== undefined || values.strict) && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--site and --strict are only supported by extensions and artifacts');
+    if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions and artifacts list');
+    if (values.site !== undefined && !['extensions', 'artifacts', 'upgrade'].includes(command)) throw new ConfigError('--site is only supported by extensions, artifacts and upgrade');
+    if ((values.to !== undefined || values.check) && command !== 'upgrade') throw new ConfigError('--to and --check are only supported by upgrade');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
@@ -451,6 +460,19 @@ try {
           const review = `Review ${created.site}/app and pin its revision explicitly: PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
           if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
           else print({ event:'created', ...created, review });
+          break;
+        }
+        case 'upgrade': {
+          const site = values.site ?? '.';
+          if (values.check) {
+            const plan = await planUpgrade(site, { to: values.to });
+            print(values.json || !human ? plan : plan.upToDate ? `Up to date: ${plan.current}\n` : `${plan.current} -> ${plan.target} (core${plan.addons.length ? `, ${plan.addons.join(', ')}` : ''})\nRun urlcode upgrade${values.to ? ` --to ${values.to}` : ''} to apply it.\n`);
+            break;
+          }
+          const result = await upgradeSite(site, { to: values.to });
+          print(values.json || !human ? { event: 'upgraded', ...result } : result.upgraded
+            ? [`Upgraded ${result.current} -> ${result.target} (core${result.addons.length ? `, ${result.addons.join(', ')}` : ''}).`, ...result.workflows.map(file => `Moved ${file} to action v${result.target}.`), `Project revision: ${result.projectSha256}. Update PROJECT_SHA256 if it changed, and restart.`].join('\n') + '\n'
+            : `Up to date: ${result.current}\n`);
           break;
         }
         case 'validate': {

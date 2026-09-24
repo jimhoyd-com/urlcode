@@ -49,8 +49,7 @@ account or database.
 `urlcode init` names the release it came from: the `package.json` pin, the
 `$schema` comment in `app/urlcode.yaml` and the project workflow's
 `jimhoyd-com/urlcode/action@v…` ref all carry the running runtime's version.
-Move them together when you upgrade; the add-on pins come with the core
-version.
+`urlcode upgrade` moves all three, and every add-on, together.
 
 ## Start an application deliberately
 

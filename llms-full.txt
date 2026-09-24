@@ -3727,9 +3727,17 @@ that is not inert.
 `urlcode init <directory> --with ui,auth [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.
 
-Upgrades move core and every add-on together: changing the core version brings
-that release's add-on pins with it. A dedicated `urlcode upgrade` command is
-planned.
+`urlcode upgrade` moves core and every installed add-on to one version
+together: the latest stable release (npm's `latest` dist-tag, which only a
+stable release moves) unless `--to X.Y.Z` names another, including a prerelease
+or an older release. It installs core first, then points every add-on at the
+pins in that core's own `addons.json` (refusing, before anything stays changed,
+if the target does not release an installed add-on), checks the lock against
+them, validates the project with the new runtime, and moves the site's workflow
+to the same action release. Any failure restores `package.json`,
+`package-lock.json` and the workflows and reinstalls. `urlcode upgrade --check`
+reports the current and target versions and changes nothing. Configuration is
+not migrated: if an extension's schema changed, validation names the field.
 
 Add-on command-line tools are ordinary npm bins once installed in the site, for
 example `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`

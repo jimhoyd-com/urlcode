@@ -19,8 +19,8 @@ version changes, and `node scripts/release-bump.ts --check` (part of
 | `X.Y.Z-alpha.N` | `alpha` | prerelease | unchanged | `:X.Y.Z-alpha.N`, `:alpha` | none |
 
 Core's `dist/addons.json` pins every add-on of its release by download URL and
-sha512, so upgrading a site means changing its core version; that release's
-add-on pins come with it. Each add-on declares core and the sibling add-ons it
+sha512, so `urlcode upgrade` moves a site's core and every add-on together;
+that release's add-on pins come with it. Each add-on declares core and the sibling add-ons it
 uses as exact peers at the same version, siblings optional, so a site installs
 each package once at its top level. Development resolves core to this checkout
 through the packages' `file:../..` links (`check-workspace-links.ts`), and
