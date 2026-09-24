@@ -9,7 +9,7 @@ import type { ScaffoldRequest, ScaffoldResult } from './extensions.ts';
 import { collectDependencySet, installSteps, renderPackageManifest } from './project-dependencies.ts';
 import type { DependencyPin, DependencySet } from './project-dependencies.ts';
 import { ConfigError, assert } from './errors.ts';
-import { assertKnownBundleNames, installBundle, loadExtensionBundle, runningCoreVersion, type BundleTransport } from './extension-bundles.ts';
+import { assertKnownBundleNames, createLocalBundleTransport, installBundle, loadExtensionBundle, runningCoreVersion, type BundleTransport } from './extension-bundles.ts';
 import { isRecord as record, isCode } from './object-guards.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
@@ -26,7 +26,9 @@ interface InitWithOptions {
   acknowledgements?: readonly string[] | undefined;
   /** Immutable signed release used instead of resolving executable extension packages from npm. */
   bundleRelease?: string | undefined;
-  /** Test-only transport injection; production uses GitHub attestation verification. */
+  /** `--bundle-release-path <directory>`: read `bundleRelease`'s catalog and tarballs from this local directory (offline `gh attestation verify --bundle`) instead of GitHub. Mutually exclusive with `bundleTransport`. */
+  bundleReleasePath?: string | undefined;
+  /** Test-only transport injection; production uses GitHub attestation verification (directly, or offline via `bundleReleasePath`). */
   bundleTransport?: BundleTransport | undefined;
 }
 interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
@@ -176,13 +178,19 @@ function renderReadme(directory: string, names: readonly string[], results: read
  * `urlcode.yaml`, one `host.mjs`, one `README.md` and the extensions' own files. All packages are resolved and
  * their scaffolds computed before anything is written, so a refusal leaves no directory behind.
  */
-export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, acknowledgements = [], bundleRelease, bundleTransport }: InitWithOptions = {}): Promise<InitWithResult> {
+export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, acknowledgements = [], bundleRelease, bundleReleasePath, bundleTransport }: InitWithOptions = {}): Promise<InitWithResult> {
   assert(requested.length > 0, 'Provide at least one --with name');
   assert(new Set(requested).size === requested.length, 'Duplicate --with names');
+  assert(bundleReleasePath === undefined || bundleTransport === undefined, '--bundle-release-path and an injected bundle transport are mutually exclusive');
   // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
   const sorted = [...requested].sort();
-  // Every name is checked locally before the first network call; an injected (test) transport brings its own catalog.
-  if (!bundleTransport) assertKnownBundleNames(sorted);
+  // --bundle-release-path reads the catalog and tarballs from a local directory instead of GitHub, with the identical attestation policy verified offline against a bundle already on disk (createLocalBundleTransport / docs/EXTENSIONS.md).
+  const resolvedBundleTransport = bundleTransport ?? (bundleReleasePath !== undefined ? createLocalBundleTransport(bundleReleasePath) : undefined);
+  // Every name is checked against this release's static, baked-in list before the first network/filesystem release
+  // lookup, as a fast local typo check -- not the trust boundary, which is always the signed catalog `installBundle`
+  // loads next. A non-default transport (an injected test double, or the local directory behind --bundle-release-path)
+  // brings its own catalog, so this convenience check is skipped for it the same way it already is for a test transport.
+  if (!resolvedBundleTransport) assertKnownBundleNames(sorted);
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
   assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
   const acked = [...new Set(acknowledgements)].sort();
@@ -205,7 +213,7 @@ export async function initProjectWith(destination: string, requested: readonly s
       bundleRoot=await mkdtemp(join(dirname(directory),'.urlcode-bundle-init-'));
       const running = await runningCoreVersion();
       for (const name of sorted) {
-        const lock = await installBundle(bundleRoot,release,name,bundleTransport);
+        const lock = await installBundle(bundleRoot,release,name,resolvedBundleTransport);
         const installed = lock.bundles.find(item => item.name === name)!;
         // loadExtensionBundle enforces this same equality later, at load time; refusing here instead means an
         // incompatible --bundle-release is caught before anything is written, not discovered only once served.

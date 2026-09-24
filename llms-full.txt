@@ -3831,9 +3831,63 @@ ever trusted), binds the selected archive's attestation to that same bound
 commit, checks the filename and SHA-256, and extracts only regular files in
 the signed module tree. It writes
 `urlcode.extension-bundles.lock.json` and keeps the frozen bytes under
-`app/.urlcode/extension-bundles/<sha256>/`. There is no automatic discovery,
-installation, update, or fallback to npm. `inspect` reads the committed lock;
+`app/.urlcode/extension-bundles/<sha256>/`. There is no automatic discovery or
+update, and no fallback to npm. `inspect` reads the committed lock;
 a modified cache or an incompatible core version refuses before import.
+
+#### Offline and local installation
+
+`extension-bundles install` first checks whether this exact bundle name and
+`--bundle-release` tag are already recorded in the project's
+`urlcode.extension-bundles.lock.json` and byte-for-byte identical to the
+cache under `.urlcode/extension-bundles/<sha256>/` (the same re-hash `inspect`
+and `loadExtensionBundle` perform). A match is reused with no network call at
+all; a lock entry that names this release but whose cache was modified refuses
+instead of silently reinstalling over it, since that would mask tampering.
+This mainly helps re-running `install` (or `init --with`, in a project that
+already vendors the same install) idempotently, not a fresh clone: a brand-new
+site has no cache yet.
+
+When there is no cache hit, pass `--bundle-release-path <local-directory>` to
+both `extension-bundles install` and `init --with` to read that exact
+release's catalog and tarballs from a local directory instead of GitHub —
+useful air-gapped, behind a restrictive proxy, or for a reproducible install
+that does not depend on GitHub's availability at install time:
+
+```sh
+urlcode extension-bundles install store \
+  --bundle-release extension-bundles@vX.Y.Z \
+  --bundle-release-path ./vendor/extension-bundles-vX.Y.Z --project app
+```
+
+The directory must hold flat files shaped like that GitHub release's own asset
+list: `extension-bundles-catalog.json`, each bundle's `<name>-<version>.tgz`,
+and — because verification must not be weaker offline than it is online — an
+attestation bundle for every one of those files, downloaded ahead of time with
+the GitHub CLI's own offline-verification support:
+
+```sh
+gh attestation download extension-bundles-catalog.json \
+  --repo jimhoyd-com/urlcode -o ./vendor/extension-bundles-vX.Y.Z
+gh attestation download store-X.Y.Z.tgz \
+  --repo jimhoyd-com/urlcode -o ./vendor/extension-bundles-vX.Y.Z
+```
+
+`gh attestation download` names each bundle file after the artifact's digest
+(`sha256-<hex>.jsonl`); the local transport looks up that exact name for the
+catalog and for each tarball it downloads, and calls the identical `gh
+attestation verify` policy the network path uses — same repository, signer
+workflow, `refs/tags/<release>` source ref, self-hosted runners denied — just
+pointed with `--bundle` at that file instead of letting `gh` reach the GitHub
+API. Nothing is treated as pre-verified because it sits on local disk: a
+missing attestation bundle, a tampered tarball, a catalog that does not match
+the requested tag, or a revoked entry refuses exactly as it does over the
+network, and names the `gh attestation download` command that produces the
+missing file. `--bundle-release-path` and `--bundle-release` compose: the tag
+still selects which release is being verified, the path only says where its
+bytes and attestations come from.
+
+#### Running a locked bundle's own CLI
 
 A bundle-only site has no npm dependency for a locked extension's own
 command-line tool (`urlcode-ui doctor`, `urlcode-auth bootstrap`) --

@@ -1,5 +1,5 @@
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
-import { installBundle, readBundleLock, resolveBundleExecutable, BUNDLE_CATALOG_NAMES } from './extension-bundles.ts';
+import { installBundle, readBundleLock, resolveBundleExecutable, BUNDLE_CATALOG_NAMES, createLocalBundleTransport } from './extension-bundles.ts';
 import { ConfigError } from './errors.ts';
 
 type ExtensionCliOptions = {
@@ -7,6 +7,7 @@ type ExtensionCliOptions = {
   json?: boolean;
   'artifact-release'?: string;
   'bundle-release'?: string;
+  'bundle-release-path'?: string;
 };
 
 type Print = (value: unknown) => boolean;
@@ -49,7 +50,8 @@ export async function runExtensionCommand(command: 'extension-artifacts' | 'exte
     const bundle = extra[0];
     if (!bundle || extra.length !== 1) throw new ConfigError('Use urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z');
     if (!values['bundle-release']) throw new ConfigError('Use --bundle-release with an immutable extension bundle release tag');
-    const lock = await installBundle(values.project, values['bundle-release'], bundle);
+    const transport = values['bundle-release-path'] !== undefined ? createLocalBundleTransport(values['bundle-release-path']) : undefined;
+    const lock = await installBundle(values.project, values['bundle-release'], bundle, transport);
     print(values.json ? lock : { event: 'extension-bundle-installed', name: bundle, lockfile: 'urlcode.extension-bundles.lock.json' });
   } else if (operation === 'inspect') {
     if (extra.length) throw new ConfigError('Use urlcode extension-bundles inspect');
