@@ -192,3 +192,51 @@ test('re-issues the binding cookie on every render, so a form rendered at t=9min
   const answer=await browser('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf:token,email:'person@example.test',topic:'support',message:'Need assistance now',terms:'true'}),redirect:'manual'});
   assert.equal(answer.status,303,'the token rendered at t=9min is admitted at t=12min because its binding cookie was refreshed');
 });
+
+async function startWithFields(t:test.TestContext,fields:Record<string,unknown>){
+  const root=await mkdtemp(join(tmpdir(),'forms-bounds-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const project=join(root,'app');await mkdir(project);
+  const forms={version:'1',config:{flows:{contact:{mount:'/contact',title:'Contact',submitLabel:'Send',confirmation:{title:'Thanks',message:'Received.'},fields}}}};
+  await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{ui:{version:'1',config:{}},forms},routes:{'/assets/ui/*':{extension:'ui'},'/contact/*':{extension:'forms',methods:['GET','HEAD','POST']}}}));
+  const projectSha256=await inspectExtensionRevision(project),ui=createUiExtension({projectRoot:project,projectSha256});
+  return startServer({project,origin,port:0,log:()=>{},extensions:[ui.registration,createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32)})]});
+}
+
+test('date and datetime-local bounds are enforced on submission and rendered as HTML min/max (#528)',async t=>{
+  const app=await startWithFields(t,{start:{label:'Start date',type:'date',minimum:'2026-01-01',maximum:'2027-12-31'},slot:{label:'Slot',type:'datetime-local',required:false,minimum:'2026-01-01T09:00',maximum:'2026-01-01T17:30'},from:{label:'From',type:'date',required:false,minimum:'2026-06-01'}});
+  t.after(()=>app.close());
+  const cookies=new Map<string,string>();
+  const call=async(path:string,init:RequestInit={})=>{const headers=new Headers(init.headers);if(cookies.size)headers.set('cookie',[...cookies].map(([key,value])=>`${key}=${value}`).join('; '));const response=await fetch(`http://127.0.0.1:${app.address.port}${path}`,{...init,headers,redirect:'manual'});for(const header of response.headers.getSetCookie()){const first=header.split(';')[0]!,index=first.indexOf('=');cookies.set(first.slice(0,index),first.slice(index+1));}return response;};
+  const page=await (await call('/contact')).text();
+  assert.match(page,/name="start" type="date"[^>]* min="2026-01-01" max="2027-12-31"/);
+  assert.match(page,/name="slot" type="datetime-local"[^>]* min="2026-01-01T09:00" max="2026-01-01T17:30"/);
+  const from=/<input[^>]*name="from"[^>]*>/.exec(page)![0];assert.match(from,/ min="2026-06-01"/);assert.doesNotMatch(from,/ max=/);
+  const token=/name="csrf" value="([^"]+)"/.exec(page)![1]!;
+  const submit=async(extra:Record<string,string>)=>{const response=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf:token,start:'2026-06-15',...extra})});return {status:response.status,html:await response.text()};};
+  for(const start of ['2026-01-01','2026-06-15','2027-12-31'])assert.equal((await submit({start})).status,303,`${start} is inside the bounds`);
+  for(const [start,message] of [['2025-12-31','must be on or after 2026-01-01'],['2028-01-01','must be on or before 2027-12-31'],['0001-01-01','must be on or after 2026-01-01']] as const){const answer=await submit({start});assert.equal(answer.status,422,start);assert.match(answer.html,new RegExp(message));}
+  const invalid=await submit({start:'2026-02-30'});assert.equal(invalid.status,422);assert.match(invalid.html,/must be a valid date/,'format is checked before bounds');
+  for(const slot of ['2026-01-01T09:00','2026-01-01T09:00:00','2026-01-01T09:00:00.000','2026-01-01T12:15:30.5','2026-01-01T17:30','2026-01-01T17:30:00.000'])assert.equal((await submit({slot})).status,303,`${slot} is inside the bounds`);
+  for(const [slot,message] of [['2026-01-01T08:59:59.999','must be on or after 2026-01-01T09:00'],['2025-12-31T23:59','must be on or after 2026-01-01T09:00'],['2026-01-01T17:30:00.001','must be on or before 2026-01-01T17:30'],['2026-01-01T17:31','must be on or before 2026-01-01T17:30'],['2026-01-02T00:00','must be on or before 2026-01-01T17:30']] as const){const answer=await submit({slot});assert.equal(answer.status,422,slot);assert.match(answer.html,new RegExp(message));}
+  assert.equal((await submit({slot:'',from:''})).status,303,'empty optional bounded fields are still admitted');
+  assert.equal((await submit({from:'2099-01-01'})).status,303,'a one-sided bound leaves the other side open');
+  assert.equal((await submit({from:'2026-05-31'})).status,422);
+});
+
+test('date and datetime-local bounds are checked at activation (#528)',async t=>{
+  for(const [field,error] of [
+    [{label:'D',type:'date',minimum:'2026-02-30'},/minimum of d must be a YYYY-MM-DD date/],
+    [{label:'D',type:'date',maximum:'2026-01-01T09:00'},/maximum of d must be a YYYY-MM-DD date/],
+    [{label:'D',type:'date',minimum:5},/minimum of d must be a YYYY-MM-DD date/],
+    [{label:'D',type:'date',minimum:'2026-02-01',maximum:'2026-01-31'},/d minimum exceeds maximum/],
+    [{label:'D',type:'datetime-local',minimum:'2026-01-01'},/minimum of d must be a YYYY-MM-DDTHH:MM local date and time/],
+    [{label:'D',type:'datetime-local',minimum:'2026-01-01T24:00'},/minimum of d must be a YYYY-MM-DDTHH:MM local date and time/],
+    [{label:'D',type:'datetime-local',minimum:'2026-01-01T10:00',maximum:'2026-01-01T09:59'},/d minimum exceeds maximum/],
+    [{label:'D',type:'number',minimum:'2026-01-01'},/minimum of d requires type number, date or datetime-local/],
+    [{label:'D',type:'text',maximum:'2026-01-01'},/maximum of d requires type number, date or datetime-local/],
+    [{label:'D',maximum:3},/maximum of d requires type number, date or datetime-local/],
+  ] as const)await assert.rejects(startWithFields(t,{d:field}),error,JSON.stringify(field));
+  // The config schema refuses seconds before validateFlow sees them: date-time bounds are whole minutes.
+  await assert.rejects(startWithFields(t,{d:{label:'D',type:'datetime-local',minimum:'2026-01-01T09:00:30'}}));
+  for(const field of [{label:'D',type:'date',minimum:'2026-01-01',maximum:'2026-01-01'},{label:'D',type:'datetime-local',minimum:'2026-01-01T09:00',maximum:'2026-01-01T09:00'},{label:'D',type:'number',minimum:1,maximum:2}]){const app=await startWithFields(t,{d:field});await app.close();}
+});

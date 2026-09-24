@@ -66,6 +66,13 @@ test('field id overrides are escaped, contentHash is deterministic and compareCa
  assert.equal(contentHash('a'),contentHash('a'));assert.match(contentHash(''),/^[0-9a-f]{12}$/);assert.notEqual(contentHash('a'),contentHash('b'));assert.equal(contentHash('é'),contentHash('\u00e9'));
  assert.deepEqual(compareCatalogues({'a':'Hi {name}','b':'x','c':{one:'{count}',other:'{count}s'}},{'a':'Salut {nom}','c':{one:'{count}',other:'{count}'},'d':'y'}),{missing:['b'],mismatched:['a'],unknown:['d']});
 });
+test('field min/max render only on number, date and datetime-local inputs with bound-shaped values',()=>{
+ assert.match(field({name:'d',label:'D',id:'d',type:'date',min:'2026-01-01',max:'2026-12-31'}),/<input class="ui-input" data-slot="input" id="d" name="d" type="date" autocomplete="off" maxlength="1024" min="2026-01-01" max="2026-12-31" required>/);
+ assert.match(field({name:'t',label:'T',type:'datetime-local',min:'2026-01-01T09:00'}),/ min="2026-01-01T09:00" required/);
+ assert.match(field({name:'n',label:'N',type:'number',min:'-5',max:'1.5e3'}),/ min="-5" max="1.5e3"/);
+ assert.doesNotMatch(field({name:'d',label:'D',type:'date'}),/ min=| max=/);
+ for(const options of [{type:'text',min:'1'},{type:'email',max:'1'},{control:'textarea' as const,min:'1'},{control:'select' as const,options:[{value:'a',label:'A'}],max:'1'},{type:'date',min:'" onfocus="x'},{type:'date',max:'today'},{type:'date',min:''}])assert.throws(()=>field({name:'x',label:'X',...options}),/Invalid field bounds/,JSON.stringify(options));
+});
 test('field textarea and select variants escape values, wire descriptions and errors, and validate options',()=>{
  const area=field({control:'textarea',name:'content',label:'Body <b>',id:'c',rows:8,maxLength:9000,value:'</textarea><script>x</script>',description:'d',error:'e'});
  assert.match(area,/<textarea class="ui-input ui-textarea" data-slot="textarea" id="c" name="content" rows="8" autocomplete="off" maxlength="9000" required aria-describedby="c-description c-error" aria-invalid="true">\n&lt;\/textarea&gt;&lt;script&gt;x&lt;\/script&gt;<\/textarea>/);
