@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { lstat, readFile, stat } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
@@ -202,4 +203,51 @@ test('init --with refuses a missing requirement, a conflict or a cycle before wr
     assert.ok(await missing(destination), names.join(','));
   }
   assert.doesNotMatch(await initProjectWith(join(root, 'ok'), ['ui'], opts).then(() => '', error => String(error)), /./);
+});
+
+/** A fake `gh` on PATH that accepts any `attestation verify` invocation (used to satisfy the local transport's `--bundle` call without a real signed release). */
+async function fakeGh(bin: string): Promise<() => void> {
+  await writeFile(join(bin, 'gh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const path = process.env.PATH; process.env.PATH = `${bin}:${path ?? ''}`;
+  return () => { process.env.PATH = path; };
+}
+/** A local release directory (catalog + tarballs + `sha256-<digest>.jsonl` attestation bundles) for the given fake bundles under one release tag, in the shape `--bundle-release-path` expects. */
+async function localBundleRelease(dir: string, bundles: FakeBundle[], tag = `extension-bundles@v${coreVersion}`): Promise<string> {
+  const catalog = Buffer.from(JSON.stringify({ format: 1, tag, commit: 'a'.repeat(40), coreVersion, bundles: bundles.map(b => ({ name: b.name, version: '1.0.0', asset: b.asset, sha256: b.sha256, entry: b.entry })), revoked: [] }));
+  await writeFile(join(dir, 'extension-bundles-catalog.json'), catalog);
+  await writeFile(join(dir, `sha256-${createHash('sha256').update(catalog).digest('hex')}.jsonl`), '{"fake":"catalog"}\n');
+  for (const bundle of bundles) {
+    await writeFile(join(dir, bundle.asset), bundle.bytes);
+    await writeFile(join(dir, `sha256-${bundle.sha256}.jsonl`), '{"fake":"asset"}\n');
+  }
+  return tag;
+}
+
+test('init --with --bundle-release-path installs from a local signed release directory with no bundleTransport injected, and fails closed on a tampered asset (#533)', async t => {
+  const root = await project(t, {});
+  const releaseDir = await mkdtemp(join(tmpdir(), 'urlcode-local-release-'));
+  const bin = await mkdtemp(join(tmpdir(), 'urlcode-fake-gh-'));
+  t.after(async () => { await Promise.all([rm(releaseDir, { recursive: true, force: true }), rm(bin, { recursive: true, force: true })]); });
+  const restore = await fakeGh(bin); t.after(restore);
+  const bundle = fakeBundle('demo');
+  await localBundleRelease(releaseDir, [bundle]);
+  const originalFetch = globalThis.fetch; globalThis.fetch = (async () => { throw new Error('network must not be reached'); }) as typeof fetch; t.after(() => { globalThis.fetch = originalFetch; });
+  // No bundleTransport option here: initProjectWith must build the local transport itself from bundleReleasePath.
+  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, manifest: false, bundleReleasePath: releaseDir });
+  assert.deepEqual(created.extensions, ['demo']);
+  // Tamper the release directory's tarball after a successful install: a second install into a fresh destination
+  // must refuse rather than accept altered bytes. The tampered content's digest no longer matches the attestation
+  // bundle produced for the original asset, so this is refused as a missing offline attestation bundle -- an even
+  // stricter fail-closed than a signature mismatch on the original bytes would have been.
+  await writeFile(join(releaseDir, bundle.asset), Buffer.from('not a real bundle'));
+  await assert.rejects(initProjectWith(join(root, 'site2'), ['demo'], { cwd: root, manifest: false, bundleReleasePath: releaseDir }), /missing the offline attestation bundle|does not match its signed SHA-256|Could not download|Invalid/);
+  assert.ok(await missing(join(root, 'site2')));
+});
+
+test('init --with --bundle-release-path and an injected bundleTransport are mutually exclusive, and CLI validation restricts the flag to extension-bundles/init --with (#533)', async t => {
+  const root = await project(t, {});
+  const { release, transport } = fakeBundleTransport([fakeBundle('demo')]);
+  await assert.rejects(initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleRelease: release, bundleTransport: transport, bundleReleasePath: '/tmp/unused' }), /mutually exclusive/);
+  assert.match(run(root, ['validate', '--bundle-release-path', '/tmp/x']).stderr, /--bundle-release-path is only supported by extension-bundles or init --with/);
+  assert.match(run(root, ['init', 'bad', '--bundle-release-path', '/tmp/x']).stderr, /--bundle-release-path needs init --with/);
 });

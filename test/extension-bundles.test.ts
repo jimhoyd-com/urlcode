@@ -1,15 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { BUNDLE_CATALOG_NAMES, assertKnownBundleNames, bundleCachePath, extractBundle, githubBundleTransport, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, resolveBundleExecutable, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
+import { fileURLToPath } from 'node:url';
+import { BUNDLE_CATALOG_NAMES, assertKnownBundleNames, bundleCachePath, createLocalBundleTransport, extractBundle, githubBundleTransport, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, resolveBundleExecutable, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
 import { attestationDetail } from '../packages/core/src/extension-transport.ts';
 import { ConfigError } from '../packages/core/src/errors.ts';
 import { readBoundedTgz } from '../packages/core/src/extension-artifacts.ts';
 import { verifyExtensionBundleRelease } from '../scripts/verify-extension-bundles.ts';
+
+const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
+const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000, env: process.env });
 
 function tar(files:Record<string,string>):Buffer { const pieces:Buffer[]=[]; for(const [path,text] of Object.entries(files)) { const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);const checksum=[...header].reduce((sum,byte)=>sum+byte,0);header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512)); }pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces)); }
 const sha=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
@@ -179,4 +184,97 @@ test('the release-side check verifies every asset with the CLI transport policy 
   await assert.rejects(()=>verifyExtensionBundleRelease(dir,release,{attest:async()=>{throw new ConfigError('GitHub attestation verification refused the extension bundle: expected SourceRepositoryRef to be refs/tags/extension-bundles@v1.0.0, got refs/heads/main');}}),/got refs\/heads\/main/);
   await writeCatalog(bundles.slice(1));
   await assert.rejects(()=>verifyExtensionBundleRelease(dir,release,{attest:async()=>{}}),/differ from the names this core validates locally/);
+});
+
+/** A fake `gh` on PATH that records its argv to a marker file and exits with `code` (default success). */
+async function fakeGh(bin:string,marker:string,code=0,stderr=''):Promise<()=>void>{
+  await writeFile(join(bin,'gh'),`#!/bin/sh\nprintf '%s\\n' "$@" > "${marker}"\n${stderr?`echo "${stderr}" >&2\n`:''}exit ${code}\n`,{mode:0o755});
+  const path=process.env.PATH;process.env.PATH=`${bin}:${path??''}`;
+  return ()=>{process.env.PATH=path;};
+}
+/** Builds a local release directory (catalog + tarball + their `sha256-<digest>.jsonl` attestation bundles, as `gh attestation download` names them) for the single `sample` bundle used throughout this file. */
+async function localRelease(dir:string,release:string,bytes:Buffer,item:ReturnType<typeof entry>):Promise<void>{
+  const catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]}));
+  await writeFile(join(dir,'extension-bundles-catalog.json'),catalog);
+  await writeFile(join(dir,item.asset),bytes);
+  await writeFile(join(dir,`sha256-${sha(catalog)}.jsonl`),'{"fake":"catalog-bundle"}\n');
+  await writeFile(join(dir,`sha256-${sha(bytes)}.jsonl`),'{"fake":"asset-bundle"}\n');
+}
+
+test('createLocalBundleTransport installs entirely offline, verifying with gh attestation verify --bundle and never touching the network (#533)',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-release-')),project=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-install-')),bin=await mkdtemp(join(tmpdir(),'urlcode-fake-gh-ok-')),marker=join(bin,'argv');
+  t.after(async()=>{const fs=await import('node:fs/promises');await Promise.all([fs.rm(dir,{recursive:true,force:true}),fs.rm(project,{recursive:true,force:true}),fs.rm(bin,{recursive:true,force:true})]);});
+  const release='extension-bundles@v1.0.0',bytes=archive(),item=entry(bytes);
+  await localRelease(dir,release,bytes,item);
+  const restore=await fakeGh(bin,marker);t.after(restore);
+  const originalFetch=globalThis.fetch;globalThis.fetch=(async()=>{throw new Error('network must not be reached');}) as typeof fetch;t.after(()=>{globalThis.fetch=originalFetch;});
+  const lock=await installBundle(project,release,'sample',createLocalBundleTransport(dir));
+  assert.equal(lock.bundles[0]?.catalog.tag,release);
+  assert.equal((await loadExtensionBundle(project,'sample')).loaded,'verified');
+  const argv=await readFile(marker,'utf8');
+  assert.match(argv,/--bundle\n/); // the offline flag was passed to gh attestation verify
+  assert.match(argv,/sha256-/);
+});
+
+test('createLocalBundleTransport fails closed when the asset\'s attestation bundle is missing, naming the gh attestation download command (#533)',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-missing-bundle-')),project=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-missing-project-')),bin=await mkdtemp(join(tmpdir(),'urlcode-fake-gh-missing-')),marker=join(bin,'argv');
+  t.after(async()=>{const fs=await import('node:fs/promises');await Promise.all([fs.rm(dir,{recursive:true,force:true}),fs.rm(project,{recursive:true,force:true}),fs.rm(bin,{recursive:true,force:true})]);});
+  const release='extension-bundles@v1.0.0',bytes=archive(),item=entry(bytes);
+  await localRelease(dir,release,bytes,item);
+  // The catalog's own bundle is present and its (fake) `gh` call succeeds, so this exercises only the asset's missing bundle -- refused before `gh` is even invoked for it.
+  const restore=await fakeGh(bin,marker);t.after(restore);
+  await import('node:fs/promises').then(fs=>fs.rm(join(dir,`sha256-${sha(bytes)}.jsonl`))); // remove only the asset's offline attestation bundle
+  await assert.rejects(()=>installBundle(project,release,'sample',createLocalBundleTransport(dir)),/missing the offline attestation bundle.*gh attestation download.*sha256-/s);
+});
+
+test('createLocalBundleTransport propagates a gh attestation refusal exactly like the network transport (#533)',{skip:process.platform==='win32'&&'uses a POSIX shell script as a fake gh'},async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-refused-')),project=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-refused-project-')),bin=await mkdtemp(join(tmpdir(),'urlcode-fake-gh-refuse-')),marker=join(bin,'argv');
+  t.after(async()=>{const fs=await import('node:fs/promises');await Promise.all([fs.rm(dir,{recursive:true,force:true}),fs.rm(project,{recursive:true,force:true}),fs.rm(bin,{recursive:true,force:true})]);});
+  const release='extension-bundles@v1.0.0',bytes=archive(),item=entry(bytes);
+  await localRelease(dir,release,bytes,item);
+  const restore=await fakeGh(bin,marker,1,'X Failed to verify: certificate identity mismatch');t.after(restore);
+  await assert.rejects(()=>installBundle(project,release,'sample',createLocalBundleTransport(dir)),/GitHub attestation verification refused the extension bundle.*certificate identity mismatch/s);
+});
+
+test('createLocalBundleTransport refuses a release directory with a subdirectory or that does not exist (#533)',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-shape-')),project=await mkdtemp(join(tmpdir(),'urlcode-bundle-local-shape-project-'));
+  t.after(async()=>{const fs=await import('node:fs/promises');await Promise.all([fs.rm(dir,{recursive:true,force:true}),fs.rm(project,{recursive:true,force:true})]);});
+  await mkdir(join(dir,'nested'));
+  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','sample',createLocalBundleTransport(dir)),/must contain only ordinary files/);
+  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','sample',createLocalBundleTransport(join(dir,'does-not-exist'))),/not found or unreadable/);
+});
+
+test('installBundle reuses an already-verified local cache entry for the same name and release without calling the transport (#533)',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-cache-hit-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const bytes=archive(),item=entry(bytes),release='extension-bundles@v1.0.0',catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]}));
+  const okTransport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:item.asset,url:'bundle'}],download:async url=>url==='catalog'?catalog:bytes,attest:async()=>{}};
+  const first=await installBundle(project,release,'sample',okTransport);
+  const unreachable:BundleTransport={release:async()=>{throw new Error('transport must not be reached on a cache hit');},download:async()=>{throw new Error('unused');},attest:async()=>{throw new Error('unused');}};
+  const second=await installBundle(project,release,'sample',unreachable);
+  assert.deepEqual(second,first);
+});
+
+test('installBundle fails closed instead of silently reinstalling when the cached bundle for a matching lock entry was tampered with (#533)',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-cache-tamper-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const bytes=archive(),item=entry(bytes),release='extension-bundles@v1.0.0',catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]}));
+  const okTransport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:item.asset,url:'bundle'}],download:async url=>url==='catalog'?catalog:bytes,attest:async()=>{}};
+  await installBundle(project,release,'sample',okTransport);
+  await writeFile(join(bundleCachePath(project,item.sha256),modulePath),'export const loaded = "tampered";');
+  const unreachable:BundleTransport={release:async()=>{throw new Error('transport must not be reached');},download:async()=>{throw new Error('unused');},attest:async()=>{throw new Error('unused');}};
+  await assert.rejects(()=>installBundle(project,release,'sample',unreachable),/modified/);
+});
+
+test('the CLI installs a bundle end-to-end from --bundle-release-path, offline, and validates the flag the same way as --bundle-release (#533)',{skip:process.platform==='win32'&&'uses a POSIX shell script as a fake gh'},async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-bundle-cli-release-')),project=await mkdtemp(join(tmpdir(),'urlcode-bundle-cli-project-')),bin=await mkdtemp(join(tmpdir(),'urlcode-fake-gh-cli-'));
+  t.after(async()=>{const fs=await import('node:fs/promises');await Promise.all([fs.rm(dir,{recursive:true,force:true}),fs.rm(project,{recursive:true,force:true}),fs.rm(bin,{recursive:true,force:true})]);});
+  const release='extension-bundles@v1.0.0',bytes=archive(),item=entry(bytes);
+  await localRelease(dir,release,bytes,item);
+  await writeFile(join(bin,'gh'),'#!/bin/sh\nexit 0\n',{mode:0o755});
+  const path=process.env.PATH;process.env.PATH=`${bin}:${path??''}`;t.after(()=>{process.env.PATH=path;});
+  const installed=run(project,['extension-bundles','install','sample','--bundle-release',release,'--bundle-release-path',dir,'--project',project,'--json']);
+  assert.equal(installed.status,0,installed.stderr);
+  assert.match(installed.stdout,/"sample"/);
+  // --bundle-release-path validation mirrors --bundle-release: only extension-bundles/init --with, and init --with needs --with.
+  assert.match(run(project,['validate','--bundle-release-path',dir]).stderr,/--bundle-release-path is only supported by extension-bundles or init --with/);
+  assert.match(run(project,['init','somewhere','--bundle-release-path',dir]).stderr,/--bundle-release-path needs init --with/);
 });
