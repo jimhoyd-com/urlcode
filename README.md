@@ -10,7 +10,7 @@ console as operator-installed extensions instead of building them again.
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
-[Documentation](docs/README.md) · [Concepts](docs/CONCEPTS.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [URLCode AI](https://urlcode.ai/) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Documentation](docs/README.md) · [Concepts](docs/CONCEPTS.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [URLCode AI](https://urlcode.ai/) · [Starter](docs/STARTERS.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 **Your AI should build your application, not your framework.** Coding agents
 rebuild the same routing, validation, middleware, policies and authentication
@@ -232,15 +232,14 @@ self-hosting are permitted under its terms.
 
 ## Start your own project
 
-Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a bare,
-agent-ready project with no routes yet. Clone it or use GitHub’s
-**Use this template** button, then run `npm ci` and `npm run dev`. The runtime is
-a pinned dependency; no separate checkout or global installation is needed.
+`urlcode init` creates a bare, agent-ready site with no routes yet. The
+runtime is a pinned dependency of the site; no separate checkout or global
+installation is needed.
 
 ```sh
-git clone https://github.com/jimhoyd-com/urlcode-template.git my-links
+npx @jimhoyd/urlcode init my-links
 cd my-links
-npm ci
+npm install
 npm run dev
 ```
 

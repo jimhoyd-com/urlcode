@@ -38,7 +38,6 @@ channels. A published release is not a production-readiness claim; see
 | `build` | Builds core and every add-on, runs `release:pack`, attests every file and uploads them as the run's artifact |
 | `publish` | In the `release` environment: 1. GitHub Release (creates the tag), 2. public add-on URLs checked against core's pins, 3. core to npm, 4. Homebrew formula (stable), 5. GHCR image |
 | `verify` | A fresh site from the public channels (`npx … init`, every add-on, `list --strict`, `validate`) and `install.sh`; opens a `release`-labelled issue on failure |
-| `template` | Stable only: opens the standalone template's upgrade pull request |
 
 A push to `main` that does not change the version runs `plan` and `ci` only.
 
@@ -86,9 +85,6 @@ npm run ci:build-fidelity                    # two clean builds must pack identi
 - **`release` environment**: deployment branches limited to `main`, no required
   reviewers (merging the bump is the approval). Its secret
   `HOMEBREW_TAP_TOKEN` can push to `jimhoyd-com/homebrew-urlcode`.
-- **`RELEASE_AUTOMATION_TOKEN`** repository secret, used only by the `template`
-  job: contents and pull requests on `urlcode-template`. It needs no ruleset
-  bypass, administration or registry access.
 - **npm trusted publisher** for `@jimhoyd/urlcode`: repository
   `jimhoyd-com/urlcode`, workflow `release.yml`, environment `release`. Renaming
   the workflow breaks publishing.

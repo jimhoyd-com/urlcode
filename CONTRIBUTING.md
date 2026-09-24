@@ -62,23 +62,14 @@ tests with every new sandbox guest/host bridge. See the
 
 ## Maintaining the starter
 
-`starters/default` is the only initializer source. After every stable release,
-the release workflow's `template` job copies its application files into the
-public `urlcode-template` repository from that exact installed package, through
-a pull request. The public
-template owns only its pinned runtime dependency/lockfile, npm commands, CI and
-onboarding README; its committed `.urlcode-starter-source.json` records the
-generated application files so removals are synchronized too. CLI initialization
-uses the user's already installed runtime.
-Do not hand-maintain duplicate route YAML, functions, middleware or request
-fixtures in the public template. Test both paths.
+`starters/default` is the only starting point: `urlcode init` copies it from the
+installed runtime, so a new site always matches the runtime that created it.
+There is no separate template repository to keep in step.
 `starters/default/AGENTS.md` and `.mcp.json` are generated from
 `packages/core/src/agents-guide.ts` and checked by test. The Claude marketplace
 skills are derived from `.claude/skills/`. When either source changes (including
 the capability catalog, policies or starter routes), run `npm run docs:agents`
-and commit every resulting asset; do not hand-edit a derived copy. Give the
-public `urlcode-template` the resulting starter files too, so clones and
-`urlcode init` agree.
+and commit every resulting asset; do not hand-edit a derived copy.
 The richer asset demo lives in `examples/assets`, not a selectable starter.
 Old starter-dynamic/starter-redirects branches are historical and no longer
 maintained; do not use them in onboarding or publish further subtree updates.

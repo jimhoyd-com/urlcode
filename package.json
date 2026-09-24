@@ -151,7 +151,6 @@
     "release:bump": "node scripts/release-bump.ts",
     "release:pack": "node scripts/release-pack.ts",
     "release:publish": "node scripts/release-publish.ts",
-    "release:template": "node scripts/release-template.ts",
     "build:addons": "node scripts/workspaces.ts run build && node scripts/build-addon-manifest.ts",
     "test:addons": "node --test test/addons.integration.ts",
     "verify:addons": "npm run build && node scripts/workspaces.ts run build && npm run audit:packages && npm run test:addons"

@@ -727,9 +727,8 @@ never read, while a triggered skill loads automatically for a matching task.
 
 Three ways to get either, all pinned to a runtime revision:
 
-- **Clone or template.** A clone of this repository, or a project created from
-  [urlcode-template](https://github.com/jimhoyd-com/urlcode-template), carries
-  `.claude/skills/` at the project root and loads it with no further setup.
+- **Clone.** A clone of this repository carries `.claude/skills/` at the
+  project root and loads it with no further setup.
 - **npm.** The published package includes both skill directories. Copy the
   one(s) you want into your project's `.claude/skills/` to pin guidance to the
   same revision as the runtime you installed; a skill inside `node_modules` is
@@ -987,9 +986,7 @@ The cookbook is the largest of several runnable demo projects under `examples/`
 a separate catalog of small YAML snippets copied *into* your own project with
 `urlcode recipes add` rather than run in place — see [recipes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RECIPES.md). The
 normal `urlcode init ../my-links` creates a bare zero-route scaffold; add only
-the routes the application needs.
-For an independent application with a pinned runtime dependency, clone
-[urlcode-template](https://github.com/jimhoyd-com/urlcode-template).
+the routes the application needs; the site's `package.json` pins the runtime.
 
 ### Pages
 

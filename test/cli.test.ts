@@ -149,7 +149,6 @@ test('init stamps the running release into the schema pin, CI action and package
   assert.match(yaml,new RegExp(`^# yaml-language-server: \\$schema=https://raw\\.githubusercontent\\.com/jimhoyd-com/urlcode/v${version.replaceAll('.','\\.')}/schemas/urlcode\\.schema\\.json\n`));
   const workflow = await readFile(join(target,'.github','workflows','urlcode.yml'),'utf8');
   assert.deepEqual([...workflow.matchAll(/jimhoyd-com\/urlcode\/action@(\S+)/g)].map(match => match[1]),[`v${version}`]);
-  await assert.rejects(readFile(join(target,'starter.json')),/ENOENT/,'starter.json describes the packaged starter, not the generated site');
   const readme = await readFile(join(target,'README.md'),'utf8');
   assert.ok(!readme.includes('gitignore.template') && !readme.includes('installed separately'),'README describes the generated project, not the packaging source');
   const pkg = JSON.parse(await readFile(join(target,'package.json'),'utf8'));

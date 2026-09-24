@@ -183,24 +183,3 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue create --repo "$GITHUB_REPOSITORY" --label release --title "Release $VERSION did not verify" --body "The verify job of $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed after publishing. Fix forward with the next version; published tags and assets are never replaced."
-
-  template:
-    needs: [plan, verify]
-    if: needs.plan.outputs.stable == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version-file: .node-version
-      - run: npm ci --ignore-scripts
-      - name: Open the standalone template's upgrade pull request
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-        run: |-
-          test -n "$GH_TOKEN"
-          gh auth setup-git
-          node scripts/release-template.ts --version "${{ needs.plan.outputs.version }}" --execute

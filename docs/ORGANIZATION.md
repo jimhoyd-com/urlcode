@@ -18,8 +18,8 @@ routes:
 
 ## Multiple files and nested folders
 
-The public [urlcode-template](https://github.com/jimhoyd-com/urlcode-template)
-contains a function route and a redirect, organized like this:
+A project with a function route and a redirect can be organized like this (in a
+site, these live under `app/`):
 
 ```text
 urlcode.yaml

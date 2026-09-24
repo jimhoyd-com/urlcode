@@ -43,9 +43,9 @@ test('release.yml runs on main and by dispatch, one release at a time, never can
   assert.deepEqual(release.permissions, { contents: 'read' });
 });
 
-test('release.yml jobs run in order plan -> ci -> build -> publish -> verify -> template', async () => {
+test('release.yml jobs run in order plan -> ci -> build -> publish -> verify', async () => {
   const release = await load('release.yml');
-  const order = ['plan', 'ci', 'build', 'publish', 'verify', 'template'];
+  const order = ['plan', 'ci', 'build', 'publish', 'verify'];
   assert.deepEqual(Object.keys(release.jobs), order);
   for (const [index, name] of order.entries()) {
     if (index === 0) assert.deepEqual(needs(job(release, name)), []);
@@ -55,7 +55,6 @@ test('release.yml jobs run in order plan -> ci -> build -> publish -> verify -> 
   assert.equal(ci.uses, './.github/workflows/ci.yml');
   assert.equal(ci.with?.release, "${{ needs.plan.outputs.release == 'true' }}");
   assert.equal(job(release, 'build').if, "needs.plan.outputs.release == 'true'");
-  assert.equal(job(release, 'template').if, "needs.plan.outputs.stable == 'true'");
 });
 
 test('publish creates the GitHub Release, then checks the add-on URLs, then publishes core to npm', async () => {
@@ -87,7 +86,7 @@ test('each release job holds only the permissions it needs', async () => {
   assert.equal(publish.permissions?.packages, 'write');
   assert.equal(verify.permissions?.issues, 'write');
   assert.equal(verify.permissions?.contents, 'read');
-  for (const name of ['plan', 'template']) assert.equal(job(release, name).permissions, undefined, `${name} inherits read-only contents`);
+  for (const name of ['plan']) assert.equal(job(release, name).permissions, undefined, `${name} inherits read-only contents`);
   for (const [name, definition] of Object.entries(release.jobs)) {
     if (name === 'publish') continue;
     assert.notEqual(definition.permissions?.contents, 'write', `${name} must not write contents`);

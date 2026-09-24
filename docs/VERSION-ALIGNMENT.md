@@ -46,6 +46,4 @@ committed lockfile keep an existing application from changing on a new release.
 `urlcode extensions add` and `urlcode artifacts add` add each add-on's release
 tarball URL, and `package-lock.json` records its integrity.
 `urlcode extensions list --strict` and `urlcode artifacts list --strict` fail
-when the lockfile no longer matches core's pins. The standalone
-`urlcode-template` is an exact-version consumer: each stable release opens its
-upgrade pull request.
+when the lockfile no longer matches core's pins.

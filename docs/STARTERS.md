@@ -23,15 +23,18 @@ expected state of an intentionally empty app, not deployment readiness. The
 generated GitHub workflow permits only that result until its first route is
 added; then remove `allow-empty-project: true` and require a passing audit.
 
-Or use the public GitHub template, which also commits its lockfile:
+Without a global install, `npx` runs the published runtime once to create the
+site, which then pins it:
 
 ```sh
-git clone https://github.com/jimhoyd-com/urlcode-template.git my-app
+npx @jimhoyd/urlcode init my-app
 cd my-app
-npm ci
+npm install
 npm run dev
 npm run audit   # exits 1 with no-active-routes until the first route exists
 ```
+
+Commit `package-lock.json` with the site.
 
 The CLI copies application files from `starters/default`; the template's
 application files are synchronized from the exact published core package after
@@ -109,8 +112,6 @@ replace the local project server ([setup](TOOLING.md#optional-hosted-ai-mcp)).
 `examples/assets` contains a larger runnable file/page/download demonstration:
 `make dev PROJECT=examples/assets`. It is an example, not a separate init choice.
 
-The old `starter-dynamic` and `starter-redirects` branches are historical snapshots;
-use `urlcode-template` for new clones. They are no longer maintained or advertised
-as onboarding paths. Existing projects remain ordinary valid URLCode apps.
+Start new sites with `urlcode init`.
 The runtime is licensed under Apache-2.0. Provider adapters follow the
 [roadmap](../ROADMAP.md).
