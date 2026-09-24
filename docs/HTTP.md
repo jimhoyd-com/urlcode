@@ -1,6 +1,6 @@
 # HTTP request and response configuration
 
-Implemented in alpha.4. This is a documented HTTP subset, not a promise that every
+This is a documented HTTP subset, not a promise that every
 HTTP feature is configurable. It builds on [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html).
 
 ```yaml

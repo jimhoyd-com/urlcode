@@ -25,9 +25,13 @@ serve it.
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init todo-site --with store --ack store:public-write --bundle-release extension-bundles@v…   # or --with ui,auth,store: see below
+npx urlcode init todo-site --with store --ack store:public-write   # or --with ui,auth,store: see below
 cd todo-site && npm install
 ```
+
+Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
+installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` only
+to pin a different immutable release.
 
 `init --with store` writes the starter under `app/`, one `host.mjs`, a README
 and a `package.json` pinning the versions it resolved. `app/urlcode.yaml`
@@ -298,13 +302,13 @@ operator pin. The mount responses are `no-store`.
 ([recipes](RECIPES.md)), the same collection as above with ordered fixtures for
 the whole create, read, update, delete lifecycle. It does not install anything:
 the operator must select a verified store bundle and write a host file.
-`init --with ui,auth,store --bundle-release extension-bundles@v…` scaffolds
-one from that locked release. A no-auth `init --with store` needs
+`init --with ui,auth,store` scaffolds
+one from the locked release it resolves. A no-auth `init --with store` needs
 `--ack store:public-write`.
 
 ## A screen for the collection
 
-`npx urlcode init todo-site --with ui,auth,store --bundle-release extension-bundles@v…` (or `--with ui,store --ack store:public-write --bundle-release extension-bundles@v…`) also serves `/todos`, a
+`npx urlcode init todo-site --with ui,auth,store` (or `--with ui,store --ack store:public-write`) also serves `/todos`, a
 list with a create form, inline edit and delete. The `ui` extension reads the
 collection's fields from `extensions.store` in `app/urlcode.yaml` when it starts,
 so a Todo app declares its fields once and gets both the API and the screen; add

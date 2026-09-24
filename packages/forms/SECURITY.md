@@ -21,8 +21,10 @@ confirmation are `no-store` by the core extension privacy floor.
 a purpose tag (`urlcode-forms-csrf`, domain-separated from any other
 `createSignedToken` user sharing the host's CSRF secret) and a random value
 from an HttpOnly, `Secure`, `SameSite=Strict`, `__Host-`-prefixed
-double-submit cookie the extension sets on first render and reuses across
-subsequent renders. A token minted for one browser is refused for another
+double-submit cookie the extension mints on first render and reuses across
+subsequent renders. Every render (including a 422 re-render) re-issues that
+cookie with the same value and a fresh 10-minute `Max-Age`, so the cookie
+always lives at least as long as the token on the page just served. A token minted for one browser is refused for another
 (missing cookie, or a different browser's cookie), and for a different flow.
 It is **not single-use**: a valid token may be resubmitted more than once
 within its 10-minute TTL. The extension holds no per-token state to enforce

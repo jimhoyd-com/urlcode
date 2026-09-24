@@ -1,7 +1,7 @@
 # Agent efficiency plan
 
 Status: proposed. Evidence: benchmark redirector runs `test3` (0.4.6) and
-`test4` (0.4.8), sonnet-5-medium, one repeat per arm, in the separate
+`test4` (0.4.8), sonnet-5-medium, one repeat per arm, in the separate private
 `urlcode-benchmarks` repository.
 
 ## Observed

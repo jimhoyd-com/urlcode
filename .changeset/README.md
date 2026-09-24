@@ -1,9 +1,10 @@
 # Changesets
 
-Changesets manages independent versions and changelogs for the three workspace
-packages: UI, auth and admin. Core remains the repository root and gets an
-explicit version update in the same reviewed release PR; Changesets does not
-version it. Shared release helpers include all four packages.
+Changesets manages independent versions and changelogs for the extension
+workspace packages under `packages/` (ui, auth, admin, store and forms). Core
+remains the repository root and gets an explicit version update in the same
+reviewed release PR; Changesets does not version it. Only core is an npm release
+target; the extension workspaces are private and ship as signed bundles.
 
 Run `npx changeset` to record a package change. Apply queued changes in a release
 PR with `npx changeset version`, then `npm install --package-lock-only` and

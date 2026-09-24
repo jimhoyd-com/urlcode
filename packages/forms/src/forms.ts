@@ -72,10 +72,12 @@ export function createFormsExtension(options:FormsExtensionOptions):RuntimeExten
   if(request.method==='GET'||request.method==='HEAD'){
     if(suffix!==''&&suffix!=='/confirmation')return fail(404,'Not found');
     if(suffix==='/confirmation')return request.method==='HEAD'?{...confirmation(options.ui,flow),body:undefined}:confirmation(options.ui,flow);
-    // Reuse an existing binding cookie across renders (so a browser with several open tabs on
-    // the same flow keeps one consistent value); mint one only when absent.
-    const existingBinding=bindingCookie(request),binding=existingBinding??globalThis.crypto.randomUUID(),extraHeaders:[string,string][]=existingBinding?[]:[setBindingCookie(binding)];
-    const answer=render(options.ui,name,flow,token(options.csrfSecret,name,binding),undefined,undefined,200,extraHeaders);
+    // Reuse an existing binding cookie's value across renders (so a browser with several open tabs
+    // on the same flow keeps one consistent value); mint one only when absent. The cookie is
+    // re-issued on every render with a fresh Max-Age so it always outlives the token just minted
+    // for this page (#551): otherwise a form loaded late in the cookie's window fails on submit.
+    const binding=bindingCookie(request)??globalThis.crypto.randomUUID();
+    const answer=render(options.ui,name,flow,token(options.csrfSecret,name,binding),undefined,undefined,200,[setBindingCookie(binding)]);
     return request.method==='HEAD'?{...answer,body:undefined}:answer;
   }
   if(request.method!=='POST'||suffix!=='')return {status:405,headers:[['allow','GET, HEAD, POST'],['content-type','text/plain; charset=utf-8']],body:'Method not allowed'};
@@ -88,7 +90,7 @@ export function createFormsExtension(options:FormsExtensionOptions):RuntimeExten
   const csrf=parsed.get('csrf')??undefined,binding=bindingCookie(request);
   if(!validToken(options.csrfSecret,name,binding,csrf))return fail(403,'Forbidden');
   const {values,errors}=admission(flow,parsed);
-  if(Object.keys(errors).length)return render(options.ui,name,flow,token(options.csrfSecret,name,binding!),values,errors,422);
+  if(Object.keys(errors).length)return render(options.ui,name,flow,token(options.csrfSecret,name,binding!),values,errors,422,[setBindingCookie(binding!)]);
   try{await hooks.onSubmit?.(Object.freeze({flow:name,values:Object.freeze({...values})}));}catch{return fail(500,'The form could not be submitted');}
   return redirect(`${flow.mount}/confirmation`);
 }};}};}

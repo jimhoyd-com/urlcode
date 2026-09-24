@@ -134,3 +134,25 @@ test('auth authorization gates a forms mount before rendering or submission',asy
  const {call}=await boot(t,true);const page=await call('/contact');assert.equal(page.status,401);assert.doesNotMatch(await page.text(),/<form/);
  const post=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:'csrf=forged'});assert.equal(post.status,401);assert.equal(await post.text(),'Sign in required');
 });
+
+test('re-issues the binding cookie on every render, so a form rendered at t=9min still submits at t=12min (#551)',async t=>{
+  const {call}=await boot(t);
+  // A browser-like jar that honours Max-Age against a mocked clock (Date only, so the server's
+  // sockets and timers still run normally): an expired binding cookie is simply not sent.
+  const start=Date.now();t.mock.timers.enable({apis:['Date'],now:start});
+  const minute=60_000,jar=new Map<string,{value:string;expires:number}>();
+  const browser=async(path:string,init:RequestInit={})=>{
+    const live=[...jar].filter(([,cookie])=>cookie.expires>Date.now()).map(([key,cookie])=>`${key}=${cookie.value}`).join('; ');
+    const response=await call(path,{...init,headers:{...(init.headers as Record<string,string>|undefined),cookie:live}});
+    for(const header of response.headers.getSetCookie()){const first=header.split(';')[0]!,index=first.indexOf('='),maxAge=Number(/Max-Age=(\d+)/.exec(header)?.[1]??0);jar.set(first.slice(0,index),{value:first.slice(index+1),expires:Date.now()+maxAge*1000});}
+    return response;
+  };
+  const first=await browser('/contact');assert.equal(first.status,200);const binding=jar.get('__Host-urlcode-forms-csrf')?.value;assert.ok(binding);
+  t.mock.timers.setTime(start+9*minute);
+  const late=await browser('/contact');const token=/name="csrf" value="([^"]+)"/.exec(await late.text())?.[1];assert.ok(token);
+  const reissued=late.headers.getSetCookie().find(header=>header.startsWith('__Host-urlcode-forms-csrf='));
+  assert.ok(reissued,'a returning render re-issues the binding cookie');assert.ok(reissued.startsWith(`__Host-urlcode-forms-csrf=${binding};`),'with the same value');assert.match(reissued,/Max-Age=600/);
+  t.mock.timers.setTime(start+12*minute);
+  const answer=await browser('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf:token,email:'person@example.test',topic:'support',message:'Need assistance now',terms:'true'}),redirect:'manual'});
+  assert.equal(answer.status,303,'the token rendered at t=9min is admitted at t=12min because its binding cookie was refreshed');
+});
