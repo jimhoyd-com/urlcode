@@ -19,7 +19,7 @@ async function project(): Promise<string> {
     return root;
 }
 const activation = (mounts: string[], root = '/project'): ExtensionActivation => ({ origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root });
-const request = (path: string, method = 'GET', headers: Record<string, string> = {}): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(headers), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: '/assets/ui/*', mount: '/assets/ui', client: null });
+const request = (path: string, method = 'GET', headers: Record<string, string> = {}): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(headers), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: '/assets/ui/*', mount: '/assets/ui', client: null, requestId: 'test-request', env: {} });
 test('the ui extension owns extensions.ui, builds the kit from the project files and serves hashed assets at its mount', async () => {
     const root = await project();
     const ui = createUiExtension({ projectSha256: sha, projectRoot: root, sources: [{ 'auth.title': 'Sign in' }] });

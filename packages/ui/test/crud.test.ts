@@ -260,7 +260,7 @@ async function storeProject(collections: unknown): Promise<string> {
 }
 const sha = 'a'.repeat(64);
 const activate = async (root: string, mounts: string[], screens: unknown) => createUiExtension({ projectSha256: sha, projectRoot: root }).registration.activate({ screens } as never, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root });
-const screenRequest = (path: string, mount: string, method = 'GET'): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: `${mount}/*`, mount, client: null });
+const screenRequest = (path: string, mount: string, method = 'GET'): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: `${mount}/*`, mount, client: null, requestId: 'test-request', env: {} });
 
 test('the ui extension reads the store declaration and serves the screen at its exact mount', async () => {
     const root = await storeProject({ todos: { mount: '/api/todos', fields: todos.fields } });

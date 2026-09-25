@@ -13,53 +13,25 @@ import type { ExtensionTemplates, Kit, PageOptions } from '../kit.ts';
 import type { PresentationContext } from '../presentation.ts';
 import type { ViewModel } from '../template.ts';
 import { extensionHookContext, extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
 import { crudFields, crudScreen, fieldLabel } from '../crud.ts';
 import type { CrudCollection, CrudColumn } from '../crud.ts';
 import { loadProjectUi } from './loader.ts';
 import type { UiConfig } from './loader.ts';
+import type {
+    ExtensionActivation, ExtensionAuthoringContract, ExtensionAuthoringSurface, ExtensionHookContract, ExtensionImmutableAssets,
+    ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension,
+} from '@jimhoyd/urlcode/extensions';
 /*
- * Structural copies of the runtime's extension contract (`@jimhoyd/urlcode/extensions`,
- * core PRs #59 and #93), so this package keeps no dependency on the runtime. The
- * runtime checks the registration shape at activation.
- *
- * This copy is pinned to core's contract as of PRs #127/#130 (`ExtensionActivation.root`,
- * `ExtensionInstance.middleware()`) and is not auto-synced with core's `src/extensions.ts`;
- * re-check that file for drift before relying on this copy being current. This package's
- * own extension implements `handle()` only and doesn't need `root` (it already receives
- * the project directory as `UiExtensionOptions.projectRoot`, resolved independently of
- * activation) or `middleware()` today, but the copied types must still match core's real
- * shape so a stale copy doesn't silently misrepresent the contract.
+ * The extension contract comes from core (`@jimhoyd/urlcode/extensions`, the package's
+ * peer dependency) rather than a structural copy, so it cannot drift from the shape the
+ * runtime checks at activation. They are re-exported from `./host` for hosts and the
+ * other packages. `HeaderPair` and `TargetName` are not exported by that entry point, so
+ * they are derived from the contract types that carry them.
  */
-export type HeaderPair = [string, string];
-/** The runtime's deployment targets, copied literally from core's `TargetName` (`packages/core/src/types.ts`) so `targets` needs no cast. */
-export type TargetName = 'node' | 'vercel' | 'aws' | 'cloudflare';
-export interface HandlerResult { status: number; headers: HeaderPair[]; body?: string | Uint8Array | null | undefined; contentLength?: number }
-export interface ExtensionActivation { origin: string; target: TargetName; projectSha256: string; mounts: readonly string[]; root: string }
-export interface ExtensionRequest {
-    method: string; target: string; path: string; query: URLSearchParams; headers: Headers;
-    headerCounts: Record<string, number>; body: Uint8Array; origin: string; route: string; mount: string | null; client: string | null;
-}
-export interface ExtensionInstance {
-    handle(request: ExtensionRequest): HandlerResult | Promise<HandlerResult>;
-    authorize?(requirement: Readonly<Record<string, unknown>>, request: ExtensionRequest): HandlerResult | undefined | Promise<HandlerResult | undefined>;
-    middleware?(config: Readonly<Record<string, unknown>>, request: ExtensionRequest, next: () => Promise<HandlerResult>): HandlerResult | Promise<HandlerResult>;
-    close?(): void | Promise<void>;
-}
-/**
- * Content-hashed assets under `<mount><prefix>/` may be cached publicly: the
- * runtime relaxes its no-store floor to `public, max-age=31536000, immutable`
- * only for a GET/HEAD 200/304 that carries exactly one strong ETag, sets no
- * cookie and does not vary on Cookie or Authorization.
- */
-export interface ExtensionImmutableAssets { prefix: string }
-export interface ExtensionAuthoringSurface { kind: 'configuration' | 'theme' | 'copy' | 'component' | 'template' | 'stylesheet' | 'hook' | 'extension'; name: string; description: string; path?: string; command?: string }
-export interface ExtensionAuthoringContract { description: string; surfaces: readonly ExtensionAuthoringSurface[]; fastChecks?: readonly string[] }
-export interface RuntimeExtension {
-    name: string; version: '1'; projectSha256: string; targets: TargetName[];
-    schema: object; policySchema?: object; credentialHeaders?: string[]; immutableAssets?: ExtensionImmutableAssets; hooks?: readonly ExtensionHookContract[]; authoring?: ExtensionAuthoringContract;
-    activate(config: Readonly<Record<string, unknown>>, context: ExtensionActivation): ExtensionInstance | Promise<ExtensionInstance>;
-}
+export type { ExtensionActivation, ExtensionAuthoringContract, ExtensionAuthoringSurface, ExtensionImmutableAssets, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension };
+export type HeaderPair = HandlerResult['headers'][number];
+/** Core's deployment targets (`TargetName`), so `targets` needs no cast. */
+export type TargetName = RuntimeExtension['targets'][number];
 /** Mount-relative prefix under which the kit's content-hashed assets are served; declared as `immutableAssets`. */
 export const uiAssetPrefix = '/static';
 export interface UiExtensionOptions {
