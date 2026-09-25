@@ -86,14 +86,18 @@ release cannot ship a declaration that does not resolve.
   ```
 - `@jimhoyd/urlcode/agent-context`: `listSkills`, `getSkill`, `listAgentCatalog`, `readAddonCatalog`, `searchDocs`,
   `getExample`, `validateYaml`, `explainError`, `suggestFixtures`, `summarizeYamlChange`. Deterministic, package-owned
-  agent tooling: bundled-skill metadata, lexical search over the fixed docs
-  corpus, supplied-YAML syntax/schema validation, short remediation
+  agent tooling: bundled-skill metadata, bounded lexical documentation search
+  ([coverage and sources](TOOLING.md#bounded-documentation-search)),
+  supplied-YAML syntax/schema validation, short remediation
   guidance for validator output, request-fixture suggestions for supplied YAML
   and a names-only summary of what changed between two YAML documents (result
   types `FixtureSuggestions` and `YamlChangeSummary`; shapes in
   [tooling](TOOLING.md#fixture-suggestions)). Every function reads only fixed, package-owned
   files (never an arbitrary local path or a remote URL) and takes plain
-  strings in, plain data out. This is the same module URLCode's own `serveMcp`
+  strings in, plain data out; the one exception is `searchDocs(text, {project})`,
+  which with a project also reads the static guides and `urlcode.json`
+  descriptors of add-ons installed and pin-verified in that project's site, as
+  data only. This is the same module URLCode's own `serveMcp`
   (`mcp`/`search_docs`/`validate_yaml`/`explain_error`, see
   [tooling and MCP](TOOLING.md)) is built on, so a host building its own MCP
   server or agent-tooling surface can reuse it instead of re-implementing it

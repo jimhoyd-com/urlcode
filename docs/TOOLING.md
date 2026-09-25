@@ -529,7 +529,7 @@ rather than editing it.
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its canonical, verb-first tools, in the order
 `tools/list` returns them (`get_context` first — it is the documented first
-call), are `get_context`, `inspect`, `validate`, `run_tests`,
+call), are `get_context`, `inspect`, `validate`,
 `list_capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
 `preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`,
@@ -538,9 +538,10 @@ call), are `get_context`, `inspect`, `validate`, `run_tests`,
 `get_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
 `urlcode review`), with `suggest_fixtures` and `summarize_yaml_change` listed
 after `explain_error` (see [fixture suggestions](#fixture-suggestions) and
-[YAML change summaries](#yaml-change-summaries)). `run_tests` runs `tests/requests.json` the way `urlcode
-test` does, against a disposable local server instance; it is read-only in
-that it never writes a project file. `tools/list` additionally lists the
+[YAML change summaries](#yaml-change-summaries)). None of them executes project
+code: running `tests/requests.json` executes the project's trusted functions,
+middleware and extensions, so `run_tests` is offered only in
+[authoring mode](#authoring-mode). `tools/list` additionally lists the
 pre-#590 name of every renamed tool (`capabilities`, `import_preview`,
 `export_preview`, `recipes_list`, `recipes_show`, `review_project`) as a
 working, deprecated alias of its canonical tool — same input schema, same
@@ -552,9 +553,11 @@ an already-configured client is not broken by the rename. `inspect`,
 `explain`'s unrelated `target` (the path it explains). Every successful
 `tools/call` reply also carries `structuredContent` mirroring the JSON already
 in its text content, for a client that reads structured results directly. The skill,
-documentation and example tools read only a fixed package-owned manifest; no
+documentation and example tools read only a fixed package-owned manifest, plus, for `search_docs`, the
+static guides and descriptors of add-ons installed in the operator-selected project's site (see
+[bounded documentation search](#bounded-documentation-search)); no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
-`urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
+`urlcode docs search TEXT [--project DIR] [--json]`, which returns the same bounded answer. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
 The `list_skills`, `get_skill`, `list_agent_catalog`, `get_release_addon_catalog`, `search_docs`, `get_example`, `validate_yaml`,
 `explain_error`, `suggest_fixtures` and `summarize_yaml_change` tools are thin wrappers over `@jimhoyd/urlcode/agent-context`
@@ -584,8 +587,8 @@ the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
 `inspectExtensions` report; without the option the tool is absent and calls to
 it are rejected. The same registrations reach `get_context` (its `project.host`
-counts), `inspect`, `validate`, `explain`, `get_manifest`, `run_tests`,
-`plan_feature` and `review`, so each answers as the host-aware CLI command or
+counts), `inspect`, `validate`, `explain`, `get_manifest`, `plan_feature`
+and `review` (and `run_tests` in authoring mode), so each answers as the host-aware CLI command or
 SDK call (`extensions` option) does for that host file. Tools accept no project/file/output path argument; recipe names
 come from the fixed catalog, `get_capability` names from the capability catalog,
 `get_schema` paths from the bundled schema, and the two searches match bundled
@@ -608,7 +611,8 @@ There is a 1 MiB input-frame and output-message limit; oversized input terminate
 the session after a fixed error, and truncated/invalid frames return protocol
 errors. Import text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the
-flag that adds it, for `get_extensions` and the authoring tools), each unknown,
+flag that adds it, for `get_extensions` and the authoring tools including
+`run_tests`), each unknown,
 missing or invalid argument, and the arguments the tool accepts. A tool that
 fails returns `isError` with the message the CLI prints for the same failure,
 for example the schema location of an invalid route or the valid
@@ -622,6 +626,49 @@ paths and conflicts) and returns `matched` (the family, or `null`), `guidance`,
 `location`. `plan_feature` lists `get_extensions` in
 `next` only when a host file is loaded. Tools named in `nextTools` and `next`
 are always canonical names, never a deprecated alias.
+
+## Bounded documentation search
+
+`search_docs` (CLI `urlcode docs search TEXT --project DIR`, SDK
+`searchDocs(text, {project})` from `@jimhoyd/urlcode/agent-context`) is the
+bounded documentation fallback for a question `get_context`, `get_capability`,
+`get_schema`, `search_recipes` and `get_extensions` leave open (#759). It is
+deterministic, local text matching; it reads these sources and nothing else:
+
+- **core**: `llms.txt`, `docs/AI-AUTHORING.md`, `docs/YAML-REFERENCE.md`,
+  `docs/TOOLING.md` and `docs/FUNCTION-SECURITY.md`, packaged with the runtime;
+- **installed**: for each add-on core's own manifest pins, that the site
+  around the project (the project's parent directory) depends on, and whose
+  `package-lock.json` entry matches core's pin: its `urlcode.json` descriptor,
+  its `README.md` and the `.md`/`.json` agent references its descriptor
+  declares, at most six files of at most 256 KiB each, read from
+  `node_modules/@jimhoyd/urlcode-<name>/` as text or JSON data. No add-on
+  module is imported, no host file is loaded and no binding or secret is read.
+  An installed add-on that is not pin-verified is not read and is listed as not
+  searched, with the reason;
+- **catalog**: this release's add-on catalog (`dist/addon-catalog.json`). A
+  catalog match says the add-on exists in the release, never that the project
+  has it: catalog matches are returned apart from results, each with
+  `installedInProject` (`null` when no project was given).
+
+The answer has at most three `results` (each with at most 1800 characters of
+`excerpt`), at most five `catalog` matches, `coverage` and at most four `next`
+steps. Each result names its `source` (`core` or `installed`), `path`, the
+Markdown `section` (or JSON pointer) the excerpt comes from, for an extension
+descriptor the YAML `configPath` the matched schema validates (shaped
+`extensions.<name>.config.<field>`, with `*` for a map entry), and a `next` step
+that names that one section or path to read. A query that is an add-on's name
+ranks that add-on's own guide first. When a query word is a
+core schema path, `next` also suggests `get_schema` for it.
+`coverage.searched` lists the core files, every installed add-on package and
+file that was read, and the catalog; `coverage.notSearched` lists what was
+not: release-catalog add-ons not installed in the site, installed add-ons that
+failed pin verification or a size limit, `llms-full.txt` and other `docs/`
+pages, project files and add-on source, and operator host registrations
+(registered state needs the host file and `get_extensions`). Without a project
+(the SDK default) no site is inspected, and coverage says so. An empty
+`results` carries a `note`: no match in the searched sources, which is not
+evidence that a feature is unsupported.
 
 ## Registering the server
 
@@ -727,8 +774,8 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-six read
-tools above (thirty-seven with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty-five read
+tools above (thirty-six with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 
@@ -755,11 +802,29 @@ What it can do, all inside the selected project root (resolved with realpath):
   `urlcode test` and `urlcode audit` against the project with a minimal
   environment (`PATH` only), a two-minute deadline and stdout/stderr each capped
   at 32 KiB. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
-  `truncated`. `run_test` activates the local runtime and executes fixtures,
-  under the same rules as the CLI.
+  `truncated`. All three activate the local runtime, so they execute the
+  project's trusted code under the same rules as the CLI: `run_validate`
+  imports the trusted function and middleware modules (their top-level code
+  runs), `run_test` executes fixtures and `run_audit` sends probe requests. That
+  code has full Node access; the minimal environment is not confinement.
+  `tools/list` annotates the three `destructiveHint: true`,
+  `idempotentHint: false`, `openWorldHint: true`.
+- `run_tests` runs `tests/requests.json` in the server process the way
+  `urlcode test` does, against a disposable local server instance and a scratch
+  data directory it removes afterward, and returns `total`, `failed` and the
+  per-case `events`. It **executes the project's code**: ordinary trusted
+  `function`/`middleware` modules and registered extensions run with full Node
+  access and may write or delete files, spawn processes or reach the network.
+  The scratch data directory is not confinement. Routes that declare
+  `sandbox: true` still run in their isolated sandbox. `tools/list` annotates it
+  `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`,
+  `openWorldHint: true`; without
+  the flag it is absent and a call to it is refused with a hint naming
+  `--allow-authoring`. It accepts no `--policy` file, so bindings that need an
+  operator-granted policy fail as they do without one.
 
-Every tool returns `validation`, the `validateProject` verdict of the project
-after the operation (or `valid: false` with a generic note; use `run_validate`
+`create_route`, `add_recipe` and `scaffold_feature` return `validation`, the
+`validateProject` verdict of the project after the operation (or `valid: false` with a generic note; use `run_validate`
 for the CLI report).
 
 What it cannot do:
@@ -777,6 +842,10 @@ What it cannot do:
   arbitrary commands, delete or edit existing files (except the one YAML file a
   `create_route` targets), or serve a project other than the one the operator
   selected.
+
+These limits bind the tools' own writes. `run_validate`, `run_test`, `run_audit`
+and `run_tests` execute the project's trusted code, which is bounded only by what that code does, so the
+operator trusts that code whenever the flag is on.
 
 Authoring mode is a local, unauthenticated stdio process for an operator who
 already trusts the assistant to edit this checkout. Review the resulting diff

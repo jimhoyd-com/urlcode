@@ -27,6 +27,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { mcpToolInventory } from '../packages/core/src/mcp.ts';
+import { docsSearchScope } from '../packages/core/src/docs-search.ts';
 import { addons } from './workspaces.ts';
 import { storeAuthoring } from '../packages/store/src/authoring.ts';
 
@@ -74,7 +75,11 @@ const hostedAi = {
   retiredCredentials: ['URLCODE_AI_TOKEN'],
 } as const;
 
+// Documentation search coverage (#759): what search_docs / urlcode docs search reads, from docs-search.ts.
+const docsSearch = { core: [...docsSearchScope.core], installedAddonGuides: docsSearchScope.installed.length > 0, maxResults: docsSearchScope.maxResults };
+
 const inventory = {
+  docsSearch,
   extensionBundles: builtBundles,
   kitAdopters,
   scaffoldWithUnordered: withIsUnordered,
@@ -151,7 +156,7 @@ claims.push({
     }
     for (const match of sentence.matchAll(new RegExp(String.raw`--allow-authoring\b[^.]*?\badds\s+${NUMBER}\s+tools\b`, 'gi'))) {
       const count = toNumber(match[1] ?? '');
-      if (count !== undefined && count !== inventory.mcpTools.authoring) return `counts ${count} authoring tools, but packages/core/src/mcp-authoring.ts defines ${inventory.mcpTools.authoring}`;
+      if (count !== undefined && count !== inventory.mcpTools.authoring) return `counts ${count} authoring tools, but packages/core/src/mcp.ts (with mcp-authoring.ts) defines ${inventory.mcpTools.authoring}`;
     }
     return undefined;
   },
@@ -164,6 +169,21 @@ if (storeShortLinks) {
       ? 'says stored short links are unsupported, but the store extension\'s authoring contract declares `extensions.store.config.shortLinks`' : undefined,
   });
 }
+
+// A sentence is about documentation search when it names the tool, the CLI command or the SDK function.
+const DOCS_SEARCH = /\bsearch_docs\b|\bdocs\s+search\b|\bsearchDocs\b/;
+if (docsSearch.installedAddonGuides) {
+  claims.push({
+    fact: 'docsSearch.installedAddonGuides',
+    test: sentence => DOCS_SEARCH.test(sentence) && /\b(?:small|fixed)\s+(?:packaged\s+)?(?:agent\s+)?(?:documentation\s+|docs\s+)?corpus\b|\bonly\s+(?:the\s+)?(?:small\s+)?packaged\s+(?:agent\s+)?doc(?:s|umentation)\b/i.test(sentence)
+      ? 'says documentation search covers only the fixed core corpus, but packages/core/src/docs-search.ts also reads installed, pin-verified add-on guides and descriptors' : undefined,
+  });
+}
+claims.push({
+  fact: 'docsSearch.emptyIsNoMatch',
+  test: sentence => DOCS_SEARCH.test(sentence) && /\b(?:no\s+(?:match|results?)|empty\s+result)\b[^.]*\b(?:means|shows|proves)\b[^.]*\b(?:unsupported|not\s+supported|does\s+not\s+exist)\b/i.test(sentence) && !/\bnot\s+(?:evidence|proof|that)\b/i.test(sentence)
+    ? 'treats an empty documentation search as proof a feature is unsupported; it means no match in the searched sources (docs-search.ts reports coverage)' : undefined,
+});
 
 // A sentence is about the hosted service when it names it; unrelated bearer
 // tokens (the auth extension's API keys, a recipe's protocol fixture) are not.

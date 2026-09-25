@@ -38,8 +38,17 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
     const [operation,text]=args;
     assert(operation==='search' && args.length===2,'Use docs search <text>');
     const {searchDocs}=await import('./agent-context.ts');
-    const found=await searchDocs(text!);
-    print(options.json?found:found.results.length?found.results.map(hit=>`## ${hit.id}: ${hit.title}\n${hit.summary}\nmatched: ${hit.matched.join(' ')}\n\n${hit.excerpt}\n`).join('\n'):`No match for "${found.query}"\n`);
+    const found=await searchDocs(text!,{project:options.project});
+    if(options.json)print(found);
+    else {
+      const lines=found.results.map(hit=>`## ${hit.id}: ${hit.title}${hit.package?` (${hit.package}, installed)`:''}\n${hit.summary}\nmatched: ${hit.matched.join(' ')}${hit.section?`\nsection: ${hit.section}`:''}${hit.configPath?`\nconfig path: ${hit.configPath}`:''}\n\n${hit.excerpt}\n\nnext: ${hit.next}\n`);
+      if(!found.results.length)lines.push(`No match for "${found.query}" in the searched sources. ${found.note??''}\n`);
+      for(const match of found.catalog)lines.push(`catalog: ${match.name} (${match.kind}) ${match.installedInProject===true?'installed in this site':'in the release catalog; not evidence this project has it'}`);
+      lines.push(`\nsearched: ${[...found.coverage.searched.core,...found.coverage.searched.installed.map(item=>`${item.package} (${item.files.join(', ')})`),...(found.coverage.searched.catalog?[found.coverage.searched.catalog]:[])].join('; ')}`);
+      lines.push(`not searched: ${found.coverage.notSearched.map(gap=>gap.names?`${gap.source}: ${gap.names.join(', ')}`:gap.source).join('; ')}`);
+      if(found.next.length)lines.push(`next:\n${found.next.map(step=>`- ${step}`).join('\n')}`);
+      print(lines.join('\n')+'\n');
+    }
   }else if(command==='build-typescript'){
     assert(args.length===0 && options.out,'Provide --out new-directory');
     const {buildTypeScriptProject}=await import('./typescript-authoring.ts');

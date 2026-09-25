@@ -183,10 +183,10 @@ const helpEntries: HelpEntry[] = [
 `  urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
 ` },
   { name:'docs', group:'Agent tooling', text:
-`  urlcode docs search <text> [--json]  # same as MCP search_docs: at most three bounded excerpts from the packaged agent docs, instead of grepping llms-full.txt
+`  urlcode docs search <text> [--project DIR] [--json]  # same as MCP search_docs: at most three bounded excerpts from the core agent docs and the site's installed, pin-verified add-on guides and urlcode.json schemas, with what was and was not searched; instead of grepping llms-full.txt
 ` },
   { name:'mcp', group:'Agent tooling', text:
-`  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools, host file adds get_extensions
+`  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools and runners that execute project code, host file adds get_extensions
   urlcode mcp print-config [project] [--global]  # prints the .mcp.json JSON for a client to register BEFORE running init (pre-session bootstrap, #542); write it into an empty directory before starting an agent session there so MCP tools are loaded on that session's first turn. --global emits the bare 'urlcode' command for a global install; default is the portable 'npx --no --package' form. 'urlcode init' keeps a .mcp.json written this way as-is
 ` },
   { name:'capabilities', group:'Agent tooling', text:

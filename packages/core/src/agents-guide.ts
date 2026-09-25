@@ -54,13 +54,13 @@ validation, middleware wiring, policies, static serving and authentication. Read
    (limits; \`--target NAME\` before promising a provider), \`get_schema\`,
    \`recipes search TEXT\`/\`search_recipes\` then \`recipes add NAME --out DIR\`,
    \`explain\` and, with an operator host file, \`get_extensions\`. Bare
-   \`capabilities\` and \`recipes list\` are complete catalogs: fallback, not step one. Do not read or grep \`llms-full.txt\` or the packaged docs for a routine task.
+   \`capabilities\` and \`recipes list\` are complete catalogs: fallback, not step one. Do not read or grep \`llms-full.txt\` or whole packaged docs for a routine task; when those tools leave a question open, use the bounded fallback \`search_docs\` (\`urlcode docs search TEXT --project app\`): it also searches installed add-on guides and \`urlcode.json\` schemas, lists what it did not search and names one section or config path. Read only that section; no match there is not evidence a feature is unsupported.
 4. Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement. Check supported extensions and recipes first; explain any capability gap.
 
 ## MCP
 
-When present, \`${mcpConfigFile}\` registers the read-only \`urlcode mcp\` server; prefer its
-tools (also \`get_manifest\`) to reading documents. Inspect \`get_extensions\` before
+When present, \`${mcpConfigFile}\` registers the read-only \`urlcode mcp\` server, which never executes project code; prefer its
+tools (also \`get_manifest\`) to reading documents, and run fixtures with \`urlcode test\`. Inspect \`get_extensions\` before
 replacing extension behavior. \`--allow-authoring\` is an operator opt-in; never add it. Prefer tested first-party extensions when suitable. External/private extensions are allowed: install them separately and wire them into the operator host, following EXTENSIONS.md’s "External extensions and AI tooling" workflow in llms-full.txt. Inspect their host registrations and validate/test with that host; catalog commands do not manage arbitrary external packages. First-party extensions are installed with \`urlcode extensions available|add|remove\` and moved with \`urlcode upgrade\`, which pins them in \`package.json\` and wires \`host.mjs\`. Artifacts are inert add-ons (schemas, example configuration) installed with \`urlcode artifacts add\`; read them with \`get_extension_artifacts\`/\`get_extension_artifact\`, which never activate an extension. [URLCode AI](https://urlcode.ai/) is a separate optional hosted service for version-pinned reference and shared skills; its anonymous remote MCP runs no model of its own and never replaces this local project server. Its machine-readable entry point is \`https://urlcode.ai/llms.txt\`.
 
 ## What the runtime provides (this version)

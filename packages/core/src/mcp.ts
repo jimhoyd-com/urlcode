@@ -9,7 +9,7 @@ import {runProjectTests} from './project-tests.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
-import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
+import {authoringDefinitions,authoringAnnotations,callAuthoringTool} from './mcp-authoring.ts';
 // Only the public @jimhoyd/urlcode/agent-context surface is used here; scripts/package-smoke.ts proves that
 // subpath sufficient from the packed package (docs/TOOLING.md). A relative import keeps the source from loading
 // the built dist/, which tests rebuild concurrently.
@@ -40,7 +40,6 @@ const definitions=[
  {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order. Call this first.',properties:{...deployTargetProps,task:{enum:['redirects']},budget:{type:'integer',minimum:1}}},
  {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{...deployTargetProps,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
- {name:'run_tests',description:'Run this project\'s request fixtures (tests/requests.json) against a temporary local server instance, the same behavior `urlcode test` uses. Read-only: it never writes project files, only starts a disposable server against a scratch data directory it removes afterward. Bindings that need an operator-granted policy still fail as usual; this tool accepts no --policy file.',properties:{}},
  {name:'list_capabilities',legacy:'capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:deployTargetProps},
  {name:'get_capability',description:'Describe one catalog capability: schema fragment, constraints, grants, target support and bundled recipe/cookbook uses.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'get_schema',description:'Return the resolved JSON Schema fragment for a dotted urlcode.yaml path such as route, redirect or policies.cache.',properties:{path:{type:'string',maxLength:256}},required:['path']},
@@ -56,7 +55,7 @@ const definitions=[
  {name:'get_skill',description:'Load one bundled agent SKILL.md by name.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'list_agent_catalog',description:'List the revision-pinned agent discovery index: core skills/references and signed add-ons. Use get_extensions or get_extension_artifacts for project-installed component details.',properties:{}},
  {name:'get_release_addon_catalog',description:'Return the release-wide add-on catalog pinned to this core: every signed extension and artifact with its package, version, description, requirements and descriptor agent references (paths relative to that add-on\'s package). Discovery metadata only: it is not evidence that this project installed or activated an add-on, and it never imports, fetches or installs one. Use get_addon_agent_tooling, get_extensions or get_extension_artifacts for what this project has installed.',properties:{}},
- {name:'search_docs',description:'Deterministically search the small packaged agent documentation corpus and return at most three short excerpts.',properties:{text:{type:'string',maxLength:256}},required:['text']},
+ {name:'search_docs',description:'Deterministic, bounded documentation fallback: searches the fixed core agent docs plus the guides (README and descriptor agent references) and urlcode.json schemas of add-ons installed and pin-verified in this site, read as data only (nothing is imported or activated). Returns at most three excerpts with the section or config path to read next, release-catalog matches kept apart from installed add-ons, and coverage of which sources were and were not searched; an empty result means no match in the searched sources, not that a feature is unsupported.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'validate_yaml',description:'Validate supplied URLCode YAML syntax and schema only. It never reads includes, source files, bindings or a project directory.',properties:{yaml:{type:'string',maxLength:524288}},required:['yaml']},
  {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
@@ -74,6 +73,9 @@ const definitions=[
 const legacyNames=Object.fromEntries(definitions.filter(def=>'legacy' in def).map(def=>[def.name,(def as {legacy:string}).legacy]));
 const aliasOf=Object.fromEntries(Object.entries(legacyNames).map(([canonical,legacy])=>[legacy,canonical]));
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
+// run_tests executes the project's code, so it is not a read tool: it is offered only under the operator's
+// --allow-authoring flag, alongside the authoring tools, and annotated as able to do anything Node can (#590).
+const runTestsDefinition={name:'run_tests',description:'Run this project\'s request fixtures (tests/requests.json) in-process against a temporary local server instance, the same behavior `urlcode test` uses. This EXECUTES the project\'s trusted function and middleware modules and its registered extensions with full Node access, so they may write or delete files, spawn processes or reach the network; the scratch data directory it creates and removes afterward is not confinement. Routes that declare `sandbox: true` still run in their isolated sandbox. Offered only when the operator starts the server with --allow-authoring. Bindings that need an operator-granted policy still fail as usual; this tool accepts no --policy file.',properties:{}};
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
 const ajv=new Ajv({strict:false,allErrors:true});
 // A -32602 message an agent can act on: the offending argument by name, and
@@ -95,7 +97,8 @@ const canonicalReadTools=definitions.map(def=>({name:def.name,description:def.de
 const legacyReadTools=canonicalReadTools.filter(tool=>legacyNames[tool.name]!==undefined).map(tool=>({...tool,name:legacyNames[tool.name]!,description:`Deprecated alias for \`${tool.name}\`; use \`${tool.name}\`. ${tool.description}`}));
 const readTools=[...canonicalReadTools,...legacyReadTools];
 const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object',properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
-const authoringTools=authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}}));
+const runTestsTool={name:runTestsDefinition.name,description:runTestsDefinition.description,inputSchema:{type:'object',properties:runTestsDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}};
+const authoringTools=[...authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:authoringAnnotations(def)})),runTestsTool];
 /** The tool names each server mode exposes; scripts/check-agent-facts.ts compares documented tool counts against it. */
 export const mcpToolInventory:{readonly read:readonly string[];readonly hostFile:readonly string[];readonly authoring:readonly string[]}={read:readTools.map(tool=>tool.name),hostFile:[hostTool.name],authoring:authoringTools.map(tool=>tool.name)};
 /** Canonical (non-legacy) read tool names, including the host-file get_extensions tool: every tool another module suggests as a next call must be one of these. */
@@ -103,7 +106,7 @@ export const canonicalMcpToolNames:readonly string[]=[...definitions.map(def=>de
 const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[tool.name,{tool,validate:ajv.compile(tool.inputSchema)}]));
 /** `allowAuthoring` and `hostFile` are set only by the `--allow-authoring` and `--host-file` command-line flags; tool arguments and the environment never enable them. */
 export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean;hostFile?:string}
-/** Operator selects the only project root. Read tools have no path, credential, write or execution authority; authoring tools write inside that root only. */
+/** Operator selects the only project root. Read tools have no path, credential, write or execution authority; authoring tools write inside that root only, and `run_tests` (also authoring-gated) executes the project's trusted code. */
 export async function serveMcp(options:McpOptions):Promise<void> {
  // `mcp print-config` registers the site's app/ before `urlcode init` creates it (#542): a project directory that does
  // not exist yet is anchored under its real parent (nothing below it can be a symlink), so tools answer "run urlcode
@@ -133,6 +136,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
     :buildContext(project,{projectFlag:'.',...(options.hostFile===undefined?{}:{host}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
+   // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
    case 'run_tests':{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:host.extensions,log:(event:object)=>{events.push(event);}});return {...result,events};}
    case 'list_capabilities':return getCapabilities(deployTargetOf(args));
    case 'get_capability':return getCapability(args.name as string);
@@ -149,7 +153,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_skill':return getSkill(args.name as string);
    case 'list_agent_catalog':return listAgentCatalog();
    case 'get_release_addon_catalog':return readAddonCatalog();
-   case 'search_docs':return searchDocs(args.text as string);
+   case 'search_docs':return searchDocs(args.text as string,{project});
    case 'get_example':return getExample(args.name as string);
    case 'validate_yaml':return validateYaml(args.yaml as string);
    case 'explain_error':return explainError(args.error as string);
@@ -185,7 +189,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
   if(message.method!=='tools/call'){await error(id,-32601,'Method not found');return;}
   const name=params.name,args=params.arguments??{};
   if(typeof name!=='string'){await error(id,-32602,'tools/call requires a string "name"');return;}
-  if(!names.has(name)){await error(id,-32602,`Unknown tool ${JSON.stringify(name.slice(0,64))}; call tools/list for the ${names.size} tools this session offers${validators.has(name)?` (${name} needs ${name==='get_extensions'?'the --host-file option':'the --allow-authoring option'})`:''}`);return;}
+  if(!names.has(name)){await error(id,-32602,`Unknown tool ${JSON.stringify(name.slice(0,64))}; call tools/list for the ${names.size} tools this session offers${validators.has(name)?` (${name} needs ${name==='get_extensions'?'the --host-file option':name==='run_tests'?'the --allow-authoring option because it executes the project\'s trusted code':'the --allow-authoring option'})`:''}`);return;}
   const checker=validators.get(name)!;
   if(!checker.validate(args)){await error(id,-32602,argumentProblems(checker.tool,checker.validate.errors));return;}
   // The server is local and operator-started with read access to this project

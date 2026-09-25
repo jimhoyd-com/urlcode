@@ -7,6 +7,7 @@ import {readAddonCatalog,readAddonManifest} from './addon-manifest.ts';
 import {errorRules} from './explain-error-rules.ts';
 import {suggestFixtures} from './fixture-suggestions.ts';
 import {summarizeYamlChange} from './yaml-change.ts';
+import {coreDocs,searchDocs} from './docs-search.ts';
 
 /**
  * Fixed, package-owned agent material. This is intentionally a manifest rather
@@ -23,26 +24,12 @@ import {summarizeYamlChange} from './yaml-change.ts';
  * types like `validateDocument`'s return shape.
  */
 const packageRoot=fileURLToPath(new URL('../../../',import.meta.url));
-const docs=[
-  {id:'llms',title:'URLCode agent index',file:'llms.txt',summary:'Compact map of the framework, its declarative primitives and the minimum reference to load next.'},
-  {id:'authoring',title:'AI authoring',file:'docs/AI-AUTHORING.md',summary:'Declarative-first authoring workflow, retrieval order and framework constraints.'},
-  {id:'yaml-reference',title:'YAML reference',file:'docs/YAML-REFERENCE.md',summary:'Generated inventory of accepted URLCode YAML fields.'},
-  {id:'tooling',title:'Tooling and local MCP',file:'docs/TOOLING.md',summary:'Bounded local project inspection, validation and MCP tool behavior.'},
-  {id:'security',title:'Function security',file:'docs/FUNCTION-SECURITY.md',summary:'Trusted versus sandboxed function behavior, bindings and operator grants.'},
-] as const;
+// The fixed core documents searchDocs reads, also listed by listAgentCatalog (owned by docs-search.ts).
+const docs=coreDocs;
 // `skills` (imported above as the canonical inventory from shipped-skills.ts, #590/#639) lists
 // only name and file; each entry's `description` is read from its own SKILL.md frontmatter at
 // call time rather than duplicated here, so this inventory cannot drift from the skill it
 // describes the way the single-skill, hand-written description once did.
-const maxExcerpt=1800;
-
-function terms(query:string):string[] {return [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter(term=>term.length>1))].slice(0,16);}
-function excerpt(text:string, query:string):string {
-  const words=terms(query),lower=text.toLowerCase();
-  const positions=words.map(word=>lower.indexOf(word)).filter(position=>position>=0);
-  const start=Math.max(0,(positions.length?Math.min(...positions):0)-300);
-  return text.slice(start,start+maxExcerpt);
-}
 async function content(file:string):Promise<string> {return readFile(packageRoot+file,'utf8');}
 /** The `description:` line from a SKILL.md's YAML frontmatter, the same text Claude Code itself
  * reads to decide whether to load the skill. */
@@ -96,17 +83,14 @@ export async function listAgentCatalog() {
  */
 export {readAddonCatalog};
 
-/** Deterministic lexical search over a deliberately small, agent-facing corpus. */
-export async function searchDocs(query:string) {
-  const words=terms(query);
-  if(!words.length)throw new Error('Search text must contain a word');
-  const hits=(await Promise.all(docs.map(async doc=>{
-    const text=await content(doc.file),haystack=`${doc.title} ${doc.summary} ${text}`.toLowerCase();
-    const matched=words.filter(word=>haystack.includes(word));
-    return {doc,text,matched,score:matched.length};
-  }))).filter(hit=>hit.score>0).sort((a,b)=>b.score-a.score||a.doc.id.localeCompare(b.doc.id)).slice(0,3);
-  return {query,results:hits.map(({doc,text,matched})=>({id:doc.id,title:doc.title,summary:doc.summary,matched,excerpt:excerpt(text,query)}))};
-}
+/**
+ * Deterministic, bounded documentation search (#759; docs/TOOLING.md#bounded-documentation-search): the fixed core
+ * documents plus, with `{project}`, the guides and static descriptors of add-ons installed and pin-verified in that
+ * project's site, read as data only. Each answer reports which sources were and were not searched and a focused next
+ * step; release-catalog matches are listed apart from installed add-ons.
+ */
+export {searchDocs};
+export type {DocsSearch,DocsSearchOptions,DocsSearchResult,DocsCatalogMatch,DocsCoverageGap,DocsSource} from './docs-search.ts';
 
 /** Returns the two smallest high-value files of a fixed packaged example. */
 export async function getExample(name:string) {

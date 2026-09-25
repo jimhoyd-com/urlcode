@@ -4,7 +4,7 @@ import {serveMcp} from '../packages/core/src/mcp.ts';import {confinedPath} from 
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 interface Reply { error?:{code:number;message:string};result:{tools:{name:string;annotations:{readOnlyHint:boolean}}[];content:{text:string}[];isError?:boolean} }
-const authoringNames=['create_route','add_recipe','scaffold_feature','run_validate','run_test','run_audit'];
+const authoringNames=['create_route','add_recipe','scaffold_feature','run_validate','run_test','run_audit','run_tests'];
 async function session(root:string,messages:unknown[],allowAuthoring?:boolean) {
  let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
  await serveMcp({project:root,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output,...(allowAuthoring?{allowAuthoring:true}:{})});
@@ -22,7 +22,7 @@ test('authoring tools are absent without the flag and cannot be enabled by argum
  process.env.URLCODE_ALLOW_AUTHORING='1';t.after(()=>{delete process.env.URLCODE_ALLOW_AUTHORING;});
  const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},...calls([{name:'create_route',arguments:{path:'/x',handler:'https://example.com/',allowAuthoring:true}},{name:'run_validate',arguments:{}}]).map((call,i)=>({...call,id:i+3}))]);
  const names=replies[1]!.result.tools.map(tool=>tool.name);
- assert.equal(names.length,36);for(const name of authoringNames)assert.equal(names.includes(name),false);
+ assert.equal(names.length,35);for(const name of authoringNames)assert.equal(names.includes(name),false);
  assert.equal(replies[2]!.error!.code,-32602);assert.equal(replies[3]!.error!.code,-32602);
  assert.equal((await readFile(join(root,'urlcode.yaml'),'utf8')).includes('/x'),false);
 });
@@ -32,6 +32,19 @@ test('the flag lists the authoring tools as non-read-only alongside the read too
  const tools=replies[1]!.result.tools;assert.equal(tools.length,42);
  for(const name of authoringNames){const tool=tools.find(tool=>tool.name===name);assert.ok(tool);assert.equal(tool.annotations.readOnlyHint,false);}
  assert.equal(tools.find(tool=>tool.name==='inspect')!.annotations.readOnlyHint,true);
+});
+test('runners that execute trusted project code are annotated destructive, open-world and non-idempotent (#590)',async t=>{
+ const root=await project(t,{'/a':redirect()});
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'}],true);
+ const tools=replies[1]!.result.tools as unknown as {name:string;description:string;annotations:Record<string,boolean>}[];
+ for(const name of ['run_validate','run_test','run_audit','run_tests']){
+  const tool=tools.find(candidate=>candidate.name===name)!;
+  assert.deepEqual(tool.annotations,{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},name);
+  assert.match(tool.description,/trusted function and middleware modules/,name);assert.match(tool.description,/not confinement/,name);
+ }
+ // The file-writing tools stay project-confined writes: not destructive, not open-world.
+ for(const name of ['create_route','add_recipe','scaffold_feature'])
+  assert.deepEqual(tools.find(candidate=>candidate.name===name)!.annotations,{readOnlyHint:false,destructiveHint:false,openWorldHint:false},name);
 });
 test('path confinement refuses absolute, parent, symlinked, dotenv, git and operator paths',async t=>{
  const root=await project(t,{'/a':redirect()},{'safe/keep.txt':'x','policy.json':'{}','host.mjs':'','links.sqlite':''});
