@@ -4,7 +4,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
-import type { CollectionSpec, StoredRecord } from './collection.ts';
+import type { CollectionAuditor, CollectionSpec, StoredRecord } from './collection.ts';
+import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
 import { screensSchema, storeScreens } from './screens.ts';
 import { storeExports } from './records.ts';
 import type { StoreExports } from './records.ts';
@@ -19,6 +20,11 @@ export interface StoreExtensionOptions {
   directory: string;
   /** Exact project revision the operator reviewed (`inspectExtensionRevision`). */
   projectSha256: string;
+  /**
+   * The audit extension's exports when it is installed (`ctx.get('audit')`; store `uses` audit). A collection that
+   * declares `audit: true` refuses to activate without an active one.
+   */
+  audit?: AuditExports | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -138,10 +144,27 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
 /**
  * The registration and its `StoreExports` (#529), the typed records API an extension that `requires: [store]`
  * reads through `ctx.get('store')`; usable once the runtime has activated this registration.
+ *
+ * With `audit`, the store attaches itself as the audit producer `store` once, here: its outbox is the `audit` array of
+ * each collection file, which audit drains (peek, then ack through each collection's serialized write path). `close`
+ * detaches it; the host calls it before the store's files are released.
  */
-export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports } {
+export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; close(): Promise<void> } {
   if (!isAbsolute(options.directory)) throw new Error('Store directory must be an absolute path');
-  const shared = storeExports();
+  const shared = storeExports(), audit = options.audit;
+  // The collections of the activation being served: the producer reads and acks those, never a closed activation's.
+  let drained: { token: symbol; collections: readonly Collection[] } | undefined;
+  const byName = (): Collection[] => [...drained?.collections ?? []].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  const attachment: AuditAttachment | undefined = audit?.attach({
+    source: 'store',
+    async peek(limit) {
+      const events: AuditEvent[] = [];
+      for (const collection of byName()) { if (events.length >= limit) break; events.push(...collection.auditPeek(limit - events.length)); }
+      return events;
+    },
+    async ack(ids) { const gone = new Set(ids); for (const collection of byName()) if (collection.auditPeek(Infinity).some(event => gone.has(event.id))) await collection.auditAck(gone); },
+  });
+  const auditor: CollectionAuditor | undefined = audit && attachment ? { validate: value => audit.validate(value), notify: () => attachment.notify() } : undefined;
   const registration: RuntimeExtension = {
     name: 'store', version: '1', projectSha256: options.projectSha256, targets: ['node'],
     schema: storeConfigSchema,
@@ -154,7 +177,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       // Screens are served by ui, but they name store collections, so an unknown one refuses here too.
       storeScreens(config);
       const byMount = new Map<string, Collection>();
-      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, directory));
+      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, directory, auditor));
+      for (const collection of collections) if (collection.spec.audit && !audit?.active) throw new Error(`collection ${collection.name} declares audit: true; install the audit extension (urlcode extensions add audit)`);
       for (const collection of collections) {
         if (byMount.has(collection.spec.mount)) throw new Error(`Collections ${byMount.get(collection.spec.mount)!.name} and ${collection.name} share a mount`);
         byMount.set(collection.spec.mount, collection);
@@ -182,13 +206,16 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       try { for (const collection of collections) await collection.load(); }
       catch (error) { await unlock(); throw error; }
       const exported = shared.attach(collections);
+      drained = { token: exported, collections };
+      // Events a previous run left in the files drain now rather than at the next write or poll.
+      if (collections.some(collection => collection.auditBacklog > 0)) attachment?.notify();
       return {
         handle: request => dispatch(byMount, shortByMount, context, request),
-        async close() { shared.detach(exported); await unlock(); },
+        async close() { shared.detach(exported); if (drained?.token === exported) drained = undefined; await unlock(); },
       };
     },
   };
-  return { registration, exports: shared.exports };
+  return { registration, exports: shared.exports, close: async () => { await attachment?.close(); } };
 }
 
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
@@ -241,7 +268,7 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
   const allowed = (methods: string): [string, string][] => [['allow', methods]];
   // An owned collection is scoped to the request principal (core's RIM-EXT-PRINCIPAL-001, set by the route's
   // principal-providing policy). Without one, nothing is served: never a fallback to the shared view.
-  const owner = collection.spec.ownership === 'owner' ? request.principal?.id : undefined;
+  const owner = collection.spec.ownership === 'owner' ? request.principal?.id : undefined, actor = request.principal?.id ?? 'anonymous';
   if (collection.spec.ownership === 'owner' && owner === undefined) return failure(new StoreError(401, 'principal_required', 'Sign in to use this collection'));
   try {
     // Core's same-origin rule with `whenAbsent: 'admit'`: this write API takes application/json only, which a
@@ -251,18 +278,18 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
       if (method === 'GET' || method === 'HEAD') {
         return json(200, listView(collection.list(request.query, owner)));
       }
-      if (method === 'POST') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.create(bodyOf(request, collection), key, owner); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`], ['etag', etagOf(record)]]); }
+      if (method === 'POST') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.create(bodyOf(request, collection), key, owner, actor); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`], ['etag', etagOf(record)]]); }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
     }
     const increment = rest.match(/^([0-9a-f-]{36})\/increment\/([a-z][A-Za-z0-9_]*)$/);
-    if (increment && method === 'POST') return json(200, view(await collection.increment(increment[1]!, increment[2]!, idempotencyKey(request, owner), owner)));
+    if (increment && method === 'POST') return json(200, view(await collection.increment(increment[1]!, increment[2]!, idempotencyKey(request, owner), owner, actor)));
     if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
     if (method === 'GET' || method === 'HEAD') { const record = collection.get(rest, owner); return json(200, view(record), [['etag', etagOf(record)]]); }
     const match = ifMatch(request);
     if (match === null) throw new StoreError(400, 'invalid_if_match', 'If-Match must be one strong quoted ETag this store issued');
-    if (method === 'PUT') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), true, key, match, owner); return json(200, view(record), [['etag', etagOf(record)]]); }
-    if (method === 'PATCH') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), false, key, match, owner); return json(200, view(record), [['etag', etagOf(record)]]); }
-    if (method === 'DELETE') { await collection.remove(rest, idempotencyKey(request, owner), match, owner); return { status: 204, headers: [['cache-control', 'no-store']] }; }
+    if (method === 'PUT') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), true, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
+    if (method === 'PATCH') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), false, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
+    if (method === 'DELETE') { await collection.remove(rest, idempotencyKey(request, owner), match, owner, actor); return { status: 204, headers: [['cache-control', 'no-store']] }; }
     return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, PUT, PATCH, DELETE'));
   } catch (error) {
     if (error instanceof StoreError) return failure(error, error.status === 405 ? allowed(collection.spec.readOnly ? 'GET, HEAD' : 'GET, HEAD, POST, PUT, PATCH, DELETE') : []);

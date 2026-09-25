@@ -52,17 +52,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const view = (record: StoredRecord): Readonly<StoredRecord> => { const { [OWNER_FIELD]: _owner, ...rest } = record; return Object.freeze(rest); };
 const result = (record: StoredRecord): StoreRecordResult => Object.freeze({ record: view(record), etag: etagOf(record) });
 const ownerOf = (principal: StorePrincipal): string | undefined => principal === null || principal === undefined ? undefined : principal.id;
+/** The audit actor of a write: the principal's id, or `anonymous` (the HTTP API's rule). */
+const actorOf = (principal: StorePrincipal): string => ownerOf(principal) ?? 'anonymous';
 const known = (id: string): string => { if (typeof id !== 'string' || !UUID.test(id)) throw new StoreError(404, 'not_found', 'No such record'); return id; };
 
 function records(collection: Collection): StoreRecords {
   const fields = Object.freeze(Object.fromEntries(Object.entries(collection.spec.fields).map(([name, spec]) => [name, Object.freeze({ ...spec, ...(spec.enum ? { enum: Object.freeze([...spec.enum]) } : {}) })]))) as Readonly<Record<string, Readonly<FieldSpec>>>;
   return Object.freeze({
     name: collection.name, ownership: collection.spec.ownership, readOnly: collection.spec.readOnly, fields,
-    async create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { return result(await collection.create({ ...values }, undefined, ownerOf(principal))); },
+    async create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { return result(await collection.create({ ...values }, undefined, ownerOf(principal), actorOf(principal))); },
     get(principal: StorePrincipal, id: string) { return result(collection.get(known(id), ownerOf(principal))); },
     async update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) {
       if (options.ifMatch !== undefined && (typeof options.ifMatch !== 'string' || !/^"[0-9a-f]{32}"$/.test(options.ifMatch))) throw new StoreError(400, 'invalid_if_match', 'If-Match must be one strong quoted ETag this store issued');
-      return result(await collection.update(known(id), { ...patch }, false, undefined, options.ifMatch, ownerOf(principal)));
+      return result(await collection.update(known(id), { ...patch }, false, undefined, options.ifMatch, ownerOf(principal), actorOf(principal)));
     },
     list(principal: StorePrincipal, options: { limit?: number; cursor?: string } = {}) {
       const invalid = (field: string, message: string) => new StoreError(400, 'invalid_query', 'The query is not valid', { [field]: message });
@@ -94,7 +96,7 @@ export function storeExports(): { exports: StoreExports; attach(collections: rea
     version: 1 as const,
     get active() { return current !== undefined; },
     records(name: string): StoreRecords {
-      if (!current) throw new Error('store is not active yet: declare store before the extension that uses it under extensions in urlcode.yaml, so the runtime activates it first');
+      if (!current) throw new Error('store is not active yet: the runtime activates store before the extensions that require it, so call records() from activate or a request, not from host()');
       const found = typeof name === 'string' ? current.byName.get(name) : undefined;
       if (!found) throw new Error(`store declares no collection ${String(name).slice(0, 64)}`);
       return found;
