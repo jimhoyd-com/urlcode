@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMail, recordingTransport } from '../src/index.ts';
 import type { MailContribution, MailTemplate } from '../src/index.ts';
@@ -122,7 +123,7 @@ test('copy files are refused for unknown keys, changed slots, size, escapes and 
   await attempt({ 'demo.plain': { subject: 'S', text: 'x'.repeat(70000) } }, /at most 65536 bytes/);
   await attempt('{not json', /not JSON/);
   await assert.rejects(async () => mail.registration.activate({ copy: { fr: 'mail/copy/absent.json' } }, activation(project)), /does not exist/);
-  await symlink('/etc/hosts', join(site, 'mail', 'copy', 'escape.json'));
+  await symlink(tmpdir(), join(site, 'mail', 'copy', 'escape.json'));
   await assert.rejects(async () => mail.registration.activate({ copy: { fr: 'mail/copy/escape.json' } }, activation(project)), /inside the site/);
   assert.equal(mail.exports.active, false);
 });
