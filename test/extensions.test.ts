@@ -402,6 +402,62 @@ test('validate, test and dev print a host file load failure and an extension hos
   assert.equal(asConfigError(Object.assign(new Error('look-alike'),{details:{code:'x'}})),undefined);
 });
 
+test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and a stale or missing policy still refuses (#723)',async t=>{
+  const root=await project(t,{'/demo/*':mount},{'tests/requests.json':JSON.stringify([{path:'/demo/x',status:200}])},{extensions:declarations});
+  const revision=await inspectExtensionRevision(root);
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const {activate:_activate,projectSha256:_pin,...data}=await registration(root);
+  const host=join(dir,'host.mjs'),policy=join(dir,'policy.json'),stale=join(dir,'stale.json');
+  // host() sees only the revision in its context: no policy grants, no file path.
+  await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
+const data=${JSON.stringify(data)};
+const demo={definition:{name:'demo',schema:data.schema,host(context){
+  if(Object.keys(context).sort().join()!=='contributions,get,projectSha256,site')throw new Error('unexpected host context '+Object.keys(context));
+  return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned '+context.projectSha256};}};}}};
+}},options:{}};
+export default await composeHost(import.meta.url,[demo]);
+`);
+  await writeFile(policy,JSON.stringify({version:1,projectSha256:revision,routes:{}}));
+  await writeFile(stale,JSON.stringify({version:1,projectSha256:'c'.repeat(64),routes:{}}));
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const {PROJECT_SHA256:_unset,...base}=process.env;
+  const run=(command:string,env:Record<string,string>,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env:{...base,...env}});
+  const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string};
+  for(const command of ['validate','test'])await t.test(`${command} takes the pin from --policy`,()=>{
+    const out=run(command,{},'--policy',policy);assert.equal(out.status,0,out.stderr);
+    const agreeing=run(command,{PROJECT_SHA256:revision},'--policy',policy);assert.equal(agreeing.status,0,agreeing.stderr);
+  });
+  await t.test('a different PROJECT_SHA256 refuses',()=>{
+    const out=run('validate',{PROJECT_SHA256:'b'.repeat(64)},'--policy',policy);assert.equal(out.status,1);
+    assert.deepEqual(lastError(out.stderr),{event:'error',code:'revision-pin-mismatch',message:`PROJECT_SHA256 (${'b'.repeat(64)}) differs from the --policy revision (${revision}); with --policy the host is pinned to the policy's projectSha256, so unset PROJECT_SHA256 or set it to the same reviewed revision`});
+  });
+  await t.test('no policy and no PROJECT_SHA256 still refuses; PROJECT_SHA256 alone still works',()=>{
+    const out=run('validate',{});assert.equal(out.status,1);
+    assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+    assert.equal(run('validate',{PROJECT_SHA256:revision}).status,0);
+  });
+  await t.test('a policy for another revision refuses',()=>{
+    const out=run('validate',{},'--policy',stale);assert.equal(out.status,1);
+    const error=lastError(out.stderr);assert.equal(error.code,'revision-pin-mismatch');
+    assert.match(error.message,new RegExp(`^The extension host is pinned by --policy: the policy is pinned to project revision ${'c'.repeat(64)}, but the project is now revision ${revision}`));
+  });
+  await t.test('commands without --policy support do not derive a pin',()=>{
+    const out=spawnSync(process.execPath,[cli,'explain','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
+    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+  });
+  await t.test('the project YAML cannot supply the pin',async()=>{
+    const pinned=await project(t,{'/demo/*':mount},{},{extensions:declarations,projectSha256:revision} as Parameters<typeof project>[3]);
+    const out=spawnSync(process.execPath,[cli,'validate','--project',pinned,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
+    // The host is composed before the YAML is read, and nothing in the project is consulted for the pin.
+    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+  });
+  // The slot is set only while the host file is imported.
+  const {loadOperatorHost,operatorRevisionKey}=await import('../packages/core/src/operator-host.ts');
+  const loaded=await loadOperatorHost(host,root,{revision});
+  assert.equal(loaded.extensions?.[0]?.projectSha256,revision);assert.equal((globalThis as Record<symbol,unknown>)[operatorRevisionKey],undefined);
+  await loaded.close?.();
+});
+
 /** A demo registry written as a host file outside the project, matching the in-process registration above. */
 async function hostFile(t:import('node:test').TestContext,root:string):Promise<string>{
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));

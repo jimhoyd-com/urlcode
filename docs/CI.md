@@ -144,7 +144,8 @@ policies checked against its installed `urlcode.json` schemas with no extension
 code running, and `test` and `audit` are skipped with a notice. With
 `host-file: host.mjs`, validate, test and audit activate the installed
 extensions through the host; the action computes `PROJECT_SHA256` from the
-checked-out project for that run only, and the workflow must provide any
+checked-out project for that run only (it passes no `--policy`, so the pin
+comes from that variable), and the workflow must provide any
 secrets the host reads (for example through `env`). A site that declares no
 extensions runs all three either way.
 

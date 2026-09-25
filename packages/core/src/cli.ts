@@ -19,11 +19,11 @@ import { planUpgrade, upgradeSite } from './upgrade.ts';
 import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
-import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
+import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions, type OperatorPolicy } from './policy.ts';
 import { loadDocument, safeFile } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
-import { ConfigError, HttpError, errorFields } from './errors.ts';
+import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
@@ -293,6 +293,7 @@ process.on('unhandledRejection', reason => {
   process.exit(1);
 });
 let operatorHost: OperatorHost = {};
+let verifiedPolicy: OperatorPolicy | undefined;
 let serving = false;
 try {
   const { values: parsed, positionals } = parseArgs({ allowPositionals:true, options });
@@ -313,7 +314,16 @@ try {
     if (values['host-file'] !== undefined) {
       if (!(hostFileCommands as readonly string[]).includes(command)) throw new ConfigError(`--host-file is only supported by ${hostFileCommands.join('/')}`);
       // The MCP server and context command load and release the host themselves.
-      if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
+      if (command !== 'mcp' && command !== 'context') {
+        // A verified --policy pins the host to its reviewed revision, so no PROJECT_SHA256 bridge is needed (#723).
+        // Only the revision reaches the host; the grants stay with core.
+        if (values.policy !== undefined && (policyCommands as readonly string[]).includes(command)) verifiedPolicy = await loadOperatorPolicy(values.policy, values.project);
+        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 });
+        if (verifiedPolicy && operatorHost.extensions?.length) {
+          const actual = (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256;
+          if (verifiedPolicy.projectSha256 !== actual) throw new ConfigError(`The extension host is pinned by --policy${revisionPinHint(verifiedPolicy.projectSha256, actual)}`, { code: 'revision-pin-mismatch' });
+        }
+      }
     }
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
     if (values.ack !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--ack is only supported by init --with and extensions add');
@@ -387,7 +397,7 @@ try {
       // Estimates only (characters / 4); a tokenizer is not a dependency. Stats go to stderr so stdout stays parseable.
       if (values.stats) process.stderr.write(JSON.stringify({ event:'stats', estimate:'characters/4', documentationTokens:await documentationTokens(), contextTokens:estimateTokens(text) }) + '\n');
     }else{
-      const permissions = await loadOperatorPolicy(values.policy,values.project);
+      const permissions = verifiedPolicy ?? await loadOperatorPolicy(values.policy,values.project);
       switch (command) {
         case 'routes': case 'audit': case 'benchmark': {
           const number = (key: 'expect-routes' | 'requests' | 'concurrency' | 'seconds' | 'max-p95-ms' | 'warmup',fallback?: number): number | undefined => {
@@ -485,7 +495,7 @@ try {
             break;
           }
           const created = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [], example: values.example ?? false });
-          const review = `Review ${created.site}/app and pin its revision explicitly: PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
+          const review = `Review ${created.site}/app and pin its revision explicitly: projectSha256 ${created.projectSha256} in the reviewed --policy file, or PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
           if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
           else print({ event:'created', ...created, review });
           break;
@@ -499,7 +509,7 @@ try {
           }
           const result = await upgradeSite(site, { to: values.to });
           print(values.json || !human ? { event: 'upgraded', ...result } : result.upgraded
-            ? [`Upgraded ${result.current} -> ${result.target} (core${result.addons.length ? `, ${result.addons.join(', ')}` : ''}).`, ...result.workflows.map(file => `Moved ${file} to action v${result.target}.`), `Project revision: ${result.projectSha256}. Update PROJECT_SHA256 if it changed, and restart.`].join('\n') + '\n'
+            ? [`Upgraded ${result.current} -> ${result.target} (core${result.addons.length ? `, ${result.addons.join(', ')}` : ''}).`, ...result.workflows.map(file => `Moved ${file} to action v${result.target}.`), `Project revision: ${result.projectSha256}. Update the reviewed policy's projectSha256 (or PROJECT_SHA256) if it changed, and restart.`].join('\n') + '\n'
             : `Up to date: ${result.current}\n`);
           break;
         }

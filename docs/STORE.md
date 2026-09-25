@@ -59,12 +59,14 @@ routes:
 ```
 
 Records live in `data/store/` beside `host.mjs` (or `STORE_DIRECTORY`), outside
-`app/`. Review the project, set `PROJECT_SHA256` to the revision the command
-printed, and serve:
+`app/`. Review the project, put the revision the command printed in the
+operator policy as its `projectSha256` (or set `PROJECT_SHA256` to it), and
+serve; `--policy` with `--host-file` pins the host automatically
+([the revision pin](EXTENSIONS.md#the-revision-pin)):
 
 ```sh
 npx urlcode extensions --host-file host.mjs    # inspect schemas
-PROJECT_SHA256=<printed revision> npx urlcode serve --host-file host.mjs --origin https://todo.example.com
+npx urlcode serve --host-file host.mjs --policy /etc/urlcode/policy.json --origin https://todo.example.com
 curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://todo.example.com/api/todos
 ```
 

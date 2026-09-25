@@ -858,7 +858,9 @@ byte as you wrote it. A layout they cannot edit that way (for example an
 it is never reformatted.
 
 It prints the environment variables the host reads, next steps, and the new
-project revision to review and set as `PROJECT_SHA256` where the host runs.
+project revision to review and pin: as the `projectSha256` of the operator
+policy passed with `--policy` (see [the revision pin](#the-revision-pin)), or
+as `PROJECT_SHA256` where the host runs.
 Any failure or refusal, by `add` or `remove`, rolls every change back:
 `package.json`, the lock, `app/urlcode.yaml`, `host.mjs`, the files it
 created, and `node_modules`. npm has already run by the time most checks
@@ -994,14 +996,35 @@ contents; core zeroes it after writing or on failure.
 revision pin, the site directory, the exports of a required extension and the
 values other extensions contribute to this one. It returns `{registration,
 exports?, close?}`; `registration` is the `RuntimeExtension` described above,
-and `close` runs in reverse activation order. `composeHost` reads
-`PROJECT_SHA256` once and refuses a host whose registration pins a different
+and `close` runs in reverse activation order. `composeHost` reads the
+revision pin once and refuses a host whose registration pins a different
 revision or registers a schema that differs from the definition.
+
+#### The revision pin
+
+`composeHost` takes the pin from the operator, never from the project:
+
+- When a CLI command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`,
+  `benchmark`) receives both `--policy` and `--host-file`, core validates the
+  policy and passes its `projectSha256` to `composeHost` while it imports the
+  host file. Nothing else in the policy reaches the host.
+- Otherwise `composeHost` reads `PROJECT_SHA256`, as before.
+- Both present and different refuses (`code` `revision-pin-mismatch`), and so
+  does a policy whose revision is not the project's current one once the host
+  registers an extension. Neither present refuses, naming both options.
+
+A `host()` hook reads the pin as `context.projectSha256` and registers it
+unchanged, so the generated `host.mjs` needs no edit and existing host files
+keep working. A hand-written host file that builds registrations without
+`composeHost` still reads `PROJECT_SHA256` itself. The pin travels through a
+process-global `Symbol.for('urlcode.host.operatorRevision')` slot that is set
+only while the host file is imported, so a host file that imports another copy
+of core still sees it.
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
 `composeHost` from `@jimhoyd/urlcode/host`. The runtime contract, the
-host-file trust boundary and the `PROJECT_SHA256` pin are the same whether an
+host-file trust boundary and the revision pin are the same whether an
 extension came from `extensions add` or was wired by hand; YAML never chooses
 code.
 

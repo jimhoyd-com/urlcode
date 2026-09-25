@@ -201,8 +201,9 @@ its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is
 documented under [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 `npx urlcode-auth bootstrap` creates the first administrator from JSON on
-stdin. The command prints the project revision that `PROJECT_SHA256` must
-carry; changing extension YAML, policies or mounts changes the revision and
+stdin. The command prints the project revision the host must be pinned to
+(the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
+[the revision pin](EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval.
 
 The presentation tooling composes the same way. `npx urlcode-ui` with
