@@ -75,7 +75,11 @@ table in the same transaction as the change, and the audit extension drains
 the outbox into its own log (`data/audit.sqlite`) while a host runs. A change
 and its event commit together or not at all. When 10000 events wait
 undelivered, the next privileged change answers `503 audit_backlog` and
-changes nothing: auth fails closed rather than acting unaudited.
+changes nothing: auth fails closed rather than acting unaudited. A reviewed
+configuration change records `configuration.changed` when the store opens, so
+with a full outbox startup itself fails with `audit_backlog`; start once on the
+previous configuration so the running host drains the outbox, then apply the
+change.
 `urlcode-auth doctor` reports the backlog. Retention, queries and exports are
 the audit extension's ([audit SECURITY](../audit/SECURITY.md)). Reading the
 audit log needs the `audit.read` and `audit.export` permissions, which roles

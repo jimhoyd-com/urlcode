@@ -98,7 +98,9 @@ export interface AuthStore {
     close(): Promise<void>;
 }
 /** Startup codes the worker reports for itself; anything else is an unavailable store. */
-const startupCodes = ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required'];
+// audit_backlog: a reviewed configuration change records configuration.changed at startup, and a full outbox refuses
+// it. Only a running host drains the outbox, so the operator starts once on the previous configuration first.
+const startupCodes = ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required', 'audit_backlog'];
 /**
  * Describes the phase a worker was still in when its startup bound elapsed.
  * Thread scheduling and database initialization fail for unrelated reasons, and a
@@ -599,7 +601,7 @@ if (!isMainThread && workerData?.authStore) {
         port.postMessage({ ready: true });
     }
     catch (e) {
-        port.postMessage({ error: e instanceof AuthError ? e.code : 'auth_store_unavailable' });
+        port.postMessage({ error: e instanceof AuthError || e instanceof AuditError ? e.code : 'auth_store_unavailable' });
         port.close();
     }
     port.on('message', ({ id, operation, args }: {

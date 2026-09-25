@@ -51,6 +51,12 @@ test('an elapsed startup bound names the phase the worker reached', async () => 
     assert.equal(startupPhase(40, 15000), 'worker thread began executing after 40ms, then did not report readiness for a further 14960ms (no startup stage reached: the database open itself had not returned)');
     assert.equal(startupPhase(40, 15000, 'journal mode set'), 'worker thread began executing after 40ms, then did not report readiness for a further 14960ms (last startup stage reached: journal mode set)');
 });
+test('a startup refused by a full audit outbox names audit_backlog', async () => {
+    const worker = new EventEmitter();
+    const pending = assert.rejects(awaitStoreStartup(worker, 15000), { code: 'audit_backlog', status: 503 });
+    worker.emit('message', { error: 'audit_backlog' });
+    await pending;
+});
 test('startup reports a worker that fails or exits instead of waiting out its bound', async () => {
     const exiting = new EventEmitter(), started = Date.now();
     const pending = assert.rejects(awaitStoreStartup(exiting, 15000), (error: Error) => {
