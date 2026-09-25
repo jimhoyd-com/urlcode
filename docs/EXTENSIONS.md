@@ -140,8 +140,12 @@ the header is absent, so a plain HTML form auth renders can post it.
 embed.
 
 `csrf: origin` drops the token and admits a write on same-origin provenance
-alone: core's same-origin rule (`Origin`, or `Sec-Fetch-Site: same-origin`
-when `Origin` is absent) plus the `SameSite=Strict` `__Host-` session cookie.
+alone: core's [same-origin rule](#site-origins-and-same-origin-checks) with
+`whenAbsent: 'refuse'` (a repeated `Origin`, `Sec-Fetch-Site` or `Referer`,
+or `Sec-Fetch-Site: cross-site`, refuses; then a site `Origin`; with no
+`Origin`, `Sec-Fetch-Site: same-origin` or `none`; with neither, a `Referer`
+whose origin is a site origin; no provenance at all refuses) plus the
+`SameSite=Strict` `__Host-` session cookie.
 Use it only on a mount that verifies its own token (forms, form-records) or
 that accepts JSON only (a store collection):
 

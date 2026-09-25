@@ -234,7 +234,9 @@ the canonical origin and the session) in a single `x-csrf-token` header, or in
 a `csrf` body field when the header is absent, and its provenance must pass
 core's same-origin rule. `AuthExports.csrf.token(request)` gives another
 extension the value to embed. `csrf: origin` skips the token and admits a write
-on same-origin provenance and the `SameSite=Strict` `__Host-` session cookie
+on same-origin provenance ([the full rule](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks):
+a site `Origin`, else `Sec-Fetch-Site: same-origin` or `none`, else a site
+`Referer`) and the `SameSite=Strict` `__Host-` session cookie
 alone; use it only on a mount that verifies its own token (forms,
 form-records) or that accepts JSON only (a store collection). `csrf` cannot be
 combined with `bearer`.
@@ -708,4 +710,4 @@ never overrides a hard budget. The per-client password-attempt limit inside
 the login transaction still applies with or without abuse. Provider callbacks
 and existing token redemption keep their own bound proofs.
 
-Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must pass core's [same-origin rule](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) with `whenAbsent: 'refuse'`: an `Origin` that is one of the site's origins (the canonical `--origin` or an operator `--alias-origin`), or, with no `Origin`, `Sec-Fetch-Site: same-origin`. A null or foreign Origin, `Sec-Fetch-Site: cross-site`, or no provenance at all is rejected. CSRF tokens and email links stay bound to the canonical origin. Passkey ceremonies work only on the canonical origin unless the operator sets a [shared passkey RP ID](#passkeys-and-the-relying-party-domain). Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
+Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must pass core's [same-origin rule](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) with `whenAbsent: 'refuse'`: an `Origin` that is one of the site's origins (the canonical `--origin` or an operator `--alias-origin`); with no `Origin`, `Sec-Fetch-Site: same-origin` or `none`; with neither, a `Referer` whose origin is a site origin. A repeated provenance header, a null or foreign Origin, `Sec-Fetch-Site: cross-site`, an unparseable or foreign Referer, or no provenance at all is rejected. CSRF tokens and email links stay bound to the canonical origin. Passkey ceremonies work only on the canonical origin unless the operator sets a [shared passkey RP ID](#passkeys-and-the-relying-party-domain). Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
