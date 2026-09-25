@@ -35,13 +35,17 @@ test('the RP ID is recorded with a credential, and activation warns with the cou
         await instance.close?.();
         return warnings;
     };
-    // No passkeyRpId: the canonical host is in effect; the unrecorded credential counts as the canonical host's.
-    assert.deepEqual(await warningsFor(), ['1 stored passkey was registered for another relying-party ID than app.site.example; it will not sign in until passkeyRpId matches the ID it was registered for']);
-    // Setting a shared RP ID strands the two canonical-host credentials.
-    assert.deepEqual(await warningsFor('site.example'), ['2 stored passkeys were registered for another relying-party ID than site.example; they will not sign in until passkeyRpId matches the ID they were registered for']);
-    // When every credential matches there is nothing to say.
+    const unknown = '1 stored passkey has no recorded relying-party ID (registered before auth recorded it); it signs in only while the relying-party ID in effect at registration is unchanged';
+    // No passkeyRpId: the canonical host is in effect. The unrecorded credential is never guessed to be foreign.
+    assert.deepEqual(await warningsFor(), ['1 stored passkey was registered for another relying-party ID than app.site.example; it will not sign in until passkeyRpId matches the ID it was registered for', unknown]);
+    // Setting a shared RP ID strands the canonical-host credential; the unrecorded one is still reported apart,
+    // since a site that already ran with passkeyRpId registered it for that ID.
+    assert.deepEqual(await warningsFor('site.example'), ['1 stored passkey was registered for another relying-party ID than site.example; it will not sign in until passkeyRpId matches the ID it was registered for', unknown]);
+    // When every recorded credential matches, only the unrecorded one is mentioned, and then nothing.
     const db = new DatabaseSync(database);
     db.prepare("DELETE FROM auth_passkeys WHERE id='shared'").run();
+    assert.deepEqual(await warningsFor(), [unknown]);
+    db.prepare("DELETE FROM auth_passkeys WHERE id='unrecorded'").run();
     db.close();
     assert.deepEqual(await warningsFor(), []);
 });

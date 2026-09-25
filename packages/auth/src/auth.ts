@@ -763,13 +763,20 @@ function activateAbuse(config: AbuseConfig | undefined, abuse: AbuseExports | un
 }
 /**
  * A passkey only works for the relying-party ID it was registered for (#736). The effective ID is the operator's
- * passkeyRpId, else the canonical host; a credential registered before auth recorded its RP ID counts as the
- * canonical host's. Credentials registered for another ID are reported through the activation's warning channel.
+ * passkeyRpId, else the canonical host. Credentials registered for another ID are reported through the activation's
+ * warning channel. A credential stored before auth recorded its RP ID is never guessed to be foreign: it is reported
+ * separately, because it was registered for whichever ID was in effect then, which auth cannot know.
  */
 async function warnForeignPasskeys(service: AuthServiceInternal, context: ExtensionActivation): Promise<void> {
-    const canonicalHost = new URL(context.origin).hostname, effective = context.passkeyRpId ?? canonicalHost;
-    const foreign = Object.entries(await service.passkeyRpIds()).reduce((sum, [rpId, count]) => sum + ((rpId || canonicalHost) === effective ? 0 : count), 0);
+    const effective = context.passkeyRpId ?? new URL(context.origin).hostname;
+    let foreign = 0, unknown = 0;
+    for (const [rpId, count] of Object.entries(await service.passkeyRpIds())) {
+        if (!rpId) unknown += count;
+        else if (rpId !== effective) foreign += count;
+    }
     if (foreign)
         context.warn?.(`${foreign} stored passkey${foreign === 1 ? ' was' : 's were'} registered for another relying-party ID than ${effective}; ${foreign === 1 ? 'it' : 'they'} will not sign in until passkeyRpId matches the ID ${foreign === 1 ? 'it was' : 'they were'} registered for`);
+    if (unknown)
+        context.warn?.(`${unknown} stored passkey${unknown === 1 ? ' has' : 's have'} no recorded relying-party ID (registered before auth recorded it); ${unknown === 1 ? 'it signs' : 'they sign'} in only while the relying-party ID in effect at registration is unchanged`);
 }
 export type { AuthUser };
