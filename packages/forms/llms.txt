@@ -3,7 +3,7 @@
 > Operator-installed declarative HTML form flows for URLCode. Renders escaped
 > fields through `urlcode-ui`, admits only bounded URL-encoded POST bodies,
 > validates declared fields, returns 422 with field errors, and redirects a
-> valid submission to a fixed confirmation page. Released as a tarball on core's
+> valid submission to a confirmation page that shows only opted-in fields. Released as a tarball on core's
 > GitHub Release and installed with `urlcode extensions add forms`; only core is
 > on npm. Apache-2.0.
 
@@ -29,4 +29,6 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - The supplied `onSubmit` hook is trusted project code, runs only after CSRF
   and field validation, and should make external effects idempotent.
 - Fields are escaped and rendered through the `ui` kit; there is no arbitrary
-  template engine here.
+  template engine here. The confirmation shows a submitted value only when its
+  field is listed in `confirmation.show`; `{field}` placeholders in its message
+  must name listed fields, and a refresh shows the fixed page.

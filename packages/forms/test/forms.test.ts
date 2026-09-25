@@ -240,3 +240,89 @@ test('date and datetime-local bounds are checked at activation (#528)',async t=>
   await assert.rejects(startWithFields(t,{d:{label:'D',type:'datetime-local',minimum:'2026-01-01T09:00:30'}}));
   for(const field of [{label:'D',type:'date',minimum:'2026-01-01',maximum:'2026-01-01'},{label:'D',type:'datetime-local',minimum:'2026-01-01T09:00',maximum:'2026-01-01T09:00'},{label:'D',type:'number',minimum:1,maximum:2}]){const app=await startWithFields(t,{d:field});await app.close();}
 });
+
+// Confirmation fields (#527): opted-in values travel in a sealed, browser-bound, short-lived cookie.
+const CONFIRMATION='__Host-urlcode-forms-confirmation',BINDING='__Host-urlcode-forms-csrf';
+const confirmFields={email:{label:'Email <address>',type:'email',required:true,maxLength:320},topic:{label:'Topic',control:'select',required:true,options:[{value:'support',label:'Support & help'},{value:'sales',label:'Sales'}]},terms:{label:'Agree',control:'checkbox',required:true},nickname:{label:'Nickname',required:false,maxLength:4000},secret:{label:'Private note',required:false,maxLength:128}};
+async function bootFlows(t:test.TestContext,flows:Record<string,unknown>){
+  const root=await mkdtemp(join(tmpdir(),'forms-confirmation-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const project=join(root,'app');await mkdir(project);
+  const routes=Object.fromEntries(Object.values(flows).map(flow=>[`${(flow as {mount:string}).mount}/*`,{extension:'forms',methods:['GET','HEAD','POST']}]));
+  await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{ui:{version:'1',config:{}},forms:{version:'1',config:{flows}}},routes:{'/assets/ui/*':{extension:'ui'},...routes}}));
+  const projectSha256=await inspectExtensionRevision(project),ui=createUiExtension({projectRoot:project,projectSha256});
+  const started=startServer({project,origin,port:0,log:()=>{},extensions:[ui.registration,createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32)})]});
+  return {started,async ready(){const app=await started;t.after(()=>app.close());
+    const cookies=new Map<string,string>();
+    const call=(path:string,init:RequestInit={})=>{const headers=new Headers(init.headers);if(cookies.size&&!headers.has('cookie'))headers.set('cookie',[...cookies].map(([key,value])=>`${key}=${value}`).join('; '));return fetch(`http://127.0.0.1:${app.address.port}${path}`,{...init,headers}).then(response=>{for(const header of response.headers.getSetCookie()){const first=header.split(';')[0]!,index=first.indexOf('=');if(header.includes('Max-Age=0'))cookies.delete(first.slice(0,index));else cookies.set(first.slice(0,index),first.slice(index+1));}return response;});};
+    const submit=async(mount:string,values:Record<string,string>)=>{const html=await (await call(mount)).text();const csrf=/name="csrf" value="([^"]+)"/.exec(html)?.[1];assert.ok(csrf);return call(mount,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf,...values}),redirect:'manual'});};
+    return {call,cookies,submit};
+  }};
+}
+const contactFlow=(confirmation:Record<string,unknown>,mount='/contact')=>({mount,title:'Contact',submitLabel:'Send',confirmation:{title:'Thank you',...confirmation},fields:confirmFields});
+const hostileEmail='<img/src=x/onerror=alert(1)>@example.test';
+
+test('confirmation shows only opted-in fields, escaped, with placeholders substituted after escaping, and no-store (#527)',async t=>{
+  const {call,cookies,submit}=await (await bootFlows(t,{contact:contactFlow({message:'We will reply to {email} about {topic}.',show:['email','topic','terms','nickname']})})).ready();
+  const sent=await submit('/contact',{email:hostileEmail,topic:'support',terms:'true',nickname:'{email} <b>bold</b>',secret:'unlisted-private-note'});
+  assert.equal(sent.status,303);assert.equal(sent.headers.get('location'),'/contact/confirmation','no field value is placed in the redirect URL');
+  const handoff=sent.headers.getSetCookie().find(header=>header.startsWith(`${CONFIRMATION}=`));assert.ok(handoff);
+  assert.match(handoff,/; Path=\/; Secure; HttpOnly; SameSite=Strict; Max-Age=300$/);
+  const sealed=cookies.get(CONFIRMATION)!;for(const plain of ['example.test','support','unlisted','bold'])assert.ok(!Buffer.from(sealed,'base64url').toString('latin1').includes(plain),`the cookie does not carry ${plain} as plaintext`);
+  const page=await call('/contact/confirmation');const html=await page.text();
+  assert.equal(page.headers.get('cache-control'),'no-store');
+  assert.match(html,/We will reply to &lt;img\/src=x\/onerror=alert\(1\)&gt;@example\.test about Support &amp; help\./);
+  assert.ok(!html.includes('<img/src'),'a shown value cannot inject markup');
+  assert.match(html,/<dt>Agree<\/dt><dd>Yes<\/dd>/);
+  assert.match(html,/<dt>Nickname<\/dt><dd>\{email\} &lt;b&gt;bold&lt;\/b&gt;<\/dd>/,'a value is not re-expanded as a placeholder');
+  assert.ok(!html.includes('<dt>Email'),'a field used as a placeholder is not listed again');
+  assert.ok(!html.includes('unlisted-private-note')&&!html.includes('Private note'),'an unlisted field never appears');
+  assert.ok(page.headers.getSetCookie().some(header=>header.startsWith(`${CONFIRMATION}=;`)&&header.includes('Max-Age=0')),'the handoff is cleared on read');
+  const refresh=await (await call('/contact/confirmation')).text();
+  assert.match(refresh,/We will reply to {2}about \./,'a refresh shows the fixed page, placeholders rendering as nothing');
+  assert.ok(!refresh.includes('example.test')&&!refresh.includes('<dl>'));
+});
+
+test('confirmation falls back to the fixed page for another browser, a tampered, expired or other-flow handoff, or an oversized one (#527)',async t=>{
+  const {call,cookies,submit}=await (await bootFlows(t,{contact:contactFlow({message:'Reply to {email}.',show:['email','nickname']}),other:contactFlow({message:'Other {email}.',show:['email']},'/other')})).ready();
+  const fixed=(html:string)=>!html.includes('example.test')&&!html.includes('<dl>');
+  const visit=async(cookie?:string)=>{const response=await call('/contact/confirmation',cookie===undefined?{}:{headers:{cookie}});return {html:await response.text(),cleared:response.headers.getSetCookie().some(header=>header.startsWith(`${CONFIRMATION}=;`)),status:response.status};};
+  assert.ok(fixed((await visit()).html),'no handoff renders the fixed page');
+  await submit('/contact',{email:'person@example.test',topic:'sales',terms:'true'});
+  const sealed=cookies.get(CONFIRMATION)!,binding=cookies.get(BINDING)!;
+  const otherBrowser=await visit(`${BINDING}=${'b'.repeat(36)}; ${CONFIRMATION}=${sealed}`);
+  assert.equal(otherBrowser.status,200);assert.ok(fixed(otherBrowser.html),'a different binding cookie cannot open the handoff');assert.ok(otherBrowser.cleared);
+  assert.ok(fixed((await visit(`${CONFIRMATION}=${sealed}`)).html),'a missing binding cookie cannot open the handoff');
+  const middle=Math.floor(sealed.length/2),tampered=sealed.slice(0,middle)+(sealed[middle]==='A'?'B':'A')+sealed.slice(middle+1);
+  const tamperedVisit=await visit(`${BINDING}=${binding}; ${CONFIRMATION}=${tampered}`);assert.ok(fixed(tamperedVisit.html),'a tampered handoff is refused');assert.ok(tamperedVisit.cleared);
+  for(const junk of ['x','!!!',sealed.slice(0,20)])assert.ok(fixed((await visit(`${BINDING}=${binding}; ${CONFIRMATION}=${junk}`)).html),junk);
+  const otherFlow=await call('/other/confirmation',{headers:{cookie:`${BINDING}=${binding}; ${CONFIRMATION}=${sealed}`}});assert.ok(fixed(await otherFlow.text()),'a handoff sealed for one flow does not open for another');
+  assert.match((await visit(`${BINDING}=${binding}; ${CONFIRMATION}=${sealed}`)).html,/Reply to person@example\.test\./,'the genuine handoff still opens in its own browser');
+  // Expiry: mock only Date so the server's sockets and timers run normally.
+  await submit('/contact',{email:'late@example.test',topic:'sales',terms:'true'});
+  t.mock.timers.enable({apis:['Date'],now:Date.now()});t.mock.timers.tick(5*60_000+1_000);
+  const expired=await visit();assert.ok(!expired.html.includes('late@example.test'),'an expired handoff renders the fixed page');assert.ok(expired.cleared);
+  t.mock.timers.reset();
+  // Size cap: a handoff above 2 KiB of plaintext is not issued.
+  const big=await submit('/contact',{email:'big@example.test',topic:'sales',terms:'true',nickname:'n'.repeat(3000)});
+  assert.equal(big.status,303);assert.ok(!big.headers.getSetCookie().some(header=>header.startsWith(`${CONFIRMATION}=`)&&!header.includes('Max-Age=0')));
+  assert.ok(!(await visit()).html.includes('big@example.test'));
+});
+
+test('HEAD on the confirmation answers the fixed page without consuming the handoff (#527)',async t=>{
+  const {call,submit}=await (await bootFlows(t,{contact:contactFlow({message:'Reply to {email}.',show:['email']})})).ready();
+  await submit('/contact',{email:'person@example.test',topic:'sales',terms:'true'});
+  const head=await call('/contact/confirmation',{method:'HEAD'});assert.equal(head.status,200);assert.equal(head.headers.get('cache-control'),'no-store');assert.equal(head.headers.getSetCookie().length,0);
+  assert.match(await (await call('/contact/confirmation')).text(),/Reply to person@example\.test\./);
+});
+
+test('startup refuses a show entry that is not a declared field, or a placeholder not listed in show (#527)',async t=>{
+  for(const [confirmation,error] of [
+    [{message:'Thanks.',show:['missing']},/confirmation show lists undeclared field missing/],
+    [{message:'Reply to {email}.',show:['topic']},/confirmation placeholder \{email\} is not listed in show/],
+    [{message:'Reply to {email}.'},/confirmation placeholder \{email\} is not listed in show/],
+  ] as const){
+    const {started}=await bootFlows(t,{contact:contactFlow(confirmation)});
+    await assert.rejects(started,error,JSON.stringify(confirmation));
+  }
+  const {started}=await bootFlows(t,{contact:contactFlow({message:'Literal { braces } and {Upper} stay text.'})});await (await started).close();
+});

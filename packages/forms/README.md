@@ -3,8 +3,8 @@
 `forms` is a trusted operator-installed extension for small server-rendered,
 declarative form flows. It renders escaped fields through `urlcode-ui`, admits
 only bounded URL-encoded POST bodies, validates declared fields, returns 422
-with field errors, and redirects a valid submission to a fixed confirmation
-page. It is not a database, email sender, or arbitrary template engine.
+with field errors, and redirects a valid submission to a confirmation page that
+shows only the submitted fields the flow opts in to. It is not a database, email sender, or arbitrary template engine.
 
 The extension requires the `ui` extension and an operator-provided CSRF secret.
 Install it into a site with `urlcode extensions add forms` (which adds `ui` too
@@ -90,4 +90,38 @@ submitted value is compared at full precision, so with `maximum:
 "2026-01-09T17:30"` the value `17:30:00` is accepted and `17:30:01` is not.
 Bounds are absolute; relative bounds such as "today" or "two years from now"
 are not supported.
+
+## Showing submitted values on the confirmation
+
+The confirmation page is fixed text unless the flow lists fields in
+`confirmation.show`. Listed values are shown on the confirmation; the message
+may place any of them inline as a `{field}` placeholder, and listed fields the
+message does not reference follow as a label/value list. A checkbox reads
+`Yes` or `No` and a select shows its option label. Fields not listed never
+appear:
+
+```yaml
+confirmation:
+  title: Thank you
+  message: We will reply to {email} about {topic}.
+  show: [email, topic]
+```
+
+Startup refuses a `show` entry that is not a declared field and a placeholder
+whose field is not in `show`. A placeholder is `{` + a field name + `}`; other
+braces are literal text. Every value is HTML-escaped, and placeholders are
+substituted after the message is escaped, so a value can add neither markup
+nor another placeholder.
+
+The values travel from the submission to the confirmation in a sealed,
+`HttpOnly` cookie that is encrypted, bound to the submitting browser and flow,
+expires after 5 minutes, and is cleared when the confirmation is read, never
+in the URL. See [SECURITY.md](SECURITY.md#confirmation-values) for the exact
+guarantees. The confirmation falls back to its fixed form, with each
+placeholder rendering as nothing, when that cookie is missing, expired,
+tampered with, from another browser or flow, or already read: **refreshing the
+confirmation shows the fixed form**. Word the message so it still reads well
+that way. A handoff whose values exceed 2 KiB of JSON is not issued, so give
+shown free-text fields a `maxLength` well under that. `HEAD` always answers
+with the fixed form and leaves the cookie in place.
 
