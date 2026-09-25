@@ -1,7 +1,7 @@
 {
   "kind": "extension",
   "name": "ui",
-  "description": "Shared presentation kit: theme, copy, templates and generated store screens for every extension page.",
+  "description": "Shared presentation kit: theme, copy, templates and the data screens other extensions contribute, for every extension page.",
   "requires": [],
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -317,63 +317,6 @@
                 }
               }
             ]
-          }
-        }
-      },
-      "screens": {
-        "type": "object",
-        "maxProperties": 16,
-        "propertyNames": {
-          "pattern": "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$",
-          "maxLength": 256
-        },
-        "additionalProperties": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "collection"
-          ],
-          "properties": {
-            "collection": {
-              "type": "string",
-              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-            },
-            "title": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "columns": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 64,
-              "items": {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                  },
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "field"
-                    ],
-                    "properties": {
-                      "field": {
-                        "type": "string",
-                        "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                      },
-                      "label": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      }
-                    }
-                  }
-                ]
-              }
-            }
           }
         }
       }

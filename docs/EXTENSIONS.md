@@ -546,9 +546,10 @@ URLCode ships two kinds of add-on with one shape:
 | Commands | `urlcode extensions …` | `urlcode artifacts …` |
 
 Every add-on is an npm-packable workspace carrying a static `urlcode.json`
-descriptor: `{kind, name, description, requires, schema?, policySchema?,
-hooks?, authoring?}`. For an extension the descriptor is written from its
-`defineExtension` definition by `npm run build:addons`, and CI fails when the
+descriptor: `{kind, name, description, requires, contributes?, schema?,
+policySchema?, hooks?, authoring?}`. For an extension the descriptor is written from its
+`defineExtension` definition by `npm run build:addons` (including
+`contributes`, the sorted names of the extensions it hands a value to), and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
 contracts without running any of its code. An artifact descriptor carries only
 `kind`, `name`, `description` and `requires`.
@@ -702,7 +703,14 @@ every add-on is installed once at the top level of the site. `composeHost`
 orders the listed extensions by `requires` and activates each once. A dependant
 receives the shared services of what it requires through `ctx.get('<name>')`,
 and passes templates and copy catalogues to `ui` through `contributes.ui`,
-which `ui` collects with `ctx.contributions('ui')`. Two copies of one extension
+which `ui` collects with `ctx.contributions('ui')`. A contribution is an
+optional edge: an extension may contribute to one it does not require, and the
+value is simply unused when the target is not installed. The store does this:
+it does not require `ui`, but contributes `screens`, a source ui calls at
+activation to receive generic descriptions of the CRUD screens declared under
+`extensions.store.config.screens`, so ui never reads the store's
+configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
+`package.json` declares `ui` an optional peer. Two copies of one extension
 cannot exist in a site, so duplicate-instance bugs (such as a second `ui` kit
 that never received another extension's templates) cannot happen.
 

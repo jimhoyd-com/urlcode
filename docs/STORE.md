@@ -314,22 +314,33 @@ store:public-write`.
 ## A screen for the collection
 
 `npx @jimhoyd/urlcode init todo-site --with ui,auth,store` (or `--with ui,store --ack store:public-write`) also serves `/todos`, a
-list with a create form, inline edit and delete. The `ui` extension reads the
-collection's fields from `extensions.store` in `app/urlcode.yaml` when it starts,
-so a Todo app declares its fields once and gets both the API and the screen; add
-a field there, re-review and re-pin, and it appears on both. `extensions.ui`
-gets one entry, and the screen a route:
+list with a create form, inline edit and delete. The store owns the screen: it
+is declared under `extensions.store.config.screens`, next to the collection it
+shows, so a Todo app declares its fields once and gets both the API and the
+screen; add a field, re-review and re-pin, and it appears on both. The store
+scaffold writes the entry and the screen's route when `ui` is installed:
 
 ```yaml
 extensions:
-  ui:
+  store:
     version: "1"
     config:
+      collections:
+        todos: {mount: /api/todos, fields: {title: {type: string, required: true}}}
       screens:
         /todos: {collection: todos, title: Todos}
 routes:
   /todos/*: {extension: ui, methods: [GET, HEAD]}
 ```
+
+The `ui` extension renders it without reading the store's configuration: the
+store's definition contributes a screen source to ui (`contributes.ui.screens`),
+which resolves each screen to a generic `{title, collection: {mount, fields,
+...}, columns?}` description when ui activates. A screen naming a collection the
+store does not declare refuses at activation, and so does a screen path with no
+`extension: ui` route. `ui` is an optional peer of the store: without it the
+`screens` block is accepted but nothing serves it. `title` defaults to the
+collection name.
 
 The page is server-rendered escaped shell only; the browser loads the records
 from the store's own `/api/todos` with the kit's `crud` script, served

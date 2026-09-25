@@ -17,6 +17,9 @@ test('the definition names the store, requires nothing and shares the runtime sc
   assert.equal(store.definition.name, 'store');
   assert.deepEqual(store.definition.requires, []);
   assert.equal(store.definition.schema, storeConfigSchema);
+  // The optional store -> ui edge is declared, not required: the store contributes its screens to ui.
+  assert.deepEqual(Object.keys(store.definition.contributes ?? {}), ['ui']);
+  assert.equal(typeof (store.definition.contributes!.ui as { screens?: unknown }).screens, 'function');
 });
 
 test('scaffold returns the todos collection and its route, and validates with core', async () => {
@@ -34,7 +37,20 @@ test('scaffold protects the mount with auth: true when auth is installed, and ne
   assert.equal((result.routes['/api/todos/*'] as { auth?: boolean }).auth, true);
   assert.equal(result.acknowledged, undefined);
   assert.equal(result.routeNotes, undefined);
-  assert.deepEqual(await scaffold({ installed: ['auth', 'store'], acknowledgements: [] }), result, 'other installed extensions do not change the result');
+  const withoutUi = await scaffold({ installed: ['auth', 'store'], acknowledgements: [] });
+  assert.deepEqual(Object.keys(withoutUi.routes), ['/api/todos/*']);
+  assert.equal('screens' in withoutUi.config, false);
+});
+
+test('with ui installed the store declares its own /todos screen and the ui route that serves it (#709)', async () => {
+  const signedIn = await scaffold({ installed: ['auth', 'store', 'ui'], acknowledgements: [] });
+  assert.deepEqual((signedIn.config as { screens?: unknown }).screens, { '/todos': { collection: 'todos', title: 'Todos' } });
+  assert.deepEqual(signedIn.routes['/todos/*'], { extension: 'ui', methods: ['GET', 'HEAD'], auth: true });
+  assert.ok(signedIn.notes!.some(note => note.includes('/todos') && note.includes('extensions.store.config.screens')));
+  const open = await scaffold({ installed: ['store', 'ui'] });
+  assert.deepEqual(open.routes['/todos/*'], { extension: 'ui', methods: ['GET', 'HEAD'] });
+  const document = validateDocument({ version: '1', extensions: { store: { version: '1', config: signedIn.config }, ui: { version: '1', config: {} } }, routes: { ...signedIn.routes, '/assets/ui/*': { extension: 'ui' } } });
+  assert.equal(document.routes['/todos/*']?.extension, 'ui');
 });
 
 test('scaffold refuses a writable mount nothing protects unless store:public-write is acknowledged', async () => {

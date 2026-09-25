@@ -83,7 +83,8 @@ test('every extension installs once, composes, serves, and removes in dependency
   // Closed here, not in an after hook: the site is removed in one, and Windows cannot delete the auth
   // database while the service still holds it open.
   try {
-    for (const path of ['/account/login', '/api/todos', '/contact', '/private']) {
+    // /todos is the store's own screen, contributed to ui (#709); signed-in only, so it redirects rather than 404s.
+    for (const path of ['/account/login', '/api/todos', '/todos', '/contact', '/private']) {
       const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
       assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
     }

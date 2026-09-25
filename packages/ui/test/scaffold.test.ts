@@ -48,17 +48,18 @@ test('ui alone: theme from the site name, the assets mount and the ui/ override 
     assert.equal(((await scaffold(['ui'], '/srv/<weird>')).config.theme as { name: string }).name, 'weird');
 });
 
-test('ui with store adds the /todos screen and route; with auth too the route is signed-in', async () => {
-    const withStore = await scaffold(['store', 'ui']);
-    assert.deepEqual(withStore.config.screens, { '/todos': { collection: 'todos', title: 'Todos' } });
-    assert.deepEqual(withStore.routes, { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] }, '/todos/*': { extension: 'ui', methods: ['GET', 'HEAD'] } });
-    assert.ok(withStore.notes!.some(note => note.includes('/todos')));
+test('ui never scaffolds another extension\'s screen: store owns its CRUD screen (#709)', async () => {
+    const alone = await scaffold(['ui']);
+    for (const installed of [['store', 'ui'], ['auth', 'store', 'ui']]) {
+        const result = await scaffold(installed);
+        assert.equal('screens' in result.config, false);
+        assert.deepEqual(Object.keys(result.routes), ['/assets/ui/*']);
+        assert.ok(result.notes!.every(note => !note.includes('/todos') && !note.includes('store')), result.notes!.join('\n'));
+    }
+    assert.deepEqual((await scaffold(['store', 'ui'])).config, alone.config);
     const signedIn = await scaffold(['auth', 'store', 'ui']);
-    assert.deepEqual(signedIn.routes['/todos/*'], { extension: 'ui', methods: ['GET', 'HEAD'], auth: true });
     assert.ok(signedIn.notes!.some(note => note.includes('--extensions @jimhoyd/urlcode-auth') && !note.includes('urlcode-admin')));
     assert.ok(signedIn.notes!.some(note => note.includes('eject auth/sign-in')));
-    // auth without store adds no screen, so nothing needs signing in.
-    assert.deepEqual(Object.keys((await scaffold(['auth', 'ui'])).routes), ['/assets/ui/*']);
 });
 
 test('the scaffold validates as a project document with core and never writes', async () => {

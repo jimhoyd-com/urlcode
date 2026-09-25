@@ -14,6 +14,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - Protect the mount with `auth: true` (the scaffold adds it when auth is installed) unless the
   scaffold's explicit `--ack store:public-write` was given; an unprotected write mount has no rate
   limiting, abuse protection or multi-tenant isolation of its own.
+- Optional list-and-form screens: `extensions.store.config.screens: { /todos: { collection: todos, title?, columns? } }`
+  plus a route `/todos/*: { extension: ui, methods: [GET, HEAD] }`. The store contributes them to the
+  `ui` extension (`contributes.ui.screens`); they are declared here, never under `extensions.ui`.
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({directory})`) in
   the `composeHost` list; `urlcode extensions add store` writes that line.
 

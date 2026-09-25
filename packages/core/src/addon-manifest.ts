@@ -37,6 +37,11 @@ export interface AddonDescriptor {
   name: string;
   description: string;
   requires: string[];
+  /**
+   * Extensions this one hands a value through `contributes` (for example `["ui"]`), sorted. An optional edge in the
+   * add-on graph: unlike `requires`, the target need not be installed.
+   */
+  contributes?: string[];
   schema?: object;
   policySchema?: object;
   hooks?: ExtensionHookContract[];
@@ -99,11 +104,12 @@ export function withRequirements(manifest: AddonManifest, names: readonly string
 export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   assert(isRecord(raw) && (raw.kind === 'extension' || raw.kind === 'artifact') && typeof raw.name === 'string' && addonNamePattern.test(raw.name) && typeof raw.description === 'string', `${source} is not an add-on descriptor`);
   assert(Array.isArray(raw.requires) && raw.requires.every(item => typeof item === 'string'), `${source}: requires must be a list of names`);
+  assert(raw.contributes === undefined || Array.isArray(raw.contributes) && raw.contributes.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== raw.name), `${source}: contributes must be a list of other extension names`);
   if (raw.agent !== undefined) {
     assert(isRecord(raw.agent) && typeof raw.agent.description === 'string' && raw.agent.description.length > 0 && raw.agent.description.length <= 300 && Array.isArray(raw.agent.references), `${source}: agent tooling is malformed`);
     for (const reference of raw.agent.references) assert(isRecord(reference) && typeof reference.name === 'string' && reference.name.length > 0 && reference.name.length <= 128 && typeof reference.description === 'string' && reference.description.length > 0 && reference.description.length <= 300 && typeof reference.path === 'string' && /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|json)$/.test(reference.path), `${source}: agent reference must name a bounded local .md or .json file`);
   }
-  if (raw.kind === 'artifact') assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined, `${source}: an artifact descriptor carries no extension contract`);
+  if (raw.kind === 'artifact') assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.contributes === undefined, `${source}: an artifact descriptor carries no extension contract`);
   else assert(isRecord(raw.schema), `${source}: an extension descriptor needs its configuration schema`);
   return raw as unknown as AddonDescriptor;
 }

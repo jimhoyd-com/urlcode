@@ -13,7 +13,7 @@ import type { ExtensionTemplates, Kit, PageOptions } from '../kit.ts';
 import type { PresentationContext } from '../presentation.ts';
 import type { ViewModel } from '../template.ts';
 import { extensionHookContext, extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
-import { crudFields, crudScreen, fieldLabel } from '../crud.ts';
+import { crudFields, crudScreen } from '../crud.ts';
 import type { CrudCollection, CrudColumn } from '../crud.ts';
 import { loadProjectUi } from './loader.ts';
 import type { UiConfig } from './loader.ts';
@@ -45,6 +45,8 @@ export interface UiExtensionOptions {
     extensions?: readonly ExtensionTemplates[] | undefined;
     /** Theme values the host sets that the project may not, none by default. */
     theme?: Theme | undefined;
+    /** Screen sources other extensions contribute; each screen is served at an exact `extension: ui` mount. */
+    screens?: readonly UiScreenSource[] | undefined;
 }
 export interface UiExtension {
     readonly registration: RuntimeExtension;
@@ -97,24 +99,46 @@ export const uiConfigSchema = {
         templates: { type: 'string', maxLength: 256 },
         stylesheet: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'object', additionalProperties: false, required: ['file'], properties: { file: { type: 'string', maxLength: 256 }, replace: { type: 'boolean' } } }] },
         hooks: extensionHooksSchema(uiHookContracts),
-        screens: {
-            type: 'object', maxProperties: 16,
-            propertyNames: { pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256 },
-            additionalProperties: { type: 'object', additionalProperties: false, required: ['collection'], properties: { collection: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, title: { type: 'string', minLength: 1, maxLength: 80 }, columns: { type: 'array', minItems: 1, maxItems: 64, items: { oneOf: [{ type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, { type: 'object', additionalProperties: false, required: ['field'], properties: { field: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, label: { type: 'string', minLength: 1, maxLength: 80 } } }] } } } },
-        },
     },
 } as const;
-/** A screen the project declares: a mounted path served as a list and form for one store collection. */
-interface ScreenConfig { collection: string; title?: string; columns?: CrudColumn[] }
+/**
+ * A data screen another extension contributes (see `UiContribution.screens`): a list and form for one
+ * collection that the contributing extension serves over HTTP at `collection.mount`. ui knows nothing about
+ * where the declaration came from; it only renders it at the screen's exact mount.
+ */
+export interface UiScreen {
+    /** Page and heading text, 1 to 80 characters. */
+    title: string;
+    /** The collection's HTTP API mount and field declarations. */
+    collection: CrudCollection;
+    /** Fields to show and their order; default is every declared field. */
+    columns?: readonly CrudColumn[] | undefined;
+}
+/**
+ * Resolves the screens one contributing extension serves, keyed by exact mount path (`/todos`). Called once at
+ * ui activation with the route project root; the contributor reads its own declaration there.
+ */
+export type UiScreenSource = (context: { readonly root: string }) => Readonly<Record<string, UiScreen>> | Promise<Readonly<Record<string, UiScreen>>>;
+const screenPath = /^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
-/** Reads the store's collection declarations from the reviewed project document, the one place the fields are declared. */
-async function storeCollections(root: string): Promise<Record<string, CrudCollection>> {
-    const { loadDocument } = await import('@jimhoyd/urlcode');
-    const loaded = await loadDocument(root);
-    const config = loaded.document.extensions?.store?.config;
-    const collections = isRecord(config) && isRecord(config.collections) ? config.collections : undefined;
-    if (!collections) throw new Error('ui screens read collections from extensions.store, which this project does not declare');
-    return collections as unknown as Record<string, CrudCollection>;
+/** Collects every contributed screen once, refusing a malformed one or a path two sources both claim. */
+async function contributedScreens(sources: readonly UiScreenSource[], root: string): Promise<Map<string, UiScreen>> {
+    const screens = new Map<string, UiScreen>();
+    for (const source of sources) {
+        if (typeof source !== 'function') throw new Error('ui screens contributions must be functions');
+        const resolved: unknown = await source(Object.freeze({ root }));
+        if (!isRecord(resolved)) throw new Error('ui screens contribution must resolve to an object keyed by path');
+        for (const [path, screen] of Object.entries(resolved)) {
+            if (path.length > 256 || !screenPath.test(path)) throw new Error(`ui screen path ${path} must be an absolute literal path such as /todos`);
+            if (screens.has(path)) throw new Error(`ui screen ${path} is contributed more than once`);
+            if (!isRecord(screen) || typeof screen.title !== 'string' || !screen.title.trim() || screen.title.length > 80 || /[\u0000-\u001f\u007f]/.test(screen.title)) throw new Error(`ui screen ${path} needs a plain title of 1 to 80 characters`);
+            const value = screen as unknown as UiScreen;
+            // Validate the collection and columns at activation so a bad key fails the start, not the first request.
+            try { crudFields(value.collection, value.columns); } catch (error) { throw new Error(`ui screen ${path}: ${(error as Error).message}`, { cause: error }); }
+            screens.set(path, Object.freeze({ title: value.title, collection: value.collection, ...(value.columns ? { columns: value.columns } : {}) }));
+        }
+    }
+    return screens;
 }
 export function createUiExtension(options: UiExtensionOptions): UiExtension {
     if (typeof options.projectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(options.projectSha256)) throw new Error('ui extension requires an explicit operator revision pin');
@@ -123,22 +147,12 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
     const registration: RuntimeExtension = {
         name: 'ui', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'], schema: uiConfigSchema, hooks: uiHookContracts, authoring: uiAuthoring, immutableAssets: { prefix: uiAssetPrefix },
         async activate(config: Readonly<Record<string, unknown>>, context: ExtensionActivation): Promise<ExtensionInstance> {
-            const screens = (config.screens ?? {}) as Record<string, ScreenConfig>;
+            const screens = await contributedScreens(options.screens ?? [], context.root);
             // Screen paths are exact page mounts; the one remaining mount serves the kit's assets.
-            const screenMounts = new Set(Object.keys(screens));
-            for (const path of screenMounts) if (!context.mounts.includes(path)) throw new Error(`ui screen ${path} needs a route ${path}/* with extension: ui`);
-            const assetMounts = context.mounts.filter(candidate => !screenMounts.has(candidate));
+            for (const path of screens.keys()) if (!context.mounts.includes(path)) throw new Error(`ui screen ${path} needs a route ${path}/* with extension: ui`);
+            const assetMounts = context.mounts.filter(candidate => !screens.has(candidate));
             const mount = assetMounts[0];
             if (assetMounts.length !== 1 || !mount) throw new Error('ui extension needs exactly one route mount, for example /assets/ui/*');
-            let collections: Record<string, CrudCollection> = {};
-            if (screenMounts.size) {
-                collections = await storeCollections(context.root);
-                for (const [path, screen] of Object.entries(screens)) {
-                    if (!Object.hasOwn(collections, screen.collection)) throw new Error(`ui screen ${path} names collection ${screen.collection}, which extensions.store does not declare`);
-                    // Validate columns at activation so a bad key fails the start, not the first request.
-                    try { crudFields(collections[screen.collection]!, screen.columns); } catch (error) { throw new Error(`ui screen ${path}: ${(error as Error).message}`, { cause: error }); }
-                }
-            }
             const project = await loadProjectUi(options.projectRoot, config as UiConfig);
             const theme = { ...(options.theme ?? {}), ...((config.theme as Theme | undefined) ?? {}) };
             const presentation = createPresentation({ defaults: mergeCatalogues([kitCatalogue, ...(options.sources ?? [])]), catalogues: project.catalogues, ...(project.languages[0] ? { defaultLocale: project.languages[0] } : {}) });
@@ -184,12 +198,12 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
             const byPath = new Map(kit.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
             return {
                 handle(request: ExtensionRequest): HandlerResult {
-                    const screen = request.mount !== null && Object.hasOwn(screens, request.mount) ? screens[request.mount] : undefined;
+                    const screen = request.mount !== null ? screens.get(request.mount) : undefined;
                     if (screen) {
                         if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
                         if (request.path !== request.mount) return { status: 404, headers: [['content-type', 'text/plain; charset=utf-8']], body: 'Not found' };
                         const language = request.headers.get('accept-language');
-                        const page = crudScreen(kit!, { collection: collections[screen.collection]!, ...(screen.columns ? { columns: screen.columns } : {}), title: screen.title ?? fieldLabel(screen.collection), preferences: { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(language ? { acceptLanguage: language } : {}) } });
+                        const page = crudScreen(kit!, { collection: screen.collection, ...(screen.columns ? { columns: screen.columns } : {}), title: screen.title, preferences: { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(language ? { acceptLanguage: language } : {}) } });
                         return { status: page.status, headers: page.headers, body: request.method === 'HEAD' ? undefined : page.body };
                     }
                     if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
