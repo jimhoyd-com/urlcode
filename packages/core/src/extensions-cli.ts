@@ -55,7 +55,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       if (values.json) print(report);
       else print([
         `${command === 'extensions' ? 'Extensions' : 'Artifacts'} in ${report.site} (core ${report.core}${report.development ? ', development manifest' : ''}):`,
-        ...(report.addons.length ? report.addons.map(item => `  ${item.name} ${item.version ?? '(not installed)'} ${item.pinned ? 'pinned' : 'NOT PINNED'}${item.problems.length ? ` — ${item.problems.length} problem(s)` : ''}`) : ['  none']),
+        ...(report.addons.length ? report.addons.map(item => `  ${item.name} ${item.version ?? '(not installed)'} ${item.pinned ? 'pinned' : 'NOT PINNED'}${item.mode === 'library' ? ' (library: not declared or imported as an extension)' : ''}${item.problems.length ? ` — ${item.problems.length} problem(s)` : ''}`) : ['  none']),
         ...report.unmanaged.map(name => `  ${name}: not released with this core (unmanaged)`),
         ...report.problems.map(problem => `Problem: ${problem}`),
       ].join('\n') + '\n');

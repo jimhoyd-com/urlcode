@@ -2,8 +2,9 @@ import { lstat, mkdir, open, readFile, readdir, realpath, rm, writeFile } from '
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import Ajv from 'ajv/dist/2020.js';
-import { parseDocument, stringify } from 'yaml';
+import { isMap, isNode, isPair, isScalar, isSeq, parseDocument, stringify } from 'yaml';
 import { loadDocument, parseYaml, validateDocument } from './config.ts';
 import { ConfigError, assert } from './errors.ts';
 import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, inspectExtensionRevision } from './extensions.ts';
@@ -98,6 +99,109 @@ export function pinProblem(lock: Record<string, LockEntry>, pin: AddonPin): stri
 /** Every `@jimhoyd/urlcode*` package installed somewhere other than the site's top level: a nested copy. */
 export function nestedCopies(lock: Record<string, LockEntry>): string[] {
   return Object.keys(lock).filter(key => /node_modules\/.+\/node_modules\/@jimhoyd\/urlcode(?:-[a-z0-9-]+)?$/.test(key)).sort();
+}
+
+/**
+ * Minimal edits to app/urlcode.yaml (#715). Re-serialising a parsed document respaces flow collections, folds long
+ * scalars and drops odd spacing everywhere, whatever the options, so `extensions add|remove` never write one back.
+ * Each edit below splices text only at the source range of the one node it inserts or deletes and re-parses before
+ * the next; `checkedYamlEdit` then refuses, rather than reformats, when the result does not parse to exactly the data
+ * the equivalent document edit gives. Every untouched line is byte-identical.
+ */
+type YamlPath = readonly (string | number)[];
+type Range = readonly [number, number, number];
+const lineStart = (text: string, offset: number): number => text.lastIndexOf('\n', offset - 1) + 1;
+/** The offset just past the line holding `offset - 1`: `offset` itself when that is already a line start. */
+const lineEnd = (text: string, offset: number): number => {
+  if (offset > 0 && text[offset - 1] === '\n') return offset;
+  const next = text.indexOf('\n', offset);
+  return next < 0 ? text.length : next + 1;
+};
+const eolOf = (text: string): string => text.includes('\r\n') ? '\r\n' : '\n';
+const rangeOf = (node: unknown): Range => {
+  const range = isNode(node) ? node.range : undefined;
+  if (!range) throw new YamlLayoutError();
+  return range;
+};
+class YamlLayoutError extends Error {}
+/** `content` (block YAML ending in a newline) indented by `indent` spaces and inserted at `at`, which starts a line. */
+function insertBlock(text: string, at: number, content: string, indent: number): string {
+  const eol = eolOf(text), pad = ' '.repeat(indent);
+  const block = content.replace(/\n$/, '').split('\n').map(line => line ? pad + line : line).join(eol) + eol;
+  return text.slice(0, at) + (at > 0 && text[at - 1] !== '\n' ? eol : '') + block + text.slice(at);
+}
+const flowText = (value: unknown): string => stringify(value, { collectionStyle: 'flow', flowCollectionPadding: false, lineWidth: 0 }).trimEnd();
+function parent(text: string, path: YamlPath): unknown {
+  const doc = parseDocument(text);
+  if (doc.errors.length) throw new YamlLayoutError();
+  return path.length ? doc.getIn(path, true) : doc.contents;
+}
+/** Adds `key: value` as the last entry of the map at `path`, creating missing maps on the way. */
+export function yamlInsertEntry(text: string, path: YamlPath, key: string, value: unknown): string {
+  const map = parent(text, path);
+  if (map === undefined && path.length) return yamlInsertEntry(text, path.slice(0, -1), String(path.at(-1)), { [key]: value });
+  if (!isMap(map)) throw new YamlLayoutError();
+  const last = map.items.at(-1);
+  if (map.flow) {
+    const entry = `${flowText(key)}: ${flowText(value)}`;
+    if (!last) { const [start, end] = rangeOf(map); return text.slice(0, start) + `{${entry}}` + text.slice(end); }
+    const at = rangeOf(last.value ?? last.key)[1];
+    return text.slice(0, at) + `, ${entry}` + text.slice(at);
+  }
+  if (!last) throw new YamlLayoutError();
+  const first = rangeOf(map.items[0]!.key)[0];
+  return insertBlock(text, lineEnd(text, rangeOf(last.value ?? last.key)[2]), stringify({ [key]: value }, { lineWidth: 0 }), first - lineStart(text, first));
+}
+/** Appends `item` to the sequence at `path`, creating it when missing. */
+export function yamlAppendItem(text: string, path: YamlPath, item: string): string {
+  const seq = parent(text, path);
+  if (seq === undefined && path.length) return yamlInsertEntry(text, path.slice(0, -1), String(path.at(-1)), [item]);
+  if (!isSeq(seq)) throw new YamlLayoutError();
+  const last = seq.items.at(-1);
+  if (seq.flow) {
+    if (!last) { const [start, end] = rangeOf(seq); return text.slice(0, start) + `[${flowText(item)}]` + text.slice(end); }
+    const at = rangeOf(last)[1];
+    return text.slice(0, at) + `, ${flowText(item)}` + text.slice(at);
+  }
+  if (!last) throw new YamlLayoutError();
+  const firstLine = lineStart(text, rangeOf(seq.items[0])[0]);
+  return insertBlock(text, lineEnd(text, rangeOf(last)[2]), stringify([item], { lineWidth: 0 }), text.slice(firstLine).search(/\S/));
+}
+/** Deletes the entry or item at `path`; a map or sequence it leaves empty (other than the root) goes too. */
+export function yamlDelete(text: string, path: YamlPath): string {
+  const outer = path.slice(0, -1), key = path.at(-1), collection = parent(text, outer);
+  if (!isMap(collection) && !isSeq(collection)) return text;
+  const index = isMap(collection) ? collection.items.findIndex(pair => isScalar(pair.key) && pair.key.value === key) : typeof key === 'number' ? key : -1;
+  if (index < 0 || index >= collection.items.length) return text;
+  if (collection.items.length === 1 && outer.length) return yamlDelete(text, outer);
+  const bounds = (item: unknown): Range => {
+    if (!isPair(item)) return rangeOf(item);
+    const [, end, after] = rangeOf(item.value ?? item.key);
+    return [rangeOf(item.key)[0], end, after];
+  };
+  const [start, end, after] = bounds(collection.items[index]);
+  if (collection.flow) {
+    const next = collection.items[index + 1], previous = collection.items[index - 1];
+    if (next) return text.slice(0, start) + text.slice(bounds(next)[0]);
+    if (previous) return text.slice(0, bounds(previous)[1]) + text.slice(end);
+    const [open, close] = rangeOf(collection);
+    return text.slice(0, open) + (isMap(collection) ? '{}' : '[]') + text.slice(close);
+  }
+  const from = lineStart(text, start);
+  if (!(isMap(collection) ? /^[ \t]*$/ : /^[ \t]*-[ \t]+$/).test(text.slice(from, start))) throw new YamlLayoutError();
+  return text.slice(0, from) + text.slice(lineEnd(text, after));
+}
+/** Applies minimal `edits` to `text`, refusing unless the result parses to `expected`. */
+function checkedYamlEdit(text: string, expected: unknown, edits: ((current: string) => string)[]): string {
+  const refuse = (): never => {
+    const { extensions, includes } = isRecord(expected) ? expected : {};
+    throw new ConfigError(`${PROJECT_DIRECTORY}/urlcode.yaml is laid out in a way this command cannot edit in place without rewriting the rest of the file; make it read as follows, then run the command again:\n${stringify({ ...(extensions === undefined ? {} : { extensions }), ...(includes === undefined ? {} : { includes }) }, { lineWidth: 0 })}`);
+  };
+  let result = text;
+  try { for (const edit of edits) result = edit(result); } catch (error) { if (error instanceof YamlLayoutError) refuse(); throw error; }
+  const check = parseDocument(result);
+  if (check.errors.length || !isDeepStrictEqual(check.toJS(), expected)) refuse();
+  return result;
 }
 
 /**
@@ -375,9 +479,12 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       const unused = acknowledgements.filter(id => !consumed.has(id));
       assert(!unused.length, `--ack ${unused.join(', ')} has no effect: no extension being added consumed it`);
 
-      const doc = parseDocument(await readFile(yamlFile, 'utf8'));
+      // `doc` is the reference edit; the file itself only gets `edits`, which leave every other line alone (#715).
+      const original = await readFile(yamlFile, 'utf8'), doc = parseDocument(original), edits: ((text: string) => string)[] = [];
       for (const { name, result: scaffold } of scaffolds) {
-        doc.setIn(['extensions', name], { version: '1', config: scaffold.config });
+        const declaration = { version: '1', config: scaffold.config };
+        doc.setIn(['extensions', name], declaration);
+        edits.push(text => yamlInsertEntry(text, ['extensions'], name, declaration));
         if (Object.keys(scaffold.routes).length) {
           const routesFile = `routes/${name}.yaml`, target = join(site.project, routesFile);
           const fragment = stringify({ version: '1', routes: scaffold.routes });
@@ -386,6 +493,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
           await writeExclusive(target, `# Routes for the ${name} extension (urlcode extensions remove ${name} deletes this file). Mounts are exclusive to it.\n${notes}${fragment}`, 0o644, site.site);
           state.created.push(target);
           if (doc.has('includes')) doc.addIn(['includes'], routesFile); else doc.set('includes', doc.createNode([routesFile]));
+          edits.push(text => yamlAppendItem(text, ['includes'], routesFile));
         }
         for (const file of scaffold.files ?? []) {
           const target = scaffoldPath(site.site, file.path);
@@ -397,7 +505,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         result.notes.push(...(scaffold.notes ?? []));
       }
       validateDocument(doc.toJS());
-      await writeFile(yamlFile, String(doc));
+      await writeFile(yamlFile, checkedYamlEdit(original, doc.toJS(), edits));
       let host = await readFile(site.hostFile, 'utf8');
       for (const { name } of scaffolds) host = hostWithExtension(host, name);
       await writeFile(site.hostFile, host);
@@ -448,14 +556,15 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
       const uses = await extensionUses(site.project, name);
       assert(!uses.length, `The project still uses ${name} in ${uses.join(', ')}; change those first`);
       const definition = await loadDefinition(site.site, name).catch(() => undefined);
-      const doc = parseDocument(await readFile(yamlFile, 'utf8'));
+      const original = await readFile(yamlFile, 'utf8'), doc = parseDocument(original), edits: ((text: string) => string)[] = [];
       doc.deleteIn(['extensions', name]);
+      edits.push(text => yamlDelete(text, ['extensions', name]));
       if (isRecord(doc.toJS().extensions) && Object.keys(doc.toJS().extensions as object).length === 0) doc.delete('extensions');
       const includes = doc.get('includes') as { items?: { value?: unknown }[] } | undefined;
       const index = includes?.items?.findIndex(item => (isRecord(item) ? item.value : item) === `routes/${name}.yaml`) ?? -1;
-      if (index >= 0) doc.deleteIn(['includes', index]);
+      if (index >= 0) { doc.deleteIn(['includes', index]); edits.push(text => yamlDelete(text, ['includes', index])); }
       if (Array.isArray(doc.toJS().includes) && (doc.toJS().includes as unknown[]).length === 0) doc.delete('includes');
-      await writeFile(yamlFile, String(doc));
+      await writeFile(yamlFile, checkedYamlEdit(original, doc.toJS(), edits));
       await rm(routesFile, { force: true });
       await writeFile(site.hostFile, hostWithoutExtension(await readFile(site.hostFile, 'utf8'), name));
       await loadDocument(site.project);
@@ -473,9 +582,18 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
 }
 
-export interface ListedAddon { name: string; kind: AddonKind; package: string; version: string | null; pinned: boolean; declared: boolean; hosted: boolean; description: string; requires: string[]; descriptor?: AddonDescriptor | undefined; problems: string[] }
+/**
+ * How an installed add-on is used. `extension`: declared in app/urlcode.yaml or imported as `<package>/extension` in
+ * host.mjs, so the other must agree. `library`: an installed extension package that neither names, used only as a
+ * dependency (#718); its pin and nested copies are still checked, but it has no declaration to drift. `artifact`: inert data.
+ */
+export type AddonMode = 'extension' | 'library' | 'artifact';
+export interface ListedAddon { name: string; kind: AddonKind; mode: AddonMode; package: string; version: string | null; pinned: boolean; declared: boolean; hosted: boolean; description: string; requires: string[]; descriptor?: AddonDescriptor | undefined; problems: string[] }
 export interface AddonReport { site: string; core: string; development: boolean; addons: ListedAddon[]; unmanaged: string[]; problems: string[] }
-/** `urlcode extensions list` / `urlcode artifacts list`: what is installed, whether each matches core's pin, and any drift. */
+/**
+ * `urlcode extensions list` / `urlcode artifacts list`: what is installed, whether each matches core's pin, and any
+ * drift. An extension installed only as a library (see `AddonMode`) is not drift.
+ */
 export async function listAddons(directory: string, kind: AddonKind, { manifest: given }: { manifest?: AddonManifest } = {}): Promise<AddonReport> {
   const site = await openSite(directory), manifest = given ?? await readAddonManifest();
   const pkg = await readJson<PackageJson>(site.packageFile), lock = await lockPackages(site.site);
@@ -492,16 +610,19 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
     const descriptor = await readInstalledDescriptor(site.site, name).catch(error => { problems.push(error instanceof Error ? error.message : String(error)); return undefined; });
     if (!descriptor) problems.push(`${pin.package} is not installed; run npm ci`);
     const isDeclared = Object.hasOwn(declared, name), hosted = host.split('\n').includes(importLine(name));
-    if (kind === 'extension') {
+    // Any mention of the extension entry, even one hand-written in another form, wires it as an extension.
+    const wired = isDeclared || hosted || host.includes(`${addonPackage(name)}/extension`);
+    const mode: AddonMode = kind === 'artifact' ? 'artifact' : wired ? 'extension' : 'library';
+    if (mode === 'extension') {
       if (!isDeclared) problems.push(`${PROJECT_DIRECTORY}/urlcode.yaml does not declare extensions.${name}`);
       if (!hosted) problems.push(`${HOST_FILE} does not import ${addonPackage(name)}/extension`);
-    } else if (descriptor) {
+    } else if (mode === 'artifact' && descriptor) {
       const lockProblem = artifactLockProblem(lock, pin);
       if (lockProblem) problems.push(lockProblem);
       await assertInertArtifact(join(site.site, 'node_modules', pin.package), name).catch(error => problems.push(error instanceof Error ? error.message : String(error)));
     }
     for (const requirement of pin.requires) if (!Object.hasOwn(pkg.dependencies ?? {}, manifest.addons[requirement]!.package)) problems.push(`requires ${requirement}, which is not installed`);
-    report.addons.push({ name, kind, package: pin.package, version: lock[`node_modules/${pin.package}`]?.version ?? null, pinned: pinned === undefined, declared: isDeclared, hosted, description: pin.description, requires: pin.requires, descriptor, problems });
+    report.addons.push({ name, kind, mode, package: pin.package, version: lock[`node_modules/${pin.package}`]?.version ?? null, pinned: pinned === undefined, declared: isDeclared, hosted, description: pin.description, requires: pin.requires, descriptor, problems });
     report.problems.push(...problems.map(problem => `${name}: ${problem}`));
   }
   if (kind === 'extension') {

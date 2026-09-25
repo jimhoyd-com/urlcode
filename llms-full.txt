@@ -300,7 +300,7 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Add accounts | [auth README](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md), [auth security](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/SECURITY.md) |
 | Add administration | [admin README](https://github.com/jimhoyd-com/urlcode/blob/main/packages/admin/README.md) |
 | Restyle every page | [ui README](https://github.com/jimhoyd-com/urlcode/blob/main/packages/ui/README.md), [ui contract](https://github.com/jimhoyd-com/urlcode/blob/main/packages/ui/CONTRACT.md) |
-| Write an extension | [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md) |
+| Write an extension | [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md), [authoring rules](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#generic-add-on-authoring-rules) |
 | Run it | [operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md), [install](https://github.com/jimhoyd-com/urlcode/blob/main/docs/INSTALL.md), [deployment checks](https://github.com/jimhoyd-com/urlcode/blob/main/docs/DEPLOYMENT-CHECKS.md) |
 
 ---
@@ -3686,6 +3686,9 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
 
+Every extension also follows the
+[generic add-on authoring rules](#generic-add-on-authoring-rules).
+
 Consumers add it with `urlcode extensions add <name>`, which declares its YAML
 block and routes and registers it in `host.mjs`. Keep that `scaffold` to the
 capability; put a demo in the definition's optional `example`, which core writes
@@ -3693,6 +3696,54 @@ only with `--example`. They modify it through declared configuration,
 presentation layers and hooks. A fork is reserved for changing behavior the
 extension has not exposed; that is evidence for a new declarative field or hook.
 See [Composing a site](https://github.com/jimhoyd-com/urlcode/blob/main/docs/COMPOSING-A-SITE.md) for the complete ui/auth/admin example.
+
+### Generic add-on authoring rules
+
+These rules apply to every extension and artifact, first-party or not. They
+keep add-ons composable without core, or any other add-on, learning one's
+internals. An add-on **must** follow them:
+
+1. **Own only your declared surface.** An extension owns its declared
+   configuration, mounts, policies and exported or contributed contract, and
+   nothing else. It must not read, parse or depend on another extension's
+   private YAML or configuration layout. Pattern: `store` contributes generic
+   descriptions of its CRUD screens to `ui`, and `ui` never reads
+   `extensions.store.config` (#709; see [nesting](#nesting)).
+2. **Make every cross-extension dependency explicit.** Use `requires`, a
+   typed, versioned export read with `ctx.get`, or a typed, versioned
+   contribution (`contributes` on the giver, `ctx.contributions` on the
+   receiver); see [the extension definition](#the-extension-definition). Core
+   stays unaware of first-party extension names and policy vocabulary: for the
+   `auth:` shorthand core only maps the key, and auth's `policySchema` owns its
+   shape (#710; see [the `auth` short form](#protecting-a-route-the-auth-short-form)).
+3. **Scaffold the capability, not an application.** `scaffold` adds only the
+   integration prerequisites the extension needs to function. Runnable demo
+   endpoints, pages and data belong in the optional `example()` hook, written
+   only with `--example` (#711; see [commands](#commands)).
+4. **Keep artifacts inert.** An artifact carries reusable schemas, examples or
+   documentation only: never executable code, provider wiring, credentials,
+   customer data or application-specific configuration. The enforced file and
+   manifest limits are in [artifacts](#artifacts).
+5. **Prove every new seam twice.** A new export, contribution, hook or policy
+   seam ships with a fixture for a second provider or consumer (not just the
+   first-party pair that motivated it), and passes descriptor, build and add-on
+   verification: `node scripts/build-addon-manifest.ts --check`,
+   `npm run audit:packages` and `npm run test:addons`
+   ([validation and CI](#validation-and-ci), [changing an add-on](https://github.com/jimhoyd-com/urlcode/blob/main/CONTRIBUTING.md#changing-an-add-on)).
+
+#### Author checklist
+
+- [ ] Configuration, mounts, policies and exports are declared in the
+      definition; nothing reads another extension's configuration.
+- [ ] Every dependency is a `requires` entry, a `ctx.get` export or a
+      `contributes`/`ctx.contributions` value, with a versioned shape.
+- [ ] Core needs no change naming this extension or its policy keys.
+- [ ] `scaffold` writes only prerequisites; any demo is in `example()`.
+- [ ] Artifacts pass `urlcode artifacts list --strict` and hold no code,
+      provider wiring, credentials, customer data or app-specific config.
+- [ ] Each new seam has a second-provider or consumer fixture.
+- [ ] `npm run build:addons` output is committed; `build-addon-manifest --check`,
+      `npm run audit:packages` and `npm run test:addons` pass.
 
 ### Discovering schemas
 
@@ -3856,6 +3907,13 @@ writes what they return:
   existing file is kept, never overwritten);
 - one import and one list line in `host.mjs`.
 
+`add` and `remove` edit `app/urlcode.yaml` in place: they insert or delete only
+the `extensions.<name>` entry and the `includes` item, and every other line,
+including flow collections, long scalars, comments and spacing, stays byte for
+byte as you wrote it. A layout they cannot edit that way (for example an
+`includes:` that is not a list) refuses and prints the block to write yourself;
+it is never reformatted.
+
 It prints the environment variables the host reads, next steps, and the new
 project revision to review and set as `PROJECT_SHA256` where the host runs.
 Any failure or refusal, by `add` or `remove`, rolls every change back:
@@ -3891,9 +3949,18 @@ yourself.
 
 `list --strict` exits non-zero on a pin mismatch, a nested copy of any
 `@jimhoyd/urlcode*` package, drift between `package.json`, `app/urlcode.yaml`
-and `host.mjs` (an extension installed but not declared or not hosted, or
-declared without an installed package), a missing requirement, or an artifact
-that is not inert.
+and `host.mjs` (an extension declared but not imported by `host.mjs`, imported
+but not declared, or declared without an installed package), a missing
+requirement, or an artifact that is not inert.
+
+An installed extension package that neither `app/urlcode.yaml` declares nor
+`host.mjs` imports as `<package>/extension` is a library install: another
+package or your own code depends on it, and it is not wired as an extension.
+`list` shows it as `(library)` (`"mode": "library"` with `--json`; wired
+extensions are `"extension"`, artifacts `"artifact"`). Its package.json URL,
+lock integrity and resolved URL are still checked against core's pin, and
+nested copies still fail, but the missing declaration and import are not drift.
+As soon as either file names it, the other must agree.
 
 `urlcode init <directory> --with ui,auth [--example] [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.

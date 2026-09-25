@@ -81,8 +81,18 @@ export const budgets: Record<string, Budget> = {
     // the compressed archive to about 641 KiB, a few hundred bytes over
     // the previous budget on its own even before gzip-implementation
     // variance across Node/OS combinations.
-    packed: 650 * 1024,
-    unpacked: 2650 * 1024,
+    //
+    // Unpacked raised from 2650 to 2700 KiB: the capability-only installs
+    // (#711, with an `example()` hook and the `--example` docs sweep), the
+    // store-contributed CRUD screen (#709), text-level YAML edits for
+    // `extensions add`/`remove` (#715), library-mode listing (#718) and the
+    // generic add-on authoring rules (#712) together pushed the unpacked
+    // content to about 2653 KiB, about 3 KiB over. The same batch leaves the
+    // packed archive at about 646 KiB (661714 bytes on Node 26), under 4 KiB
+    // from the 650 KiB budget and inside the ~2 KiB npm gzip variance noted
+    // above, so packed is raised to 660 KiB as well.
+    packed: 660 * 1024,
+    unpacked: 2700 * 1024,
     entries: 450,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

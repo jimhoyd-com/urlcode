@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { composeHost } from '../packages/core/src/host.ts';
 import { initSite } from '../packages/core/src/authoring.ts';
-import { addAddons, assertInertArtifact, hostWithExtension, hostWithoutExtension, listAddons, removeAddon, renderInitialHost, validateDeclaredExtensions, describeInstalledArtifacts, readArtifactMember } from '../packages/core/src/addon-install.ts';
+import { addAddons, assertInertArtifact, hostWithExtension, hostWithoutExtension, listAddons, removeAddon, renderInitialHost, validateDeclaredExtensions, describeInstalledArtifacts, readArtifactMember, yamlAppendItem, yamlDelete, yamlInsertEntry } from '../packages/core/src/addon-install.ts';
 import { parseAddonManifest, withRequirements } from '../packages/core/src/addon-manifest.ts';
 import type { AddonManifest } from '../packages/core/src/addon-manifest.ts';
 import type { ExtensionEntry } from '../packages/core/src/extensions.ts';
@@ -208,6 +208,98 @@ test('extensions add installs the capability only; --example adds the example on
   await assert.rejects(addAddons(demo, 'extension', ['beta'], { manifest: m, example: true, acknowledgements: ['beta:risky'] }), /--example has no effect: beta ships no example/);
   assert.equal(await readFile(join(demo, 'package.json'), 'utf8'), before);
   await assert.rejects(addAddons(demo, 'artifact', ['notes'], { manifest: m, example: true }), /--example is only supported by extensions add/);
+});
+
+// Flow collections without padding, odd spacing, a long plain scalar, comments and a blank line: everything a
+// whole-document re-serialisation would rewrite (#715).
+const handWritten = [
+  '# yaml-language-server: $schema=./schema.json',
+  '# Odd   spacing   on purpose.',
+  'version:   "1"',
+  'includes: [routes/mine.yaml]   # flow, unpadded',
+  'routes:',
+  '  /go:    {redirect: {url: \'https://example.com/\'}}',
+  '  /moved:',
+  '    redirect: {url: \'https://example.com/new\',status: 308}',
+  '    response:',
+  '      headers:',
+  '        Cache-Control: public, max-age=60, stale-while-revalidate=86400, stale-if-error=604800, must-revalidate',
+  '',
+  '# a trailing comment',
+  '',
+].join('\n');
+
+test('extensions add and remove edit only the extensions and includes nodes of urlcode.yaml (#715)', async t => {
+  const m = manifest();
+  const write = async (dir: string): Promise<string> => {
+    await writeFile(join(dir, 'app', 'urlcode.yaml'), handWritten);
+    await mkdir(join(dir, 'app', 'routes'), { recursive: true });
+    await writeFile(join(dir, 'app', 'routes', 'mine.yaml'), 'version: "1"\nroutes:\n  /mine: {respond: {text: mine}}\n');
+    return join(dir, 'app', 'urlcode.yaml');
+  };
+  const inserted = (greeting: string): string => handWritten
+    .replace('includes: [routes/mine.yaml]', 'includes: [routes/mine.yaml, routes/alpha.yaml]')
+    .replace('must-revalidate\n', `must-revalidate\nextensions:\n  alpha:\n    version: "1"\n    config:\n      greeting: ${greeting}\n`);
+
+  const blank = await site(t), blankYaml = await write(blank);
+  await addAddons(blank, 'extension', ['alpha'], { manifest: m });
+  assert.equal(await readFile(blankYaml, 'utf8'), inserted('hello'), 'a blank add inserts the extensions block and one include, byte for byte');
+
+  const demo = await site(t), demoYaml = await write(demo);
+  await addAddons(demo, 'extension', ['alpha'], { manifest: m, example: true });
+  const withAlpha = inserted('hello from the example');
+  assert.equal(await readFile(demoYaml, 'utf8'), withAlpha, '--example changes only the same two nodes');
+  await addAddons(demo, 'extension', ['beta'], { manifest: m, acknowledgements: ['beta:risky'] });
+  assert.equal(await readFile(demoYaml, 'utf8'), withAlpha
+    .replace('routes/alpha.yaml]', 'routes/alpha.yaml, routes/beta.yaml]')
+    .replace('greeting: hello from the example\n', 'greeting: hello from the example\n  beta:\n    version: "1"\n    config: {}\n'), 'a second extension appends to the existing block');
+  await removeAddon(demo, 'extension', 'beta', { manifest: m });
+  assert.equal(await readFile(demoYaml, 'utf8'), withAlpha, 'remove deletes exactly what add inserted');
+  await removeAddon(demo, 'extension', 'alpha', { manifest: m });
+  assert.equal(await readFile(demoYaml, 'utf8'), handWritten, 'removing every extension restores the hand-written file');
+});
+
+test('the minimal YAML edits handle block and flow collections and keep CRLF', () => {
+  const block = 'version: "1"\nextensions:\n    kept:   {version: "1", config: {}}\nincludes:\n-   routes/kept.yaml   # mine\nroutes: {}\n';
+  const added = yamlAppendItem(yamlInsertEntry(block, ['extensions'], 'alpha', { version: '1', config: { a: [1, 2] } }), ['includes'], 'routes/alpha.yaml');
+  assert.equal(added, 'version: "1"\nextensions:\n    kept:   {version: "1", config: {}}\n    alpha:\n      version: "1"\n      config:\n        a:\n          - 1\n          - 2\nincludes:\n-   routes/kept.yaml   # mine\n- routes/alpha.yaml\nroutes: {}\n');
+  assert.equal(yamlDelete(yamlDelete(added, ['includes', 1]), ['extensions', 'alpha']), block);
+  const flow = 'version: "1"\nextensions: {kept: {version: "1", config: {}}}\nincludes: []\nroutes: {}\n';
+  const flowAdded = yamlAppendItem(yamlInsertEntry(flow, ['extensions'], 'alpha', { version: '1', config: {} }), ['includes'], 'routes/alpha.yaml');
+  assert.equal(flowAdded, 'version: "1"\nextensions: {kept: {version: "1", config: {}}, alpha: {version: "1", config: {}}}\nincludes: [routes/alpha.yaml]\nroutes: {}\n');
+  assert.equal(yamlDelete(yamlDelete(flowAdded, ['extensions', 'alpha']), ['includes', 0]), 'version: "1"\nextensions: {kept: {version: "1", config: {}}}\nroutes: {}\n', 'an emptied sequence goes');
+  const crlf = 'version: "1"\r\nroutes: {}\r\n';
+  assert.equal(yamlAppendItem(crlf, ['includes'], 'routes/a.yaml'), 'version: "1"\r\nroutes: {}\r\nincludes:\r\n  - routes/a.yaml\r\n');
+  assert.equal(yamlInsertEntry('version: "1"\nroutes: {}', ['extensions'], 'a', { version: '1' }), 'version: "1"\nroutes: {}\nextensions:\n  a:\n    version: "1"\n', 'a file without a final newline gets one before the insert');
+});
+
+test('list --strict accepts an extension installed only as a library, but not drift or a pin mismatch (#718)', async t => {
+  const m = manifest(), dir = await site(t);
+  await addAddons(dir, 'extension', ['alpha'], { manifest: m });
+  const yaml = join(dir, 'app', 'urlcode.yaml'), hostFile = join(dir, 'host.mjs'), lockFile = join(dir, 'package-lock.json');
+  const wired = { yaml: await readFile(yaml, 'utf8'), host: await readFile(hostFile, 'utf8') };
+  // Unwire alpha as remove would, keeping the package installed: a library dependency, not an extension.
+  const library = { yaml: yamlDelete(yamlDelete(wired.yaml, ['includes', 0]), ['extensions', 'alpha']), host: hostWithoutExtension(wired.host, 'alpha') };
+  await rm(join(dir, 'app', 'routes', 'alpha.yaml'));
+  const state = async (files: { yaml: string; host: string }): Promise<{ mode: string; problems: string[] }> => {
+    await writeFile(yaml, files.yaml); await writeFile(hostFile, files.host);
+    const report = await listAddons(dir, 'extension', { manifest: m });
+    return { mode: report.addons.find(item => item.name === 'alpha')!.mode, problems: report.problems };
+  };
+
+  assert.deepEqual(await state(library), { mode: 'library', problems: [] }, 'installed, pinned and neither declared nor imported: clean');
+  const declaredOnly = yamlInsertEntry(library.yaml, ['extensions'], 'alpha', { version: '1', config: {} });
+  assert.deepEqual(await state({ yaml: declaredOnly, host: library.host }), { mode: 'extension', problems: ['alpha: host.mjs does not import @jimhoyd/urlcode-alpha/extension'] });
+  assert.deepEqual(await state({ yaml: library.yaml, host: wired.host }), { mode: 'extension', problems: ['alpha: app/urlcode.yaml does not declare extensions.alpha'] });
+  const handWired = library.host.replace("import { composeHost }", "import a from \"@jimhoyd/urlcode-alpha/extension\";\nimport { composeHost }");
+  assert.deepEqual((await state({ yaml: library.yaml, host: handWired })).problems, ['alpha: app/urlcode.yaml does not declare extensions.alpha', 'alpha: host.mjs does not import @jimhoyd/urlcode-alpha/extension'], 'an import in another form still wires it as an extension');
+
+  const lock = JSON.parse(await readFile(lockFile, 'utf8')) as { packages: Record<string, Record<string, unknown>> };
+  lock.packages['node_modules/@jimhoyd/urlcode-alpha'] = { version: '9.9.9', resolved: 'https://example.test/alpha.tgz', integrity: 'sha512-other' };
+  await writeFile(lockFile, JSON.stringify(lock));
+  const mismatch = await state(library);
+  assert.equal(mismatch.mode, 'library');
+  assert.deepEqual(mismatch.problems, [`alpha: @jimhoyd/urlcode-alpha should link the development source file:${join(fixtures, 'alpha')}`], 'a library install is still checked against the pin');
 });
 
 test('a failed npm install rolls every file back, and node_modules with them', async t => {
