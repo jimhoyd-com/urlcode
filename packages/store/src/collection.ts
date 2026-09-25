@@ -1,10 +1,20 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
 
 /** Reserved names the store owns on every record. */
 export const RESERVED_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;
+/**
+ * The stored owner of a record in an owned collection (`ownership: owner`, urlcode#331): the opaque principal id the
+ * store stamped on create. It is kept in the data file only. It never appears in a response, a body naming it is
+ * refused like any undeclared field, and no request can change it. The leading underscore cannot be a declared
+ * field name, so it never collides with one.
+ */
+export const OWNER_FIELD = '_owner';
+/** How a collection scopes its records: `shared` (the default; every caller who reaches the mount sees every record) or `owner` (each record belongs to the principal that created it). */
+export type Ownership = 'shared' | 'owner';
 export const LIMITS = { fields: 64, records: 10_000, recordBytes: 65_536, pageSize: 200, stringLength: 65_536 } as const;
 const IDEMPOTENCY_LIMITS = { keys: 1_000, keyLength: 128 } as const;
 
@@ -28,6 +38,8 @@ export interface CollectionSpec {
   sortable?: string[];
   /** Declared fields a list request may filter by equality (`<field>=<value>`). */
   filterable?: string[];
+  /** `owner` scopes every list, read, update, delete and increment to the request principal and stamps it on create. */
+  ownership?: Ownership;
 }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
@@ -62,6 +74,7 @@ export const collectionSchema = {
     idempotency: { type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys } } },
     sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
+    ownership: { enum: ['shared', 'owner'] },
   },
 } as const;
 
@@ -97,7 +110,7 @@ function checkValue(spec: FieldSpec, value: unknown): string | undefined {
 
 export interface NormalizedSpec {
   mount: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
-  key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[];
+  key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
 }
 /** Validates a declaration beyond JSON Schema; throws plain Errors for the operator. */
 export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
@@ -132,13 +145,17 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if (!field) throw new Error(`Collection ${name}: key ${key} is not a declared field`);
     if (field.type !== 'string' || !field.required || field.default !== undefined || (field.maxLength ?? LIMITS.stringLength) > IDEMPOTENCY_LIMITS.keyLength) throw new Error(`Collection ${name}: key ${key} must be a required string with maxLength at most ${IDEMPOTENCY_LIMITS.keyLength}`);
   }
+  const ownership = spec.ownership ?? 'shared';
+  // A collection-wide unique key would tell one owner that another owner already uses a value (409 key_exists), and
+  // keys exist for public short links, which cannot serve owned records. Refused rather than scoped silently.
+  if (ownership === 'owner' && key !== undefined) throw new Error(`Collection ${name}: key is not supported with ownership: owner`);
   const increments = spec.increments ?? [];
   for (const fieldName of increments) {
     const field = spec.fields[fieldName];
     if (!field) throw new Error(`Collection ${name}: increment field ${fieldName} is not declared`);
     if (!['integer', 'number'].includes(field.type) || typeof field.default !== 'number') throw new Error(`Collection ${name}: increment field ${fieldName} must be numeric with a numeric default`);
   }
-  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), maxRecords: spec.maxRecords ?? 1000, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
+  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, maxRecords: spec.maxRecords ?? 1000, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
 }
 
 /**
@@ -151,6 +168,7 @@ export class Collection {
   readonly name: string; readonly spec: NormalizedSpec;
   private records: StoredRecord[] = []; private byId = new Map<string, StoredRecord>(); private byKey = new Map<string, StoredRecord>(); private idempotency: string[] = [];
   private readonly file: string; private tail: Promise<unknown> = Promise.resolve();
+  private get owned(): boolean { return this.spec.ownership === 'owner'; }
   constructor(name: string, spec: CollectionSpec, directory: string) { this.name = name; this.spec = normalize(name, spec); this.file = join(directory, `${name}.json`); }
 
   /** Loads and re-validates the file; a file that violates the declaration refuses activation instead of being served. */
@@ -169,9 +187,13 @@ export class Collection {
     if (!Array.isArray(retained) || retained.length > IDEMPOTENCY_LIMITS.keys || retained.some(key => typeof key !== 'string' || key.length < 1 || key.length > IDEMPOTENCY_LIMITS.keyLength) || new Set(retained).size !== retained.length) throw new Error(`Collection ${this.name}: data file has invalid idempotency keys`);
     for (const item of parsed.records as unknown[]) {
       if (!isRecord(item) || typeof item.id !== 'string' || this.byId.has(item.id) || typeof item.createdAt !== 'string' || typeof item.updatedAt !== 'string') throw new Error(`Collection ${this.name}: data file holds an invalid record`);
+      const { [OWNER_FIELD]: owner, ...fields } = item;
+      if (owner !== undefined && (typeof owner !== 'string' || !principalIdPattern.test(owner))) throw new Error(`Collection ${this.name}: data file holds an invalid record owner`);
+      // Serving owned records from a shared collection would hand every user's records to every caller.
+      if (owner !== undefined && !this.owned) throw new Error(`Collection ${this.name}: data file holds owned records but the collection is not declared with ownership: owner`);
       let clean: StoredRecord;
-      try { clean = this.check(item, false); } catch { throw new Error(`Collection ${this.name}: a stored record no longer matches the declared fields`); }
-      const record: StoredRecord = { id: item.id, createdAt: item.createdAt, updatedAt: item.updatedAt, ...clean };
+      try { clean = this.check(fields, false); } catch { throw new Error(`Collection ${this.name}: a stored record no longer matches the declared fields`); }
+      const record: StoredRecord = { id: item.id, createdAt: item.createdAt, updatedAt: item.updatedAt, ...(owner === undefined ? {} : { [OWNER_FIELD]: owner }), ...clean };
       if (this.spec.key && (typeof record[this.spec.key] !== 'string' || this.byKey.has(record[this.spec.key] as string))) throw new Error(`Collection ${this.name}: data file holds an invalid record key`);
       this.records.push(record); this.byId.set(item.id, record);
       if (this.spec.key) this.byKey.set(record[this.spec.key] as string, record);
@@ -224,11 +246,36 @@ export class Collection {
     return key && config ? [...this.idempotency, key].slice(-config.maxKeys) : this.idempotency;
   }
   private writable(): void { if (this.spec.readOnly) throw new StoreError(405, 'read_only', 'This collection is read-only'); }
+  /**
+   * The caller's scope on an owned collection: its principal id, required (a 401 before any data is touched, which
+   * `dispatch` also enforces). `undefined` on a shared collection, where every record is visible.
+   */
+  private scope(owner: string | undefined): string | undefined {
+    if (!this.owned) return undefined;
+    if (typeof owner !== 'string' || !principalIdPattern.test(owner)) throw new StoreError(401, 'principal_required', 'Sign in to use this collection');
+    return owner;
+  }
+  /** Whether `record` is in the caller's scope. A legacy record with no owner is in nobody's scope on an owned collection. */
+  private visible(record: StoredRecord, owner: string | undefined): boolean { return !this.owned || record[OWNER_FIELD] === owner; }
 
   get count(): number { return this.records.length; }
-  /** Lists one page. Throws a 400 StoreError for an undeclared sort or filter name, a malformed value or a cursor that does not belong to the sort. */
-  list(params: URLSearchParams): { items: StoredRecord[]; total: number; next?: string | number } { return runList(this.records, parseListQuery(this.spec, params)); }
-  get(id: string): StoredRecord { const record = this.byId.get(id); if (!record) throw new StoreError(404, 'not_found', 'No such record'); return record; }
+  /** Records on an owned collection that carry no owner (written before it became owned): served to nobody. */
+  get ownerless(): number { return this.owned ? this.records.filter(record => record[OWNER_FIELD] === undefined).length : 0; }
+  /**
+   * Lists one page of the caller's scope. On an owned collection `total`, the page and the cursor are all computed
+   * over the caller's own records only. Throws a 400 StoreError for an undeclared sort or filter name, a malformed
+   * value or a cursor that does not belong to the sort.
+   */
+  list(params: URLSearchParams, owner?: string): { items: StoredRecord[]; total: number; next?: string | number } {
+    const scope = this.scope(owner);
+    return runList(this.owned ? this.records.filter(record => this.visible(record, scope)) : this.records, parseListQuery(this.spec, params));
+  }
+  /** A record in the caller's scope. A record that exists but belongs to someone else (or to nobody) is the same 404 as a missing id. */
+  get(id: string, owner?: string): StoredRecord {
+    const scope = this.scope(owner), record = this.byId.get(id);
+    if (!record || !this.visible(record, scope)) throw new StoreError(404, 'not_found', 'No such record');
+    return record;
+  }
   getByKey(key: string): StoredRecord { const record = this.byKey.get(key); if (!record) throw new StoreError(404, 'not_found', 'No such record'); return record; }
   validateIdempotency(key: string | undefined): IdempotencySpec | undefined {
     if (!key) return undefined;
@@ -238,15 +285,16 @@ export class Collection {
     return config;
   }
 
-  create(input: unknown, idempotencyKey?: string): Promise<StoredRecord> {
+  create(input: unknown, idempotencyKey?: string, owner?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
+      const scope = this.scope(owner);
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
       if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
       const clean = this.check(input, true);
       if (this.spec.key && this.byKey.has(clean[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
       if (this.records.length >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
-      const now = new Date().toISOString(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...clean };
+      const now = new Date().toISOString(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
       this.sized(record);
       await this.commit([...this.records, record], idempotency);
       return record;
@@ -256,38 +304,43 @@ export class Collection {
    * `expectedEtag`, when given, must match the record's current ETag (checked inside the same
    * serialized step as the read, so it is race-free against a concurrent writer) or the update is
    * refused with 412 instead of silently overwriting a change the caller never saw. */
-  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string, expectedEtag?: string): Promise<StoredRecord> {
+  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string, expectedEtag?: string, owner?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
+      const scope = this.scope(owner);
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
-      const current = this.get(id);
+      // Scoped before the ETag and body checks, so another owner's record answers exactly like a missing one.
+      const current = this.get(id, scope);
       if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
       if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
       const clean = this.check(input, replace);
       if (!replace && Object.keys(clean).length === 0) throw new StoreError(400, 'invalid_record', 'Body must set at least one declared field');
-      const kept = replace ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key)));
-      const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: new Date().toISOString(), ...kept, ...clean };
+      const kept = replace ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key) && key !== OWNER_FIELD));
+      // The owner is carried over from the stored record, never from the body (check() refuses an `_owner` key).
+      const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: new Date().toISOString(), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...kept, ...clean };
       if (this.spec.key && record[this.spec.key] !== current[this.spec.key] && this.byKey.has(record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
       this.sized(record);
       await this.commit(this.records.map(item => item === current ? record : item), idempotency);
       return record;
     });
   }
-  remove(id: string, idempotencyKey?: string, expectedEtag?: string): Promise<void> {
+  remove(id: string, idempotencyKey?: string, expectedEtag?: string, owner?: string): Promise<void> {
     return this.serialize(async () => {
+      const scope = this.scope(owner);
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
-      const current = this.get(id);
+      const current = this.get(id, scope);
       if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
       await this.commit(this.records.filter(item => item !== current), idempotency);
     });
   }
   /** Public increment API (`POST .../increment/<field>`): refused on a `readOnly` collection like every other write. */
-  increment(id: string, field: string, idempotencyKey?: string): Promise<StoredRecord> {
+  increment(id: string, field: string, idempotencyKey?: string, owner?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
+      const scope = this.scope(owner);
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
-      return this.doIncrement(id, field, idempotency);
+      return this.doIncrement(id, field, idempotency, scope);
     });
   }
   /**
@@ -299,11 +352,13 @@ export class Collection {
    * that drives it isn't itself idempotency-scoped.
    */
   recordClick(id: string, field: string): Promise<StoredRecord> {
+    // Short links need a key, which an owned collection refuses; this stays unreachable for owned records.
+    if (this.owned) return Promise.reject(new StoreError(404, 'not_found', 'No such record'));
     return this.serialize(async () => this.doIncrement(id, field, this.idempotency));
   }
-  private async doIncrement(id: string, field: string, idempotency: string[]): Promise<StoredRecord> {
+  private async doIncrement(id: string, field: string, idempotency: string[], owner?: string): Promise<StoredRecord> {
     if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');
-    const current = this.get(id), spec = this.spec.fields[field]!;
+    const current = this.get(id, owner), spec = this.spec.fields[field]!;
     const value = (current[field] as number) + 1, problem = checkValue(spec, value);
     if (problem) throw new StoreError(409, 'increment_limit', 'The increment would violate the declared field limits', { [field]: problem });
     const record: StoredRecord = { ...current, updatedAt: new Date().toISOString(), [field]: value };

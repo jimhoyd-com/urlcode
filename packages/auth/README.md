@@ -230,6 +230,26 @@ The header is absent on a session-cookie-protected route (`auth: {role: ...}`
 etc.) — only `bearer` writes it — so a route reading it must not assume it is
 always present.
 
+### The request principal
+
+Separately from that header, auth is a principal provider for other extensions
+on the same route (`providesPrincipal: true`; see
+[request principal](../../docs/EXTENSIONS.md#request-principal)). On every
+request its `authorize()` allows, it sets core's opaque request principal:
+
+| Route protection | Principal id |
+|---|---|
+| session (`auth: true`, `role`, `permission`, ...) | the signed-in user's stable id (never the email), set after the CSRF check on a write |
+| `bearer` | `apikey:<key id>` (`apiKeyPrincipalId(id)`) |
+
+API keys are issued by the operator and belong to no user, so a key is its own
+principal, namespaced so it can never equal a user id: records a key creates in
+an [owned store collection](../../docs/STORE.md#per-record-ownership) belong to
+that key, and stop being reachable through the API once it is revoked or
+expires. A denied request never carries a principal. An impersonation session
+carries the impersonated user's id, so an operator impersonating a user acts on
+that user's owned records.
+
 ### Per-credential quota
 
 A bearer route can also budget each API key separately

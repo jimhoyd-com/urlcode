@@ -113,6 +113,13 @@ const bearerSchema = { type: 'object', additionalProperties: false, required: ['
  * `stripReservedContextHeaders` in @jimhoyd/urlcode/extensions.
  */
 const authPrincipalHeader = `${extensionContextHeaderPrefix}auth-principal`;
+/**
+ * The opaque principal id auth hands core for a request a bearer (API) key authenticated (urlcode#331). Operator-issued
+ * keys have no owning user, so the key itself is the principal, prefixed `apikey:` so it can never equal a user id (a
+ * session's principal is the user's own stable id, unprefixed). Records a key creates in an owned store collection
+ * therefore belong to that key, not to any user, and stop being reachable when it is revoked or expires.
+ */
+export function apiKeyPrincipalId(keyId: string): string { return `apikey:${keyId}`; }
 /** The `policies.extensions.auth` schema. */
 export const authPolicySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, bearer: bearerSchema }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
@@ -130,6 +137,9 @@ const hidden = hiddenField;
 const m = (html: string) => new Markup(html);
 export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
     return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema: authConfigSchema, policySchema: authPolicySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+        // Sets core's opaque request principal (RIM-EXT-PRINCIPAL-001, urlcode#331) from authorize() on every
+        // allowed request: the user id for a session, `apikey:<key id>` for a bearer key. See `principalIdFor`.
+        providesPrincipal: true,
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');
@@ -299,6 +309,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             counted.set(request, { quota, remaining: budget.remaining, reset: budget.reset });
                         }
                         request.headers.set(authPrincipalHeader, Buffer.from(JSON.stringify({ id: principal.id, name: principal.name, scopes: principal.scopes })).toString('base64'));
+                        request.setPrincipal?.({ id: apiKeyPrincipalId(principal.id) });
                         return undefined;
                     }
                     let presentation = source().resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
@@ -311,6 +322,8 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         if (allowed) {
                             if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method))
                                 http.verify(request, {});
+                            // Only after the CSRF check passed: a refused write never carries a principal.
+                            request.setPrincipal?.({ id: user.id });
                             return undefined;
                         }
                         if (requirement.onDeny === 'sign-in' && ['GET', 'HEAD'].includes(request.method))

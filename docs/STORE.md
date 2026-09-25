@@ -99,7 +99,10 @@ A hand-authored public mount, as in the YAML above, stays supported.
 | `DELETE /api/todos/<id>` | `204` |
 
 Every record carries a server-assigned UUID `id`, `createdAt` and `updatedAt`
-(ISO 8601). Clients cannot set them. Writes need `Content-Type:
+(ISO 8601). Clients cannot set them. On an
+[owned](#per-record-ownership) collection every request is scoped to the
+caller's principal: another principal's record is a `404`, and a request with
+no principal is `401`. Writes need `Content-Type:
 application/json` (`415` otherwise); an `Origin` header on a write that is
 neither `--origin` nor an operator
 [alias origin](EXTENSIONS.md#site-origins-and-same-origin-checks) is refused
@@ -257,9 +260,101 @@ filterable: [kind, done]         # <field>=<value>, equality only
   order, filtered or not; there a delete between pages can shift later records
   up by one.
 - The whole collection is sorted and filtered in memory per request, bounded by
-  `maxRecords` (at most 10,000). Sorting and filtering apply to the whole
-  collection: the store has no per-record ownership ([#331](https://github.com/jimhoyd-com/urlcode/issues/331)), and nothing here
-  assumes it.
+  `maxRecords` (at most 10,000). On a shared collection sorting and filtering
+  apply to every record; on an [owned](#per-record-ownership) one they apply to
+  the caller's own records only, and `total` and cursors count only those.
+
+## Per-record ownership
+
+By default a collection is **shared**: every caller who reaches its mount lists,
+reads and (unless `readOnly`) changes every record. A collection that holds
+per-user data declares `ownership: owner` ([#331](https://github.com/jimhoyd-com/urlcode/issues/331)):
+
+```yaml
+extensions:
+  store:
+    version: "1"
+    config:
+      collections:
+        notes:
+          mount: /api/notes
+          ownership: owner          # shared (the default) | owner
+          fields:
+            title: {type: string, required: true, maxLength: 200}
+routes:
+  /api/notes/*:
+    extension: store
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true                     # required: a principal-providing policy
+```
+
+The owner is the request's **principal**: an opaque, stable id that a
+principal-providing extension on the mount's route sets from its `authorize()`
+([request principal](EXTENSIONS.md#request-principal)). With `auth` that is the
+signed-in user's id, or `apikey:<key id>` for a
+[bearer key](EXTENSIONS.md#bearerapi-key-routes) (operator-issued keys belong to
+no user, so records a key creates belong to that key). The store never reads a
+cookie, header or auth table itself, and it compares the id for equality only.
+
+On an owned collection:
+
+- `POST` stamps the caller's principal on the new record. The owner is stored in
+  the data file as `_owner` and never appears in a response; a body naming
+  `_owner` is `400` like any undeclared field, and `PUT`/`PATCH` keep the stored
+  owner. There is no transfer.
+- `GET` lists only the caller's records: `total`, `limit`, `cursor`, sorting and
+  filtering all work over that set, so a caller learns nothing about how many
+  records other principals hold.
+- A single-record `GET`/`HEAD`, `PUT`, `PATCH`, `DELETE` or increment on another
+  principal's record answers exactly the `404 not_found` a missing id does,
+  checked before `If-Match` and before the body, so neither a `412` nor a
+  validation error confirms that it exists.
+- A request with no principal is `401 principal_required` before any data is
+  read, for every method. With `auth: true` auth itself answers first; this
+  covers a policy that allowed the request without setting one.
+- `Idempotency-Key` retention is scoped by principal as well as by network
+  client.
+- Activation refuses the collection when its mount's route carries no
+  principal-providing policy (for example no `auth: true`), and refuses `key`
+  (and so short links) on it: a collection-wide unique key would tell one
+  owner that another already used a value, and a public short link cannot serve
+  an owned record.
+
+Limits that stay true on an owned collection: `maxRecords` still caps the whole
+collection, so one principal can fill it and every create then answers `409
+collection_full` (there is no per-owner quota yet); all owners' records share
+one file, one lock and one write sequence; the store is still trusted operator
+code on one host, not a hostile multi-tenant boundary; and backups copy every
+owner's records together. Access by an operator or support role to another
+user's records is not modelled: auth's impersonation gives the impersonated
+user's principal, so an impersonating operator acts on that user's records.
+
+### Making an existing collection owned
+
+Records written while a collection was shared carry no owner. After the
+collection is declared `ownership: owner` they are served to **nobody**: they
+are not listed, read, changed or deleted through the API, but they still count
+toward `maxRecords`. The store never guesses an owner. With the server
+stopped (the commands take the directory lock and refuse while it runs), the
+operator reports them and then assigns them to one principal or deletes them:
+
+```sh
+npx urlcode-store ownerless --directory /srv/site/data/store --collection notes
+npx urlcode-store ownerless-assign --directory /srv/site/data/store --collection notes --owner <principal id>
+npx urlcode-store ownerless-delete --directory /srv/site/data/store --collection notes
+```
+
+Each prints `{collection, records, ownerless, ids}` as JSON. `--owner` takes a
+principal id exactly as the provider sets it (for auth, the user's id from
+`urlcode-auth users`, or `apikey:<key id>`). The same operations are exported
+from the package as `reportOwnerless`, `assignOwnerless` and `deleteOwnerless`.
+
+Going back is refused: a collection declared shared whose file holds records
+with an owner fails activation, because serving them shared would hand every
+user's records to every caller. Remove the owners from a stopped copy of the
+file deliberately if that is really intended. A store older than this feature
+refuses such a file too (`_owner` is not a declared field), so ownership is a
+one-way change for older releases.
 
 ## Storage and concurrency: what it does and does not guarantee
 
@@ -301,10 +396,10 @@ Errors never contain record values, file contents or filesystem paths.
 ## Trust and operation
 
 The store is trusted operator code. It is not sandboxed and is not a
-multi-tenant boundary: every caller who can reach a mount sees the whole
-collection, so restrict the mount with `auth` (or another policy) and keep
-per-user data out of a shared collection. There is no per-user ownership model
-yet. Changing collections or mounts changes the project revision and needs a new
+multi-tenant boundary: every caller who can reach a shared collection's mount
+sees the whole collection, so restrict the mount with `auth` (or another
+policy) and keep per-user data in an [owned](#per-record-ownership) collection,
+never a shared one. Changing collections or mounts changes the project revision and needs a new
 operator pin. The mount responses are `no-store`.
 
 ## Catalog recipe
@@ -354,10 +449,14 @@ content-hashed and loaded with the page nonce, under a strict CSP (`connect-src
 edit in progress survives a reload of the list, and a checkbox toggle that the
 server refuses is rolled back. With `auth` composed, the screen route carries
 `auth: true` like the API mount, which gates who can *reach* it — not who owns
-which record. The store has no per-record ownership ([#331], decided: not
-built), so every signed-in caller sees and edits the whole collection through
-this screen. It is a single-user or trusted-group surface, not a multi-user
-one; do not read `auth` on the route as record-level access control. Text
+which record. The screen is multi-user-safe **only for an
+[owned](#per-record-ownership) collection**: it reads and writes through the
+store's own API with the signed-in caller's session, so on a collection with
+`ownership: owner` each user sees, edits and deletes only their own records. On
+a shared collection (the default, including the `--example` `todos`) every
+signed-in caller sees and edits the whole collection through this screen, so
+it is a single-user or trusted-group surface; do not read `auth` on the route
+as record-level access control there. Text
 fields become inputs (a textarea above 200
 characters), enums selects, numbers number inputs and booleans checkboxes;
 labels come from the field names unless the screen sets `columns`
@@ -367,7 +466,10 @@ relabel the fields shown. Details and limits are in the
 
 ## Not built yet
 
-Recorded in [open decisions](OPEN-DECISIONS.md): per-record ownership, a SQLite
-backend, ranges and text search, and richer screens beyond the first slice
-([#262]): labels, columns, sort and filter controls have all shipped
-([#330](https://github.com/jimhoyd-com/urlcode/issues/330)).
+Recorded in [open decisions](OPEN-DECISIONS.md): a SQLite backend, ranges and
+text search, and richer screens beyond the first slice ([#262]): labels,
+columns, sort and filter controls have all shipped
+([#330](https://github.com/jimhoyd-com/urlcode/issues/330)). Owned collections
+([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only: per-owner quotas,
+sharing a record with other principals and manager or support access are not
+built.

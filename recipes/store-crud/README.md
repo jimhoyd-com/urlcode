@@ -52,7 +52,9 @@ curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://
 
 The mount is public unless you protect it: add `auth: true` (with the auth
 extension) or another policy before any writable collection is reachable. Every
-caller sees the whole collection; there is no per-user ownership. Changing
+caller sees the whole collection, which is shared by default; for per-user data
+declare `ownership: owner` on the collection and keep `auth: true` on its mount
+([per-record ownership](../../docs/STORE.md#per-record-ownership)). Changing
 `urlcode.yaml` changes the revision and needs a new pin. Cloudflare and static
 targets refuse extensions, and the store writes local files, so run it on the
 self-hosted runtime with a persistent disk.

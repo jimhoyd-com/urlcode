@@ -58,11 +58,16 @@ The full guide, HTTP contract, limits and the honest list of concurrency
 guarantees is [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
 Short version: one server process per directory (enforced by a lock file),
 whole-file atomic writes, per-collection record and byte quotas, last write
-wins, no transactions, no per-user ownership. A collection may declare
+wins, no transactions. A collection is shared by default; one that holds
+per-user data declares `ownership: owner`, and every request is then scoped to
+the principal a policy such as `auth: true` on its mount sets (another user's
+record is a `404`, records written before it became owned are served to nobody
+until `urlcode-store ownerless-assign` or `ownerless-delete` handles them; see
+[per-record ownership](../../docs/STORE.md#per-record-ownership)). A collection may declare
 `sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`
 and `?<field>=<value>` list queries (one sort field, equality filters, `id`
 tie-break, opaque cursor, undeclared names are `400`s); they apply to the whole
-collection.
+collection, or on an owned collection to the caller's own records.
 
 The `store-schema` artifact (`urlcode artifacts add store-schema`) carries this
 extension's configuration schema and an example configuration as inert JSON

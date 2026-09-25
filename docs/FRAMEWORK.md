@@ -177,6 +177,11 @@ Activation likewise carries the canonical `origin` and the operator's full
 `origins` list (`--alias-origin`); every same-origin check goes through core's
 `isSiteOrigin`, so mcp, forms, store, auth and admin admit the same origins
 ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
+Who a request is for travels the same generic way: an extension that declares
+`providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
+from its `authorize()`, and another extension on the route (an owned store
+collection) reads it, without either knowing the other
+([request principal](EXTENSIONS.md#request-principal)).
 
 An artifact is a separate, optional authoring input, not another way to
 compose executable behavior. `urlcode artifacts add store-schema` installs

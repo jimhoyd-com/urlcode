@@ -133,7 +133,10 @@ id/name/scopes (never the raw key) are written into the reserved
 `x-urlcode-context-auth-principal` header, base64-encoded JSON, so the
 route's own `function`/`middleware` can read who authenticated directly off
 its `Request` object — see [handing data forward into a protected route's own
-context](#handing-data-forward-into-a-protected-routes-own-context).
+context](#handing-data-forward-into-a-protected-routes-own-context). Auth also
+sets the core [request principal](#request-principal) to `apikey:<key id>`
+(for a session-protected route, to the signed-in user's id), which is what an
+owned store collection scopes records by.
 
 `bearer.quota: {requests, window}` adds a budget per credential: `requests`
 per `window` seconds for each key, counted by key id in the auth store once
@@ -332,6 +335,54 @@ into this namespace — only a derived, non-secret value. `packages/auth`'s
 scopes (base64-encoded JSON) to the route's own handler; see
 [bearer/API-key routes](#bearerapi-key-routes).
 
+### Request principal
+
+Other extensions on a route sometimes need to know *who* the request is for,
+not just that it was allowed: an [owned store collection](STORE.md#per-record-ownership)
+scopes every record to its owner. Core carries that as an opaque **principal**
+on the request (`RIM-EXT-PRINCIPAL-001` in
+[runtime implementation](RUNTIME-IMPLEMENTATION.md)). Core is unaware of auth:
+it only transports a bounded id that an operator-installed extension vouched
+for.
+
+- **Who may set it.** Only an extension whose registration declares
+  `providesPrincipal: true`, only from its own `authorize()` on a route whose
+  `policies.extensions` (or `auth:` short form) names it, and only through
+  `request.setPrincipal({id})` while core is awaiting that `authorize()` call.
+  It is committed only when that `authorize()` allows the request (returns
+  `undefined`); a denial or a throw discards it. `setPrincipal` throws when
+  called by an extension that does not declare `providesPrincipal`, from
+  `middleware()` or `handle()`, after `authorize()` returned, or twice in one
+  call. A registration that declares `providesPrincipal` and guards a route
+  without an `authorize()` hook refuses activation.
+- **One per request.** When one extension has set a principal, a second
+  extension on the same route that tries to set one is refused: the request
+  fails with a server error rather than letting either identity win silently.
+- **What it is.** `{id}` only: a stable, opaque id of 1 to 128 characters,
+  ASCII letters and digits first, then also `.`, `_`, `:` and `-` (`principalIdPattern`).
+  Anything else (another key, an email address, a non-plain object) is
+  refused. Core freezes it and stamps `provider`, the setting extension's
+  name, so readers see `request.principal` as `{id, provider}` (read-only), or
+  `null` when none was set. Use a stable account or credential id, never an
+  email address, a name, a session token or any secret.
+- **Where it comes from.** Never from the client: core never reads it from a
+  header, cookie, query value, body or YAML, and the `x-urlcode-context-*`
+  channel above is unrelated to it. A later `authorize()`, every `middleware()`
+  and the mount's own `handle()` on the same route read `request.principal`.
+  It does not reach a route's own `function`/`middleware` guest code.
+- **Knowing at startup.** The activation context carries `principalMounts`:
+  the subset of `mounts` whose route names a principal-providing extension in
+  its policies. An extension that needs a principal refuses to activate a mount
+  missing from it (fail closed), and still refuses a request whose principal is
+  `null`, because a provider may allow a request without setting one.
+
+`auth` is the first-party provider (the signed-in user's id for a session,
+`apikey:<key id>` for a bearer key) and `store` the first consumer; the core
+fixture `test/extension-principal.test.ts` proves the seam with a synthetic,
+non-auth provider. Extensions are trusted in-process code, so this contract
+fails closed on mistakes and misconfiguration; it is not a sandbox between
+extensions.
+
 ### Request context: route env and request id
 
 Every `ExtensionRequest` carries two more generic fields, whether it reaches an
@@ -470,7 +521,11 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    `serve` startup print it as `Extension "<name>" failed to activate: <message>`
    (one line, bounded, no stack); request-time answers stay generic.
 5. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
-   policies. It closes resources it owns.
+   policies. It closes resources it owns. An extension that authenticates may
+   declare `providesPrincipal` and set the [request principal](#request-principal);
+   one that needs to know who a request is for reads `request.principal` and
+   checks `principalMounts` at activation, and never parses another extension's
+   cookie, header or tables.
 6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
 7. Decides whether a request is same-origin with `isSiteOrigin(context, value)`
