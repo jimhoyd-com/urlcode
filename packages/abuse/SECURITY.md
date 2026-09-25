@@ -13,9 +13,11 @@ required. The extension refuses to register without one.
   `HMAC-SHA256(data/abuse.key, 'urlcode-abuse:v1\0' + namespace + '\0' + scope + '\0' + value)` in hex. A raw
   address, email or domain is never stored, returned or logged. A copied `abuse.sqlite` cannot be reversed by
   dictionary without the key.
-- **A bounded table.** `abuse_counters` holds at most `maxKeys` rows (default 100000; 1000..1000000). Every
-  operation that may add a row first sweeps up to 1000 expired rows, then refuses with 503 `abuse_capacity`.
-  Every statement is indexed.
+- **A bounded table.** `abuse_counters` holds at most `maxKeys` rows (default 100000; 1000..1000000), and each
+  claimed scope at most an equal share of them (`maxKeys` divided by the number of claimed `<namespace>/<scope>`
+  pairs), so one consumer's unbounded, attacker-keyed growth cannot lock out another. Every operation that may add
+  a row first sweeps up to 1000 expired rows, then refuses with 503 `abuse_capacity`. Each row records its
+  `<namespace>/<scope>` names in plain text, never the counted value. Every statement is indexed.
 - **Fail closed.** A storage failure rejects with `AbuseError(503, 'abuse_unavailable')`. The consumer contract is
   to answer 503 and never admit on a throw.
 - **No partial admission.** `admit` checks every counter before incrementing any, inside one `BEGIN IMMEDIATE`

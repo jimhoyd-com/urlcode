@@ -135,8 +135,11 @@ signal})`), and abuse wraps it with the following bounds:
 
 ## Operating it
 
-- **Capacity.** Every add first sweeps up to 1000 expired rows, then refuses past `maxKeys`. A full table answers
-  503 (`abuse_capacity`), and the consumer answers 503. Raise `maxKeys` or shorten windows.
+- **Capacity.** Every add first sweeps up to 1000 expired rows, then refuses past `maxKeys`, or past its scope's
+  share: each claimed `<namespace>/<scope>` may hold at most `maxKeys` divided by the number of claimed scopes, so
+  one consumer's attacker-chosen keys (password backoff for arbitrary emails, say) cannot fill the table for the
+  others. A full table or share answers 503 (`abuse_capacity`), and the consumer answers 503. Raise `maxKeys` or
+  shorten windows.
 - **Backup.** `data/abuse.sqlite` is optional to back up because the counters are protective, not a record. Losing
   `data/abuse.key` only resets the counters: the old rows can no longer be matched, and they expire.
 - **Durability.** The database uses WAL with `synchronous=NORMAL`, so a power loss can drop the last increments.

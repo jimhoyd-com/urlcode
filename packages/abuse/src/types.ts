@@ -54,7 +54,7 @@ export interface AbuseBackoff {
   /**
    * count = min(64, count+1); delay = count < threshold ? 0 : min(maxDelayMs, initialDelayMs * 2^min(30, count-threshold));
    * expires = now+resetAfterMs; blocked_until = now+delay. Rejects AbuseError(503,'abuse_capacity') when a new row
-   * would exceed maxKeys.
+   * would exceed maxKeys or this scope's equal share of it.
    */
   failure(value: string): Promise<void>;
   clear(value: string): Promise<void>;

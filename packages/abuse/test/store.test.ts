@@ -64,7 +64,7 @@ test('the table is bounded: capacity answers 503, and each add sweeps at most 10
   const ns = abuse.exports.namespace('forms'), budget = ns.budget({ scope: 'client', limit: 5, windowMs: 1000 }), backoff = ns.backoff({ scope: 'password' });
   const other = new DatabaseSync(database);
   t.after(() => other.close());
-  const fill = (count: number, expires: number, prefix: string) => { other.exec('BEGIN'); const insert = other.prepare('INSERT INTO abuse_counters VALUES(?,1,?,0)'); for (let i = 0; i < count; i++) insert.run(prefix + i, expires); other.exec('COMMIT'); };
+  const fill = (count: number, expires: number, prefix: string) => { other.exec('BEGIN'); const insert = other.prepare('INSERT INTO abuse_counters VALUES(?,1,?,0,\'other/fill\')'); for (let i = 0; i < count; i++) insert.run(prefix + i, expires); other.exec('COMMIT'); };
   const rows = () => Number((other.prepare('SELECT count(*) AS n FROM abuse_counters').get() as { n: number }).n);
   fill(1000, now() + 1000, 'live-');
   assert.deepEqual(await ns.admit([{ budget, value: 'new' }]), { allowed: false, status: 503, code: 'abuse_capacity' });
@@ -81,13 +81,24 @@ test('the table is bounded: capacity answers 503, and each add sweeps at most 10
   assert.equal(rows(), 1501);
 });
 
+test('one scope fills only its share: a backoff flood cannot refuse a budget in another namespace', async t => {
+  const { abuse } = await setup(t, { maxKeys: 1000 });
+  const auth = abuse.exports.namespace('auth'), backoff = auth.backoff({ scope: 'password' });
+  const forms = abuse.exports.namespace('forms'), budget = forms.budget({ scope: 'client', limit: 5, windowMs: 1000 });
+  // Two claimed scopes: each may hold 500 rows of the 1000.
+  for (let i = 0; i < 500; i++) await backoff.failure(`user${i}@example.test`);
+  await assert.rejects(backoff.failure('one-more@example.test'), (error: unknown) => error instanceof AbuseError && error.status === 503 && error.code === 'abuse_capacity');
+  await backoff.failure('user0@example.test');
+  assert.equal((await forms.admit([{ budget, value: '192.0.2.9' }])).allowed, true, 'the other scope still has its share');
+});
+
 test('the default bound is 100000 rows and the sweep still deletes at most 1000', async t => {
   const { abuse, database, now, tick } = await setup(t);
   const ns = abuse.exports.namespace('forms'), budget = ns.budget({ scope: 'client', limit: 5, windowMs: 1000 });
   const other = new DatabaseSync(database);
   t.after(() => other.close());
   other.exec('BEGIN');
-  const insert = other.prepare('INSERT INTO abuse_counters VALUES(?,1,?,0)');
+  const insert = other.prepare('INSERT INTO abuse_counters VALUES(?,1,?,0,\'other/fill\')');
   for (let i = 0; i < 2500; i++) insert.run('old-' + i, now());
   other.exec('COMMIT');
   tick(1);

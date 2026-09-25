@@ -41,6 +41,8 @@ export async function createAbuse(options: AbuseOptions): Promise<AbuseInstance>
     scopes.set(id, kind);
   };
   const budgets = new WeakMap<AbuseBudget, string>();
+  /** Each claimed scope may hold an equal share of maxKeys, so no one consumer can fill the table for the rest. */
+  const bounds = () => ({ maxKeys, share: Math.max(1, Math.floor(maxKeys / Math.max(1, scopes.size))) });
 
   function namespace(name: string): AbuseNamespace {
     if (typeof name !== 'string' || !SCOPE.test(name)) throw new AbuseError(400, 'invalid_abuse_spec');
@@ -62,7 +64,7 @@ export async function createAbuse(options: AbuseOptions): Promise<AbuseInstance>
         return Object.freeze({
           ...normal,
           async check(value: string) { const id = valueKey(value); try { return Object.freeze(store.check(id, now())); } catch (error) { return unavailable(error); } },
-          async failure(value: string) { const id = valueKey(value); try { store.failure(id, normal, now(), maxKeys); } catch (error) { unavailable(error); } },
+          async failure(value: string) { const id = valueKey(value); try { store.failure(id, `${name}/${normal.scope}`, normal, now(), bounds()); } catch (error) { unavailable(error); } },
           async clear(value: string) { const id = valueKey(value); try { store.clear(id); } catch (error) { unavailable(error); } },
         });
       },
@@ -71,10 +73,10 @@ export async function createAbuse(options: AbuseOptions): Promise<AbuseInstance>
         const items = entries.map(entry => {
           if (!entry || budgets.get(entry.budget) !== name || !validValue(entry.value)) throw new AbuseError(400, 'invalid_abuse_spec');
           const { scope, limit, windowMs, challengeAfter } = entry.budget;
-          return { key: keyOf(scope, entry.value), limit, windowMs, challengeAfter };
+          return { key: keyOf(scope, entry.value), scope: `${name}/${scope}`, limit, windowMs, challengeAfter };
         });
         if (new Set(items.map(item => item.key)).size !== items.length) throw new AbuseError(400, 'invalid_abuse_spec');
-        try { return Object.freeze(store.admit(items, now(), maxKeys)); } catch (error) { return unavailable(error); }
+        try { return Object.freeze(store.admit(items, now(), bounds())); } catch (error) { return unavailable(error); }
       },
     });
   }
