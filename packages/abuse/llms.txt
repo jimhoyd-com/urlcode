@@ -1,0 +1,24 @@
+# URLCode abuse
+
+> Operator-installed abuse protection for other extensions. It provides persistent, pseudonymous fixed-window
+> budgets, failure backoff and challenge escalation, called through `AbuseExports` v1. It has no routes and no
+> route policy. It is released with core and installed with `urlcode extensions add abuse`. Apache-2.0.
+
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code or credentials)
+- `extensions.abuse: { version: "1", config: { maxKeys?: 1000..1000000 } }`. The default `maxKeys` is 100000.
+- The budgets themselves live in the consumer's YAML: `extensions.auth.config.abuse`, and
+  `flows.<name>.abuse` in forms.
+- The challenge verifier (for example `createTurnstileChallenge`) is host.mjs code, never YAML.
+
+## Read in this order
+- [README](README.md): the declaration, host options, `AbuseExports` v1 for extension authors, and operating notes.
+- [SECURITY](SECURITY.md): pseudonymous keys, the bounded table, fail-closed behavior and what abuse does not do.
+
+## Do not guess
+- A plain per-route request budget is `policies.throttle` (core), not abuse.
+- Abuse never admits on a storage failure. It rejects with 503 `abuse_unavailable`, and a full table answers 503
+  `abuse_capacity`.
+- It runs on the `node` target only. A route with `extension: abuse` is refused.
+- `data/abuse.key` is written by `urlcode extensions add abuse`. Losing it only resets the counters.

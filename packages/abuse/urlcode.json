@@ -1,0 +1,31 @@
+{
+  "kind": "extension",
+  "name": "abuse",
+  "description": "Persistent, pseudonymous rate limits, failure backoff and challenge escalation for extensions",
+  "requires": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxKeys": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 1000000
+      }
+    }
+  },
+  "authoring": {
+    "description": "Persistent, pseudonymous counters other extensions call: request budgets, failure backoff and challenge escalation. It has no routes and no route policy; use policies.throttle for a declarative per-route budget.",
+    "surfaces": [
+      {
+        "kind": "configuration",
+        "name": "maxKeys",
+        "description": "Hard bound on stored counters (1000..1000000, default 100000); a full table answers 503.",
+        "path": "urlcode.yaml#extensions.abuse.config.maxKeys"
+      }
+    ],
+    "fastChecks": [
+      "urlcode validate --project . --host-file <host.mjs> --origin <origin>"
+    ]
+  }
+}
