@@ -83,7 +83,8 @@ rather than grepping llms-full.txt.
 Draft `tests/requests.json` from `urlcode fixtures suggest --json` (MCP `suggest_fixtures`): it reads urlcode.yaml and its
 includes, covers only routes the YAML alone determines and lists function, middleware, proxy, extension, pattern and
 binding routes as `gaps` to test by hand. `urlcode diff BEFORE --json` (a YAML file, or a directory to compare includes
-too; MCP `summarize_yaml_change`) names the routes, code seams and operator grants a change adds.
+too; MCP `summarize_yaml_change`) names the routes, code seams and operator grants a change adds;
+`urlcode report BEFORE > report.html` renders it, the review findings and each route's request path as a read-only page for a person.
 
 Handler for the response: fixed text or JSON is `respond`; one HTML file is `page`; a directory is
 `static`; an attachment is `download`; a short HTML snippet is `respond` `text` with a
