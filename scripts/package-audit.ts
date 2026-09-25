@@ -154,8 +154,15 @@ export const budgets: Record<string, Budget> = {
     // gzip variance noted above. The same change adds about 29 KiB unpacked
     // (dist/docs-search.js is 25 KiB with its source comments), measuring
     // 3070525 unpacked bytes, so unpacked is raised from 2970 to 3000 KiB.
-    packed: 746 * 1024,
-    unpacked: 3000 * 1024,
+    //
+    // Raised to 752 KiB packed and 3040 KiB unpacked when #759 met the
+    // run_tests execution-contract change (#590: honest runner descriptions
+    // and annotations, the SECURITY/TOOLING/AI-AUTHORING updates and their
+    // llms-full.txt copies). Together they measure 763472 packed and 3077097
+    // unpacked bytes in 464 entries on Node 26, which left under 1 KiB of
+    // packed headroom against the ~2 KiB cross-Node gzip variance above.
+    packed: 752 * 1024,
+    unpacked: 3040 * 1024,
     entries: 470,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
