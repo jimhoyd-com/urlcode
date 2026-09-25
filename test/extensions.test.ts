@@ -12,7 +12,7 @@ import {startServer} from '../packages/core/src/server.ts';
 import {createLambdaHandler} from '../packages/core/src/aws.ts';
 import {buildCloudflare} from '../packages/core/src/build-cloudflare.ts';
 import {inspectExtensionRevision,effectiveExtensionPolicies} from '../packages/core/src/extensions.ts';
-import {ConfigError,describeError} from '../packages/core/src/errors.ts';
+import {ConfigError,asConfigError,describeError} from '../packages/core/src/errors.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import type {ProjectDocument} from '../packages/core/src/types.ts';
 import {inspectExtensions,describeExtensions,validateProject} from '../packages/core/src/tooling.ts';
@@ -336,13 +336,13 @@ test('activation errors name the extension, keep the message bounded and stay ou
   assert.equal(result.statusCode,500);const body=Buffer.from(result.body,'base64').toString();assert.equal(body,'Internal server error\n');assert.ok(!body.includes('maxLength'));
   assert.ok(logged.some(entry=>entry instanceof ConfigError&&entry.details.extension==='demo'));
 });
-test('validate, test and dev print an extension activation error with its name; other failures stay generic (#714)',async t=>{
+test('validate, test and dev print an extension activation error with its name (#714)',async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,...data}=await registration(root);
   const failing=join(dir,'failing.mjs'),broken=join(dir,'broken.mjs');
   await writeFile(failing,`export default {extensions:[{...${JSON.stringify(data)},activate(){throw new Error('MCP server hosted: tool urlcode_yaml_validate inputSchema: maxLength must be an integer from 0 to 8192');}}]};`);
-  // Loading the host module itself is not extension activation: its failure keeps the generic next step.
+  // Loading the host module itself is not extension activation: it reports as the host file's own failure (#724).
   await writeFile(broken,`throw new Error('internal detail /secret/path');\n`);
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
   const run=(command:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,...args],{encoding:'utf8',timeout:20000});
@@ -356,12 +356,50 @@ test('validate, test and dev print an extension activation error with its name; 
     const out=run('dev','--port','0','--host-file',failing);assert.equal(out.status,1,out.stderr);
     assert.match(lastError(out.stderr).message,/^Extension "demo" failed to activate: MCP server hosted/);
   });
-  await t.test('non-activation failure',()=>{
+  await t.test('host file failure',()=>{
     const out=run('validate','--host-file',broken);assert.equal(out.status,1);
-    assert.deepEqual(lastError(out.stderr),{event:'error',message:'Operation failed; check project files, module dependencies and command options'});
-    assert.ok(!out.stderr.includes('secret'));
+    assert.deepEqual(lastError(out.stderr),{event:'error',message:'Host file failed to load: internal detail /secret/path',code:'host-load'});
   });
   assert.equal(describeError(new Error('internal detail')),'Operation failed; check project files, module dependencies and command options');
+});
+test('validate, test and dev print a host file load failure and an extension host() failure; requests never see them (#724)',async t=>{
+  const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const hostModule=new URL('../packages/core/src/host.ts',import.meta.url).href;
+  const files={
+    topLevel:[`throw new Error('host.mjs setup failed:\\n  line two');\n`],
+    missing:[`import '@jimhoyd/urlcode-not-installed/extension';\nexport default {};\n`],
+    hook:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',host(){throw new Error('CSRF key data/csrf.key must be 32 bytes\\n'+'x'.repeat(2000));}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+    refusal:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',host(){return {registration:{name:'other'}};}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+  };
+  const paths=Object.fromEntries(await Promise.all(Object.entries(files).map(async([name,[text]])=>{const file=join(dir,`${name}.mjs`);await writeFile(file,text!);return [name,file] as const;})));
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const env={...process.env,PROJECT_SHA256:await inspectExtensionRevision(root)};
+  const run=(command:string,host:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env});
+  const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string;extension?:string};
+  for(const command of ['validate','test','dev'])await t.test(command,()=>{
+    const extra=command==='dev'?['--port','0']:[];
+    const top=run(command,paths.topLevel!,...extra);assert.equal(top.status,1,top.stderr);
+    assert.deepEqual(lastError(top.stderr),{event:'error',message:'Host file failed to load: host.mjs setup failed: line two',code:'host-load'});
+    const hook=run(command,paths.hook!,...extra);assert.equal(hook.status,1,hook.stderr);
+    const error=lastError(hook.stderr);
+    assert.match(error.message,/^Extension "demo" host\(\) failed: CSRF key data\/csrf\.key must be 32 bytes x+\.\.\.$/);assert.ok(error.message.length<600);
+    assert.deepEqual({...error,message:undefined},{event:'error',message:undefined,code:'extension-host',extension:'demo'});
+    for(const out of [top,hook])assert.ok(!out.stderr.includes('    at '));
+  });
+  await t.test('module resolution names the missing specifier',()=>{
+    const out=run('validate',paths.missing!);assert.equal(out.status,1);
+    const error=lastError(out.stderr);assert.equal(error.code,'host-load');
+    assert.match(error.message,/^Host file failed to load: Cannot find package '@jimhoyd\/urlcode-not-installed'/);
+  });
+  await t.test('core refusals inside composeHost keep their own message',()=>{
+    const out=run('validate',paths.refusal!);assert.equal(out.status,1);
+    assert.equal(lastError(out.stderr).message,'demo host() must return {registration} for extension demo');
+  });
+  // A second copy of core (the published package imported by host.mjs while the CLI runs from a checkout) is recognized by its brand only.
+  const foreign=Object.assign(new Error('Set PROJECT_SHA256'),{details:{code:'x',extension:'demo',line:'1'},[Symbol.for('urlcode.ConfigError')]:true});
+  const rebuilt=asConfigError(foreign);assert.ok(rebuilt instanceof ConfigError);assert.equal(rebuilt.message,'Set PROJECT_SHA256');assert.deepEqual(rebuilt.details,{code:'x',extension:'demo'});
+  assert.equal(asConfigError(Object.assign(new Error('look-alike'),{details:{code:'x'}})),undefined);
 });
 
 /** A demo registry written as a host file outside the project, matching the in-process registration above. */

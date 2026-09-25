@@ -1,7 +1,7 @@
 import { realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { assert } from './errors.ts';
+import { asConfigError, assert, hostLoadError } from './errors.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
 /** Explicitly loaded operator code. Never discovered in application directories. */
@@ -19,7 +19,11 @@ export async function loadOperatorHost(given: string | undefined, project: strin
   assert(isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep), 'Host file must be outside the application project');
   const info = await stat(path);
   assert(info.isFile() && info.size <= 1048576, 'Host file must be a regular file of at most 1 MiB');
-  const module = await import(pathToFileURL(path).href) as Record<string, unknown>;
+  let module: Record<string, unknown>;
+  // Importing runs host.mjs, including composeHost and every extension's host() hook. Core's own refusals (and an
+  // extension's, already named by composeHost) keep their message; anything else is reported as the host file's.
+  try { module = await import(pathToFileURL(path).href) as Record<string, unknown>; }
+  catch (error) { throw asConfigError(error) ?? hostLoadError(error); }
   const host: unknown = module.default;
   assert(host !== null && typeof host === 'object' && !Array.isArray(host), 'Host file must default-export an operator configuration object');
   assert(Object.keys(host).every(key => ['extensions', 'plugins', 'close'].includes(key)), 'Unknown operator host setting');

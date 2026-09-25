@@ -132,9 +132,21 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   `serve` prints the same line when it refuses to start, because startup output
   belongs to the operator; a request never sees it. The hosted AWS and Vercel
   adapters activate on the first request and answer it with a plain `500
-  Internal server error`, logging the reason to the function log. A host file
-  that fails to load before any extension activates still gets the generic
-  `Operation failed` next step.
+  Internal server error`, logging the reason to the function log.
+- The host file fails before any extension activates: when `host.mjs` itself
+  throws while it is imported (a top-level error or an import that cannot be
+  resolved), the same commands print `Host file failed to load: <message>`
+  with `code` `host-load`; when an extension's `host()` hook throws inside
+  `composeHost`, they print `Extension "<name>" host() failed: <message>` with
+  `code` `extension-host` and an `extension` field. Both use the same one-line,
+  500-character, stackless form, and core's own refusals inside `composeHost`
+  (for example a missing revision pin) keep their own message. A
+  module-resolution message is shown as Node reports it, including the
+  missing specifier and the absolute path of the file that imported it: the
+  line is the operator's own diagnostic about the operator's own checkout,
+  printed only to that console or CI log and never in an HTTP response. Treat
+  a shared CI log accordingly; the text never includes environment values or
+  secrets unless the host file's own error message does.
 - Changed runtime source: stop and restart dev, then `npm run typecheck`. Changed app source: reload is automatic.
 - Missing dependency or wrong Node: check `node --version`, then `npm ci`.
 - Need access from another device: explicitly use `HOST=0.0.0.0` or `--host 0.0.0.0`;

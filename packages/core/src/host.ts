@@ -1,6 +1,6 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigError, assert } from './errors.ts';
+import { ConfigError, assert, extensionError } from './errors.ts';
 import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
 import type { OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
@@ -73,7 +73,9 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
         },
         contributions: <T>(target: string): T[] => [...(contributions.get(target) ?? [])] as T[],
       };
-      const result = await definition.host(context, entries[index]!.options);
+      let result: HostedExtension;
+      try { result = await definition.host(context, entries[index]!.options); }
+      catch (error) { throw extensionError(error, name, 'host'); }
       assert(result && typeof result === 'object' && result.registration?.name === name, `${name} host() must return {registration} for extension ${name}`);
       assert(result.registration.projectSha256 === projectSha256, `${name} host() must register the reviewed PROJECT_SHA256`);
       assert(JSON.stringify(result.registration.schema) === JSON.stringify(definition.schema), `${name} registers a configuration schema that differs from its definition`);

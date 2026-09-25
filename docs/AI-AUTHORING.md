@@ -206,7 +206,8 @@ structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
 `invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
 `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
-`unknown-option`, `extension-activation`, `extension-registration`), `file`,
+`unknown-option`, `extension-activation`, `extension-registration`,
+`extension-host`, `host-load`), `file`,
 `line` and `column`, `route` (the pattern as written), `pointer` (an RFC 6901
 pointer into the YAML) and `extension` (the operator extension that failed; see
 [local development](LOCAL-DEVELOPMENT.md)). Configuration messages start

@@ -20,10 +20,22 @@ export interface ErrorDetails {
   /** The operator-registered extension the failure belongs to. */
   extension?: string | undefined;
 }
+const configErrorBrand = Symbol.for('urlcode.ConfigError');
 export class ConfigError extends Error {
   readonly details: ErrorDetails;
   /** `options.cause` keeps the original error for the operator's own logs; the CLI prints only `message`. */
   constructor(message: string, details: ErrorDetails = {}, options?: ErrorOptions) { super(message, options); this.details = { ...details }; }
+}
+// A host file can import a second copy of this module (for example the published package while the CLI runs from a
+// checkout); the brand lets the loader recognize that copy's ConfigError without trusting any other shape.
+Object.defineProperty(ConfigError.prototype, configErrorBrand, { value: true });
+/** A ConfigError from this module or from another copy of it, rebuilt as this module's class so the CLI prints it. */
+export function asConfigError(error: unknown): ConfigError | undefined {
+  if (error instanceof ConfigError) return error;
+  if (!(error instanceof Error) || (error as unknown as Record<symbol, unknown>)[configErrorBrand] !== true) return undefined;
+  const given = (error as { details?: unknown }).details, details: ErrorDetails = {};
+  if (given && typeof given === 'object') for (const [key, value] of Object.entries(given)) if (['code', 'route', 'file', 'pointer', 'key', 'extension'].includes(key) ? typeof value === 'string' : ['line', 'column'].includes(key) && typeof value === 'number') (details as Record<string, unknown>)[key] = value;
+  return new ConfigError(error.message, details, { cause: error });
 }
 export class HttpError extends Error {
   readonly status: number;
@@ -66,11 +78,21 @@ export function boundedMessage(error: unknown, max = MAX_REPORTED_MESSAGE): stri
  * (request-time answers keep the fixed `Internal server error`). A ConfigError that already names an extension is
  * returned unchanged; other ConfigErrors keep their details and gain the `extension` field.
  */
-export function extensionError(error: unknown, name: string, phase: 'activate' | 'prepare'): ConfigError {
+export function extensionError(error: unknown, name: string, phase: 'activate' | 'prepare' | 'host'): ConfigError {
   if (error instanceof ConfigError && error.details.extension !== undefined) return error;
-  const code = phase === 'activate' ? 'extension-activation' : 'extension-registration';
+  const code = phase === 'activate' ? 'extension-activation' : phase === 'host' ? 'extension-host' : 'extension-registration';
   const details: ErrorDetails = error instanceof ConfigError ? { ...error.details, code: error.details.code ?? code, extension: name } : { code, extension: name };
-  return new ConfigError(`Extension ${JSON.stringify(name)} ${phase === 'activate' ? 'failed to activate' : 'registration could not be prepared'}: ${boundedMessage(error)}`, details, { cause: error });
+  const what = phase === 'activate' ? 'failed to activate' : phase === 'host' ? 'host() failed' : 'registration could not be prepared';
+  return new ConfigError(`Extension ${JSON.stringify(name)} ${what}: ${boundedMessage(error)}`, details, { cause: error });
+}
+/**
+ * The operator's host file threw while it was imported (a top-level error, a failed import, or an extension's
+ * `host()` hook when that copy of core could not name it). Like `extensionError`, the text is the operator's own
+ * error on one bounded line with no stack, printed on the operator's console only. A module-resolution message can
+ * include local file paths (the missing specifier and the importing file); they are shown as Node reports them.
+ */
+export function hostLoadError(error: unknown): ConfigError {
+  return new ConfigError(`Host file failed to load: ${boundedMessage(error)}`, { code: 'host-load' }, { cause: error });
 }
 /** The defined detail fields only, for JSON output. */
 export function errorFields(details: ErrorDetails): ErrorDetails {
