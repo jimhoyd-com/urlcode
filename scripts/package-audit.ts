@@ -137,12 +137,38 @@ export const budgets: Record<string, Budget> = {
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
+  // The generic audit log, abuse protection and mail add-ons split out of
+  // auth. Each has no runtime dependency beyond core and Node built-ins. First
+  // measured at 25347/82420/24 (audit), 20510/64820/26 (abuse) and
+  // 22236/72631/20 (mail) packed bytes, unpacked bytes and files.
+  '@jimhoyd/urlcode-audit': {
+    packed: 35 * 1024,
+    unpacked: 110 * 1024,
+    entries: 32,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
+  },
+  '@jimhoyd/urlcode-abuse': {
+    packed: 30 * 1024,
+    unpacked: 90 * 1024,
+    entries: 32,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
+  },
+  '@jimhoyd/urlcode-mail': {
+    packed: 32 * 1024,
+    unpacked: 100 * 1024,
+    entries: 28,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
+    // The SES transport loads the SDK lazily; it moved here from auth.
+    optionalPeers: ['@aws-sdk/client-sesv2'],
+  },
   '@jimhoyd/urlcode-auth': {
     packed: 225 * 1024,
     unpacked: 900 * 1024,
     entries: 90,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json'],
-    optionalPeers: ['@aws-sdk/client-sesv2'],
+    // audit is a required peer (auth's store worker validates outbox events
+    // with it); abuse is the optional `uses` edge.
+    optionalPeers: ['@jimhoyd/urlcode-abuse'],
   },
   '@jimhoyd/urlcode-admin': {
     packed: 75 * 1024,
