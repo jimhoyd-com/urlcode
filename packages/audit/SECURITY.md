@@ -80,10 +80,12 @@ short-link click. Size `retention` for the busiest audited traffic.
 ## What the log contains
 
 Producers decide the content. The contract forbids secrets and submitted values
-in `metadata` (field names only); `actor` and `subject` are identifiers. Auth
-currently puts an email address in the `subject` of `registration.duplicate`
-and `registration.invited`, so treat the log as personal data: keep `data/`
-private and grant `audit.read`/`audit.export` only to roles that need them.
+in `metadata` (field names only); `actor` and `subject` are identifiers, never
+an email address: auth's `registration.duplicate` names the existing account or
+waitlist request, and `registration.invited` a one-way pseudonym of the
+invitation. Account ids and reasons still relate to people, so treat the log as
+personal data: keep `data/` private and grant `audit.read`/`audit.export` only
+to roles that need them.
 Audit enforces no permission itself; its readers (admin) check them.
 
 ## Backup

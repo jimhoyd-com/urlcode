@@ -168,3 +168,28 @@ test('an event the CLI wrote with no host running is drained by the next host', 
     assert.equal(page.events[0]!.actor, owner.id);
     assert.equal(page.events[0]!.source, 'auth');
 });
+
+test('registration events name an account, a waitlist request or an invitation pseudonym, never an email address', async (t) => {
+    const root = await directory(t, 'urlcode-auth-outbox-pii-');
+    const open = internal(await createAuthService(options(join(root, 'open.sqlite'))));
+    cleanup(t, () => open.close());
+    const first = await open.register({ email: 'taken@example.test', password });
+    await open.register({ email: 'taken@example.test', password });
+    assert.deepEqual((await outbox(open, { action: 'registration.duplicate' })).map(event => event.subject), [first.user.id]);
+
+    const waitlist = internal(await createAuthService({ ...options(join(root, 'waitlist.sqlite')), registrationMode: 'waitlist' }));
+    cleanup(t, () => waitlist.close());
+    const request = await waitlist.requestRegistration({ email: 'queued@example.test', password });
+    await waitlist.requestRegistration({ email: 'queued@example.test', password });
+    assert.deepEqual((await outbox(waitlist, { action: 'registration.duplicate' })).map(event => event.subject), [request.id]);
+
+    const invited = internal(await createAuthService({ ...options(join(root, 'invite.sqlite')), registrationMode: 'invite-only' }));
+    cleanup(t, () => invited.close());
+    const admin = await invited.bootstrapAdmin({ email: 'owner@example.test', password });
+    await invited.invite({ actorToken: admin.token, email: 'guest@example.test' });
+    const [event] = await outbox(invited, { action: 'registration.invited' });
+    assert.match(event!.subject, /^invitation:[a-f0-9]{32}$/);
+
+    for (const service of [open, waitlist, invited])
+        assert.ok((await outbox(service)).every(item => !JSON.stringify(item).includes('@')), 'no event carries an address');
+});

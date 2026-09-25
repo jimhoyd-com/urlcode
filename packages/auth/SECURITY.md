@@ -83,9 +83,10 @@ change.
 `urlcode-auth doctor` reports the backlog. Retention, queries and exports are
 the audit extension's ([audit SECURITY](../audit/SECURITY.md)). Reading the
 audit log needs the `audit.read` and `audit.export` permissions, which roles
-grant like any other; auth no longer enforces audit reads itself. Registration
-events (`registration.duplicate`, `registration.invited`) carry the email
-address as their subject, so the log holds personal data.
+grant like any other; auth no longer enforces audit reads itself. No event
+carries an email address: `registration.duplicate` names the existing account
+or waitlist request, and `registration.invited` a one-way pseudonym of the
+invitation (`invitation:<32 hex>`).
 
 ### Abuse budgets
 

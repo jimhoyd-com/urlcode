@@ -275,6 +275,8 @@ if (!isMainThread && workerData?.authStore) {
     // change it records, so a rolled-back change leaves no event and a committed one always has one. The audit
     // extension drains the outbox; at its cap the change itself is refused, never applied unaudited.
     let outboxWritten = false;
+    /** An invitation has no account yet: its audit subject is a one-way pseudonym of the stored token hash. */
+    const invitationSubject = (hash: string) => 'invitation:' + createHash('sha256').update('urlcode-auth-invitation\0' + hash).digest('hex').slice(0, 32);
     const audit = (actor: string, action: string, subject: string, now: number, reason = '', metadata?: Readonly<Record<string, AuditValue>>) => {
         const event = validateAuditEvent({ id: randomUUID(), source: 'auth', action, actor, subject, at: now, ...(reason ? { reason } : {}), ...(metadata ? { metadata } : {}) });
         if (num(db.prepare('SELECT count(*) AS n FROM auth_audit_outbox').get()?.n) >= auditOutboxLimits.auth)
@@ -904,12 +906,14 @@ if (!isMainThread && workerData?.authStore) {
                             if (invite.changes !== 1)
                                 error(403, 'registration_unavailable');
                         }
-                        if (db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(user.email)) {
+                        const taken = db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(user.email);
+                        if (taken) {
                             // Do not tell the caller the address is taken (JSON-API.md's
                             // no-enumeration guarantee): report the attempt without creating a
                             // second account, and let the caller build an identically shaped
                             // response backed by an unpersisted session (auth-core.ts `create`).
-                            audit('anonymous', 'registration.duplicate', user.email, now);
+                            // The event names the existing account, never the address.
+                            audit('anonymous', 'registration.duplicate', String(taken.id), now);
                             return null;
                         }
                         db.prepare('INSERT INTO auth_accounts VALUES(?,?,?,?,?)').run(user.id, user.email, user.status, Number(admin(user.roles)), JSON.stringify(user));
@@ -1362,7 +1366,8 @@ if (!isMainThread && workerData?.authStore) {
                             error(503, 'auth_capacity_reached');
                         db.prepare('DELETE FROM auth_invites WHERE email=?').run(String(args.email));
                         db.prepare('INSERT INTO auth_invites VALUES(?,?,?)').run(String(args.hash), String(args.email), now + 86400000);
-                        audit(actor.id, 'registration.invited', String(args.email), now);
+                        // The address stays out of the log: the subject is a pseudonym of the invitation.
+                        audit(actor.id, 'registration.invited', invitationSubject(String(args.hash)), now);
                         return true;
                     });
                     break;
@@ -1374,8 +1379,10 @@ if (!isMainThread && workerData?.authStore) {
                         // an address already on the list or already an account is reported as a
                         // duplicate to the caller who requested it here, but the HTTP response is
                         // identical for both outcomes (see auth.ts's `/register` waitlist branch).
-                        if (db.prepare('SELECT id FROM auth_waitlist WHERE email=?').get(String(args.email)) || db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(String(args.email))) {
-                            audit('anonymous', 'registration.duplicate', String(args.email), now);
+                        const existing = db.prepare('SELECT id FROM auth_waitlist WHERE email=?').get(String(args.email)) ?? db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(String(args.email));
+                        if (existing) {
+                            // The waitlist request's id (the account id it becomes) or the account's, never the address.
+                            audit('anonymous', 'registration.duplicate', String(existing.id), now);
                             return { id: args.id, duplicate: true };
                         }
                         db.prepare('INSERT INTO auth_waitlist(id,email,password_hash,created,profile) VALUES(?,?,?,?,?)').run(String(args.id), String(args.email), String(args.passwordHash), now, args.profile ? JSON.stringify(args.profile) : null);
