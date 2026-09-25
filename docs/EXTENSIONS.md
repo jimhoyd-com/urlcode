@@ -472,6 +472,9 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
 
+Every extension also follows the
+[generic add-on authoring rules](#generic-add-on-authoring-rules).
+
 Consumers add it with `urlcode extensions add <name>`, which declares its YAML
 block and routes and registers it in `host.mjs`. Keep that `scaffold` to the
 capability; put a demo in the definition's optional `example`, which core writes
@@ -479,6 +482,54 @@ only with `--example`. They modify it through declared configuration,
 presentation layers and hooks. A fork is reserved for changing behavior the
 extension has not exposed; that is evidence for a new declarative field or hook.
 See [Composing a site](COMPOSING-A-SITE.md) for the complete ui/auth/admin example.
+
+## Generic add-on authoring rules
+
+These rules apply to every extension and artifact, first-party or not. They
+keep add-ons composable without core, or any other add-on, learning one's
+internals. An add-on **must** follow them:
+
+1. **Own only your declared surface.** An extension owns its declared
+   configuration, mounts, policies and exported or contributed contract, and
+   nothing else. It must not read, parse or depend on another extension's
+   private YAML or configuration layout. Pattern: `store` contributes generic
+   descriptions of its CRUD screens to `ui`, and `ui` never reads
+   `extensions.store.config` (#709; see [nesting](#nesting)).
+2. **Make every cross-extension dependency explicit.** Use `requires`, a
+   typed, versioned export read with `ctx.get`, or a typed, versioned
+   contribution (`contributes` on the giver, `ctx.contributions` on the
+   receiver); see [the extension definition](#the-extension-definition). Core
+   stays unaware of first-party extension names and policy vocabulary: for the
+   `auth:` shorthand core only maps the key, and auth's `policySchema` owns its
+   shape (#710; see [the `auth` short form](#protecting-a-route-the-auth-short-form)).
+3. **Scaffold the capability, not an application.** `scaffold` adds only the
+   integration prerequisites the extension needs to function. Runnable demo
+   endpoints, pages and data belong in the optional `example()` hook, written
+   only with `--example` (#711; see [commands](#commands)).
+4. **Keep artifacts inert.** An artifact carries reusable schemas, examples or
+   documentation only: never executable code, provider wiring, credentials,
+   customer data or application-specific configuration. The enforced file and
+   manifest limits are in [artifacts](#artifacts).
+5. **Prove every new seam twice.** A new export, contribution, hook or policy
+   seam ships with a fixture for a second provider or consumer (not just the
+   first-party pair that motivated it), and passes descriptor, build and add-on
+   verification: `node scripts/build-addon-manifest.ts --check`,
+   `npm run audit:packages` and `npm run test:addons`
+   ([validation and CI](#validation-and-ci), [changing an add-on](../CONTRIBUTING.md#changing-an-add-on)).
+
+### Author checklist
+
+- [ ] Configuration, mounts, policies and exports are declared in the
+      definition; nothing reads another extension's configuration.
+- [ ] Every dependency is a `requires` entry, a `ctx.get` export or a
+      `contributes`/`ctx.contributions` value, with a versioned shape.
+- [ ] Core needs no change naming this extension or its policy keys.
+- [ ] `scaffold` writes only prerequisites; any demo is in `example()`.
+- [ ] Artifacts pass `urlcode artifacts list --strict` and hold no code,
+      provider wiring, credentials, customer data or app-specific config.
+- [ ] Each new seam has a second-provider or consumer fixture.
+- [ ] `npm run build:addons` output is committed; `build-addon-manifest --check`,
+      `npm run audit:packages` and `npm run test:addons` pass.
 
 ## Discovering schemas
 

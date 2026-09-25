@@ -78,6 +78,9 @@ maintained; do not use them in onboarding or publish further subtree updates.
 
 Extensions (`packages/<name>`) and artifacts (`artifacts/<name>`) are add-ons
 at core's version; see [add-ons](docs/EXTENSIONS.md#add-ons-extensions-and-artifacts).
+A new or changed add-on must follow the
+[generic add-on authoring rules](docs/EXTENSIONS.md#generic-add-on-authoring-rules)
+and pass its [author checklist](docs/EXTENSIONS.md#author-checklist).
 An extension's `urlcode.json` is generated from its `defineExtension`
 definition, and the store-schema artifact's schema from the store extension:
 after changing a name, description, `requires`, schema, policy schema, hooks or
