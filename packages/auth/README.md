@@ -256,7 +256,8 @@ A service key belongs to no user, so it is its own principal, namespaced so it
 can never equal a user id: records it creates in an
 [owned store collection](../../docs/STORE.md#per-record-ownership) belong to
 that key, and stop being reachable through the API once it is revoked or
-expires.
+expires; the operator can move them to another principal with
+[`urlcode-store reassign`](../../docs/STORE.md#moving-records-to-another-principal).
 A denied request never carries a principal. An impersonation session carries
 the impersonated user's id, so an operator impersonating a user acts on that
 user's owned records.

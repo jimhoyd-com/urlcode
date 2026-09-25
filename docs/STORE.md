@@ -298,9 +298,12 @@ routes:
 The owner is the request's **principal**: an opaque, stable id that a
 principal-providing extension on the mount's route sets from its `authorize()`
 ([request principal](EXTENSIONS.md#request-principal)). With `auth` that is the
-signed-in user's id, or `apikey:<key id>` for a
-[bearer key](EXTENSIONS.md#bearerapi-key-routes) (operator-issued keys belong to
-no user, so records a key creates belong to that key). The store never reads a
+signed-in user's id, or for a
+[bearer key](EXTENSIONS.md#bearerapi-key-routes) either the id of the user the
+operator issued it for (`userId`, so its records belong to that user and survive
+rotating the key) or, for a service key with no user, `apikey:<key id>` (records
+it creates belong to that key; [move them](#moving-records-to-another-principal)
+when the key is replaced). The store never reads a
 cookie, header or auth table itself, and it compares the id for equality only.
 
 On an owned collection:
@@ -308,7 +311,8 @@ On an owned collection:
 - `POST` stamps the caller's principal on the new record. The owner is stored in
   the data file as `_owner` and never appears in a response; a body naming
   `_owner` is `400` like any undeclared field, and `PUT`/`PATCH` keep the stored
-  owner. There is no transfer.
+  owner. There is no transfer through the API; the operator can
+  [move records](#moving-records-to-another-principal) with the server stopped.
 - `GET` lists only the caller's records: `total`, `limit`, `cursor`, sorting and
   filtering all work over that set, so a caller learns nothing about how many
   records other principals hold.
@@ -401,6 +405,56 @@ user's records to every caller. Remove the owners from a stopped copy of the
 file deliberately if that is really intended. A store older than this feature
 refuses such a file too (`_owner` is not a declared field), so ownership is a
 one-way change for older releases.
+
+### Moving records to another principal
+
+Records belong to the principal that created them. When that principal is
+replaced, for example a service API key (`apikey:<key id>`) that is rotated or
+revoked, its records stay in the file but nobody can reach them. With the server
+stopped, the operator moves them
+([#732](https://github.com/jimhoyd-com/urlcode/issues/732)); run `--dry-run`
+first to see the counts:
+
+```sh
+npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
+  --from apikey:<old key id> --to apikey:<new key id> --dry-run
+npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
+  --from apikey:<old key id> --to apikey:<new key id>
+```
+
+- `--from` and `--to` are principal ids exactly as the provider sets them (for
+  auth, a user's id from `urlcode-auth users`, or `apikey:<key id>`), validated
+  with the same pattern core applies to a principal. The two must differ.
+- `--project` is the site's route project (the `app/` directory). The command
+  reads it through core's project loader to learn which collections are
+  declared `ownership: owner` and each one's `maxRecordsPerOwner`; only those
+  collections are touched. `--collection <name>` limits the move to one of them
+  (a shared or undeclared name is refused). A declared collection with no data
+  file yet has nothing to move.
+- Only each record's owner changes. Records owned by anyone else, and records
+  with no owner (see below), are left alone.
+- It prints `{from, to, dryRun, moved, collections: [{collection, moved,
+  toBefore, toAfter, maxRecordsPerOwner}]}` as JSON. `--dry-run` takes the lock,
+  counts and writes nothing.
+- **The per-owner limit is respected.** When moving would leave `--to` holding
+  more than a collection's `maxRecordsPerOwner`, the whole command is refused,
+  naming the collection and the counts, and no collection is changed (a dry run
+  is refused the same way). Delete or move some of `--to`'s records first, or
+  raise the limit. `maxRecords` is unaffected, since no record is added.
+- Like the `ownerless` commands it takes the directory lock and refuses while a
+  store process holds it. All counts are checked before anything is written;
+  each changed collection file is then replaced atomically, one after another. A
+  disk failure between two files can leave the earlier collections moved, and
+  running the same command again moves the rest.
+- It does not touch `Idempotency-Key` retention, which is scoped by principal: a
+  retry by `--to` with a key `--from` used is not recognised as a duplicate.
+
+The same operation is exported as `reassignOwner(directory, {from, to,
+collections, collection?, dryRun?})`, where `collections` is the declared
+`extensions.store.config.collections`. A key that should keep a user's records
+across rotation can be issued for that user in the first place
+([keys that act for a user](../packages/auth/README.md#keys-that-act-for-a-user));
+then no move is needed.
 
 ## Storage and concurrency: what it does and does not guarantee
 
