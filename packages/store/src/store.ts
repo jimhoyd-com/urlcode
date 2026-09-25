@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { link, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import { isSiteOrigin } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, StoreError, collectionSchema, etagOf } from './collection.ts';
 import type { CollectionSpec, StoredRecord } from './collection.ts';
 import { screensSchema, storeScreens } from './screens.ts';
@@ -168,7 +169,7 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
       try { for (const collection of collections) await collection.load(); }
       catch (error) { await unlock(); throw error; }
       return {
-        handle: request => dispatch(byMount, shortByMount, context.origin, request),
+        handle: request => dispatch(byMount, shortByMount, context, request),
         async close() { await unlock(); },
       };
     },
@@ -207,7 +208,7 @@ function ifMatch(request: ExtensionRequest): string | undefined | null {
   if ((request.headerCounts['if-match'] ?? 1) !== 1 || !/^"[0-9a-f]{32}"$/.test(value)) return null;
   return value;
 }
-async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<string, ShortLink>, origin: string, request: ExtensionRequest): Promise<HandlerResult> {
+async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<string, ShortLink>, site: Pick<ExtensionActivation, 'origin' | 'origins'>, request: ExtensionRequest): Promise<HandlerResult> {
   const short = request.mount === null ? undefined : shortByMount.get(request.mount);
   if (short) return dispatchShortLink(short, request);
   const collection = request.mount === null ? undefined : byMount.get(request.mount);
@@ -216,9 +217,10 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
   const method = request.method.toUpperCase(), write = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
   const allowed = (methods: string): [string, string][] => [['allow', methods]];
   try {
-    // A JSON-only write API is not reachable by a cross-site form; a browser also sends Origin on cross-site writes, which must match.
+    // A JSON-only write API is not reachable by a cross-site form; a browser also sends Origin on cross-site writes,
+    // which must be one of the site's origins (canonical or an operator alias origin, matched by core's isSiteOrigin).
     const from = request.headers.get('origin');
-    if (write && from !== null && from !== origin) throw new StoreError(403, 'forbidden_origin', 'Cross-origin writes are refused');
+    if (write && from !== null && !isSiteOrigin(site, from)) throw new StoreError(403, 'forbidden_origin', 'Cross-origin writes are refused');
     if (rest === '') {
       if (method === 'GET' || method === 'HEAD') {
         return json(200, collection.list(request.query));

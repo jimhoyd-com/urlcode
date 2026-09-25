@@ -76,7 +76,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
             // unsupported `sandbox: true` throws here, never on first request.
             const hooks = await loadAdminHooks(config, context.root);
             const readHealth = options.health ? createHealthReader(options.health) : undefined;
-            const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, csrfKey: options.csrfKey }), service = options.service;
+            const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, origins: context.origins, csrfKey: options.csrfKey }), service = options.service;
             const accounts=createAdminAccount({service,hooks,...(options.sendAccountAdministration?{sendAccountAdministration:options.sendAccountAdministration}:{})},http,mount);
             const recovery = createAdminRecovery({ service, ...(options.sendRecovery ? { sendRecovery: options.sendRecovery } : {}) }, http, mount);
             function requirePermission(principal: AuthPrincipal, permission: string): void {

@@ -25,6 +25,7 @@ import type { Plugin } from './plugins.ts';
 import { createObserverSink } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink } from './observability.ts';
 import { applySite } from './site.ts';
+import { siteOrigins } from './site-origins.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { CompiledRouteTable, LoadedDocument, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
 import type { SecurityState } from './policies/security.ts';
@@ -39,6 +40,10 @@ export interface RuntimeOptions {
   /** Trusted host transport injection; never supplied by project YAML or guest code. */
   egressDependencies?: EgressDependencies;
   observers?: Observer[] | undefined; log?: LogFn | undefined; origin?: string | undefined; local?: boolean | undefined;
+  /** Operator-set additional origins the site is also served from (at most 16, `https:` or loopback `http:`).
+   * Extensions' same-origin checks admit them beside `origin`; generated absolute URLs keep using `origin`.
+   * Requires `origin`. Never supplied by project YAML. */
+  aliasOrigins?: readonly string[] | undefined;
   environment?: NodeJS.ProcessEnv | undefined; permissions?: OperatorPolicy | undefined;
   target?: TargetName | undefined; plugins?: HostPlugin[] | undefined;
   workers?: number | undefined; timeoutMs?: number | undefined; maxBytes?: number | undefined;
@@ -90,6 +95,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const { observers, ...options } = rawOptions;
   const sink: ObserverSink = createObserverSink(observers, options.log);
   options.log = sink;
+  // Operator alias origins are refused before any project work, whatever the target.
+  const origins = siteOrigins(options.origin, options.aliasOrigins);
   const loaded = await loadDocument(project);
   // Site conventions become ordinary routes before compilation; a declared
   // route at the same path wins. The public origin, when the server knows
@@ -108,7 +115,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
-  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root},loaded.routeAuth);
+  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',origins,target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root},loaded.routeAuth);
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const notFoundPage = loaded.document.site?.notFound !== undefined && loaded.document.site.notFound !== null;
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.grantDataDir ? withDataDirGrant(loaded, snapshot.projectSha256, options.permissions) : options.permissions, snapshot.projectSha256, options.extensions);

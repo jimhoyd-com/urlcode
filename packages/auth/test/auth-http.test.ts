@@ -14,7 +14,7 @@ import { createAuthService } from '../src/auth-core.ts';
 import { authExtension } from '../src/auth.ts';
 import type { TestContext } from 'node:test';
 import { kitSetup, kitYaml } from './support/render.ts';
-async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[0]['sendToken'], providers?: Parameters<typeof authExtension>[0]['providers'], presentation?: Parameters<typeof authExtension>[0]['presentation'], sendEmailCode?: Parameters<typeof authExtension>[0]['sendEmailCode'], serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>) {
+async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[0]['sendToken'], providers?: Parameters<typeof authExtension>[0]['providers'], presentation?: Parameters<typeof authExtension>[0]['presentation'], sendEmailCode?: Parameters<typeof authExtension>[0]['sendEmailCode'], serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>, aliasOrigins?: string[]) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-http-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
@@ -28,7 +28,7 @@ async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[
     const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member', ...serviceOptions });
     const extension = authExtension({ ...(sendToken ? { sendToken } : {}), ...(providers ? { providers } : {}), ...(presentation ? { presentation } : {}), ...(sendEmailCode ? { sendEmailCode } : {}), ui, service, csrfKey: randomBytes(32), projectSha256 });
-    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    const server = await startServer({ project, origin: 'https://example.test', ...(aliasOrigins ? { aliasOrigins } : {}), port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const cookies = new Map<string, string>();
     async function request(path: string, { method = 'GET', data, origin = 'https://example.test', csrf, html = false }: {
@@ -217,6 +217,18 @@ test('trusted UI is no-store with restrictive CSP and never exposes a session to
     assert.doesNotMatch(passwordHtml, /<details[^>]+open/);
     assert.equal((await request('/account/login', { method: 'POST', data: { email: 'missing@example.test', password: 'wrong password value', csrf } })).status, 401);
     assert.equal((await request('/account/logout')).status, 401);
+});
+test('an operator alias origin passes the same-origin mutation check; an unlisted origin is still refused', async (t) => {
+    const { request } = await app(t, undefined, undefined, undefined, undefined, undefined, ['https://www.example.test']);
+    const { csrf } = await (await request('/account/csrf')).json() as {
+        csrf: string;
+    };
+    const denied = await request('/account/register', { method: 'POST', origin: 'https://evil.test', data: { email: 'alias@example.test', password: 'correct horse battery staple', csrf } });
+    assert.equal(denied.status, 403);
+    const sibling = await request('/account/register', { method: 'POST', origin: 'https://api.example.test', data: { email: 'alias@example.test', password: 'correct horse battery staple', csrf } });
+    assert.equal(sibling.status, 403, 'an alias names one origin, not its sibling subdomains');
+    const registered = await request('/account/register', { method: 'POST', origin: 'https://www.example.test', data: { email: 'alias@example.test', password: 'correct horse battery staple', csrf } });
+    assert.equal(registered.status, 201);
 });
 test('same-origin still requires unambiguous CSRF and no token-bearing query mutation', async (t) => {
     const { request } = await app(t);

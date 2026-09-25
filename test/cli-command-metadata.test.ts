@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commandOptions, hostFileCommands, policyCommands } from '../packages/core/src/cli-command-metadata.ts';
+import { aliasOriginCommands, commandOptions, hostFileCommands, policyCommands } from '../packages/core/src/cli-command-metadata.ts';
 import { addressInUseMessage, argumentError } from '../packages/core/src/cli-errors.ts';
 
 test('CLI command metadata keeps external-code and policy commands explicit', () => {
@@ -13,6 +13,10 @@ test('CLI command metadata keeps external-code and policy commands explicit', ()
   // The removed release and manifest flags stay removed; --project has no fixed default (the CLI picks app/ or .).
   for (const option of ['bundle-release', 'bundle-release-path', 'artifact-release', 'manifest', 'no-manifest', 'pin']) assert(!Object.hasOwn(commandOptions, option), option);
   assert(!('default' in commandOptions.project));
+  // Operator alias origins are a repeatable operator flag, accepted only where the project activates locally.
+  assert.equal(commandOptions['alias-origin'].multiple, true);
+  for (const command of ['serve', 'dev', 'validate', 'test']) assert((aliasOriginCommands as readonly string[]).includes(command), command);
+  assert(!(aliasOriginCommands as readonly string[]).includes('add'), 'add keeps its unrelated --alias short-code flag');
 });
 
 test('CLI diagnostic helpers only echo validated option and socket facts', () => {

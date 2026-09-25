@@ -19,17 +19,19 @@ parsing runs.
 **Origin is validated before anything else is read.** The MCP Streamable
 HTTP transport requires a server to validate `Origin` to prevent DNS
 rebinding. A request to a mount whose `Origin` header is present and is not
-exactly the site's canonical origin (the operator's `--origin`) is refused
-with `403` before its content type, size or body is examined; this is the
-same exact-match rule the `forms` and `store` extensions apply. A request with
-no `Origin` header is admitted, because non-browser MCP clients do not send
-one and a browser always sends one on a cross-origin `POST`. There is no
-project or operator allowlist of additional origins: a browser-based client
-served from another origin cannot reach the mount. Origin validation is not
+one of the site's origins (the operator's canonical `--origin`, or one of the
+operator's site-wide `--alias-origin` entries) is refused with `403` before
+its content type, size or body is examined; the match is core's
+`isSiteOrigin`, the same rule the `forms`, `store`, `auth` and `admin`
+extensions apply. A request with no `Origin` header is admitted, because
+non-browser MCP clients do not send one and a browser always sends one on a
+cross-origin `POST`. There is no project-YAML or per-server allowlist: a
+browser-based client served from an origin the operator has not listed cannot
+reach the mount. Origin validation is not
 authentication; put the mount behind `auth` when callers must be identified.
 Independently of this extension, core's self-hosted server bound to loopback
-refuses a request whose `Host` is not a loopback name on its bound port or the
-`--origin` authority, before any route (this mount included) runs; a
+refuses a request whose `Host` is not a loopback name on its bound port, the
+`--origin` authority or an `--alias-origin` authority, before any route (this mount included) runs; a
 non-loopback bind is not checked, so the `Origin` rule above remains the
 mount's own defence there (`docs/OPERATIONS.md`, host admission on a loopback bind).
 

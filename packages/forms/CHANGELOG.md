@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The same-origin check (`Origin`, and the `Referer` fallback) admits the
+  operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`) beside
+  the canonical origin, using core's `isSiteOrigin`; unlisted origins are
+  still refused (#717).
+
 - `date` and `datetime-local` bounds can be relative (#705): `minimum` and
   `maximum` accept `today` or `{from: today, add: <duration>}`, a signed ISO
   8601 duration of years, months and days such as `-P18Y`, `P30D` or `P1Y6M`.

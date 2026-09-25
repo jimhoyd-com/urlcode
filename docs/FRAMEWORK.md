@@ -173,6 +173,10 @@ route `env` block resolved under the same revision-pinned operator grant a
 function route uses. Project hooks are called as `hook(input, context)` with
 `{requestId, env}` plus any fields the extension adds (mcp adds the server and
 tool names). See [request context](EXTENSIONS.md#request-context-route-env-and-request-id).
+Activation likewise carries the canonical `origin` and the operator's full
+`origins` list (`--alias-origin`); every same-origin check goes through core's
+`isSiteOrigin`, so mcp, forms, store, auth and admin admit the same origins
+([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
 
 An artifact is a separate, optional authoring input, not another way to
 compose executable behavior. `urlcode artifacts add store-schema` installs

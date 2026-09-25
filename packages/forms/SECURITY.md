@@ -7,7 +7,9 @@ longer CSRF secret and a reviewed project revision pin; never put either in
 project YAML or an application repository.
 
 The extension issues a short-lived (10-minute) HMAC-protected CSRF token on
-each form page, checks the canonical `Origin` header when present — falling
+each form page, checks the `Origin` header when present against the site's
+origins (the canonical `--origin` and any operator `--alias-origin`, matched
+by core's `isSiteOrigin`) — falling
 back to `Sec-Fetch-Site`, then `Referer`, and refusing the request when
 neither gives same-origin evidence, rather than admitting an absent `Origin`
 by default — accepts only bounded `application/x-www-form-urlencoded` bodies,

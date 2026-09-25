@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The same-origin CSRF check admits the operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`) in `Origin` beside the canonical origin, using core's `isSiteOrigin`; `AuthHttp` takes the list as a new `origins` option. `Origin` is still required, and CSRF tokens, links and passkeys stay bound to the canonical origin (#717).
+
 **Default behavior change:** `urlcode extensions add` (and `init --with`) now installs only the capability; the new `--example` flag, the same for every extension, writes the sample behavior it used to write by default (#711). A blank `extensions add auth` writes the `/account/*` mount, the operator service (the documented `{member, admin}` role model with `defaultRole: member`, kept as capability configuration) and keys, and no `/private` page; `--example` adds the signed-in `/private` page. To reproduce the old result, add `--example`.
 
 Bearer routes accept a per-credential quota, `auth: {bearer: {scopes, quota: {requests, window}}}` (#572): each API key gets `requests` per `window` seconds, counted by key id in the auth SQLite store (fixed window, durable, shared by processes on one host). The request over budget is refused with 429, `Retry-After` and `RateLimit-Policy`/`RateLimit` under the policy name `credential`, before the handler runs. `AuthService.consumeApiKeyQuota` is the service method behind it.

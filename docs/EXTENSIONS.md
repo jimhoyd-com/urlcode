@@ -32,7 +32,7 @@ reimplemented) and a trusted project handler loaded the same way as other
 extension hooks. The extension owns JSON-RPC 2.0 framing, protocol version
 negotiation, exact request-id round-tripping and
 `initialize`/`ping`/`tools/list`/`tools/call` dispatch and error codes, and
-it refuses a foreign `Origin` (403) and an unsupported `MCP-Protocol-Version`
+it refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks)) and an unsupported `MCP-Protocol-Version`
 (400) before dispatch; project YAML never carries JSON-RPC mechanics. Clients
 connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
 mounted with `auth: true`. See the [mcp package](../packages/mcp/README.md).
@@ -174,7 +174,9 @@ in the revision. Changing them requires an explicit operator reapproval.
 Registrations provide a name, contract version, target list, JSON configuration
 schema, optional policy schema, an optional declared `cacheSensitive` (below)
 and activation factory. Activation receives the
-canonical operator origin, target, revision and mount bases. Its instance handles
+canonical operator origin, the operator's full list of
+[site origins](#site-origins-and-same-origin-checks), target, revision and mount
+bases. Its instance handles
 bounded requests and, when named in a route's policies, gates the request via
 `authorize`, wraps the rest of the pipeline via `middleware`, or both (see
 [Wrapping a route](#wrapping-a-route-extension-middleware) above). Missing
@@ -471,6 +473,52 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    policies. It closes resources it owns.
 6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
+7. Decides whether a request is same-origin with `isSiteOrigin(context, value)`
+   from `@jimhoyd/urlcode/extensions`, never by comparing against
+   `context.origin` itself, so an operator's alias origins are honoured the same
+   way everywhere ([site origins](#site-origins-and-same-origin-checks)).
+
+### Site origins and same-origin checks
+
+A site can be served from more than one origin: an apex and a `www` host, or a
+second domain in front of the same deployment. The operator sets that as one
+site-wide list, never in project YAML (issue #717):
+
+| Where | How |
+|---|---|
+| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit`, `benchmark` | `--alias-origin https://www.site.example`, repeated once per origin, beside `--origin` |
+| `createRuntime`, `startServer`, `runProjectTests` | `aliasOrigins: ['https://www.site.example']` beside `origin` |
+| AWS and Vercel handlers | the `aliasOrigins` handler option, otherwise `URLCODE_ALIAS_ORIGINS` (comma-separated) beside `URLCODE_ORIGIN` |
+
+Core validates the list before it loads the project, and refuses to start with a
+`ConfigError` (code `invalid-alias-origin`) that names the bad entry. Each entry
+must be an absolute `https:` origin (scheme, host and optional port, no path,
+query, fragment, credentials or `*` wildcard); `http:` is accepted only for
+`localhost`, `127.0.0.1` and `[::1]`. At most 16 entries are allowed, a
+canonical `--origin` is required beside them, and entries are serialized
+(scheme and host lower-cased, a default port dropped) and deduplicated. The
+canonical origin is always a site origin; listing it again is harmless.
+
+An extension's activation context carries both:
+
+- `origin`: the canonical origin, the only one to build absolute URLs,
+  redirects, email links, CSRF bindings and passkey relying-party checks from;
+- `origins`: the canonical origin first, then the alias origins, frozen.
+  (It is optional in the type only so a hand-built activation in a test still
+  means the canonical origin alone; the runtime always sets it.)
+
+`isSiteOrigin(context, value)` is the one match every extension uses for an
+`Origin` header, or for the origin of a `Referer`: the value must be a bare
+origin and matches when its serialized form is one of `context.origins`, so
+case and an explicit default port do not matter. `null`, a missing value, a
+different scheme or port, and a sibling subdomain never match. What an extension
+does when a request has no `Origin` stays its own documented rule. The
+first-party checks that use it are `mcp` (a present foreign `Origin` is 403),
+`forms` (`Origin`, then `Sec-Fetch-Site`, then `Referer`), `store` (JSON writes
+with a foreign `Origin` are 403) and the `auth` and `admin` CSRF check (which
+also still requires `Origin`). On a loopback bind the server's
+[host admission](OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
+alias authority too.
 
 Every extension also follows the
 [generic add-on authoring rules](#generic-add-on-authoring-rules).

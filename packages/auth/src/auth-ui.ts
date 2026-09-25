@@ -8,6 +8,7 @@ import type { TurnstileWidget } from './challenge-ui.ts';
 import { englishCatalogue } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
 import { randomBytes } from 'node:crypto';
+import { isSiteOrigin } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 export interface AuthHttpResponse {
     status: number;
@@ -113,10 +114,14 @@ export function readFields(request: ExtensionRequest, allowed: string[]): Record
 }
 export interface AuthHttpOptions {
     csrfKey: Uint8Array;
+    /** The canonical origin: CSRF tokens are bound to it and generated links use it. */
     origin: string;
+    /** Every origin the site is served from, canonical first (the extension activation's `origins`); a same-origin mutation may carry any of them in `Origin`. Defaults to the canonical origin alone. */
+    origins?: readonly string[] | undefined;
 }
 export class AuthHttp {
     readonly origin: string;
+    readonly origins: readonly string[];
     readonly #key: Buffer;
     readonly #devices = new WeakMap<ExtensionRequest, {
         id: string;
@@ -135,6 +140,9 @@ export class AuthHttp {
         if (options.csrfKey.byteLength < 32)
             throw new Error('Auth CSRF key requires at least 32 bytes');
         this.origin = options.origin;
+        this.origins = Object.freeze([...(options.origins ?? [options.origin])]);
+        if (this.origins[0] !== this.origin)
+            throw new Error('Auth site origins must start with the canonical origin');
         this.#key = Buffer.from(options.csrfKey);
     }
     cookie(request: ExtensionRequest, name: string): string | undefined {
@@ -186,7 +194,7 @@ export class AuthHttp {
                     ]]), ...this.device(request).headers] };
     }
     verify(request: ExtensionRequest, fields: Record<string, string>): void {
-        if (request.origin !== this.origin || request.headers.get('origin') !== this.origin || request.headers.get('sec-fetch-site') === 'cross-site')
+        if (request.origin !== this.origin || !isSiteOrigin(this, request.headers.get('origin')) || request.headers.get('sec-fetch-site') === 'cross-site')
             throw new AuthHttpError(403, 'Same-origin request required');
         if ((request.headerCounts['origin'] || 0) > 1 || (request.headerCounts['x-csrf-token'] || 0) > 1)
             throw new AuthHttpError(403, 'Invalid CSRF token');

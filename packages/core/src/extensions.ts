@@ -19,6 +19,11 @@ export type { HandlerResult } from './http-response.ts';
  * value the pattern will run against.
  */
 export { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
+/**
+ * The one same-origin match every extension uses (docs/EXTENSIONS.md "Site origins"):
+ * whether an `Origin` value names the canonical origin or one of the operator's alias origins.
+ */
+export { isSiteOrigin, maxAliasOrigins } from './site-origins.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**
@@ -32,7 +37,18 @@ export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
  * middleware source it loads by convention rather than through core's native
  * `middleware:` array) must resolve them against this field, never `cwd()`.
  */
-export interface ExtensionActivation { origin:string; target:TargetName; projectSha256:string; mounts:readonly string[]; root:string }
+export interface ExtensionActivation {
+  /** The canonical operator origin (`--origin`): the one to build absolute URLs, redirects, emails and links from. */
+  origin:string;
+  /**
+   * Every origin the site is served from: `origin` first, then the operator's alias origins
+   * (`--alias-origin`, `aliasOrigins`), validated and serialized. The runtime always sets it; it is
+   * optional only so an activation built by hand (a test) keeps meaning the canonical origin alone.
+   * Compare an `Origin`/`Referer` value against it with `isSiteOrigin(context, value)`, never by hand.
+   */
+  origins?:readonly string[];
+  target:TargetName; projectSha256:string; mounts:readonly string[]; root:string;
+}
 /**
  * The reserved header namespace an `authorize()`/`middleware()` hook can write into
  * `ExtensionRequest.headers` to hand data forward into the route's own trusted

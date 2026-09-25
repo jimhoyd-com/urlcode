@@ -10,14 +10,14 @@ import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
 import { createFormsExtension } from '../src/index.ts';
 
 const origin='https://forms.example.test';
-async function boot(t: test.TestContext, protectedMount=false) {
+async function boot(t: test.TestContext, protectedMount=false, aliasOrigins?:string[]) {
   const root=await mkdtemp(join(tmpdir(),'forms-test-'));t.after(()=>rm(root,{recursive:true,force:true}));
   const project=join(root,'app');await mkdir(project);
   const forms={version:'1' as const,config:{flows:{contact:{mount:'/contact',title:'Contact <team>',submitLabel:'Send message',confirmation:{title:'Thank you <friend>',message:'We received your message.'},fields:{email:{label:'Email',type:'email',required:true,maxLength:320},topic:{label:'Topic',control:'select',required:true,options:[{value:'support',label:'Support'},{value:'sales',label:'Sales'}]},message:{label:'Message',control:'textarea',required:true,minLength:10,maxLength:128,pattern:'^[A-Za-z ]+$'},terms:{label:'Agree',control:'checkbox',required:true},visit:{label:'Visit date',type:'date',required:false},callback:{label:'Callback time',type:'datetime-local',required:false}}}}}};
   await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{ui:{version:'1',config:{}},...(protectedMount?{auth:{version:'1',config:{}}}:{}),forms},routes:{'/assets/ui/*':{extension:'ui'},'/contact/*':{extension:'forms',methods:['GET','HEAD','POST'],...(protectedMount?{auth:true}:{})}}}));
   const projectSha256=await inspectExtensionRevision(project),ui=createUiExtension({projectRoot:project,projectSha256});
   const gate:RuntimeExtension={name:'auth',version:'1',projectSha256,targets:['node'],schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},async activate(){return {handle(){return {status:404,headers:[]};},authorize(){return {status:401,headers:[['content-type','text/plain; charset=utf-8']],body:'Sign in required'};}};}};
-  const app=await startServer({project,origin,port:0,log:()=>{},extensions:[ui.registration,...(protectedMount?[gate]:[]),createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32)})]});t.after(()=>app.close());
+  const app=await startServer({project,origin,...(aliasOrigins?{aliasOrigins}:{}),port:0,log:()=>{},extensions:[ui.registration,...(protectedMount?[gate]:[]),createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32)})]});t.after(()=>app.close());
   // Node's fetch() has no automatic cookie jar (unlike a browser): forward Set-Cookie back as
   // Cookie on later requests, the same manual pattern the auth package's HTTP tests use, so the
   // forms extension's double-submit CSRF binding cookie round-trips within a test.
@@ -76,6 +76,18 @@ test('refuses missing CSRF, cross-origin, malformed media, wrong paths and metho
   assert.equal((await call('/contact/confirmation',{method:'POST'})).status,405);
   assert.equal((await call('/contact/unknown')).status,404);
   assert.equal((await call('/contact',{method:'DELETE'})).status,405);
+});
+
+test('admits an operator alias origin in Origin or Referer like the canonical one and still refuses an unlisted origin',async t=>{
+  const {call}=await boot(t,false,['https://www.forms.example.test']);const token=await csrf(call);
+  const body=new URLSearchParams({csrf:token,email:'person@example.test',topic:'sales',message:'A valid message',terms:'true'}).toString();
+  const post=(headers:Record<string,string>)=>call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',...headers},body,redirect:'manual'});
+  assert.equal((await post({origin})).status,303);
+  assert.equal((await post({origin:'https://www.forms.example.test'})).status,303,'an alias Origin is admitted');
+  assert.equal((await post({referer:'https://www.forms.example.test/contact'})).status,303,'an absent Origin with an alias Referer is admitted');
+  assert.equal((await post({origin:'https://evil.example'})).status,403,'an unlisted Origin is still refused');
+  assert.equal((await post({origin:'https://api.forms.example.test'})).status,403,'a sibling subdomain is not implied');
+  assert.equal((await post({referer:'https://evil.example/contact'})).status,403,'an unlisted Referer is still refused');
 });
 
 test('an absent Origin with no Referer or Sec-Fetch-Site evidence is refused, not admitted by default',async t=>{

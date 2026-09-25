@@ -99,7 +99,9 @@ admin opens nothing of its own and refuses to compose without auth. `admin({...}
 takes the `adminExtension` options except those the host supplies, such as sender
 callbacks, `health` and `authMount` (default `/account`). No auth package is
 loaded from application YAML. Runtime activation uses `--host-file host.mjs` and
-the matching canonical `--origin`.
+the matching canonical `--origin`. Console mutations share auth's same-origin
+CSRF check, so they also accept an operator
+[`--alias-origin`](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks).
 
 Administrative actions authenticate internally even without an extra route policy. Missing sessions or administrative permissions receive 404 at the console gate. Use operator role declarations with the actual permissions exported by this implementation: `auth.users.read`, `auth.users.reveal`, `auth.users.export`, `auth.users.manage`, `auth.users.create`, `auth.sessions.manage`, `auth.roles.read`, `auth.audit.read`, `auth.cases.read`, `auth.cases.manage`, and `auth.users.impersonate`. `*` grants full operator-defined administrator permissions. Do not copy the proposal's separate `admin.*` permission names and expect them to work automatically.
 

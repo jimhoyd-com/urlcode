@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A present `Origin` is admitted when it is the canonical origin or one of the
+  operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`), using
+  core's `isSiteOrigin`; an unlisted origin is still refused with `403` (#717).
+
 - MCP protocol revision `2025-11-25` is supported and preferred: `initialize`
   echoes it when requested and offers it for an unrecognized revision, and
   `MCP-Protocol-Version: 2025-11-25` is accepted. Under that revision a
