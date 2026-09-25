@@ -137,6 +137,22 @@ test('refuses cross-origin writes and honours readOnly', async t => {
   assert.equal((await ro.call('/api/todos')).status, 200);
 });
 
+test('bodies and origins go through core: duplicate keys, deep nesting and bad encoding are 400; cross-site writes and duplicate Origin are 403', async t => {
+  const { call } = await boot(t);
+  const code = async (response: Response): Promise<[number, string]> => [response.status, ((await response.json()) as { error: { code: string } }).error.code];
+  // `call` types its body as a string; the invalid-encoding case needs raw bytes, which fetch sends as they are.
+  const post = (body: string | Uint8Array, headers: Record<string, string> = {}) => call('/api/todos', { method: 'POST', headers: { ...json, ...headers }, body: body as string });
+  assert.deepEqual(await code(await post('{"title":"a","title":"b"}')), [400, 'duplicate_key']);
+  assert.deepEqual(await code(await post(`{"title":${'['.repeat(40)}${']'.repeat(40)}}`)), [400, 'too_deep']);
+  assert.deepEqual(await code(await post(new Uint8Array([0x7b, 0xff, 0x7d]))), [400, 'invalid_encoding']);
+  assert.deepEqual(await code(await post('{')), [400, 'invalid_json']);
+  assert.deepEqual(await code(await call('/api/todos', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}' })), [415, 'unsupported_media_type']);
+  assert.deepEqual(await code(await post(JSON.stringify({ title: 'x'.repeat(10_000) }))), [413, 'record_too_large']);
+  assert.deepEqual(await code(await post(JSON.stringify({ title: 'x' }), { origin, 'sec-fetch-site': 'cross-site' })), [403, 'forbidden_origin']);
+  assert.deepEqual(await code(await post(JSON.stringify({ title: 'x' }), { referer: 'https://evil.example/' })), [403, 'forbidden_origin']);
+  assert.equal((await post(JSON.stringify({ title: 'x' }))).status, 201, 'no provenance header at all is admitted: a JSON-only API');
+});
+
 test('admits writes from an operator alias origin and still refuses an unlisted origin', async t => {
   const { call } = await boot(t, todos, {}, {}, ['https://www.store.example.test']);
   const write = (from: string) => call('/api/todos', { method: 'POST', headers: { ...json, origin: from }, body: JSON.stringify({ title: 'x' }) });

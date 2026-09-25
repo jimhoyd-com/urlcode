@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { link, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { isSiteOrigin } from '@jimhoyd/urlcode/extensions';
+import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
 import type { CollectionSpec, StoredRecord } from './collection.ts';
@@ -24,9 +24,7 @@ export interface StoreExtensionOptions {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 const FIELD = /^[a-z][A-Za-z0-9_]{0,63}$/;
-const json = (status: number, value: unknown, extra: [string, string][] = []): HandlerResult => ({
-  status, headers: [['content-type', 'application/json; charset=utf-8'], ['cache-control', 'no-store'], ['x-content-type-options', 'nosniff'], ...extra], body: JSON.stringify(value),
-});
+const json = (status: number, value: unknown, extra: [string, string][] = []): HandlerResult => jsonResponse(status, value, extra);
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
   json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) } }, extra);
 /** What a caller sees of a record: everything but the stored owner, which never leaves the data file. */
@@ -196,12 +194,19 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
 interface ShortLink { collection: Collection; destination: string; clicks: string }
 
+/** Store's own wording for the codes it has always answered; any other refusal keeps core's code and fixed message. */
+const bodyMessages: Readonly<Record<string, string>> = { unsupported_media_type: 'Send Content-Type: application/json', invalid_json: 'Body is not valid JSON' };
+/**
+ * The JSON body through core's bounded reader (size, media type, fatal UTF-8, duplicate keys, depth). A refusal is a
+ * StoreError with core's status and code, except that an oversized body keeps store's `record_too_large`.
+ */
 function bodyOf(request: ExtensionRequest, collection: Collection): unknown {
-  const type = request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
-  if (type !== 'application/json') throw new StoreError(415, 'unsupported_media_type', 'Send Content-Type: application/json');
-  if (request.body.byteLength > collection.spec.maxRecordBytes + 4096) throw new StoreError(413, 'record_too_large', 'Request body is too large');
-  try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(request.body)); }
-  catch { throw new StoreError(400, 'invalid_json', 'Body is not valid JSON'); }
+  try { const body = readBody(request, { accept: ['json'], maxBytes: collection.spec.maxRecordBytes + 4096 }); return body.kind === 'json' ? body.value : undefined; }
+  catch (error) {
+    if (!(error instanceof ExtensionHttpError)) throw error;
+    if (error.status === 413) throw new StoreError(413, 'record_too_large', 'Request body is too large');
+    throw new StoreError(error.status, error.code, bodyMessages[error.code] ?? error.message);
+  }
 }
 /**
  * Scoped by caller: the header's raw value is hashed together with `request.client` (the
@@ -239,10 +244,9 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
   const owner = collection.spec.ownership === 'owner' ? request.principal?.id : undefined;
   if (collection.spec.ownership === 'owner' && owner === undefined) return failure(new StoreError(401, 'principal_required', 'Sign in to use this collection'));
   try {
-    // A JSON-only write API is not reachable by a cross-site form; a browser also sends Origin on cross-site writes,
-    // which must be one of the site's origins (canonical or an operator alias origin, matched by core's isSiteOrigin).
-    const from = request.headers.get('origin');
-    if (write && from !== null && !isSiteOrigin(site, from)) throw new StoreError(403, 'forbidden_origin', 'Cross-origin writes are refused');
+    // Core's same-origin rule with `whenAbsent: 'admit'`: this write API takes application/json only, which a
+    // cross-site form cannot send, and non-browser clients (curl, API keys) send no provenance header at all.
+    if (write && !isSameOriginRequest(request, site, { whenAbsent: 'admit' })) throw new StoreError(403, 'forbidden_origin', 'Cross-origin writes are refused');
     if (rest === '') {
       if (method === 'GET' || method === 'HEAD') {
         return json(200, listView(collection.list(request.query, owner)));

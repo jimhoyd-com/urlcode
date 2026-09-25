@@ -39,6 +39,7 @@ export function createDevEventFormatter(routes: { count: number }): EventFormatt
       return event.status === 'ok' ? `Reloaded — ${String(event.routes)} route${event.routes === 1 ? '' : 's'}` : 'Reload rejected — kept serving the previous version';
     }
     if (kind === 'watch') return 'Could not watch the project for changes';
+    if (kind === 'warning' && typeof event.message === 'string') return `Warning: ${event.message}`;
     if (kind !== 'request') return undefined;
     const { status, durationMs, method, route } = event as { status?: unknown; durationMs?: unknown; method?: unknown; route?: unknown };
     const parts = [typeof method === 'string' ? method : undefined, typeof route === 'string' ? route : route === null ? '(unmatched)' : undefined, String(status), `${String(durationMs)}ms`].filter((part): part is string => part !== undefined);

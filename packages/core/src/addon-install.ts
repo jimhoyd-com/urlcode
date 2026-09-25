@@ -443,7 +443,8 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       const installed = [...new Set([...managedNames(manifest, pkg, 'extension')])].sort();
       const definitions = new Map<string, ExtensionDefinition<unknown>>();
       for (const name of newExtensions) definitions.set(name, await loadDefinition(site.site, name));
-      const ordered = orderByRequires(newExtensions.map(name => ({ name, requires: (definitions.get(name)!.requires ?? []).filter(requirement => newExtensions.includes(requirement)) })), (item, requirement) => `${item.name} requires ${requirement}`);
+      // Within the new set, an extension follows the ones it requires and the ones it uses.
+      const ordered = orderByRequires(newExtensions.map(name => ({ name, requires: [...(definitions.get(name)!.requires ?? []), ...(definitions.get(name)!.uses ?? [])].filter(requirement => newExtensions.includes(requirement)) })), (item, requirement) => `${item.name} requires ${requirement}`);
       const loaded = await loadDocument(site.project);
       const scaffolds: { name: string; result: ScaffoldResult }[] = [];
       for (const { name } of ordered) {
@@ -518,7 +519,11 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   finally { for (const secret of secrets) secret.fill(0); }
 }
 
-export interface RemoveResult { removed: string; kept: string[]; projectSha256: string | undefined }
+export interface RemoveResult {
+  removed: string; kept: string[]; projectSha256: string | undefined;
+  /** One line per installed add-on that only `uses` the removed one: removal is not blocked, but those features refuse. */
+  notes: string[];
+}
 /** Where the project still uses extension `name`, outside the routes file its own add wrote. */
 async function extensionUses(project: string, name: string): Promise<string[]> {
   const loaded = await loadDocument(project);
@@ -546,6 +551,8 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   assert(pin && pin.kind === kind && Object.hasOwn(pkg.dependencies ?? {}, pin.package), `${name} is not an installed ${kind}`);
   const dependants = managedNames(manifest, pkg).filter(other => manifest.addons[other]!.requires.includes(name));
   assert(!dependants.length, `${dependants.join(', ')} require${dependants.length === 1 ? 's' : ''} ${name}; remove ${dependants.length === 1 ? 'it' : 'them'} first`);
+  // An add-on that only uses this one keeps working without it, except the features that need it.
+  const notes = managedNames(manifest, pkg).filter(other => manifest.addons[other]!.uses?.includes(name)).map(other => `${other} uses ${name}; features of ${other} that need ${name} will refuse to activate`);
   const yamlFile = join(site.project, 'urlcode.yaml'), routesFile = join(site.project, 'routes', `${name}.yaml`);
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile]);
   const tree = await dependencyTree(site.site);
@@ -578,7 +585,7 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
     await writeFile(site.packageFile, renderJson(pkg));
     installing = true;
     await runNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund'], site.site);
-    return { removed: name, kept, projectSha256: kind === 'extension' ? await inspectExtensionRevision(site.project) : undefined };
+    return { removed: name, kept, projectSha256: kind === 'extension' ? await inspectExtensionRevision(site.project) : undefined, notes };
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
 }
 

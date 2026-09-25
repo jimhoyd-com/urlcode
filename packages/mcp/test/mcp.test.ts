@@ -185,6 +185,9 @@ test('protocol-level failures: parse error, invalid envelope, batching and unkno
   const parseError = await raw('{not json');
   assert.equal(parseError.status, 200);
   assert.deepEqual(await parseError.json(), { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+  // Core's reader refuses a duplicate key and deep nesting before parsing; both are parse errors here.
+  for (const body of ['{"jsonrpc":"2.0","id":1,"id":2,"method":"ping"}', `{"jsonrpc":"2.0","id":1,"method":"ping","params":{"a":${'['.repeat(40)}${']'.repeat(40)}}}`])
+    assert.deepEqual(await (await raw(body)).json(), { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, body.slice(0, 40));
 
   const notAnEnvelope = await raw(JSON.stringify({ jsonrpc: '1.0', id: 1, method: 'ping' }));
   assert.deepEqual(await notAnEnvelope.json(), { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } });
@@ -392,6 +395,9 @@ test('Origin: a foreign Origin is refused with 403 before parsing; the site orig
   // Refused before JSON parsing: a malformed body still gets 403, not a JSON-RPC parse error.
   const foreignMalformed = await call(ping, { headers: { origin: 'https://attacker.example' }, body: '{not json' });
   assert.equal(foreignMalformed.status, 403);
+  // Core's same-origin rule: cross-site refuses even with the site's own Origin, and a foreign Referer refuses.
+  assert.equal((await call(ping, { headers: { origin, 'sec-fetch-site': 'cross-site' } })).status, 403);
+  assert.equal((await call(ping, { headers: { referer: 'https://attacker.example/' } })).status, 403);
   // Exact match only: a different scheme, port or the literal `null` origin is foreign.
   for (const other of ['http://mcp.example.test', 'https://mcp.example.test:8443', 'null']) {
     assert.equal((await call(ping, { headers: { origin: other } })).status, 403, other);

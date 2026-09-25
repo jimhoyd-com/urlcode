@@ -122,13 +122,28 @@ test('extension-owned scripts render nonce-bound beside kit scripts; foreign, ab
     assert.match(html, new RegExp(`<script nonce="${nonce.replace(/[+/]/g, '\\$&')}" src="/assets/ui/confirm\\.[0-9a-f]{12}\\.js" defer></script><script nonce="${nonce.replace(/[+/]/g, '\\$&')}" src="/account/static/passkeys\\.js" defer></script><script nonce="${nonce.replace(/[+/]/g, '\\$&')}" src="/account/static/vendor\\.js\\?v=2" integrity="sha384-A{64}" defer></script></body></html>$`));
     assert.ok(header(page.headers, 'content-security-policy')!.includes(`script-src 'nonce-${nonce}'`));
     for (const src of ['https://cdn.example.test/lib.js', '//cdn.example.test/lib.js', 'javascript:alert(1)', 'static/passkeys.js', '/bad path.js', '/x"onload="1', '', '/' + 'a'.repeat(2048)])
-        assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src }] }), /same-site path/, src || '(empty)');
+        assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src }] }), /must be same-site or listed in csp\.script/, src || '(empty)');
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: '/a.js', integrity: 'md5-abc' }] }), /integrity/);
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: '/a.js', integrity: 'sha256-<b>' }] }), /integrity/);
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [42 as never] }), /kit script name or an extension script/);
     assert.equal((decode(kit.wrap(markup(''), { title: 'T', scripts: Array.from({ length: 8 }, (_, i) => ({ src: `/s${i}.js` })) }).body).match(/<script [^>]*src=/g) ?? []).length, 8);
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: Array.from({ length: 9 }, () => ({ src: '/s.js' })) }), /exceed limit/);
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: ['otp', 'nope'] }), /Unknown kit script/);
+});
+test('an extension script may load async, and may come from another origin only when the page lists it in csp.script', () => {
+    const kit = createKit({ presentation: createPresentation({ defaults: kitCatalogue }) });
+    const tags = (html: string): string[] => (html.match(/<script nonce="[^"]+" src="[^"]*"[^>]*><\/script>/g) ?? []).map(tag => tag.replace(/nonce="[^"]+" /, ''));
+    const same = decode(kit.wrap(markup(''), { title: 'T', scripts: [{ src: '/account/static/glue.js', async: true }, { src: '/account/static/late.js' }] }).body);
+    assert.deepEqual(tags(same), ['<script src="/account/static/glue.js" async></script>', '<script src="/account/static/late.js" defer></script>']);
+    const widget = 'https://challenges.example.test/api.js?render=explicit';
+    assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: widget, async: true }] }), /Extension script must be same-site or listed in csp\.script/);
+    assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: widget }], csp: { script: ['https://other.example.test'] } }), /listed in csp\.script/);
+    assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: 'http://challenges.example.test/api.js' }], csp: { script: ['http://challenges.example.test'] } }), /listed in csp\.script/, 'https only');
+    assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: 'https://user@challenges.example.test/api.js' }], csp: { script: ['https://challenges.example.test'] } }), /listed in csp\.script/);
+    const page = kit.wrap(markup(''), { title: 'T', scripts: [{ src: widget, async: true }], csp: { script: ['https://challenges.example.test'], frame: ['https://challenges.example.test'] } });
+    assert.deepEqual(tags(decode(page.body)), [`<script src="${widget}" async></script>`]);
+    assert.match(header(page.headers, 'content-security-policy')!, /script-src 'nonce-[^']+' https:\/\/challenges\.example\.test/);
+    assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: '/a.js', async: 'yes' as never }] }), /async must be a boolean/);
 });
 test('navigation items carry icons in the header nav; the application layout renders the console shell once, with no header and no duplicate navigation; the bounds hold', () => {
     const kit = createKit({ presentation: createPresentation({ defaults: kitCatalogue }), theme: { backTo: '/' } });
