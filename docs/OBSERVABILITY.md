@@ -40,6 +40,7 @@ named.
 | `agents` | `route`, `list` string, `outcome` `denied`/`reported` | A User-Agent matched a list. The list name is logged, never the header. |
 | `cache` | `route`, `outcome` `hit`/`stale`/`miss`/`store` | A cache lookup or store. |
 | `listening` | `address`, `port`, `mode`, `origin` | Printed once by the CLI at startup, not emitted by the server. |
+| `warning` | `code` `extension-warning`, `extension` string, `message` string | An extension reported a problem through `context.warn()` while activating (at most 32 per extension per activation). `message` starts `Extension "<name>": ` and is one line of at most 512 characters. `urlcode validate` prints it on stderr; in a TTY, `dev` and `serve` render it as `Warning: …`. |
 
 Every event carries `event` (its name). Numbers are JSON numbers, never
 strings.
@@ -62,7 +63,9 @@ observer receives.
 No event, snapshot or exposition carries a request URL, path, query string,
 header, body, client address, User-Agent string, binding, secret or user
 exception text. `route` is always a configured pattern
-from reviewed YAML. The `function_error` and `reload_rejected` diagnostics that
+from reviewed YAML. A `warning` event's `message` is text an operator-installed
+extension wrote (core bounds and prefixes it); first-party extensions put no
+request data or secret in it. The `function_error` and `reload_rejected` diagnostics that
 `urlcode dev` and `serve --debug-errors` write to stderr are not events: they
 carry source paths, thrown messages and stacks, never pass through the logger
 or observers, and are off by default for `serve` (see

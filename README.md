@@ -119,7 +119,7 @@ All of it lives in [`docs/`](docs/README.md) in this repository. See
 
 ## The framework
 
-Core plus seven extensions, one site shape. A project climbs from redirects to a
+Core plus ten extensions, one site shape. A project climbs from redirects to a
 full application by adding YAML; the operator wires trusted extensions in one
 host file outside the project. The full map, the composition contract and the
 rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
@@ -128,10 +128,13 @@ rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
 | [ui](packages/ui) extension | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | add-on on core's GitHub Release |
+| [audit](packages/audit) extension | The durable audit log other extensions record privileged actions in, through a transactional outbox | add-on on core's GitHub Release |
+| [abuse](packages/abuse) extension | Keyed budgets, backoff, a challenge provider and a honeypot helper for other extensions' flows | add-on on core's GitHub Release |
+| [mail](packages/mail) extension | Plain-text transactional email from contributed templates, through one operator transport | add-on on core's GitHub Release |
 | [auth](packages/auth) extension | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | add-on on core's GitHub Release |
-| [admin](packages/admin) extension | Administration: users, sessions, roles, audit, approvals, cases, impersonation | add-on on core's GitHub Release |
-| [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API | add-on on core's GitHub Release |
-| [forms](packages/forms) extension | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation | add-on on core's GitHub Release |
+| [admin](packages/admin) extension | Administration: users, sessions, roles, the audit log, approvals, cases, impersonation | add-on on core's GitHub Release |
+| [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API, with optional audited writes | add-on on core's GitHub Release |
+| [forms](packages/forms) extension | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation, submission budgets and notifications | add-on on core's GitHub Release |
 | [form-records](packages/form-records) extension | Saves a declared form into an owned store collection, with a confirmation and a constrained edit page | add-on on core's GitHub Release |
 | [mcp](packages/mcp) extension | Declarative MCP tool server over a project-declared tool map | add-on on core's GitHub Release |
 | [store-schema](artifacts/store-schema) artifact | Inert store configuration schema and example, for tooling | add-on on core's GitHub Release |
@@ -160,12 +163,16 @@ for that retirement's history and migration note.
 ```yaml
 version: "1"
 extensions:
+  ui:    { version: "1", config: {} }
+  audit: { version: "1", config: {} }
+  mail:  { version: "1", config: {} }
   auth:  { version: "1", config: { registration: "off" } }
   admin: { version: "1", config: {} }
 routes:
   /go:          { redirect: { url: https://example.com, status: 302 } }
+  /assets/ui/*: { extension: ui,    methods: [GET, HEAD] }
   /account/*:   { extension: auth,  methods: [GET, HEAD, POST] }
-  /admin/*:     { extension: admin, methods: [GET, HEAD, POST] }
+  /admin/*:     { extension: admin, methods: [GET, HEAD, POST], auth: { onDeny: 404 } }
   /private:
     respond: { text: Signed in }
     policies: { extensions: { auth: {} } }

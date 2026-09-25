@@ -226,6 +226,31 @@ build an application image by blindly copying its entire development directory.
 Rotate a credential by replacing its injected value and restarting/redeploying;
 production does not watch or refresh secret values automatically.
 
+## Email delivery
+
+Every email a site sends (account verification, password reset, invitations,
+sign-in codes, administrator notices, form notifications) goes through the
+`mail` extension, which auth and forms use. The operator chooses the one
+transport in `host.mjs`; project YAML never names a provider, credential or
+address:
+
+```js
+import mail from '@jimhoyd/urlcode-mail/extension';
+import { sesTransport } from '@jimhoyd/urlcode-mail';
+// in the composeHost list:
+mail({ transport: sesTransport({ region: 'eu-west-1' }), from: 'no-reply@site.example' }),
+```
+
+With no `transport`, mail writes each message to `data/outbox/` only while the
+activation origin is loopback (`urlcode dev`); on any other origin delivery is
+off, and auth then serves password sign-in only (no email codes, resets,
+invitations or setup links). `sesTransport` needs the optional
+`@aws-sdk/client-sesv2` package installed in the site. Deliveries are bounded
+(8 in flight, 5 s each by default) and refused, never queued, when full. There
+is no HTML, attachment, Reply-To, SMTP or retry queue. See the
+[mail package](../packages/mail/README.md) for transports, recipients and
+translating messages.
+
 ## Health, logs and limits
 
 - `GET /_urlcode/health`: process liveness.

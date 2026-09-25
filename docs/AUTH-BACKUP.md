@@ -26,6 +26,23 @@ mode bits cannot establish Windows privacy. Keep encryption and CSRF keys and
 reviewed configuration separately backed up. Restore to an isolated new path,
 and review restored sessions and revocation state before reopening traffic.
 
+## Audit and abuse data
+
+Audit events wait in auth's outbox (inside `data/auth.sqlite`) until the audit
+extension drains them, so back up the audit log **after** the auth database:
+events not yet drained then travel in the auth backup, and nothing falls
+between the two. `npx urlcode-audit backup` takes JSON
+`{"database","destination","projectRoot"}` on stdin and uses the same online
+backup rules; `restore` writes only a new path. See the
+[audit package](../packages/audit/README.md#command-line).
+
+`data/abuse.sqlite` holds only rate counters, so backing it up is optional.
+Keep `data/abuse.key` private: the counters are keyed by an HMAC under it, and
+losing the key only resets them. The mail outbox (`data/outbox/`, loopback
+development only) holds messages, not state; nothing reads it back.
+
+## Service start
+
 A failed auth service initialization waits for its SQLite worker to terminate
 before rejecting. After a configuration rejection, callers can retry or clean up
 the database without racing that failed opener's file handle. Configuration

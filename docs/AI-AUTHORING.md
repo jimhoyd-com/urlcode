@@ -515,7 +515,9 @@ example) or verifies a signature must be a trusted route: declare
 the `webhook-receiver` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
-extension invokes (`onSignUp`, `beforeRegister` and the like) — it is
+extension invokes (auth's `beforeRegister`, `beforeRoleChange`, `onAccountCreated`,
+`onAccountStatusChanged`, `onDeletionScheduled` and `onAccountDeleted`, forms'
+`onSubmit`, ui's `transformView` and the like) — it is
 first-party project code with the same trusted-by-default rule as a
 `function`/`middleware` route. Extension hook contract v1 is trusted-only;
 `sandbox: true` is rejected rather than silently ignored. See

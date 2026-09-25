@@ -14,7 +14,7 @@ compiled and the request path is unchanged. Each policy has its own page:
 
 | Policy | Page | What it does |
 |---|---|---|
-| `throttle` | [throttle](policies/throttle.md) | Sliding-window request budget with `RateLimit`/`RateLimit-Policy` headers, 429 and `Retry-After` |
+| `throttle` | [throttle](policies/throttle.md) | Sliding-window request budget with `RateLimit`/`RateLimit-Policy` headers, 429 and `Retry-After`. Per-flow sign-in, sign-up and form budgets are the `abuse` extension's instead ([throttle vs abuse](EXTENSIONS.md#abuse-protection)) |
 | `agents` | [agents](policies/agents.md) | Deny or allow by `User-Agent`, from bundled lists, project files and bounded patterns |
 | `security` | [security](policies/security.md) | OWASP Secure Headers Project response headers, with per-header `set`/`unset` |
 | `compression` | [compression](policies/compression.md) | `Accept-Encoding` negotiation; assets precompressed at snapshot time |

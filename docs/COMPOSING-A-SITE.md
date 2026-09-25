@@ -8,10 +8,12 @@ npx @jimhoyd/urlcode init site --with ui,auth,admin --example
 ```
 
 That is `urlcode init site` followed by `urlcode extensions add ui auth admin
---example` in it: npm installs the three add-on tarballs this core pins (by URL and sha512
+--example` in it: npm installs the add-on tarballs this core pins (by URL and sha512
 in its `addons.json`) at the top level of the site, and each extension's
-scaffold writes its configuration, routes and operator files. `admin` alone
-would do the same, because it requires `auth` and `ui`. `--example` adds each
+scaffold writes its configuration, routes and operator files. Auth requires
+`audit` (its log of privileged actions) and `mail` (every message it sends),
+and admin requires `audit` too, so those two are installed as well. `admin`
+alone would do the same, because it requires `auth`, `ui` and `audit`. `--example` adds each
 extension's demo on top of its capability (here auth's signed-in `/private`
 page); without it you get the accounts, console and kit with no application
 page of your own yet.
@@ -24,7 +26,7 @@ covers three different activities that are easy to confuse:
 | Change what an extension is configured to do | the `config` block in `app/urlcode.yaml` | none |
 | Change how its screens look or read | files under `<site>/ui/` | none (templates are data) |
 | Run your own logic at one of its lifecycle points | a project function named from that `config` | first-party project JavaScript |
-| Add a capability none of the three provides | a new extension package | TypeScript against the runtime contract |
+| Add a capability none of them provides | a new extension package | TypeScript against the runtime contract |
 
 Work down that list, not up. The [declarative-first
 principle](PROJECT-DIRECTION.md#design-principle-declarative-first) applies
@@ -36,16 +38,19 @@ above it cannot express the requirement.
 - `site/app/` — the route project: `urlcode.yaml` with an `extensions` block
   per extension, and `routes/ui.yaml`, `routes/auth.yaml` and
   `routes/admin.yaml` holding `/assets/ui/*`, `/account/*`, `/private` (the
-  `--example` page) and `/admin/*`, each listed in `includes`.
+  `--example` page) and `/admin/*` (with `auth: {onDeny: 404}`), each listed in
+  `includes`. `audit` and `mail` serve no route.
 - `site/host.mjs` — the operator host module, the one place that holds code.
   It imports each extension's `./extension` entry and passes
-  `[ui(), auth(), admin()]` to `composeHost`, which activates `ui` first, hands
-  auth's service and CSRF key to admin, and registers the templates and
-  catalogues auth and admin contribute to `ui`.
+  `[audit(), mail(), ui(), auth(), admin()]` to `composeHost`, which activates
+  them in that dependency order, hands admin auth's typed exports (never its
+  keys or database), and registers the templates and catalogues auth and admin
+  contribute to `ui` and the messages auth contributes to `mail`.
 - `site/ui/` — `copy/`, `templates/` and `extra.css`, the project's
   presentation overrides, beside the host and **outside** `app/`.
 - `site/operator-service.mjs`, `site/data/` — auth's operator service and its
-  private key material, mode `0600`.
+  private key material, mode `0600`, and mail's `data/outbox/`. The audit
+  database `data/audit.sqlite` appears when the host first runs.
 - `site/package.json` and `site/package-lock.json` — the exact core pin and the
   add-on tarballs, with their integrity.
 
@@ -57,16 +62,18 @@ policy passed with `--policy` (core then pins the host from it), or
 ### Supported combinations
 
 Names are an unordered set, and each extension brings what it requires. Core
-activates extensions in `requires` order, so the kit is active before anything
-that renders through it, whatever order you name them in.
+activates extensions in the order `composeHost` gives them (`requires` and
+installed `uses` first), so the kit is active before anything that renders
+through it, whatever order you name them in.
 
 | Extensions added | Result |
 |---|---|
 | `ui` | Kit only. |
-| `auth` | `ui` and `auth`: accounts on `/account/*`, rendered through the kit. |
-| `admin` | `ui`, `auth` and `admin`: the full composition above. |
+| `auth` | `ui`, `audit`, `mail` and `auth`: accounts on `/account/*`, rendered through the kit. |
+| `admin` | `ui`, `audit`, `mail`, `auth` and `admin`: the full composition above. |
+| `abuse` beside `auth` | Sign-in and sign-up budgets and password backoff, once `extensions.auth.config.abuse` declares them. |
 | `auth,admin,ui` | Same result as `ui,auth,admin`: the order you name them in is ignored. |
-| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API and a `/todos` screen, both protected by `auth: true`, where each user sees only their own todos (`ownership: owner`). |
+| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API protected by `auth: {csrf: origin}` and a `/todos` screen protected by `auth: true`, where each user sees only their own todos (`ownership: owner`) and every write is audited (`audit: true`). |
 | `store` or `ui,store` | Without `--example`: an empty store, nothing mounted, no acknowledgement needed. With `--example`: refused, because the example's writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write example; core rejects any `--ack` no scaffold consumed, such as one with auth installed, `store` absent or no `--example`. |
 
 Every refusal rolls back everything the command changed, including the
@@ -91,6 +98,13 @@ generated site starts from something like this:
 ```yaml
 version: "1"
 extensions:
+  audit:
+    version: "1"
+    config:
+      retention: 100000
+  mail:
+    version: "1"
+    config: {}
   ui:
     version: "1"
     config:
@@ -122,6 +136,7 @@ routes:
   /admin/*:
     extension: admin
     methods: [GET, HEAD, POST]
+    auth: {onDeny: 404}
   /private:
     respond:
       text: Signed in
@@ -187,11 +202,8 @@ run it. With the packages named:
   ships. Its `extensions` field names the namespaces the report covers, so a
   report built without a peer is visible as such.
 - `preview auth/sign-in` renders the extension's own sample view model.
-- `copy --missing` skeletons cover the auth ids the account screens use.
-  Admin-owned `adminUi.*` ids are deliberately not offered: admin composes
-  its catalogue onto the kit's presentation rather than registering it there,
-  and those translations do not currently reach the console
-  ([#227](https://github.com/jimhoyd-com/urlcode/issues/227)).
+- `copy --missing` skeletons cover the ids the named packages contribute:
+  auth's account screens and admin's console copy, all under `admin.*`.
 
 `urlcode extensions add ui` prints the matching `doctor` and `eject` commands
 for the extensions installed at that point.
@@ -223,7 +235,7 @@ extensions:
         beforeRegister:
           source: ./hooks/registration-rule.mjs
           export: default
-        onSignUp: ./hooks/on-signup.mjs
+        onAccountCreated: ./hooks/on-account-created.mjs
 ```
 
 `hooks` remains each package's own config, but core supplies the reference
@@ -247,40 +259,40 @@ navigation or labels to an auth/admin view without editing either package.
 
 ### `@jimhoyd/urlcode-auth`
 
-| Hook | Input | Returns | Called |
-|---|---|---|---|
-| `beforeRegister` | `{email, profile?}` | `{allow: boolean, reason?}` | Before an account is created, on `POST /account/register` and on `POST /account/signup/begin`. |
-| `onSignUp` | `{accountId, email}` | ignored | After a genuinely new account is created — on `/account/register`, and on `/account/signup/complete` only when that completion created an account rather than signing an existing one in. |
-| `onDelete` | `{accountId, email}` | ignored | After the account owner's own deletion is scheduled. Not on an administrator-initiated deletion, and not on the background purge when the grace period ends. |
+Auth owns every account lifecycle hook. The auth service fires them, so every
+path gets the same set: auth's own pages, the administration console (through
+`AuthExports.administration`) and the operator CLI (`urlcode-auth bootstrap`,
+`import` and `purge` fire them unless the operator passes `--no-project-hooks`).
+Admin has no hooks of its own.
 
-### `@jimhoyd/urlcode-admin`
-
-| Hook | Input | Returns | Called |
+| Hook | Kind | Input | Called |
 |---|---|---|---|
-| `beforeRoleChange` | `{accountId, currentRoles, requestedRoles, actorId, reason}` | `{allow: boolean, reason?}` | Before roles are applied, after the administrator's permission check, on every path that assigns roles: `/users/roles`, bulk role assignment through `/account-operations`, and a role-change support case's creation and approval. A veto means the auth service is never asked; for a bulk assignment it runs once per affected account before anything is staged. |
-| `onRegistrationApproved` | `{requestId, accountId, email, actorId, reason}` | ignored | After a registration request is approved. |
-| `onAccountStatusChanged` | `{accountId, status, actorId, reason}` | ignored | After an account is locked or unlocked, on every path: `/users/status`, `/users/bulk` (once per affected account), and an approved lock/unlock support case. |
+| `beforeRegister` | filter | `{email, method, profile?}` | Before any path creates an account; `method` is `password`, `signup`, `external`, `waitlist`, `invitation`, `administrator` or `import`. |
+| `beforeRoleChange` | filter | `{accountId, currentRoles, requestedRoles, actorId, reason}` | Before an account's roles change: directly, through a support case or its approval, or in a bulk account operation (once per affected account). |
+| `onAccountCreated` | action | `{accountId, email, method, actorId?}` | After an account is created, by any path, including `bootstrap`. |
+| `onAccountStatusChanged` | action | `{accountId, status, actorId, reason}` | After an administrator locks or unlocks an account. |
+| `onDeletionScheduled` | action | `{accountId, email, deleteAfter, actorId?}` | After an account's deletion is scheduled, by its owner (no `actorId`) or an administrator. |
+| `onAccountDeleted` | action | `{accountId}` | After a scheduled deletion is purged. |
 
 ### Verdicts and failure
 
-- **A veto is explicit.** A pre-action hook allows only by returning
-  `allow: true`. `allow: false`, or no verdict at all, rejects the operation
-  with `403` and the hook's own `reason`, or a generic message when it gave
-  none. Nothing is written. A hook that *throws* has not returned a verdict:
-  the operation is still refused, but as a generic `500`, so return a verdict
-  rather than throwing when you mean to deny.
+- **A veto is explicit.** A filter allows only by returning `{allow: true}`
+  within 5 seconds. `allow: false`, no verdict, a throw or a timeout rejects
+  the operation with `403` (`registration_rejected` or `role_change_rejected`)
+  and the hook's own `reason` (at most 256 characters), or a generic message
+  when it gave none. Nothing is written. Filters run before the store
+  transaction and can only narrow: every guard still runs inside it.
 - **Broken hooks fail at activation, not at the first request.** A missing
   module, a source path escaping the project, an export that is not a
   function, or `sandbox: true` all throw while the extension activates, naming
   the hook. The site does not start.
-- **A post-action hook cannot undo anything.** `onSignUp`,
-  `onDelete`, `onRegistrationApproved` and `onAccountStatusChanged` run after
-  the operation has committed. Throwing from one replaces the success response
-  with a `500` while the account, approval or status change stands. There is
-  no retry and no rollback. Keep them non-throwing: catch your own errors and
-  queue the work instead of failing the request.
-- **A hook's message is not a channel to the browser.** Only a pre-action
-  `reason` is shown. An uncaught error surfaces as a generic failure.
+- **An action cannot undo anything, and cannot fail the request.** Actions
+  run after the commit, at most 4 at a time and 5 seconds each. A throw or a
+  timeout is counted, never shown to the caller; while 4 are running a new one
+  is dropped and counted (the service's `getHookStats()`). Queue slow
+  work instead of doing it in the hook.
+- **A hook's message is not a channel to the browser.** Only a filter's
+  `reason` is shown.
 - **An edited hook needs a restart.** Activation re-imports the hook's entry
   module, so a reload picks up an edit to that file — but modules it imports
   stay on Node's module cache, exactly as for trusted route functions.
@@ -288,7 +300,7 @@ navigation or labels to an auth/admin view without editing either package.
 ## TypeScript: implementing a new extension
 
 Only write an extension when a capability is genuinely absent — not to
-customize one of the three above. An extension is an operator-installed
+customize one of the packages above. An extension is an operator-installed
 package whose host object core activates; it is named in `host.mjs`, never
 in YAML. The contract, the activation inputs, `ExtensionActivation.root`,
 credential headers and the `projectSha256` pin are in
@@ -307,7 +319,9 @@ fork.
 `test/addons.integration.ts` packs core and every add-on as a release does,
 pins them by sha512, creates a site, adds every extension with real npm,
 checks each is installed once, validates statically and through `host.mjs`,
-serves the account, store, forms and private routes, and removes in dependency
-order. The `ui` package's own tests check that contributed templates and host
+serves the account, store, forms and private routes, signs in with real auth
+and writes through the `auth: {csrf: origin}` store and form-records mounts,
+lists the resulting audit event with `urlcode-audit list`, and removes in
+dependency order. The `ui` package's own tests check that contributed templates and host
 options reach the kit. Neither exercises a TLS proxy, a browser or a deployed
 site.
