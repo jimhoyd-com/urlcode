@@ -11,7 +11,7 @@ import type { ViewModel, ViewValue } from '@jimhoyd/urlcode-ui';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createAuthService } from '../src/auth-core.ts';
-import { authExtension } from '../src/auth.ts';
+import { companions, siteCompanions, withCompanions } from './support/companions.ts';
 import { screenObserver } from '../src/auth-ui.ts';
 import type { Screen } from '../src/auth-ui.ts';
 import { authTemplates, authTemplateNames, authUiTemplates } from '../src/auth-templates.ts';
@@ -85,10 +85,11 @@ test('activation refuses a missing or unactivated ui extension and names the fix
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'] }, defaultRole: 'member' });
     cleanup(t, () => service.close());
     const origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    const authExtension = withCompanions(await companions(t, root, projectSha256, origin));
     const activate = (ui: unknown) => Promise.resolve(authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui: ui as never }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root }));
-    await assert.rejects(activate(undefined), /pass the object createUiExtension\(\) returns/);
+    await assert.rejects(activate(undefined), /host ui\(\) before auth/);
     // Supplied but never activated by the runtime: the project did not declare the `ui` block, or declared it after auth.
-    await assert.rejects(activate(createUiExtension({ projectSha256, projectRoot: root, sources: [englishCatalogue], extensions: [authUiTemplates] })), /declare `ui` in urlcode\.yaml before `auth`/);
+    await assert.rejects(activate(createUiExtension({ projectSha256, projectRoot: root, sources: [englishCatalogue], extensions: [authUiTemplates] })), /declare `ui` in urlcode\.yaml with its asset route/);
     // Refusal is about `ui` alone: the same options activate once the runtime has activated it.
     const instance = await activate(await activatedUi(t, root, projectSha256));
     await instance.close?.();
@@ -140,8 +141,9 @@ async function app(t: TestContext) {
     const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'] }, defaultRole: 'member', allowPasskeySecondFactor: true, trustedDeviceTtlMs: 86400000, allowEmailFactorRecovery: true });
     const { createPasskeyProvider } = await import('../src/passkeys.ts');
-    const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui, sendToken: async () => { }, sendEmailCode: async () => { }, sendFactorRecovery: async () => { }, passkeys: createPasskeyProvider({ origin: 'https://example.test', rpId: 'example.test', rpName: 'Site' }) });
-    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    const hosted = await siteCompanions(t, root, projectSha256), authExtension = withCompanions(hosted);
+    const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui, passkeys: createPasskeyProvider({ origin: 'https://example.test', rpId: 'example.test', rpName: 'Site' }) });
+    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, ...hosted.registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { await server.close(); await service.close().catch(() => { }); });
     const cookies = new Map<string, string>();
     async function request(path: string, { method = 'GET', data, html = false }: { method?: string; data?: Record<string, string>; html?: boolean } = {}) {

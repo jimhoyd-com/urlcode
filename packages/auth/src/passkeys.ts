@@ -5,6 +5,8 @@ export interface StoredPasskey {
     publicKey: string;
     counter: number;
     transports?: string[];
+    /** The relying-party ID the credential was registered for; auth records it so a later RP ID change is noticed (#736). */
+    rpId?: string;
 }
 export interface PasskeyProviderOptions {
     origin: string;
@@ -49,7 +51,7 @@ function bound(origins: readonly string[], rpId: string, rpName: string): Passke
             if (!result.verified)
                 throw new Error('Passkey registration refused');
             const credential = result.registrationInfo.credential;
-            return { id: credential.id, publicKey: Buffer.from(credential.publicKey).toString('base64url'), counter: credential.counter, ...(credential.transports ? { transports: credential.transports } : {}) };
+            return { id: credential.id, publicKey: Buffer.from(credential.publicKey).toString('base64url'), counter: credential.counter, ...(credential.transports ? { transports: credential.transports } : {}), rpId };
         },
         beginAuthentication() { return generateAuthenticationOptions({ rpID: rpId, userVerification: 'required' }); },
         async verifyAuthentication(response, challenge, stored) {

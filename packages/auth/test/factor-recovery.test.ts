@@ -38,13 +38,15 @@ test('recovery requests consume a persistent per-account attempt budget',async t
  const {service,user}=await setup(t);for(let i=0;i<10;i++)await service.beginFactorRecovery({email:user.user.email,browserToken});await assert.rejects(service.beginFactorRecovery({email:user.user.email,browserToken}),{code:'authentication_rate_limited'});
 });
 test('recovery handlers require same-origin CSRF, never mutate on GET and issue enrollment-only cookies',async t=>{
- const {service,user,advance}=await setup(t);const {authExtension}=await import('../src/auth.ts'),{AuthHttp}=await import('../src/auth-ui.ts');
- const origin='https://recovery.example.test',csrfKey=randomBytes(32),http=new AuthHttp({origin,csrfKey}),cookies=new Map<string,string>(),delivered:{verificationToken:string;cancelToken:string}[]=[];
- const ui=await activatedUi(t,import.meta.dirname,'a'.repeat(64),origin);
- const instance=await authExtension({service,csrfKey,projectSha256:'a'.repeat(64),ui,sendFactorRecovery:async message=>{delivered.push(message);}}).activate({registration:'open'},{origin,target:'node',projectSha256:'a'.repeat(64),mounts:['/account'], root: import.meta.dirname});
+ const {service,user,advance}=await setup(t);const {authFor}=await import('./support/companions.ts'),{AuthHttp}=await import('../src/auth-ui.ts');
+ const origin='https://recovery.example.test',csrfKey=randomBytes(32),http=new AuthHttp({origin,csrfKey}),cookies=new Map<string,string>();
+ const ui=await activatedUi(t,import.meta.dirname,'a'.repeat(64),origin),directory=await mkdtemp(join(tmpdir(),'factor-recovery-mail-'));cleanup(t,()=>rm(directory,{recursive:true,force:true}));
+ const hosted=await authFor(t,directory,{service,csrfKey,projectSha256:'a'.repeat(64),ui},origin);
+ const delivered=()=>hosted.sent.filter(envelope=>envelope.template==='auth.factor-recovery').map(envelope=>({verificationToken:new URL(/https:\/\/\S+/.exec(envelope.text)![0]).searchParams.get('token')!}));
+ const instance=await hosted.registration.activate({registration:'open'},{origin,target:'node',projectSha256:'a'.repeat(64),mounts:['/account'], root: import.meta.dirname});
  async function call(path:string,data?:Record<string,string>,requestOrigin=origin){const url=new URL(origin+'/account'+path);const result=await instance.handle({method:data?'POST':'GET',target:url.pathname+url.search,path:url.pathname,query:url.searchParams,headers:new Headers({accept:'application/json',origin:requestOrigin,cookie:[...cookies].map(([key,value])=>key+'='+value).join('; '),...(data?{'content-type':'application/json'}:{})}),headerCounts:{cookie:1,origin:1},body:Buffer.from(data?JSON.stringify({...data,csrf:http.token(cookies.get(http.sessionCookie)||cookies.get(http.flowCookie)||'')}):''),origin,route:'/account/*',mount:'/account',client:null, requestId: 'test-request', env: {}});for(const [name,value]of result.headers)if(name==='set-cookie'){const first=value.split(';')[0]!,split=first.indexOf('=');if(value.includes('Max-Age=0'))cookies.delete(first.slice(0,split));else cookies.set(first.slice(0,split),first.slice(split+1));}return result;}
- await call('/csrf');assert.equal((await call('/recover-factor',{email:user.user.email},'https://attacker.example')).status,403);assert.equal(delivered.length,0);
- assert.equal((await call('/recover-factor',{email:user.user.email})).status,200);assert.equal(delivered.length,1);const token=delivered[0]!.verificationToken;
+ await call('/csrf');assert.equal((await call('/recover-factor',{email:user.user.email},'https://attacker.example')).status,403);assert.equal(delivered().length,0);
+ assert.equal((await call('/recover-factor',{email:user.user.email})).status,200);assert.equal(delivered().length,1);const token=delivered()[0]!.verificationToken;
  assert.equal((await call('/recover-factor/confirm?token='+token)).status,200);advance(day);assert.equal((await call('/recover-factor/complete',{token})).status,409);
  assert.equal((await call('/recover-factor/confirm',{token})).status,200);advance(day);const completed=await call('/recover-factor/complete',{token});assert.equal(completed.status,200);const session=cookies.get(http.sessionCookie)!;assert.deepEqual((await service.authenticate(session))?.restrictions,['enroll-mfa']);
  assert.equal((await call('/export',{})).status,403);assert.equal(cookies.has('__Host-urlcode-factor-recovery'),false);

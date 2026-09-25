@@ -7,8 +7,10 @@ import {join} from 'node:path';
 import {randomBytes,createHmac} from 'node:crypto';
 import {startServer} from '@jimhoyd/urlcode';
 import {inspectExtensionRevision} from '@jimhoyd/urlcode/extensions';
-import {createAuthService, sessionReference} from '../src/auth-core.ts';
-import {authExtension} from '../src/auth.ts';
+import {createAuthService as createPublicService, internal, sessionReference} from '../src/auth-core.ts';
+import type {AuthOptions} from '../src/auth-core.ts';
+import {siteCompanions, withCompanions} from './support/companions.ts';
+const createAuthService=async(options:AuthOptions)=>internal(await createPublicService(options));
 import {createPresentation} from '../src/presentation.ts';
 import { kitSetup, kitYaml } from './support/render.ts';
 import { body } from './support/json-api.ts';
@@ -29,7 +31,8 @@ test('approved manual recovery is localized, CSRF protected, one-use and restric
  await assert.rejects(service.approveRecoveryCase({actorToken:maker.token,caseId:recovery.id,reason:'Self approval is forbidden'}));
  const approved=await service.approveRecoveryCase({actorToken:checker.token,caseId:recovery.id,reason:'Independently verified evidence and replacement address'});
  const origin='https://site.example',presentation=createPresentation({catalogues:{fr:{'manualRecovery.restoreTitle':'Rétablir accès','manualRecovery.restoreIntro':'<img src=x onerror=alert(1)> Vérification humaine','manualRecovery.newPassword':'Nouveau secret','manualRecovery.replace':'Continuer avec MFA'}}});
- const server=await startServer({project,origin,port:0,extensions:[...registrations,authExtension({service,csrfKey:randomBytes(32),projectSha256,presentation,ui})],log:()=>{}});cleanup(t, async()=>{try { await server.close(); } finally { await service.close(); }});
+ const hosted=await siteCompanions(t,root,projectSha256),authExtension=withCompanions(hosted);
+ const server=await startServer({project,origin,port:0,extensions:[...registrations,...hosted.registrations,authExtension({service,csrfKey:randomBytes(32),projectSha256,presentation,ui})],log:()=>{}});cleanup(t, async()=>{try { await server.close(); } finally { await service.close(); }});
  const cookies=new Map<string,string>();
  async function request(path:string,data?:Record<string,string>,csrf?:string,html=false){const response=await fetch(`http://127.0.0.1:${server.address.port}${path}`,{method:data?'POST':'GET',redirect:'manual',headers:{accept:html?'text/html':'application/json',cookie:[...cookies].map(([k,v])=>k+'='+v).join('; '),...(data?{'content-type':'application/json',origin}:{}),...(csrf?{'x-csrf-token':csrf}:{})},...(data?{body:JSON.stringify(data)}:{})});for(const header of response.headers.getSetCookie()){const [key,value]=header.split(';')[0]!.split('=');if(header.includes('Max-Age=0'))cookies.delete(key!);else cookies.set(key!,value!);}return response;}
  assert.equal((await request('/account/restore-access?token='+approved.token+'&token='+approved.token)).status,400);

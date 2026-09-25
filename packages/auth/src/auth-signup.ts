@@ -1,25 +1,25 @@
 import { field as uiField, icon } from '@jimhoyd/urlcode-ui';
 import { createHash, randomBytes } from 'node:crypto';
-import { extensionHookContext } from '@jimhoyd/urlcode/extensions';
+import { extensionHookContext, jsonResponse, wantsJson } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
+import type { AbuseChallengeWidget } from '@jimhoyd/urlcode-abuse';
+import type { AuthServiceInternal } from './auth-core.ts';
 import type { AuthExtensionOptions } from './auth.ts';
+import type { Delivery } from './delivery.ts';
 import type { PresentationContext } from './presentation.ts';
 import type { RegistrationInput } from './registration.ts';
-import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField, jsonResponse, readFields, screenResponse, wantsJson } from './auth-ui.ts';
+import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField, readAuthFields, screenResponse } from './auth-ui.ts';
 import { Markup } from '@jimhoyd/urlcode-ui';
-import type { LifecycleHooks } from './lifecycle-hooks.ts';
 
+type SignupOptions = Omit<AuthExtensionOptions, 'service'> & { service: AuthServiceInternal; delivery: Delivery; challenge?: AbuseChallengeWidget | undefined };
 /** Operator-owned signup orchestration. Only opaque browser-bound state is held in cookies. */
-export function createSignup(options: AuthExtensionOptions, http: AuthHttp, mount: string, profile: { fields(p: PresentationContext): string; read(fields: Record<string,string>): RegistrationInput; names: string[] }, hooks: LifecycleHooks = {}) {
+export function createSignup(options: SignupOptions, http: AuthHttp, mount: string, profile: { fields(p: PresentationContext): string; read(fields: Record<string,string>): RegistrationInput; names: string[] }) {
  const service=options.service, browserCookie='__Host-urlcode-signup-browser', flowCookie='__Host-urlcode-signup';
  const clear=()=>[['set-cookie',http.setCookie(flowCookie,'',0)]] as [string,string][];
+ /** Best effort: the same public result is returned for every eligible identifier. */
  async function delivery(message: {kind:string;email:string;code?:string}, locale: string) {
-  const controller=new AbortController(); let timer:ReturnType<typeof setTimeout>|undefined;
-  try { const operation=message.kind==='signup-code' ? options.sendSignupCode?.({email:message.email,code:message.code!,locale,signal:controller.signal}) : options.sendNotice?.({email:message.email,event:message.kind==='new-device'?'new-device':'registration-attempt',locale,signal:controller.signal});
-   if(!operation && message.kind==='signup-code') throw new AuthHttpError(503,'Email delivery is not configured');
-   if(operation) await Promise.race([operation,new Promise<void>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Delivery timeout'));},5000);})]);
-  } catch { /* The same public result is returned for every eligible identifier. */ }
-  finally {if(timer)clearTimeout(timer);}
+  if(message.kind==='signup-code')await options.delivery.signupCode(message.email,message.code!,locale);
+  else await options.delivery.notice(message.kind==='new-device'?'new-device':'registration-attempt',message.email,locale);
  }
  return async function handle(request:ExtensionRequest,presentation:PresentationContext) {
   const path=request.path.slice(mount.length);
@@ -55,7 +55,7 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
    else {intro=service.getRegistrationMode()==='waitlist'?text('An administrator must approve your request.'):'';markup=form('complete',profile.fields(presentation),service.getRegistrationMode()==='waitlist' ? 'Request account' : 'Create account');}
    const restart=state?{summary:text('Use a different email address'),help:text('Starting again clears this signup progress. No account is created until you finish.'),form:new Markup(form('restart','','Start again').replace('<button>', '<button class="ui-button-secondary">'))}:null;
    const view={progressLabel:presentation.text('ux.signupProgress',{current:currentStep+1,total:steps.length}),stepsLabel:text('Account setup progress'),steps:progress,email:state&&state.step!=='verify-email'?state.email:null,changeLabel:text('Change'),intro,identifier,form:new Markup(markup),passkey:new Markup(passkey),restart,signInPrompt:text('Already have an account?'),signInHref:mount+'/login?lang='+encodeURIComponent(presentation.locale),signInLabel:text('Sign in')};
-   return screenResponse(title,{name:'auth/signup',view},{status:200,headers,scriptPath:state?.step==='credential'&&options.passkeys?mount+'/assets/passkeys.js':undefined,presentation,turnstile:!state?options.challenge?.widget:undefined,layout:'compact',ui:options.ui});
+   return screenResponse(title,{name:'auth/signup',view},{status:200,headers,scriptPath:state?.step==='credential'&&options.passkeys?mount+'/assets/passkeys.js':undefined,presentation,challenge:!state?options.challenge:undefined,layout:'compact',ui:options.ui});
   }
   if(!existingBrowser)throw new AuthHttpError(403,'Signup browser binding required');
   // WebAuthn returns nested JSON; parse its bounded envelope separately from ordinary form fields.
@@ -68,15 +68,11 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
    await service.setSignupPasskey({...binding,challenge:pending.challenge,credential});
    return jsonResponse(200,{step:'profile'},headers);
   }
-  const fields=readFields(request,['email','invitationToken','code','password','website',...profile.names]);http.verify(request,fields);
+  const fields=readAuthFields(request,['email','invitationToken','code','password','website',...profile.names]);http.verify(request,fields);
   if(path==='/signup/restart')return redirect(clear());
   if(path==='/signup/begin') {
-   if(service.getSecurityPolicy().requireEmailVerification&&!options.sendSignupCode)throw new AuthHttpError(503,'Email delivery is not configured');
-   if(hooks.beforeRegister) {
-    const verdict=await hooks.beforeRegister({email:fields.email||''},extensionHookContext(request));
-    if(!verdict||verdict.allow!==true)throw new AuthHttpError(403,verdict?.reason||'Registration not permitted');
-   }
-   const started=await service.beginSignup({email:fields.email||'',browserHash,...(fields.invitationToken?{invitationToken:fields.invitationToken}:{})});
+   if(service.getSecurityPolicy().requireEmailVerification&&!options.delivery.available)throw new AuthHttpError(503,'Email delivery is not configured');
+   const started=await service.beginSignup({email:fields.email||'',browserHash,...(fields.invitationToken?{invitationToken:fields.invitationToken}:{}),context:extensionHookContext(request)});
    if(started.delivery)await delivery(started.delivery,presentation.locale);
    const cookies:[string,string][]=[['set-cookie',http.setCookie(flowCookie,started.flowId,1800)]];
    return wantsJson(request)?jsonResponse(200,{step:started.step,expires:started.expires},[...headers,...cookies]):redirect(cookies);
@@ -91,12 +87,9 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
    await service.setSignupPasskeyChallenge({...binding,challenge:passkey.challenge});
    return jsonResponse(200,{options:passkey},headers);
   } else if(path==='/signup/complete') {
-   const device=http.device(request),result=await service.completeSignup({...binding,profile:profile.read(fields),device:{id:device.id,label:device.label}});
+   const device=http.device(request),result=await service.completeSignup({...binding,profile:profile.read(fields),device:{id:device.id,label:device.label},context:extensionHookContext(request)});
    const resultHeaders=[...headers,...clear(),...(result?http.sessionHeaders(result.token):[])];
    if(result?.newDevice)await delivery({kind:'new-device',email:result.user.email},options.presentation?.resolve({...(result.user.profile?.locale?{accountLocale:result.user.profile.locale}:{}),queryLocale:presentation.locale}).locale??presentation.locale);
-   // Existing-account attempts complete at sign-in (`result` is null), never a
-   // fresh account, so onSignUp fires only for a genuinely new account.
-   if(result&&hooks.onSignUp)await hooks.onSignUp({accountId:result.user.id,email:result.user.email},extensionHookContext(request));
    // One redirect target regardless of outcome (JSON-API.md's no-enumeration guarantee): an
    // existing-email attempt completes with `result` null and no session, so `/account` simply
    // bounces an unauthenticated visitor onward; a real registration lands there authenticated.

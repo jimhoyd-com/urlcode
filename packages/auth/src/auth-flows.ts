@@ -4,18 +4,20 @@ import type { PresentationContext } from './presentation.ts';
 import type { Presentation } from './presentation.ts';
 import type { RegistrationInput } from './registration.ts';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { extensionHookContext, jsonResponse, wantsJson } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { sessionReference } from './auth-core.ts';
-import type { AuthService, AuthSessionResult } from './auth-core.ts';
+import type { AuthServiceInternal, AuthSessionResult } from './auth-core.ts';
 import type { OidcProvider, OidcFlow } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
-import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, jsonResponse, readFields, screenResponse, wantsJson, secondFactorButton } from './auth-ui.ts';
+import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, readAuthFields as readFields, screenResponse, secondFactorButton } from './auth-ui.ts';
+import { FRESHNESS_WINDOW_MS } from './freshness.ts';
 import type { AuthHttpResponse, UiHost } from './auth-ui.ts';
 import { Markup } from '@jimhoyd/urlcode-ui';
 interface AuthFlowOptions {
-    service: AuthService;
-    presentation?: Presentation;
+    service: AuthServiceInternal;
+    presentation?: Presentation | undefined;
     ui: UiHost;
     onSession?: (request: ExtensionRequest, result: AuthSessionResult) => Promise<[
         string,
@@ -57,7 +59,7 @@ function complex(request: ExtensionRequest): Record<string, unknown> {
     }
 }
 function fresh(authenticatedAt: number): void {
-    if (Date.now() - authenticatedAt > 300000)
+    if (Date.now() - authenticatedAt > FRESHNESS_WINDOW_MS)
         throw new AuthHttpError(403, 'Confirm your identity first');
 }
 export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount: string, registration: boolean) {
@@ -156,7 +158,7 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                         const browser = http.prepare(request);
                         return formScreen('Complete your account', 'provider-enroll', `<form method="post" action="${escapeHtml(mount + '/providers/enroll?lang=' + encodeURIComponent(presentation.locale))}">${csrfField(browser.csrf)}<input type="hidden" name="flowId" value="${escapeHtml(enrollment)}">${options.enrollment.fields(presentation)}<button type="submit">${tr("action.register")}</button></form>`, browser.headers);
                     }
-                    user = await service.createExternalAccount({ email: identity.email, emailVerified: true, provider: identityProvider, subject: identity.subject });
+                    user = await service.createExternalAccount({ email: identity.email, emailVerified: true, provider: identityProvider, subject: identity.subject, context: extensionHookContext(request) });
                     externalProof = await service.getExternalProof(identityProvider, identity.subject);
                 }
                 if (!externalProof || externalProof.user.id !== user.id)
@@ -187,7 +189,7 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                 const data = record(await service.consumeFlow(fields.flowId || '', 'oidc-enrollment'));
                 if (typeof data.email !== 'string' || typeof data.provider !== 'string' || typeof data.subject !== 'string')
                     throw new AuthHttpError(400, 'Invalid enrollment');
-                const user = await service.createExternalAccount({ email: data.email, emailVerified: true, provider: data.provider, subject: data.subject, profile: options.enrollment.read(fields) });
+                const user = await service.createExternalAccount({ email: data.email, emailVerified: true, provider: data.provider, subject: data.subject, profile: options.enrollment.read(fields), context: extensionHookContext(request) });
                 const externalProof = await service.getExternalProof(data.provider, data.subject);
                 if (!externalProof || externalProof.user.id !== user.id)
                     throw new AuthHttpError(401, 'Identity changed during enrollment');
@@ -203,7 +205,7 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                 const data = record(await service.consumeFlow(fields.flowId || '', 'oidc-mfa'));
                 if (typeof data.accountId !== 'string')
                     throw new AuthHttpError(400, 'Invalid authentication flow');
-                return finish(request, await service.issueSession(data.accountId, { device: http.device(request), method: 'oidc', proof: record(data.proof) as unknown as NonNullable<Parameters<AuthService['issueSession']>[1]['proof']>, ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...(fields.secondFactorToken ? { secondFactor: secondFactors.proof(request, fields.secondFactorToken) } : {}), ...trusted(request) }));
+                return finish(request, await service.issueSession(data.accountId, { device: http.device(request), method: 'oidc', proof: record(data.proof) as unknown as NonNullable<Parameters<AuthServiceInternal['issueSession']>[1]['proof']>, ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...(fields.secondFactorToken ? { secondFactor: secondFactors.proof(request, fields.secondFactorToken) } : {}), ...trusted(request) }));
             }
             const ceremony = /^\/passkeys\/(register|login|step-up)\/(options|verify)$/.exec(path);
             if (!ceremony)

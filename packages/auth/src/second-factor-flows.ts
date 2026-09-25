@@ -3,7 +3,8 @@ import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import type { AuthService, PasskeyAuthProof } from './auth-core.ts';
 import type { PasskeyProvider } from './passkeys.ts';
-import { AuthHttp, AuthHttpError, jsonResponse } from './auth-ui.ts';
+import { jsonResponse } from '@jimhoyd/urlcode/extensions';
+import { AuthHttp, AuthHttpError } from './auth-ui.ts';
 import type { AuthHttpResponse } from './auth-ui.ts';
 interface SecondFactorInput {
     token: string;

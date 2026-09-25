@@ -8,7 +8,9 @@ import { randomBytes } from 'node:crypto';
 import { installPrincipalSlot } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import { createAuthService } from '../src/auth-core.ts';
-import { apiKeyPrincipalId, authExtension } from '../src/auth.ts';
+import { apiKeyPrincipalId } from '../src/auth.ts';
+import { internal } from '../src/auth-core.ts';
+import { companions, withCompanions } from './support/companions.ts';
 import { AuthHttp } from '../src/auth-ui.ts';
 import { activatedUi } from './support/render.ts';
 // urlcode#331: auth declares providesPrincipal and, from authorize(), hands core's opaque request principal the
@@ -20,7 +22,7 @@ test('auth sets the core principal to the user id for a session and apikey:<id> 
     cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), http = new AuthHttp({ csrfKey, origin });
     const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
-    const registration = authExtension({ service, csrfKey, projectSha256, ui });
+    const registration = withCompanions(await companions(t, root, projectSha256, origin))({ service, csrfKey, projectSha256, ui });
     assert.equal(registration.providesPrincipal, true);
     const instance = await registration.activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     const request = (method: string, headers: Record<string, string>): ExtensionRequest => ({ method, target: '/api/notes', path: '/api/notes', query: new URLSearchParams(), headers: new Headers(headers), headerCounts: Object.fromEntries(Object.keys(headers).map(name => [name, 1])), body: new Uint8Array(), origin, route: '/api/notes/*', mount: '/api/notes', client: null, requestId: 'test-request', env: {} });
@@ -77,7 +79,7 @@ test('auth sets the core principal to the user id for a session and apikey:<id> 
     const serviceRequest = request('GET', { authorization: 'Bearer ' + key.key });
     await principalOf({ bearer: { scopes: ['notes.read'] } }, serviceRequest);
     assert.ok(!('userId' in JSON.parse(Buffer.from(serviceRequest.headers.get('x-urlcode-context-auth-principal')!, 'base64').toString())));
-    await service.adminSetStatus({ actorToken: admin.token, accountId: alice.user.id, status: 'locked' });
+    await internal(service).adminSetStatus({ actorToken: admin.token, accountId: alice.user.id, status: 'locked' });
     const locked = await principalOf({ bearer: { scopes: ['notes.read'] } }, request('GET', { authorization: 'Bearer ' + rotated.key }));
     assert.equal(locked.status, 401); assert.equal(locked.principal, null);
     // A revoked key stops producing a principal on the next request.

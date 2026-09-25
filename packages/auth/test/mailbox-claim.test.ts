@@ -9,7 +9,8 @@ import { randomBytes } from 'node:crypto';
 import { TOTP } from 'otpauth';
 import { createAuthService, sessionReference } from '../src/auth-core.ts';
 import type { AuthOptions, AuthService } from '../src/auth-core.ts';
-import { authExtension } from '../src/auth.ts';
+import { authFor } from './support/companions.ts';
+import { outbox } from './support/outbox.ts';
 import { AuthHttp } from '../src/auth-ui.ts';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import { activatedUi } from './support/render.ts';
@@ -58,10 +59,10 @@ async function assertEarlierMethodsRemoved(service: AuthService, earlier: Awaite
     await assert.rejects(service.login({ email, password: firstPassword, trustedDevice: earlier.trust.token }), { code: 'invalid_credentials' });
     await assert.rejects(service.issueSession(user.id, { method: 'oidc', proof: earlier.oidcProof }));
     await assert.rejects(service.issueSession(user.id, { method: 'passkey', proof: { ...earlier.passkeyProof, newCounter: 5 } }));
-    const claimed = (await service.listAudit({ action: 'account.claimed' })).events;
+    const claimed = (await outbox(service, { action: 'account.claimed' }));
     assert.equal(claimed.length, 1);
     assert.equal(claimed[0]!.subject, user.id);
-    assert.deepEqual(JSON.parse(claimed[0]!.reason), { proof, removed: { passkeys: 1, identities: 1, recoveryCodes: 10, trustedDevices: 1, sessions: 1, authenticator: true, password: true } });
+    assert.deepEqual(claimed[0]!.metadata, { proof, removed: { passkeys: 1, identities: 1, recoveryCodes: 10, trustedDevices: 1, sessions: 1, authenticator: true, password: true } });
 }
 
 test('first mailbox proof by password reset removes sign-in methods added while unverified', async (t) => {
@@ -83,7 +84,7 @@ test('first mailbox proof by email code removes earlier methods, the password an
     await assertEarlierMethodsRemoved(service, earlier, 'email-code');
     const again = await service.issueEmailCode({ email });
     await service.consumeEmailCode({ flowId: again.flowId, code: again.code! });
-    assert.equal((await service.listAudit({ action: 'account.claimed' })).events.length, 1, 'a verified account is not claimed again');
+    assert.equal((await outbox(service, { action: 'account.claimed' })).length, 1, 'a verified account is not claimed again');
 });
 
 test('first mailbox proof by verification link outside the registrant session removes earlier methods and the password', async (t) => {
@@ -108,7 +109,7 @@ test('the registrant verifying in its own session keeps its methods', async (t) 
     assert.ok(await service.authenticate(first.token));
     assert.equal((await service.listPasskeys(first.user.id)).length, 1);
     assert.equal((await service.login({ email, password: firstPassword })).principal.id, first.user.id);
-    assert.equal((await service.listAudit({ action: 'account.claimed' })).events.length, 0);
+    assert.equal((await outbox(service, { action: 'account.claimed' })).length, 0);
 });
 
 test('password reset of an already verified account keeps its passkeys, links and factors', async (t) => {
@@ -127,7 +128,7 @@ test('password reset of an already verified account keeps its passkeys, links an
     assert.equal((await service.login({ email, password: ownerPassword, totp: totp.generate({ timestamp: now() }) })).principal.id, first.user.id);
     const code = await service.issueEmailCode({ email });
     await assert.rejects(service.consumeEmailCode({ flowId: code.flowId, code: code.code! }), { code: 'invalid_credentials' });
-    assert.equal((await service.listAudit({ action: 'account.claimed' })).events.length, 0);
+    assert.equal((await outbox(service, { action: 'account.claimed' })).length, 0);
 });
 
 test('required verification refuses new sign-in methods and factors before mailbox proof', async (t) => {
@@ -141,9 +142,10 @@ test('required verification refuses new sign-in methods and factors before mailb
 test('HTTP verification without the registrant session reports that a new password is required', async (t) => {
     const { service } = await setup(t), first = await service.register({ email, password: firstPassword });
     await service.addPasskey({ actorToken: first.token, credential: { id: 'http-key', publicKey: 'synthetic-http-key', counter: 0 } });
-    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), csrfKey = randomBytes(32), http = new AuthHttp({ origin, csrfKey }), delivered: { purpose: string; token: string }[] = [];
-    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
-    const instance = await authExtension({ service, csrfKey, projectSha256, ui, sendToken: async (message) => { delivered.push(message); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), csrfKey = randomBytes(32), http = new AuthHttp({ origin, csrfKey }), directory = await mkdtemp(join(tmpdir(), 'urlcode-auth-claim-mail-'));
+    cleanup(t, () => rm(directory, { recursive: true, force: true }));
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin), hosted = await authFor(t, directory, { service, csrfKey, projectSha256, ui }, origin), delivered = hosted.sent;
+    const instance = await hosted.registration.activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     const cookies = new Map<string, string>();
     const call = async (path: string, data?: Record<string, string>) => {
         const request: ExtensionRequest = { method: data ? 'POST' : 'GET', target: '/account' + path, path: '/account' + path, query: new URLSearchParams(), headers: new Headers({ cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; '), origin, ...(data ? { 'content-type': 'application/json' } : {}), accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(data ? JSON.stringify({ ...data, csrf: http.token(cookies.get('__Host-urlcode-session') || cookies.get('__Host-urlcode-flow') || '') }) : ''), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} };

@@ -24,7 +24,7 @@ async function site(t: TestContext, routes: Record<string, unknown>) {
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'app');
     await mkdir(project);
-    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ui: { version: '1', config: {} }, auth: { version: '1', config: { registration: 'open' } } }, routes: {
+    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ui: { version: '1', config: {} }, audit: { version: '1', config: {} }, mail: { version: '1', config: {} }, auth: { version: '1', config: { registration: 'open' } } }, routes: {
         '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] },
         '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
         ...routes,

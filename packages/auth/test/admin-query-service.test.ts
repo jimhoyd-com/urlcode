@@ -5,7 +5,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { createAuthService } from '../src/auth-core.ts';
+import {createAuthService as createPublicService, internal} from '../src/auth-core.ts';
+import type {AuthOptions} from '../src/auth-core.ts';
+import {outbox} from './support/outbox.ts';
+/** Service-level suite: the full service, administrative operations included. */
+const createAuthService=async(options:AuthOptions)=>internal(await createPublicService(options));
 test('service applies full user filters, private stable cursors and audited identifier reveal',async t=>{
     const root=await mkdtemp(join(tmpdir(),'urlcode-query-service-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
     let now=1700000000000;
@@ -28,10 +32,10 @@ test('service applies full user filters, private stable cursors and audited iden
     const support=await service.login({email:'second@example.test',password:'correct horse battery staple'});
     await assert.rejects(service.adminAddNote({actorToken:support.token,accountId:first.user.id,reason:'Not authorized'}),/permission/);
     await service.adminAddNote({actorToken:admin.token,accountId:first.user.id,reason:'Verified support case context'});
-    assert.equal((await service.listAudit({subject:first.user.id,action:'admin.note'})).events[0]?.reason,'Verified support case context');
+    assert.equal((await outbox(service,{subject:first.user.id,action:'admin.note'}))[0]?.reason,'Verified support case context');
     await assert.rejects(service.adminReveal({actorToken:support.token,accountId:first.user.id,reason:'Investigate account'}),/permission/);
     assert.deepEqual(await service.adminReveal({actorToken:admin.token,accountId:first.user.id,reason:'Requested support verification'}),{id:first.user.id,email:'first@example.test'});
-    const audit=await service.listAudit({action:'admin.identifier_revealed',subject:first.user.id});assert.equal(audit.events.length,1);assert.equal(audit.events[0]!.actor,admin.user.id);assert.equal(audit.events[0]!.reason,'Requested support verification');
+    const audit={events:await outbox(service,{action:'admin.identifier_revealed',subject:first.user.id})};assert.equal(audit.events.length,1);assert.equal(audit.events[0]!.actor,admin.user.id);assert.equal(audit.events[0]!.reason,'Requested support verification');
     now+=300001;
     await assert.rejects(service.adminReveal({actorToken:admin.token,accountId:first.user.id,reason:'Expired confirmation'}),/fresh/);
 });

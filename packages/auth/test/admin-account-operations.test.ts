@@ -6,7 +6,10 @@ import {randomBytes} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {createAuthService, sessionReference} from '../src/auth-core.ts';
+import {createAuthService as createPublicService, internal, sessionReference} from '../src/auth-core.ts';
+import type {AuthOptions} from '../src/auth-core.ts';
+/** Service-level suite: the full service, administrative operations included. */
+const createAuthService=async(options:AuthOptions)=>internal(await createPublicService(options));
 import type {AdminAccountRequest,AdminAccountDelivery} from '../src/admin-account-operations.ts';
 const password='synthetic account original password';
 async function setup(t:TestContext){const root=await mkdtemp(join(tmpdir(),'admin-account-'));let now=1800000000000;const options={database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read'],editor:['site.read','site.write'],support:['site.read','auth.users.read','auth.users.manage'],admin:['*']},defaultRole:'member',now:()=>now};const service=await createAuthService(options);cleanup(t, async()=>{await service.close();await rm(root,{recursive:true,force:true});});const admin=await service.bootstrapAdmin({email:'owner@example.test',password}),first=await service.register({email:'first@example.test',password}),second=await service.register({email:'second@example.test',password});return {service,admin,first,second,options,advance:(value:number)=>{now+=value;}};}

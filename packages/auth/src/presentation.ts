@@ -463,6 +463,7 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     'nav.account': 'Account', 'nav.sessions': 'Sessions', 'nav.security': 'Security', 'nav.admin': 'Administration', 'nav.skip': 'Skip to content',
     'message.sessionCount': Object.freeze({ one: '{count} session', other: '{count} sessions' }),
     'message.accessDenied': 'Access denied', 'message.requestFailed': 'Request could not be completed', 'message.csrfRequired': 'Reload the page before submitting again.',
+    'support.banner': 'Support impersonation is active. Security changes are disabled.', 'support.end': 'End support session',
 });
 export interface ThemeVariables extends UiThemeVariables {
     '--auth-background'?: string;

@@ -6,9 +6,10 @@ import type { RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { englishCatalogue } from '../../src/presentation.ts';
 import { authUiTemplates } from '../../src/auth-templates.ts';
 export interface KitSetup { ui: UiExtension; registrations: RuntimeExtension[]; extensions: Record<string, unknown>; routes: Record<string, unknown> }
-/** The `extensions.ui` block and its asset route, written into the project before there is a revision to pin. */
+/** The `extensions.ui`, `audit` and `mail` blocks and ui's asset route, written into the project before there is a revision to pin. */
 export function kitYaml(config: Record<string, unknown> = {}): { extensions: Record<string, unknown>; routes: Record<string, unknown> } {
-    return { extensions: { ui: { version: '1', config } }, routes: { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] } } };
+    // Auth requires audit and mail: every project that hosts auth declares them (siteCompanions registers them).
+    return { extensions: { ui: { version: '1', config }, audit: { version: '1', config: {} }, mail: { version: '1', config: {} } }, routes: { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] } } };
 }
 /** The ui extension the host declares before auth, pinned to the written project's revision. */
 export function kitSetup(project: string, projectSha256: string, config: Record<string, unknown> = {}): KitSetup {
@@ -22,4 +23,8 @@ export async function activatedUi(t: TestContext, projectRoot: string, projectSh
     const instance = await ui.registration.activate({}, { origin, target: 'node', projectSha256, mounts: ['/assets/ui'], root: projectRoot });
     t.after(() => instance.close?.());
     return ui;
+}
+/** A response body as text: core's JSON responses carry a string, the kit's pages bytes. */
+export function bodyText(body: unknown): string {
+    return typeof body === 'string' ? body : body === undefined || body === null ? '' : new TextDecoder().decode(body as Uint8Array);
 }

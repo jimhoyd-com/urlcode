@@ -2,7 +2,8 @@ import type {ExtensionRequest} from '@jimhoyd/urlcode/extensions';
 import type {AuthSessionResult} from './auth-core.ts';
 import type {PresentationContext} from './presentation.ts';
 import {createPresentation} from './presentation.ts';
-import {AuthHttp,AuthHttpError,csrfField,escapeHtml,formField,jsonResponse,readFields,screenResponse,wantsJson} from './auth-ui.ts';
+import {jsonResponse,wantsJson} from '@jimhoyd/urlcode/extensions';
+import {AuthHttp,AuthHttpError,csrfField,escapeHtml,formField,readAuthFields,screenResponse} from './auth-ui.ts';
 import type {UiHost} from './auth-ui.ts';
 import {Markup} from '@jimhoyd/urlcode-ui';
 import type {AuthHttpResponse} from './auth-ui.ts';
@@ -15,8 +16,6 @@ export interface ManualRecoveryCase {
  recovery:{email:string;evidence:ManualRecoveryEvidence;state:'review'|'delivery'|'ready'|'redeemed'|'cancelled'};
  notes?:{actorId:string;note:string;created:number}[];
 }
-/** Delivery must send the approved address its link AND warn the old address before resolving. */
-export interface ManualRecoveryDelivery {email:string;oldEmail:string;token:string;caseId:string;signal:AbortSignal}
 export interface ManualRecoveryService {
  getManualRecoveryEnabled():boolean;
  createRecoveryCase(input:{actorToken:string;accountId:string;email:string;evidence:ManualRecoveryEvidence;reason:string}):Promise<ManualRecoveryCase>;
@@ -44,7 +43,7 @@ export function createManualRecoveryFlows(service:ManualRecoveryService,http:Aut
    const prepared=http.prepare(request);
    return screenResponse(tr('restoreTitle'),{name:'auth/restore-access',view:{intro:tr('restoreIntro'),form:new Markup(`<form method="post" action="${escapeHtml(mount+'/restore-access?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}<input type="hidden" name="token" value="${escapeHtml(tokens[0]!)}">${formField('password',tr('newPassword'),'password','new-password')}<button type="submit">${escapeHtml(tr('replace'))}</button></form>`)}},{status:200,headers:prepared.headers,presentation,layout:'compact',ui});
   }
-  const fields=readFields(request,['token','password']);http.verify(request,fields);
+  const fields=readAuthFields(request,['token','password']);http.verify(request,fields);
   const result=await service.redeemRecoveryCase({token:fields.token||'',password:fields.password||''});
   const headers=http.sessionHeaders(result.token);
   return wantsJson(request)?jsonResponse(200,{enrollmentRequired:true,user:result.user,csrf:http.token(result.token)},headers):jsonResponse(303,{enrollmentRequired:true},[['location',mount+'/account?lang='+encodeURIComponent(presentation.locale)],...headers]);

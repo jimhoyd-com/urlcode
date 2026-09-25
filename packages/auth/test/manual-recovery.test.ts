@@ -29,7 +29,10 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {TOTP,Secret} from 'otpauth';
-import {createAuthService, sessionReference} from '../src/auth-core.ts';
+import {createAuthService as createPublicService, internal, sessionReference} from '../src/auth-core.ts';
+import type {AuthOptions} from '../src/auth-core.ts';
+/** Service-level suite: the full service, administrative operations included. */
+const createAuthService=async(options:AuthOptions)=>internal(await createPublicService(options));
 const password='synthetic original account password',replacement='synthetic replacement account password';
 async function domain(t:TestContext,enabled=true){
  const root=await mkdtemp(join(tmpdir(),'manual-recovery-'));let now=1800000000000;

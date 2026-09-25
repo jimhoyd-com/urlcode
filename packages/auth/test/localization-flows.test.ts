@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { createAuthService, sessionReference } from '../src/auth-core.ts';
-import { authExtension } from '../src/auth.ts';
+import { companions, withCompanions } from './support/companions.ts';
 import { createPresentation } from '../src/presentation.ts';
 import { createRegistrationPolicy } from '../src/registration.ts';
 import { activatedUi } from './support/render.ts';
@@ -20,7 +20,7 @@ test('OIDC carries request locale through enrollment and MFA with escaped catalo
             return async (provider: string, subject: string) => { const found = await target.getExternalProof(provider, subject); return found && forceMfa ? { ...found, user: { ...found.user, totpEnabled: true } } : found; }; return Reflect.get(target, key); } });
     const issuer = 'https://issuer.example', provider = { async start() { const state = randomBytes(32).toString('base64url'); return { url: issuer + '/authorize?state=' + state, flow: { state, nonce: state, verifier: state } }; }, async complete() { return { issuer, subject: 'subject', email: 'reader@example.test', emailVerified: true }; } };
     const presentation = createPresentation({ catalogues: { fr: { 'page.completeYourAccount': 'Terminer <img src=x>', 'field.displayName': 'Nom affiché', 'field.locale': 'Langue préférée', 'message.acceptTerms': 'J’accepte {version} <b>conditions</b>', 'action.register': 'Créer le compte', 'provider.signIn': 'Continuer avec {provider}', 'page.secondFactor': 'Deuxième facteur', 'field.totp': 'Code authentificateur', 'action.completeSignIn': 'Terminer la connexion' } } });
-    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), ui = await activatedUi(t, import.meta.dirname, projectSha256, origin), instance = await authExtension({ service: flowService, csrfKey: randomBytes(32), projectSha256, ui, presentation, providers: { demo: provider } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname }), cookies = new Map<string, string>();
+    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), ui = await activatedUi(t, import.meta.dirname, projectSha256, origin), authExtension = withCompanions(await companions(t, root, projectSha256, origin)), instance = await authExtension({ service: flowService, csrfKey: randomBytes(32), projectSha256, ui, presentation, providers: { demo: provider } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname }), cookies = new Map<string, string>();
     async function call(target: string, data?: Record<string, string>) { const url = new URL(target, origin), response = await instance.handle({ method: data ? 'POST' : 'GET', target, path: url.pathname, query: url.searchParams, headers: new Headers({ cookie: [...cookies].map(([name, value]) => name + '=' + value).join('; '), origin, accept: 'text/html', 'accept-language': 'en', ...(data ? { 'content-type': 'application/json' } : {}) }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(data ? JSON.stringify(data) : ''), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} }); for (const [name, value] of response.headers)
         if (name === 'set-cookie') {
             const [key, content] = value.split(';')[0]!.split('=');

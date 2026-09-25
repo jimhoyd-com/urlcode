@@ -1,9 +1,6 @@
 import {createAdminAccountOperations} from './admin-account-operations.ts';
 import type {AdminAccountService} from './admin-account-operations.ts';
 import {isIP} from 'node:net';
-import {clientKey} from './client-key.ts';
-import {abuseKey,normalizeAbusePolicy} from './abuse.ts';
-import type {AuthAbuseOptions,AuthAbusePolicy} from './abuse.ts';
 import { validateUserQuery } from './user-query.ts';
 import type { UserQuery } from './user-query.ts';
 import {validateRecoveryEvidence} from './manual-recovery.ts';
@@ -17,9 +14,15 @@ import { TOTP, Secret } from 'otpauth';
 import { createRegistrationPolicy } from './registration.ts';
 import type { RegistrationPolicy, RegistrationInput, RegistrationProfile, RegistrationOptions } from './registration.ts';
 import { AuthError, openAuthStore } from './auth-store.ts';
-import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
+import { clientKey, principalIdPattern } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionHookContext } from '@jimhoyd/urlcode/extensions';
+import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import type { AuthRecord, SessionRecord } from './auth-store.ts';
+import { FRESHNESS_WINDOW_MS } from './freshness.ts';
+import { createHookRunner } from './lifecycle-hooks.ts';
+import type { AuthHookStats, LoadedAuthHooks } from './lifecycle-hooks.ts';
 export { AuthError };
+export type { AuthHookStats };
 export interface AuthUser {
     /** Latest retained device/session observation; not complete historical activity. */
     observedLastSeen?: number;
@@ -39,7 +42,6 @@ export interface AuthSecondFactor {
     browserHash: string;
 }
 export interface AuthSecurityPolicy {
-    abuse?: AuthAbusePolicy;
     allowPasskeySecondFactor?: true;
     trustedDeviceTtlMs?: number;
     allowEmailFactorRecovery?: true;
@@ -111,26 +113,7 @@ export interface AuthDailyMetric {
         failedSignIns: number;
     }[];
 }
-export interface AuthAuditEvent {
-    id: number;
-    actor: string;
-    action: string;
-    subject: string;
-    created: number;
-    reason: string;
-}
-export interface AuthLifecycleEvent {
-    type: 'sign-up' | 'delete';
-    accountId: string;
-}
-export interface AuthHookStats {
-    accepted: number;
-    dropped: number;
-    failed: number;
-    timedOut: number;
-}
 export interface AuthOptions {
-    abuse?: AuthAbuseOptions;
     blockDisposableEmails?: boolean;
     allowPasskeySecondFactor?: boolean;
     trustedDeviceTtlMs?: number;
@@ -142,15 +125,6 @@ export interface AuthOptions {
     requireEmailVerification?: boolean;
     requireMfa?: boolean;
     deletionGraceMs?: number;
-    /** Newest audit rows kept; older rows are pruned on every write. Defaults to 100000. See
-     * packages/auth/SECURITY.md's "Attempt budgets"/audit retention notes. */
-    auditRetention?: number;
-    /** Best-effort: called whenever a write prunes audit rows past `auditRetention`, so an
-     * operator can observe/alert on it instead of the cap being silent. */
-    onAuditPruned?: (removed: number) => void;
-    onLifecycle?: (event: AuthLifecycleEvent, context: {
-        signal: AbortSignal;
-    }) => void | Promise<void>;
     database: string;
     encryptionKey?: Uint8Array;
     encryptionKeys?: Record<string, Uint8Array>;
@@ -190,6 +164,8 @@ export interface AuthPasskey {
     publicKey: string;
     counter: number;
     transports?: string[];
+    /** The relying-party ID the credential was registered for (recorded since #736). */
+    rpId?: string;
 }
 export interface AuthCase {
     id: string;
@@ -231,9 +207,25 @@ export interface SignupStart extends SignupState {
         email: string;
     };
 }
-export interface AuthService extends FactorRecoveryService,ManualRecoveryService,AdminAccountService {
-    getAbusePolicy(): AuthAbusePolicy|undefined;
-    admitAuthRequest(input:{client:string|null;signupEmail?:string}):Promise<{challengeRequired:boolean}>;
+/** A request's hook context, carried by every service method that fires a project lifecycle hook. */
+interface HookContext { context?: ExtensionHookContext }
+/**
+ * Everything the auth service does. Auth's extension, its administration API and its CLI use this type through
+ * `internal()`; operator code gets `AuthService`, which omits the administrative operations (they run through
+ * `AuthExports.administration`, which checks an actor per call).
+ */
+export interface AuthServiceInternal extends FactorRecoveryService,ManualRecoveryService,AdminAccountService {
+    /** Attaches the project's lifecycle hooks; the latest attachment wins and its detach removes only itself. */
+    attachLifecycleHooks(hooks: LoadedAuthHooks): () => void;
+    /** The producer side of the audit outbox the audit extension drains (packages/audit SECURITY.md). */
+    readonly auditOutbox: {
+        peek(limit: number): Promise<AuditEvent[]>;
+        ack(ids: readonly string[]): Promise<void>;
+        onPending(listener: () => void): () => void;
+        backlog(): Promise<number>;
+    };
+    /** Stored passkeys counted by the RP ID recorded at registration ('' for a credential with none recorded). */
+    passkeyRpIds(): Promise<Record<string, number>>;
     createSecondFactorProof(input: {
         browserHash: string;
         proof: PasskeyAuthProof;
@@ -261,7 +253,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         token: string;
         deviceId: string;
     }): Promise<void>;
-    beginSignup(input: {
+    beginSignup(input: HookContext & {
         email: string;
         browserHash: string;
         invitationToken?: string;
@@ -284,11 +276,11 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         challenge: string;
         credential: Omit<AuthPasskey, 'accountId'>;
     }): Promise<SignupState>;
-    completeSignup(input: SignupBinding & {
+    completeSignup(input: SignupBinding & HookContext & {
         profile?: RegistrationInput;
         device?: AuthDevice;
     }): Promise<AuthSessionResult | null>;
-    register(input: {
+    register(input: HookContext & {
         email: string;
         password: string;
         invitationToken?: string;
@@ -323,18 +315,6 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         label: string;
         lastSeen: number;
     }[]>;
-    listAudit(options?: {
-        limit?: number;
-        after?: string;
-        actor?: string;
-        subject?: string;
-        action?: string;
-        from?: number;
-        to?: number;
-    }): Promise<{
-        events: AuthAuditEvent[];
-        next?: string;
-    }>;
     issueToken(input: {
         email: string;
         purpose: 'verify-email' | 'reset-password';
@@ -371,13 +351,13 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         code?: string;
         secondFactor?: AuthSecondFactor;
     }): Promise<void>;
-    adminSetRoles(input: {
+    adminSetRoles(input: HookContext & {
         actorToken: string;
         accountId: string;
         roles: string[];
         reason?: string;
     }): Promise<AuthUser>;
-    adminSetStatus(input: {
+    adminSetStatus(input: HookContext & {
         actorToken: string;
         accountId: string;
         status: 'active' | 'locked';
@@ -407,7 +387,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         provider: string;
         subject: string;
     }): Promise<void>;
-    createExternalAccount(input: {
+    createExternalAccount(input: HookContext & {
         email: string;
         provider: string;
         subject: string;
@@ -457,7 +437,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
             subject: string;
         }[];
     }>;
-    deleteAccount(input: {
+    deleteAccount(input: HookContext & {
         token: string;
         password?: string;
         totp?: string;
@@ -468,7 +448,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         deleteAfter: number;
     }>;
     cancelDeletion(token: string): Promise<void>;
-    purgeDeleted(options?: {
+    purgeDeleted(options?: HookContext & {
         limit?: number;
     }): Promise<{
         purged: number;
@@ -489,7 +469,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         recoveryCode?: string;
         secondFactor?: AuthSecondFactor;
     }): Promise<AuthSessionResult>;
-    createCase(input: {
+    createCase(input: HookContext & {
         actorToken: string;
         accountId: string;
         action: Exclude<AuthCase['action'],'restore-access'>;
@@ -504,7 +484,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         next?: string;
     }>;
     getCase(id: string): Promise<AuthCase | null>;
-    approveCase(input: {
+    approveCase(input: HookContext & {
         actorToken: string;
         caseId: string;
         reason: string;
@@ -514,7 +494,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         accountId: string;
         reason: string;
     }): Promise<AuthSessionResult>;
-    adminBulk(input: {
+    adminBulk(input: HookContext & {
         actorToken: string;
         accountIds: string[];
         action: 'lock' | 'unlock' | 'revoke-sessions';
@@ -549,7 +529,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         email: string;
         passwordHash: string;
         emailVerified?: boolean;
-    }[]): Promise<{
+    }[], options?: HookContext): Promise<{
         imported: number;
     }>;
     getProfile(token: string): Promise<RegistrationProfile>;
@@ -562,7 +542,9 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     getHookStats(): AuthHookStats;
     getRegistrationSchema(): RegistrationOptions;
     getRegistrationMode(): 'open' | 'invite-only' | 'waitlist' | 'off';
-    requestRegistration(input: {
+    /** Whether the operator allowed support impersonation (`allowImpersonation`). */
+    getImpersonationEnabled(): boolean;
+    requestRegistration(input: HookContext & {
         email: string;
         password: string;
         profile?: RegistrationInput;
@@ -582,7 +564,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         }[];
         next?: string;
     }>;
-    approveRegistration(input: {
+    approveRegistration(input: HookContext & {
         actorToken: string;
         requestId: string;
         reason?: string;
@@ -642,7 +624,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     }>;
     confirmEmailChange(token: string): Promise<AuthUser>;
     cancelEmailChange(token: string): Promise<void>;
-    adminCreateUser(input: {
+    adminCreateUser(input: HookContext & {
         actorToken: string;
         email: string;
         reason: string;
@@ -661,10 +643,6 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     }): Promise<void>;
     adminAddNote(input: { actorToken: string; accountId: string; reason: string }): Promise<void>;
     adminReveal(input: { actorToken: string; accountId: string; reason: string }): Promise<{ id: string; email: string }>;
-    /** Records an audit event for an audit-log export (actor, range, count) and requires a
-     * reason and fresh authentication, like other sensitive admin reveal/export actions — the
-     * export itself does not otherwise touch the audit log it reads. */
-    adminAuditExport(input: { actorToken: string; reason: string; from: number; to: number; count: number }): Promise<void>;
     adminExport(input: {
         actorToken: string;
         accountId: string;
@@ -769,6 +747,17 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     }>;
     close(): Promise<void>;
 }
+/** Operations only `AuthExports.administration` (and auth's CLI) reach; operator code does not see them. */
+type AdminOnly = 'adminSetRoles' | 'adminSetStatus' | 'adminRevokeSessions' | 'adminRevokeSession' | 'adminBulk' | 'adminAddNote' | 'adminReveal' | 'adminExport' | 'adminCreateUser' | 'invite' | 'approveRegistration' | 'listRegistrationRequests' | 'createImpersonation' | 'createCase' | 'listCases' | 'getCase' | 'approveCase' | 'closeCase' | 'addCaseNote' | 'createRecoveryCase' | 'listRecoveryCases' | 'approveRecoveryCase' | 'activateRecoveryCase' | 'cancelRecoveryCredential' | 'inspectAccountAuthentication' | 'stageAccountAdministration' | 'completeAccountAdministration' | 'cancelAccountAdministration' | 'dashboard' | 'listAllSessions';
+/** The auth service operator code (operator-service.mjs, scripts) holds. */
+export type AuthService = Omit<AuthServiceInternal, AdminOnly | 'attachLifecycleHooks' | 'auditOutbox' | 'passkeyRpIds'>;
+/** The full service behind an `AuthService` that `createAuthService` made. Throws for any other object. */
+export function internal(service: AuthService): AuthServiceInternal {
+    const full = service as Partial<AuthServiceInternal>;
+    if (!full || typeof full.attachLifecycleHooks !== 'function' || typeof full.adminSetRoles !== 'function' || typeof full.auditOutbox?.peek !== 'function')
+        throw new TypeError('Expected the service createAuthService returns');
+    return full as AuthServiceInternal;
+}
 const fail = (status: number, code: string): never => { throw new AuthError(status, code); };
 /** Same bounds as the `bearer.quota` policy schema (auth.ts `apiKeyQuotaSchema`): 1..1,000,000 requests per 1..2,592,000 seconds (30 days). Also bounds a key's own `quota` at issuance (urlcode#703). */
 function validApiKeyQuota(quota: unknown): quota is { requests: number; window: number } {
@@ -793,6 +782,8 @@ export function sessionReference(token: string): string {
 }
 const token = () => randomBytes(32).toString('base64url');
 const validToken = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
+/** A lowercase DNS name: the relying-party ID a passkey was registered for. */
+const validRpId = (value: unknown): value is string => typeof value === 'string' && value.length <= 253 && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/.test(value);
 const id = (value: string) => {
     if (typeof value !== 'string' || value.length > 256 || !value || /[\x00-\x20\x7f]/.test(value))
         fail(400, 'invalid_identifier');
@@ -815,7 +806,6 @@ function password(value: string): void {
 }
 let hashing = 0;
 let passwordChecks = 0;
-let lifecycleActive = 0;
 // Password derivation is deliberately expensive (scrypt) and bounded to two concurrent
 // derivations process-wide so a burst of hashing cannot exhaust CPU. Rather than refusing the
 // instant both slots are busy, a caller that cannot get a slot immediately waits briefly in a
@@ -913,6 +903,9 @@ async function verifyPassword(value: string, encoded: string | undefined): Promi
 }
 const basePublicUser = (user: AuthRecord): AuthUser => ({ id: user.id, email: user.email, emailVerified: user.emailVerified, status: user.status, roles: [...user.roles], created: user.created, totpEnabled: Boolean(user.totpSecret) });
 export async function createAuthService(options: AuthOptions): Promise<AuthService> {
+    return createService(options);
+}
+async function createService(options: AuthOptions): Promise<AuthServiceInternal> {
     if (options.approveConfigurationChangeFrom !== undefined && (typeof options.approveConfigurationChangeFrom !== 'string' || !/^[a-f0-9]{64}$/.test(options.approveConfigurationChangeFrom)))
         fail(400, 'invalid_configuration_approval');
     if (options.configurationTag !== undefined && (typeof options.configurationTag !== 'string' || options.configurationTag.length < 1 || options.configurationTag.length > 128 || /[\x00-\x1f\x7f]/.test(options.configurationTag)))
@@ -931,8 +924,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
     const trustedDeviceTtlMs = options.trustedDeviceTtlMs ?? 0;
     if (!Number.isSafeInteger(trustedDeviceTtlMs) || trustedDeviceTtlMs < 0 || trustedDeviceTtlMs > 2592000000 || trustedDeviceTtlMs > 0 && trustedDeviceTtlMs < 60000)
         fail(400, 'invalid_trusted_device_policy');
-    const abusePolicy=normalizeAbusePolicy(options.abuse);
-    const securityPolicy: AuthSecurityPolicy = Object.freeze({ ...(abusePolicy?{abuse:abusePolicy}:{}), ...(options.allowManualRecovery===true?{allowManualRecovery:true as const}:{}), ...(options.allowPasskeySecondFactor ? { allowPasskeySecondFactor: true as const } : {}), ...(trustedDeviceTtlMs ? { trustedDeviceTtlMs } : {}), ...(options.allowEmailFactorRecovery === true ? { allowEmailFactorRecovery: true as const } : {}), requireEmailVerification: options.requireEmailVerification === true, requireMfa: options.requireMfa === true, deletionGraceMs });
+    const securityPolicy: AuthSecurityPolicy = Object.freeze({ ...(options.allowManualRecovery===true?{allowManualRecovery:true as const}:{}), ...(options.allowPasskeySecondFactor ? { allowPasskeySecondFactor: true as const } : {}), ...(trustedDeviceTtlMs ? { trustedDeviceTtlMs } : {}), ...(options.allowEmailFactorRecovery === true ? { allowEmailFactorRecovery: true as const } : {}), requireEmailVerification: options.requireEmailVerification === true, requireMfa: options.requireMfa === true, deletionGraceMs });
     const supplied = options.encryptionKeys ?? (options.encryptionKey ? { legacy: options.encryptionKey } : {}), activeKey = options.activeEncryptionKey ?? 'legacy';
     const keys: Record<string, Buffer> = Object.create(null);
     if (Object.keys(supplied).length < 1 || Object.keys(supplied).length > 8)
@@ -988,28 +980,24 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             fail(503, 'invalid_clock');
         return value;
     };
-    const store = await openAuthStore({ database: options.database, ...(options.approveConfigurationChangeFrom ? { approveConfigurationChangeFrom: options.approveConfigurationChangeFrom } : {}), configurationChangeAt: now(), ...(options.configurationTag !== undefined ? { configurationTag: options.configurationTag } : {}), roles, defaultRole, sessionTtlMs: ttl, sessionIdleMs: idle, securityPolicy, registration: { ...(options.blockDisposableEmails ? { disposableDomainsRevision } : {}), mode, allowed, blocked, allowedEmails, blockedEmails, allowImpersonation: options.allowImpersonation === true }, activeKey, keyFingerprints: Object.fromEntries(Object.entries(keys).map(([name, value]) => [name, createHmac('sha256', value).update('urlcode-auth-store-v1').digest('hex')])), ...(options.auditRetention !== undefined ? { auditRetention: options.auditRetention } : {}), ...(options.onAuditPruned ? { onAuditPruned: options.onAuditPruned } : {}) });
+    const store = await openAuthStore({ database: options.database, ...(options.approveConfigurationChangeFrom ? { approveConfigurationChangeFrom: options.approveConfigurationChangeFrom } : {}), configurationChangeAt: now(), ...(options.configurationTag !== undefined ? { configurationTag: options.configurationTag } : {}), roles, defaultRole, sessionTtlMs: ttl, sessionIdleMs: idle, securityPolicy, registration: { ...(options.blockDisposableEmails ? { disposableDomainsRevision } : {}), mode, allowed, blocked, allowedEmails, blockedEmails, allowImpersonation: options.allowImpersonation === true }, activeKey, keyFingerprints: Object.fromEntries(Object.entries(keys).map(([name, value]) => [name, createHmac('sha256', value).update('urlcode-auth-store-v1').digest('hex')])) });
     let closed = false;
-    const hookStats: AuthHookStats = { accepted: 0, dropped: 0, failed: 0, timedOut: 0 };
-    const hookControllers = new Set<AbortController>();
-    const lifecycle = (event: AuthLifecycleEvent) => {
-        if (!options.onLifecycle)
+    const hooks = createHookRunner();
+    /** The account behind an administrator's session, for hook inputs; the store re-checks it in the transaction. */
+    const actorOf = async (actorToken: string): Promise<AuthRecord> => {
+        const found = validToken(actorToken) ? await store.call<{ user: AuthRecord } | null>('authenticate', { hash: digest(actorToken), now: now() }) : null;
+        if (!found)
+            return fail(401, 'fresh_authentication_required');
+        return found.user;
+    };
+    /** Runs beforeRoleChange for one account when it is attached: the account's current roles against `requested`. */
+    const roleChange = async (actorToken: string, accountId: string, requested: string[], why: string, context?: ExtensionHookContext) => {
+        if (!hooks.has('beforeRoleChange'))
             return;
-        if (closed || lifecycleActive >= 4) {
-            hookStats.dropped++;
-            return;
-        }
-        lifecycleActive++;
-        hookStats.accepted++;
-        const controller = new AbortController();
-        hookControllers.add(controller);
-        let timedOut = false;
-        const timer = setTimeout(() => { timedOut = true; hookStats.timedOut++; controller.abort(); }, 5000);
-        timer.unref();
-        void Promise.resolve().then(() => options.onLifecycle!({ ...event }, { signal: controller.signal })).catch(() => {
-            if (!timedOut)
-                hookStats.failed++;
-        }).finally(() => { clearTimeout(timer); hookControllers.delete(controller); lifecycleActive--; });
+        const actor = await actorOf(actorToken), target = await store.call<AuthRecord | null>('account', { id: id(accountId) });
+        if (!target)
+            fail(404, 'account_not_found');
+        await hooks.beforeRoleChange({ accountId: target!.id, currentRoles: [...target!.roles], requestedRoles: [...requested], actorId: actor.id, reason: why }, context);
     };
     const check = () => {
         if (closed)
@@ -1092,7 +1080,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             return fail(401, 'invalid_credentials');
         if (value.session.impersonatorId && fresh)
             fail(403, 'impersonation_restricted');
-        if (fresh && now() - value.session.authenticatedAt > 300000)
+        if (fresh && now() - value.session.authenticatedAt > FRESHNESS_WINDOW_MS)
             fail(401, 'fresh_authentication_required');
         if (enrollment && value.user.mfaRecoveryRequired && !value.session.recoveryEnrollment)
             fail(403, 'recovery_enrollment_proof_required');
@@ -1156,7 +1144,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         }
         return { counter: counter(user.totpSecret, input.totp ?? '', user.id) };
     };
-    const create = async (input: {
+    const create = async (input: HookContext & {
         email: string;
         password: string;
         invitationToken?: string;
@@ -1166,7 +1154,10 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         check();
         if (!bootstrap && (mode === 'off' || mode === 'waitlist' || mode === 'invite-only' && !validToken(input.invitationToken)))
             fail(403, 'registration_unavailable');
-        const email = permittedEmail(input.email), passwordHash = await newPassword(input.password), created = now(), accountId = randomUUID();
+        const email = permittedEmail(input.email), method = bootstrap ? 'bootstrap' as const : input.invitationToken ? 'invitation' as const : 'password' as const;
+        if (method !== 'bootstrap')
+            await hooks.beforeRegister({ email, method, ...(input.profile ? { profile: input.profile as unknown as Record<string, unknown> } : {}) }, input.context);
+        const passwordHash = await newPassword(input.password), created = now(), accountId = randomUUID();
         let assigned = [defaultRole];
         if (bootstrap) {
             const admin = Object.keys(roles).find(name => roles[name]!.includes('*'));
@@ -1186,14 +1177,12 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             // `duplicate` exists to prevent (#548).
             return { user: publicUser(user), token: session.raw, principal: principal(user, session.value), duplicate: true };
         }
-        lifecycle({ type: 'sign-up', accountId: stored.id });
+        await hooks.action('onAccountCreated', { accountId: stored.id, email: stored.email, method }, input.context);
         return { user: publicUser(stored), token: session.raw, principal: principal(stored, session.value), ...(stored.newDevice ? { newDevice: true } : {}) };
     };
     const login = async (input: AuthCredentials, oldToken?: string) => {
         check();
-        const email=normalizeEmail(input.email),backoffKey=abuseKey('password',email);
-        if(abusePolicy?.passwordBackoff&&await store.call('abuseBackoffCheck',{key:backoffKey,now:now()}))return fail(429,'auth_backoff');
-        try {
+        const email=normalizeEmail(input.email);
         // Password is the only guessable-secret proof here (passkey/OIDC sign-in and step-up use
         // their own namespaced budgets below, so a password-guessing attacker never spends someone
         // else's passkey/OIDC allowance, or vice versa), so it is the one that gets client scoping.
@@ -1204,12 +1193,8 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         const fact = factor(user, input, !oldToken), session = sessionFor(user.id, input.device), upgradedHash = !user.passwordHash.startsWith('scrypt-v1$') ? await hashPassword(input.password, false) : undefined;
         if (fact.trustedDeviceHash)
             session.value.authenticatedAt = 0;
-        const stored = await store.call<AuthRecord>('login', { accountId: user.id, version: user.version, passwordHash: user.passwordHash, ...(upgradedHash ? { upgradedHash } : {}), ...fact, session: session.value, attemptKeys, ...(abusePolicy?.passwordBackoff?{abuseKey:backoffKey}:{}), ...(oldToken ? { oldHash: digest(oldToken) } : {}), now: now() });
+        const stored = await store.call<AuthRecord>('login', { accountId: user.id, version: user.version, passwordHash: user.passwordHash, ...(upgradedHash ? { upgradedHash } : {}), ...fact, session: session.value, attemptKeys, ...(oldToken ? { oldHash: digest(oldToken) } : {}), now: now() });
         return { user: publicUser(stored), token: session.raw, principal: principal(stored, session.value), ...(stored.newDevice ? { newDevice: true } : {}) };
-        } catch(error) {
-            if(abusePolicy?.passwordBackoff&&error instanceof AuthError&&error.status===401)await store.call('abuseFailure',{key:backoffKey,now:now()});
-            throw error;
-        }
     };
     const pagination = (options: {
         limit?: number;
@@ -1266,17 +1251,16 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             fail(400, 'invalid_signup_flow');
         return row!;
     };
-    const service: AuthService = {
-        ...createAdminAccountOperations({store,check,now,roles,permittedEmail}),
-        getAbusePolicy:()=>abusePolicy?structuredClone(abusePolicy):undefined,
-        async admitAuthRequest(input){
-            check();const limits:{key:string;limit:number;windowMs:number;challengeAfter?:number}[]=[];
-            const needsClient=abusePolicy?.client||input.signupEmail!==undefined&&abusePolicy?.signupClient;
-            if(needsClient&&(typeof input.client!=='string'||!isIP(input.client)))return fail(503,'trusted_client_required');
-            if(abusePolicy?.client)limits.push({...abusePolicy.client,key:abuseKey('client',clientKey(input.client)!),...(abusePolicy.challengeAfter!==undefined?{challengeAfter:abusePolicy.challengeAfter}:{})});
-            if(input.signupEmail!==undefined){const email=permittedEmail(input.signupEmail),domain=email.slice(email.lastIndexOf('@')+1);if(abusePolicy?.signupClient)limits.push({...abusePolicy.signupClient,key:abuseKey('signup-client',clientKey(input.client)!)});if(abusePolicy?.signupDomain)limits.push({...abusePolicy.signupDomain,key:abuseKey('signup-domain',domain)});}
-            return limits.length?store.call<{challengeRequired:boolean}>('abuseAdmit',{limits,now:now()}):{challengeRequired:false};
+    const service: AuthServiceInternal = {
+        ...createAdminAccountOperations({store,check,now,roles,permittedEmail,hooks,roleChange}),
+        attachLifecycleHooks: loaded => hooks.attach(loaded),
+        auditOutbox: {
+            peek: limit => store.call<AuditEvent[]>('auditOutboxPeek', { limit }),
+            async ack(ids) { await store.call('auditOutboxAck', { ids: [...ids] }); },
+            onPending: listener => store.onAuditPending(listener),
+            backlog: () => store.call<number>('auditOutboxBacklog'),
         },
+        passkeyRpIds: () => store.call<Record<string, number>>('passkeyRpIds'),
         async createSecondFactorProof(input) {
             check();
             if (!securityPolicy.allowPasskeySecondFactor || typeof input.browserHash !== 'string' || !/^[a-f0-9]{64}$/.test(input.browserHash))
@@ -1335,6 +1319,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             if (mode === 'off')
                 fail(403, 'registration_unavailable');
             const email = normalizeEmail(input.email);
+            await hooks.beforeRegister({ email, method: 'signup' }, input.context);
             let eligible = true;
             try {
                 permittedEmail(email);
@@ -1400,7 +1385,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const c = input.credential;
             if (!c || typeof c.id !== 'string' || !c.id || c.id.length > 2048 || typeof c.publicKey !== 'string' || !c.publicKey || c.publicKey.length > 8192 || !Number.isSafeInteger(c.counter) || c.counter < 0 || c.transports && (!Array.isArray(c.transports) || c.transports.length > 8 || c.transports.some(t => !['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t))))
                 fail(400, 'invalid_passkey');
-            const credential = { id: c.id, publicKey: c.publicKey, counter: c.counter, ...(c.transports ? { transports: c.transports } : {}) };
+            if (c.rpId !== undefined && !validRpId(c.rpId))
+                fail(400, 'invalid_passkey');
+            const credential = { id: c.id, publicKey: c.publicKey, counter: c.counter, ...(c.transports ? { transports: c.transports } : {}), ...(c.rpId ? { rpId: c.rpId } : {}) };
             await store.call('signupCredential', { ...signupBinding(input), challenge: input.challenge, credential });
             return signupState(await signupRead(input, 'profile'), input.flowId);
         },
@@ -1409,7 +1396,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const stored = await store.call<AuthRecord | null>('signupComplete', { ...signupBinding(input), profile, session: session.value });
             if (!stored)
                 return null;
-            lifecycle({ type: 'sign-up', accountId: stored.id });
+            await hooks.action('onAccountCreated', { accountId: stored.id, email: stored.email, method: 'signup' }, input.context);
             return { user: publicUser(stored), token: session.raw, principal: principal(stored, session.value), ...(stored.newDevice ? { newDevice: true } : {}) };
         },
         register: input => create(input), bootstrapAdmin: input => create(input, true), login,
@@ -1454,22 +1441,6 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             }[]>('devices', { accountId: id(accountId) });
         },
         async listSessions(accountId) { check(); return store.call<AuthSession[]>('sessions', { accountId: id(accountId), now: now() }); },
-        async listAudit(options) {
-            check();
-            const page = pagination(options);
-            if (page.after && !/^\d{1,16}$/.test(page.after))
-                fail(400, 'invalid_page');
-            for (const value of [options?.actor, options?.subject, options?.action])
-                if (value !== undefined && (typeof value !== 'string' || value.length > 256 || /[\x00-\x1f]/.test(value)))
-                    fail(400, 'invalid_filter');
-            for (const value of [options?.from, options?.to])
-                if (value !== undefined && (!Number.isSafeInteger(value) || value < 0))
-                    fail(400, 'invalid_filter');
-            if (options?.from !== undefined && options?.to !== undefined && options.from > options.to)
-                fail(400, 'invalid_filter');
-            const rows = await store.call<AuthAuditEvent[]>('audit', { ...page, actor: options?.actor ?? '', subject: options?.subject ?? '', action: options?.action ?? '', from: options?.from ?? 0, to: options?.to ?? Number.MAX_SAFE_INTEGER });
-            return { events: rows, ...(rows.length === page.limit ? { next: String(rows.at(-1)!.id) } : {}) };
-        },
         async issueToken(input) {
             check();
             if (!['verify-email', 'reset-password'].includes(input.purpose))
@@ -1517,13 +1488,19 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             check();
             if (!validToken(input.actorToken) || !Array.isArray(input.roles) || !input.roles.length || input.roles.length > 32 || input.roles.some(name => !Object.hasOwn(roles, name)))
                 fail(400, 'invalid_roles');
-            return publicUser(await store.call<AuthRecord>('admin', { hash: digest(input.actorToken), accountId: id(input.accountId), roles: [...new Set(input.roles)], reason: reason(input.reason), now: now() }));
+            const why = reason(input.reason), requested = [...new Set(input.roles)];
+            await roleChange(input.actorToken, input.accountId, requested, why, input.context);
+            return publicUser(await store.call<AuthRecord>('admin', { hash: digest(input.actorToken), accountId: id(input.accountId), roles: requested, reason: why, now: now() }));
         },
         async adminSetStatus(input) {
             check();
             if (!validToken(input.actorToken) || !['active', 'locked'].includes(input.status))
                 fail(400, 'invalid_account_status');
-            return publicUser(await store.call<AuthRecord>('admin', { hash: digest(input.actorToken), accountId: id(input.accountId), status: input.status, reason: reason(input.reason), now: now() }));
+            const why = reason(input.reason), actor = hooks.has('onAccountStatusChanged') ? await actorOf(input.actorToken) : undefined;
+            const changed = publicUser(await store.call<AuthRecord>('admin', { hash: digest(input.actorToken), accountId: id(input.accountId), status: input.status, reason: why, now: now() }));
+            if (actor)
+                await hooks.action('onAccountStatusChanged', { accountId: changed.id, status: input.status, actorId: actor.id, reason: why }, input.context);
+            return changed;
         },
         async adminRevokeSessions(input) {
             check();
@@ -1557,9 +1534,11 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             external(input.provider, input.subject);
             if (input.emailVerified !== true)
                 fail(400, 'verified_provider_email_required');
-            const user: AuthRecord = { id: randomUUID(), email: permittedEmail(input.email), emailVerified: true, status: 'active', roles: [defaultRole], created: now(), passwordHash: '', version: 1, totpCounter: -1, ...(options.registrationPolicy || input.profile ? { profile: validateProfile(input.profile ?? {}) } : {}) };
+            const email = permittedEmail(input.email);
+            await hooks.beforeRegister({ email, method: 'external', ...(input.profile ? { profile: input.profile as unknown as Record<string, unknown> } : {}) }, input.context);
+            const user: AuthRecord = { id: randomUUID(), email, emailVerified: true, status: 'active', roles: [defaultRole], created: now(), passwordHash: '', version: 1, totpCounter: -1, ...(options.registrationPolicy || input.profile ? { profile: validateProfile(input.profile ?? {}) } : {}) };
             const saved = await store.call<AuthRecord>('createExternal', { user, provider: input.provider, subject: input.subject, now: now() });
-            lifecycle({ type: 'sign-up', accountId: saved.id });
+            await hooks.action('onAccountCreated', { accountId: saved.id, email: saved.email, method: 'external' }, input.context);
             return publicUser(saved);
         },
         async getExternalProof(provider, subject) { check(); external(provider, subject); const user = await store.call<AuthRecord | null>('external', { provider, subject }); return user ? { user: publicUser(user), proof: { kind: 'oidc', version: user.version, provider, subject } } : null; },
@@ -1584,9 +1563,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         },
         async addPasskey(input) {
             check();
-            if (!validToken(input.actorToken) || !input.credential || typeof input.credential.id !== 'string' || input.credential.id.length > 2048 || !input.credential.id || typeof input.credential.publicKey !== 'string' || input.credential.publicKey.length > 8192 || !Number.isSafeInteger(input.credential.counter) || input.credential.counter < 0 || (input.credential.transports && (input.credential.transports.length > 8 || input.credential.transports.some(t => !['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t)))))
+            if (!validToken(input.actorToken) || !input.credential || typeof input.credential.id !== 'string' || input.credential.id.length > 2048 || !input.credential.id || typeof input.credential.publicKey !== 'string' || input.credential.publicKey.length > 8192 || !Number.isSafeInteger(input.credential.counter) || input.credential.counter < 0 || (input.credential.transports && (input.credential.transports.length > 8 || input.credential.transports.some(t => !['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t)))) || input.credential.rpId !== undefined && !validRpId(input.credential.rpId))
                 fail(400, 'invalid_passkey');
-            await store.call('addPasskey', { hash: digest(input.actorToken), credential: { id: input.credential.id, publicKey: input.credential.publicKey, counter: input.credential.counter, ...(input.credential.transports ? { transports: input.credential.transports } : {}) }, now: now() });
+            await store.call('addPasskey', { hash: digest(input.actorToken), credential: { id: input.credential.id, publicKey: input.credential.publicKey, counter: input.credential.counter, ...(input.credential.transports ? { transports: input.credential.transports } : {}), ...(input.credential.rpId ? { rpId: input.credential.rpId } : {}) }, now: now() });
         },
         async getPasskey(credentialId) {
             check();
@@ -1625,6 +1604,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const deleted = await store.call<{
                 deleteAfter: number;
             }>('deleteAccount', { hash: digest(input.token), cancelHash: digest(cancelToken), version: user.version, ...factor(user, input), now: now() });
+            await hooks.action('onDeletionScheduled', { accountId: user.id, email: user.email, deleteAfter: deleted.deleteAfter }, input.context);
             return { cancelToken, deleteAfter: deleted.deleteAfter };
         },
         async cancelDeletion(raw) {
@@ -1643,7 +1623,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 deleted: string[];
             }>('purgeDeleted', { limit, now: now() });
             for (const accountId of result.deleted)
-                lifecycle({ type: 'delete', accountId });
+                await hooks.action('onAccountDeleted', { accountId }, options.context);
             return { purged: result.purged };
         },
         async issueEmailCode(input) {
@@ -1687,6 +1667,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const why = reason(input.reason);
             if (!why.trim() || !validToken(input.actorToken) || !['reset-factors', 'lock', 'unlock', 'roles'].includes(input.action) || input.action === 'roles' && (!Array.isArray(input.roles) || !input.roles.length || input.roles.length > 32 || input.roles.some(name => !Object.hasOwn(roles, name))))
                 fail(400, 'invalid_case');
+            // Early feedback: a role case the project would veto on approval is refused at creation too.
+            if (input.action === 'roles')
+                await roleChange(input.actorToken, input.accountId, input.roles!, why, input.context);
             return store.call<AuthCase>('createCase', { hash: digest(input.actorToken), accountId: id(input.accountId), action: input.action, ...(input.roles ? { roles: input.roles } : {}), reason: why, id: randomUUID(), now: now() });
         },
         async listCases(options) { check(); const page = pagination(options), cases = await store.call<AuthCase[]>('cases', page); return { cases, ...(cases.length === page.limit ? { next: cases.at(-1)!.id } : {}) }; },
@@ -1696,7 +1679,13 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const why = reason(input.reason);
             if (!why.trim() || !validToken(input.actorToken))
                 fail(400, 'invalid_case');
-            return store.call<AuthCase>('approveCase', { hash: digest(input.actorToken), id: id(input.caseId), reason: why, now: now() });
+            const pending = hooks.has('beforeRoleChange') || hooks.has('onAccountStatusChanged') ? await store.call<AuthCase | null>('case', { id: id(input.caseId) }) : null;
+            if (pending?.action === 'roles')
+                await roleChange(input.actorToken, pending.accountId, pending.roles ?? [], why, input.context);
+            const approved = await store.call<AuthCase>('approveCase', { hash: digest(input.actorToken), id: id(input.caseId), reason: why, now: now() });
+            if ((approved.action === 'lock' || approved.action === 'unlock') && approved.approverId)
+                await hooks.action('onAccountStatusChanged', { accountId: approved.accountId, status: approved.action === 'lock' ? 'locked' : 'active', actorId: approved.approverId, reason: why }, input.context);
+            return approved;
         },
         async createImpersonation(input) {
             check();
@@ -1717,10 +1706,14 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const why = reason(input.reason);
             if (!validToken(input.actorToken) || !why.trim() || !['lock', 'unlock', 'revoke-sessions'].includes(input.action) || !Array.isArray(input.accountIds) || input.accountIds.length < 1 || input.accountIds.length > 50 || new Set(input.accountIds).size !== input.accountIds.length)
                 fail(400, 'invalid_bulk_action');
-            const accountIds = input.accountIds.map(id);
-            return store.call<{
+            const accountIds = input.accountIds.map(id), actor = input.action !== 'revoke-sessions' && hooks.has('onAccountStatusChanged') ? await actorOf(input.actorToken) : undefined;
+            const result = await store.call<{
                 affected: number;
             }>('adminBulk', { hash: digest(input.actorToken), accountIds, action: input.action, reason: why, now: now() });
+            if (actor)
+                for (const accountId of accountIds)
+                    await hooks.action('onAccountStatusChanged', { accountId, status: input.action === 'lock' ? 'locked' : 'active', actorId: actor.id, reason: why }, input.context);
+            return result;
         },
         async dashboard() {
             check();
@@ -1747,7 +1740,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             })[]>('allSessions', { ...page, accountId: filters.accountId ?? '', device: filters.device ?? '', createdFrom: filters.createdFrom ?? 0, createdTo: filters.createdTo ?? Number.MAX_SAFE_INTEGER, now: now() });
             return { sessions, ...(sessions.length === page.limit ? { next: sessions.at(-1)!.id } : {}) };
         },
-        async importUsers(users) {
+        async importUsers(users, importOptions = {}) {
             check();
             if (!Array.isArray(users) || !users.length || users.length > 100)
                 fail(400, 'invalid_import');
@@ -1756,25 +1749,37 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                     fail(400, 'invalid_import');
                 return { id: randomUUID(), email: permittedEmail(input.email), emailVerified: input.emailVerified ?? false, status: 'active', roles: [defaultRole], created: now(), passwordHash: input.passwordHash, version: 1, totpCounter: -1 };
             });
+            // Every row before the one transaction: a denied row refuses the whole batch, naming its index.
+            for (const [index, row] of rows.entries()) {
+                try { await hooks.beforeRegister({ email: row.email, method: 'import' }, importOptions.context); }
+                catch (error) {
+                    if (error instanceof AuthError)
+                        throw new AuthError(error.status, error.code, undefined, `Row ${index}: ${error.reason ?? 'Registration not permitted'}`);
+                    throw error;
+                }
+            }
             const result = await store.call<{
                 imported: number;
             }>('importUsers', { users: rows, now: now() });
             for (const user of rows)
-                lifecycle({ type: 'sign-up', accountId: user.id });
+                await hooks.action('onAccountCreated', { accountId: user.id, email: user.email, method: 'import' }, importOptions.context);
             return result;
         },
         async getProfile(raw) { const { user } = await lookupSession(raw, true); return profilePolicy.publicProfile(user.profile ?? { metadata: {} }); },
         async updateProfile(input) { const { user } = await lookupSession(input.token, true), profile = validateProfile(input.profile, user.profile); await store.call('updateProfile', { hash: digest(input.token), profile, version: user.version, now: now() }); return profilePolicy.publicProfile(profile); },
         async getConfigurationRevision() { check(); return store.call<string>('configurationRevision'); },
         getSecurityPolicy: () => ({ ...securityPolicy }),
-        getHookStats: () => ({ ...hookStats }),
+        getHookStats: () => hooks.stats(),
         getRegistrationSchema: () => profilePolicy.publicSchema(),
         getRegistrationMode: () => mode,
+        getImpersonationEnabled: () => options.allowImpersonation === true,
         async requestRegistration(input) {
             check();
             if (mode !== 'waitlist')
                 fail(403, 'registration_unavailable');
-            const email = permittedEmail(input.email), passwordHash = await newPassword(input.password);
+            const email = permittedEmail(input.email);
+            await hooks.beforeRegister({ email, method: 'waitlist', ...(input.profile ? { profile: input.profile as unknown as Record<string, unknown> } : {}) }, input.context);
+            const passwordHash = await newPassword(input.password);
             return store.call<{
                 id: string;
                 duplicate?: boolean;
@@ -1793,8 +1798,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             check();
             if (mode !== 'waitlist' || !validToken(input.actorToken))
                 fail(403, 'registration_unavailable');
+            const actor = hooks.has('onAccountCreated') ? await actorOf(input.actorToken) : undefined;
             const user = await store.call<AuthRecord>('approveRegistration', { hash: digest(input.actorToken), requestId: id(input.requestId), reason: reason(input.reason), now: now() });
-            lifecycle({ type: 'sign-up', accountId: user.id });
+            await hooks.action('onAccountCreated', { accountId: user.id, email: user.email, method: 'waitlist', ...(actor ? { actorId: actor.id } : {}) }, input.context);
             return publicUser(user);
         },
         async invite(input) {
@@ -1880,9 +1886,12 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const why = reason(input.reason);
             if (!why.trim() || !validToken(input.actorToken))
                 fail(400, 'invalid_administration');
-            const setupToken = token(), user: AuthRecord = { id: randomUUID(), email: permittedEmail(input.email), emailVerified: false, status: 'active', roles: [defaultRole], created: now(), passwordHash: '', version: 1, totpCounter: -1 };
+            const email = permittedEmail(input.email);
+            await hooks.beforeRegister({ email, method: 'administrator' }, input.context);
+            const actor = hooks.has('onAccountCreated') ? await actorOf(input.actorToken) : undefined;
+            const setupToken = token(), user: AuthRecord = { id: randomUUID(), email, emailVerified: false, status: 'active', roles: [defaultRole], created: now(), passwordHash: '', version: 1, totpCounter: -1 };
             const saved = await store.call<AuthRecord>('adminCreateUser', { hash: digest(input.actorToken), user, setupHash: digest(setupToken), reason: why, now: now() });
-            lifecycle({ type: 'sign-up', accountId: saved.id });
+            await hooks.action('onAccountCreated', { accountId: saved.id, email: saved.email, method: 'administrator', ...(actor ? { actorId: actor.id } : {}) }, input.context);
             return { user: publicUser(saved), setupToken };
         },
         async revokeSession(input) {
@@ -1909,13 +1918,6 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             if (!validToken(input.actorToken)) fail(401, 'invalid_session');
             if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 256 || /[\x00-\x1f\x7f]/.test(input.reason)) fail(400, 'invalid_reason');
             return store.call<{id:string;email:string}>('adminReveal', { hash: digest(input.actorToken), accountId: id(input.accountId), reason: input.reason.trim(), now: now() });
-        },
-        async adminAuditExport(input) {
-            check();
-            if (!validToken(input.actorToken)) fail(401, 'invalid_session');
-            if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 256 || /[\x00-\x1f\x7f]/.test(input.reason)) fail(400, 'invalid_reason');
-            if (!Number.isSafeInteger(input.from) || !Number.isSafeInteger(input.to) || input.from < 0 || input.to < input.from || !Number.isSafeInteger(input.count) || input.count < 0) fail(400, 'invalid_range');
-            await store.call('adminAuditExport', { hash: digest(input.actorToken), reason: input.reason.trim(), from: input.from, to: input.to, count: input.count, now: now() });
         },
         async adminExport(input) {
             check();
@@ -2018,8 +2020,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             if (closed)
                 return;
             closed = true;
-            for (const controller of hookControllers)
-                controller.abort();
+            hooks.close();
             await store.close();
             for (const value of Object.values(keys))
                 value.fill(0);

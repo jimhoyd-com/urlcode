@@ -11,6 +11,7 @@ test('operator CLI bootstraps without exposing session/password and supports bac
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-cli-'));
     fixtureCleanup(t, () => rm(root, { recursive: true, force: true }));
     await mkdir(join(root, 'app'));
+    await writeFile(join(root, 'app', 'urlcode.yaml'), JSON.stringify({ version: '1', routes: {} }));
     const operator = join(root, 'operator.mjs'), database = join(root, 'accounts.sqlite');
     await writeFile(operator, `import {createAuthService} from ${JSON.stringify(new URL('../src/auth-core.ts', import.meta.url).href)}; export default await createAuthService({database:${JSON.stringify(database)},encryptionKey:new Uint8Array(32).fill(7),roles:{member:[],admin:['*']},defaultRole:'member',registrationMode:'off'});`);
     const run = (command: string, input?: unknown) => spawnSync(process.execPath, [cli, command, '--operator-file', operator], { input: input === undefined ? undefined : JSON.stringify(input), encoding: 'utf8', timeout: 20000 });
