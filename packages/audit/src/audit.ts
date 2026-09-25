@@ -32,7 +32,8 @@ function notFound(): HandlerResult { return { status: 404, headers: [['content-t
 export async function createAudit(options: AuditOptions): Promise<Audit> {
   if (!/^[a-f0-9]{64}$/.test(options.projectSha256)) throw new Error('audit extension requires an explicit operator revision pin');
   if (typeof options.database !== 'string' || !options.database) throw new Error('audit needs a database path');
-  let retention = retentionOf(options.retention ?? DEFAULT_RETENTION);
+  const baseRetention = retentionOf(options.retention ?? DEFAULT_RETENTION);
+  let retention = baseRetention;
   const now = options.now ?? Date.now;
   // A runtime reload may activate the next runtime before it closes the previous one: count the live activations.
   let activations = 0;
@@ -69,7 +70,8 @@ export async function createAudit(options: AuditOptions): Promise<Audit> {
     activate(config, context): ExtensionInstance {
       if (closed) throw new Error('The audit host is closed');
       if (context.mounts.length > 0) throw new Error('audit serves no routes; remove every route with extension: audit');
-      if (config.retention !== undefined) retention = retentionOf(config.retention);
+      // Every activation sets retention, so removing the key from urlcode.yaml returns to the host default.
+      retention = config.retention === undefined ? baseRetention : retentionOf(config.retention);
       activations++;
       drain.wake();
       let open = true;

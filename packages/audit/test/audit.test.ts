@@ -87,6 +87,18 @@ test('retention comes from createAudit and is overridden by the activation confi
   assert.equal(audit.exports.active, false);
 });
 
+test('an activation without retention returns to the host default rather than keeping the previous value', async t => {
+  const pruned: number[] = [];
+  const { audit, dir } = await openAudit(t, { retention: 2000, onPruned: removed => { pruned.push(removed); } });
+  const strict = await audit.registration.activate({ retention: 1000 }, activation(dir));
+  strict.close?.();
+  const relaxed = await audit.registration.activate({}, activation(dir));
+  t.after(() => relaxed.close?.());
+  await recordMany(audit.exports, 1500);
+  assert.deepEqual(pruned, [], 'the host default of 2000 applies, not the removed 1000');
+  assert.equal((await all(audit.exports)).length, 1500);
+});
+
 test('query filters by source, actor, subject, action, action prefix and time', async t => {
   const { audit } = await activeAudit(t);
   const base = 1_700_000_000_000;

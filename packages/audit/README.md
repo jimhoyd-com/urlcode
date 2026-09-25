@@ -143,6 +143,8 @@ and the producer fails closed; `flush()` then rejects `audit_unavailable`.
 
 Each store transaction deletes the events more than `retention` behind the
 newest `seq`, and `onPruned` reports the count. Retention is the only deletion.
+`extensions.audit.config.retention` is read at every activation: removing it
+returns to the host default (100000 unless `createAudit` was given another).
 
 ## Command line
 
