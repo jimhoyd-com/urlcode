@@ -1,7 +1,8 @@
 // Request helpers every extension uses instead of hand-rolling its own (RIM-EXT-HTTP-001): one bounded body reader,
 // one field reader on top of it, one JSON response with the extension security headers, one cookie reader that
-// refuses ambiguity, and one same-origin admission rule. Pure functions over `ExtensionRequest` fields using only
-// web-standard APIs (TextDecoder, URL, URLSearchParams): no state, no Node APIs, no knowledge of any extension.
+// refuses ambiguity, and one same-origin admission rule. Pure functions over `ExtensionRequest` fields, written with
+// web-standard APIs only (TextDecoder, URL, URLSearchParams) so every target can run them; they keep no state and
+// know no extension.
 import { maxRequestBodyBytes } from './body-schema.ts';
 import { isSiteOrigin } from './site-origins.ts';
 import type { ExtensionRequest } from './extensions.ts';
