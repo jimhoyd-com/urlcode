@@ -50,7 +50,7 @@ export async function refusal(promise: Promise<unknown>, code: string): Promise<
   try { await promise; }
   catch (error) {
     const mailError = error as Error & { code: string; status: number };
-    if (mailError?.name !== 'MailError' || mailError.code !== code) throw new Error(`expected MailError ${code}, got ${String(mailError?.name)} ${String(mailError?.code)}: ${String(mailError?.message)}`);
+    if (mailError?.name !== 'MailError' || mailError.code !== code) throw new Error(`expected MailError ${code}, got ${String(mailError?.name)} ${String(mailError?.code)}: ${String(mailError?.message)}`, { cause: error });
     return mailError;
   }
   throw new Error(`expected MailError ${code}, but it resolved`);
