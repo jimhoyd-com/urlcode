@@ -16,7 +16,7 @@
 - Run `npm run verify` for every change. Security-relevant paths (sessions,
   tokens, factors, backoff, CSRF, escaping) need a regression test in the same PR.
 - Never commit credentials, databases, key files or customer data. Synthetic
-  fixtures only. Live Google/Apple/SES checks are separate operator tasks.
+  fixtures only. Live Google/Apple and mail SES checks are separate operator tasks.
 - Report actual evidence and remaining limitations; CI is not a security review.
 
 ## File what you find

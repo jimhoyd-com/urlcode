@@ -1,27 +1,27 @@
 # URLCode admin
 
 > Operator-installed administration extension for URLCode, on top of the auth
-> extension's service: users, sessions, roles, audit, registration approval,
+> extension's typed exports (AuthExports v1): users, sessions, roles, the audit log, registration approval,
 > two-person cases, support impersonation, health. Released with core.
 > Apache-2.0.
 
 Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin --example`, or
-`npx urlcode extensions add admin` in an existing site (it adds `auth` and `ui` too; `--example`
+`npx urlcode extensions add admin` in an existing site (it adds `auth`, `ui`, `audit` and `mail` too; `--example`
 adds auth's `/private` demo page, admin itself has no example).
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only)
 - `extensions.admin: { version: "1", config: {} }`
-- A mount: `/admin/*: { extension: admin, methods: [GET, HEAD, POST] }`
-- `extensions.ui: { version: "1", config: {} }` declared BEFORE `admin`, with `/assets/ui/*: { extension: ui, methods: [GET, HEAD] }`.
-- The operator lists `admin()` after `ui()` and `auth()` in the site's `host.mjs` `composeHost` list
-  (options such as `admin({ authMount, sendInvitation, health })`); `composeHost` hands it auth's
-  service and CSRF key and the `ui` kit.
-- Presentation: screens are `admin/*` kit templates (`adminTemplates`, `adminUiTemplates`) and render
-  only through `ui.kit`; admin contributes `adminUiTemplates` to `ui` through `contributes.ui`.
-  Activation refuses when `ui` is missing, not yet active, or lacks `adminUiTemplates`. There is no
-  second render path.
+- A mount carrying auth's policy: `/admin/*: { extension: admin, methods: [GET, HEAD, POST], auth: { onDeny: 404 } }`;
+  activation refuses the mount without it.
+- Admin requires `auth`, `ui` and `audit` (declared in any order; the runtime activates them in host order),
+  with `/assets/ui/*: { extension: ui, methods: [GET, HEAD] }`.
+- The operator lists `admin()` in the site's `host.mjs` `composeHost` list; `admin({ health })` is its only
+  option. `composeHost` hands it AuthExports v1, the audit exports and the `ui` kit; it holds no auth secret.
+- No hooks of its own: account lifecycle hooks are auth's (`extensions.auth.config.hooks`).
+- Presentation: screens are `admin/*` kit templates contributed to `ui`, rendered only through `ui.kit`;
+  console copy is `admin.*` catalogue keys, translated in `ui/copy/<locale>.json`.
 
 ## Read in this order
 - [README](README.md): install, build from reviewed sources, wiring, permissions, console operation, health, exports.
@@ -33,9 +33,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## Do not guess
 - Permissions are auth's names (`auth.users.read`, `auth.users.manage`, `auth.sessions.manage`,
-  `auth.audit.read`, `auth.cases.manage`, `auth.users.impersonate`, ...); `*` is full.
-  The spike's `admin.*` names do not exist.
+  `auth.cases.manage`, `auth.users.impersonate`, ...) plus audit's `audit.read` and `audit.export`;
+  `*` is full. There are no `admin.*` permissions.
 - Every write needs a fresh session and a reason; hidden controls are not authorization.
-- Impersonation needs service opt-in, its permission and a notification callback, and
-  `withSupportBanner` around every application response before it is enabled.
+- Impersonation needs `allowImpersonation` in the auth service, its permission and a mail transport
+  (auth notifies the account first); auth's middleware shows the support banner on auth-protected routes.
 - Role definitions are operator configuration, not console edits.

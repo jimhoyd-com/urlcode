@@ -11,7 +11,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.store: { version: "1", config: { collections: { <name>: { fields, sortable, filterable, readOnly, ... } } } }`
 - A mount per collection, e.g. `/api/notes/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE] }`
-- Protect the mount with `auth: true` (the example adds it when auth is installed) unless the
+- Protect the mount with `auth: {csrf: origin}` (the example adds it when auth is installed; the store
+  takes JSON only, so auth's token header is not needed) unless the
   example's explicit `--ack store:public-write` was given; an unprotected write mount has no rate
   limiting, abuse protection or multi-tenant isolation of its own.
 - Optional list-and-form screens: `extensions.store.config.screens: { /todos: { collection: todos, title?, columns? } }`
@@ -19,7 +20,11 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `ui` extension (`contributes.ui.screens`); they are declared here, never under `extensions.ui`.
 - `urlcode extensions add store` writes an empty `collections` block and no mount; `--example`
   adds the `todos` collection on `/api/todos` (and the `/todos` screen when ui is installed); with
-  auth installed the mount gets `auth: true` and the collection `ownership: owner` (per-user records).
+  auth installed the mount gets `auth: {csrf: origin}` and the collection `ownership: owner` (per-user
+  records) and, with audit installed, `audit: true`.
+- `audit: true` on a collection records every write in the audit extension's log (field names, never
+  values) through an outbox in the data file; at 1000 undelivered events writes answer `503 audit_backlog`.
+  Activation refuses it without the audit extension.
 - `ownership: owner` on a collection scopes every request to the principal a policy such as
   `auth: true` on its mount sets; without it (the default) a collection is shared. An owned
   collection may add `maxRecordsPerOwner: N` (at most `maxRecords`): a principal holding N records

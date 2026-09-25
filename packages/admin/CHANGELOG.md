@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+**Extension split (breaking).** Admin now requires `auth`, `ui` and `audit`, and is built only on auth's `AuthExports` v1 and audit's `AuditExports`; it imports auth's types only and holds none of auth's secrets. No aliases or migrations:
+
+- The `/admin/*` mount must carry `auth: {onDeny: 404}` (the scaffold writes it); activation refuses without it. Auth resolves the session and verifies CSRF on it, so a CSRF failure is auth's 403.
+- Removed: `adminExtension`, `createAdministrationRuntime`, `withSupportBanner` (the banner is auth's middleware now), `createAdminPresentation`, the send callbacks (`sendInvitation`, `notifyImpersonation` and the rest; auth sends every email through mail), `authMount`, and admin's hooks (`beforeRoleChange` and `onAccountStatusChanged` are auth's, fired for the console's actions; `onRegistrationApproved` is gone, use auth's `onAccountCreated`). `admin({health})` is the only host option.
+- Permissions: the audit screens need `audit.read`, and range exports `audit.export`, instead of `auth.audit.*`.
+- Recent audit events on the dashboard and user detail are the newest, not the oldest (#746).
+- Console copy is `admin.*` catalogue keys contributed to `ui`, translated in `ui/copy/<locale>.json`.
+- The invite form appears only on an invite-only auth site with mail delivery. The audit export form has a reason field; an unknown audit filter is 400.
+
 Console mutations accept the operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`) through auth's same-origin check; unlisted origins are still refused (#717).
 
 `urlcode extensions add` now installs only the capability, and `--example` writes demos (#711). admin's scaffold was already capability-only (the `/admin/*` console) and ships no example; its notes now say that auth's `/account` mount is a default, changed with `admin({authMount})`.

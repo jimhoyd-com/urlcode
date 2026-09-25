@@ -12,13 +12,13 @@ Auth is Node/SQLite only. It refuses unpatched SQLite versions and requires priv
 
 ## Authentication and authorization
 
-Use HTTPS with a canonical operator-specified origin, never an untrusted Host header. Cookies are Secure, HttpOnly and host-scoped. Unsafe HTTP operations require unambiguous same-origin and browser/session-bound CSRF proof. An XSS or compromised trusted dependency can cross this boundary; CSRF tokens do not prevent same-origin XSS.
+Use HTTPS with a canonical operator-specified origin, never an untrusted Host header. Cookies are Secure, HttpOnly and host-scoped. Unsafe HTTP operations require unambiguous same-origin provenance (core's single rule: a site `Origin`, or `Sec-Fetch-Site: same-origin` when `Origin` is absent; `cross-site`, duplicated headers and no provenance are refused) and a session-bound CSRF token in one `x-csrf-token` header or a `csrf` body field. A route may opt into `auth: {csrf: origin}`, which drops the token and relies on that provenance and the `SameSite=Strict` `__Host-` session cookie; use it only on a mount that verifies its own token or accepts JSON only. An XSS or compromised trusted dependency can cross this boundary; CSRF tokens do not prevent same-origin XSS.
 
-Passkeys use the canonical host as the WebAuthn relying-party ID and accept ceremonies only from the canonical origin, unless the operator sets a shared RP ID (`--passkey-rp-id`, issue #729). Then every site origin (canonical and operator alias origins) under that registrable domain can register and use the same passkeys, and each of those origins must be trusted to the same degree as the canonical one: script on any of them can run a passkey ceremony for the shared RP ID. Browsers additionally let any subdomain of the RP ID request assertions for it, so do not choose an RP ID whose other subdomains serve untrusted content; server verification still accepts only listed site origins. Core refuses IP addresses, single labels and a short list of public suffixes; browsers enforce the full Public Suffix List. Changing the RP ID strands existing passkeys (users re-register), and auth does not record per-credential RP IDs, so no startup warning detects the change.
+Passkeys use the canonical host as the WebAuthn relying-party ID and accept ceremonies only from the canonical origin, unless the operator sets a shared RP ID (`--passkey-rp-id`, issue #729). Then every site origin (canonical and operator alias origins) under that registrable domain can register and use the same passkeys, and each of those origins must be trusted to the same degree as the canonical one: script on any of them can run a passkey ceremony for the shared RP ID. Browsers additionally let any subdomain of the RP ID request assertions for it, so do not choose an RP ID whose other subdomains serve untrusted content; server verification still accepts only listed site origins. Core refuses IP addresses, single labels and a short list of public suffixes; browsers enforce the full Public Suffix List. Changing the RP ID strands existing passkeys (users re-register). Auth records the RP ID each passkey was registered under and warns at activation (core's `warning` event) when stored passkeys belong to another RP ID than the effective one (#736); the warning does not stop the site.
 
-Session tokens are opaque and stored as hashes — including in encrypted flow records that must survive a cross-site redirect (for example, the OIDC identity-link flow), which persist a session's hash reference (`sessionReference()`) rather than the raw bearer token. TOTP/recovery/code consumption and administrative invariants use transactions. Role changes and account state changes invalidate relevant sessions. Fresh authentication, ceilings and last-administrator checks are service responsibilities, not UI-only safeguards. Use actor-token administrative methods for delegated users; unrestricted operator methods are not HTTP authorization APIs. A flow's browser binding is checked before the flow is consumed, so a request replayed from the wrong browser cannot spend a flow the right browser still needs.
+Session tokens are opaque and stored as hashes — including in encrypted flow records that must survive a cross-site redirect (for example, the OIDC identity-link flow), which persist a session's hash reference (`sessionReference()`) rather than the raw bearer token. TOTP/recovery/code consumption and administrative invariants use transactions. Role changes and account state changes invalidate relevant sessions. Fresh authentication, ceilings and last-administrator checks are service responsibilities, not UI-only safeguards. Use actor-bound administrative methods for delegated users; unrestricted operator methods are not HTTP authorization APIs. Another extension gets `AuthExports` v1 only: the signed-in account, a CSRF token for the current session, auth's URLs and the administration API, whose every call names an opaque actor auth minted from that request's session and re-checks it. No key, database handle, cookie or raw token leaves auth; auth sends every credential-bearing email itself, including those an administrator starts. A flow's browser binding is checked before the flow is consumed, so a request replayed from the wrong browser cannot spend a flow the right browser still needs.
 
-Impersonation is opt-in, excludes privileged targets, expires, and denies account security/administrative mutations. The built-in account page shows a warning. Arbitrary guest pages do not automatically receive a universal impersonation banner; do not assume otherwise. Never expose an unrestricted issueSession or operator service method to a client.
+Impersonation is opt-in, excludes privileged targets, expires, and denies account security/administrative mutations. Auth's middleware shows a support banner and marks responses uncacheable on every route an auth policy guards; a route with no auth policy gets neither, so do not assume a banner on public pages. Never expose an unrestricted issueSession or operator service method to a client.
 
 Email verification is optional by default, so an unverified account may have been registered by someone who does not control its address. Its first mailbox proof removes every sign-in method, factor, device trust and session established before it, and the password unless the proof sets one or comes from that account's own signed-in browser. Treat `emailVerified` (and the `verified` route requirement) as mailbox proof by the current holder, not as a history of who used the account before. An administrator's manual verification does not perform this removal; review the account's methods first.
 
@@ -68,16 +68,28 @@ independent of the others: exhausting one never blocks the others.
 These are defaults, not configurable per deployment today; an operator needing different
 ceilings should track/file that as a feature request rather than patch the constants in place.
 
-### Audit log retention
+### Audit trail
 
-`auth_audit` keeps only its newest rows, pruning older ones on every write. The
-default cap is 100000 rows; set `AuthOptions.auditRetention` to change it. Pass
-`AuthOptions.onAuditPruned(removed)` to observe/alert when rows are actually
-pruned instead of the cap being silent — it fires from the main thread (the
-store itself runs in a worker; a function cannot cross that boundary, so the
-worker posts a plain data message and the main-thread wrapper invokes the
-callback). Export a range before it ages out if it needs to survive past the
-cap (`GET /audit/export` in `@jimhoyd/urlcode-admin`, itself audited).
+Auth writes every privileged action as an event into its `auth_audit_outbox`
+table in the same transaction as the change, and the audit extension drains
+the outbox into its own log (`data/audit.sqlite`) while a host runs. A change
+and its event commit together or not at all. When 10000 events wait
+undelivered, the next privileged change answers `503 audit_backlog` and
+changes nothing: auth fails closed rather than acting unaudited.
+`urlcode-auth doctor` reports the backlog. Retention, queries and exports are
+the audit extension's ([audit SECURITY](../audit/SECURITY.md)). Reading the
+audit log needs the `audit.read` and `audit.export` permissions, which roles
+grant like any other; auth no longer enforces audit reads itself. Registration
+events (`registration.duplicate`, `registration.invited`) carry the email
+address as their subject, so the log holds personal data.
+
+### Abuse budgets
+
+Sign-in and sign-up budgets, challenge escalation and password backoff are
+enforced through the abuse extension when `extensions.auth.config.abuse`
+declares them. Its counters are keyed by an HMAC of the client key or account
+under `data/abuse.key`, never the raw value. The attempt budgets below are
+independent of it and always apply.
 
 ### Password hashing concurrency
 
@@ -89,9 +101,9 @@ password change); it is not per-client. Deployments expecting sustained concurre
 traffic should scale horizontally (more processes) rather than relying on one process to absorb
 unbounded concurrent hashing.
 
-Emails can fail or be delayed. Preserve an operator recovery procedure for deletion cancellations, email changes and provider outages. Do not log token-bearing callback URLs, passwords, codes, session headers or mail bodies. Development console/file senders intentionally expose development credentials and require explicit opt-in.
+Emails can fail or be delayed. Preserve an operator recovery procedure for deletion cancellations, email changes and provider outages. Do not log token-bearing callback URLs, passwords, codes, session headers or mail bodies. Mail's development transports (the loopback `data/outbox/` default, console) write message bodies, including links and codes, in the clear; they are refused off the node target and the default is used only on a loopback origin.
 
-Backups contain sensitive account records and password hashes. Preserve keys separately, retain the exact reviewed configuration, test isolated restores, and plan session/token revocation when restoring old data. An integrity check proves database consistency, not freshness, provenance or absence of malicious operator modifications. Key rotation is not a substitute for revoking compromised sessions or rotating other credentials.
+Backups contain sensitive account records, undelivered audit events and password hashes. Preserve keys separately, retain the exact reviewed configuration, test isolated restores, and plan session/token revocation when restoring old data. An integrity check proves database consistency, not freshness, provenance or absence of malicious operator modifications. Key rotation is not a substitute for revoking compromised sessions or rotating other credentials.
 
 Synthetic tests do not prove real provider delivery, browser/device compatibility, accessibility conformance, production resilience, recovery time or independent security review. Keep those claims separate from local verification results.
 

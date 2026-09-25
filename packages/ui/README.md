@@ -234,8 +234,12 @@ An extension that adopts the kit renders with `ui.kit.render(name, view, context
 `title`, `nav` and `menu`, so a console passes data rather than markup and the
 navigation appears exactly once,
 `nav` items may carry an `icon`, and `scripts` takes kit script names beside
-the extension's own `{ src: '/account/static/passkeys.js', integrity? }`
-served under its mount; every script carries the page nonce. A host that
+the extension's own `{ src: '/account/static/passkeys.js', integrity?, async? }`
+served under its mount; every script carries the page nonce and loads with
+`defer`, or `async` when the entry says so. An extension script may also be an
+absolute `https:` URL whose origin the same page lists in `csp.script` (a
+challenge widget, for example), and nothing else off-site: the kit refuses
+`Extension script must be same-site or listed in csp.script`. A host that
 builds its own `presentation` need not register `kitCatalogue`: the kit
 completes the `ui.*` copy itself, and the host's keys win.
 The package also ships `kitCatalogueFr`, a complete French translation of the
@@ -256,12 +260,12 @@ lacks with the English text as a skeleton; `urlcode-ui preview card` renders a
 sample page.
 The CLI is this kit alone until it is told which packages ship the other
 namespaces: `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` adds
-them, on every command. Each package is resolved from `--project` with Node
-package resolution and imported for the namespace it exports
-(`ExtensionTemplates`, which carries the templates, their view model versions,
-the English catalogue the host registers in `sources` and a sample per
-template); one that is not installed there is skipped with a note, so a command
-still runs. The site's `host.mjs` is never imported: it builds services and
+them, on every command. Each package's `./extension` entry is resolved from
+`--project` with Node package resolution, and the CLI reads the namespace from
+its definition's `contributes.ui` (the templates, their view model versions,
+the English catalogue and a sample per template); a package that is not
+installed there, has no `./extension` entry or contributes no ui templates is
+skipped with a note, so a command still runs. The site's `host.mjs` is never imported: it builds services and
 reads secrets at its top level, and a read-only `list` or `doctor` must not run
 it. With the packages named, `list` and `doctor` cover `auth/*` and `admin/*`
 too, a project override of an extension template is checked against the shipped

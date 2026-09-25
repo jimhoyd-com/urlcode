@@ -5,7 +5,7 @@
 > SQLite build; released with core, pending independent review. Apache-2.0.
 >
 > Install core from npm, then run `npx urlcode init my-site --with ui,auth --example`, or
-> `npx urlcode extensions add auth` in an existing site (it adds `ui` too). Without `--example`
+> `npx urlcode extensions add auth` in an existing site (it adds `ui`, `audit` and `mail` too). Without `--example`
 > only `/account/*`, the operator service (roles member/admin) and keys are written; `--example`
 > adds a signed-in `/private` page.
 
@@ -14,7 +14,13 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.auth: { version: "1", config: { registration: "off" | "open" | ... } }`
 - A mount: `/account/*: { extension: auth, methods: [GET, HEAD, POST] }`
-- Protection: `policies.extensions.auth: {}` on any route that needs a session
+- Protection: `auth: true` (`policies.extensions.auth: {}`) on any route that needs a session; keys
+  `role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny`, `csrf` (`token` default, or `origin`
+  on a mount that verifies its own token or takes JSON only) and `bearer`
+- Budgets: `extensions.auth.config.abuse: {client, signupClient, signupDomain, challengeAfter, passwordBackoff}`
+  needs the abuse extension installed (auth `uses` it)
+- Hooks: `extensions.auth.config.hooks` with `beforeRegister`, `beforeRoleChange`, `onAccountCreated`,
+  `onAccountStatusChanged`, `onDeletionScheduled`, `onAccountDeleted`; fired for every path, the CLI included
 - Machine/agent protection: `auth: {bearer: {scopes: [...]}}` on a route instead
   of a session (an operator-issued API key checked against `Authorization:
   Bearer <key>`; issued/listed/revoked outside route YAML via `service.issueApiKey`
@@ -39,15 +45,17 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   user and survive key rotation. It still acts only within its own scopes.
   Locking or deleting the user disables it (urlcode#732). Keys without `userId`
   keep the `apikey:<key id>` principal.
-- The operator lists `auth()` (senders, providers and other options go in `auth({...})`) in the
+- The operator lists `auth()` (OIDC providers and passkeys go in `auth({...})`) in the
   site's `host.mjs` `composeHost` list; the scaffold writes that line, `operator-service.mjs`
-  and `data/encryption.key`/`data/csrf.key`. Serve with `--host-file host.mjs --origin https://...`
-- Presentation: screens are `auth/*` kit templates (`authTemplates`, `authUiTemplates`, `authCatalogue`)
-  rendered through `ui.kit.page`. auth requires `ui`, receives the kit from `composeHost`, and
-  `extensions.ui` must be declared before `extensions.auth` in `urlcode.yaml`; auth refuses activation otherwise.
+  and `data/encryption.key`/`data/csrf.key`. Email delivery is the mail extension's transport
+  (`mail({transport, from})`), never an auth option. Serve with `--host-file host.mjs --origin https://...`
+- Auth requires `ui`, `audit` and `mail` and uses `abuse`; the runtime activates them in host order,
+  whatever order `urlcode.yaml` declares them in. Screens are `auth/*` kit templates contributed to `ui`.
+- Other extensions read `AuthExports` v1 (`account(request)`, `csrf`, `urls`, `administration`) with
+  `ctx.get('auth')`; they never get auth's keys, database or tokens.
 
 ## Read in this order
-- [README](README.md): install, activation, operator CLI, senders, providers.
+- [README](README.md): install, activation, AuthExports, hooks, operator CLI, providers.
 - [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
 - [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains.
   The original design spike is private maintainer material.
@@ -60,4 +68,4 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - `registration` starts off. First administrator: `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"` with JSON on stdin.
 - `inspectExtensionRevision(project)` prints the SHA-256 to pin; inspecting grants nothing.
 - Roles are operator configuration; assigning them is an administrative transaction.
-- Google/Apple/SES adapters exist but are unverified against live providers.
+- Google/Apple adapters and mail's SES transport exist but are unverified against live providers.

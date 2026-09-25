@@ -20,13 +20,16 @@ pages (the default mount; move the route to change it), the operator service
 with the minimal `{member, admin}` role model and `defaultRole: member` in
 `operator-service.mjs` (edit it to change the roles), and private keys in
 `data/`. No page of yours is protected until you add `auth: true` to a route.
+Auth requires `ui` (every account screen), `audit` (every privileged action is
+recorded in its log) and `mail` (every message auth sends), and uses `abuse`
+when it is installed.
 `--example` also writes a `/private` page that only a signed-in caller can
 read.
 
 auth is released as a tarball on core's GitHub Release, at core's version, and
 pinned by sha512 in core's `dist/addons.json`; only core is on npm.
-`urlcode extensions add auth` adds `ui` too when the site lacks it, installs
-both once at the top level of the site with `npm install --ignore-scripts`,
+`urlcode extensions add auth` adds `ui`, `audit` and `mail` too when the site
+lacks them, installs each once at the top level of the site with `npm install --ignore-scripts`,
 checks the pins and runs auth's scaffold. See
 [add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
 site layout and commands.
@@ -42,7 +45,7 @@ Use a current supported Node release with a patched SQLite build. The actual run
 
 ## Build from reviewed source
 
-Operators who pin exact reviewed commits can build every package locally. This package depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Both peers are siblings in this repository, so CI builds them from the same commit.
+Operators who pin exact reviewed commits can build every package locally. This package depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine, and on the `@jimhoyd/urlcode-audit`, `@jimhoyd/urlcode-mail` and optional `@jimhoyd/urlcode-abuse` peers; authentication behavior remains here. Core can use UI without auth/admin. Every peer is a sibling in this repository, so CI builds them from the same commit.
 
 One lockfile governs the workspace. From a clean checkout of the reviewed commit, install without lifecycle scripts, build core and every add-on, and pack them in dependency order. Nothing is published:
 
@@ -57,7 +60,7 @@ Run `npm run verify` for each workspace package; packing runs the builds, not th
 
 ## Extension definition
 
-`@jimhoyd/urlcode-auth/extension` default-exports the auth extension definition (`defineExtension` from `@jimhoyd/urlcode/extensions`; it requires `ui`). Its `scaffold` returns the `extensions.auth` config, the `/account/*` and `/private` routes, the private `operator-service.mjs`, `data/encryption.key` and `data/csrf.key` files (mode 0600, fresh key material, an existing file kept) and one-line next steps; core writes them. Its `host` loads that operator service and CSRF key, receives the `ui` kit from `composeHost`, builds `authExtension`, and shares `{service, csrfKey}` with `admin`. It contributes its English catalogue and `auth/*` templates to `ui` through `contributes.ui`.
+`@jimhoyd/urlcode-auth/extension` default-exports the auth extension definition (`defineExtension` from `@jimhoyd/urlcode/extensions`). It `requires` `ui`, `audit` and `mail`, and `uses` `abuse`. Its `scaffold` returns the `extensions.auth` config, the `/account/*` route, the private `operator-service.mjs`, `data/encryption.key` and `data/csrf.key` files (mode 0600, fresh key material, an existing file kept) and one-line next steps; its `example` adds the `/private` page. Its `host` loads that operator service and CSRF key, receives the `ui` kit and the audit, mail and (when installed) abuse exports from `composeHost`, attaches auth's audit outbox to audit, and exports [`AuthExports` v1](#authexports-v1). It contributes its English catalogue and `auth/*` templates to `ui`, and its message templates to `mail`, through `contributes`.
 
 ## Operator activation
 
@@ -66,11 +69,17 @@ Route YAML declares a versioned logical extension, not executable code:
 ```yaml
 version: '1'
 extensions:
+  ui: {version: '1', config: {}}
+  audit: {version: '1', config: {}}
+  mail: {version: '1', config: {}}
   auth:
     version: '1'
     config:
       registration: 'off'
 routes:
+  /assets/ui/*:
+    extension: ui
+    methods: [GET, HEAD]
   /account/*:
     extension: auth
     methods: [GET, HEAD, POST]
@@ -79,28 +88,55 @@ routes:
     auth: true
 ```
 
-The site's `host.mjs` activates it; operator settings such as senders and providers go in the `auth({...})` call:
+The site's `host.mjs` activates it. Email delivery is the mail extension's
+transport, not an auth option; auth sends every message through it:
 
 ```js
 // host.mjs (trusted operator code, outside app/)
 import { composeHost } from '@jimhoyd/urlcode/host';
+import audit from '@jimhoyd/urlcode-audit/extension';
+import mail from '@jimhoyd/urlcode-mail/extension';
 import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
-import { sendEmailCode } from './senders.mjs';
+import { sesTransport } from '@jimhoyd/urlcode-mail';
 
 export default await composeHost(import.meta.url, [
+  audit(),
+  mail({ transport: sesTransport({ region: 'eu-west-1' }), from: 'no-reply@site.example' }),
   ui(),
-  auth({ sendEmailCode }),
+  auth(),
 ]);
 ```
 
-`auth({...})` accepts the `authExtension` options except the kit and the revision pin, which come from the host. By default the service is the one `operator-service.mjs` default-exports and the CSRF key is `data/csrf.key`; pass `service` or `csrfKey` to supply your own (the host then leaves closing them to you). `composeHost` takes the reviewed revision from the operator policy passed with `--policy` beside `--host-file`, or from a static `PROJECT_SHA256` copied after review (`urlcode extensions add` prints it). Inspecting a revision with `inspectExtensionRevision(project)` grants nothing; never compute and automatically approve the current project during activation. Pass the canonical HTTPS origin (`AUTH_ORIGIN`) to `urlcode serve --origin`, with `--host-file host.mjs`. Guest/application code never chooses the module, database path, keys, sender credentials or grants.
+`auth({...})` accepts `service`, `csrfKey`, `providers` (OpenID Connect) and `passkeys`; the kit, audit, mail, abuse and the revision pin come from the host. By default the service is the one `operator-service.mjs` default-exports and the CSRF key is `data/csrf.key`; pass `service` or `csrfKey` to supply your own (the host then leaves closing them to you). `composeHost` takes the reviewed revision from the operator policy passed with `--policy` beside `--host-file`, or from a static `PROJECT_SHA256` copied after review (`urlcode extensions add` prints it). Inspecting a revision with `inspectExtensionRevision(project)` grants nothing; never compute and automatically approve the current project during activation. Pass the canonical HTTPS origin (`AUTH_ORIGIN`) to `urlcode serve --origin`, with `--host-file host.mjs`. Guest/application code never chooses the module, database path, keys, mail credentials or grants.
+
+Activation refuses while `ui`, `audit` or `mail` is not active, and refuses a service configured with `requireEmailVerification` while mail has no transport (`available: false`). Without a transport auth serves password sign-in only: email codes, verification, password reset, invitations, setup links and every notice are not offered.
 
 Registration starts off. Bootstrap the first administrator from the site with `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`, supplying `{email,password}` as bounded JSON on stdin. Never place passwords in command arguments or source files. The command returns account metadata, not the session token. A role/default-role configuration change is a reviewed operator change, not an administration-page edit.
 
+## AuthExports v1
+
+Another extension that `requires` auth (admin, a support desk) reads
+`ctx.get<AuthExports>('auth')`; import its types with `import type` from
+`@jimhoyd/urlcode-auth`. It never receives auth's keys, database, a session
+token or a cookie:
+
+| Member | What it is |
+|---|---|
+| `version`, `active` | `1`, and whether auth is activated; every other member throws `AuthError` 503 `auth_inactive` while it is not |
+| `permissions` | The 11 permission names auth enforces (`authPermissions`) |
+| `account(request)` | The signed-in account of a request an auth session policy authorized: `{id, email, emailVerified, roles, permissions, restricted, impersonated, authenticatedAt, freshUntil, fresh, locale, has(permission), actor}`, or `null`. `has()` accepts any name, for example `audit.read`. `actor` is an opaque capability for `administration` |
+| `csrf` | `{field: 'csrf', header: 'x-csrf-token', token(request)}`: the session-bound token to embed in a form or send as the header |
+| `urls` | `{mount, account(), signIn(returnTo?), stepUp(returnTo?)}`; `returnTo` must be a local path outside auth |
+| `administration` | The administration API admin uses: users, sessions, registrations, support cases, recovery, impersonation and `reauthorize(actor, {permissions, fresh?})`. Every call takes the `actor` and re-checks the session, permission and freshness; a forged actor is 401 `invalid_actor`, a revoked, locked or impersonated session 401 `invalid_session`, a missing permission 403 `permission_denied` |
+
+Freshness is `FRESHNESS_WINDOW_MS`, five minutes after the last primary or
+step-up proof. Auth sends every message itself, including the ones an
+administrator starts, so a raw token never leaves auth.
+
 ## Project-level lifecycle hooks
 
-A project can name its own function per lifecycle point in `extensions.auth.config.hooks`, using the same `{source, export}` shape (or a bare string, defaulting to the module's default export) `function`/`middleware` routes already use — the behavior-layer counterpart to `urlcode-ui`'s presentation layering (urlcode-auth#35, urlcode's docs/EXTENSIONS.md "Project-level lifecycle hooks"):
+A project can name its own function per lifecycle point in `extensions.auth.config.hooks`, using the same `{source, export}` shape (or a bare string, defaulting to the module's default export) `function`/`middleware` routes already use (docs/EXTENSIONS.md "Project-level lifecycle hooks"):
 
 ```yaml
 extensions:
@@ -110,32 +146,35 @@ extensions:
       registration: open
       hooks:
         beforeRegister: ./hooks/registration-rule.mjs   # bare string: default export
-        onSignUp:
-          source: ./hooks/on-signup.mjs
+        onAccountCreated:
+          source: ./hooks/on-account-created.mjs
           export: provisionWorkspace
-        onDelete: ./hooks/on-delete.mjs
+        onDeletionScheduled: ./hooks/on-deletion.mjs
 ```
 
-Three lifecycle points are implemented:
+The auth service fires them, so every path gets the same set: auth's own
+pages, the administration API admin calls, and the operator CLI (`bootstrap`,
+`import` and `purge` load the project's hooks from `--project <app dir>`,
+default `app/` beside the operator file, unless `--no-project-hooks`).
 
-- **`beforeRegister(input: {email, profile?})`** runs before an account is
-  created, from the immediate `/register` endpoint and from the resumable
-  `/signup/begin` step, and returns a typed verdict: `{allow: true}` lets the
-  attempt continue, `{allow: false, reason}` rejects it and the `reason` is
-  surfaced to the caller the same way any other registration rejection is (a
-  `403` with that message). This is how "only `@acme.com` may register"
-  becomes portable project code instead of a fork.
-- **`onSignUp(input: {accountId, email})`** is a side-effect hook (no
-  verdict) that fires once, after a *new* account is actually created — from
-  the immediate `/register` endpoint and from `/signup/complete` (an
-  existing-account signup attempt that resolves to sign-in, not a new
-  account, never fires it). Use it for something like provisioning a
-  workspace after sign-up.
-- **`onDelete(input: {accountId, email})`** fires when the account owner
-  schedules their own deletion through the account page's `/delete` endpoint
-  (the deletion grace period still applies and can still be cancelled). It
-  does not yet fire from an administrator-initiated deletion or from the
-  background purge once the grace period elapses.
+| Hook | Kind | Input |
+|---|---|---|
+| `beforeRegister` | filter | `{email, method, profile?}`; `method` is `password`, `signup`, `external`, `waitlist`, `invitation`, `administrator` or `import` |
+| `beforeRoleChange` | filter | `{accountId, currentRoles, requestedRoles, actorId, reason}` |
+| `onAccountCreated` | action | `{accountId, email, method, actorId?}` (`method` may also be `bootstrap`) |
+| `onAccountStatusChanged` | action | `{accountId, status: 'active' \| 'locked', actorId, reason}` |
+| `onDeletionScheduled` | action | `{accountId, email, deleteAfter, actorId?}` (no `actorId` when the owner scheduled it) |
+| `onAccountDeleted` | action | `{accountId}`, after the purge |
+
+A filter allows only by returning `{allow: true}` within 5 seconds; anything
+else (`{allow: false, reason}`, no verdict, a throw, a timeout) refuses with
+403 `registration_rejected` or `role_change_rejected` and the hook's `reason`
+(at most 256 characters). Filters run before the store transaction and can
+only narrow: every guard still runs inside it. This is how "only `@acme.com`
+may register" becomes portable project code instead of a fork. Actions run
+after the commit, at most 4 at a time and 5 seconds each; a throw or timeout
+is counted (`getHookStats()`), never shown to the caller, and never undoes the
+change.
 
 These hooks are first-party project code, the same trust category as any
 `function`/`middleware` route: **trusted, in-process execution by default**,
@@ -158,9 +197,9 @@ refused explicitly at activation. Declare a hook without `sandbox` (or with
 
 ## Authentication and presentation
 
-`createAuthService` owns a private SQLite database outside the application directory. Its operations enforce authority, fresh authentication, delegation ceilings, replay protection and transaction boundaries. Callers must preserve the distinction between unrestricted operator APIs and actor-token administrative APIs. `authExtension` adds HTTP cookies, same-origin CSRF checks, bounded bodies and trusted pages.
+`createAuthService` owns a private SQLite database outside the application directory. Its operations enforce authority, fresh authentication, delegation ceilings, replay protection and transaction boundaries, and write every privileged action into the audit outbox in the same transaction. Callers must preserve the distinction between unrestricted operator APIs and the actor-bound administration API. The extension adds HTTP cookies, same-origin and CSRF checks, bounded bodies (core's request helpers) and trusted pages.
 
-Optional factories supply Google/Apple/generic OIDC and passkey providers. Unconfigured providers are not offered. Synthetic cryptographic fixtures do not prove real Google, Apple, authenticator or SES deployment behavior. The auth extension currently declares **Node only**; generic core extension support for AWS/Vercel does not make this SQLite service portable to their deployment environments.
+Optional factories supply Google/Apple/generic OIDC and passkey providers. Unconfigured providers are not offered. Synthetic cryptographic fixtures do not prove real Google, Apple, authenticator or mail delivery behavior. The auth extension currently declares **Node only**; generic core extension support for AWS/Vercel does not make this SQLite service portable to their deployment environments.
 
 ### Passkeys and the relying-party domain
 
@@ -168,9 +207,9 @@ Optional factories supply Google/Apple/generic OIDC and passkey providers. Uncon
 
 To share passkeys across origins that sit under one registrable domain, the operator sets a [shared passkey relying-party domain](../../docs/EXTENSIONS.md#shared-passkey-relying-party-domain) beside the origins: `urlcode serve --origin https://app.site.example --alias-origin https://www.site.example --passkey-rp-id site.example`. Core validates it (a lowercase registrable domain equal to, or a parent of, every site origin's host; no IP address, single label or listed public suffix) and passes it to the activation as `passkeyRpId`. Auth then calls the provider's `withSite({rpId, origins})`: registration and authentication options carry the shared RP ID, and verification accepts a client origin that is any site origin (canonical or alias) and nothing else. A provider without `withSite` is refused at activation. It is never set in project YAML.
 
-**Changing the RP ID makes existing passkeys stop working.** A credential is bound to the RP ID it was registered under: turning `--passkey-rp-id` on, changing it or turning it off strands every passkey registered under the previous RP ID, and those users must sign in with another method and register a new passkey (an account whose only sign-in method is a passkey needs [manual recovery](#operations-and-recovery)). Choose the RP ID before users enrol. Auth does not record the RP ID a credential was registered under, so it cannot detect or warn about such a change at startup (tracked in issue #736); the operator setting is the only record.
+**Changing the RP ID makes existing passkeys stop working.** A credential is bound to the RP ID it was registered under: turning `--passkey-rp-id` on, changing it or turning it off strands every passkey registered under the previous RP ID, and those users must sign in with another method and register a new passkey (an account whose only sign-in method is a passkey needs [manual recovery](#operations-and-recovery)). Choose the RP ID before users enrol. Auth records the RP ID each passkey is registered under (a passkey registered before it did counts as the canonical host's) and, at activation, warns through core's warning channel when stored passkeys were registered for another RP ID than the effective one: `N stored passkey(s) were registered for another relying-party ID than X; ...`. The site still starts.
 
-`createPresentation` supplies configured locale catalogues, plural rules, RTL, and validated theme variables/local logo paths. Messages are plain text and escaped by renderers. It does not load executable project templates or arbitrary HTML/CSS. Translation coverage and accessibility require review; the helper does not establish WCAG conformance. Registration metadata is descriptive data and never authorization authority. Private metadata is excluded from public projections; public and unsafe fields remain untrusted.
+Account copy resolves through the `ui` kit: auth contributes its English catalogue, and a project translates or overrides it in `ui/copy/<locale>.json`. Messages are plain text and escaped by renderers. Translation coverage and accessibility require review; nothing here establishes WCAG conformance. Registration metadata is descriptive data and never authorization authority. Private metadata is excluded from public projections; public and unsafe fields remain untrusted.
 
 ## Route requirements (`auth:`)
 
@@ -179,11 +218,34 @@ long form `policies.extensions.auth` it expands to). Core maps `auth: true` to
 `{}` and an object to the same object minus `required`, and knows nothing else
 about it; the keys and bounds are this package's `authPolicySchema`
 (`src/auth.ts`), published as `policySchema` in the registration and in
-`urlcode.json`. `urlcode validate`, `validateProject` and runtime startup check
+`urlcode.json`. The keys are `role`, `permission`, `verified`,
+`freshWithinSeconds`, `onDeny` (`401`, `403`, `404` or `sign-in`), `csrf`
+and `bearer`. `urlcode validate`, `validateProject` and runtime startup check
 routes against it and report a failure at the key the author wrote, for example
 `Invalid extension policy at route /api/items, auth.bearer.quota.requests
 (minimum): must be >= 1`. Adding or tightening a route key is a change here, not
 in core's schema. See [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form).
+
+### CSRF: `csrf: token | origin`
+
+A session-protected route verifies CSRF on every write. With the default
+`csrf: token`, the write must carry auth's session-bound token (an HMAC over
+the canonical origin and the session) in a single `x-csrf-token` header, or in
+a `csrf` body field when the header is absent, and its provenance must pass
+core's same-origin rule. `AuthExports.csrf.token(request)` gives another
+extension the value to embed. `csrf: origin` skips the token and admits a write
+on same-origin provenance and the `SameSite=Strict` `__Host-` session cookie
+alone; use it only on a mount that verifies its own token (forms,
+form-records) or that accepts JSON only (a store collection). `csrf` cannot be
+combined with `bearer`.
+
+### Support sessions
+
+While an administrator impersonates an account (admin's support session),
+auth's middleware marks every response on an auth-protected route
+uncacheable and shows a banner ("support.banner" in the catalogue) with a link
+that ends the session, so the impersonation is visible on application pages
+too, not only on auth's own.
 
 ## Bearer/API-key authentication
 
@@ -404,30 +466,26 @@ spending an scrypt verification on each. Declare both on a public bearer API.
 
 An operator can configure `checkPassword: createPasswordBreachChecker()` on `createAuthService`. This optional Have I Been Pwned range check sends only the SHA-1 prefix, requests padded responses, bounds concurrency/deadline/response bytes, and fails closed when the check cannot complete. It does not send the password or full hash to the service. Configuring the callback introduces an external service dependency; do not enable it silently or describe it as a complete hardened preset. Offline fixtures are not evidence of live service availability.
 
-## Email and local development
+## Email
 
-SES is optional so an auth installation that uses another delivery adapter does
-not install the AWS SDK and its provider chain. Install it explicitly before
-using the built-in sender:
+Auth sends every message through the [mail extension](../mail/README.md): the
+transport, sender address and delivery bounds are mail's operator options in
+`host.mjs`, and a project changes or translates any message in
+`mail/copy/<locale>.json`. The message keys auth contributes (for example
+`verify-email`, `reset-password`, `sign-in-code`, `signup-code`,
+`account-setup`, `impersonation-started` and the `admin-*` notices) are listed
+in `src/mail-templates.ts` and in mail's README. Links in a message are built
+on the canonical origin; notices carry only page links, never a token.
 
-```sh
-npm install --save-exact @aws-sdk/client-sesv2@3.1135.0
-```
-
-`createSesSender({region, from, origin, authMount, credentials?})` then returns a
-callable token sender with `sendEmailCode`, `notify` and `close`. Without the
-optional SDK it fails immediately with an installation instruction. Wire
-callbacks explicitly into the auth/admin factories. Production credentials
-come from operator configuration or the SDK credential chain; never put them
-in YAML. Delivery is bounded and cancellable; services cannot guarantee that
-an email reaches an inbox. A test-only `transport` injection does not load the
-SDK.
-
-`createDevelopmentSender` requires `allowDevelopment: true` and either a private output directory outside the project plus its `projectRoot`, or `allowConsoleTokens: true`. File notices use exclusive `0600` files and a bounded count. Console mode deliberately exposes development tokens and must never feed shared production logs. Sender helpers do not infer safety from `NODE_ENV`.
+On `urlcode dev` (a loopback origin) mail writes each message to
+`data/outbox/` by default, so every email flow works locally. On any other
+origin delivery is off until `host.mjs` names a transport, and auth then
+offers password sign-in only. Delivery failures for post-commit security
+notices do not roll back account changes; monitor mail delivery.
 
 ## Operations and recovery
 
-Run `urlcode-auth --help` for the current CLI. Operator commands have full database authority; stdin avoids putting secrets in process arguments. User/audit listings currently return a bounded page; use service pagination for complete exports. Doctor's successful local database check is not live-provider verification.
+Run `urlcode-auth --help` for the current CLI. Operator commands have full database authority; stdin avoids putting secrets in process arguments. `bootstrap`, `import` and `purge` fire the project's [lifecycle hooks](#project-level-lifecycle-hooks) from `--project <app dir>` (default `app/` beside the operator file) unless `--no-project-hooks` is passed. The user listing returns a bounded page; use service pagination for complete exports. The audit log is the audit extension's: list it with `npx urlcode-audit list`. Doctor's successful local database check is not live-provider verification.
 
 | Command | Arguments | Purpose |
 | --- | --- | --- |
@@ -435,13 +493,12 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 | `users` | `--operator-file` | List accounts (bounded page of 100) |
 | `sessions` | `--operator-file`, JSON `{accountId}` on stdin | List an account's sessions |
 | `revoke` | `--operator-file`, JSON `{accountId}` on stdin | Revoke all sessions of an account |
-| `audit` | `--operator-file` | List audit events (bounded page of 100) |
 | `import` | `--operator-file`, JSON `{users:[{email,passwordHash,emailVerified?}]}` on stdin | Import generic password hashes; only those fields are accepted |
 | `rotate-key` | `--operator-file` | Re-encrypt records with the active encryption key; reports changed/remaining |
 | `purge` | `--operator-file` | Permanently remove accounts whose deletion grace has elapsed |
 | `cleanup` | `--operator-file` | Sweep expired sessions/tokens (bounded batch) |
 | `configuration` | `--operator-file` | Print configuration revision, registration mode, security policy and roles |
-| `doctor` | `--operator-file` | Local database/configuration readiness check |
+| `doctor` | `--operator-file` | Local database/configuration readiness check; reports `auditBacklog` (events still in auth's outbox) and a warning when it is not zero |
 | `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?,quota?,userId?}` on stdin | Issue a bearer/API key, optionally acting for an active user; returns the raw key once, never stored |
 | `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed/quota/userId/userDisabled; never the raw key or its hash) |
 | `api-key-revoke` | `--operator-file`, JSON `{id}` on stdin | Revoke a key by its id |
@@ -451,22 +508,22 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 | `backup` | JSON `{database,destination,projectRoot}` on stdin | Online SQLite backup to a new private path |
 | `restore` | JSON `{backup,destination,projectRoot}` on stdin | Restore a backup to a new private path |
 
-`--operator-file` is an absolute path to a module that default-exports an `AuthService`.
+`--operator-file` is an absolute path to a module that default-exports an `AuthService`. Audit events written by an operator command wait in auth's outbox until a host with the audit extension runs.
 
 Backup/restore accepts JSON paths on stdin. `createBackup({database,destination,projectRoot})` uses SQLite's online backup API, including committed WAL pages, with a bounded worker and integrity checks. `restoreBackup({backup,destination,projectRoot})` restores to a **new** path. Both require private operator paths outside the project and refuse overwrite. Never copy only a live `.sqlite` file and assume its WAL is included. See [backup and restore platform guarantees](../../docs/AUTH-BACKUP.md), including Windows ACL and directory durability limits.
 
-Back up encryption keys, CSRF keys and reviewed static configuration separately. Database snapshots contain sensitive account/audit data and password hashes, but do not export key files. Restoring historical data also restores historical sessions/tokens and revocation state: plan revocation and recovery before reopening traffic. Rotate keys by adding a new active key, retaining decryption keys while bounded migration reports remaining records, then remove old keys only after completion and backup verification. Old writers fail closed after activation switches. Keep a tested isolated restore procedure.
+Back up encryption keys, CSRF keys and reviewed static configuration separately. Back up the audit log after the auth database, so events not yet drained travel in the auth backup ([audit and abuse data](../../docs/AUTH-BACKUP.md#audit-and-abuse-data)). Database snapshots contain sensitive account data, undelivered audit events and password hashes, but do not export key files. Restoring historical data also restores historical sessions/tokens and revocation state: plan revocation and recovery before reopening traffic. Rotate keys by adding a new active key, retaining decryption keys while bounded migration reports remaining records, then remove old keys only after completion and backup verification. Old writers fail closed after activation switches. Keep a tested isolated restore procedure.
 
-`composeHost`'s `close` releases the service and CSRF key auth opened itself, after all extension runtimes stop; a service, key or sender the operator passed in stays the operator's to close. Scheduled purge/sweep operation and backups are operator responsibilities; opportunistic cleanup is not a retention policy.
+`composeHost`'s `close` detaches auth's outbox from audit and releases the service and CSRF key auth opened itself, after all extension runtimes stop; a service or key the operator passed in stays the operator's to close. Scheduled purge/sweep operation and backups are operator responsibilities; opportunistic cleanup is not a retention policy.
 
 Apache-2.0. auth is released as a tarball on core's GitHub Release; only core is
 published to npm.
 
 ## Operator presets and enrollment
 
-`createAuthPreset({preset: 'standard', origin, rpName, sender?})` supplies passkeys, standard session limits and seven-day deletion grace. Without a sender it returns an explicit notice that email flows are unavailable. TOTP and recovery are service capabilities; remembered devices can optionally exempt ordinary MFA, but never grant fresh step-up authority.
+`createAuthPreset({preset: 'standard', origin, rpName})` supplies passkeys, standard session limits and seven-day deletion grace. Email flows depend on the mail extension's transport, not the preset. TOTP and recovery are service capabilities; remembered devices can optionally exempt ordinary MFA, but never grant fresh step-up authority.
 
-`createAuthPreset({preset: 'hardened', origin, rpName, sender, checkPassword: createPasswordBreachChecker()})` requires both adapters and supplies mandatory email verification followed by TOTP enrollment, shorter sessions and 30-day deletion grace. Spread `preset.service` into `createAuthService` in `operator-service.mjs` and `preset.extension` into `auth({...})` in `host.mjs`. Choosing the online breach checker makes password creation/reset depend on that external service; inject an approved local checker if needed. Deliberate overrides change the effective policy and should be reviewed.
+`createAuthPreset({preset: 'hardened', origin, rpName, checkPassword: createPasswordBreachChecker()})` requires the password-screening adapter, and auth's activation requires a mail transport; it supplies mandatory email verification followed by TOTP enrollment, shorter sessions and 30-day deletion grace. Spread `preset.service` into `createAuthService` in `operator-service.mjs` and `preset.extension` into `auth({...})` in `host.mjs`. Choosing the online breach checker makes password creation/reset depend on that external service; inject an approved local checker if needed. Deliberate overrides change the effective policy and should be reviewed.
 
 Restricted enrollment sessions can verify their email and enroll TOTP, but cannot authorize protected application routes or administration. Required verification revokes old sessions and requires a fresh sign-in before factor enrollment. Public routes without auth policies remain public. These controls do not establish independent security certification or live provider readiness.
 
@@ -474,7 +531,7 @@ Configuration is database-pinned. Before changing modes, roles or security requi
 
 Migration preserves accounts, enrolled credentials and history, while revoking sessions and pending authentication/registration state, closing pending cases and recording an audit entry. Existing roles must remain valid and active administration cannot be removed accidentally. Valid pending-deletion cancellation links retain only their original expiry. Old workers reject reads and writes after migration; restart every instance with the reviewed configuration, remove the approval variable, and separately review/pin the changed route project. Schedule the transition as a maintenance operation; do not edit database metadata manually.
 
-`englishCatalogue` (also exported as `authCatalogue`) exports the semantic UI keys for catalogue authors. Translations are plain text and escaped at rendering; runtime templates never execute project markup. No complete non-English language pack is bundled. Dates, provider identifiers and user data retain their own values.
+Auth's semantic UI keys reach catalogue authors through the `ui` kit: `npx urlcode-ui copy --missing <locale> --extensions @jimhoyd/urlcode-auth` lists them. Translations are plain text and escaped at rendering; runtime templates never execute project markup. No complete non-English language pack is bundled. Dates, provider identifiers and user data retain their own values.
 
 ## Presentation
 
@@ -486,9 +543,9 @@ those configuration, copy, template and lifecycle-hook surfaces before copying
 an auth screen or flow into the project. The contract also lists focused checks
 for the edit loop; full project tests remain the handoff evidence.
 
-Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the kit's shared form primitives (`field`, `postForm` and friends from `@jimhoyd/urlcode-ui`).
+Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model and a sample view, contributed to the `ui` extension through the definition's `contributes.ui`. The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the kit's shared form primitives (`field`, `postForm` and friends from `@jimhoyd/urlcode-ui`).
 
-`authExtension` requires `ui`: the kit is the only render path. auth's definition requires `ui`, so `composeHost` activates `ui` first and hands auth its kit, and auth contributes `authCatalogue` and `authUiTemplates` to `ui` through `contributes.ui`. Declare `ui` before `auth` in `urlcode.yaml` too: the runtime activates extensions in the order `urlcode.yaml` declares them, and auth refuses activation when `ui` is missing or not yet activated. Auth reads `ui.kit` per request and never captures it at activation. `@jimhoyd/urlcode-ui` is an optional exact peer that `urlcode extensions add auth` installs once at the top level of the site.
+Auth requires `ui`: the kit is the only render path. `composeHost` activates `ui` before auth and hands auth its kit, and the runtime activates them in the same order, whatever order `urlcode.yaml` declares them in. Auth refuses activation when `ui` is missing or not active, and reads `ui.kit` per request, never capturing it at activation. `@jimhoyd/urlcode-ui` is an optional exact peer that `urlcode extensions add auth` installs once at the top level of the site.
 
 ```yaml
 extensions:
@@ -499,9 +556,9 @@ routes:
   /account/*: { extension: auth, methods: [GET, HEAD, POST] }
 ```
 
-Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor --extensions @jimhoyd/urlcode-auth` reports every `auth/*` template behind its view model (the CLI loads the namespace, copy and samples from this package's `authUiTemplates` export; without the flag it sees the kit alone). Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
+Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor --extensions @jimhoyd/urlcode-auth` reports every `auth/*` template behind its view model (the CLI reads the namespace, copy and samples from this package's `./extension` definition, `contributes.ui`; without the flag it sees the kit alone). Copy resolves through the kit's catalogue, the auth catalogue and the project's `extensions.ui` copy.
 
-There is no fallback render path: earlier releases rendered the same templates through the shared primitives when `ui` was absent, and that branch has been removed. The auth passkey script and the optional challenge widget are nonce-bound to the kit's page nonce and the page CSP admits only that nonce (plus the challenge origin when configured).
+There is no fallback render path. The auth passkey script is nonce-bound to the kit's page nonce. A challenge widget (from the abuse extension's provider) is passed to the kit as an `async` script whose origin the page CSP lists; auth no longer rewrites the page nonce.
 
 Changing `configurationTag` deliberately advances the approved configuration revision for provider/callback/profile-policy deployments that cannot be fingerprinted as simple data. The service does not automatically fingerprint executable callbacks. Session idle and absolute limits do participate in the declared configuration fingerprint.
 
@@ -509,7 +566,7 @@ Changing `configurationTag` deliberately advances the approved configuration rev
 
 The browser registration entry point resumes a short-lived, browser-bound signup
 wizard. With `requireEmailVerification`, it verifies an emailed numeric code before
-accepting a password or passkey; `sendSignupCode` must be configured. Credentials,
+accepting a password or passkey; mail must have a transport. Credentials,
 profile and required consent are finalized together. Open/invited signup creates
 one account/session transaction; waitlist signup creates only a pending application
 until an administrator approves it. Passkey applications retain their credential
@@ -553,8 +610,7 @@ public signup verifies the mailbox before any credential is stored.
 
 `allowEmailFactorRecovery: true` explicitly enables an email fallback for verified
 accounts that lost their second factor. It is disabled by default because control
-of the mailbox becomes a recovery authority. Configure `sendFactorRecovery`; the
-bundled SES/development senders and presets provide it. The flow confirms a private
+of the mailbox becomes a recovery authority. It needs a mail transport. The flow confirms a private
 email link in the originating browser, starts a 24-hour waiting period and provides
 a separate cancellation link. GET requests never consume either capability.
 
@@ -611,12 +667,39 @@ is fallible and may reject legitimate addresses; see
 
 `urlcode-auth auth-baseline` requires no operator module and refuses one. It creates private temporary fixtures and an auth database outside the fixture project, runs a bounded child process, then removes them. Seventeen named checks (listed in `test/auth-baseline.test.ts`) exercise the real local runtime without opening a listener: anonymous authorization denial, CSRF and origin enforcement, Secure/HttpOnly/Strict host cookies, no-store auth responses, credential withholding from guest Request and derived header context, revocation, and restricted enrollment authority. Extra failure-only markers are recorded when a probe, deadline or cleanup fails. A failed check or deadline produces a nonzero exit status and redacted results. The command uses no customer state, network, mail or live providers. These synthetic checks are limited regression evidence, not an independent security assessment, deployment certification, browser test, load test or recovery drill.
 
-`verify-deployment` remains a separate network check. Its stdin option `allowTurnstile: true` permits only the reviewed `challenges.cloudflare.com` challenge origin in script/frame/connect CSP checks; the default remains strict about external origins. Neither command proves a deployment's provider credentials, delivery, breach callback or complete abuse policy.
+`verify-deployment` remains a separate network check. Its stdin option `allowTurnstile: true` permits only the reviewed `challenges.cloudflare.com` challenge origin (the abuse extension's Turnstile provider) in script/frame/connect CSP checks; the default remains strict about external origins. Neither command proves a deployment's provider credentials, delivery, breach callback or complete abuse policy.
 
-### Localized email and abuse controls
+### Abuse controls
 
-Pass `emailCopy: createEmailCopy({catalogues: {...}})` to a sender helper to customize bounded plain-text subjects and bodies. Catalogue entries must preserve every link/code placeholder. Account notices use the saved locale; anonymous flows use request language without revealing whether an account exists. Delivery failures for post-commit security notices do not roll back account changes; operators must monitor their sender.
+Sign-in and sign-up budgets, the challenge escalation and password backoff are
+reviewed YAML in `extensions.auth.config.abuse`, enforced through the
+[abuse extension](../abuse/README.md) (auth `uses` it; activation refuses the
+block when abuse is not installed and active):
 
-`AuthOptions.abuse` enables durable progressive password backoff and trusted-client/signup-domain velocity budgets. Configure the runtime trusted-proxy boundary before enabling client limits. Every per-client auth budget (the per-client password-attempt budget and the `client`/`signupClient` limits) keys an IPv4 address, including an IPv4-mapped IPv6 address, by the address itself and an IPv6 address by its /64 network, so rotating addresses inside one allocation earns no fresh budget; callers behind one IPv6 /64 share a budget. The /64 grouping is fixed and matches core's [throttle client identity](../../docs/policies/operations.md#client-identity-and---trusted-proxies). Optional `createTurnstileChallenge` supplies a fixed-origin widget and bounded server verification; challenge success never overrides a hard budget. Provider callbacks and existing token redemption keep their own bound proofs.
+```yaml
+extensions:
+  abuse: {version: '1', config: {}}
+  auth:
+    version: '1'
+    config:
+      abuse:
+        client: {limit: 20, windowMs: 60000}          # entry requests per client
+        signupClient: {limit: 5, windowMs: 3600000}   # sign-ups per client
+        signupDomain: {limit: 50, windowMs: 3600000}  # sign-ups per email domain
+        challengeAfter: 10                            # below client.limit; needs abuse({challenge}) in host.mjs
+        passwordBackoff: {threshold: 5, initialDelayMs: 1000, maxDelayMs: 900000, resetAfterMs: 86400000}
+```
 
-Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must carry an `Origin` that is one of the site's origins: the canonical `--origin`, or an operator [`--alias-origin`](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) (matched by core's `isSiteOrigin`; `AuthHttp` takes the list as its `origins` option). Missing, null or foreign Origin headers remain rejected. CSRF tokens and email links stay bound to the canonical origin. Passkey ceremonies work only on the canonical origin unless the operator sets a [shared passkey RP ID](#passkeys-and-the-relying-party-domain). Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
+A budget over its limit answers 429 `Too many attempts. Try again later.`
+with `Retry-After`. Configure the runtime trusted-proxy boundary before
+enabling client budgets. Client keys use core's `clientKey`: an IPv4 address
+(including an IPv4-mapped IPv6 address) by itself, an IPv6 address by its /64
+network, so rotating addresses inside one allocation earns no fresh budget;
+callers behind one IPv6 /64 share a budget. The challenge provider (for
+example Turnstile) and its secret are the operator's `abuse({challenge})` in
+`host.mjs`; the widget appears only when `challengeAfter` is set, and success
+never overrides a hard budget. The per-client password-attempt limit inside
+the login transaction still applies with or without abuse. Provider callbacks
+and existing token redemption keep their own bound proofs.
+
+Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must pass core's [same-origin rule](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) with `whenAbsent: 'refuse'`: an `Origin` that is one of the site's origins (the canonical `--origin` or an operator `--alias-origin`), or, with no `Origin`, `Sec-Fetch-Site: same-origin`. A null or foreign Origin, `Sec-Fetch-Site: cross-site`, or no provenance at all is rejected. CSRF tokens and email links stay bound to the canonical origin. Passkey ceremonies work only on the canonical origin unless the operator sets a [shared passkey RP ID](#passkeys-and-the-relying-party-domain). Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.

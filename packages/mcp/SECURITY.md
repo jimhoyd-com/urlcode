@@ -21,11 +21,13 @@ HTTP transport requires a server to validate `Origin` to prevent DNS
 rebinding. A request to a mount whose `Origin` header is present and is not
 one of the site's origins (the operator's canonical `--origin`, or one of the
 operator's site-wide `--alias-origin` entries) is refused with `403` before
-its content type, size or body is examined; the match is core's
-`isSiteOrigin`, the same rule the `forms`, `store`, `auth` and `admin`
-extensions apply. A request with no `Origin` header is admitted, because
-non-browser MCP clients do not send one and a browser always sends one on a
-cross-origin `POST`. There is no project-YAML or per-server allowlist: a
+its content type, size or body is examined. The rule is core's
+`isSameOriginRequest` with `whenAbsent: 'admit'`, the one rule every
+first-party extension applies: `Sec-Fetch-Site: cross-site` and duplicated
+`Origin`, `Sec-Fetch-Site` or `Referer` headers are refused too, and so is a
+request with no `Origin` whose `Referer` names a foreign origin. A request with
+no provenance header at all is admitted, because non-browser MCP clients do not
+send one and a browser always sends one on a cross-origin `POST`. There is no project-YAML or per-server allowlist: a
 browser-based client served from an origin the operator has not listed cannot
 reach the mount. Origin validation is not
 authentication; put the mount behind `auth` when callers must be identified.

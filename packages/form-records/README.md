@@ -43,7 +43,7 @@ extensions:
             team: { type: string, enum: [red, blue], default: red }
             subscribed: { type: boolean, default: false }
             notes: { type: string, maxLength: 200 }
-  form-records:                                # declared after forms and store
+  form-records:                                # any order: the runtime activates forms and store first
     version: "1"
     config:
       records:
@@ -64,14 +64,14 @@ extensions:
           editTitle: Edit your profile
           list: { title: Your profiles, columns: [name, team] }   # optional
 routes:
-  /api/profiles/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true }
-  /onboarding/*: { extension: form-records, methods: [GET, HEAD, POST], auth: true }
+  /api/profiles/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: { csrf: origin } }
+  /onboarding/*: { extension: form-records, methods: [GET, HEAD, POST], auth: { csrf: origin } }
 ```
 
 | Key | Meaning |
 | --- | --- |
 | `records.<name>` | One record flow. The name is also the form's name in CSRF tokens (`^[a-z][a-z0-9-]{0,63}$`); at most 16. |
-| `mount` | Where it is served; needs the route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and a principal-providing policy such as `auth: true`. |
+| `mount` | Where it is served; needs the route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own token on every POST, so auth's header token is not needed). |
 | `collection` | A store collection declared with `ownership: owner` and not `readOnly`. |
 | `form` | A forms flow body: `title`, `submitLabel`, `confirmation` (`title`, `message`, `show`), `fields`, optional `timeZone`. The same shape and rules as a flow under `extensions.forms.config.flows`, without `mount`. |
 | `fields` | Form field to collection field. Optional: each form field defaults to the collection field of the same name. Every form field must be mapped, two form fields cannot fill one collection field, and every required collection field without a default must be filled. |
@@ -144,18 +144,21 @@ urlcode extensions add auth form-records --example
 
 The capability adds `records: {}` and mounts nothing. `--example` needs `auth`
 (installed, or added in the same command), because records are private to
-their creator: it declares a `todo` record flow on `/todo-form` (`auth: true`)
+their creator: it declares a `todo` record flow on `/todo-form` (`auth: {csrf: origin}`)
 that saves into the store example's `todos` collection (`ownership: owner`),
 shows the saved todo, and lets its owner tick `done` while the title stays
 read-only. form-records writes only its own configuration block, so the
 `todos` collection comes from the store's example, which is written when
 `store` is added with `--example` in the same command. If `store` was already
 installed, declare that collection yourself (see [STORE.md](../../docs/STORE.md)).
+When audit is installed the store example's collection declares `audit: true`,
+so every record the form saves or edits is recorded in the audit log with the
+signed-in user as actor ([audited writes](../../docs/STORE.md#audited-writes)).
 
 In `host.mjs`, `composeHost` passes forms' and the store's exports and ui to
-`formRecords()`; it takes no operator options. Declare `forms` and `store`
-before `form-records` under `extensions` (as `extensions add` does), so they
-are active first; activation refuses otherwise. Called directly,
+`formRecords()`; it takes no operator options. The runtime activates `forms`
+and `store` before `form-records` because it requires them, whatever order
+`extensions` declares them in. Called directly,
 `createFormRecordsExtension` takes `ui` only for a record flow that declares
 `list`, and refuses such a flow without it.
 

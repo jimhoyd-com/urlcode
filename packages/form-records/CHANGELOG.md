@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The `--example` route uses `auth: {csrf: origin}`, so a signed-in HTML form POST passes auth (forms checks its own token), and activation no longer depends on the YAML order of `forms` and `store`: the runtime activates them first. Records saved into an `audit: true` collection are audited with the signed-in user as actor.
+
 - Clearing an optional field on the edit page, and an optional per-user list
   page (#738). An editable field emptied on the edit page is now removed from
   the record (the store's partial update with `null`) rather than saved as
