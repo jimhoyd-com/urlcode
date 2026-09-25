@@ -69,6 +69,8 @@ interface Slot { worker: Worker; ready: boolean; pending: Pending | null }
 export class SandboxPool {
   root: string | undefined; entries: SandboxEntry[]; preparedSnapshot: FunctionSources | undefined; snapshot: FunctionSources | undefined;
   restarts: Map<number, number>; restartTimers: Set<NodeJS.Timeout>; log: LogFn; timeoutMs: number; maxBytes: number;
+  /** Spawns still inside startup; each settles when its worker posts ready, fails or hits the init timeout. */
+  starting: Set<Promise<void>>;
   modules: [string, string[]][]; size: number; slots: (Slot | undefined)[]; closed: boolean;
   constructor(entries: SandboxEntry[], { root, snapshot, workers = 2, timeoutMs = 5000, maxBytes = 1048576, log = () => {} }: SandboxPoolOptions = {}) {
     assert(Number.isInteger(workers) && workers >= 1 && workers <= 32, 'Workers must be 1–32');
@@ -76,7 +78,7 @@ export class SandboxPool {
     assert(Number.isInteger(maxBytes) && maxBytes >= 1 && maxBytes <= 16777216, 'Response limit must be 1–16777216 bytes');
     this.root = root; this.entries = entries; this.preparedSnapshot = snapshot;
     // Consecutive replacement attempts per slot; cleared by a completed invocation.
-    this.restarts = new Map(); this.restartTimers = new Set();
+    this.restarts = new Map(); this.restartTimers = new Set(); this.starting = new Set();
     this.log = log;
     this.timeoutMs = timeoutMs; this.maxBytes = maxBytes;
     const modules = new Map<string, Set<string>>();
@@ -116,9 +118,14 @@ export class SandboxPool {
       const slot: Slot = { worker, ready: false, pending: null };
       this.slots[index] = slot;
       let initialized = false;
+      let settleStartup!: () => void;
+      const startup = new Promise<void>(settle => { settleStartup = settle; });
+      this.starting.add(startup);
+      void startup.then(() => this.starting.delete(startup));
+      // The init timeout is the only path that may terminate a worker still inside startup module evaluation.
       const timer = setTimeout(() => fail(), 5000);
       const fail = () => {
-        clearTimeout(timer);
+        clearTimeout(timer); settleStartup();
         slot.ready = false;
         if (!initialized) reject(new Error('Worker initialization failed'));
         if (slot.pending) {
@@ -131,7 +138,7 @@ export class SandboxPool {
       worker.on('message', (message: FunctionWorkerMessage) => { // trust boundary: the worker's own protocol
         if ('ready' in message && !initialized) {
           this.report('started', index);
-          initialized = true; clearTimeout(timer); slot.ready = true; resolve(); return;
+          initialized = true; clearTimeout(timer); slot.ready = true; settleStartup(); resolve(); return;
         }
         if ('startupError' in message) { fail(); return; }
         if (!('id' in message)) return;
@@ -210,6 +217,10 @@ export class SandboxPool {
       clearTimeout(slot.pending.timer);
       slot.pending.reject(new HttpError(503, 'Runtime shutting down')); slot.pending = null;
     }
+    // Let spawns still in startup reach ready or fail (bounded by the 5 s init timeout) before terminating, so
+    // close() never terminates a worker mid module evaluation (#708). A spawn that settles after `closed` is set
+    // is terminated below like any other slot; none can start, because spawn() refuses once closed.
+    while (this.starting.size) await Promise.all(this.starting);
     await Promise.all(this.slots.map(s => s?.worker.terminate()));
   }
 }
