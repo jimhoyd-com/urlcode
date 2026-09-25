@@ -127,7 +127,8 @@ Each rung's YAML is valid on every rung above it.
 7. **Bounded data and forms.** The `store` extension supplies declared durable
    collections; the `forms` extension supplies declared browser form flows over
    the shared UI kit. Both are trusted operator extensions, not core YAML
-   handlers. Add `auth: true` where a flow or collection is per-account.
+   handlers. Add `auth: {csrf: origin}` where a flow or collection is per-account
+   (a form mount must not use `auth: true`: auth's token mode refuses its POSTs).
    The `form-records` extension composes them when a form should become a
    record its creator can see again and edit: it saves the submission into
    an owned collection and serves the confirmation and a constrained edit
@@ -824,8 +825,10 @@ persist"` finds the `store-crud` recipe. In a site, `urlcode extensions add
 store auth ui` (or `urlcode init DIR --with ui,auth,store`) installs the
 extension with an empty `collections` block and wires `host.mjs`; declare the
 collection and its mount yourself, or add `--example` for the `todos`
-collection and mount with `auth: true`, which makes the collection per-user
-(`ownership: owner`). The store example without `auth`
+collection, its API mount with `auth: {csrf: origin}` and its `/todos` screen
+with `auth: true`, which makes the collection per-user (`ownership: owner`).
+Keep `csrf: origin` on the API mount: the screen's script sends no
+`x-csrf-token`, so `auth: true` there refuses its writes with 403. The store example without `auth`
 refuses until the operator re-runs with `--ack store:public-write`, and its
 collection stays shared. Report anything beyond that recipe (filtering, sorting,
 ownership beyond owner-only records, a database) as a gap. `urlcode context` lists the same built-ins so
@@ -3363,7 +3366,8 @@ The `forms` extension is the browser-flow counterpart: it renders bounded
 declared fields through the `ui` kit, validates URL-encoded submissions with
 its host-supplied CSRF secret, and redirects a successful submission to a
 confirmation page that shows only the submitted fields the flow opts in to. It is a trusted operator extension, needs `ui`, and
-may be mounted with `auth: true` (or `auth: {csrf: origin}`, since it verifies its own token). A flow may declare a
+may be mounted with `auth: {csrf: origin}`, never `auth: true`: it verifies its own token, and auth's default
+token mode would refuse every form POST with 403 because a plain HTML form sends no `x-csrf-token` header. A flow may declare a
 submission budget (`abuse`, when the abuse extension is installed) and a notification (`notify`, through mail). Its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md).
 
@@ -3466,8 +3470,12 @@ the header is absent, so a plain HTML form auth renders can post it.
 embed.
 
 `csrf: origin` drops the token and admits a write on same-origin provenance
-alone: core's same-origin rule (`Origin`, or `Sec-Fetch-Site: same-origin`
-when `Origin` is absent) plus the `SameSite=Strict` `__Host-` session cookie.
+alone: core's [same-origin rule](#site-origins-and-same-origin-checks) with
+`whenAbsent: 'refuse'` (a repeated `Origin`, `Sec-Fetch-Site` or `Referer`,
+or `Sec-Fetch-Site: cross-site`, refuses; then a site `Origin`; with no
+`Origin`, `Sec-Fetch-Site: same-origin` or `none`; with neither, a `Referer`
+whose origin is a site origin; no provenance at all refuses) plus the
+`SameSite=Strict` `__Host-` session cookie.
 Use it only on a mount that verifies its own token (forms, form-records) or
 that accepts JSON only (a store collection):
 
@@ -3890,8 +3898,9 @@ every extension package follows: `package.json` (released with core at core's
 version, exporting `.` and `./extension`), `README.md`/`SECURITY.md`/
 `CHANGELOG.md`/`AGENTS.md`, a `RuntimeExtension` source module,
 `src/extension.ts` (the `defineExtension` definition with `scaffold` and
-`host`), a `urlcode.json` stub and a real integration test, all as placeholders
-to replace. `--from <existing-package>` forks an existing package's file
+`host`), its `urlcode.json` descriptor (exactly what `build:addons` writes from
+that definition, so the root install's prepare step accepts the new package)
+and a real integration test, all as placeholders to replace. `--from <existing-package>` forks an existing package's file
 *shape* (which optional docs it carries, which siblings it requires) as a
 starting point -- never its source code. The tool only creates files; run
 `npm install` and `npm run build:addons` afterwards so the workspace and its
@@ -3951,7 +3960,7 @@ parsing, JSON responses, cookie parsing or origin checks; use these:
 
 | Helper | What it does |
 |---|---|
-| `readBody(request, {accept, maxBytes, maxDepth?})` | Reads a JSON or `application/x-www-form-urlencoded` body. Refuses a repeated `Content-Type` (400), more than `maxBytes` (413, checked first), another media type (415), invalid UTF-8 (400) and, for JSON, nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
+| `readBody(request, {accept, maxBytes, maxDepth?})` | Reads a JSON or `application/x-www-form-urlencoded` body. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), another media type (415), invalid UTF-8 (400) and, for JSON, nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
 | `readFields(request, {fields, patterns?, accept?, maxBytes?, maxFields?, maxValueLength?, limits?})` | A flat set of string fields through `readBody`: only names in `fields` or matching an anchored `patterns` entry, each once, each a string within its length limit. List `csrf` and any challenge token field yourself. The result is frozen. |
 | `jsonResponse(status, value, headers?)` | A JSON answer with `no-store`, `nosniff`, a deny-all CSP and a `strict-origin` referrer policy; a header you pass replaces the default of the same name. |
 | `wantsJson(request)` | Whether `Accept` lists `application/json` or the body is JSON. |
@@ -4571,7 +4580,9 @@ Each extension declares what it needs:
 | `form-records` | `forms`, `store`, `ui` | | |
 
 A sibling add-on is an optional exact peer dependency, never a nested
-dependency, so every add-on is installed once at the top level of the site;
+dependency, so every add-on is installed once at the top level of the site.
+The one required peer is auth's `@jimhoyd/urlcode-audit`, which auth imports
+at runtime, so installing auth alone still brings audit to the top level;
 `urlcode extensions add` installs every `requires` entry with the extension
 that names it. `composeHost` orders the listed extensions by `requires` and by
 each installed `uses` entry (ties keep a stable lexical order) and runs each
