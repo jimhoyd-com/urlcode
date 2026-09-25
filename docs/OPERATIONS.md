@@ -24,8 +24,29 @@ node /opt/urlcode/dist/cli.js serve --project /srv/my-links \
 
 `--origin` defines the public URL seen by functions; proxy Host/X-Forwarded-*
 headers are intentionally not trusted. On a loopback bind the `Host` header is
-also checked against the loopback names and `--origin`
-([host admission](#host-admission-on-a-loopback-bind)). Use a process supervisor that restarts on
+also checked against the loopback names, `--origin` and any `--alias-origin`
+([host admission](#host-admission-on-a-loopback-bind)).
+
+When the same deployment also answers on other origins (an apex and `www`, or a
+second domain), list each with a repeatable `--alias-origin`:
+
+```sh
+node /opt/urlcode/dist/cli.js serve --project /srv/my-links --origin https://links.example.com \
+  --alias-origin https://www.links.example.com --alias-origin https://go.example.net
+```
+
+It is one operator-set, site-wide list, never project YAML. Every extension's
+same-origin check (`mcp`, `forms`, `store`, `auth`, `admin`) admits an alias
+origin exactly as it admits `--origin`; everything that builds an absolute URL
+(redirects, sitemaps, emails, links, HSTS) keeps using `--origin`. Startup
+refuses an entry that is not an `https:` origin (loopback `http:` is allowed),
+that carries a path, query, fragment, credentials or `*`, more than 16 entries,
+or aliases without `--origin`. The same list goes to `validate`, `test`,
+`routes`, `audit` and `benchmark`; the AWS and Vercel handlers take an
+`aliasOrigins` option or `URLCODE_ALIAS_ORIGINS` (comma-separated). See
+[site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
+
+Use a process supervisor that restarts on
 failure and sends SIGTERM for shutdown. On SIGTERM, `/_urlcode/ready` starts
 reporting unhealthy for `--drain-delay-ms` (default `0`, disabled) before the
 listener stops accepting new connections — set this to give a load balancer
@@ -107,13 +128,15 @@ unless it carries exactly one `Host` header naming:
   port (`localhost:3000`; the port may be omitted only when it is 80); or
 - the authority of `--origin`, when set: `--origin https://links.example.com`
   admits `links.example.com` and `links.example.com:443`, and
-  `--origin http://links.example.com:8080` admits only `links.example.com:8080`.
+  `--origin http://links.example.com:8080` admits only `links.example.com:8080`;
+  or
+- the authority of each `--alias-origin`, by the same rule.
 
 Matching is case-insensitive and otherwise exact (no trailing dot, no other
 port). A missing or repeated `Host` is refused, and an absolute-form request
 target must name an admitted authority too. The body is a fixed text and never
 repeats the header; the refusal is logged as an ordinary `request` record with
-status 421. There is no flag or YAML to widen the list.
+status 421. Only `--origin` and `--alias-origin` widen the list; no YAML does.
 
 A reverse proxy on the same machine therefore either forwards the public Host
 (Caddy's default) with `--origin` set to that public origin, or rewrites Host to

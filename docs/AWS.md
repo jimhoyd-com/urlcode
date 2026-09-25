@@ -61,6 +61,12 @@ platform variable naming your domain, so unlike Vercel there is nothing to infer
 from: set it when a custom domain or an API Gateway stage prefix is in play.
 Forwarded headers stay untrusted.
 
+Other origins the same function answers on go in the `aliasOrigins` handler
+option or `URLCODE_ALIAS_ORIGINS` (comma-separated `https:` origins, at most
+16): extensions' same-origin checks admit them, generated URLs do not use them,
+and an invalid entry fails activation. See
+[site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
+
 ## Limits worth knowing before you deploy
 
 | Limit | Consequence |

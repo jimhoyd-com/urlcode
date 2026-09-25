@@ -1,16 +1,24 @@
 // Keeps every add-on's static descriptor true to its code, and writes core's add-on manifest.
 //
 //   node scripts/build-addon-manifest.ts           rewrite extension urlcode.json files (from each built
-//                                                  ./extension definition) and generated artifact data
-//   node scripts/build-addon-manifest.ts --check   fail if any committed file differs from what the code says
+//                                                  ./extension definition), generated artifact data and
+//                                                  dist/addon-catalog.json
+//   node scripts/build-addon-manifest.ts --check   fail if any committed file, or the built dist/addon-catalog.json,
+//                                                  differs from what the code says
 //
 // `developmentManifest()` is the dist/addons.json that `npm run build` writes: every add-on at its local source
 // (`file:` directory, no integrity), so `urlcode extensions add` works from a checkout. The release build
 // (scripts/release-pack.ts) replaces it with release URLs and sha512 pins before core is packed.
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+//
+// `addonCatalog()` is dist/addon-catalog.json (#721): the release-wide agent catalog built from every add-on's
+// urlcode.json descriptor. It has no URLs, so a development build and a release carry the same file; release-pack
+// checks the one in core's tarball against the descriptors inside the packed add-on tarballs.
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { addons, repositoryRoot } from './workspaces.ts';
+import type { Addon } from './workspaces.ts';
+import { buildAddonCatalog } from '../packages/core/src/addon-manifest.ts';
 
 const render = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
 /** Artifact files generated from an extension's descriptor, so the two can never disagree. */
@@ -36,7 +44,19 @@ export async function expectedFiles(root = repositoryRoot): Promise<Map<string, 
     if (!value) throw new Error(`${addon.name}/${path} is generated from ${source.from}'s ${source.field}, which is missing`);
     files.set(join(addon.directory, path), render(value));
   }
+  // The catalog follows the descriptors the code produces, so a stale build is drift even before urlcode.json is rewritten.
+  files.set(join(root, 'dist', 'addon-catalog.json'), await addonCatalog(root, addon => files.get(join(addon.directory, 'urlcode.json'))));
   return files;
+}
+
+/** dist/addon-catalog.json from every add-on's descriptor; `descriptor` overrides the committed urlcode.json text. */
+export async function addonCatalog(root = repositoryRoot, descriptor: (addon: Addon) => string | undefined = () => undefined): Promise<string> {
+  const version = (JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { version: string }).version;
+  const sources = await Promise.all((await addons(root)).map(async addon => {
+    const path = join(addon.directory, 'urlcode.json');
+    return { descriptor: JSON.parse(descriptor(addon) ?? await readFile(path, 'utf8')) as unknown, package: addon.packageName, version: addon.version, source: path };
+  }));
+  return render(buildAddonCatalog(version, sources));
 }
 
 export async function developmentManifest(root = repositoryRoot): Promise<string> {
@@ -45,12 +65,19 @@ export async function developmentManifest(root = repositoryRoot): Promise<string
   return render({ format: 1, version, addons: Object.fromEntries(entries) });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const check = process.argv.includes('--check'), stale: string[] = [];
-  for (const [path, content] of await expectedFiles()) {
+/** Paths whose content differed from what the code says; each is rewritten unless `check`. */
+export async function syncExpectedFiles(root = repositoryRoot, { check = false }: { check?: boolean } = {}): Promise<string[]> {
+  const stale: string[] = [];
+  for (const [path, content] of await expectedFiles(root)) {
     const current = await readFile(path, 'utf8').catch(() => '');
     if (current === content) continue;
-    if (check) stale.push(path); else await writeFile(path, content);
+    stale.push(path);
+    if (!check) { await mkdir(dirname(path), { recursive: true }); await writeFile(path, content); }
   }
-  if (stale.length) { process.stderr.write(`Out of date (run npm run build:addons):\n${stale.map(path => `  ${path}`).join('\n')}\n`); process.exit(1); }
+  return stale;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const check = process.argv.includes('--check'), stale = await syncExpectedFiles(repositoryRoot, { check });
+  if (check && stale.length) { process.stderr.write(`Out of date (run npm run build:addons):\n${stale.map(path => `  ${path}`).join('\n')}\n`); process.exit(1); }
 }

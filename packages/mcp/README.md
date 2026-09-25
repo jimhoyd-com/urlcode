@@ -286,10 +286,13 @@ extension has no identity or authorization model of its own.
   `400` before dispatch. `initialize` itself negotiates from
   `params.protocolVersion` and ignores the header.
 - `Origin` validation against DNS rebinding, as the Streamable HTTP transport
-  requires: a request whose `Origin` header is present and is not exactly the
-  site's canonical origin (`--origin`) answers HTTP `403` before its body is
-  parsed. A request with no `Origin` (non-browser MCP clients send none) is
-  admitted. There is no per-server allowlist of other origins.
+  requires: a request whose `Origin` header is present and is not one of the
+  site's origins, the canonical `--origin` or an operator `--alias-origin`
+  (matched by core's `isSiteOrigin`, see
+  [site origins](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks)),
+  answers HTTP `403` before its body is parsed. A request with no `Origin`
+  (non-browser MCP clients send none) is admitted. The alias list is
+  site-wide and operator-set; there is no per-server or YAML allowlist.
 - Standard JSON-RPC error codes: `-32700` parse error, `-32600` invalid
   request (including a rejected batch array), `-32601` method not found,
   `-32602` invalid params (unknown tool/prompt name, a schema-failing

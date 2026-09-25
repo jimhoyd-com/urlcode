@@ -1,4 +1,4 @@
-import { extensionHookContext, extensionHookReferenceSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
+import { extensionHookContext, extensionHookReferenceSchema, isSiteOrigin, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { assertBodySchema, bodySchemaIssues, bodySchemaLine } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
@@ -589,10 +589,11 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           const server = request.mount === null ? undefined : byMount.get(request.mount);
           if (!server || request.path !== request.mount) return textError(404, 'Not found');
           // DNS-rebinding defense the Streamable HTTP transport requires: a present Origin must be
-          // exactly the site's canonical origin (the same same-origin idiom forms and store use);
-          // an absent one (non-browser MCP clients send none) is admitted. Refused before parsing.
+          // one of the site's origins, the canonical one or an operator alias origin (the same
+          // core match forms and store use); an absent one (non-browser MCP clients send none) is
+          // admitted. Refused before parsing.
           const from = request.headers.get('origin');
-          if (from !== null && from !== context.origin) return textError(403, 'Forbidden');
+          if (from !== null && !isSiteOrigin(context, from)) return textError(403, 'Forbidden');
           if (request.method === 'HEAD') return { status: 200, headers: [] };
           // The Streamable HTTP transport also defines a GET stream for server-initiated messages;
           // this extension does not implement it (see README "Not implemented"), and the

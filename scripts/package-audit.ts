@@ -91,9 +91,14 @@ export const budgets: Record<string, Budget> = {
     // packed archive at about 646 KiB (661714 bytes on Node 26), under 4 KiB
     // from the 650 KiB budget and inside the ~2 KiB npm gzip variance noted
     // above, so packed is raised to 660 KiB as well.
+    //
+    // Entries raised from 450 to 460: the operator alias-origin list (#717)
+    // adds one runtime module (dist/site-origins.js), taking the archive to
+    // 451 files; the other ten keep headroom for the next small module
+    // without loosening the allowlist or size checks.
     packed: 660 * 1024,
     unpacked: 2700 * 1024,
-    entries: 450,
+    entries: 460,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
@@ -248,10 +253,11 @@ async function auditOne(target: string): Promise<void> {
     assert.deepEqual(ignored, [], `Gitignored paths present in packed release (nondeterministic local build artifacts, see #608):\n${ignored.join('\n')}`);
 
     const shipped = new Set(pack.files.map(file => file.path));
-    const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {})]
+    // Core also carries its add-on pins and the release-wide add-on agent catalog beside them (#721).
+    const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {}), ...(kind === 'core' ? ['dist/addons.json', 'dist/addon-catalog.json'] : [])]
       .map(path => path.replace(/^\.\//, ''));
     const missing = required.filter(path => !shipped.has(path));
-    assert.deepEqual(missing, [], `Package exports point to missing files:\n${missing.join('\n')}`);
+    assert.deepEqual(missing, [], `Package exports or required files are missing:\n${missing.join('\n')}`);
     for (const peer of budget.optionalPeers ?? []) {
       assert(!manifest.dependencies?.[peer], `${peer} must not be a default dependency`);
       assert(manifest.peerDependencies?.[peer], `${peer} needs a declared compatibility range`);

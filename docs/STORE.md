@@ -100,8 +100,10 @@ A hand-authored public mount, as in the YAML above, stays supported.
 
 Every record carries a server-assigned UUID `id`, `createdAt` and `updatedAt`
 (ISO 8601). Clients cannot set them. Writes need `Content-Type:
-application/json` (`415` otherwise); a cross-origin `Origin` header on a write
-is refused (`403`). Errors are `{error: {code, message, fields?}}` where
+application/json` (`415` otherwise); an `Origin` header on a write that is
+neither `--origin` nor an operator
+[alias origin](EXTENSIONS.md#site-origins-and-same-origin-checks) is refused
+(`403`). Errors are `{error: {code, message, fields?}}` where
 `fields` maps field names to fixed messages; submitted values are never echoed.
 Status codes: `400` invalid record or JSON, `404`, `405` with `Allow`, `409`
 `collection_full`, `413` body or record too large, `415`, `503` when the disk

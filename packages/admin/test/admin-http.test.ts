@@ -76,3 +76,26 @@ test('admin console uses explicit permissions, masks identifiers and rejects for
     assert.equal((await request('/account/logout', impersonationToken, { csrf: account.csrf })).status, 200);
     assert.ok(bootstrap);
 });
+test('an operator alias origin passes the admin same-origin mutation check; an unlisted origin is still refused', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-alias-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const project = join(root, 'project');
+    await mkdir(project);
+    const blocks = kitSetup(project, '');
+    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ...blocks.extensions, auth: { version: '1', config: { registration: 'open' } }, admin: { version: '1', config: {} } }, routes: { ...blocks.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } } }));
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member' });
+    await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
+    const member = await service.register({ email: 'member@example.test', password: 'correct horse battery staple' });
+    const csrfKey = randomBytes(32), projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
+    const server = await startServer({ project, origin: 'https://example.test', aliasOrigins: ['https://admin.example.test'], port: 0, extensions: [...registrations, authExtension({ service, csrfKey, projectSha256, ui: ui! }), adminExtension({ service, csrfKey, projectSha256, ui: ui! })], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
+    const owner = await service.login({ email: 'owner@example.test', password: 'correct horse battery staple' });
+    const post = (body: Record<string, string>, origin: string) => fetch(`http://127.0.0.1:${server.address.port}/admin/users/status`, { method: 'POST', headers: { accept: 'application/json', cookie: `__Host-urlcode-session=${owner.token}`, 'content-type': 'application/json', origin }, body: JSON.stringify(body), redirect: 'manual' });
+    const { csrf } = await (await fetch(`http://127.0.0.1:${server.address.port}/admin/users`, { headers: { accept: 'application/json', cookie: `__Host-urlcode-session=${owner.token}` } })).json() as { csrf: string };
+    const reason = { accountId: member.user.id, status: 'locked', reason: 'test', csrf };
+    assert.equal((await post(reason, 'https://evil.test')).status, 403);
+    assert.equal((await post(reason, 'https://www.example.test')).status, 403, 'an unlisted sibling origin is refused');
+    assert.equal((await service.getUser(member.user.id))?.status, 'active');
+    assert.equal((await post(reason, 'https://admin.example.test')).status, 200);
+    assert.equal((await service.getUser(member.user.id))?.status, 'locked');
+});

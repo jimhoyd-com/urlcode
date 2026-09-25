@@ -5,6 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readdir, lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative as relativePath, resolve as resolvePath, sep as pathSep } from 'node:path';
+import { siteOrigins } from './site-origins.ts';
 import { createRuntime } from './runtime.ts';
 import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.ts';
 import { createJsonLogger } from './logging.ts';
@@ -296,7 +297,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   assert(listening !== null && typeof listening === 'object', 'Server has no address');
   const address: AddressInfo = listening;
   // Like `address`, bound before any request can arrive; undefined (no check) for a non-loopback bind.
-  const hostAdmitted = loopbackHostCheck(address, origin);
+  // Alias origins were validated by createRuntime above; each names an authority the site is served under.
+  const hostAdmitted = loopbackHostCheck(address, siteOrigins(origin, runtimeOptions.aliasOrigins));
   async function reload(): Promise<boolean> {
     if (shuttingDown || reloading) return false;
     reloading = true;

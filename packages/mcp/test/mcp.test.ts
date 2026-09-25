@@ -13,7 +13,7 @@ const origin = 'https://mcp.example.test';
 type OnToolError = (error: unknown, info: { server: string; tool: string; kind: 'tool' | 'resource' | 'prompt' }) => void;
 
 /** Boots a server for one project directory, whose files a caller writes before calling `start()`. */
-async function project(t: test.TestContext) {
+async function project(t: test.TestContext, aliasOrigins?: string[]) {
   const root = await mkdtemp(join(tmpdir(), 'mcp-test-')); t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, 'app'); await mkdir(dir);
   const write = (name: string, content: string) => writeFile(join(dir, name), content);
@@ -21,7 +21,7 @@ async function project(t: test.TestContext) {
     const mcp = { version: '1' as const, config: { servers: { default: spec } } };
     await write('urlcode.yaml', JSON.stringify({ version: '1', extensions: { mcp }, routes: { [`${spec.mount}/*`]: { extension: 'mcp', methods: ['POST', 'HEAD'] } } }));
     const projectSha256 = await inspectExtensionRevision(dir);
-    const app = await startServer({ project: dir, origin, port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}), ...(onToolCall ? { onToolCall } : {}) })] });
+    const app = await startServer({ project: dir, origin, ...(aliasOrigins ? { aliasOrigins } : {}), port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}), ...(onToolCall ? { onToolCall } : {}) })] });
     t.after(() => app.close());
     const call = (body: unknown, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}${spec.mount}`, {
       method: 'POST', body: JSON.stringify(body), ...init, headers: { 'content-type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
@@ -31,8 +31,8 @@ async function project(t: test.TestContext) {
   return { dir, write, start };
 }
 
-async function boot(t: test.TestContext, onToolError?: OnToolError) {
-  const p = await project(t);
+async function boot(t: test.TestContext, onToolError?: OnToolError, aliasOrigins?: string[]) {
+  const p = await project(t, aliasOrigins);
   await p.write('echo.mjs', 'export default function echo(input) { return { echoed: input.message }; }\n');
   await p.write('boom.mjs', 'export default function boom() { throw new Error("internal detail that must never leak"); }\n');
   return p.start({
@@ -403,6 +403,17 @@ test('Origin: a foreign Origin is refused with 403 before parsing; the site orig
 
   const absent = await call(ping);
   assert.equal(absent.status, 200);
+});
+
+test('Origin: an operator alias origin is admitted like the canonical one; an unlisted origin is still refused', async t => {
+  const { call } = await boot(t, undefined, ['https://www.mcp.example.test', 'https://mcp.example.test:8443']);
+  const ping = { jsonrpc: '2.0', id: 1, method: 'ping' };
+  for (const admitted of [origin, 'https://www.mcp.example.test', 'https://mcp.example.test:8443', 'https://WWW.mcp.example.test:443']) {
+    assert.equal((await call(ping, { headers: { origin: admitted } })).status, 200, admitted);
+  }
+  for (const refused of ['https://attacker.example', 'http://www.mcp.example.test', 'https://api.mcp.example.test', 'null']) {
+    assert.equal((await call(ping, { headers: { origin: refused } })).status, 403, refused);
+  }
 });
 
 test('MCP-Protocol-Version: an unsupported header on a non-initialize message is refused with 400; a missing or supported one is accepted; initialize ignores it', async t => {

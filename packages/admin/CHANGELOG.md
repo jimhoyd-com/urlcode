@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Console mutations accept the operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`) through auth's same-origin check; unlisted origins are still refused (#717).
+
 `urlcode extensions add` now installs only the capability, and `--example` writes demos (#711). admin's scaffold was already capability-only (the `/admin/*` console) and ships no example; its notes now say that auth's `/account` mount is a default, changed with `admin({authMount})`.
 
 Project hooks (`beforeRoleChange`, `onRegistrationApproved`, `onAccountStatusChanged`) receive core's generic hook context, `{requestId, env}`, as a second argument (#678).

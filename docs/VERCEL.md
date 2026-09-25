@@ -68,6 +68,12 @@ platform-set, not client-supplied — forwarded headers stay untrusted here as
 everywhere else. Set `URLCODE_ORIGIN` explicitly when you serve a custom domain
 and want it in generated URLs.
 
+If the deployment also answers on other origins, list them in the
+`aliasOrigins` option or `URLCODE_ALIAS_ORIGINS` (comma-separated `https:`
+origins, at most 16). Extensions' same-origin checks admit them beside the
+canonical origin; generated URLs keep the canonical one. An invalid entry fails
+activation. See [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
+
 ## What this adapter does not do
 
 | Not supported | Why |

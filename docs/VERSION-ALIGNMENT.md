@@ -28,6 +28,13 @@ through the packages' `file:../..` links (`check-workspace-links.ts`), and
 `urlcode extensions add` at the local workspaces. Core never imports an
 extension package.
 
+Beside it, `dist/addon-catalog.json` is the same release's agent discovery
+catalog: every add-on's name, package, version, description, `requires` and
+descriptor agent references, built from the add-on descriptors and identical
+in a development build and the release. Every entry carries core's version.
+It pins nothing and installs nothing; see
+[the release-wide agent catalog](EXTENSIONS.md#the-release-wide-agent-catalog).
+
 <!-- urlcode-current-version:start -->
 Core `0.6.1` is published to npm, GitHub Releases and Homebrew. For a new
 composed site:

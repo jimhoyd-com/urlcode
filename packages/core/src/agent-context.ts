@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {parseYaml,validateDocument} from './config.ts';
 import {listExamples} from './examples.ts';
 import {shippedSkillFiles as skills} from './shipped-skills.ts';
-import {readAddonManifest} from './addon-manifest.ts';
+import {readAddonCatalog,readAddonManifest} from './addon-manifest.ts';
 import {errorRules} from './explain-error-rules.ts';
 
 /**
@@ -85,6 +85,14 @@ export async function listAgentCatalog() {
     })),
   };
 }
+
+/**
+ * The release-wide add-on agent catalog pinned to this core (`dist/addon-catalog.json`, #721): every signed extension
+ * and artifact of the release with its descriptor's agent tooling. A hosted service can read it from its pinned core
+ * without installing or importing any add-on. It is discovery, not evidence that a project installed or activated
+ * anything; installed components stay with the local project MCP.
+ */
+export {readAddonCatalog};
 
 /** Deterministic lexical search over a deliberately small, agent-facing corpus. */
 export async function searchDocs(query:string) {

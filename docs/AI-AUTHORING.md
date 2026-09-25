@@ -68,6 +68,12 @@ skills and LLM tooling. It complements the project-local MCP server; see
 [hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp) for its authenticated
 remote connection details. Its machine-readable entry point is
 [`https://urlcode.ai/llms.txt`](https://urlcode.ai/llms.txt).
+Every add-on's agent references for a release are in core's
+[release-wide add-on catalog](EXTENSIONS.md#the-release-wide-agent-catalog)
+(MCP `get_release_addon_catalog`, `readAddonCatalog()`), readable without
+installing any add-on. Treat it as discovery only: whether this project has an
+add-on installed comes from `get_addon_agent_tooling`,
+`get_extension_artifacts` or `urlcode extensions list`.
 
 Follow [organization and readability practices](BEST-PRACTICES.md): preserve local
 conventions, use clear names, keep middleware focused and avoid needless layers.

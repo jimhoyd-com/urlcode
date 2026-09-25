@@ -123,7 +123,7 @@ export function isLoopbackAddress(address: string): boolean {
  * proceed: exactly one Host header naming a loopback alias (or the bound
  * literal) on the bound port, or the configured public origin's authority.
  */
-export function loopbackHostCheck(bound: { address: string; port: number }, origin?: string): ((rawHeaders: string[], target: string) => boolean) | undefined {
+export function loopbackHostCheck(bound: { address: string; port: number }, origin?: string | readonly string[]): ((rawHeaders: string[], target: string) => boolean) | undefined {
   if (!isLoopbackAddress(bound.address)) return undefined;
   const allowed = new Set<string>();
   const literal = bound.address.includes(':') ? `[${bound.address.toLowerCase()}]` : bound.address;
@@ -132,8 +132,10 @@ export function loopbackHostCheck(bound: { address: string; port: number }, orig
     // A Host without a port means the scheme's default; the Node server speaks plain HTTP.
     if (bound.port === 80) allowed.add(name);
   }
-  if (origin) {
-    const url = new URL(origin);
+  // The canonical origin and every operator alias origin name an authority this site is served under.
+  for (const each of typeof origin === 'string' ? [origin] : origin ?? []) {
+    if (!each) continue;
+    const url = new URL(each);
     if (url.port) allowed.add(`${url.hostname}:${url.port}`);
     else { allowed.add(url.hostname); allowed.add(`${url.hostname}:${url.protocol === 'https:' ? 443 : 80}`); }
   }

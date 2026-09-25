@@ -59,6 +59,12 @@ project-aware `urlcode mcp` server. Its machine-readable entry point is
   mitigation, distributed rate limits, managed TLS), say so and point at the
   operator-responsibility table in `docs/RESILIENCE.md` rather than inventing
   a runtime feature that would handle it.
+- A site answering on more than one origin (apex and `www`, a second domain)
+  keeps one canonical `--origin` for generated URLs and lists every other one
+  with a repeatable `--alias-origin` (at most 16 `https:` origins; hosted
+  adapters read `URLCODE_ALIAS_ORIGINS`). It is operator configuration, never
+  project YAML; extensions' same-origin checks admit those origins
+  (`docs/OPERATIONS.md`, process deployment).
 - Distinguish local checks (`validate`, `test`, `audit`, `benchmark` — all
   activate a local snapshot only) from `verify-deployment` (probes a live
   target over HTTP, read-only, no credential, no redirect following). Do not

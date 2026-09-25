@@ -61,6 +61,11 @@ The tooling API consolidates authoring operations without starting a runtime:
   artifacts into core prose: inspect an installed extension through
   `get_extensions`, and an installed inert artifact through
   `get_extension_artifacts`/`get_extension_artifact`.
+- `readAddonCatalog()` (from `@jimhoyd/urlcode/agent-context` and
+  `@jimhoyd/urlcode`) returns the release-wide add-on agent catalog, MCP
+  `get_release_addon_catalog`: each add-on's package, version, description,
+  `requires` and descriptor agent references, read from core's own
+  `dist/addon-catalog.json` without importing or installing any add-on.
 - `inspectExtensions({project, hostFile?})` reports each operator-registered
   extension's name, contract version, targets, credential headers, configuration
   and policy JSON Schemas, machine-readable project hook contracts, whether the project declares it, whether its revision
@@ -312,7 +317,8 @@ operator-selected root on stdio. Its canonical, verb-first tools, in the order
 call), are `get_context`, `inspect`, `validate`, `run_tests`,
 `list_capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
 `preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
-`search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`, `search_docs`,
+`search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`,
+`get_release_addon_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
 `get_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
 `urlcode review`). `run_tests` runs `tests/requests.json` the way `urlcode
@@ -333,14 +339,22 @@ documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
 `urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
-The `list_skills`, `get_skill`, `list_agent_catalog`, `search_docs`, `get_example`, `validate_yaml` and
+The `list_skills`, `get_skill`, `list_agent_catalog`, `get_release_addon_catalog`, `search_docs`, `get_example`, `validate_yaml` and
 `explain_error` tools are thin wrappers over `@jimhoyd/urlcode/agent-context`
-(`listSkills`, `getSkill`, `listAgentCatalog`, `searchDocs`, `getExample`, `validateYaml`,
+(`listSkills`, `getSkill`, `listAgentCatalog`, `readAddonCatalog`, `searchDocs`, `getExample`, `validateYaml`,
 `explainError`), a public package export — not an internal detail of this
 server. A host building its own MCP server, or any other agent-tooling
 integration, can import that module directly instead of reimplementing this
 behavior or reaching into `dist/agent-context.js`; see
 [TypeScript](TYPESCRIPT.md).
+`get_release_addon_catalog` returns the release-wide add-on catalog shipped in
+core's `dist/addon-catalog.json`: every extension and artifact of this core's
+release with its package, version, description, `requires` and, when its
+descriptor declares one, its agent references (each `path` is relative to that
+add-on's package). It is [release-wide discovery](EXTENSIONS.md#the-release-wide-agent-catalog),
+not evidence that the project installed or activated an add-on; installed
+components come from `get_addon_agent_tooling`, `get_extension_artifacts` and
+`get_extensions`. Reading it imports, downloads and installs nothing.
 `get_extension_artifacts` lists the artifacts installed in the site around the
 project (`<site>/node_modules`), checking each is inert and matches core's pin,
 and returns its version, status and files. `get_extension_artifact` accepts only
@@ -494,8 +508,8 @@ shared skill catalog or LLM tools are useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-three read
-tools above (thirty-four with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-four read
+tools above (thirty-five with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 

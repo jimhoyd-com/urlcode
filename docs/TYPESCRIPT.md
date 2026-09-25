@@ -84,7 +84,7 @@ release cannot ship a declaration that does not resolve.
   const result = await pool.execute({ entry: entries[0] }, request, context, undefined);
   await pool.close();
   ```
-- `@jimhoyd/urlcode/agent-context`: `listSkills`, `getSkill`, `listAgentCatalog`, `searchDocs`,
+- `@jimhoyd/urlcode/agent-context`: `listSkills`, `getSkill`, `listAgentCatalog`, `readAddonCatalog`, `searchDocs`,
   `getExample`, `validateYaml`, `explainError`. Deterministic, package-owned
   agent tooling: bundled-skill metadata, lexical search over the fixed docs
   corpus, supplied-YAML syntax/schema validation and short remediation
@@ -140,6 +140,16 @@ topic-specific documentation. An extension's detailed authoring contract is
 available only through a local project MCP session with its operator host, and
 an artifact's members only after local pin verification; a hosted catalog must
 not imply that either component is installed or activated for a project.
+
+`readAddonCatalog()` (also exported from `@jimhoyd/urlcode`, with the
+`AddonCatalog` type) returns the release-wide add-on agent catalog that ships
+beside `dist/addons.json`: every extension and artifact of this core's release
+with its package, version, description, `requires` and descriptor agent
+references. It reads that one JSON file and never imports, downloads, installs
+or activates an add-on, so a hosted service can serve complete agent metadata
+from its pinned core alone. Like `listAgentCatalog()`, it is release-wide
+discovery, not evidence that a project installed anything; see
+[extensions](EXTENSIONS.md#the-release-wide-agent-catalog).
 
 ## How `dist/` is built, and why it is the same JavaScript
 

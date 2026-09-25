@@ -13,14 +13,14 @@ const origin = 'https://store.example.test';
 const todos = { mount: '/api/todos', fields: { title: { type: 'string', required: true, minLength: 1, maxLength: 20 }, done: { type: 'boolean', default: false }, priority: { type: 'integer', minimum: 1, maximum: 5 }, kind: { type: 'string', enum: ['a', 'b'] } }, maxRecords: 3, maxRecordBytes: 512 };
 const json = { 'content-type': 'application/json' };
 
-async function boot(t: TestContext, collection: object = todos, extraRoutes: Record<string, unknown> = {}, extraConfig: Record<string, unknown> = {}) {
+async function boot(t: TestContext, collection: object = todos, extraRoutes: Record<string, unknown> = {}, extraConfig: Record<string, unknown> = {}, aliasOrigins?: string[]) {
   const root = await mkdtemp(join(tmpdir(), 'store-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'), data = join(root, 'data');
   await mkdir(project);
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: collection }, ...extraConfig } } }, routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] }, ...extraRoutes } }));
   const projectSha256 = await inspectExtensionRevision(project);
-  const start = () => startServer({ project, origin, port: 0, log: () => {}, extensions: [storeExtension({ directory: data, projectSha256 })] });
+  const start = () => startServer({ project, origin, ...(aliasOrigins ? { aliasOrigins } : {}), port: 0, log: () => {}, extensions: [storeExtension({ directory: data, projectSha256 })] });
   const app = await start();
   let open = true;
   t.after(async () => { if (open) await app.close(); });
@@ -108,6 +108,16 @@ test('refuses cross-origin writes and honours readOnly', async t => {
   const ro = await boot(t, { ...todos, readOnly: true });
   assert.equal((await ro.call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'x' }) })).status, 405);
   assert.equal((await ro.call('/api/todos')).status, 200);
+});
+
+test('admits writes from an operator alias origin and still refuses an unlisted origin', async t => {
+  const { call } = await boot(t, todos, {}, {}, ['https://www.store.example.test']);
+  const write = (from: string) => call('/api/todos', { method: 'POST', headers: { ...json, origin: from }, body: JSON.stringify({ title: 'x' }) });
+  assert.equal((await write('https://www.store.example.test')).status, 201, 'the alias origin is allowed');
+  assert.equal((await write(origin)).status, 201, 'the canonical origin is still allowed');
+  const refused = await write('https://evil.example');
+  assert.equal(refused.status, 403);
+  assert.equal(((await refused.json()) as { error: { code: string } }).error.code, 'forbidden_origin');
 });
 
 test('keeps declared keys, increments and idempotency claims durable for short links and webhook-style mutations', async t => {

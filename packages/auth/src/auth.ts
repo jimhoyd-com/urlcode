@@ -144,7 +144,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
             // request that happens to reach it. `sandbox: true` is rejected
             // inside loadLifecycleHooks, explicitly, not silently ignored.
             const hooks: LifecycleHooks = await loadLifecycleHooks(config.hooks as LifecycleHooksConfig | undefined, context.root);
-            const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, csrfKey: options.csrfKey }), service = options.service, registrationMode = String(config.registration || 'off'), registration = registrationMode === 'open';
+            const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, origins: context.origins, csrfKey: options.csrfKey }), service = options.service, registrationMode = String(config.registration || 'off'), registration = registrationMode === 'open';
             // The runtime activated `ui` before auth, but its kit is read per request, never captured at activation.
             const source = () => options.presentation ?? options.ui.kit.presentation;
             const lazyPresentation: Presentation = { get locales() { return source().locales; }, get defaultLocale() { return source().defaultLocale; }, get english() { return source().english; }, resolve: preferences => source().resolve(preferences), coverage: locale => source().coverage(locale) };

@@ -32,7 +32,7 @@ reimplemented) and a trusted project handler loaded the same way as other
 extension hooks. The extension owns JSON-RPC 2.0 framing, protocol version
 negotiation, exact request-id round-tripping and
 `initialize`/`ping`/`tools/list`/`tools/call` dispatch and error codes, and
-it refuses a foreign `Origin` (403) and an unsupported `MCP-Protocol-Version`
+it refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks)) and an unsupported `MCP-Protocol-Version`
 (400) before dispatch; project YAML never carries JSON-RPC mechanics. Clients
 connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
 mounted with `auth: true`. See the [mcp package](../packages/mcp/README.md).
@@ -174,7 +174,9 @@ in the revision. Changing them requires an explicit operator reapproval.
 Registrations provide a name, contract version, target list, JSON configuration
 schema, optional policy schema, an optional declared `cacheSensitive` (below)
 and activation factory. Activation receives the
-canonical operator origin, target, revision and mount bases. Its instance handles
+canonical operator origin, the operator's full list of
+[site origins](#site-origins-and-same-origin-checks), target, revision and mount
+bases. Its instance handles
 bounded requests and, when named in a route's policies, gates the request via
 `authorize`, wraps the rest of the pipeline via `middleware`, or both (see
 [Wrapping a route](#wrapping-a-route-extension-middleware) above). Missing
@@ -471,6 +473,52 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    policies. It closes resources it owns.
 6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
+7. Decides whether a request is same-origin with `isSiteOrigin(context, value)`
+   from `@jimhoyd/urlcode/extensions`, never by comparing against
+   `context.origin` itself, so an operator's alias origins are honoured the same
+   way everywhere ([site origins](#site-origins-and-same-origin-checks)).
+
+### Site origins and same-origin checks
+
+A site can be served from more than one origin: an apex and a `www` host, or a
+second domain in front of the same deployment. The operator sets that as one
+site-wide list, never in project YAML (issue #717):
+
+| Where | How |
+|---|---|
+| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit`, `benchmark` | `--alias-origin https://www.site.example`, repeated once per origin, beside `--origin` |
+| `createRuntime`, `startServer`, `runProjectTests` | `aliasOrigins: ['https://www.site.example']` beside `origin` |
+| AWS and Vercel handlers | the `aliasOrigins` handler option, otherwise `URLCODE_ALIAS_ORIGINS` (comma-separated) beside `URLCODE_ORIGIN` |
+
+Core validates the list before it loads the project, and refuses to start with a
+`ConfigError` (code `invalid-alias-origin`) that names the bad entry. Each entry
+must be an absolute `https:` origin (scheme, host and optional port, no path,
+query, fragment, credentials or `*` wildcard); `http:` is accepted only for
+`localhost`, `127.0.0.1` and `[::1]`. At most 16 entries are allowed, a
+canonical `--origin` is required beside them, and entries are serialized
+(scheme and host lower-cased, a default port dropped) and deduplicated. The
+canonical origin is always a site origin; listing it again is harmless.
+
+An extension's activation context carries both:
+
+- `origin`: the canonical origin, the only one to build absolute URLs,
+  redirects, email links, CSRF bindings and passkey relying-party checks from;
+- `origins`: the canonical origin first, then the alias origins, frozen.
+  (It is optional in the type only so a hand-built activation in a test still
+  means the canonical origin alone; the runtime always sets it.)
+
+`isSiteOrigin(context, value)` is the one match every extension uses for an
+`Origin` header, or for the origin of a `Referer`: the value must be a bare
+origin and matches when its serialized form is one of `context.origins`, so
+case and an explicit default port do not matter. `null`, a missing value, a
+different scheme or port, and a sibling subdomain never match. What an extension
+does when a request has no `Origin` stays its own documented rule. The
+first-party checks that use it are `mcp` (a present foreign `Origin` is 403),
+`forms` (`Origin`, then `Sec-Fetch-Site`, then `Referer`), `store` (JSON writes
+with a foreign `Origin` are 403) and the `auth` and `admin` CSRF check (which
+also still requires `Origin`). On a loopback bind the server's
+[host admission](OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
+alias authority too.
 
 Every extension also follows the
 [generic add-on authoring rules](#generic-add-on-authoring-rules).
@@ -611,7 +659,7 @@ Add-ons are versioned in lockstep with core. Only core is published to npm;
 each add-on is released as a tarball on the same GitHub Release as core. The
 release build writes `addons.json` into core's own `dist/`: for every add-on its
 name, kind, `requires`, download URL and sha512 integrity. That file is the
-only catalog. Trust in core's npm provenance therefore extends to every add-on
+only install catalog. Trust in core's npm provenance therefore extends to every add-on
 it installs, and there is nothing else to verify, cache or lock: the site's
 ordinary `package-lock.json` records each tarball, and the add-on commands
 check it against core's pin.
@@ -626,6 +674,51 @@ The first-party add-ons are:
 
 `urlcode extensions available` and `urlcode artifacts available` list what the
 running core pins.
+
+### The release-wide agent catalog
+
+Beside `addons.json`, core's `dist/` carries `addon-catalog.json`: agent
+discovery metadata for every extension and artifact of the same release, built
+from each add-on's `urlcode.json` descriptor. Each entry has the add-on's
+`name`, `kind`, `package`, `version`, `description`, `requires` and, when the
+descriptor declares one, its `agent` block (a description and references whose
+`path` is relative to that add-on's package):
+
+```json
+{
+  "format": 1,
+  "scope": "release",
+  "version": "<core version>",
+  "addons": [
+    {
+      "name": "store-schema",
+      "kind": "artifact",
+      "package": "@jimhoyd/urlcode-store-schema",
+      "version": "<core version>",
+      "description": "…",
+      "requires": [],
+      "agent": { "description": "…", "references": [{ "name": "configuration schema", "description": "…", "path": "schemas/config.json" }] }
+    }
+  ]
+}
+```
+
+It is metadata only: no URL, integrity, schema or code. `npm run build` writes
+it, `npm run build:addons` refreshes it with the descriptors, and
+`node scripts/build-addon-manifest.ts --check` (part of `npm run verify`) fails
+when it differs from what the add-ons' code and descriptors say. The release
+build refuses a core tarball whose catalog differs from the descriptors inside
+the add-on tarballs it pins. `readAddonCatalog()` (`@jimhoyd/urlcode` and
+`@jimhoyd/urlcode/agent-context`) and MCP `get_release_addon_catalog` return it;
+reading it imports, downloads, installs and activates nothing, so a hosted
+authoring service can present every add-on's agent metadata from its pinned
+core without installing the add-ons.
+
+The catalog is release-wide discovery. An add-on appearing in it is not
+evidence that a project installed or activated it. What a project has installed
+stays a local concern: MCP `get_addon_agent_tooling`, `get_extension_artifacts`
+and, with the operator host, `get_extensions`. The descriptor does not record
+whether an extension ships an `--example`; the catalog does not either.
 
 ### The site layout
 
