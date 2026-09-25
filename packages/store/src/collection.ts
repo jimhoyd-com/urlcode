@@ -224,14 +224,24 @@ export class Collection {
     this.idempotency = retained as string[];
   }
 
-  /** Validates caller input against the field schema. `full` applies defaults and required checks. */
-  private check(input: Record<string, unknown>, full: boolean): StoredRecord {
+  /**
+   * Validates caller input against the field schema. `full` applies defaults and required checks. With `unset` (a
+   * partial update only), a `null` value asks to remove that field: allowed for an optional field and collected into
+   * `unset`, refused for a required field and for an increment field (whose counter needs a number).
+   */
+  private check(input: Record<string, unknown>, full: boolean, unset?: string[]): StoredRecord {
     const errors: FieldErrors = {}, out: StoredRecord = {};
     for (const key of Object.keys(input)) if (!hasOwn(this.spec.fields, key) && !reserved(key)) errors[key.slice(0, 64)] = 'is not a declared field';
     for (const [key, spec] of Object.entries(this.spec.fields)) {
       if (!hasOwn(input, key) || input[key] === undefined) {
         if (!full) continue;
         if (spec.default !== undefined) out[key] = spec.default; else if (spec.required) errors[key] = 'is required';
+        continue;
+      }
+      if (unset && input[key] === null) {
+        if (spec.required) errors[key] = 'is required and cannot be cleared';
+        else if (this.spec.increments.includes(key)) errors[key] = 'is an increment field and cannot be cleared';
+        else unset.push(key);
         continue;
       }
       const problem = checkValue(spec, input[key]);
@@ -327,7 +337,8 @@ export class Collection {
       return record;
     });
   }
-  /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change.
+  /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change, and a
+   * supplied `null` removes an optional field (refused with a field error for a required or increment field).
    * `expectedEtag`, when given, must match the record's current ETag (checked inside the same
    * serialized step as the read, so it is race-free against a concurrent writer) or the update is
    * refused with 412 instead of silently overwriting a change the caller never saw. */
@@ -340,9 +351,10 @@ export class Collection {
       const current = this.get(id, scope);
       if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
       if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
-      const clean = this.check(input, replace);
-      if (!replace && Object.keys(clean).length === 0) throw new StoreError(400, 'invalid_record', 'Body must set at least one declared field');
-      const kept = replace ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key) && key !== OWNER_FIELD));
+      const unset: string[] = [];
+      const clean = this.check(input, replace, replace ? undefined : unset);
+      if (!replace && Object.keys(clean).length === 0 && unset.length === 0) throw new StoreError(400, 'invalid_record', 'Body must set or clear at least one declared field');
+      const kept = replace ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key) && key !== OWNER_FIELD && !unset.includes(key)));
       // The owner is carried over from the stored record, never from the body (check() refuses an `_owner` key).
       const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: new Date().toISOString(), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...kept, ...clean };
       if (this.spec.key && record[this.spec.key] !== current[this.spec.key] && this.byKey.has(record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');

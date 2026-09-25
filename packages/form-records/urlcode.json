@@ -4,7 +4,8 @@
   "description": "Saves a declared form into an owned store collection, with a confirmation page and an edit page limited to declared fields.",
   "requires": [
     "forms",
-    "store"
+    "store",
+    "ui"
   ],
   "schema": {
     "type": "object",
@@ -299,6 +300,30 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 512
+            },
+            "list": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "columns"
+              ],
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "columns": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                  }
+                }
+              }
             }
           }
         }
@@ -311,13 +336,13 @@
       {
         "kind": "configuration",
         "name": "records",
-        "description": "Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields and `editTitle`.",
+        "description": "Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).",
         "path": "urlcode.yaml#extensions.form-records.config.records"
       },
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true`. It serves `<mount>` (new record), `<mount>/<id>` (confirmation) and `<mount>/<id>/edit`. Declare forms and store before form-records under `extensions`.",
+        "description": "Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true`. It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records). Declare forms and store before form-records under `extensions`.",
         "path": "urlcode.yaml"
       }
     ],

@@ -72,7 +72,16 @@ principal's records to another with the server stopped, and
 `sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`
 and `?<field>=<value>` list queries (one sort field, equality filters, `id`
 tie-break, opaque cursor, undeclared names are `400`s); they apply to the whole
-collection, or on an owned collection to the caller's own records.
+collection, or on an owned collection to the caller's own records. A `PATCH`
+that sets a field to `null` removes it; a required field refuses that with a
+`400` field error, and `PUT` still takes only values (see
+[clearing a field](../../docs/STORE.md#clearing-a-field)).
+
+Another extension that requires the store reaches declared collections through
+its typed export, `StoreExports` (`ctx.get('store')`): `create`, `get`, a
+partial `update` (which clears a field given `null`, like `PATCH`) and a
+paginated `list`, each scoped to the request principal exactly as the JSON API
+is. See [using a collection from another extension](../../docs/STORE.md#using-a-collection-from-another-extension).
 
 The `store-schema` artifact (`urlcode artifacts add store-schema`) carries this
 extension's configuration schema and an example configuration as inert JSON

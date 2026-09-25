@@ -1131,7 +1131,7 @@ or `npx urlcode-ui doctor --project app`.
 ### Nesting
 
 `admin` requires `auth` and `ui`; `auth` and `forms` require `ui`;
-`form-records` requires `forms` and `store`. A sibling
+`form-records` requires `forms`, `store` and `ui`. A sibling
 add-on is an optional exact peer dependency, never a nested dependency, so
 every add-on is installed once at the top level of the site. `composeHost`
 orders the listed extensions by `requires` and activates each once. A dependant

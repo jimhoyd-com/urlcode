@@ -100,7 +100,7 @@ A hand-authored public mount, as in the YAML above, stays supported.
 | `POST /api/todos` | `201` and the record, `Location: /api/todos/<id>` |
 | `GET /api/todos/<id>` | `200` record, or `404` |
 | `PUT /api/todos/<id>` | replaces every declared field (omitted fields take their default), `200` |
-| `PATCH /api/todos/<id>` | updates the supplied fields, `200` |
+| `PATCH /api/todos/<id>` | updates the supplied fields and removes those set to `null` ([clearing a field](#clearing-a-field)), `200` |
 | `DELETE /api/todos/<id>` | `204` |
 
 Every record carries a server-assigned UUID `id`, `createdAt` and `updatedAt`
@@ -190,6 +190,32 @@ counter keeps incrementing even when the collection is declared `readOnly`:
 that flag closes the public create/update/delete/increment surface on the
 CRUD mount, not the redirect's own bookkeeping, so a link collection can be
 `readOnly` for callers while still counting its own clicks ([#552]).
+
+## Clearing a field
+
+`PATCH` changes only the fields its body names. A field set to `null` is
+removed from the record, so an optional field can be emptied after it was
+saved (#738):
+
+```http
+PATCH /api/todos/<id>
+Content-Type: application/json
+
+{"priority": null, "done": true}
+```
+
+- Only an optional field can be cleared. `null` for a `required` field is
+  `400 invalid_record` with the field error `is required and cannot be
+  cleared`, and for an `increments` field `is an increment field and cannot be
+  cleared`; nothing is written.
+- A field with a `default` is optional, so it can be cleared too: the record
+  then has no value for it. The default applies again only on a later `PUT`.
+- A body that only clears fields is a change, even when they were already
+  absent: `updatedAt` and the `ETag` move.
+- `If-Match`, ownership scoping and validation of the other fields apply
+  exactly as to any `PATCH`.
+- `PUT` is unchanged: it replaces the record from values only, and `null` is
+  refused as the field's wrong type.
 
 ## Conditional writes
 
@@ -573,15 +599,21 @@ store's typed export, `ctx.get('store')` in its definition's `host()`
 (`StoreExports`, contract version 1, #529), never by reading
 `extensions.store.config`. Once the store is active (declare it first under
 `extensions`), `records('<collection>')` returns the collection's `ownership`,
-`readOnly` and declared `fields`, and three calls that take the request
+`readOnly` and declared `fields`, and four calls that take the request
 principal (`request.principal`):
 
 - `create(principal, values)` stamps the principal as owner on an owned
   collection;
 - `get(principal, id)` returns a record in the principal's scope;
-- `update(principal, id, patch, {ifMatch})` is a partial update (PATCH).
+- `update(principal, id, patch, {ifMatch})` is a partial update (PATCH): a
+  field set to `null` is [cleared](#clearing-a-field);
+- `list(principal, {limit, cursor})` returns one page of the principal's scope
+  in creation order, `{items, total, next?, previous?}`: `limit` is capped at
+  the collection's `pageSize`, and `next` and `previous` are the cursors of
+  the adjacent pages (a malformed cursor is `400 invalid_query`).
 
-Each returns `{record, etag}` (the record never includes its owner) and
+`create`, `get` and `update` return `{record, etag}` (a record never includes
+its owner) and
 applies exactly the JSON API's rules: another owner's record and a missing id
 are the same `404`, no principal on an owned collection is `401`, field
 errors are `400` with field names, `maxRecords` is `409 collection_full`, and
@@ -589,7 +621,8 @@ a stale `ifMatch` is `412`. Failures are `StoreError`s with the same status and
 code as the HTTP answer. The export performs no request admission of its own:
 the consumer handles CSRF and origins for the requests it serves.
 [form-records](../packages/form-records/README.md) uses it to save a declared
-form into an owned collection, with a confirmation and a constrained edit page.
+form into an owned collection, with a confirmation, a constrained edit page
+and an optional per-user list page.
 
 ## Not built yet
 

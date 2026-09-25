@@ -70,6 +70,14 @@ requirement (`requiredWhen`, below). Any other cross-field rule remains
 application-specific and belongs in a reviewed `onSubmit` hook. No arbitrary
 project HTML template is accepted.
 
+A 422 page shows each error beside its field. An error the page cannot place
+beside a field is listed in the page alert instead (#739): a declared field
+the page does not render (an [`only()`](#using-a-flow-from-another-extension)
+handle's other fields) by its label, for example "Name cannot be changed on
+this form.", and any submitted name that is not a declared field as the fixed
+"This form received a field it does not accept." The alert never repeats that
+undeclared name or any submitted value.
+
 ### Conditionally required fields
 
 `requiredWhen: {field, in}` makes a field required only when a sibling field in

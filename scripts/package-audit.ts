@@ -151,7 +151,11 @@ export const budgets: Record<string, Budget> = {
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-store': {
-    packed: 40 * 1024,
+    // Packed raised from 40 to 42 KiB: clearing a field with null in a partial
+    // update and the records export's paginated list (#738: dist/collection.js,
+    // dist/records.js and their declarations, and the README contract) take the
+    // packed tarball from 40915 to 42040 bytes, just over the old 40 KiB.
+    packed: 42 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin

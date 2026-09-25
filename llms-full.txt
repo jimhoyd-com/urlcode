@@ -59,7 +59,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 | `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
-| `@jimhoyd/urlcode-form-records` | [`packages/form-records`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back and an edit page limited to declared fields, through the typed exports of `forms` and `store` | `extensions.form-records` (declared after `forms` and `store`) plus a `GET, HEAD, POST` mount with `auth: true`, over an `ownership: owner` collection |
+| `@jimhoyd/urlcode-form-records` | [`packages/form-records`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back, an edit page limited to declared fields and an optional per-user list page, through the typed exports of `forms` and `store` (and `ui` for the list) | `extensions.form-records` (declared after `forms` and `store`) plus a `GET, HEAD, POST` mount with `auth: true`, over an `ownership: owner` collection |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
 All eight are Apache-2.0. Core is published through npm, GitHub Releases and
@@ -4410,7 +4410,7 @@ or `npx urlcode-ui doctor --project app`.
 #### Nesting
 
 `admin` requires `auth` and `ui`; `auth` and `forms` require `ui`;
-`form-records` requires `forms` and `store`. A sibling
+`form-records` requires `forms`, `store` and `ui`. A sibling
 add-on is an optional exact peer dependency, never a nested dependency, so
 every add-on is installed once at the top level of the site. `composeHost`
 orders the listed extensions by `requires` and activates each once. A dependant
