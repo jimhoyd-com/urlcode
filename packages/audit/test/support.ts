@@ -13,7 +13,8 @@ export const pin = 'a'.repeat(64);
 
 export async function tempDir(t: TestContext): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'urlcode-audit-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  // Windows can hold the sqlite file's WAL/SHM handles open briefly after close(); retry like test/addons.integration.ts.
+  t.after(() => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   return dir;
 }
 
