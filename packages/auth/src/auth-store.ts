@@ -6,8 +6,9 @@ import {manualRecoveryOperation} from './manual-recovery-store.ts';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { DatabaseSync, type SQLOutputValue } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
-import { AuditError, auditOutboxLimits, validateAuditEvent } from '@jimhoyd/urlcode-audit';
-import type { AuditEvent, AuditValue } from '@jimhoyd/urlcode-audit';
+// The worker loads only the producer subset of audit, not its store, drain or backup modules.
+import { AuditError, auditOutboxLimits, validateAuditEvent } from '@jimhoyd/urlcode-audit/outbox';
+import type { AuditEvent, AuditValue } from '@jimhoyd/urlcode-audit/outbox';
 import { FRESHNESS_WINDOW_MS } from './freshness.ts';
 import { open, lstat, realpath } from 'node:fs/promises';
 import type { RegistrationProfile } from './registration.ts';

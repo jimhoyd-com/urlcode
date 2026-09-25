@@ -1,4 +1,5 @@
-export { createStore, storeExtension, storeAuthoring, storeConfigSchema } from './store.ts';
+export { createStore, storeExtension, storeConfigSchema } from './store.ts';
+export { storeAuthoring } from './authoring.ts';
 export type { StoreExtensionOptions } from './store.ts';
 export { contributedScreens, screensSchema, storeScreens } from './screens.ts';
 export type { StoreScreen } from './screens.ts';

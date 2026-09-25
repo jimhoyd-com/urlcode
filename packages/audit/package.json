@@ -22,6 +22,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./outbox": {
+      "types": "./dist/outbox.d.ts",
+      "default": "./dist/outbox.js"
+    },
     "./extension": {
       "types": "./dist/extension.d.ts",
       "default": "./dist/extension.js"

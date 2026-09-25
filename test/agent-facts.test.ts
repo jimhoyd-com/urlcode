@@ -4,7 +4,7 @@ import {buildContext} from '../packages/core/src/context.ts';
 import {getCapability} from '../packages/core/src/capability-query.ts';
 import {getSchemaFragment} from '../packages/core/src/schema-query.ts';
 import {mcpToolInventory} from '../packages/core/src/mcp.ts';
-import {storeAuthoring} from '../packages/store/src/store.ts';
+import {storeAuthoring} from '../packages/store/src/authoring.ts';
 const script=fileURLToPath(new URL('../scripts/check-agent-facts.ts',import.meta.url));
 const starter=fileURLToPath(new URL('../starters/default/app/',import.meta.url));
 

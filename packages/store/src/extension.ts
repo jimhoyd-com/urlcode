@@ -2,7 +2,8 @@ import { join } from 'node:path';
 import { defineExtension } from '@jimhoyd/urlcode/extensions';
 import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 import type { AuditExports } from '@jimhoyd/urlcode-audit';
-import { createStore, storeAuthoring, storeConfigSchema } from './store.ts';
+import { createStore, storeConfigSchema } from './store.ts';
+import { storeAuthoring } from './authoring.ts';
 import { contributedScreens } from './screens.ts';
 
 /** Operator choices for the store in host.mjs. Every field is optional. */
