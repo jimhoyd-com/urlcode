@@ -41,6 +41,13 @@ other route on the same budget. `throttle: false` on a route turns it off there.
   on every response, allowed or refused, in structured-field syntax:
   `RateLimit-Policy: "default";q=<quota>;w=<window>` and
   `RateLimit: "default";r=<remaining>;t=<seconds until reset>`.
+  Both fields are lists of named policies, so throttle adds its `default`
+  member rather than taking the field over: when a response already carries
+  another producer's policy (the auth extension's `credential` quota on its
+  429), the result is one field holding both, for example
+  `RateLimit-Policy: "credential";q=2;w=60, "default";q=60;w=60`. A member
+  already named `default` is replaced, never repeated; throttle alone emits
+  exactly one `RateLimit-Policy` and one `RateLimit` field.
 
 A refusal also carries `content-type: text/plain; charset=utf-8` and
 `cache-control: no-store` so no intermediary keeps it.
@@ -108,9 +115,9 @@ In enforce mode only `exceeded` is logged.
   [per-credential quota](../../packages/auth/README.md#per-credential-quota).
   Keep throttle on the same route for unauthenticated and invalid-key floods:
   it refuses them per client before any key is verified. On a 429 from the
-  credential quota, throttle's response phase replaces the `RateLimit` and
-  `RateLimit-Policy` fields with its own `default` policy; `Retry-After`
-  stays the credential's ([#701](https://github.com/jimhoyd-com/urlcode/issues/701)).
+  credential quota, throttle's response phase appends its `default` policy to
+  the `credential` one in the same `RateLimit` and `RateLimit-Policy` fields,
+  and `Retry-After` stays the credential's.
 - Counters do not survive a reload: a new snapshot starts empty.
 - `maxKeys` bounds memory with least-recently-used eviction; an evicted key
   starts fresh, so a table sized below the number of concurrent clients

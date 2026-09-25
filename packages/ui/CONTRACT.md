@@ -107,9 +107,10 @@ beside it and without changing the exports above:
   stylesheet files, and serving the kit assets under `<mount>/static/`, declared
   as `immutableAssets` so the runtime caches them publicly; `loadProjectUi`;
   and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
-  The structural contract types `targets` and `ExtensionActivation.target` as
-  the literal union core's `TargetName` declares (`'node' | 'vercel' | 'aws'
-  | 'cloudflare'`), so `ui.registration` needs no cast in a host file.
+  The extension contract types it re-exports (`RuntimeExtension`,
+  `ExtensionInstance`, `ExtensionRequest` and the rest) are core's own, imported
+  from `@jimhoyd/urlcode/extensions` rather than copied, so `ui.registration`
+  needs no cast in a host file and cannot drift from the runtime's shape.
 - The `./host` HMAC-SHA256 token helpers auth and forms build CSRF on:
   `signHmac(secret, message, encoding?)` and `verifyHmac(secret, message,
   provided, encoding?)` (`'hex'`, the default, or `'base64url'`);

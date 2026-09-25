@@ -23,6 +23,7 @@ export interface ThrottleState {
   route: string; table: ThrottleTable; log: LogFn | undefined; pending: WeakMap<object, Budget>;
 }
 export interface ThrottleDescription { quota: number; window: number; partition: Partition; mode: 'enforce' | 'report'; status: number; unresolvedClient?: string }
+const policyName = 'default';
 const partitions: readonly string[] = ['client','route','client-route'];
 const bodies: Record<number, string> = { 429: 'Too many requests\n', 503: 'Service unavailable\n' };
 
@@ -89,12 +90,43 @@ function observe(state: ThrottleState, entry: Entry, now: number): { used: numbe
 }
 
 function headersFor(state: ThrottleState, { remaining, reset }: Budget): HeaderPair[] {
-  return [['ratelimit-policy', `"default";q=${state.quota};w=${state.window}`], ['ratelimit', `"default";r=${remaining};t=${reset}`]];
+  return [['ratelimit-policy', `"${policyName}";q=${state.quota};w=${state.window}`], ['ratelimit', `"${policyName}";r=${remaining};t=${reset}`]];
+}
+
+// RateLimit-Policy and RateLimit are structured-field lists whose members
+// are named policies, so another producer's policy on the same response (the
+// auth extension's "credential" quota on its 429, #701) is kept: every prior
+// field line of that name is folded into one comma-joined list and this
+// policy's member appended. Only a member already named "default" (this
+// policy's own) is dropped, so the field never carries it twice.
+function members(value: string): string[] {
+  const out: string[] = [];
+  let start = 0, quoted = false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quoted) { if (c === '\\') i++; else if (c === '"') quoted = false; }
+    else if (c === '"') quoted = true;
+    else if (c === ',') { out.push(value.slice(start, i)); start = i + 1; }
+  }
+  out.push(value.slice(start));
+  return out.map(member => member.trim()).filter(Boolean);
+}
+function memberName(member: string): string {
+  if (!member.startsWith('"')) return member.split(/[;\s]/, 1)[0]!;
+  let name = '';
+  for (let i = 1; i < member.length && member[i] !== '"'; i++) name += member[i] === '\\' ? member[++i] ?? '' : member[i];
+  return name;
 }
 
 function withHeaders(result: HandlerResult, added: HeaderPair[]): HandlerResult {
   const names = new Set(added.map(([n]) => n));
-  return { ...result, headers: [...result.headers.filter(([n]) => !names.has(String(n).toLowerCase())), ...added] };
+  const kept = new Map<string, string[]>();
+  for (const [n, value] of result.headers) {
+    const lower = String(n).toLowerCase();
+    if (names.has(lower)) kept.set(lower, [...kept.get(lower) || [], ...members(value).filter(member => memberName(member) !== policyName)]);
+  }
+  return { ...result, headers: [...result.headers.filter(([n]) => !names.has(String(n).toLowerCase())),
+    ...added.map(([n, value]): HeaderPair => [n, [...kept.get(n) || [], value].join(', ')])] };
 }
 
 export async function onRequest(state: ThrottleState, req: PolicyRequest): Promise<HandlerResult | undefined> {

@@ -252,10 +252,21 @@ Scope: the budget is declared per route. There is no per-key override (a
 different budget for one key) — issue separate keys against routes with
 different budgets ([urlcode#703](https://github.com/jimhoyd-com/urlcode/issues/703)
 tracks both gaps). On an allowed request the gate cannot add RateLimit fields
-to the response (an `authorize()` hook only refuses). On a route that also declares core `throttle`, core's
-response phase replaces the `RateLimit`/`RateLimit-Policy` fields on the 429
-with its own `default` policy; `Retry-After` is unaffected
-([urlcode#701](https://github.com/jimhoyd-com/urlcode/issues/701)).
+to the response (an `authorize()` hook only refuses).
+
+On a route that also declares core `throttle`, the 429 keeps the credential's
+policy: core's response phase appends its own `default` member to the same
+structured-field lists, so the refusal carries both budgets and `Retry-After`
+stays the credential's:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 45
+RateLimit-Policy: "credential";q=2;w=60, "default";q=60;w=60
+RateLimit: "credential";r=0;t=45, "default";r=57;t=31
+```
+
+`r=0` on the `credential` member names the exhausted budget.
 
 Core throttle is the other half: it counts per client (address) before auth
 runs, so it answers floods of unauthenticated or invalid-key requests without

@@ -109,12 +109,12 @@ test('bearer quota configuration is validated with path-named errors', async (t)
         return validateProject(root).then(report => report.valid, (error: Error & { details?: unknown }) => `${error.message} ${JSON.stringify(error.details)}`);
     };
     assert.equal(await validate({ requests: 100, window: 60 }), true);
-    // Core reports the first schema error of the `auth` short form's `true | object` union, so the
-    // refusal names the route and its `auth` key rather than the nested quota field (urlcode#702); each bad value is still refused at load time.
+    // Core reports the deepest failure of the `auth` short form's `true | object` union, so the
+    // refusal names the nested quota field rather than the union's `const: true` branch (urlcode#702).
     for (const quota of [{ requests: 0, window: 60 }, { requests: 10, window: 'a minute' }, { requests: 10, window: 2592001 }, { requests: 1000001, window: 60 }, { requests: 10 }, { requests: 10, window: 60, burst: 5 }]) {
         const refused = await validate(quota);
         assert.equal(typeof refused, 'string', JSON.stringify(quota));
-        assert.ok((refused as string).includes('route /api/items, auth') && (refused as string).includes('"pointer":"/routes/~1api~1items/auth"'), `${JSON.stringify(quota)}: ${refused}`);
+        assert.ok((refused as string).includes('route /api/items, auth.bearer.quota') && (refused as string).includes('"pointer":"/routes/~1api~1items/auth/bearer/quota'), `${JSON.stringify(quota)}: ${refused}`);
     }
 });
 test('email change sends old-address cancellation first and rolls back on failed delivery', async (t) => {

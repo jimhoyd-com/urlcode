@@ -2,7 +2,7 @@ import Ajv from 'ajv/dist/2020.js';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { assert, ConfigError, HttpError } from './errors.ts';
-import { extensionConfigError, functionFile, loadDocument } from './config.ts';
+import { extensionConfigError, extensionPolicyError, functionFile, loadDocument } from './config.ts';
 import { prepareFunctionSnapshot } from './policy.ts';
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import type { HandlerResult } from './http-response.ts';
@@ -423,7 +423,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       if(!validateConfig(config))throw extensionConfigError(name,validateConfig.errors);
       const policyValidator=registration.policySchema?ajv.compile(registration.policySchema):undefined;
       const policies=new Map<string,Readonly<Record<string,unknown>>>();
-      for(const [path,route]of Object.entries(routes)){const policy=effectiveExtensionPolicies(document,route)[name];if(policy){assert(policyValidator&&policyValidator(policy),`Invalid extension policy: ${name} at ${path}`);policies.set(path,frozen(structuredClone(policy)));}}
+      for(const [path,route]of Object.entries(routes)){const policy=effectiveExtensionPolicies(document,route)[name];if(policy){if(!policyValidator||!policyValidator(policy))throw extensionPolicyError(name,path,policyValidator?.errors);policies.set(path,frozen(structuredClone(policy)));}}
       const declaredHeaders=registration.credentialHeaders??[];
       assert(Array.isArray(declaredHeaders)&&declaredHeaders.length<=64,'Invalid extension credential headers');
       for(const header of declaredHeaders){assert(typeof header==='string'&&header.length<=128,'Invalid extension credential header');validateHeaderName(header);credentialHeaders.add(header.toLowerCase());}

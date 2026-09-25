@@ -22,8 +22,8 @@ project, extension and kit override order, complete pages with CSP and
 security headers, and a report of overrides, templates behind their view
 model and translation coverage; the `ui` runtime extension owning
 `extensions.ui`, reading bounded project files and serving hashed assets, in
-the Node-only `./host` entry with structural copies of the runtime contract so
-the package keeps no dependency; the CLI (`list`, `eject`, `preview`,
+the Node-only `./host` entry, which imports the runtime contract types from
+`@jimhoyd/urlcode/extensions`; the CLI (`list`, `eject`, `preview`,
 `doctor`, `copy --missing`); the existing closure test extended to the new
 modules.
 

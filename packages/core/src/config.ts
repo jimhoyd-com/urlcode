@@ -151,7 +151,7 @@ const listValues = (values: unknown[]): string => values.length > MAX_LISTED_VAL
  */
 function describeSchemaError(e: ErrorObject, scope?: { subject: string; pointer: string; shapeHint: string }): ConfigError {
   const pointer = (scope?.pointer ?? '') + e.instancePath;
-  const base = `Invalid ${scope?.subject ?? 'configuration'} at ${scope ? boundedPointer(pointer) : describeLocation(pointer)} (${e.keyword})`;
+  const base = `Invalid ${scope?.subject ?? 'configuration'} at ${scope && routeOf(pointer) === undefined ? boundedPointer(pointer) : describeLocation(pointer)} (${e.keyword})`;
   const parent = e.parentSchema as { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
   const details = { pointer, route: routeOf(pointer) };
   if (e.keyword === 'additionalProperties') {
@@ -174,6 +174,27 @@ function describeSchemaError(e: ErrorObject, scope?: { subject: string; pointer:
   // Ajv's own message is built from the schema (a type, a bound, a pattern), never from the value it rejected.
   return new ConfigError(e.message ? `${base}: ${e.message}` : base, { ...details, code: 'invalid-value' });
 }
+/** A failed branch whose value was simply the other branch's type: `auth: {...}` against `const: true`. */
+const BRANCH_MISMATCH = new Set(['const', 'type', 'enum']);
+const branchRank = (e: ErrorObject): number => (e.instancePath ? e.instancePath.split('/').length : 0) * 2 + (BRANCH_MISMATCH.has(e.keyword) ? 0 : 1);
+/**
+ * The violation to report. Ajv (with `allErrors: false`) ends the list with the failure that decided the result;
+ * when that is a `oneOf`/`anyOf` no branch matched, the errors before it are the branches' own first failures, and
+ * the first of them is usually the branch the value was never meant for (`auth: {roles: [...]}` failing
+ * `const: true`). Report the deepest branch failure instead, preferring a real check over a bare type/const
+ * mismatch at the same depth, so the message names the field that is wrong. A `oneOf` that matched more than one
+ * branch is reported as itself.
+ */
+function selectSchemaError(errors: ErrorObject[]): ErrorObject | undefined {
+  const decisive = errors[errors.length - 1];
+  if (!decisive || !['oneOf', 'anyOf'].includes(decisive.keyword) || (decisive.params as { passingSchemas?: unknown }).passingSchemas) return errors[0];
+  let best: ErrorObject | undefined;
+  for (const e of errors.slice(0, -1)) {
+    if (e.keyword === 'oneOf' || e.keyword === 'anyOf' || !e.instancePath.startsWith(decisive.instancePath)) continue;
+    if (!best || branchRank(e) > branchRank(best)) best = e;
+  }
+  return best ?? errors[0];
+}
 const MAX_POINTER = 300;
 /** A pointer capped for messages; the full pointer stays in the error details. */
 const boundedPointer = (pointer: string): string => pointer.length > MAX_POINTER ? `${pointer.slice(0, MAX_POINTER)}...` : pointer;
@@ -185,9 +206,21 @@ const boundedPointer = (pointer: string): string => pointer.length > MAX_POINTER
  */
 export function extensionConfigError(name: string, errors: ErrorObject[] | null | undefined): ConfigError {
   const pointer = `/extensions/${escapePointer(name)}/config`;
-  const first = errors?.[0];
+  const first = selectSchemaError(errors ?? []);
   if (!first) return new ConfigError(`Invalid extension configuration at ${boundedPointer(pointer)}`, { code: 'invalid-value', pointer });
   return describeSchemaError(first, { subject: 'extension configuration', pointer, shapeHint: 'run urlcode extensions --json for its configuration schema' });
+}
+/**
+ * The first violation of an extension's route policy schema, described like `extensionConfigError` and located
+ * under `/routes/<route>/policies/extensions/<name>`. The policy checked is the route's effective one (project and
+ * profile layers merged with the route's own, and the `auth:` short form expanded), so the failing key may be
+ * written in one of those layers. Without `errors` the extension declares no policy schema and accepts none.
+ */
+export function extensionPolicyError(name: string, route: string, errors: ErrorObject[] | null | undefined): ConfigError {
+  const pointer = `/routes/${escapePointer(route)}/policies/extensions/${escapePointer(name)}`;
+  const first = errors ? selectSchemaError(errors) : undefined;
+  if (!first) return new ConfigError(`Invalid extension policy at ${describeLocation(pointer)}: ${errors ? 'rejected by its policy schema' : `extension ${quoteKey(name)} declares no route policy`}`, { code: 'invalid-value', pointer, route });
+  return describeSchemaError(first, { subject: 'extension policy', pointer, shapeHint: 'run urlcode extensions --json for its policy schema' });
 }
 const routeSchema = (schema as { $defs: { route: { properties: Record<string, unknown>; oneOf: { required: string[] }[] } } }).$defs.route;
 const routeKeys = Object.keys(routeSchema.properties);
@@ -218,7 +251,7 @@ function checkRouteShapes(data: unknown): void {
 }
 export function validateDocument(data: unknown, inherited?: Record<string, SharedBlock>): ProjectDocument {
   checkRouteShapes(data);
-  if (!validate(data)) throw describeSchemaError(validate.errors![0]!);
+  if (!validate(data)) throw describeSchemaError(selectSchemaError(validate.errors!)!);
   const document = data as ProjectDocument; // trust boundary: the schema just admitted it
   for (const [name, block] of Object.entries(document.shared ?? {}))
     for (const header of Object.keys(block.response?.headers ?? {})) assert(!reservedResponseHeaders.has(header.toLowerCase()), `shared.${name}: response header ${header} is owned by the runtime or handler`);
