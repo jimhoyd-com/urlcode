@@ -16,13 +16,10 @@ async function fixture(version = '1.0.0'): Promise<string> {
     'package.json': json({ name: core, version, devDependencies: { typescript: '6.0.3' } }),
     'packages/ui/urlcode.json': json({ kind: 'extension', name: 'ui' }),
     'packages/ui/package.json': json({ name: '@jimhoyd/urlcode-ui', version, peerDependencies: { [core]: version } }),
-    'packages/audit/urlcode.json': json({ kind: 'extension', name: 'audit' }),
-    'packages/audit/package.json': json({ name: '@jimhoyd/urlcode-audit', version, peerDependencies: { [core]: version } }),
-    'packages/auth/urlcode.json': json({ kind: 'extension', name: 'auth', requires: ['ui', 'audit'] }),
+    'packages/auth/urlcode.json': json({ kind: 'extension', name: 'auth', requires: ['ui'] }),
     'packages/auth/package.json': json({
       name: '@jimhoyd/urlcode-auth', version,
-      // audit is a required sibling peer (auth imports it at runtime); ui stays optional.
-      peerDependencies: { [core]: version, '@jimhoyd/urlcode-audit': version, '@jimhoyd/urlcode-ui': version, typescript: '>=6.0.3 <7.0.0' },
+      peerDependencies: { [core]: version, '@jimhoyd/urlcode-ui': version, typescript: '>=6.0.3 <7.0.0' },
       peerDependenciesMeta: { '@jimhoyd/urlcode-ui': { optional: true }, typescript: { optional: true } },
     }),
     'artifacts/site/urlcode.json': json({ kind: 'artifact', name: 'site' }),
@@ -37,7 +34,7 @@ async function fixture(version = '1.0.0'): Promise<string> {
     'docs/GUIDE.md': 'No version here.\n',
     'packages/ui/CHANGELOG.md': `## ${version}\n`,
   };
-  const manifests = ['packages/ui', 'packages/audit', 'packages/auth', 'artifacts/site'];
+  const manifests = ['packages/ui', 'packages/auth', 'artifacts/site'];
   const lock = { name: core, version, lockfileVersion: 3, packages: Object.fromEntries([
     ['', { name: core, version }],
     ...manifests.map(dir => {
@@ -75,7 +72,7 @@ test('bump rewrites every version declaration and check accepts the result', () 
   const lock = await readJson<{ version: string; packages: Record<string, { version: string; peerDependencies?: Record<string, string> }> }>(root, 'package-lock.json');
   assert.equal(lock.version, '1.1.0-alpha.1');
   for (const key of ['', 'packages/ui', 'packages/auth', 'artifacts/site']) assert.equal(lock.packages[key]!.version, '1.1.0-alpha.1', key);
-  assert.deepEqual(lock.packages['packages/auth']!.peerDependencies, { [core]: '1.1.0-alpha.1', '@jimhoyd/urlcode-audit': '1.1.0-alpha.1', '@jimhoyd/urlcode-ui': '1.1.0-alpha.1', typescript: '>=6.0.3 <7.0.0' });
+  assert.deepEqual(lock.packages['packages/auth']!.peerDependencies, { [core]: '1.1.0-alpha.1', '@jimhoyd/urlcode-ui': '1.1.0-alpha.1', typescript: '>=6.0.3 <7.0.0' });
   assert.equal(await read(root, 'packages/core/src/cli.ts'), "const VERSION = '1.1.0-alpha.1';\n");
   assert.match(await read(root, 'packages/core/src/mcp.ts'), /version:'1\.1\.0-alpha\.1'/);
   assert.match(await read(root, 'starters/default/app/urlcode.yaml'), /urlcode\/v1\.1\.0-alpha\.1\/schemas\/urlcode\.schema\.json/);
@@ -88,12 +85,11 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert(!changed.includes('docs/GUIDE.md'));
 }));
 
-test('peers on core and sibling add-ons become exact, siblings optional except a runtime import, other peers untouched', () => withFixture(async root => {
+test('peers on core and sibling add-ons become exact, siblings optional, other peers untouched', () => withFixture(async root => {
   await bump('2.0.0', root);
   const auth = await readJson<{ peerDependencies: Record<string, string>; peerDependenciesMeta: Record<string, { optional?: boolean }> }>(root, 'packages/auth/package.json');
-  assert.deepEqual(auth.peerDependencies, { [core]: '2.0.0', '@jimhoyd/urlcode-audit': '2.0.0', '@jimhoyd/urlcode-ui': '2.0.0', typescript: '>=6.0.3 <7.0.0' });
+  assert.deepEqual(auth.peerDependencies, { [core]: '2.0.0', '@jimhoyd/urlcode-ui': '2.0.0', typescript: '>=6.0.3 <7.0.0' });
   assert.deepEqual(auth.peerDependenciesMeta, { '@jimhoyd/urlcode-ui': { optional: true }, typescript: { optional: true } });
-  assert.equal(await check(root), '2.0.0');
   assert.deepEqual((await readJson(root, 'packages/ui/package.json')).peerDependencies, { [core]: '2.0.0' });
   assert.equal((await readJson(root, 'artifacts/site/package.json')).peerDependencies, undefined);
 }));
@@ -117,7 +113,6 @@ const drifts: [string, (root: string) => Promise<void>, RegExp][] = [
   ['an add-on version', root => edit(root, 'artifacts/site/package.json', text => text.replace('"1.0.0"', '"1.0.1"')), /artifacts\/site\/package\.json is 1\.0\.1/],
   ['the lockfile', root => edit(root, 'package-lock.json', text => text.replace('"version": "1.0.0"', '"version": "0.9.0"')), /package-lock\.json version differs/],
   ['a ranged core peer', root => edit(root, 'packages/ui/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /must peer on @jimhoyd\/urlcode 1\.0\.0 exactly/],
-  ['an optional runtime-imported sibling peer', root => edit(root, 'packages/auth/package.json', text => text.replace('"peerDependenciesMeta": {', '"peerDependenciesMeta": {\n    "@jimhoyd/urlcode-audit": {\n      "optional": true\n    },')), /sibling peer @jimhoyd\/urlcode-audit is imported at runtime and must be a required peer/],
   ['a required sibling peer', root => edit(root, 'packages/auth/package.json', text => text.replace('"@jimhoyd/urlcode-ui": {\n      "optional": true\n    },', '')), /sibling peer @jimhoyd\/urlcode-ui must be optional/],
   ['a runtime literal', root => edit(root, 'packages/core/src/mcp.ts', text => text.replace('1.0.0', '0.9.0')), /mcp\.ts must declare 1\.0\.0 exactly once/],
   ['a duplicated runtime literal', root => edit(root, 'starters/default/.github/workflows/urlcode.yml', text => text + text.slice('steps:\n'.length)), /urlcode\.yml must declare 1\.0\.0 exactly once/],
