@@ -143,6 +143,27 @@ function sitePasskeys(options: AuthExtensionOptions, context: ExtensionActivatio
         throw new Error('Auth cannot apply the operator passkey RP ID: the passkeys provider has no withSite(); use createPasskeyProvider()');
     return { ...options, passkeys: options.passkeys.withSite({ rpId: context.passkeyRpId, origins: context.origins ?? [context.origin] }) };
 }
+const passkeyDocs = 'see "Passkeys and the relying-party domain" in the @jimhoyd/urlcode-auth README';
+const passkeyCount = (n: number) => n === 1 ? '1 passkey was' : `${n} passkeys were`;
+/**
+ * Warns the operator at activation (core's generic `warn()`, issue #736) when stored passkeys cannot work under the RP ID
+ * ceremonies now use. One aggregate query; the warning carries counts, the RP ID and the canonical host, never an
+ * account, email or credential id. A passkey stored before auth recorded RP IDs is assumed to have been registered
+ * under the canonical host, the default then, so it is reported (softly) only when the operator RP ID differs from it.
+ */
+async function warnPasskeyRelyingParty(options: AuthExtensionOptions, context: ExtensionActivation): Promise<void> {
+    const warn = context.warn, service = options.service;
+    if (!warn || !options.passkeys || typeof service.countPasskeysByRelyingParty !== 'function')
+        return;
+    const rpId = options.passkeys.rpId, host = new URL(context.origin).hostname;
+    let counts;
+    try { counts = await service.countPasskeysByRelyingParty(rpId); }
+    catch { warn(`Could not check stored passkeys against the relying-party ID ${rpId}; ${passkeyDocs}`); return; }
+    if (counts.mismatched > 0)
+        warn(`${passkeyCount(counts.mismatched)} registered under a different relying-party ID than the current one (${rpId}) and will not work until users re-register; ${passkeyDocs}`);
+    if (counts.unrecorded > 0 && context.passkeyRpId !== undefined && context.passkeyRpId !== host)
+        warn(`${passkeyCount(counts.unrecorded)} stored before auth recorded relying-party IDs; if registered under the canonical host (${host}), as was the default, they will not work under the passkey RP ID ${rpId} until users re-register; ${passkeyDocs}`);
+}
 const m = (html: string) => new Markup(html);
 export function authExtension(configured: AuthExtensionOptions): RuntimeExtension {
     return { name: 'auth', version: '1', projectSha256: configured.projectSha256, targets: ['node'], schema: authConfigSchema, policySchema: authPolicySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
@@ -172,6 +193,7 @@ export function authExtension(configured: AuthExtensionOptions): RuntimeExtensio
             const lazyPresentation: Presentation = { get locales() { return source().locales; }, get defaultLocale() { return source().defaultLocale; }, get english() { return source().english; }, resolve: preferences => source().resolve(preferences), coverage: locale => source().coverage(locale) };
             if (registrationMode !== service.getRegistrationMode())
                 throw new Error('Project registration mode must match operator auth service mode');
+            await warnPasskeyRelyingParty(options, context);
             const registrationSchema = service.getRegistrationSchema();
             const metadataFields = Object.entries(registrationSchema.metadata ?? {});
             function profileInput(fields: Record<string, string>): RegistrationInput {

@@ -1,12 +1,12 @@
 import Ajv from 'ajv/dist/2020.js';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { assert, ConfigError, extensionError, HttpError } from './errors.ts';
+import { assert, boundedLine, ConfigError, extensionError, HttpError } from './errors.ts';
 import { extensionConfigError, extensionPolicyError, functionFile, loadDocument } from './config.ts';
 import { prepareFunctionSnapshot } from './policy.ts';
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import type { HandlerResult } from './http-response.ts';
-import type { ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
+import type { LogFn, ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
 import type { AddonAgentTooling } from './addon-manifest.ts';
 export type { HandlerResult } from './http-response.ts';
 /**
@@ -65,6 +65,33 @@ export interface ExtensionActivation {
    * runtime always sets it; treat an absent value as empty (fail closed).
    */
   principalMounts?:readonly string[];
+  /**
+   * Reports a condition the operator should act on that does not stop the site (RIM-EXT-WARN-001): for example
+   * stored data that no longer matches the operator's configuration. The runtime writes it to the operator's log as
+   * one `{"event":"extension_warning","extension":"<name>","message":"..."}` record, the same log `validate`, `test`,
+   * `dev` and `serve` startup print to; it never reaches an HTTP response. The message is cut to one line of at most
+   * 500 characters, at most `maxExtensionWarnings` are recorded per extension per activation (then one line saying
+   * the rest were suppressed), and a call after `activate()` has settled is ignored: it is an activation channel,
+   * not a request log. Write counts and configuration names only, never user data, credentials or secrets. The
+   * runtime always sets it; it is optional only so an activation built by hand (a test) can leave it out.
+   */
+  warn?:(message:string)=>void;
+}
+/** How many `warn()` calls one extension activation records before a single "further warnings suppressed" line. */
+export const maxExtensionWarnings=20;
+/**
+ * The activation-time `warn()` channel for one extension (RIM-EXT-WARN-001). `close()` ends it once `activate()` has
+ * settled, so later calls (request time, timers) are ignored. Logging failures never fail activation.
+ */
+export function activationWarnings(name:string,log:LogFn|undefined):{warn:(message:string)=>void;close:()=>void} {
+  let recorded=0,open=true;
+  const warn=(message:string):void=>{
+    if(!open||recorded>maxExtensionWarnings)return;
+    recorded++;
+    const text=recorded>maxExtensionWarnings?`further warnings suppressed after ${maxExtensionWarnings} in this activation`:boundedLine(typeof message==='string'?message:'')||'warning with no message';
+    try{log?.({event:'extension_warning',extension:name,message:text});}catch{/* Logging cannot fail activation. */}
+  };
+  return {warn,close(){open=false;}};
 }
 /**
  * The reserved header namespace an `authorize()`/`middleware()` hook can write into
@@ -521,7 +548,7 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
   }
   return admitted;
 }
-export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'>,routeAuth?:Record<string,RouteAuthShortForm>): {activate():Promise<ExtensionRegistry>} {
+export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn): {activate():Promise<ExtensionRegistry>} {
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
   const provided=new Map<string,RuntimeExtension>(),entries=new Map<string,ActiveExtension>(),credentialHeaders=new Set<string>();
   for(const registration of registrations??[]){
@@ -595,8 +622,11 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       // What activate throws is the operator's own extension reporting its configuration or environment; it is
       // named and kept (bounded, without a stack) so validate, test, dev and serve startup can print it.
       let instance:ExtensionInstance;
-      try{instance=await registration.activate(config,frozen({...context,mounts,principalMounts}));}
+      // warn() reaches the same operator log; it is closed once activate() settles (RIM-EXT-WARN-001).
+      const warnings=activationWarnings(name,log);
+      try{instance=await registration.activate(config,frozen({...context,mounts,principalMounts,warn:warnings.warn}));}
       catch(error){throw extensionError(error,name,'activate');}
+      finally{warnings.close();}
       const providesPrincipal=registration.providesPrincipal===true;
       if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes,providesPrincipal});
       assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);

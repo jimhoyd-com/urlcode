@@ -541,7 +541,9 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    request. Invalid or stale configuration fails activation. Throw an `Error`
    whose message names the offending setting: `validate`, `test`, `dev` and
    `serve` startup print it as `Extension "<name>" failed to activate: <message>`
-   (one line, bounded, no stack); request-time answers stay generic.
+   (one line, bounded, no stack); request-time answers stay generic. For a
+   condition the operator should act on that does not stop the site, call
+   [`context.warn(message)`](#activation-warnings) during activation instead.
 5. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
    policies. It closes resources it owns. An extension that authenticates may
    declare `providesPrincipal` and set the [request principal](#request-principal);
@@ -554,6 +556,39 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    from `@jimhoyd/urlcode/extensions`, never by comparing against
    `context.origin` itself, so an operator's alias origins are honoured the same
    way everywhere ([site origins](#site-origins-and-same-origin-checks)).
+
+### Activation warnings
+
+`context.warn(message)` on the activation context is the one generic,
+operator-facing warning channel (issue #736). Use it during `activate()` for a
+condition that should not refuse startup but that the operator has to act on,
+such as stored data that no longer matches the operator's configuration. Core
+names no extension and interprets no message.
+
+- Each call is written to the operator's event log as one record,
+  `{"event":"extension_warning","extension":"<name>","message":"..."}`: the
+  log `validate`, `test` and `dev`/`serve` print startup lines to, and the `log`
+  (and observers) given to `createRuntime`, `startServer` or `runProjectTests`.
+  The AWS and Vercel adapters write it to the function log with `console.warn`.
+  It never reaches an HTTP response.
+- The message is cut to one line of at most 500 characters (control characters
+  and runs of whitespace become one space), the same bound as
+  [activation errors](LOCAL-DEVELOPMENT.md#environment-and-troubleshooting). It
+  carries no stack.
+- At most 20 warnings are recorded per extension per activation
+  (`maxExtensionWarnings`); the next call records one
+  `further warnings suppressed after 20 in this activation` line and later calls
+  are dropped. A reload or restart activates again and may warn again.
+- It is activation-only. A call after `activate()` has returned or thrown (from
+  a request, a timer or a later promise) is ignored, so a request cannot flood
+  the log. Report request-time problems through your own responses and logs.
+- Write counts and configuration names only. A warning must not carry user
+  ids, email addresses, credential ids, secrets or request data: it lands in a
+  startup log that CI and hosting consoles keep.
+
+`warn` is optional in the `ExtensionActivation` type only so an activation
+built by hand in a test can leave it out; the runtime always sets it, so call
+it as `context.warn?.(message)` if you also support such tests.
 
 ### Site origins and same-origin checks
 
@@ -585,6 +620,7 @@ An extension's activation context carries both:
   means the canonical origin alone; the runtime always sets it.)
 - `passkeyRpId`: present only when the operator set a
   [shared passkey relying-party domain](#shared-passkey-relying-party-domain).
+- `warn`: the [activation warning](#activation-warnings) channel.
 
 `isSiteOrigin(context, value)` is the one match every extension uses for an
 `Origin` header, or for the origin of a `Referer`: the value must be a bare
@@ -646,6 +682,9 @@ does exactly that ([auth README](../packages/auth/README.md#passkeys-and-the-rel
 > way round. Setting, changing or removing `--passkey-rp-id` makes every passkey
 > registered under the previous RP ID stop working; users must sign in another
 > way and register a new passkey. Decide on the RP ID before users enrol.
+> First-party `auth` records each new passkey's RP ID and reports stranded
+> passkeys at startup as an [activation warning](#activation-warnings), with
+> counts only ([auth README](../packages/auth/README.md#passkeys-and-the-relying-party-domain)).
 
 Every extension also follows the
 [generic add-on authoring rules](#generic-add-on-authoring-rules).

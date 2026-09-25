@@ -223,6 +223,13 @@ pointer into the YAML) and `extension` (the operator extension that failed; see
 with `file:line:column:` where the location is known. Act on `code` and the
 location; the message says what to write instead.
 
+A command that succeeds can still print
+`{"event":"extension_warning","extension":"<name>","message":...}` lines
+before its result: an operator extension reporting, at activation, something
+the operator should act on. It is not a failure and not something to fix in
+YAML; report it to the operator (see
+[activation warnings](EXTENSIONS.md#activation-warnings)).
+
 ## Feedback from real authoring work
 
 The authoring loop is also a source of roadmap evidence. After completing a

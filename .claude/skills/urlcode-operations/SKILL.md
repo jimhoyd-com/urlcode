@@ -69,7 +69,8 @@ project-aware `urlcode mcp` server. Its machine-readable entry point is
   (`URLCODE_PASSKEY_RP_ID` on hosted adapters), which must be the host or a
   parent domain of every site origin. Warn before changing it: setting,
   changing or removing the RP ID makes existing passkeys stop working and users
-  must re-register.
+  must re-register. Auth reports stored passkeys that no longer match as an
+  `extension_warning` startup line (counts only); relay it to the operator.
 - Distinguish local checks (`validate`, `test`, `audit`, `benchmark` — all
   activate a local snapshot only) from `verify-deployment` (probes a live
   target over HTTP, read-only, no credential, no redirect following). Do not

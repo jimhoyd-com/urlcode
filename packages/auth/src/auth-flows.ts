@@ -246,7 +246,8 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
             if (kind === 'register') {
                 if (data.accountId !== actor!.id)
                     throw new AuthHttpError(403, 'Account changed during ceremony');
-                const credential = await options.passkeys.verifyRegistration(response as unknown as RegistrationResponseJSON, data.challenge);
+                // Recorded with the RP ID this ceremony was verified under (#736), whatever the provider returned.
+                const credential = { ...await options.passkeys.verifyRegistration(response as unknown as RegistrationResponseJSON, data.challenge), rpId: options.passkeys.rpId };
                 await service.addPasskey({ actorToken: session!, credential });
                 return jsonResponse(200, { registered: true });
             }

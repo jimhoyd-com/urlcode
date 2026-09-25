@@ -40,6 +40,7 @@ named.
 | `agents` | `route`, `list` string, `outcome` `denied`/`reported` | A User-Agent matched a list. The list name is logged, never the header. |
 | `cache` | `route`, `outcome` `hit`/`stale`/`miss`/`store` | A cache lookup or store. |
 | `listening` | `address`, `port`, `mode`, `origin` | Printed once by the CLI at startup, not emitted by the server. |
+| `extension_warning` | `extension` string, `message` string | An operator extension called `warn()` while it activated ([activation warnings](EXTENSIONS.md#activation-warnings)): at startup or a reload, never per request. `message` is one line of at most 500 characters; at most 21 records per extension per activation. |
 
 Every event carries `event` (its name). Numbers are JSON numbers, never
 strings.
@@ -51,8 +52,8 @@ every in-process observer always see exactly these events, unchanged. When
 stdout is a TTY and `--json` is not passed, the CLI's own default logger for
 `urlcode dev`/`serve` additionally renders `request` (`GET /go 302 0.9ms`,
 using the same `method`/`route`/`status`/`durationMs` fields; a bare
-`302 0.9ms` when `--request-log` was left at `minimal`), `reload` and `watch`
-as one short line apiece instead of the JSON line; every other event still
+`302 0.9ms` when `--request-log` was left at `minimal`), `reload`, `watch` and
+`extension_warning` as one short line apiece instead of the JSON line; every other event still
 prints as JSON on that same stdout. This is terminal-only formatting done by
 the CLI's logger, not a change to the events themselves or to what an operator
 observer receives.
@@ -62,7 +63,10 @@ observer receives.
 No event, snapshot or exposition carries a request URL, path, query string,
 header, body, client address, User-Agent string, binding, secret or user
 exception text. `route` is always a configured pattern
-from reviewed YAML. The `function_error` and `reload_rejected` diagnostics that
+from reviewed YAML. The one free-text field, `extension_warning.message`, is
+what the operator's own installed extension chose to write at activation; the
+extension contract requires it to carry counts and configuration names only,
+never user data or secrets. The `function_error` and `reload_rejected` diagnostics that
 `urlcode dev` and `serve --debug-errors` write to stderr are not events: they
 carry source paths, thrown messages and stacks, never pass through the logger
 or observers, and are off by default for `serve` (see

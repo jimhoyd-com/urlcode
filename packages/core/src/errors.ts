@@ -66,10 +66,14 @@ const MAX_REPORTED_MESSAGE = 500;
  * collapse to a single space and the text is cut to a bounded length. Never includes a stack.
  */
 export function boundedMessage(error: unknown, max = MAX_REPORTED_MESSAGE): string {
-  const raw = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
-  const text = raw.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim();
+  const text = boundedLine(error instanceof Error ? error.message : typeof error === 'string' ? error : '', max);
   if (!text) return error instanceof Error ? `${error.name || 'Error'} with no message` : 'a non-Error value was thrown';
-  return text.length > max ? `${text.slice(0, max)}...` : text;
+  return text;
+}
+/** `text` on one bounded line, as `boundedMessage` prints it; empty when nothing printable is left. */
+export function boundedLine(text: string, max = MAX_REPORTED_MESSAGE): string {
+  const line = text.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim();
+  return line.length > max ? `${line.slice(0, max)}...` : line;
 }
 /**
  * Names the extension a failure raised while preparing or activating it belongs to, once. The result is a

@@ -525,14 +525,15 @@ try {
             if (problems.length) throw new ConfigError(`Extension configuration does not match the installed schemas:\n${problems.map(problem => `  ${problem}`).join('\n')}`);
             print({ event:'valid', static:true, extensions:declared, note:'Checked against installed extension schemas; pass --host-file to activate them and validate the whole runtime' }); break;
           }
-          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'] });
+          // Extension activation warnings are the one runtime event validate prints (RIM-EXT-WARN-001).
+          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'], log:(event:object) => { if ((event as {event?:string}).event === 'extension_warning') print(event); } });
           print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }
         case 'add':
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { const { event:kind, pass } = event as {event?:string;pass?:boolean}; if ((kind === 'test' && pass === false) || kind === 'warning') print(event); }, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'] });
+          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { const { event:kind, pass } = event as {event?:string;pass?:boolean}; if ((kind === 'test' && pass === false) || kind === 'warning' || kind === 'extension_warning') print(event); }, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'] });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
