@@ -83,7 +83,8 @@ export function lastSent(sent: readonly MailEnvelope[], template: string, to?: s
 }
 /** The first URL in a message body. */
 export function linkIn(envelope: MailEnvelope, index = 0): URL {
-    const links = envelope.text.match(/https?:\/\/\S+/g) ?? [];
+    // A sentence may end right after a link: trailing punctuation is prose, not URL.
+    const links = (envelope.text.match(/https?:\/\/\S+/g) ?? []).map(link => link.replace(/[.,;:]+$/, ''));
     if (!links[index])
         throw new Error(`No link ${index} in ${envelope.template}`);
     return new URL(links[index]!);
