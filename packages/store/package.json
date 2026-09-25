@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-store",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "type": "module",
   "description": "Operator-installed declarative data store extension for URLCode: file-backed JSON collections served as a bounded CRUD API",
   "repository": {
@@ -45,9 +45,9 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.1",
-    "@jimhoyd/urlcode-audit": "0.6.1",
-    "@jimhoyd/urlcode-ui": "0.6.1"
+    "@jimhoyd/urlcode": "0.6.2",
+    "@jimhoyd/urlcode-audit": "0.6.2",
+    "@jimhoyd/urlcode-ui": "0.6.2"
   },
   "peerDependenciesMeta": {
     "@jimhoyd/urlcode-audit": {

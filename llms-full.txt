@@ -7,7 +7,7 @@
 > A portable runtime for programmable URL behavior, and the framework that grows
 > from it: routes in YAML, functions and middleware, then accounts, administration and
 > stored links as operator-installed extensions. Stable project format
-> `version: "1"`. Core is Apache-2.0; this revision is `0.6.1`. `function`/`middleware`
+> `version: "1"`. Core is Apache-2.0; this revision is `0.6.2`. `function`/`middleware`
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
 > ui, audit, abuse, mail, auth, admin, store, forms, form-records and mcp extensions are add-ons released with core and pinned by
 > it; a site adds them with `urlcode extensions add <name>`. Only core is published to npm.
@@ -1106,7 +1106,7 @@ programmatic compatibility analysis and provider verification limits.
 Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-GUIDE.md
 
 <!-- urlcode-current-version:start -->
-This guide targets URLCode 0.6.1. Start with the function example below,
+This guide targets URLCode 0.6.2. Start with the function example below,
 then add only the fields your route needs. The authoritative machine-readable
 shape is [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/main/schemas/urlcode.schema.json); semantic rules are in the
 [specification](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md). Unsupported fields fail validation.

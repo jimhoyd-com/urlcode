@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude plugins published from the URLCode repository.",
-    "version": "0.6.1"
+    "version": "0.6.2"
   },
   "plugins": [
     {
