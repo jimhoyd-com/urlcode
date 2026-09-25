@@ -206,6 +206,61 @@ The header is absent on a session-cookie-protected route (`auth: {role: ...}`
 etc.) — only `bearer` writes it — so a route reading it must not assume it is
 always present.
 
+### Per-credential quota
+
+A bearer route can also budget each API key separately
+([urlcode#572](https://github.com/jimhoyd-com/urlcode/issues/572)):
+
+```yaml
+routes:
+  /api/items:
+    function: functions/items.mjs
+    auth: {bearer: {scopes: [items.read], quota: {requests: 1000, window: 3600}}}
+    policies:
+      throttle: {quota: 60, window: 60}   # core, per client: still owns unauthenticated floods
+```
+
+`requests` (1 to 1,000,000) per `window` seconds (1 to 2,592,000, 30 days) use
+the units of core's `policies.throttle` `quota`/`window`. The gate counts a
+request only after the key has authenticated and covers the route's scopes, so
+401 and 403 keep their meaning; the request that would exceed the budget is
+refused with a 429 before the route's handler runs:
+
+- body `{"error":"credential_quota_exceeded"}`, `Cache-Control: no-store`;
+- `Retry-After: <seconds>` until the window closes;
+- the IETF RateLimit fields core throttle uses, under the policy name
+  `credential`: `RateLimit-Policy: "credential";q=<requests>;w=<window>` and
+  `RateLimit: "credential";r=0;t=<seconds>`.
+
+Semantics, matching the sign-in attempt counter:
+
+- **Fixed window per credential.** The window opens at the key's first counted
+  request; a refused request is not counted, so a retry loop cannot keep its
+  own window open. Routes that restate the same `requests`/`window` share one
+  counter per key; a route with a different budget gets its own.
+- **Counted by key id, never the secret.** The counter row is a SHA-256 of the
+  key's public id and the budget, in the same `auth_attempts` table (100,000-row
+  ceiling, expired rows swept on write and by `urlcode-auth cleanup`).
+- **Durable on one host.** The count lives in the auth SQLite database, so it
+  survives a restart, and every process on the host that opens the same
+  database file shares it. It is not shared across hosts.
+- **Fails closed.** When the store is unavailable, or the counter table is at
+  capacity, the request fails with a 503 (as the key lookup itself does); it is
+  never waved through uncounted.
+
+Scope: the budget is declared per route. There is no per-key override (a
+different budget for one key) — issue separate keys against routes with
+different budgets ([urlcode#703](https://github.com/jimhoyd-com/urlcode/issues/703)
+tracks both gaps). On an allowed request the gate cannot add RateLimit fields
+to the response (an `authorize()` hook only refuses). On a route that also declares core `throttle`, core's
+response phase replaces the `RateLimit`/`RateLimit-Policy` fields on the 429
+with its own `default` policy; `Retry-After` is unaffected
+([urlcode#701](https://github.com/jimhoyd-com/urlcode/issues/701)).
+
+Core throttle is the other half: it counts per client (address) before auth
+runs, so it answers floods of unauthenticated or invalid-key requests without
+spending an scrypt verification on each. Declare both on a public bearer API.
+
 ## Optional breached-password screening
 
 An operator can configure `checkPassword: createPasswordBreachChecker()` on `createAuthService`. This optional Have I Been Pwned range check sends only the SHA-1 prefix, requests padded responses, bounds concurrency/deadline/response bytes, and fails closed when the check cannot complete. It does not send the password or full hash to the service. Configuring the callback introduces an external service dependency; do not enable it silently or describe it as a complete hardened preset. Offline fixtures are not evidence of live service availability.

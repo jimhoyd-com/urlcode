@@ -21,6 +21,12 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   are exposed to the route's own function/middleware context as base64-encoded
   JSON on the reserved `x-urlcode-context-auth-principal` request header
   (urlcode#618).
+- Per-key budget: `auth: {bearer: {scopes: [...], quota: {requests: 1000, window: 3600}}}`
+  (window in seconds). Counted by key id in the auth SQLite store (fixed window,
+  durable, shared by processes on one host, not across hosts); over budget is 429
+  with `Retry-After` and `RateLimit-Policy`/`RateLimit` (policy `credential`)
+  before the handler; a store failure is 503. Keep core `policies.throttle` for
+  per-client limits and unauthenticated floods (urlcode#572).
 - The operator lists `auth()` (senders, providers and other options go in `auth({...})`) in the
   site's `host.mjs` `composeHost` list; the scaffold writes that line, `operator-service.mjs`
   and `data/encryption.key`/`data/csrf.key`. Serve with `--host-file host.mjs --origin https://...`

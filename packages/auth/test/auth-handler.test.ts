@@ -1,7 +1,8 @@
 import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { validateProject } from '@jimhoyd/urlcode';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -55,6 +56,66 @@ test('authorize() gates a bearer/API-key route: 401 missing/invalid/expired/revo
     now += 120000;
     const expired = await instance.authorize!(requirement, request('Bearer ' + expiring.key));
     assert.equal(expired?.status, 401);
+});
+test('authorize() enforces a bearer quota per credential: 429 with Retry-After and RateLimit fields before the handler, window reset', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-quota-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    let now = Date.now();
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member', now: () => now });
+    cleanup(t, () => service.close());
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
+    const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const request = (authorization: string) => ({ method: 'GET', target: '/api/items', path: '/api/items', query: new URLSearchParams(), headers: new Headers({ authorization }), headerCounts: {}, body: new Uint8Array(), origin, route: '/api/items', mount: null, client: '203.0.113.9', requestId: 'test-request', env: {} });
+    const requirement = { bearer: { scopes: ['items.read'], quota: { requests: 2, window: 60 } } };
+    const first = await service.issueApiKey({ name: 'first', scopes: ['items.read'] }), second = await service.issueApiKey({ name: 'second', scopes: ['items.read'] });
+    const underScoped = await service.issueApiKey({ name: 'writer-only', scopes: ['items.write'] });
+    // An insufficient-scope request is refused as 403 and never counted against the quota.
+    for (let i = 0; i < 3; i++) assert.equal((await instance.authorize!(requirement, request('Bearer ' + underScoped.key)))?.status, 403);
+    // Under quota: allowed, principal exposed as before.
+    for (let i = 0; i < 2; i++) {
+        const allowed = request('Bearer ' + first.key);
+        assert.equal(await instance.authorize!(requirement, allowed), undefined);
+        assert.ok(allowed.headers.get('x-urlcode-context-auth-principal'));
+    }
+    // Over quota: 429 before the handler, with Retry-After and the RateLimit fields core throttle uses.
+    now += 15000;
+    const refusedRequest = request('Bearer ' + first.key), refused = await instance.authorize!(requirement, refusedRequest);
+    assert.equal(refused?.status, 429);
+    const headers = Object.fromEntries(refused!.headers);
+    assert.equal(headers['retry-after'], '45');
+    assert.equal(headers['ratelimit-policy'], '"credential";q=2;w=60');
+    assert.equal(headers['ratelimit'], '"credential";r=0;t=45');
+    assert.equal(headers['cache-control'], 'no-store');
+    assert.deepEqual(JSON.parse(new TextDecoder().decode(refused!.body as Uint8Array)), { error: 'credential_quota_exceeded' });
+    assert.equal(refusedRequest.headers.get('x-urlcode-context-auth-principal'), null);
+    // The raw key never appears in the refusal.
+    assert.ok(!JSON.stringify(refused!.headers).includes(first.key) && !new TextDecoder().decode(refused!.body as Uint8Array).includes(first.key));
+    // A separate credential has its own budget, even from the same client address.
+    assert.equal(await instance.authorize!(requirement, request('Bearer ' + second.key)), undefined);
+    // A route declaring a different budget counts separately.
+    assert.equal(await instance.authorize!({ bearer: { scopes: ['items.read'], quota: { requests: 5, window: 60 } } }, request('Bearer ' + first.key)), undefined);
+    // A route with no quota is not limited by the credential's other budgets.
+    assert.equal(await instance.authorize!({ bearer: { scopes: ['items.read'] } }, request('Bearer ' + first.key)), undefined);
+    // The window resets.
+    now += 45000;
+    assert.equal(await instance.authorize!(requirement, request('Bearer ' + first.key)), undefined);
+});
+test('bearer quota configuration is validated with path-named errors', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-quota-schema-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const validate = async (quota: unknown) => {
+        await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } } }, routes: { '/account/*': { extension: 'auth' }, '/api/items': { redirect: { url: 'https://example.test/' }, auth: { bearer: { scopes: ['items.read'], quota } } } } }));
+        return validateProject(root).then(report => report.valid, (error: Error & { details?: unknown }) => `${error.message} ${JSON.stringify(error.details)}`);
+    };
+    assert.equal(await validate({ requests: 100, window: 60 }), true);
+    // Core reports the first schema error of the `auth` short form's `true | object` union, so the
+    // refusal names the route and its `auth` key rather than the nested quota field (urlcode#702); each bad value is still refused at load time.
+    for (const quota of [{ requests: 0, window: 60 }, { requests: 10, window: 'a minute' }, { requests: 10, window: 2592001 }, { requests: 1000001, window: 60 }, { requests: 10 }, { requests: 10, window: 60, burst: 5 }]) {
+        const refused = await validate(quota);
+        assert.equal(typeof refused, 'string', JSON.stringify(quota));
+        assert.ok((refused as string).includes('route /api/items, auth') && (refused as string).includes('"pointer":"/routes/~1api~1items/auth"'), `${JSON.stringify(quota)}: ${refused}`);
+    }
 });
 test('email change sends old-address cancellation first and rolls back on failed delivery', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-handler-'));

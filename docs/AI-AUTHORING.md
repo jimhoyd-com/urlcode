@@ -257,7 +257,10 @@ to load. Only `required`, `role`, `permission`, `verified`,
 or `permissions` list. `auth: {required: false}` emits nothing.
 `auth: {bearer: {scopes: [...]}}` protects the route with an operator-issued
 API key instead of a signed-in session and is exclusive of the other keys
-(see [extensions](EXTENSIONS.md#bearerapi-key-routes)).
+(see [extensions](EXTENSIONS.md#bearerapi-key-routes)). A per-key budget is
+`bearer: {scopes: [...], quota: {requests, window}}` (window in seconds), not a
+hand-written counter in a function; keep `policies.throttle` for per-client
+limits on the same route.
 
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
