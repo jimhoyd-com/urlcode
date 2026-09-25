@@ -71,7 +71,15 @@ handler can still read `process.env` itself.
 
 **A thrown handler error never reaches the MCP caller as written.** The
 caller always receives a fixed generic tool-result failure message
-(`isError: true`) with no error text or stack. The real error, and which
+(`isError: true`) with no error text or stack. The single exception is
+opt-in: a tool handler that throws `McpToolError` has chosen that message for
+the caller, so it is returned as the tool result's text (truncated to 4096
+characters), with its `data` as `structuredContent` only when it conforms to
+the tool's declared `outputSchema`. Only an error carrying the
+`McpToolError` brand is treated this way; any other error, including one whose
+message happens to look user-facing, keeps the generic message. The handler
+author is responsible for keeping secrets and internal detail out of an
+`McpToolError` message. The real error, and which
 server/tool it came from, is handed to the operator's own
 `McpExtensionOptions.onToolError` callback (best-effort: a throwing callback
 is itself swallowed rather than allowed to affect the response) — this is

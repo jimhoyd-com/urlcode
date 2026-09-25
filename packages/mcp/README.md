@@ -118,7 +118,8 @@ run exactly like any other extension project hook
 code, in-process, with full Node access. `sandbox: true` is refused, the same
 as every other extension hook — v1 of this contract has no sandboxed tool
 protocol. A handler that throws never leaks its message or stack to the MCP
-caller; see [SECURITY.md](SECURITY.md) and `McpExtensionOptions.onToolError`
+caller (the one exception is a tool handler's deliberate `McpToolError`,
+below); see [SECURITY.md](SECURITY.md) and `McpExtensionOptions.onToolError`
 for how the operator observes the real error.
 
 Every handler is called as `handler(input, context)`. `context` is frozen and
@@ -157,8 +158,36 @@ implement").
 A **tool** handler receives the schema-validated `arguments` object as its
 first argument and returns any JSON-serializable value (or a plain string); the extension wraps
 it as a single MCP text content block (plus `structuredContent` when
-`outputSchema` is declared, above). A thrown tool handler error becomes a
-tool result with `isError: true` and a fixed generic message.
+`outputSchema` is declared, above).
+
+A tool handler that needs to tell the caller why a call failed, so the model
+can correct its arguments and retry, throws `McpToolError` (exported by
+`@jimhoyd/urlcode-mcp`). The result is `isError: true` with the error's
+message as its text content, a *tool execution error* in the specification's
+terms:
+
+```js
+// app/mcp-tools/book-flight.mjs
+import { McpToolError } from '@jimhoyd/urlcode-mcp';
+
+export default function bookFlight({ date }) {
+  if (Date.parse(date) < Date.now()) {
+    throw new McpToolError(`Invalid departure date ${date}: it must be in the future.`, { data: { field: 'date' } });
+  }
+  // ...
+}
+```
+
+The message is caller-facing text: write it for the model, and never put a
+secret or internal detail in it. Messages longer than 4096 characters are
+truncated. The optional `data` object is returned as `structuredContent` only
+when the tool declares an `outputSchema` and `data` conforms to it; otherwise
+it is dropped, the message is still returned, and `onToolError` observes the
+mismatch. `onToolError` is not called for an `McpToolError` itself, and
+`onToolCall` reports it as `outcome: 'tool_error'`. Any other thrown error
+becomes a tool result with `isError: true` and the fixed generic message
+`The tool could not complete the request.`; its text never reaches the
+caller.
 
 A **resource** handler receives an empty first argument (MCP resources are addressed
 only by their declared `uri`; parameterized resource templates are not
@@ -193,8 +222,9 @@ export default await composeHost(import.meta.url, [
 ```
 
 `onToolCall` runs once for every tool/resource/prompt handler invocation after
-it settles, with `outcome: 'success'` or `'error'` (the same failures
-`onToolError` observes), its duration and the request id. A call refused before
+it settles, with `outcome: 'success'`, `'tool_error'` (a tool handler threw
+`McpToolError`) or `'error'` (the same failures `onToolError` observes), its
+duration and the request id. A call refused before
 its handler runs (unknown name, arguments failing the schema) is not reported.
 Both callbacks are best-effort: one that throws is swallowed and never changes
 the response.
@@ -261,6 +291,10 @@ extension has no identity or authorization model of its own.
   reported to the MCP caller as a generic failure and to the operator, via
   `onToolError`, with the real error and which server/hook/kind it came from
   — the extension makes no logging decision of its own beyond that callback.
+- Caller-facing tool execution errors: a tool handler that throws
+  `McpToolError` answers `isError: true` with its own bounded message (and
+  `structuredContent` from its `data` when that conforms to the declared
+  `outputSchema`).
 - Host-owned usage observation: `onToolCall` reports every handler
   invocation's outcome, duration and request id, success or failure.
 - Handler request context: `handler(input, { env, requestId, server, tool, kind })`,

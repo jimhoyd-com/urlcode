@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createMcpExtension } from '../src/index.ts';
-import type { McpServerSpec } from '../src/index.ts';
+import type { McpServerSpec, McpToolCallInfo } from '../src/index.ts';
 
 const origin = 'https://mcp.example.test';
 type OnToolError = (error: unknown, info: { server: string; tool: string; kind: 'tool' | 'resource' | 'prompt' }) => void;
@@ -16,11 +17,11 @@ async function project(t: test.TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'mcp-test-')); t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, 'app'); await mkdir(dir);
   const write = (name: string, content: string) => writeFile(join(dir, name), content);
-  const start = async (spec: McpServerSpec, onToolError?: OnToolError) => {
+  const start = async (spec: McpServerSpec, onToolError?: OnToolError, onToolCall?: (info: McpToolCallInfo) => void) => {
     const mcp = { version: '1' as const, config: { servers: { default: spec } } };
     await write('urlcode.yaml', JSON.stringify({ version: '1', extensions: { mcp }, routes: { [`${spec.mount}/*`]: { extension: 'mcp', methods: ['POST', 'HEAD'] } } }));
     const projectSha256 = await inspectExtensionRevision(dir);
-    const app = await startServer({ project: dir, origin, port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}) })] });
+    const app = await startServer({ project: dir, origin, port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}), ...(onToolCall ? { onToolCall } : {}) })] });
     t.after(() => app.close());
     const call = (body: unknown, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}${spec.mount}`, {
       method: 'POST', body: JSON.stringify(body), ...init, headers: { 'content-type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
@@ -437,4 +438,73 @@ test('an unknown tool annotation hint, a non-boolean hint value or an empty titl
   for (const [label, extra, message] of cases) {
     await assert.rejects(start(extra), { message: `Invalid extension configuration at ${message}` }, `${label} must be refused before the server starts`);
   }
+});
+
+// urlcode#716: a tool handler can return its own caller-facing isError result by throwing McpToolError.
+const packageEntry = pathToFileURL(join(import.meta.dirname, '..', 'src', 'index.ts')).href;
+
+test('a thrown McpToolError answers isError with its own message, reported to onToolCall as tool_error and not to onToolError; any other throw stays generic', async t => {
+  const p = await project(t);
+  await p.write('refuse.mjs', `import { McpToolError } from ${JSON.stringify(packageEntry)};\nexport default function refuse(input) { throw new McpToolError(\`Invalid departure date: \${input.date} is in the past\`); }\n`);
+  // A second copy of the package (a different module instance) is still recognized by the registered brand.
+  await p.write('branded.mjs', 'const brand = Symbol.for("@jimhoyd/urlcode-mcp.McpToolError");\nexport default function branded() { const error = new Error("Quota exhausted; retry after midnight"); Object.defineProperty(error, brand, { value: true }); throw error; }\n');
+  await p.write('boom.mjs', 'export default function boom() { throw new Error("internal detail that must never leak"); }\n');
+  await p.write('long.mjs', `import { McpToolError } from ${JSON.stringify(packageEntry)};\nexport default function long() { throw new McpToolError("x".repeat(10000)); }\n`);
+  const errors: string[] = [];
+  const calls: McpToolCallInfo[] = [];
+  const empty = { type: 'object' as const, additionalProperties: false };
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'tool-errors', serverVersion: '1.0.0',
+    tools: {
+      refuse: { description: 'Refuses a past date', inputSchema: { type: 'object', properties: { date: { type: 'string' } }, required: ['date'], additionalProperties: false }, handler: './refuse.mjs' },
+      branded: { description: 'Throws a branded error', inputSchema: empty, handler: './branded.mjs' },
+      boom: { description: 'Throws a plain error', inputSchema: empty, handler: './boom.mjs' },
+      long: { description: 'Throws a very long McpToolError', inputSchema: empty, handler: './long.mjs' },
+    },
+  }, (_error, info) => errors.push(info.tool), info => calls.push(info));
+  const result = async (name: string, args: Record<string, unknown> = {}) => {
+    const response = await call({ jsonrpc: '2.0', id: name, method: 'tools/call', params: { name, arguments: args } });
+    assert.equal(response.status, 200);
+    const json = await response.json() as { id: unknown; result: Record<string, unknown> & { content: { type: string; text: string }[] } };
+    assert.equal(json.id, name);
+    return json.result;
+  };
+
+  assert.deepEqual(await result('refuse', { date: '2020-01-01' }), { content: [{ type: 'text', text: 'Invalid departure date: 2020-01-01 is in the past' }], isError: true });
+  assert.deepEqual(await result('branded'), { content: [{ type: 'text', text: 'Quota exhausted; retry after midnight' }], isError: true });
+  assert.deepEqual(await result('boom'), { content: [{ type: 'text', text: 'The tool could not complete the request.' }], isError: true });
+  const long = await result('long');
+  assert.equal(long.isError, true);
+  assert.equal(long.content[0]!.text.length, 4096, 'a caller-facing message is bounded');
+  assert.ok(long.content[0]!.text.endsWith('…'));
+
+  assert.deepEqual(errors, ['boom'], 'only the unexpected failure reaches onToolError');
+  assert.deepEqual(calls.map(info => [info.tool, info.outcome]), [['refuse', 'tool_error'], ['branded', 'tool_error'], ['boom', 'error'], ['long', 'tool_error']]);
+});
+
+test('McpToolError data becomes structuredContent only when the tool declares an outputSchema and the data conforms to it', async t => {
+  const p = await project(t);
+  const thrower = (data: unknown) => `import { McpToolError } from ${JSON.stringify(packageEntry)};\nexport default function () { throw new McpToolError("Lookup failed", { data: ${JSON.stringify(data)} }); }\n`;
+  await p.write('conforming.mjs', thrower({ found: false, reason: 'not_found' }));
+  await p.write('nonconforming.mjs', thrower({ found: 'maybe' }));
+  const outputSchema = { type: 'object' as const, properties: { found: { type: 'boolean' as const }, reason: { type: 'string' as const } }, required: ['found'], additionalProperties: false };
+  const empty = { type: 'object' as const, additionalProperties: false };
+  const errors: string[] = [];
+  const calls: McpToolCallInfo[] = [];
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'tool-error-data', serverVersion: '1.0.0',
+    tools: {
+      conforming: { description: 'Conforming data', inputSchema: empty, outputSchema, handler: './conforming.mjs' },
+      nonconforming: { description: 'Data that fails the outputSchema', inputSchema: empty, outputSchema, handler: './nonconforming.mjs' },
+      unstructured: { description: 'Data but no outputSchema', inputSchema: empty, handler: './conforming.mjs' },
+    },
+  }, (error, info) => errors.push(`${info.tool}: ${(error as Error).message}`), info => calls.push(info));
+  const result = async (name: string) => (await (await call({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: {} } })).json() as { result: Record<string, unknown> }).result;
+
+  assert.deepEqual(await result('conforming'), { content: [{ type: 'text', text: 'Lookup failed' }], structuredContent: { found: false, reason: 'not_found' }, isError: true });
+  assert.deepEqual(await result('nonconforming'), { content: [{ type: 'text', text: 'Lookup failed' }], isError: true }, 'nonconforming data is dropped, the message is still returned');
+  assert.deepEqual(await result('unstructured'), { content: [{ type: 'text', text: 'Lookup failed' }], isError: true });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0]!, /^nonconforming: McpToolError data failed the tool's declared outputSchema/);
+  assert.deepEqual(calls.map(info => info.outcome), ['tool_error', 'tool_error', 'tool_error']);
 });

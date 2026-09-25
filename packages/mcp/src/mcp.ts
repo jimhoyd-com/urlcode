@@ -26,6 +26,39 @@ const PAGE_SIZE = 20;
 export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'] as const;
 export const JSONRPC_VERSION = '2.0' as const;
 
+/**
+ * Upper bound, in characters, on the caller-facing text of an `McpToolError`
+ * (the same bound the config holds `instructions`, the other free-form text
+ * this extension serves a client, to). A longer message is truncated.
+ */
+const MAX_TOOL_ERROR_TEXT = 4096;
+const TOOL_ERROR_BRAND = Symbol.for('@jimhoyd/urlcode-mcp.McpToolError');
+
+/**
+ * Thrown by a tool handler to return a caller-facing tool execution error:
+ * the `tools/call` result is `isError: true` with `message` as its text
+ * content, so the model can read it and self-correct. `data`, when given, is
+ * returned as `structuredContent` only if the tool declares an `outputSchema`
+ * and `data` conforms to it. Any other thrown value keeps the fixed generic
+ * message; only an `McpToolError`'s own message ever reaches the caller.
+ */
+export class McpToolError extends Error {
+  readonly data?: Record<string, unknown>;
+  constructor(message: string, options: { data?: Record<string, unknown>; cause?: unknown } = {}) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause });
+    this.name = 'McpToolError';
+    if (options.data !== undefined) this.data = options.data;
+    Object.defineProperty(this, TOOL_ERROR_BRAND, { value: true });
+  }
+}
+/** Recognizes an `McpToolError` by its registered brand as well, so a second copy of this module still counts. */
+function isMcpToolError(value: unknown): value is McpToolError {
+  return value instanceof McpToolError || (value instanceof Error && (value as unknown as Record<symbol, unknown>)[TOOL_ERROR_BRAND] === true);
+}
+function boundedText(text: string): string {
+  return text.length <= MAX_TOOL_ERROR_TEXT ? text : `${text.slice(0, MAX_TOOL_ERROR_TEXT - 1)}\u2026`;
+}
+
 export type JsonRpcId = string | number | null;
 interface JsonRpcMessage { id?: JsonRpcId; method: string; params?: unknown }
 interface JsonRpcError { code: number; message: string; data?: unknown }
@@ -80,13 +113,17 @@ export interface McpExtensionOptions {
    * `-32603` error for a resource/prompt). This callback is the extension's
    * only mechanism for logging or alerting on that error; it is invoked
    * best-effort (a throwing callback is itself swallowed) and never changes
-   * the response sent to the caller.
+   * the response sent to the caller. A tool handler that throws an
+   * `McpToolError` is not reported here: that message is meant for the
+   * caller, and `onToolCall` observes it as `outcome: 'tool_error'`.
    */
   onToolError?: (error: unknown, info: { server: string; tool: string; kind: McpHandlerKind }) => void;
   /**
    * Host-owned usage observation: called once for every tool/resource/prompt
-   * handler invocation, after it settles, with `outcome: 'success'` or
-   * `'error'` (the same failures `onToolError` sees), the wall-clock
+   * handler invocation, after it settles, with `outcome: 'success'`,
+   * `'tool_error'` (a tool handler threw an `McpToolError`, returned to the
+   * caller as its own `isError` result) or `'error'` (the same failures
+   * `onToolError` sees), the wall-clock
    * duration and the request id the response carries in `X-Request-Id`.
    * Requests refused before a handler runs (unknown name, invalid arguments)
    * are not reported. Best-effort: a throwing callback is swallowed and never
@@ -95,7 +132,8 @@ export interface McpExtensionOptions {
   onToolCall?: (info: McpToolCallInfo) => void;
 }
 export type McpHandlerKind = 'tool' | 'resource' | 'prompt';
-export interface McpToolCallInfo { server: string; tool: string; kind: McpHandlerKind; outcome: 'success' | 'error'; durationMs: number; requestId: string }
+export type McpCallOutcome = 'success' | 'tool_error' | 'error';
+export interface McpToolCallInfo { server: string; tool: string; kind: McpHandlerKind; outcome: McpCallOutcome; durationMs: number; requestId: string }
 /**
  * The second argument every tool/resource/prompt handler receives: core's
  * generic hook context (the mount route's granted `env` and the request id)
@@ -194,7 +232,7 @@ export const mcpAuthoring: ExtensionAuthoringContract = {
   description: 'Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
   surfaces: [
     { kind: 'configuration', name: 'servers', description: 'Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.', path: 'urlcode.yaml#extensions.mcp.config.servers' },
-    { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
+    { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
     { kind: 'hook', name: 'resource handler', description: 'Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text|blob, mimeType}), served over resources/read.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler' },
     { kind: 'hook', name: 'prompt handler', description: 'Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler' },
     { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD). Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
@@ -319,7 +357,7 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
   const invocation = (kind: McpHandlerKind, tool: string) => {
     const started = performance.now();
     const context: McpHandlerContext = { ...extensionHookContext(request), server: server.name, tool, kind };
-    const report = (outcome: 'success' | 'error'): void => {
+    const report = (outcome: McpCallOutcome): void => {
       try { onToolCall?.({ server: server.name, tool, kind, outcome, durationMs: Math.round((performance.now() - started) * 100) / 100, requestId: request.requestId }); } catch { /* host callback errors are never allowed to reach the caller */ }
     };
     return { context, report };
@@ -363,6 +401,17 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
       report('error');
       return { result: { content: [{ type: 'text', text: 'The tool could not complete the request.' }], isError: true } };
     };
+    /** A handler-chosen, caller-facing failure: its own (bounded) message, never the generic one. */
+    const toolError = (error: McpToolError): { result: unknown } => {
+      let structuredContent: Record<string, unknown> | undefined;
+      if (error.data !== undefined && tool.spec.outputSchema) {
+        const dataIssues = isRecord(error.data) ? bodySchemaIssues(tool.spec.outputSchema, error.data) : [];
+        if (isRecord(error.data) && !dataIssues.length) structuredContent = error.data;
+        else try { onToolError?.(new Error(`McpToolError data failed the tool's declared outputSchema and was not returned: ${dataIssues.map(bodySchemaLine).join('; ') || 'not an object'}`), { server: server.name, tool: params.name as string, kind: 'tool' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+      }
+      report('tool_error');
+      return { result: { content: [{ type: 'text', text: boundedText(String(error.message)) }], ...(structuredContent ? { structuredContent } : {}), isError: true } };
+    };
     try {
       const value = await tool.call(args, context);
       if (!tool.spec.outputSchema) { const result = toolContent(value); report('success'); return { result }; }
@@ -375,7 +424,7 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
       const result = { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value, isError: false };
       report('success');
       return { result };
-    } catch (error) { return fail(error); }
+    } catch (error) { return isMcpToolError(error) ? toolError(error) : fail(error); }
   }
 
   if (method === 'resources/list') {
