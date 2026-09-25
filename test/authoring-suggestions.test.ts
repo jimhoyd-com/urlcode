@@ -1,12 +1,16 @@
 // #722: fixture suggestions and YAML change summaries as public, deterministic authoring tools.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {cp,mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {parse,stringify} from 'yaml';
 import {suggestFixtures,summarizeYamlChange} from '../packages/core/src/agent-context.ts';
+import {suggestProjectFixtures} from '../packages/core/src/fixture-suggestions.ts';
+import {summarizeChange} from '../packages/core/src/yaml-change.ts';
+import {loadDocument} from '../packages/core/src/config.ts';
 import {runProjectTests} from '../packages/core/src/project-tests.ts';
 import {readFixtures} from '../packages/core/src/readiness.ts';
 import {project} from './helpers.ts';
@@ -208,12 +212,12 @@ test('CLI: urlcode fixtures suggest and urlcode diff print the same results and 
   const run=(...args:string[])=>spawnSync(process.execPath,[cli,...args],{encoding:'utf8',timeout:20000});
   const suggested=run('fixtures','suggest','--project',root,'--json');
   assert.equal(suggested.status,0,suggested.stderr);
-  assert.deepEqual(JSON.parse(suggested.stdout),suggestFixtures(await readFile(join(root,'urlcode.yaml'),'utf8')));
+  assert.deepEqual(JSON.parse(suggested.stdout),await suggestProjectFixtures(root));
   assert.match(run('fixtures','suggest','--project',root).stdout,/^format: 1\n/);
   const before=join(root,'before.yaml');await writeFile(before,'version: "1"\nroutes: {}\n');
   const diff=run('diff',before,'--project',root,'--json');
   assert.equal(diff.status,0,diff.stderr);
-  assert.deepEqual(JSON.parse(diff.stdout).routes.added,[{route:'/go',handler:'redirect',mode:'trusted'}]);
+  assert.deepEqual(JSON.parse(diff.stdout).routes.added,[{route:'/go',handler:'redirect',mode:'trusted',file:'urlcode.yaml'}]);
   assert.equal(JSON.parse(run('diff',before,before,'--json').stdout).changed,false);
   assert.equal(run('fixtures','--project',root).status,1);
   assert.equal(run('diff','--project',root).status,1);
@@ -248,4 +252,123 @@ test('local MCP exposes both helpers as read-only tools over the project urlcode
   assert.deepEqual(body(4).code.added.map((seam:{source:string;mode:string})=>[seam.source,seam.mode]),[['fn.mjs','trusted']]);
   assert.deepEqual(body(5).grants.requested.egress,[{route:'/p',purpose:'proxy',origin:'https://upstream.example'}]);
   assert.equal(replies[6]!.result.isError,true);assert.match(replies[6]!.result.content[0]!.text,/Invalid URLCode before YAML/);
+});
+
+// #733: project mode reads the project's YAML through the configuration loader, includes and all.
+const cookbook=fileURLToPath(new URL('../examples/cookbook',import.meta.url));
+test('project mode follows includes: the cookbook, whose routes all live in includes, gets fixtures urlcode test passes',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'urlcode-733-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  await cp(cookbook,root,{recursive:true});
+  const result=await suggestProjectFixtures(root);
+  assert.equal(result.scope,'project-yaml');
+  const includes=(parse(await readFile(join(root,'urlcode.yaml'),'utf8')) as {includes:string[]}).includes;
+  assert.deepEqual(result.files,['urlcode.yaml',...includes]);
+  assert.equal(result.gaps.some(gap=>gap.codes.includes('include')),false);
+  assert.equal(result.review.some(entry=>entry.code==='include-shadowing'),false);
+  assert.ok(result.cases.some(item=>item.kind==='unknown-path'));
+  // Included routes are analysed like entry routes, and every route-bound entry names the file that declares it.
+  const loaded=await loadDocument(root,{sources:true});
+  for(const entry of [...result.cases,...result.gaps,...result.review])if(entry.route!==null&&entry.route!=='site')assert.equal(entry.file,loaded.sources!.routes[entry.route],entry.route);
+  assert.ok(result.cases.filter(item=>item.file!==undefined&&item.file!=='urlcode.yaml').length>=10);
+  assert.ok(result.cases.some(item=>item.file==='routes/redirects.yaml'&&item.kind==='redirect'));
+  assert.ok(result.gaps.some(gap=>gap.file==='routes/code.yaml'&&gap.codes.includes('function')));
+  // Deterministic: the same project gives the same bytes.
+  assert.equal(JSON.stringify(await suggestProjectFixtures(root)),JSON.stringify(result));
+  await writeFile(join(root,'tests/requests.json'),JSON.stringify(result.fixtures,null,2));
+  assert.equal((await readFixtures(root)).length,result.fixtures.length);
+  const events:Record<string,unknown>[]=[];
+  const outcome=await runProjectTests(root,{log:event=>events.push(event as Record<string,unknown>)});
+  assert.deepEqual(outcome,{total:result.fixtures.length,failed:0},JSON.stringify(events.filter(event=>event.pass===false)));
+  // Text mode over the same entry file is unchanged: every include is a gap and nothing inside it is read.
+  const text=suggestFixtures(await readFile(join(root,'urlcode.yaml'),'utf8'));
+  assert.equal(text.scope,'supplied-yaml-only');assert.equal(text.files,undefined);assert.equal(text.routeCount,0);
+  assert.deepEqual(text.gaps.map(gap=>[gap.route,gap.codes,gap.file]),[...includes].sort().map(include=>[include,['include'],undefined]));
+});
+
+test('project mode refuses an include that escapes the root exactly as the loader does',async t=>{
+  const outer=await mkdtemp(join(tmpdir(),'urlcode-733-outer-'));t.after(()=>rm(outer,{recursive:true,force:true}));
+  const root=join(outer,'app');
+  await mkdir(root);
+  await writeFile(join(outer,'outside.yaml'),'version: "1"\nroutes:\n  /leak: {respond: {text: leaked}}\n');
+  await writeFile(join(root,'urlcode.yaml'),'version: "1"\nincludes: [../outside.yaml]\nroutes:\n  /a: {respond: {text: a}}\n');
+  const refusal=await loadDocument(root).then(()=>'loaded',(error:Error)=>error.message);
+  assert.match(refusal,/escapes project/);
+  await assert.rejects(suggestProjectFixtures(root),(error:Error)=>error.message===refusal);
+  await assert.rejects(summarizeChange({project:root},{project:root}),(error:Error)=>error.message===refusal);
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const run=spawnSync(process.execPath,[cli,'fixtures','suggest','--project',root,'--json'],{encoding:'utf8',timeout:20000});
+  assert.notEqual(run.status,0);assert.doesNotMatch(run.stdout+run.stderr,/leak/);
+});
+
+const withIncludes=(target:string):Record<string,string>=>({
+  'urlcode.yaml':'version: "1"\nincludes: [routes/store.yaml, routes/fn.yaml]\nroutes:\n  /home: {respond: {text: home}}\n',
+  'routes/store.yaml':`version: "1"\nroutes:\n  /shop: {redirect: {url: "${target}"}}\n  /moving: {respond: {text: m}}\n`,
+  'routes/fn.yaml':'version: "1"\nroutes:\n  /fn: {function: fn.mjs}\n',
+  'fn.mjs':'export default () => new Response("fn")',
+});
+async function write(root:string,files:Record<string,string>):Promise<void> {
+  for(const [file,content] of Object.entries(files)){await mkdir(join(root,file,'..'),{recursive:true});await writeFile(join(root,file),content);}
+}
+test('diff across two project directories catches a change inside an include and names its file',async t=>{
+  const outer=await mkdtemp(join(tmpdir(),'urlcode-733-diff-'));t.after(()=>rm(outer,{recursive:true,force:true}));
+  const before=join(outer,'before'), after=join(outer,'after');
+  await write(before,withIncludes('https://example.com/old-destination'));
+  const next=withIncludes('https://example.com/new-destination');
+  // /moving moves from routes/store.yaml to routes/fn.yaml, /fn becomes sandboxed and a new include adds a proxy.
+  next['routes/store.yaml']=next['routes/store.yaml']!.replace('  /moving: {respond: {text: m}}\n','');
+  next['routes/fn.yaml']='version: "1"\nroutes:\n  /fn: {function: fn.mjs, sandbox: true}\n  /moving: {respond: {text: m}}\n';
+  next['urlcode.yaml']=next['urlcode.yaml']!.replace('routes/fn.yaml]','routes/fn.yaml, routes/api.yaml]');
+  next['routes/api.yaml']='version: "1"\nroutes:\n  /api/**: {proxy: {url: https://upstream.example/}}\n';
+  await write(after,next);
+  const summary=await summarizeChange({project:before},{project:after});
+  assert.equal(summary.scope,'project-yaml');assert.deepEqual(summary.sides,{before:'project',after:'project'});
+  assert.equal(summary.changed,true);assert.equal(summary.routes.unresolved,undefined);
+  assert.deepEqual(summary.routes.added,[{route:'/api/**',handler:'proxy',mode:'trusted',file:'routes/api.yaml'}]);
+  assert.deepEqual(summary.routes.changed.map(entry=>[entry.route,entry.file,entry.movedFrom,entry.keys]),[
+    ['/fn','routes/fn.yaml',undefined,['sandbox']],
+    ['/moving','routes/fn.yaml','routes/store.yaml',[]],
+    ['/shop','routes/store.yaml',undefined,['redirect']],
+  ]);
+  assert.deepEqual(summary.code.modeChanged,[{route:'/fn',before:'trusted',after:'sandboxed'}]);
+  assert.deepEqual(summary.grants.requested.egress,[{route:'/api/**',purpose:'proxy',origin:'https://upstream.example'}]);
+  assert.deepEqual(summary.project.includes,{added:['routes/api.yaml'],removed:[]});
+  // Names and keys only: no redirect destination appears.
+  assert.doesNotMatch(JSON.stringify(summary),/destination/);
+  assert.equal(JSON.stringify(await summarizeChange({project:before},{project:after})),JSON.stringify(summary));
+  assert.equal((await summarizeChange({project:before},{project:before})).changed,false);
+  // The CLI takes a directory on either side (the after side defaults to --project) and prints the same result.
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const run=spawnSync(process.execPath,[cli,'diff',before,after,'--json'],{encoding:'utf8',timeout:20000});
+  assert.equal(run.status,0,run.stderr);assert.deepEqual(JSON.parse(run.stdout),JSON.parse(JSON.stringify(summary)));
+  const defaulted=spawnSync(process.execPath,[cli,'diff',before,'--project',after,'--json'],{encoding:'utf8',timeout:20000});
+  assert.equal(defaulted.status,0,defaulted.stderr);assert.deepEqual(JSON.parse(defaulted.stdout),JSON.parse(JSON.stringify(summary)));
+  // A YAML file against a project: routes in includes the file lists but does not read are set aside, never guessed.
+  const mixed=await summarizeChange({yaml:await readFile(join(before,'urlcode.yaml'),'utf8')},{project:after});
+  assert.equal(mixed.scope,'mixed');assert.deepEqual(mixed.sides,{before:'yaml',after:'project'});
+  assert.deepEqual(mixed.routes.added.map(entry=>[entry.route,entry.file]),[['/api/**','routes/api.yaml']]);
+  assert.deepEqual(mixed.routes.unresolved,[
+    {route:'/fn',file:'routes/fn.yaml',side:'after'},{route:'/moving',file:'routes/fn.yaml',side:'after'},{route:'/shop',file:'routes/store.yaml',side:'after'},
+  ]);
+  assert.deepEqual(mixed.code.added,[]);
+  // Two YAML texts keep the text-only shape exactly.
+  const text=summarizeYamlChange(await readFile(join(before,'urlcode.yaml'),'utf8'),await readFile(join(after,'urlcode.yaml'),'utf8'));
+  assert.equal(text.scope,'supplied-yaml-only');assert.equal('sides' in text,false);assert.equal('unresolved' in text.routes,false);
+  assert.deepEqual(text.routes.changed,[]);
+});
+
+test('local MCP reads the project with its includes when no YAML is supplied, and supplied YAML stays text-only',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'urlcode-733-mcp-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  await write(root,withIncludes('https://example.com/'));
+  const replies=await session(root,[initialize,ready,
+    {jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'suggest_fixtures',arguments:{}}},
+    {jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'suggest_fixtures',arguments:{yaml:await readFile(join(root,'urlcode.yaml'),'utf8')}}},
+    {jsonrpc:'2.0',id:4,method:'tools/call',params:{name:'summarize_yaml_change',arguments:{before:'version: "1"\nroutes: {}\n'}}},
+  ]);
+  const body=(index:number)=>JSON.parse(replies[index]!.result.content[0]!.text);
+  assert.deepEqual(body(1),JSON.parse(JSON.stringify(await suggestProjectFixtures(root))));
+  assert.ok(body(1).cases.some((item:{route:string;file:string})=>item.route==='/shop'&&item.file==='routes/store.yaml'));
+  assert.deepEqual(body(1).gaps.map((gap:{route:string;file:string})=>[gap.route,gap.file]),[['/fn','routes/fn.yaml']]);
+  assert.deepEqual(body(2).gaps.map((gap:{route:string;codes:string[]})=>[gap.route,gap.codes]),[['routes/fn.yaml',['include']],['routes/store.yaml',['include']]]);
+  assert.equal(body(3).scope,'mixed');
+  assert.deepEqual(body(3).routes.added.map((entry:{route:string;file:string})=>[entry.route,entry.file]),[['/fn','routes/fn.yaml'],['/home','urlcode.yaml'],['/moving','routes/store.yaml'],['/shop','routes/store.yaml']]);
 });

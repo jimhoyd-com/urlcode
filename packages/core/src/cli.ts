@@ -20,14 +20,14 @@ import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions, type OperatorPolicy } from './policy.ts';
-import { loadDocument, safeFile } from './config.ts';
+import { loadDocument } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
 import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { access, readFile, realpath } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
@@ -197,11 +197,11 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'fixtures', group:'Agent tooling', text:
 `  urlcode fixtures suggest [--project directory] [--json]
-    # tests/requests.json candidates only for routes urlcode.yaml alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, include, pattern and binding routes are listed as gaps, never as covered. Reads urlcode.yaml only; writes nothing
+    # tests/requests.json candidates only for routes the project's YAML alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, pattern and binding routes are listed as gaps, never as covered. Reads urlcode.yaml and its includes (each entry names its file) only; writes nothing
 ` },
   { name:'diff', group:'Agent tooling', text:
-`  urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]  # after defaults to the project's urlcode.yaml
-    # route, capability, trusted/sandboxed code seam and newly requested operator grant changes between two YAML documents, by name only (no values); always exits 0
+`  urlcode diff <before.yaml|directory> [after.yaml|directory] [--project directory] [--json]  # after defaults to the project
+    # route, capability, trusted/sandboxed code seam and newly requested operator grant changes, by name only (no values); a directory is read with its includes (each route names its file), a file as text; always exits 0
 ` },
   { name:'review', group:'Agent tooling', text:
 `  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
@@ -364,17 +364,19 @@ try {
       const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='fixtures'||command==='diff'){
-      // Both read YAML text only: no include, source file, binding or operator policy is read, and nothing executes.
-      const projectYaml=async()=>readFile(await safeFile(await realpath(values.project),'urlcode.yaml'),'utf8');
+      // Both read YAML only: a project directory through the configuration loader (urlcode.yaml and its
+      // root-confined includes), a file as text (its includes unread). No source file, binding or operator policy is
+      // read, and nothing executes (#733).
       let result: unknown;
       if(command==='fixtures'){
         if(arg!=='suggest')throw new ConfigError('Use urlcode fixtures suggest [--project directory] [--json]');
-        const {suggestFixtures}=await import('./fixture-suggestions.ts');
-        result=suggestFixtures(await projectYaml());
+        const {suggestProjectFixtures}=await import('./fixture-suggestions.ts');
+        result=await suggestProjectFixtures(values.project);
       }else{
-        if(arg===undefined||extra.length>1)throw new ConfigError('Use urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]');
-        const {summarizeYamlChange}=await import('./yaml-change.ts');
-        result=summarizeYamlChange(await readFile(arg,'utf8'),extra[0]===undefined?await projectYaml():await readFile(extra[0],'utf8'));
+        if(arg===undefined||extra.length>1)throw new ConfigError('Use urlcode diff <before.yaml|before-directory> [after.yaml|after-directory] [--project directory] [--json]');
+        const {summarizeChange}=await import('./yaml-change.ts');
+        const side=async(path:string)=>(await stat(path)).isDirectory()?{project:path}:{yaml:await readFile(path,'utf8')};
+        result=await summarizeChange(await side(arg),extra[0]===undefined?{project:values.project}:await side(extra[0]));
       }
       print(values.json?result:stringifyYaml(result,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='review'){

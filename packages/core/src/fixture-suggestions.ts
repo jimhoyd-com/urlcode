@@ -1,13 +1,19 @@
-// Deterministic request-fixture suggestions from one URLCode YAML document
+// Deterministic request-fixture suggestions from URLCode YAML
 // (#722; public API in agent-context.ts, contract in docs/TOOLING.md#fixture-suggestions).
 //
-// Only a fixture whose response core can predict from the YAML text alone is
+// Only a fixture whose response core can predict from the YAML alone is
 // generated. Anything that depends on project code, an operator grant or
-// registration, an included file, the clock, request conditions or a regex is
-// reported under `gaps` or `review`, never as a fixture: a suggestion must not
-// read as "this route is tested" when nothing here could know its answer.
+// registration, an unread included file, the clock, request conditions or a
+// regex is reported under `gaps` or `review`, never as a fixture: a suggestion
+// must not read as "this route is tested" when nothing here could know its answer.
+//
+// Two modes (#733). Text mode (`suggestFixtures`, the public agent-context API)
+// reads the supplied document only and reports its includes as gaps. Project
+// mode (`suggestProjectFixtures`, CLI and local MCP only) reads the project's
+// YAML through the configuration loader, which resolves and root-confines the
+// includes exactly as serving does, and tags every entry with its file.
 import {Ajv} from 'ajv';
-import {parseYaml,validateDocument,normalizeRouteAuth} from './config.ts';
+import {loadDocument,parseYaml,validateDocument,normalizeRouteAuth} from './config.ts';
 import {ConfigError} from './errors.ts';
 import {contextFor,matchRoute,parameterName,parseTarget,redirectLocation} from './match.ts';
 import type {CompiledParameter,CompiledRoutes,MatchableRoute,ParameterSchema,RedirectSpec} from './match.ts';
@@ -24,17 +30,23 @@ export type FixtureKind = 'redirect'|'respond'|'page'|'download'|'disabled'|'met
 export type FixtureGapCode = 'function'|'middleware'|'proxy'|'signals'|'extension'|'extension-policy'|'external-binding'|'pattern-constrained'|'include';
 export type FixtureReviewCode = 'conditional'|'expires'|'static-directory'|'policy'|'parameter-schema'|'shadowed'|'include-shadowing'|'request-body'|'site'|'unknown-path'|'size';
 /** Why a route has no generated fixture although nothing here claims it untestable: a person or agent writes its cases. */
-export interface FixtureReview { route: string; code: FixtureReviewCode; reason: string }
+export interface FixtureReview { route: string; code: FixtureReviewCode; reason: string; /** Project mode: the YAML file that declares the route. */ file?: string }
 /** A route (or include) whose answer depends on something the YAML text cannot determine. Never covered by a suggestion. */
-export interface FixtureGap { route: string; codes: FixtureGapCode[]; reason: string }
+export interface FixtureGap { route: string; codes: FixtureGapCode[]; reason: string; /** Project mode: the YAML file that declares the route. */ file?: string }
 export interface FixtureSuggestions {
   format: 1;
-  /** Only the supplied document: includes, function sources, asset files and operator policy are never read. */
-  scope: 'supplied-yaml-only';
+  /**
+   * `supplied-yaml-only`: only the supplied document; its includes are gaps. `project-yaml`: the project's
+   * `urlcode.yaml` and its includes, as the loader resolves them. Function sources, asset files, bindings and
+   * operator policy are never read in either mode.
+   */
+  scope: 'supplied-yaml-only'|'project-yaml';
+  /** Project mode: the YAML files read, `urlcode.yaml` first, then the includes in declaration order. */
+  files?: string[];
   routeCount: number;
   /** Ready to write as `tests/requests.json`. Parallel to `cases`. */
   fixtures: SuggestedFixture[];
-  cases: { route: string|null; kind: FixtureKind }[];
+  cases: { route: string|null; kind: FixtureKind; /** Project mode: the YAML file that declares the route. */ file?: string }[];
   review: FixtureReview[];
   gaps: FixtureGap[];
   limits: { maxFixtures: number; maxEntries: number; maxBodyBytes: number; maxFixtureBytes: number };
@@ -62,6 +74,21 @@ export function readProjectYaml(text:string, label='YAML'):{document:ProjectDocu
   catch(error){throw new ConfigError(`Invalid URLCode ${label}: ${error instanceof Error?error.message:'invalid auth short form'}`);}
   return {document,routes};
 }
+
+/** One project's YAML as these tools read it. `sources` (project mode only) names the file of each route and extension declaration. */
+export interface YamlProject {
+  document: ProjectDocument; routes: Record<string,RouteConfig>;
+  sources?: { routes: Record<string,string>; extensions: Record<string,string> };
+}
+/**
+ * Project mode: the entry `urlcode.yaml` and its includes through `loadDocument`, so include resolution, root
+ * containment, the nesting/duplicate rules and every size bound are the loader's own. Reads YAML only; executes nothing.
+ */
+export async function readProjectDirectory(project:string):Promise<YamlProject> {
+  const {document,routes,sources}=await loadDocument(project,{sources:true});
+  return {document,routes,sources:sources!};
+}
+const projectFiles=(project:YamlProject)=>['urlcode.yaml',...(project.document.includes??[])];
 
 interface Probe extends MatchableRoute { config: RouteConfig }
 /** The same precedence router.ts compiles (exact, then parameterized by specificity, then mounts by prefix length), over the supplied routes only. */
@@ -137,21 +164,34 @@ function target(request:Request):string {
  * are visited in code-point order, and nothing is read, executed or fetched.
  */
 export function suggestFixtures(yaml:string, options:FixtureSuggestionOptions={}):FixtureSuggestions {
+  return suggestFor(readProjectYaml(yaml),options);
+}
+/**
+ * Project mode (CLI and local MCP): the same suggestions over the project's `urlcode.yaml` and its includes, read
+ * through the configuration loader. Included routes are analysed like entry routes; each entry names its file.
+ */
+export async function suggestProjectFixtures(project:string, options:FixtureSuggestionOptions={}):Promise<FixtureSuggestions> {
+  return suggestFor(await readProjectDirectory(project),options);
+}
+
+function suggestFor(project:YamlProject, options:FixtureSuggestionOptions):FixtureSuggestions {
   const maxFixtures=Math.min(Math.max(Math.trunc(options.maxFixtures??200),1),1000);
-  const {document,routes}=readProjectYaml(yaml);
-  const table=matchTable(routes), hasIncludes=(document.includes??[]).length>0;
+  const {document,routes}=project, sources=project.sources?.routes;
+  // In project mode every included route is in `routes`, so nothing unread can shadow a route or match a probe path.
+  const table=matchTable(routes), hasIncludes=!sources&&(document.includes??[]).length>0;
+  const at=(route:string|null):{file?:string}=>route!==null&&sources&&Object.hasOwn(sources,route)?{file:sources[route]!}:{};
   const fixtures:SuggestedFixture[]=[], cases:FixtureSuggestions['cases']=[], review:FixtureReview[]=[], gaps:FixtureGap[]=[];
   const truncated={fixtures:0,review:0,gaps:0};
   let bytes=0;
   const add=(route:string|null,kind:FixtureKind,fixture:SuggestedFixture)=>{
     const size=Buffer.byteLength(JSON.stringify(fixture));
     if(fixtures.length>=maxFixtures||bytes+size>MAX_FIXTURE_BYTES){truncated.fixtures++;return;}
-    bytes+=size;fixtures.push(fixture);cases.push({route,kind});
+    bytes+=size;fixtures.push(fixture);cases.push({route,kind,...at(route)});
   };
-  const note=(route:string,code:FixtureReviewCode,reason:string)=>{if(review.length>=MAX_ENTRIES)truncated.review++;else review.push({route,code,reason});};
-  const gap=(route:string,codes:FixtureGapCode[],reason:string)=>{if(gaps.length>=MAX_ENTRIES)truncated.gaps++;else gaps.push({route,codes,reason});};
+  const note=(route:string,code:FixtureReviewCode,reason:string)=>{if(review.length>=MAX_ENTRIES)truncated.review++;else review.push({route,code,reason,...at(route)});};
+  const gap=(route:string,codes:FixtureGapCode[],reason:string)=>{if(gaps.length>=MAX_ENTRIES)truncated.gaps++;else gaps.push({route,codes,reason,...at(route)});};
 
-  for(const include of [...(document.includes??[])].sort())gap(include,['include'],'Routes in an included file are not read by this helper; suggest fixtures for that file\'s routes separately or write them by hand.');
+  if(hasIncludes)for(const include of [...(document.includes??[])].sort())gap(include,['include'],'Routes in an included file are not read from supplied YAML; suggest fixtures for the project itself (urlcode fixtures suggest, or MCP suggest_fixtures without yaml) to cover them, or write them by hand.');
   const gapReasons:Record<FixtureGapCode,string>={
     function:'a function answers it, so the response is project code',
     middleware:'middleware runs project code around the handler',
@@ -242,7 +282,7 @@ export function suggestFixtures(yaml:string, options:FixtureSuggestionOptions={}
   const unmatched=hasIncludes?undefined:unmatchedCandidates.find(candidate=>resolves(table,candidate)===null);
   if(unmatched)add(null,'unknown-path',{path:unmatched,status:404});
   else note('(unmatched path)','unknown-path',hasIncludes?'Included routes are not read, so no path is certain to match nothing.':'Every candidate unmatched path reaches a route (a root mount or parameter); write a 404 case by hand.');
-  return {format:1,scope:'supplied-yaml-only',routeCount:Object.keys(routes).length,fixtures,cases,review,gaps,limits:{maxFixtures,maxEntries:MAX_ENTRIES,maxBodyBytes:MAX_BODY_BYTES,maxFixtureBytes:MAX_FIXTURE_BYTES},truncated};
+  return {format:1,...(sources?{scope:'project-yaml' as const,files:projectFiles(project)}:{scope:'supplied-yaml-only' as const}),routeCount:Object.keys(routes).length,fixtures,cases,review,gaps,limits:{maxFixtures,maxEntries:MAX_ENTRIES,maxBodyBytes:MAX_BODY_BYTES,maxFixtureBytes:MAX_FIXTURE_BYTES},truncated};
 }
 
 type Expected={kind:FixtureKind;fixture:Pick<SuggestedFixture,'status'|'expectHeaders'|'expectBody'>}|{review:string};

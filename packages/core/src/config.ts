@@ -12,7 +12,7 @@ import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareCon
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message and details. */
 export type ConfigWorkerResult = { value: LoadedDocument } | { error: string; details: ErrorDetails };
-export interface ConfigWorkerData { project: string }
+export interface ConfigWorkerData { project: string; sources?: boolean }
 
 // The schema file is this package's own; JSON.parse gives unknown and Ajv takes it as a schema object.
 const schema = JSON.parse(await readFile(new URL('../../../schemas/urlcode.schema.json', import.meta.url), 'utf8')) as object;
@@ -386,13 +386,18 @@ async function located<T>(name: string, path: string, budget: { remaining: numbe
 // Resource limits contain parser/AST/schema expansion, not just source bytes.
 // The parent can terminate a blocked parser without blocking serving requests.
 let activeLoads = 0;
-export async function loadDocument(project: string, {timeoutMs=10000}: {timeoutMs?: number}={}): Promise<LoadedDocument> {
+/**
+ * Loads the project's YAML (the entry `urlcode.yaml` and its root-confined includes) in a bounded worker. Only YAML is
+ * read: no source, asset, binding or policy file. With `sources`, the result also names the file each route and
+ * extension declaration came from (`LoadedDocument.sources`), for tools that report per file.
+ */
+export async function loadDocument(project: string, {timeoutMs=10000, sources=false}: {timeoutMs?: number; sources?: boolean}={}): Promise<LoadedDocument> {
   assert(Number.isInteger(timeoutMs) && timeoutMs>=1 && timeoutMs<=30000, 'Configuration deadline must be 1–30000 ms');
   assert(activeLoads < 2, 'Configuration compilation capacity unavailable');
   activeLoads++;
   let worker: Worker | undefined;
   try {
-    const data: ConfigWorkerData = {project};
+    const data: ConfigWorkerData = sources ? {project, sources} : {project};
     worker = new Worker(new URL('./config-worker.ts', import.meta.url), {
       workerData:data, env:{}, execArgv:[], stdout:true, stderr:true,
       resourceLimits:{maxOldGenerationSizeMb:256, maxYoungGenerationSizeMb:16, stackSizeMb:4},
@@ -433,7 +438,7 @@ export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>
   }
   return origins;
 }
-export async function loadDocumentInWorker(project: string): Promise<LoadedDocument> {
+export async function loadDocumentInWorker(project: string, {sources=false}: {sources?: boolean}={}): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
   const root = await realpath(project).catch(() => {
     // A site's route project is app/ (see addon-install.ts); before `urlcode init` it is missing, and the next step
@@ -448,6 +453,9 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
   const routes: Record<string, RouteConfig> = Object.assign(Object.create(null) as Record<string, RouteConfig>, document.routes);
   const extensions = Object.assign(Object.create(null),document.extensions??{}) as NonNullable<ProjectDocument['extensions']>;
   const files = [file];
+  // Where each route and extension declaration was written, by the authored name ('urlcode.yaml' or the include path).
+  const routeFiles: Record<string, string> = Object.fromEntries(Object.keys(routes).map(pattern => [pattern, 'urlcode.yaml']));
+  const extensionFiles: Record<string, string> = Object.fromEntries(Object.keys(extensions).map(name => [name, 'urlcode.yaml']));
   let routeCount=Object.keys(routes).length;
   for (const include of document.includes || []) {
     const path = await safeFile(root, include);
@@ -457,17 +465,18 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
     assert(part.shared===undefined, 'shared may only be set in the entry urlcode.yaml');
-    for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
+    for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;extensionFiles[name]=include;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');
       routes[pattern] = route;
+      routeFiles[pattern] = include;
       assert(++routeCount <= 100000, 'Maximum 100000 routes per project');
     }
   }
   if(Object.keys(extensions).length)document.extensions=extensions;
   const routeAuth = normalizeRouteAuth(document, routes);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
-  return { root, document, routes, files, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
+  return { root, document, routes, files, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), ...(sources ? { sources: { routes: routeFiles, extensions: extensionFiles } } : {}), version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
 }
 export async function loadBindings(root: string, local = false, environment: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
   const vars: Record<string, string> = {};
