@@ -138,8 +138,14 @@ export const budgets: Record<string, Budget> = {
     // helpers: together they measure 733793 packed and 2966469 unpacked bytes
     // in 462 entries on Node 26, each within about 3 KiB of the old budget
     // and two entries over its count.
+    //
+    // Unpacked raised from 2950 to 2970 KiB for #750: a description on every
+    // property of schemas/urlcode.schema.json (+20 KiB) also fills the
+    // Description column of docs/YAML-REFERENCE.md and its llms-full.txt copy
+    // (+20 KiB each), measuring 3028789 unpacked bytes on Node 26. Packed
+    // size and entry count stay inside their budgets.
     packed: 740 * 1024,
-    unpacked: 2950 * 1024,
+    unpacked: 2970 * 1024,
     entries: 470,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

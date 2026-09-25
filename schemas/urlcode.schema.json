@@ -4,10 +4,12 @@
   "type": "object",
   "properties": {
     "version": {
+      "description": "Project format version; always \"1\".",
       "const": "1"
     },
     "routes": {
       "type": "object",
+      "description": "Map of route path patterns to the route each one serves (matching rules in docs/ROUTING.md).",
       "maxProperties": 100000,
       "additionalProperties": {
         "$ref": "#/$defs/route"
@@ -15,6 +17,7 @@
     },
     "includes": {
       "type": "array",
+      "description": "Other YAML files whose routes join this project; entry urlcode.yaml only, with no nesting.",
       "items": {
         "type": "string",
         "maxLength": 1024
@@ -23,6 +26,7 @@
       "maxItems": 256
     },
     "policies": {
+      "description": "Project-wide policy defaults that every route inherits and may override in its own policies.",
       "$ref": "#/$defs/policies"
     },
     "profiles": {
@@ -36,6 +40,7 @@
         "type": "object",
         "properties": {
           "throttle": {
+            "description": "This profile's throttle policy, applied like policies.throttle, or false to turn it off.",
             "oneOf": [
               {
                 "const": false
@@ -46,6 +51,7 @@
             ]
           },
           "agents": {
+            "description": "This profile's agents policy, applied like policies.agents, or false to turn it off.",
             "oneOf": [
               {
                 "const": false
@@ -56,6 +62,7 @@
             ]
           },
           "security": {
+            "description": "This profile's security policy, applied like policies.security, or false to turn it off.",
             "oneOf": [
               {
                 "const": false
@@ -66,6 +73,7 @@
             ]
           },
           "compression": {
+            "description": "This profile's compression policy, applied like policies.compression, or false to turn it off.",
             "oneOf": [
               {
                 "const": false
@@ -76,6 +84,7 @@
             ]
           },
           "cache": {
+            "description": "This profile's cache policy, applied like policies.cache, or false to turn it off.",
             "oneOf": [
               {
                 "const": false
@@ -86,6 +95,7 @@
             ]
           },
           "extensions": {
+            "description": "This profile's extensions policy, applied like policies.extensions, or false to turn it off.",
             "oneOf": [
               {
                 "const": false
@@ -124,6 +134,7 @@
           "properties": {
             "disallow": {
               "type": "array",
+              "description": "Bundled agent list names to shut out entirely, or paths starting with / that every agent is asked not to fetch.",
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -134,6 +145,7 @@
             },
             "allow": {
               "type": "array",
+              "description": "Bundled agent list names or paths starting with /, emitted as Allow lines.",
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -148,6 +160,7 @@
             },
             "extra": {
               "type": "array",
+              "description": "Literal lines appended to robots.txt verbatim, such as comments or Crawl-delay.",
               "items": {
                 "type": "string",
                 "maxLength": 2048
@@ -167,6 +180,7 @@
               "properties": {
                 "exclude": {
                   "type": "array",
+                  "description": "Exact paths, or prefixes ending in /*, left out of the sitemap.",
                   "items": {
                     "type": "string",
                     "minLength": 1,
@@ -176,6 +190,7 @@
                   "uniqueItems": true
                 },
                 "changefreq": {
+                  "description": "changefreq value written on every sitemap URL.",
                   "enum": [
                     "always",
                     "hourly",
@@ -188,6 +203,7 @@
                 },
                 "priority": {
                   "type": "number",
+                  "description": "priority value written on every sitemap URL.",
                   "minimum": 0,
                   "maximum": 1
                 }
@@ -209,6 +225,7 @@
           "properties": {
             "contact": {
               "type": "array",
+              "description": "How to report a vulnerability: mailto:, tel: or https: URIs, one Contact line each.",
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -219,10 +236,12 @@
             },
             "expires": {
               "type": "string",
+              "description": "UTC timestamp after which the file is stale; it must be in the future when the project activates.",
               "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
             },
             "policy": {
               "type": "array",
+              "description": "https: links to your vulnerability disclosure policy.",
               "items": {
                 "type": "string",
                 "pattern": "^https://",
@@ -232,6 +251,7 @@
             },
             "acknowledgments": {
               "type": "array",
+              "description": "https: links to the page thanking security researchers.",
               "items": {
                 "type": "string",
                 "pattern": "^https://",
@@ -241,6 +261,7 @@
             },
             "preferredLanguages": {
               "type": "array",
+              "description": "Language tags for reports, emitted as one comma-separated Preferred-Languages line.",
               "items": {
                 "type": "string",
                 "minLength": 2,
@@ -251,6 +272,7 @@
             },
             "canonical": {
               "type": "array",
+              "description": "https: URLs where this security.txt is published.",
               "items": {
                 "type": "string",
                 "pattern": "^https://",
@@ -260,6 +282,7 @@
             },
             "encryption": {
               "type": "array",
+              "description": "https:, dns: or openpgp4fpr: URIs for the key researchers should encrypt reports with.",
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -301,10 +324,12 @@
         "type": "object",
         "properties": {
           "version": {
+            "description": "Version of this extension configuration contract; always \"1\".",
             "const": "1"
           },
           "config": {
-            "type": "object"
+            "type": "object",
+            "description": "The extension's own settings, validated against the configuration schema its registration declares (urlcode extensions --json)."
           }
         },
         "required": [
@@ -326,9 +351,11 @@
         "type": "object",
         "properties": {
           "request": {
+            "description": "Request body checks a route inherits when it names this block with use.",
             "$ref": "#/$defs/requestBlock"
           },
           "response": {
+            "description": "Response headers a route inherits when it names this block with use.",
             "$ref": "#/$defs/responseBlock"
           }
         },
@@ -347,6 +374,7 @@
       "properties": {
         "methods": {
           "type": "array",
+          "description": "HTTP methods this route answers; any other method gets 405 with Allow, and an explicit list replaces the GET/HEAD default.",
           "items": {
             "enum": [
               "GET",
@@ -366,7 +394,8 @@
           ]
         },
         "enabled": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Set false to switch the route off so it answers 404 without removing it."
         },
         "sandbox": {
           "type": "boolean",
@@ -393,22 +422,27 @@
           "description": "Audit-only waiver: methods of this route whose normal-response fixture is provided by other tests (for example stateful create/update/delete). Each method needs a non-empty reason and must be one of the route's methods. audit lists waived pairs with their reasons under waivedRouteMethods and still requires the route to have another normally covered method; it never hides a function route that only serves errors. Project file only: there is no CLI flag."
         },
         "expires": {
-          "type": "string"
+          "type": "string",
+          "description": "Quoted UTC timestamp (YYYY-MM-DDTHH:MM:SSZ) after which the route answers 410 Gone."
         },
         "description": {
           "type": "string",
+          "description": "Free-text note for authors and tooling; it does not change how the route answers.",
           "maxLength": 1024
         },
         "parameters": {
           "type": "array",
+          "description": "Path, query and header inputs the route accepts, validated before the handler runs; a missing or invalid input answers 400.",
           "items": {
             "type": "object",
             "properties": {
               "name": {
                 "type": "string",
+                "description": "Input name: the {placeholder} in the route path, the query key or the header name.",
                 "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
               },
               "in": {
+                "description": "Where the input is read from: path, query or header.",
                 "enum": [
                   "path",
                   "query",
@@ -416,12 +450,15 @@
                 ]
               },
               "required": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether a request without this input is refused with 400; path inputs must be required."
               },
               "schema": {
                 "type": "object",
+                "description": "Type and constraints the input must satisfy, a documented subset of JSON Schema (docs/HTTP.md).",
                 "properties": {
                   "type": {
+                    "description": "Value type the raw input is converted to; path inputs are strings and arrays are query-only.",
                     "enum": [
                       "string",
                       "integer",
@@ -432,6 +469,7 @@
                   },
                   "enum": {
                     "type": "array",
+                    "description": "The only values the input may take.",
                     "items": {
                       "type": [
                         "string",
@@ -449,6 +487,7 @@
                       "boolean",
                       "array"
                     ],
+                    "description": "Value used when a query or header input is absent; path inputs cannot have one.",
                     "items": {
                       "type": [
                         "string",
@@ -459,34 +498,42 @@
                   },
                   "minLength": {
                     "type": "integer",
+                    "description": "Shortest string the input accepts.",
                     "minimum": 0,
                     "maximum": 8192
                   },
                   "maxLength": {
                     "type": "integer",
+                    "description": "Longest string the input accepts.",
                     "minimum": 0,
                     "maximum": 8192
                   },
                   "minimum": {
-                    "type": "number"
+                    "type": "number",
+                    "description": "Smallest number an integer or number input accepts."
                   },
                   "maximum": {
-                    "type": "number"
+                    "type": "number",
+                    "description": "Largest number an integer or number input accepts."
                   },
                   "pattern": {
                     "type": "string",
+                    "description": "Regular expression a string input must match, from a bounded subset that also needs maxLength (docs/HTTP.md).",
                     "minLength": 1,
                     "maxLength": 128
                   },
                   "format": {
+                    "description": "Named string format the input must match; only uuid is supported.",
                     "enum": [
                       "uuid"
                     ]
                   },
                   "items": {
                     "type": "object",
+                    "description": "Element type of a query array input.",
                     "properties": {
                       "type": {
+                        "description": "Scalar type each repeated query value is converted to.",
                         "enum": [
                           "string",
                           "integer",
@@ -502,6 +549,7 @@
                   },
                   "maxItems": {
                     "type": "integer",
+                    "description": "Most repeated values a query array input accepts.",
                     "minimum": 0,
                     "maximum": 100
                   }
@@ -527,9 +575,11 @@
           "properties": {
             "url": {
               "type": "string",
+              "description": "Destination URL: a literal http(s) URL or a same-site path starting with /, where {name} placeholders are filled from declared path inputs and a subtree redirect can append the matched remainder (docs/yaml/redirects.md).",
               "maxLength": 8192
             },
             "status": {
+              "description": "Redirect status code; 302 when omitted.",
               "enum": [
                 301,
                 302,
@@ -540,8 +590,10 @@
             },
             "query": {
               "type": "object",
+              "description": "Which request values are copied into the destination query string; nothing is forwarded unless listed here.",
               "properties": {
                 "pass": {
+                  "description": "Incoming query keys copied to the destination unchanged; false or omitted forwards none.",
                   "oneOf": [
                     {
                       "const": false
@@ -557,10 +609,12 @@
                 },
                 "map": {
                   "type": "object",
+                  "description": "Destination query keys, each filled from a declared path, query or header input.",
                   "additionalProperties": {
                     "type": "object",
                     "properties": {
                       "from": {
+                        "description": "Where the declared input comes from: path, query or header.",
                         "enum": [
                           "path",
                           "query",
@@ -568,7 +622,8 @@
                         ]
                       },
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Name of the declared input whose validated value fills this destination key."
                       }
                     },
                     "required": [
@@ -589,6 +644,7 @@
           "additionalProperties": false
         },
         "function": {
+          "description": "Run a JavaScript module for this route, as a project-relative .mjs/.js path or an object naming source, export and args (docs/yaml/functions.md).",
           "oneOf": [
             {
               "type": "string",
@@ -600,14 +656,17 @@
               "properties": {
                 "source": {
                   "type": "string",
+                  "description": "Project-relative path of the .mjs or .js module to run.",
                   "maxLength": 1024
                 },
                 "export": {
                   "type": "string",
+                  "description": "Named export to call; the default export when omitted.",
                   "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                 },
                 "args": {
                   "type": "object",
+                  "description": "Named values passed to the function as context.args: literals, declared inputs or route bindings; omitted binds every declared path input.",
                   "propertyNames": {
                     "type": "string",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
@@ -625,6 +684,7 @@
                         "type": "object",
                         "properties": {
                           "from": {
+                            "description": "Where the declared input comes from: path, query or header.",
                             "enum": [
                               "path",
                               "query",
@@ -632,7 +692,8 @@
                             ]
                           },
                           "name": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Name of the declared input whose validated value becomes this argument."
                           }
                         },
                         "required": [
@@ -646,6 +707,7 @@
                         "properties": {
                           "env": {
                             "type": "string",
+                            "description": "Alias of a binding in this route's env whose value becomes this argument.",
                             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                           }
                         },
@@ -659,6 +721,7 @@
                         "properties": {
                           "secret": {
                             "type": "string",
+                            "description": "Alias of a binding in this route's secrets whose value becomes this argument.",
                             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                           }
                         },
@@ -680,6 +743,7 @@
         },
         "env": {
           "type": "object",
+          "description": "Non-secret values the route's function and middleware read as context.env, each a literal or a granted process environment variable.",
           "propertyNames": {
             "type": "string",
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
@@ -690,7 +754,8 @@
                 "type": "object",
                 "properties": {
                   "value": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Literal value, never overridden by the host environment and needing no grant."
                   }
                 },
                 "required": [
@@ -703,10 +768,12 @@
                 "properties": {
                   "env": {
                     "type": "string",
+                    "description": "Process environment variable to read, which an operator policy must grant to this route.",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   },
                   "default": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Value used when the variable is ungranted or unset, so the route still activates without an operator grant."
                   }
                 },
                 "required": [
@@ -719,6 +786,7 @@
         },
         "secrets": {
           "type": "object",
+          "description": "Secret values the route's function, middleware, proxy and signals can use, each resolved from a name an operator policy grants to this route.",
           "propertyNames": {
             "type": "string",
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
@@ -728,6 +796,7 @@
             "properties": {
               "secret": {
                 "type": "string",
+                "description": "External secret name the operator grants to this route; the value never appears in YAML.",
                 "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
               }
             },
@@ -739,18 +808,22 @@
         },
         "page": {
           "type": "object",
+          "description": "Serve one project file as the response, with ETag, conditional and range support.",
           "properties": {
             "file": {
               "type": "string",
+              "description": "Project-relative path of the file to serve.",
               "minLength": 1,
               "maxLength": 1024
             },
             "contentType": {
               "type": "string",
+              "description": "Media type sent instead of the one detected from the file extension.",
               "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
               "maxLength": 128
             },
             "cacheControl": {
+              "description": "Cache-Control header for the file; no-cache when omitted.",
               "enum": [
                 "no-cache",
                 "no-store",
@@ -766,18 +839,22 @@
         },
         "download": {
           "type": "object",
+          "description": "Serve one project file as an attachment the browser saves rather than displays.",
           "properties": {
             "file": {
               "type": "string",
+              "description": "Project-relative path of the file to serve.",
               "minLength": 1,
               "maxLength": 1024
             },
             "contentType": {
               "type": "string",
+              "description": "Media type sent instead of the one detected from the file extension.",
               "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
               "maxLength": 128
             },
             "cacheControl": {
+              "description": "Cache-Control header for the file; no-cache when omitted.",
               "enum": [
                 "no-cache",
                 "no-store",
@@ -787,6 +864,7 @@
             },
             "filename": {
               "type": "string",
+              "description": "File name offered in Content-Disposition; the source file's basename when omitted.",
               "minLength": 1,
               "maxLength": 255
             }
@@ -802,15 +880,18 @@
           "properties": {
             "directory": {
               "type": "string",
+              "description": "Project-relative directory whose files are served under the route prefix.",
               "minLength": 1,
               "maxLength": 1024
             },
             "contentType": {
               "type": "string",
+              "description": "Media type sent for every file in the directory instead of the one detected from each extension.",
               "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
               "maxLength": 128
             },
             "cacheControl": {
+              "description": "Cache-Control header for every file in the directory; no-cache when omitted.",
               "enum": [
                 "no-cache",
                 "no-store",
@@ -820,6 +901,7 @@
             },
             "index": {
               "type": "string",
+              "description": "HTML file served for a request ending in /; without it such requests get 404.",
               "pattern": "^[A-Za-z0-9_-]+\\.html$"
             }
           },
@@ -829,24 +911,31 @@
           "additionalProperties": false
         },
         "request": {
+          "description": "Request body checks run before the handler; declaring it replaces the request block of a shared block named by use.",
           "$ref": "#/$defs/requestBlock"
         },
         "response": {
+          "description": "Literal response headers added to every answer; declaring it replaces the response block of a shared block named by use.",
           "$ref": "#/$defs/responseBlock"
         },
         "respond": {
           "type": "object",
+          "description": "Answer directly with a fixed status and an optional text or JSON body, with no code or file.",
           "properties": {
             "status": {
               "type": "integer",
+              "description": "HTTP status of the declared response; 200 when omitted.",
               "minimum": 200,
               "maximum": 599
             },
             "text": {
               "type": "string",
+              "description": "Plain-text response body; cannot be combined with json.",
               "maxLength": 1048576
             },
-            "json": {}
+            "json": {
+              "description": "Any JSON value sent as the response body; cannot be combined with text."
+            }
           },
           "additionalProperties": false,
           "not": {
@@ -858,6 +947,7 @@
         },
         "middleware": {
           "type": "array",
+          "description": "Modules that run in order before the handler and in reverse after it, each able to answer early or change the response (docs/MIDDLEWARE.md).",
           "maxItems": 16,
           "items": {
             "oneOf": [
@@ -871,10 +961,12 @@
                 "properties": {
                   "source": {
                     "type": "string",
+                    "description": "Project-relative path of the .mjs or .js middleware module.",
                     "maxLength": 1024
                   },
                   "export": {
                     "type": "string",
+                    "description": "Named export to call; the default export when omitted.",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   }
                 },
@@ -887,16 +979,20 @@
           }
         },
         "policies": {
+          "description": "This route's policy layer, merged over the project policies; false on a key turns that policy off here.",
           "$ref": "#/$defs/policies"
         },
         "match": {
+          "description": "Exact conditions every request must meet for this route to answer; a mismatch answers 404 (docs/CONDITIONS.md).",
           "$ref": "#/$defs/routeMatch"
         },
         "conditional": {
           "type": "object",
+          "description": "Several redirect or respond answers at one path, chosen by disjoint request conditions (docs/CONDITIONS.md).",
           "properties": {
             "cases": {
               "type": "array",
+              "description": "The alternatives, each a match plus one redirect or respond; their conditions must not overlap.",
               "minItems": 1,
               "maxItems": 16,
               "items": {
@@ -904,6 +1000,7 @@
               }
             },
             "fallback": {
+              "description": "Answer when no case matches; 404 when omitted.",
               "$ref": "#/$defs/conditionalReply"
             }
           },
@@ -913,10 +1010,12 @@
           "additionalProperties": false
         },
         "proxy": {
+          "description": "Forward the request to one granted HTTPS upstream and return its answer (docs/EGRESS.md).",
           "$ref": "#/$defs/proxy"
         },
         "signals": {
           "type": "array",
+          "description": "Webhooks told, best effort and after the response, that this route answered (docs/EGRESS.md).",
           "minItems": 1,
           "maxItems": 8,
           "items": {
@@ -925,6 +1024,7 @@
         },
         "extension": {
           "type": "string",
+          "description": "Name of a declared extension that handles every request to this route, typically a prefix such as /auth/*.",
           "pattern": "^[a-z][a-z0-9-]{0,63}$"
         },
         "auth": {
@@ -1004,6 +1104,7 @@
       "properties": {
         "required": {
           "type": "boolean",
+          "description": "Set false to document that the route is deliberately public; no auth requirement is emitted.",
           "default": true
         }
       }
@@ -1014,16 +1115,18 @@
       "properties": {
         "quota": {
           "type": "integer",
+          "description": "Requests a partition may make per window before it is refused.",
           "minimum": 1,
           "maximum": 1000000
         },
         "window": {
           "type": "integer",
+          "description": "Length of the sliding counting window, in seconds.",
           "minimum": 1,
-          "maximum": 86400,
-          "description": "Seconds"
+          "maximum": 86400
         },
         "partition": {
+          "description": "What gets its own counter: each client address, the whole route, or each client on each route (docs/policies/throttle.md).",
           "enum": [
             "client",
             "route",
@@ -1033,11 +1136,13 @@
         },
         "status": {
           "type": "integer",
+          "description": "Status answered, with Retry-After, to a request over budget.",
           "minimum": 400,
           "maximum": 599,
           "default": 429
         },
         "mode": {
+          "description": "enforce refuses requests over budget; report only logs them so a quota can be tuned first.",
           "enum": [
             "enforce",
             "report"
@@ -1046,6 +1151,7 @@
         },
         "maxKeys": {
           "type": "integer",
+          "description": "Most counters kept in memory; the least recently used is evicted and starts fresh.",
           "minimum": 1000,
           "maximum": 10000000,
           "default": 100000
@@ -1059,6 +1165,7 @@
       "properties": {
         "deny": {
           "type": "array",
+          "description": "Bundled list names or project-relative .json lists whose User-Agents are refused (docs/policies/agents.md).",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1069,6 +1176,7 @@
         },
         "allow": {
           "type": "array",
+          "description": "Bundled list names or project-relative .json lists whose User-Agents always pass, even when a deny rule matches.",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1079,6 +1187,7 @@
         },
         "denyPatterns": {
           "type": "array",
+          "description": "Case-insensitive patterns, from a bounded regex subset, whose matching User-Agents are refused.",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1089,6 +1198,7 @@
         },
         "allowPatterns": {
           "type": "array",
+          "description": "Case-insensitive patterns, from a bounded regex subset, whose matching User-Agents always pass.",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1104,11 +1214,13 @@
         },
         "status": {
           "type": "integer",
+          "description": "Status answered to a denied request.",
           "minimum": 400,
           "maximum": 599,
           "default": 403
         },
         "mode": {
+          "description": "enforce refuses matching requests; report only logs them so a list can be tried first.",
           "enum": [
             "enforce",
             "report"
@@ -1123,6 +1235,7 @@
       "description": "Response security headers. Profiles follow the OWASP Secure Headers Project; set overrides or adds individual headers; unset removes one from the profile.",
       "properties": {
         "headers": {
+          "description": "Which header profile to add: oshp, oshp-no-csp (the same without Content-Security-Policy) or off (docs/policies/security.md).",
           "enum": [
             "oshp",
             "oshp-no-csp",
@@ -1132,6 +1245,7 @@
         },
         "set": {
           "type": "object",
+          "description": "Headers added or overwritten verbatim on every response, taking precedence over the profile.",
           "maxProperties": 32,
           "additionalProperties": {
             "type": "string",
@@ -1140,6 +1254,7 @@
         },
         "unset": {
           "type": "array",
+          "description": "Header names the selected profile would add that this route or project leaves out.",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1157,6 +1272,7 @@
       "properties": {
         "encodings": {
           "type": "array",
+          "description": "Content codings offered, in preference order when the client weights them equally.",
           "items": {
             "enum": [
               "br",
@@ -1174,12 +1290,14 @@
         },
         "minBytes": {
           "type": "integer",
+          "description": "Bodies smaller than this many bytes are sent uncompressed.",
           "minimum": 0,
           "maximum": 1048576,
           "default": 1024
         },
         "types": {
           "type": "array",
+          "description": "Media types eligible for compression, with type/* wildcards; a documented default list of text and structured-data types when omitted.",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1190,11 +1308,13 @@
         },
         "level": {
           "type": "integer",
+          "description": "One compression effort setting mapped onto each codec's own scale (docs/policies/compression.md).",
           "minimum": 1,
           "maximum": 11
         },
         "allowWithSecrets": {
           "type": "boolean",
+          "description": "Compress even on routes with secrets or responses that set cookies, where BREACH-style leaks are possible.",
           "default": false
         }
       },
@@ -1205,6 +1325,7 @@
       "description": "Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged.",
       "properties": {
         "strategy": {
+          "description": "Named caching pattern that decides the Cache-Control output and whether the origin memory cache is used (docs/policies/cache.md).",
           "enum": [
             "no-store",
             "revalidate",
@@ -1219,22 +1340,25 @@
         },
         "maxAge": {
           "type": "integer",
+          "description": "Seconds the response stays fresh (max-age), overriding what the strategy implies.",
           "minimum": 0,
-          "maximum": 31536000,
-          "description": "Seconds"
+          "maximum": 31536000
         },
         "staleWhileRevalidate": {
           "type": "integer",
+          "description": "Seconds a stale response may still be served while it is refreshed (stale-while-revalidate).",
           "minimum": 0,
           "maximum": 31536000
         },
         "staleIfError": {
           "type": "integer",
+          "description": "Seconds a stale response may be served when the origin fails (stale-if-error); emitted as a header only.",
           "minimum": 0,
           "maximum": 31536000
         },
         "cdnMaxAge": {
           "type": "integer",
+          "description": "Seconds a CDN may keep the response, sent as CDN-Cache-Control.",
           "minimum": 0,
           "maximum": 31536000
         },
@@ -1246,6 +1370,7 @@
         },
         "vary": {
           "type": "array",
+          "description": "Request headers the response varies on, added to Vary and to the origin cache key.",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1256,6 +1381,7 @@
         },
         "statuses": {
           "type": "array",
+          "description": "Response statuses the origin memory cache may store.",
           "items": {
             "type": "integer",
             "minimum": 200,
@@ -1272,6 +1398,7 @@
         },
         "maxEntries": {
           "type": "integer",
+          "description": "Most responses the origin memory cache keeps for this configuration; the least recently used is evicted first.",
           "minimum": 1,
           "maximum": 1000000
         },
@@ -1293,6 +1420,7 @@
           "description": "Built-in (hardened) or a name under top-level profiles"
         },
         "throttle": {
+          "description": "Per-client request budget, or false to turn it off at this layer.",
           "oneOf": [
             {
               "const": false
@@ -1303,6 +1431,7 @@
           ]
         },
         "agents": {
+          "description": "User-Agent allow and deny rules, or false to turn them off at this layer.",
           "oneOf": [
             {
               "const": false
@@ -1313,6 +1442,7 @@
           ]
         },
         "security": {
+          "description": "Response security header profile, or false to turn it off at this layer.",
           "oneOf": [
             {
               "const": false
@@ -1323,6 +1453,7 @@
           ]
         },
         "compression": {
+          "description": "Response compression negotiated from Accept-Encoding, or false to turn it off at this layer.",
           "oneOf": [
             {
               "const": false
@@ -1333,6 +1464,7 @@
           ]
         },
         "cache": {
+          "description": "HTTP caching strategy, or false to turn it off at this layer.",
           "oneOf": [
             {
               "const": false
@@ -1343,6 +1475,7 @@
           ]
         },
         "extensions": {
+          "description": "Route requirements for declared extensions, keyed by extension name and validated by each extension's policy schema, or false to drop them at this layer.",
           "oneOf": [
             {
               "const": false
@@ -1377,6 +1510,7 @@
       "properties": {
         "query": {
           "type": "object",
+          "description": "Query keys and the exact values they must have.",
           "minProperties": 1,
           "maxProperties": 16,
           "propertyNames": {
@@ -1389,6 +1523,7 @@
         },
         "headers": {
           "type": "object",
+          "description": "Request headers and the exact values they must have; names compare case-insensitively.",
           "minProperties": 1,
           "maxProperties": 16,
           "propertyNames": {
@@ -1401,6 +1536,7 @@
         },
         "cookies": {
           "type": "object",
+          "description": "Cookie names and the exact values they must have.",
           "minProperties": 1,
           "maxProperties": 16,
           "propertyNames": {
@@ -1413,9 +1549,11 @@
         },
         "host": {
           "type": "string",
+          "description": "Host the operator-configured public origin must have; never read from the client Host header.",
           "maxLength": 255
         },
         "method": {
+          "description": "HTTP method the request must use.",
           "enum": [
             "GET",
             "HEAD",
@@ -1433,12 +1571,15 @@
       "properties": {
         "redirect": {
           "type": "object",
+          "description": "Where this case or fallback redirects, with the same url, status and query keys as a route redirect.",
           "properties": {
             "url": {
               "type": "string",
+              "description": "Destination URL: a literal http(s) URL or a same-site path starting with /, where {name} placeholders are filled from declared path inputs.",
               "maxLength": 8192
             },
             "status": {
+              "description": "Redirect status code; 302 when omitted.",
               "enum": [
                 301,
                 302,
@@ -1449,8 +1590,10 @@
             },
             "query": {
               "type": "object",
+              "description": "Which request values are copied into the destination query string; nothing is forwarded unless listed here.",
               "properties": {
                 "pass": {
+                  "description": "Incoming query keys copied to the destination unchanged; false or omitted forwards none.",
                   "oneOf": [
                     {
                       "const": false
@@ -1466,10 +1609,12 @@
                 },
                 "map": {
                   "type": "object",
+                  "description": "Destination query keys, each filled from a declared path, query or header input.",
                   "additionalProperties": {
                     "type": "object",
                     "properties": {
                       "from": {
+                        "description": "Where the declared input comes from: path, query or header.",
                         "enum": [
                           "path",
                           "query",
@@ -1477,7 +1622,8 @@
                         ]
                       },
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Name of the declared input whose validated value fills this destination key."
                       }
                     },
                     "required": [
@@ -1499,17 +1645,22 @@
         },
         "respond": {
           "type": "object",
+          "description": "Answer directly with a fixed status and an optional text or JSON body.",
           "properties": {
             "status": {
               "type": "integer",
+              "description": "HTTP status of the declared response; 200 when omitted.",
               "minimum": 200,
               "maximum": 599
             },
             "text": {
               "type": "string",
+              "description": "Plain-text response body; cannot be combined with json.",
               "maxLength": 1048576
             },
-            "json": {}
+            "json": {
+              "description": "Any JSON value sent as the response body; cannot be combined with text."
+            }
           },
           "additionalProperties": false,
           "not": {
@@ -1539,12 +1690,15 @@
       "properties": {
         "redirect": {
           "type": "object",
+          "description": "Where this case or fallback redirects, with the same url, status and query keys as a route redirect.",
           "properties": {
             "url": {
               "type": "string",
+              "description": "Destination URL: a literal http(s) URL or a same-site path starting with /, where {name} placeholders are filled from declared path inputs.",
               "maxLength": 8192
             },
             "status": {
+              "description": "Redirect status code; 302 when omitted.",
               "enum": [
                 301,
                 302,
@@ -1555,8 +1709,10 @@
             },
             "query": {
               "type": "object",
+              "description": "Which request values are copied into the destination query string; nothing is forwarded unless listed here.",
               "properties": {
                 "pass": {
+                  "description": "Incoming query keys copied to the destination unchanged; false or omitted forwards none.",
                   "oneOf": [
                     {
                       "const": false
@@ -1572,10 +1728,12 @@
                 },
                 "map": {
                   "type": "object",
+                  "description": "Destination query keys, each filled from a declared path, query or header input.",
                   "additionalProperties": {
                     "type": "object",
                     "properties": {
                       "from": {
+                        "description": "Where the declared input comes from: path, query or header.",
                         "enum": [
                           "path",
                           "query",
@@ -1583,7 +1741,8 @@
                         ]
                       },
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Name of the declared input whose validated value fills this destination key."
                       }
                     },
                     "required": [
@@ -1605,17 +1764,22 @@
         },
         "respond": {
           "type": "object",
+          "description": "Answer directly with a fixed status and an optional text or JSON body.",
           "properties": {
             "status": {
               "type": "integer",
+              "description": "HTTP status of the declared response; 200 when omitted.",
               "minimum": 200,
               "maximum": 599
             },
             "text": {
               "type": "string",
+              "description": "Plain-text response body; cannot be combined with json.",
               "maxLength": 1048576
             },
-            "json": {}
+            "json": {
+              "description": "Any JSON value sent as the response body; cannot be combined with text."
+            }
           },
           "additionalProperties": false,
           "not": {
@@ -1626,6 +1790,7 @@
           }
         },
         "match": {
+          "description": "Exact conditions that select this case.",
           "$ref": "#/$defs/routeMatch"
         }
       },
@@ -1651,10 +1816,12 @@
       "properties": {
         "url": {
           "type": "string",
+          "description": "HTTPS webhook URL that receives a JSON POST, allowed only when an operator policy grants its origin for signals.",
           "maxLength": 8192
         },
         "headers": {
           "type": "object",
+          "description": "Headers added to the webhook POST, each a literal or a secret from this route's secrets.",
           "maxProperties": 32,
           "additionalProperties": {
             "oneOf": [
@@ -1667,6 +1834,7 @@
                 "properties": {
                   "secret": {
                     "type": "string",
+                    "description": "Alias of a binding in this route's secrets used as the complete header value.",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   }
                 },
@@ -1689,10 +1857,12 @@
       "properties": {
         "url": {
           "type": "string",
+          "description": "Upstream HTTPS URL with a literal host, where {name} placeholders are filled from declared path inputs; its origin must be granted for proxy.",
           "maxLength": 8192
         },
         "headers": {
           "type": "object",
+          "description": "Headers added to the upstream request, each a literal or a secret from this route's secrets.",
           "maxProperties": 32,
           "additionalProperties": {
             "oneOf": [
@@ -1705,6 +1875,7 @@
                 "properties": {
                   "secret": {
                     "type": "string",
+                    "description": "Alias of a binding in this route's secrets used as the complete header value.",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   }
                 },
@@ -1718,6 +1889,7 @@
         },
         "query": {
           "type": "array",
+          "description": "Incoming query keys forwarded upstream; all others are dropped.",
           "maxItems": 32,
           "uniqueItems": true,
           "items": {
@@ -1728,6 +1900,7 @@
         },
         "requestHeaders": {
           "type": "array",
+          "description": "Incoming request headers forwarded upstream; all others are dropped.",
           "maxItems": 32,
           "uniqueItems": true,
           "items": {
@@ -1738,6 +1911,7 @@
         },
         "responseHeaders": {
           "type": "array",
+          "description": "Upstream response headers returned to the client; all others are dropped.",
           "maxItems": 32,
           "uniqueItems": true,
           "items": {
@@ -1757,17 +1931,21 @@
       "properties": {
         "body": {
           "type": "object",
+          "description": "What the request body must look like before the handler runs (docs/HTTP.md).",
           "properties": {
             "required": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "Whether an empty body is refused with 400."
             },
             "maxBytes": {
               "type": "integer",
+              "description": "Largest body accepted, in bytes; a larger one answers 413.",
               "minimum": 0,
               "maximum": 1048576
             },
             "contentTypes": {
               "type": "array",
+              "description": "Lowercase media types a nonempty body may declare; any other answers 415.",
               "minItems": 1,
               "maxItems": 16,
               "uniqueItems": true,
@@ -1777,6 +1955,7 @@
               }
             },
             "format": {
+              "description": "text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400.",
               "enum": [
                 "text",
                 "json"
@@ -1797,6 +1976,7 @@
       "properties": {
         "headers": {
           "type": "object",
+          "description": "Literal response headers added to the route's answer; only Set-Cookie takes a list, and runtime-owned headers are refused (docs/HTTP.md).",
           "maxProperties": 64,
           "additionalProperties": {
             "oneOf": [
