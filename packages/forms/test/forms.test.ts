@@ -97,6 +97,22 @@ test('refuses missing CSRF, cross-origin, malformed media, wrong paths and metho
   assert.equal((await call('/contact',{method:'DELETE'})).status,405);
 });
 
+test('core request helpers: invalid UTF-8 is 400, an ambiguous cookie is 400, and cross-site refuses even with a matching Origin',async t=>{
+  const {call,cookies}=await boot(t);const token=await csrf(call);
+  const bytes=new Uint8Array([...new TextEncoder().encode(`csrf=${token}&email=`),0xff,0xfe]);
+  const invalid=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:bytes});
+  assert.equal(invalid.status,400,'a body that is not UTF-8 is a bad request, not an oversized one');
+  assert.equal(await invalid.text(),'Invalid request encoding');
+  assert.equal((await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:'x='.repeat(40000)})).status,413);
+  const body=new URLSearchParams({csrf:token,email:'person@example.test',topic:'sales',message:'A valid message',terms:'true'}).toString();
+  assert.equal((await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin,'sec-fetch-site':'cross-site'},body})).status,403);
+  assert.equal((await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin,'sec-fetch-site':'same-origin'},body,redirect:'manual'})).status,303);
+  const binding=cookies.get('__Host-urlcode-forms-csrf')!;
+  const duplicated=await call('/contact',{headers:{cookie:`__Host-urlcode-forms-csrf=${binding}; __Host-urlcode-forms-csrf=${binding}`}});
+  assert.equal(duplicated.status,400,'a repeated cookie name is refused rather than the first one taken');
+  assert.equal((await call('/contact',{headers:{cookie:'__Host-urlcode-forms-csrf=not valid!'}})).status,200,'a malformed value reads as absent');
+});
+
 test('admits an operator alias origin in Origin or Referer like the canonical one and still refuses an unlisted origin',async t=>{
   const {call}=await boot(t,false,['https://www.forms.example.test']);const token=await csrf(call);
   const body=new URLSearchParams({csrf:token,email:'person@example.test',topic:'sales',message:'A valid message',terms:'true'}).toString();

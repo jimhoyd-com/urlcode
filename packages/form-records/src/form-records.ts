@@ -187,8 +187,8 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
     targets: ['node'],
     schema: formRecordsConfigSchema, authoring: formRecordsAuthoring,
     activate(raw, context): ExtensionInstance {
-      if (!options.forms.active || !options.store.active) throw new Error('form-records needs forms and store active first: declare both before form-records under extensions in urlcode.yaml');
-      if (options.ui && !options.ui.active) throw new Error('form-records needs ui active first: declare ui before form-records under extensions in urlcode.yaml');
+      if (!options.forms.active || !options.store.active) throw new Error('form-records needs forms and store active first: the host must register both before form-records (composeHost does)');
+      if (options.ui && !options.ui.active) throw new Error('form-records needs ui active first: the host must register ui before form-records (composeHost does)');
       const config = raw as unknown as FormRecordsConfig;
       const byMount = new Map<string, Binding>();
       for (const [name, spec] of Object.entries(config.records)) {

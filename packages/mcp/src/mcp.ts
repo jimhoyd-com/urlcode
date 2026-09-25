@@ -1,4 +1,4 @@
-import { extensionHookContext, extensionHookReferenceSchema, isSiteOrigin, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
+import { extensionHookContext, extensionHookReferenceSchema, ExtensionHttpError, isSameOriginRequest, jsonResponse, loadExtensionHooks, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { assertBodySchema, bodySchemaIssues, bodySchemaLine } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
@@ -271,8 +271,7 @@ function parseEnvelope(value: unknown): JsonRpcMessage | undefined {
 }
 function textError(status: number, message: string): HandlerResult { return { status, headers: [['content-type', 'text/plain; charset=utf-8']], body: message }; }
 function rpc(status: number, id: JsonRpcId, body: { result: unknown } | { error: JsonRpcError }): HandlerResult {
-  const value = { jsonrpc: JSONRPC_VERSION, id, ...body };
-  return { status, headers: [['content-type', 'application/json; charset=utf-8'], ['cache-control', 'no-store']], body: JSON.stringify(value) };
+  return jsonResponse(status, { jsonrpc: JSONRPC_VERSION, id, ...body });
 }
 /**
  * The revision the Streamable HTTP transport says a server assumes when a
@@ -588,23 +587,26 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         async handle(request: ExtensionRequest): Promise<HandlerResult> {
           const server = request.mount === null ? undefined : byMount.get(request.mount);
           if (!server || request.path !== request.mount) return textError(404, 'Not found');
-          // DNS-rebinding defense the Streamable HTTP transport requires: a present Origin must be
-          // one of the site's origins, the canonical one or an operator alias origin (the same
-          // core match forms and store use); an absent one (non-browser MCP clients send none) is
-          // admitted. Refused before parsing.
-          const from = request.headers.get('origin');
-          if (from !== null && !isSiteOrigin(context, from)) return textError(403, 'Forbidden');
+          // DNS-rebinding defense the Streamable HTTP transport requires: core's same-origin rule, the one
+          // forms and store use. A present Origin must be one of the site's origins (canonical or an
+          // operator alias origin); a request with no provenance header at all (non-browser MCP clients
+          // send none) is admitted, since the endpoint takes application/json only. Refused before parsing.
+          if (!isSameOriginRequest(request, context, { whenAbsent: 'admit' })) return textError(403, 'Forbidden');
           if (request.method === 'HEAD') return { status: 200, headers: [] };
           // The Streamable HTTP transport also defines a GET stream for server-initiated messages;
           // this extension does not implement it (see README "Not implemented"), and the
           // specification's own guidance for that case is exactly this: refuse with 405.
           if (request.method !== 'POST') return { status: 405, headers: [['allow', 'POST']], body: 'Method not allowed' };
-          const type = request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
-          if (type !== 'application/json') return textError(415, 'MCP requests require application/json');
-          if (request.body.byteLength > MAX_BODY) return textError(413, 'Request body is too large');
+          // Core's bounded reader: size and media type answer as HTTP errors; any other refusal (bad encoding,
+          // invalid JSON, a duplicate key, nesting too deep, a duplicated Content-Type) is a JSON-RPC parse error.
           let parsed: unknown;
-          try { parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(request.body)); }
-          catch { return rpc(200, null, { error: { code: -32700, message: 'Parse error' } }); }
+          try { const body = readBody(request, { accept: ['json'], maxBytes: MAX_BODY }); parsed = body.kind === 'json' ? body.value : undefined; }
+          catch (error) {
+            if (!(error instanceof ExtensionHttpError)) throw error;
+            if (error.status === 413) return textError(413, 'Request body is too large');
+            if (error.status === 415) return textError(415, 'MCP requests require application/json');
+            return rpc(200, null, { error: { code: -32700, message: 'Parse error' } });
+          }
           if (Array.isArray(parsed)) return rpc(200, null, { error: { code: -32600, message: 'JSON-RPC batching is not supported' } });
           const message = parseEnvelope(parsed);
           if (!message) return rpc(200, null, { error: { code: -32600, message: 'Invalid Request' } });

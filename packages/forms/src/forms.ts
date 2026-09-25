@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
-import { assertSafePattern, extensionHookContext, extensionHooksSchema, isSiteOrigin, loadExtensionHooks, maxPatternInputLength } from '@jimhoyd/urlcode/extensions';
+import { assertSafePattern, extensionHookContext, extensionHooksSchema, ExtensionHttpError, isSameOriginRequest, loadExtensionHooks, maxPatternInputLength, readBody, readCookie } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionHookContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { alert, escapeHtml, field, markup, postForm } from '@jimhoyd/urlcode-ui';
 import { createSignedToken, readSignedToken } from '@jimhoyd/urlcode-ui/host';
@@ -80,8 +80,8 @@ function redirect(path:string,extraHeaders:[string,string][]=[]):HandlerResult {
 function token(secret:string|Uint8Array,flow:string,binding:string,scope?:string):string {return createSignedToken(secret,{flow,purpose:CSRF_PURPOSE,binding,...(scope===undefined?{}:{scope})},TOKEN_TTL);}
 /** `scope` (#529) separates a token minted for an exported flow's page (see `FormsExports`) from forms' own flows and from another page of the same consumer: a forms-served flow has none, and a token carrying one never admits it. */
 function validToken(secret:string|Uint8Array,flow:string,binding:string|undefined,value:string|undefined,scope?:string):boolean {const parsed=readSignedToken(secret,value,TOKEN_TTL);return parsed?.flow===flow&&parsed?.purpose===CSRF_PURPOSE&&typeof parsed?.binding==='string'&&binding!==undefined&&parsed.binding===binding&&parsed.scope===scope;}
-function cookie(request:ExtensionRequest,cookieName:string,shape:RegExp):string|undefined {const header=request.headers.get('cookie');if(!header)return undefined;for(const part of header.split(';')){const index=part.indexOf('=');if(index===-1)continue;const name=part.slice(0,index).trim(),value=part.slice(index+1).trim();if(name===cookieName&&shape.test(value))return value;}return undefined;}
-function bindingCookie(request:ExtensionRequest):string|undefined {return cookie(request,CSRF_COOKIE,/^[A-Za-z0-9_-]{16,128}$/);}
+/** Core's cookie reader: a malformed value is absent; two `Cookie` headers or a repeated name throws 400 (`httpFailure`). */
+function bindingCookie(request:ExtensionRequest):string|undefined {return readCookie(request,CSRF_COOKIE,/^[A-Za-z0-9_-]{16,128}$/);}
 /**
  * The confirmation handoff is a stateless sealed cookie rather than server state, because forms runs
  * on node, aws and vercel, where the confirmation GET may reach a different instance than the POST.
@@ -107,9 +107,13 @@ const confirmationCookieAttributes='Path=/; Secure; HttpOnly; SameSite=Strict';
 function setConfirmationCookie(value:string):[string,string] {return ['set-cookie',`${CONFIRMATION_COOKIE}=${value}; ${confirmationCookieAttributes}; Max-Age=${CONFIRMATION_TTL/1000}`];}
 function clearConfirmationCookie():[string,string] {return ['set-cookie',`${CONFIRMATION_COOKIE}=; ${confirmationCookieAttributes}; Max-Age=0`];}
 function setBindingCookie(value:string):[string,string] {return ['set-cookie',`${CSRF_COOKIE}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.ceil(TOKEN_TTL/1000)}`];}
-/** Absent `Origin` (same-origin browser navigations sometimes omit it) falls back to `Sec-Fetch-Site`,
- * then `Referer`; with no evidence of either, the request is refused rather than admitted. */
-function sameOriginFallback(request:ExtensionRequest,site:Pick<ExtensionActivation,'origin'|'origins'>):boolean {const fetchSite=request.headers.get('sec-fetch-site');if(fetchSite)return fetchSite==='same-origin'||fetchSite==='none';const referer=request.headers.get('referer');if(referer){try{return isSiteOrigin(site,new URL(referer).origin);}catch{return false;}}return false;}
+/**
+ * Core's same-origin admission rule (RIM-EXT-HTTP-001) with `whenAbsent: 'refuse'`: forms takes a CORS-safelisted
+ * form body, so a request with no `Origin`, `Sec-Fetch-Site` or `Referer` at all is refused rather than admitted.
+ */
+function sameOrigin(request:ExtensionRequest,site:Pick<ExtensionActivation,'origin'|'origins'>):boolean {return isSameOriginRequest(request,site,{whenAbsent:'refuse'});}
+/** A request core's helpers refused: 413 and 415 keep forms' own texts, anything else (invalid UTF-8, a duplicated header or cookie) is 400. */
+function httpFailure(error:unknown):HandlerResult {if(!(error instanceof ExtensionHttpError))throw error;return error.status===413?fail(413,'Form body is too large'):error.status===415?fail(415,'Form submission requires application/x-www-form-urlencoded'):fail(400,error.message);}
 function validateFlow(name:string,flow:FormFlowBody&{mount?:string},mounted=true):void {if(!FLOW.test(name))throw new Error(`Invalid form flow: ${name}`);if(mounted&&(!flow.mount||!flow.mount.startsWith('/')))throw new Error(`Form ${name}: invalid mount`);if(flow.timeZone!==undefined)zoneFormat(name,flow.timeZone);for(const [fieldName,spec] of Object.entries(flow.fields)){if(!FIELD.test(fieldName))throw new Error(`Form ${name}: invalid field ${fieldName}`);const control=spec.control??'input',numeric=spec.type==='number',dated=spec.type==='date'||spec.type==='datetime-local';if(control==='select'&&(!spec.options?.length))throw new Error(`Form ${name}: select ${fieldName} needs options`);if(control!=='select'&&spec.options)throw new Error(`Form ${name}: options apply only to select ${fieldName}`);if(control!=='input'&&control!=='checkbox'&&spec.type)throw new Error(`Form ${name}: type applies only to input ${fieldName}`);if(control==='checkbox'&&(spec.type||spec.minLength!==undefined||spec.maxLength!==undefined||spec.minimum!==undefined||spec.maximum!==undefined||spec.pattern||spec.enum))throw new Error(`Form ${name}: checkbox ${fieldName} cannot have a type or bounds`);if(numeric&&(spec.minLength!==undefined||spec.maxLength!==undefined||spec.pattern||spec.enum))throw new Error(`Form ${name}: string rules do not apply to numeric ${fieldName}`);for(const bound of ['minimum','maximum'] as const){const value=spec[bound];if(value===undefined)continue;if(numeric?typeof value!=='number':!dated)throw new Error(`Form ${name}: ${bound} of ${fieldName} requires type number, date or datetime-local`);if(dated&&(value==='today'||typeof value==='object')){if(!relativeShift(value))throw new Error(`Form ${name}: ${bound} of ${fieldName} must be today or {from: today, add: <duration>}, the duration a signed ISO 8601 period of years, months and days such as P30D or -P18Y`);continue;}if(dated&&(typeof value!=='string'||!(spec.type==='date'?validDate(value):DATETIME_BOUND.test(value)&&validDateTimeLocal(value))))throw new Error(`Form ${name}: ${bound} of ${fieldName} must be ${spec.type==='date'?'a YYYY-MM-DD date':'a YYYY-MM-DDTHH:MM local date and time'}`);}if(spec.minLength!==undefined&&spec.maxLength!==undefined&&spec.minLength>spec.maxLength)throw new Error(`Form ${name}: ${fieldName} minLength exceeds maxLength`);if(boundsInverted(spec))throw new Error(`Form ${name}: ${fieldName} minimum exceeds maximum`);if(spec.pattern!==undefined){if(spec.maxLength===undefined||spec.maxLength>maxPatternInputLength)throw new Error(`Form ${name}: pattern ${fieldName} requires maxLength at most ${maxPatternInputLength}`);try{assertSafePattern(spec.pattern);}catch(error){throw new Error(`Form ${name}: pattern ${fieldName} ${(error as Error).message}`,{cause:error});}}if(spec.requiredWhen)validateRequiredWhen(name,flow,fieldName,spec);}const show=flow.confirmation.show??[];for(const fieldName of show)if(!Object.hasOwn(flow.fields,fieldName))throw new Error(`Form ${name}: confirmation show lists undeclared field ${fieldName}`);for(const match of flow.confirmation.message.matchAll(PLACEHOLDER))if(!show.includes(match[1]!))throw new Error(`Form ${name}: confirmation placeholder {${match[1]}} is not listed in show`);}
 /** The values a sibling field can admit, when that set is fixed: a select's option values (narrowed by its `enum`, if any) or an input's `enum`. */
 function fixedValues(spec:FormFieldSpec):string[]|undefined {const control=spec.control??'input';if(control==='select')return spec.options!.map(option=>option.value).filter(value=>!spec.enum||spec.enum.includes(value));return control==='input'&&spec.enum?spec.enum:undefined;}
@@ -150,7 +154,8 @@ function shownValue(spec:FormFieldSpec,value:string):string {if(spec.control==='
  * message does not reference follow as a label/value list.
  */
 function confirmation(ui:UiExtension, flow:FormFlowBody, shown?:Record<string,string>, extraHeaders:[string,string][]=[], links:readonly {href:string;label:string}[]=[]):HandlerResult {const used=new Set<string>();const message=escapeHtml(flow.confirmation.message).replace(PLACEHOLDER,(_,name:string)=>{used.add(name);return shown?escapeHtml(shownValue(flow.fields[name]!,shown[name]!)):'';});const list=shown?(flow.confirmation.show??[]).filter(name=>!used.has(name)).map(name=>`<div><dt>${escapeHtml(flow.fields[name]!.label)}</dt><dd>${escapeHtml(shownValue(flow.fields[name]!,shown[name]!))}</dd></div>`).join(''):'';const page=ui.kit.wrap(markup(`<section class="ui-stack"><h1>${escapeHtml(flow.confirmation.title)}</h1><p>${message}</p>${list?`<dl>${list}</dl>`:''}${links.length?`<p>${links.map(link=>`<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`).join(' ')}</p>`:''}</section>`),{title:flow.confirmation.title});return {status:200,headers:[...page.headers.filter(([header])=>header.toLowerCase()!=='cache-control'),['cache-control','no-store'],...extraHeaders],body:page.body};}
-function readForm(request:ExtensionRequest):URLSearchParams|null|undefined {if(request.body.byteLength>MAX_BODY)return undefined;const type=request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();if(type!=='application/x-www-form-urlencoded')return null;try{return new URLSearchParams(new TextDecoder('utf-8',{fatal:true}).decode(request.body));}catch{return undefined;}}
+/** The form body through core's bounded reader; throws `ExtensionHttpError` (see `httpFailure`). Duplicate names are kept: `admission` reports them as field errors. */
+function readForm(request:ExtensionRequest):URLSearchParams {const body=readBody(request,{accept:['form'],maxBytes:MAX_BODY});return new URLSearchParams(body.kind==='form'?body.entries as [string,string][]:[]);}
 /** HTML `date` and `datetime-local` submission formats (HTML "valid date string" and "valid normalized local date and time string"): a four-digit year from 0001, a real calendar day, `T`, 24-hour time with optional seconds and up to three fractional digits, and no timezone offset. */
 /** Date-time bounds are whole minutes: the browser uses `min` as the step base, and the default 60-second step would otherwise demand the bound's seconds on every value. */
 const DATETIME_BOUND=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
@@ -199,7 +204,7 @@ export function createFormsExtension(options:FormsExtensionOptions):RuntimeExten
  * that `requires: [forms]` reads through `ctx.get('forms')` (#529). The exports are usable once the
  * runtime has activated this registration.
  */
-export function createForms(options:FormsExtensionOptions):{registration:RuntimeExtension;exports:FormsExports} {if(!/^[a-f0-9]{64}$/.test(options.projectSha256))throw new Error('forms extension requires an explicit operator revision pin');if((typeof options.csrfSecret==='string'&&Buffer.byteLength(options.csrfSecret)<32)||(options.csrfSecret instanceof Uint8Array&&options.csrfSecret.byteLength<32))throw new Error('forms extension requires a CSRF secret of at least 32 bytes');let site:Pick<ExtensionActivation,'origin'|'origins'>|undefined;const registration:RuntimeExtension={name:'forms',version:'1',projectSha256:options.projectSha256,targets:['node','aws','vercel'],schema:formsConfigSchema,hooks:formHookContracts,authoring:formsAuthoring,async activate(raw,context):Promise<ExtensionInstance>{if(!options.ui.active)throw new Error('forms extension requires an active ui extension');const config=raw as unknown as FormConfig;for(const [name,flow] of Object.entries(config.flows)) {validateFlow(name,flow);if(!context.mounts.includes(flow.mount))throw new Error(`Form ${name}: route ${flow.mount}/* with extension: forms is not declared`);}for(const mount of context.mounts)if(!Object.values(config.flows).some(flow=>flow.mount===mount))throw new Error(`Forms mount ${mount} has no declared flow`);const sealKey=confirmationKey(options.csrfSecret);const now=options.now??Date.now;const byMount=new Map(Object.entries(config.flows).map(([name,flow])=>[flow.mount,{name,flow,zone:zoneFormat(name,flow.timeZone)}]));const hooks=await loadExtensionHooks<'onSubmit'>(config.hooks,formHookContracts,context);site=context;return {async handle(request){
+export function createForms(options:FormsExtensionOptions):{registration:RuntimeExtension;exports:FormsExports} {if(!/^[a-f0-9]{64}$/.test(options.projectSha256))throw new Error('forms extension requires an explicit operator revision pin');if((typeof options.csrfSecret==='string'&&Buffer.byteLength(options.csrfSecret)<32)||(options.csrfSecret instanceof Uint8Array&&options.csrfSecret.byteLength<32))throw new Error('forms extension requires a CSRF secret of at least 32 bytes');let site:Pick<ExtensionActivation,'origin'|'origins'>|undefined;const registration:RuntimeExtension={name:'forms',version:'1',projectSha256:options.projectSha256,targets:['node','aws','vercel'],schema:formsConfigSchema,hooks:formHookContracts,authoring:formsAuthoring,async activate(raw,context):Promise<ExtensionInstance>{if(!options.ui.active)throw new Error('forms extension requires an active ui extension');const config=raw as unknown as FormConfig;for(const [name,flow] of Object.entries(config.flows)) {validateFlow(name,flow);if(!context.mounts.includes(flow.mount))throw new Error(`Form ${name}: route ${flow.mount}/* with extension: forms is not declared`);}for(const mount of context.mounts)if(!Object.values(config.flows).some(flow=>flow.mount===mount))throw new Error(`Forms mount ${mount} has no declared flow`);const sealKey=confirmationKey(options.csrfSecret);const now=options.now??Date.now;const byMount=new Map(Object.entries(config.flows).map(([name,flow])=>[flow.mount,{name,flow,zone:zoneFormat(name,flow.timeZone)}]));const hooks=await loadExtensionHooks<'onSubmit'>(config.hooks,formHookContracts,context);site=context;const serve=async(request:ExtensionRequest):Promise<HandlerResult>=>{
   const active=request.mount===null?undefined:byMount.get(request.mount);if(!active)return fail(404,'Not found');
   const {name,flow,zone}=active;const suffix=request.path.slice(flow.mount.length);
   if(request.method==='GET'||request.method==='HEAD'){
@@ -208,7 +213,7 @@ export function createForms(options:FormsExtensionOptions):{registration:Runtime
     // shows fields) and clears the cookie whether or not it opened, so a refresh shows the fixed page.
     if(suffix==='/confirmation'){
       if(request.method==='HEAD')return {...confirmation(options.ui,flow),body:undefined};
-      const sealed=cookie(request,CONFIRMATION_COOKIE,/^[A-Za-z0-9_-]{1,4096}$/),show=flow.confirmation.show;
+      const sealed=readCookie(request,CONFIRMATION_COOKIE,/^[A-Za-z0-9_-]{1,4096}$/),show=flow.confirmation.show;
       const shown=show&&sealed!==undefined?openConfirmation(sealKey,name,bindingCookie(request),sealed,show):undefined;
       return confirmation(options.ui,flow,shown,request.headers.get('cookie')?.includes(CONFIRMATION_COOKIE)?[clearConfirmationCookie()]:[]);
     }
@@ -221,13 +226,9 @@ export function createForms(options:FormsExtensionOptions):{registration:Runtime
     return request.method==='HEAD'?{...answer,body:undefined}:answer;
   }
   if(request.method!=='POST'||suffix!=='')return {status:405,headers:[['allow','GET, HEAD, POST'],['content-type','text/plain; charset=utf-8']],body:'Method not allowed'};
-  // Same-origin admission: a present Origin must be one of the site's origins (canonical or an
-  // operator alias origin, matched by core's isSiteOrigin); an absent one (some legitimate
-  // same-origin navigations omit it) falls back to Sec-Fetch-Site, then Referer, and is refused
-  // with no evidence of either rather than admitted by default.
-  const origin=request.headers.get('origin');
-  if(origin!==null?!isSiteOrigin(context,origin):!sameOriginFallback(request,context))return fail(403,'Forbidden');
-  const parsed=readForm(request);if(parsed===undefined)return fail(413,'Form body is too large');if(parsed===null)return fail(415,'Form submission requires application/x-www-form-urlencoded');
+  // Same-origin admission before the body is read (core's rule; see `sameOrigin`).
+  if(!sameOrigin(request,context))return fail(403,'Forbidden');
+  const parsed=readForm(request);
   const csrf=parsed.get('csrf')??undefined,binding=bindingCookie(request);
   if(!validToken(options.csrfSecret,name,binding,csrf))return fail(403,'Forbidden');
   const today=todayIn(zone,now()),{values,errors}=admission(flow,parsed,today);
@@ -238,7 +239,7 @@ export function createForms(options:FormsExtensionOptions):{registration:Runtime
   const show=flow.confirmation.show;if(!show)return redirect(`${flow.mount}/confirmation`);
   const sealed=sealConfirmation(sealKey,name,binding!,Object.fromEntries(show.map(field=>[field,values[field]!])));
   return redirect(`${flow.mount}/confirmation`,[sealed===undefined?clearConfirmationCookie():setConfirmationCookie(sealed)]);
-}};}};return {registration,exports:formsExports(options,()=>site)};}
+};return {handle:request=>serve(request).catch(httpFailure)};}};return {registration,exports:formsExports(options,()=>site)};}
 
 /**
  * Export contract version 1 (#529): what forms hands an extension that `requires: [forms]` through
@@ -296,7 +297,7 @@ const SCOPE=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/, ACTION=/^\/(?!\/)[A-Za-z0-9._
 function frozenCopy<T>(value:T):T {const copy=structuredClone(value);const freeze=(item:unknown):void=>{if(item&&typeof item==='object'){for(const child of Object.values(item))freeze(child);Object.freeze(item);}};freeze(copy);return copy;}
 function formsExports(options:FormsExtensionOptions,site:()=>Pick<ExtensionActivation,'origin'|'origins'>|undefined):FormsExports {
   const now=options.now??Date.now;
-  const active=():Pick<ExtensionActivation,'origin'|'origins'>=>{const current=site();if(!current)throw new Error('forms is not active yet: declare forms before the extension that uses it under extensions in urlcode.yaml, so the runtime activates it first');return current;};
+  const active=():Pick<ExtensionActivation,'origin'|'origins'>=>{const current=site();if(!current)throw new Error('forms is not active yet: call a flow from a request or from an extension that requires forms, which activates after it');return current;};
   function handle(name:string,flow:FormFlowBody,zone:Intl.DateTimeFormat,names:readonly string[]):FormsFlow {
     const sub:FormFlowBody={...flow,fields:Object.fromEntries(names.map(field=>[field,flow.fields[field]!]))};
     const checkPage=(page:FormsPageOptions):void=>{
@@ -317,14 +318,13 @@ function formsExports(options:FormsExtensionOptions,site:()=>Pick<ExtensionActiv
         for(const field of subset){const sibling=flow.fields[field]!.requiredWhen?.field;if(sibling!==undefined&&!subset.includes(sibling))throw new Error(`Form ${name}: ${field} is required when ${sibling} has certain values, so ${sibling} must be included with it`);}
         return handle(name,flow,zone,Object.keys(flow.fields).filter(field=>subset.includes(field)));
       },
-      render(request:ExtensionRequest,page:FormsPageOptions):HandlerResult {checkPage(page);active();return show(page,todayIn(zone,now()),bindingCookie(request)??globalThis.crypto.randomUUID());},
+      render(request:ExtensionRequest,page:FormsPageOptions):HandlerResult {checkPage(page);active();let binding:string|undefined;try{binding=bindingCookie(request);}catch(error){return httpFailure(error);}return show(page,todayIn(zone,now()),binding??globalThis.crypto.randomUUID());},
       submit(request:ExtensionRequest,page:FormsPageOptions):FormsSubmission {
         checkPage(page);const context=active();
         if(request.method!=='POST')return {ok:false,response:{status:405,headers:[['allow','GET, HEAD, POST'],['content-type','text/plain; charset=utf-8']],body:'Method not allowed'}};
-        const origin=request.headers.get('origin');
-        if(origin!==null?!isSiteOrigin(context,origin):!sameOriginFallback(request,context))return {ok:false,response:fail(403,'Forbidden')};
-        const parsed=readForm(request);if(parsed===undefined)return {ok:false,response:fail(413,'Form body is too large')};if(parsed===null)return {ok:false,response:fail(415,'Form submission requires application/x-www-form-urlencoded')};
-        const binding=bindingCookie(request);
+        if(!sameOrigin(request,context))return {ok:false,response:fail(403,'Forbidden')};
+        let parsed:URLSearchParams,binding:string|undefined;
+        try{parsed=readForm(request);binding=bindingCookie(request);}catch(error){return {ok:false,response:httpFailure(error)};}
         if(!validToken(options.csrfSecret,name,binding,parsed.get('csrf')??undefined,page.scope))return {ok:false,response:fail(403,'Forbidden')};
         const today=todayIn(zone,now()),{values,errors}=admission(sub,parsed,today,flow.fields);
         if(Object.keys(errors).length)return {ok:false,response:show(page,today,binding!,{values,errors,status:422})};
