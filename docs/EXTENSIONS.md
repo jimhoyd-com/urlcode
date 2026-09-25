@@ -603,9 +603,16 @@ stable release moves) unless `--to X.Y.Z` names another, including a prerelease
 or an older release. It installs core first, then points every add-on at the
 pins in that core's own `addons.json` (refusing, before anything stays changed,
 if the target does not release an installed add-on), checks the lock against
-them, validates the project with the new runtime, and moves the site's workflow
-to the same action release. Any failure restores `package.json`,
-`package-lock.json` and the workflows and reinstalls. `urlcode upgrade --check`
+them, refuses any installed artifact that is not inert at its new pin (the same
+checks `artifacts add` makes), validates the project with the new runtime, and
+moves the site's workflow to the same action release. Every npm run uses
+`--ignore-scripts`. Any failure restores `package.json`, `package-lock.json`
+and the workflows, then reinstalls `node_modules` from the restored lock with
+`npm ci --ignore-scripts`. If that reinstall itself fails, the error says so
+after the original failure and tells you to run `npm ci --ignore-scripts` in
+the site before continuing; it is never silently ignored. The upgrade needs a
+`package-lock.json` to roll back exactly, so a site without one is refused
+before anything changes: run `npm install --ignore-scripts` first. `urlcode upgrade --check`
 reports the current and target versions and changes nothing. Configuration is
 not migrated: if an extension's schema changed, validation names the field.
 
