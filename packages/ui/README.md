@@ -231,7 +231,8 @@ through its definition's `contributes.ui` (`{sources, templates}`). The scaffold
 writes the `extensions.ui` block with a starter theme named after the site, the
 `/assets/ui/*` route and `ui/copy/`, `ui/templates/` and `ui/extra.css`
 placeholders beside the host; core orders `ui` before the extensions that
-require it. Auth and admin render through this kit and receive it from the host.
+require it. Its `urlcode-ui doctor` and `eject` hints pass `--extensions` for
+every installed extension package whose definition contributes ui templates. Auth and admin render through this kit and receive it from the host.
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
 `options.layout: 'application'` makes the kit render the console shell itself

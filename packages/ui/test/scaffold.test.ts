@@ -48,16 +48,48 @@ test('ui alone: theme from the site name, the assets mount and the ui/ override 
     assert.equal(((await scaffold(['ui'], '/srv/<weird>')).config.theme as { name: string }).name, 'weird');
 });
 
-test('ui never scaffolds another extension\'s screen: store owns its CRUD screen (#709)', async () => {
+/**
+ * Installed extension packages on disk, as `urlcode extensions add` leaves them: `auth` and `forms` here contribute
+ * ui templates, `store` contributes only screens (no templates), `mail` nothing to ui.
+ */
+async function installedSite(t: { after(fn: () => unknown): void }): Promise<string> {
+    const site = await mkdtemp(join(tmpdir(), 'urlcode-ui-installed-'));
+    t.after(() => rm(site, { recursive: true, force: true }));
+    const contributions: Record<string, string> = {
+        auth: "{ui: {templates: [{name: 'auth', templates: {'auth/sign-in': '<p>Sign in</p>'}}]}}",
+        forms: "{ui: {templates: [{name: 'forms', templates: {'forms/field': '<p>Field</p>'}}]}}",
+        store: '{ui: {screens: () => []}}',
+        mail: '{mail: []}',
+    };
+    for (const [name, contributes] of Object.entries(contributions)) {
+        const pkg = join(site, 'node_modules', '@jimhoyd', `urlcode-${name}`);
+        await mkdir(pkg, { recursive: true });
+        await writeFile(join(pkg, 'package.json'), JSON.stringify({ name: `@jimhoyd/urlcode-${name}`, version: '1.0.0', type: 'module', exports: { './extension': './extension.js' } }));
+        await writeFile(join(pkg, 'extension.js'), `const definition = {name: '${name}', description: 'Fixture', schema: {type: 'object'}, contributes: ${contributes}, host() { throw new Error('must not run'); }};\nexport default Object.assign(options => ({definition, options}), {definition});\n`);
+    }
+    return site;
+}
+
+test('the generated commands name every installed extension that contributes ui templates, and only those', async t => {
+    const site = await installedSite(t);
+    const result = await scaffold(['auth', 'forms', 'mail', 'store', 'ui'], site);
+    assert.ok(result.notes!.every(note => note.includes('--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-forms --') || note.endsWith('--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-forms')), result.notes!.join('\n'));
+    assert.ok(result.notes!.every(note => !note.includes('urlcode-store') && !note.includes('urlcode-mail')));
+    // Not installed in the site (or not loadable): left out rather than guessed.
+    assert.ok((await scaffold(['admin', 'ui'], site)).notes!.every(note => !note.includes('--extensions')));
+});
+
+test('ui never scaffolds another extension\'s screen: store owns its CRUD screen (#709)', async t => {
+    const site = await installedSite(t);
     const alone = await scaffold(['ui']);
     for (const installed of [['store', 'ui'], ['auth', 'store', 'ui']]) {
-        const result = await scaffold(installed);
+        const result = await scaffold(installed, site);
         assert.equal('screens' in result.config, false);
         assert.deepEqual(Object.keys(result.routes), ['/assets/ui/*']);
         assert.ok(result.notes!.every(note => !note.includes('/todos') && !note.includes('store')), result.notes!.join('\n'));
     }
-    assert.deepEqual((await scaffold(['store', 'ui'])).config, alone.config);
-    const signedIn = await scaffold(['auth', 'store', 'ui']);
+    assert.deepEqual({ ...(await scaffold(['store', 'ui'], site)).config, theme: alone.config.theme }, alone.config);
+    const signedIn = await scaffold(['auth', 'store', 'ui'], site);
     assert.ok(signedIn.notes!.some(note => note.includes('--extensions @jimhoyd/urlcode-auth') && !note.includes('urlcode-admin')));
     assert.ok(signedIn.notes!.some(note => note.includes('eject auth/sign-in')));
 });
