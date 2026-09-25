@@ -1,0 +1,31 @@
+# URLCode form-records
+
+> Operator-installed composition of forms and store: a declared form's
+> validated submission creates a record private to its signed-in creator in an
+> `ownership: owner` store collection, a confirmation page reads the saved
+> record back, and an edit page changes only declared fields. Released as a
+> tarball on core's GitHub Release and installed with
+> `urlcode extensions add form-records`; only core is on npm. Apache-2.0.
+
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code or credentials)
+- `extensions.forms` and `extensions.store` declared before `form-records`.
+- A store collection with `ownership: owner` (and its own `auth: true` route).
+- `extensions.form-records: { version: "1", config: { records: { <name>: { mount, collection, form, fields?, editable?, editTitle? } } } }`;
+  `form` is a forms flow body without `mount`.
+- A route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and `auth: true`.
+
+## Read in this order
+- [README](README.md): the record flow declaration, paths, ownership, concurrency and the example.
+- [SECURITY](SECURITY.md): what it delegates to forms and store, and what it enforces itself.
+
+## Do not guess
+- No handler code, in-process map or HTML for "save a form, show it, edit it":
+  declare a record flow.
+- Records are private to their creator: shared collections and mounts without
+  a principal-providing policy are refused at startup. There is no list page;
+  the store's JSON API lists the caller's own records.
+- Only `editable` fields change after create; a stale edit is a 412 page and
+  saves nothing. forms' `onSubmit` hook does not run for these forms.
+- Node only, like the store.

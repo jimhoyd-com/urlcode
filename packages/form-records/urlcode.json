@@ -1,0 +1,339 @@
+{
+  "kind": "extension",
+  "name": "form-records",
+  "description": "Saves a declared form into an owned store collection, with a confirmation page and an edit page limited to declared fields.",
+  "requires": [
+    "forms",
+    "store"
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "records"
+    ],
+    "properties": {
+      "records": {
+        "type": "object",
+        "maxProperties": 16,
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mount",
+            "collection",
+            "form"
+          ],
+          "properties": {
+            "mount": {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$",
+              "maxLength": 128
+            },
+            "collection": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "form": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "title",
+                "submitLabel",
+                "confirmation",
+                "fields"
+              ],
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "timeZone": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_+/-]{0,63}$"
+                },
+                "submitLabel": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "confirmation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "message"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2048
+                    },
+                    "show": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 32,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                      }
+                    }
+                  }
+                },
+                "fields": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "maxProperties": 32,
+                  "propertyNames": {
+                    "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "label"
+                    ],
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "control": {
+                        "enum": [
+                          "input",
+                          "textarea",
+                          "select",
+                          "checkbox"
+                        ]
+                      },
+                      "type": {
+                        "enum": [
+                          "text",
+                          "email",
+                          "number",
+                          "tel",
+                          "url",
+                          "date",
+                          "datetime-local"
+                        ]
+                      },
+                      "required": {
+                        "type": "boolean"
+                      },
+                      "minLength": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 65536
+                      },
+                      "maxLength": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65536
+                      },
+                      "minimum": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$"
+                          },
+                          {
+                            "const": "today"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "from",
+                              "add"
+                            ],
+                            "properties": {
+                              "from": {
+                                "const": "today"
+                              },
+                              "add": {
+                                "type": "string",
+                                "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "maximum": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$"
+                          },
+                          {
+                            "const": "today"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "from",
+                              "add"
+                            ],
+                            "properties": {
+                              "from": {
+                                "const": "today"
+                              },
+                              "add": {
+                                "type": "string",
+                                "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "pattern": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "enum": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 128,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "maxLength": 512
+                        }
+                      },
+                      "description": {
+                        "type": "string",
+                        "maxLength": 512
+                      },
+                      "requiredWhen": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "field",
+                          "in"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                          },
+                          "in": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 128,
+                            "uniqueItems": true,
+                            "items": {
+                              "type": "string",
+                              "maxLength": 512
+                            }
+                          }
+                        }
+                      },
+                      "options": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 128,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "value",
+                            "label"
+                          ],
+                          "properties": {
+                            "value": {
+                              "type": "string",
+                              "maxLength": 512
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 512
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "fields": {
+              "type": "object",
+              "maxProperties": 32,
+              "propertyNames": {
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              }
+            },
+            "editable": {
+              "type": "array",
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              }
+            },
+            "editTitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          }
+        }
+      }
+    }
+  },
+  "authoring": {
+    "description": "Save a declared form into an owned store collection: a submission creates a record private to its signed-in creator, the confirmation page reads the saved record back, and an edit page changes only the fields listed in `editable`. forms keeps rendering, CSRF and validation; the store keeps ownership, limits and ETags. No handler code.",
+    "surfaces": [
+      {
+        "kind": "configuration",
+        "name": "records",
+        "description": "Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields and `editTitle`.",
+        "path": "urlcode.yaml#extensions.form-records.config.records"
+      },
+      {
+        "kind": "extension",
+        "name": "mount",
+        "description": "Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true`. It serves `<mount>` (new record), `<mount>/<id>` (confirmation) and `<mount>/<id>/edit`. Declare forms and store before form-records under `extensions`.",
+        "path": "urlcode.yaml"
+      }
+    ],
+    "fastChecks": [
+      "urlcode validate --project . --host-file <host.mjs> --origin <origin>",
+      "urlcode test --project . --host-file <host.mjs> --origin <origin>"
+    ]
+  },
+  "agent": {
+    "description": "Local, revision-pinned references for agents configuring the form-records extension.",
+    "references": [
+      {
+        "name": "form-records extension guide",
+        "description": "Configuration and composition guidance for saving a form into an owned store collection.",
+        "path": "README.md"
+      }
+    ]
+  }
+}
