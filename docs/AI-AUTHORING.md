@@ -42,6 +42,12 @@ extensions and recipes/templates before writing a custom function or middleware.
 Keep necessary custom code focused and report the capability gap; never invent
 fields or bypass target limits or operator grants. See [the design principle](PROJECT-DIRECTION.md#design-principle-declarative-first).
 
+Prefer first-party extensions when suitable because they are tested with the
+runtime. External and private extensions are allowed when needed or requested;
+use the [external-extension workflow](EXTENSIONS.md#external-extensions-and-ai-tooling)
+for installation, host registration, discovery and validation. The managed
+`extensions add` command is for core's catalog, not arbitrary packages.
+
 ## Sources of truth and reading order
 
 1. [JSON Schema](../schemas/urlcode.schema.json): exact accepted structure.

@@ -70,6 +70,12 @@ and core pins every one of them (download URL and sha512) in its own
 `addons.json`. A site installs them with `urlcode extensions add` and `urlcode
 artifacts add`, never by choosing an npm package. See
 [add-ons](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts).
+
+Prefer tested first-party extensions when suitable. External/private extensions
+are also supported through the same public host contract; follow the
+[external-extension workflow](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#external-extensions-and-ai-tooling)
+for installation, AI discovery and validation outside the release catalog.
+
 A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
@@ -471,6 +477,12 @@ Check the installed version's primitives, YAML configuration, policies, supporte
 extensions and recipes/templates before writing a custom function or middleware.
 Keep necessary custom code focused and report the capability gap; never invent
 fields or bypass target limits or operator grants. See [the design principle](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PROJECT-DIRECTION.md#design-principle-declarative-first).
+
+Prefer first-party extensions when suitable because they are tested with the
+runtime. External and private extensions are allowed when needed or requested;
+use the [external-extension workflow](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#external-extensions-and-ai-tooling)
+for installation, host registration, discovery and validation. The managed
+`extensions add` command is for core's catalog, not arbitrary packages.
 
 ### Sources of truth and reading order
 
@@ -3954,8 +3966,9 @@ internals. An add-on **must** follow them:
    manifest limits are in [artifacts](#artifacts).
 5. **Prove every new seam twice.** A new export, contribution, hook or policy
    seam ships with a fixture for a second provider or consumer (not just the
-   first-party pair that motivated it), and passes descriptor, build and add-on
-   verification: `node scripts/build-addon-manifest.ts --check`,
+   first-party pair that motivated it). External authors run their own package
+   and consumer checks. In this repository, descriptor, build and add-on
+   verification uses: `node scripts/build-addon-manifest.ts --check`,
    `npm run audit:packages` and `npm run test:addons`
    ([validation and CI](#validation-and-ci), [changing an add-on](https://github.com/jimhoyd-com/urlcode/blob/main/CONTRIBUTING.md#changing-an-add-on)).
 
@@ -3970,8 +3983,135 @@ internals. An add-on **must** follow them:
 - [ ] Artifacts pass `urlcode artifacts list --strict` and hold no code,
       provider wiring, credentials, customer data or app-specific config.
 - [ ] Each new seam has a second-provider or consumer fixture.
-- [ ] `npm run build:addons` output is committed; `build-addon-manifest --check`,
+- [ ] For first-party add-ons, `npm run build:addons` output is committed; `build-addon-manifest --check`,
       `npm run audit:packages` and `npm run test:addons` pass.
+
+### External extensions and AI tooling
+
+External and private extensions are supported. Prefer a first-party extension
+when it satisfies the requirement: those add-ons are tested with the runtime
+and pinned together by its release catalog. This is a preference, not a ban on
+external code or a claim of independent security assessment. Use an external
+extension for a missing capability or an explicit project requirement, following
+the same generic authoring rules and trusted operator boundary.
+
+For an AI assistant integrating an extension:
+
+1. Inspect the installed first-party capabilities and customization surfaces.
+   Reuse a suitable tested extension before introducing another dependency.
+2. For an external extension, read its compatibility, configuration, lifecycle
+   and testing instructions. Install the selected package at an exact reviewed
+   version using the site's package manager and retain its lockfile. A private
+   local operator module is also supported. Package names and imports belong
+   outside `app/`, never in route YAML.
+3. Import its definition in `host.mjs` and add its entry to `composeHost` alongside
+   existing entries. Declare its logical name, configuration and mounts in YAML.
+   Supply every declared dependency explicitly. Host modules run trusted code;
+   `sandbox: true` on a project route does not sandbox an extension.
+4. Supply the reviewed revision pin, inspect the registered schemas and authoring
+   surfaces, then validate and run HTTP fixtures through that host. Use
+   `get_extensions` when the operator has configured the local MCP server with
+   the host file; otherwise use the CLI below. Hosted release catalogs describe
+   first-party releases, not an external package's installed behavior.
+5. Report compatibility and tests actually exercised. Keep external package
+   upgrades explicit; core's `extensions add/remove`, release catalog and
+   `upgrade` do not manage arbitrary third-party packages. Do not override the
+   development catalog to impersonate a managed release add-on.
+
+#### Minimal external operator module
+
+In an initialized site, save this as `greeting.mjs` beside `host.mjs`, outside
+`app/`. A separate package can export this same definition; its consumer would
+replace the local import below with that package's documented export.
+
+```js
+import { defineExtension } from '@jimhoyd/urlcode/extensions';
+
+const schema = {
+  type: 'object', additionalProperties: false, required: ['message'],
+  properties: { message: { type: 'string', minLength: 1, maxLength: 120 } },
+};
+const authoring = {
+  description: 'Configure the greeting without replacing its handler.',
+  surfaces: [{ kind: 'configuration', name: 'message',
+    description: 'Plain text returned by the greeting mount.' }],
+};
+export default defineExtension({
+  name: 'greeting', description: 'A minimal external greeting extension.',
+  schema, authoring,
+  host({ projectSha256 }) {
+    return { registration: {
+      name: 'greeting', version: '1', projectSha256,
+      targets: ['node'], schema, authoring,
+      activate(config) {
+        return { handle() {
+          return { status: 200,
+            headers: [['content-type', 'text/plain; charset=utf-8']],
+            body: config.message };
+        } };
+      },
+    } };
+  },
+});
+```
+
+For a bare site, `host.mjs` is:
+
+```js
+import { composeHost } from '@jimhoyd/urlcode/host';
+import greeting from './greeting.mjs';
+export default await composeHost(import.meta.url, [greeting()]);
+```
+
+The route project, `app/urlcode.yaml`:
+
+```yaml
+version: "1"
+extensions:
+  greeting:
+    version: "1"
+    config: { message: Hello from an external extension }
+routes:
+  /greeting/*:
+    extension: greeting
+    methods: [GET, HEAD]
+```
+
+Add `app/tests/requests.json`:
+
+```json
+[
+  { "path": "/greeting/hello", "status": 200, "expectBody": "Hello from an external extension" },
+  { "path": "/greeting/hello", "method": "HEAD", "status": 200, "expectBody": "" },
+  { "path": "/greeting/hello", "method": "POST", "status": 405 }
+]
+```
+
+From the site, run `urlcode explain --project app --json` and review the project
+before setting `PROJECT_SHA256` to its reported `projectSha256`. Do not compute
+and approve a fresh pin inside `host.mjs` on each startup. Then run:
+
+```sh
+urlcode extensions --project app --host-file host.mjs --json
+urlcode validate --project app --host-file host.mjs --origin http://localhost:3000
+urlcode test --project app --host-file host.mjs --origin http://localhost:3000
+```
+
+Use the site's installed CLI (or prefix with `npx --no --package @jimhoyd/urlcode`).
+For commands accepting `--policy`, an external reviewed operator policy can
+supply the revision instead; see [the revision pin](#the-revision-pin).
+Always pass the host for external schemas: descriptor-only discovery assumes
+managed package conventions and is not a general third-party package resolver.
+
+An external author should publish configuration/policy schemas, hook contracts,
+`authoring` surfaces and fast checks in the registration, plus compatible core
+versions, supported targets and lifecycle cleanup instructions. Test the packed
+package in a separate consumer, including invalid configuration, unsupported
+targets, revision mismatch and relevant authorization failures. The generic
+rules apply; this repository's `build:addons`, descriptor and release scripts
+are first-party maintenance commands, not prerequisites for an external package.
+Core's catalog does not automatically distribute external agent references or
+invoke its scaffold; provide package-owned instructions and examples.
 
 ### Discovering schemas
 

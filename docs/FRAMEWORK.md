@@ -26,6 +26,12 @@ and core pins every one of them (download URL and sha512) in its own
 `addons.json`. A site installs them with `urlcode extensions add` and `urlcode
 artifacts add`, never by choosing an npm package. See
 [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
+
+Prefer tested first-party extensions when suitable. External/private extensions
+are also supported through the same public host contract; follow the
+[external-extension workflow](EXTENSIONS.md#external-extensions-and-ai-tooling)
+for installation, AI discovery and validation outside the release catalog.
+
 A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
