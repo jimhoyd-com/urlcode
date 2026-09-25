@@ -5,7 +5,7 @@ import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from 
 import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec, StoredRecord } from './collection.ts';
-import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
+import type { AuditAttachment, AuditExports } from '@jimhoyd/urlcode-audit';
 import { screensSchema, storeScreens } from './screens.ts';
 import { storeExports } from './records.ts';
 import type { StoreExports } from './records.ts';
