@@ -1,5 +1,6 @@
 import type {AbuseChallengeWidget} from '@jimhoyd/urlcode-abuse';
-import {createPresentation} from './presentation.ts';
+import {createPresentation} from '@jimhoyd/urlcode-ui';
+import {englishCatalogue} from './presentation.ts';
 import type {PresentationContext} from './presentation.ts';
 import {randomBytes} from 'node:crypto';
 import {jsonResponse,wantsJson} from '@jimhoyd/urlcode/extensions';
@@ -23,7 +24,7 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
  const browserCookie='__Host-urlcode-factor-recovery';
  const enabled=()=>options.service.getFactorRecoveryEnabled()&&options.delivery.available;
  const hidden=(token:string)=>hiddenField('token',token);
- return {enabled,async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation().resolve()):Promise<AuthHttpResponse|undefined>{
+ return {enabled,async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation({defaults:englishCatalogue}).resolve()):Promise<AuthHttpResponse|undefined>{
   const tr=(key:string,values?:Record<string,string|number>)=>presentation.text(key,values);
  const form=(path:string,csrf:string,markup:string,label:string)=>`<form method="post" action="${escapeHtml(mount+path+'?lang='+encodeURIComponent(presentation.locale))}">${hiddenField('csrf', csrf)}${markup}<button type="submit">${escapeHtml(label)}</button></form>`;
 

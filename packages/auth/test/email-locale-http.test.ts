@@ -7,7 +7,11 @@ import {join} from 'node:path';
 import {randomBytes,createHmac} from 'node:crypto';
 import {createAuthService} from '../src/auth-core.ts';
 import {authFor} from './support/companions.ts';
-import {createPresentation} from '../src/presentation.ts';
+import { createPresentation as createUiPresentation } from '@jimhoyd/urlcode-ui';
+import type { PresentationOptions } from '@jimhoyd/urlcode-ui';
+import { englishCatalogue } from '../src/presentation.ts';
+/** ui's presentation over auth's English catalogue, as the host registers it. */
+const createPresentation = (options: Omit<PresentationOptions, 'defaults'> = {}) => createUiPresentation({ ...options, defaults: englishCatalogue });
 import {createRegistrationPolicy} from '../src/registration.ts';
 import type { CsrfBody, MessageBody, SessionBody, SignupStatusBody } from './support/json-api.ts';
 import { activatedUi } from './support/render.ts';

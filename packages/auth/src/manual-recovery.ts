@@ -1,7 +1,8 @@
 import type {ExtensionRequest} from '@jimhoyd/urlcode/extensions';
 import type {AuthSessionResult} from './auth-core.ts';
 import type {PresentationContext} from './presentation.ts';
-import {createPresentation} from './presentation.ts';
+import {createPresentation} from '@jimhoyd/urlcode-ui';
+import {englishCatalogue} from './presentation.ts';
 import {jsonResponse,wantsJson} from '@jimhoyd/urlcode/extensions';
 import {AuthHttp,AuthHttpError,readAuthFields,screenResponse} from './auth-ui.ts';
 import type {UiExtension} from '@jimhoyd/urlcode-ui/host';
@@ -33,7 +34,7 @@ export function validateRecoveryEvidence(input:ManualRecoveryEvidence):ManualRec
 }
 /** Redemption is POST-only and creates an enrollment session, never normal access. */
 export function createManualRecoveryFlows(service:ManualRecoveryService,http:AuthHttp,mount:string,ui:UiExtension){
- return {async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation().resolve()):Promise<AuthHttpResponse|undefined>{
+ return {async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation({defaults:englishCatalogue}).resolve()):Promise<AuthHttpResponse|undefined>{
   const tr=(key:string)=>presentation.text('manualRecovery.'+key);
   if(request.path.slice(mount.length)!=='/restore-access')return;
   if(!service.getManualRecoveryEnabled())throw new AuthHttpError(404,'Not found');

@@ -1,5 +1,6 @@
 import { createSecondFactorFlows } from './second-factor-flows.ts';
-import { createPresentation } from './presentation.ts';
+import { createPresentation } from '@jimhoyd/urlcode-ui';
+import { englishCatalogue } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
 import type { Presentation } from './presentation.ts';
 import type { RegistrationInput } from './registration.ts';
@@ -34,7 +35,7 @@ interface AuthFlowOptions {
     };
 }
 const trustedCookie = '__Host-urlcode-trusted-device';
-const defaultPresentation = createPresentation();
+const defaultPresentation = createPresentation({ defaults: englishCatalogue });
 const id = () => randomBytes(32).toString('base64url');
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 function record(value: unknown): Record<string, unknown> {

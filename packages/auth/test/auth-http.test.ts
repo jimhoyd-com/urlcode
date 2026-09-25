@@ -1,7 +1,11 @@
 import { cleanup } from './cleanup.ts';
 import { TOTP } from 'otpauth';
 import { createRegistrationPolicy } from '../src/registration.ts';
-import { createPresentation } from '../src/presentation.ts';
+import { createPresentation as createUiPresentation } from '@jimhoyd/urlcode-ui';
+import type { PresentationOptions } from '@jimhoyd/urlcode-ui';
+import { englishCatalogue } from '../src/presentation.ts';
+/** ui's presentation over auth's English catalogue, as the host registers it. */
+const createPresentation = (options: Omit<PresentationOptions, 'defaults'> = {}) => createUiPresentation({ ...options, defaults: englishCatalogue });
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -307,7 +311,7 @@ test('OIDC subjects are scoped to verified issuer across operator provider repla
     assert.equal(second.user.email, email);
 });
 test('locale and safe theme apply to trusted HTML while translated text remains escaped', async (t) => {
-    const presentation = createPresentation({ catalogues: { fr: { 'page.signIn': 'Connexion <test>', 'field.email': 'Adresse électronique', 'nav.skip': 'Aller au contenu' } }, theme: { '--auth-accent': '#123456' } });
+    const presentation = createPresentation({ catalogues: { fr: { 'page.signIn': 'Connexion <test>', 'field.email': 'Adresse électronique', 'nav.skip': 'Aller au contenu' } }, theme: { '--ui-accent': '#123456' } });
     const { request } = await app(t, { presentation });
     const page = await request('/account/login?lang=fr');
     const html = await page.text();

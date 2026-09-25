@@ -7,7 +7,11 @@ import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { createAuthService, sessionReference } from '../src/auth-core.ts';
 import { companions, withCompanions } from './support/companions.ts';
-import { createPresentation } from '../src/presentation.ts';
+import { createPresentation as createUiPresentation } from '@jimhoyd/urlcode-ui';
+import type { PresentationOptions } from '@jimhoyd/urlcode-ui';
+import { englishCatalogue } from '../src/presentation.ts';
+/** ui's presentation over auth's English catalogue, as the host registers it. */
+const createPresentation = (options: Omit<PresentationOptions, 'defaults'> = {}) => createUiPresentation({ ...options, defaults: englishCatalogue });
 import { createRegistrationPolicy } from '../src/registration.ts';
 import { activatedUi } from './support/render.ts';
 test('OIDC carries request locale through enrollment and MFA with escaped catalogue values', async (t) => {

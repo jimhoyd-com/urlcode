@@ -1,5 +1,4 @@
-import {createPresentation as createUiPresentation} from '@jimhoyd/urlcode-ui';
-import type {Catalogue,Presentation,PresentationOptions as UiPresentationOptions,ThemeVariables as UiThemeVariables} from '@jimhoyd/urlcode-ui';
+import type {Catalogue} from '@jimhoyd/urlcode-ui';
 export type {PluralMessage,Catalogue,LocalePreferences,PresentationContext,Presentation} from '@jimhoyd/urlcode-ui';
 export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
 
@@ -308,18 +307,3 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     'message.accessDenied': 'Access denied', 'message.requestFailed': 'Request could not be completed', 'message.csrfRequired': 'Reload the page before submitting again.',
     'support.banner': 'Support impersonation is active. Security changes are disabled.', 'support.end': 'End support session',
 });
-export interface ThemeVariables extends UiThemeVariables {
-    '--auth-background'?: string;
-    '--auth-foreground'?: string;
-    '--auth-accent'?: string;
-    '--auth-border'?: string;
-    '--auth-radius'?: string;
-}
-export interface PresentationOptions extends Omit<UiPresentationOptions,'theme'|'defaults'> {theme?:ThemeVariables}
-/** Legacy auth theme names are adapted here; the shared UI package knows no auth fields. */
-export function createPresentation(options:PresentationOptions={}):Presentation {
-    const theme=options.theme;
-    if(theme!==undefined&&(!theme||typeof theme!=='object'||Array.isArray(theme)||Object.keys(theme).length>10))throw new Error('Invalid presentation theme');
-    const translated=theme?Object.fromEntries(Object.entries(theme).map(([name,value])=>[name.startsWith('--auth-')?name.replace('--auth-','--ui-'):name,value])):undefined;
-    return createUiPresentation({...options,...(translated?{theme:translated}:{}),defaults:englishCatalogue});
-}

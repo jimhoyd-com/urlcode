@@ -11,7 +11,11 @@ import {createAuthService as createPublicService, internal, sessionReference} fr
 import type {AuthOptions} from '../src/auth-core.ts';
 import {siteCompanions, withCompanions} from './support/companions.ts';
 const createAuthService=async(options:AuthOptions)=>internal(await createPublicService(options));
-import {createPresentation} from '../src/presentation.ts';
+import { createPresentation as createUiPresentation } from '@jimhoyd/urlcode-ui';
+import type { PresentationOptions } from '@jimhoyd/urlcode-ui';
+import { englishCatalogue } from '../src/presentation.ts';
+/** ui's presentation over auth's English catalogue, as the host registers it. */
+const createPresentation = (options: Omit<PresentationOptions, 'defaults'> = {}) => createUiPresentation({ ...options, defaults: englishCatalogue });
 import { kitSetup, kitYaml } from './support/render.ts';
 import { body } from './support/json-api.ts';
 import type { EnrollmentRequiredBody, TotpBeginBody } from './support/json-api.ts';
