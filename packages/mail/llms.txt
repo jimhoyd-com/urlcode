@@ -1,0 +1,31 @@
+# URLCode mail
+
+> Plain-text transactional email: templates contributed by other extensions, one operator transport. Serves no
+> routes. Released with core and installed with `urlcode extensions add mail`. Apache-2.0.
+
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code, addresses or credentials)
+- `extensions.mail.config.defaultLocale`: the fallback locale (default `en`).
+- `extensions.mail.config.copy`: locale -> `mail/copy/<name>.json`, overriding or translating contributed
+  templates by `<namespace>.<key>`; every `{slot}` is kept.
+- No routes: a route with `extension: mail` is refused.
+
+## What the operator chooses (host.mjs)
+- `mail({transport, from, recipients, maxConcurrent, deadlineMs})`. With no transport, messages go to
+  `<site>/data/outbox` on a loopback origin only; elsewhere delivery is off until a transport is named.
+- `sesTransport({region})` for production; `outboxTransport`, `consoleTransport` and `recordingTransport` are
+  development transports, refused off the node target.
+
+## What an extension does with it
+- Contribute `contributes: {mail: {namespace, templates}}` and read `ctx.get('mail')` (types only:
+  `import type { MailExports } from '@jimhoyd/urlcode-mail'`).
+- `send({template, to, values, locale?, signal?})`; check `available`; ask for operator recipients by name.
+
+## Read in this order
+- [README](README.md): options, transports, slot kinds, copy files, error codes.
+- [SECURITY](SECURITY.md): what mail keeps and what stays with the consumer.
+- docs/EXTENSIONS.md#generic-add-on-authoring-rules: the rules every add-on satisfies.
+
+## Do not guess
+- No HTML, attachments, Reply-To, CC/BCC, SMTP, queueing or retries beyond SES's two attempts.
