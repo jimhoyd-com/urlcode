@@ -629,7 +629,7 @@ parsing, JSON responses, cookie parsing or origin checks; use these:
 
 | Helper | What it does |
 |---|---|
-| `readBody(request, {accept, maxBytes, maxDepth?})` | Reads a JSON or `application/x-www-form-urlencoded` body. Refuses a repeated `Content-Type` (400), more than `maxBytes` (413, checked first), another media type (415), invalid UTF-8 (400) and, for JSON, nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
+| `readBody(request, {accept, maxBytes, maxDepth?})` | Reads a JSON or `application/x-www-form-urlencoded` body. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), another media type (415), invalid UTF-8 (400) and, for JSON, nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
 | `readFields(request, {fields, patterns?, accept?, maxBytes?, maxFields?, maxValueLength?, limits?})` | A flat set of string fields through `readBody`: only names in `fields` or matching an anchored `patterns` entry, each once, each a string within its length limit. List `csrf` and any challenge token field yourself. The result is frozen. |
 | `jsonResponse(status, value, headers?)` | A JSON answer with `no-store`, `nosniff`, a deny-all CSP and a `strict-origin` referrer policy; a header you pass replaces the default of the same name. |
 | `wantsJson(request)` | Whether `Accept` lists `application/json` or the body is JSON. |
