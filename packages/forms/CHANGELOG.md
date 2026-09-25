@@ -10,7 +10,15 @@
   …" / "must be on or before …"), and the input renders the matching HTML
   `min` and `max` attributes. Bounds are absolute; relative dates are not
   supported.
-
+- The confirmation page can show submitted values the flow opts in to with
+  `confirmation.show`, and `confirmation.message` may place them as `{field}`
+  placeholders (#527). The values reach the confirmation in an encrypted,
+  browser- and flow-bound `__Host-urlcode-forms-confirmation` cookie that
+  expires after 5 minutes and is cleared on read, never in the URL; a missing,
+  expired, tampered or foreign one renders the fixed page. Startup refuses a
+  `show` entry that is not a declared field and a placeholder not listed in
+  `show`, so a message that already contained `{name}` text must now list the
+  field or drop the braces.
 - `type: date` and `type: datetime-local` fields are now validated on
   submission (#682). A `date` value must be `YYYY-MM-DD` and a
   `datetime-local` value `YYYY-MM-DDTHH:MM` with optional seconds and up to

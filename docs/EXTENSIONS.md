@@ -21,7 +21,7 @@ bounded collections as a CRUD API from an operator-owned directory. See
 The `forms` extension is the browser-flow counterpart: it renders bounded
 declared fields through the `ui` kit, validates URL-encoded submissions with
 its host-supplied CSRF secret, and redirects a successful submission to a
-fixed confirmation page. It is a trusted operator extension, needs `ui`, and
+confirmation page that shows only the submitted fields the flow opts in to. It is a trusted operator extension, needs `ui`, and
 may be mounted with `auth: true`; its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
 

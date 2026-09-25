@@ -34,6 +34,33 @@ submission must not be replayable needs an idempotency mechanism of its own
 typically inside `onSubmit` or the target it calls) rather than relying on
 CSRF admission for that guarantee.
 
+<a id="confirmation-values"></a>
+**Confirmation values.** A flow shows submitted values on its confirmation
+only for the fields it lists in `confirmation.show`; no other value leaves the
+POST. After a successful submission (and `onSubmit`), the extension seals
+those values into an `HttpOnly`, `Secure`, `SameSite=Strict`, `__Host-`
+prefixed cookie, `__Host-urlcode-forms-confirmation`, with a 5-minute
+`Max-Age`. The seal is AES-256-GCM under a key derived from the host's CSRF
+secret with HKDF-SHA256 (info `urlcode-forms-confirmation-v1`, separate from
+the CSRF token's HMAC use of the secret), with a random 96-bit nonce per
+submission. The flow name and the caller's CSRF binding cookie are
+authenticated as associated data and the plaintext carries an expiry, so the
+cookie does not open for another flow, another browser (a different or absent
+binding cookie), after 5 minutes, or after any modification; each of those
+renders the fixed confirmation with no field values and no error. Values never
+appear in a URL, and the cookie is ciphertext, not readable plaintext. It is
+stateless on purpose, because forms serves node, AWS and Vercel targets where
+the confirmation request can reach a different instance than the POST.
+
+The confirmation `GET` clears the cookie whatever its state, so a refresh shows
+the fixed page, but this is **not server-enforced single use**: the extension
+keeps no record of opened handoffs, and a browser that retained the cookie
+could present it again within its 5 minutes. Only that same browser can open
+it. Values larger than 2 KiB of JSON are not handed off. The confirmation is
+sent with `Cache-Control: no-store` and every value is HTML-escaped before
+placeholders are substituted. Changing the CSRF secret invalidates in-flight
+handoffs along with CSRF tokens.
+
 An optional `onSubmit` lifecycle hook is trusted project code, exactly like a
 normal unsandboxed project function; `sandbox: true` is refused by the generic
 extension-hook contract. It should not expose submitted values, and any durable
