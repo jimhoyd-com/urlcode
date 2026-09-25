@@ -192,8 +192,10 @@ structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
 `invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
 `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
-`unknown-option`), `file`, `line` and `column`, `route` (the pattern as written)
-and `pointer` (an RFC 6901 pointer into the YAML). Configuration messages start
+`unknown-option`, `extension-activation`, `extension-registration`), `file`,
+`line` and `column`, `route` (the pattern as written), `pointer` (an RFC 6901
+pointer into the YAML) and `extension` (the operator extension that failed; see
+[local development](LOCAL-DEVELOPMENT.md)). Configuration messages start
 with `file:line:column:` where the location is known. Act on `code` and the
 location; the message says what to write instead.
 

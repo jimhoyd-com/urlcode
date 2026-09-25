@@ -12,6 +12,7 @@ import {startServer} from '../packages/core/src/server.ts';
 import {createLambdaHandler} from '../packages/core/src/aws.ts';
 import {buildCloudflare} from '../packages/core/src/build-cloudflare.ts';
 import {inspectExtensionRevision,effectiveExtensionPolicies} from '../packages/core/src/extensions.ts';
+import {ConfigError,describeError} from '../packages/core/src/errors.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import type {ProjectDocument} from '../packages/core/src/types.ts';
 import {inspectExtensions,describeExtensions,validateProject} from '../packages/core/src/tooling.ts';
@@ -311,6 +312,56 @@ test('activation failure closes already activated providers',async t=>{
   let closed=0;const first=await registration(root,{activate(){return{handle:()=>({status:200,headers:[]}),close(){closed++;}};}});
   const second={...first,name:'other',activate(){throw new Error('activation failed');}};
   await assert.rejects(createRuntime(root,{origin,extensions:[first,second]}),/activation failed/);assert.equal(closed,1);
+});
+
+test('activation errors name the extension, keep the message bounded and stay out of request-time answers (#714)',async t=>{
+  const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
+  const failing=await registration(root,{activate(){throw new Error('tool lookup inputSchema: maxLength must be an integer from 0 to 8192');}});
+  await assert.rejects(createRuntime(root,{origin,extensions:[failing]}),(error:unknown)=>{
+    assert.ok(error instanceof ConfigError);
+    assert.equal(error.message,'Extension "demo" failed to activate: tool lookup inputSchema: maxLength must be an integer from 0 to 8192');
+    assert.deepEqual(error.details,{code:'extension-activation',extension:'demo'});
+    assert.ok(!error.message.includes('    at '));return true;});
+  const noisy=await registration(root,{activate(){throw new Error(`first\nsecond\u0007 ${'x'.repeat(2000)}`);}});
+  await assert.rejects(createRuntime(root,{origin,extensions:[noisy]}),(error:unknown)=>{
+    assert.ok(error instanceof ConfigError);assert.match(error.message,/^Extension "demo" failed to activate: first second x+\.\.\.$/);assert.ok(error.message.length<600);return true;});
+  // A registration schema Ajv refuses is the operator's too, named before activation runs.
+  const badSchema=await registration(root,{schema:{type:'object',notAKeyword:true},activate(){throw new Error('must not run');}});
+  await assert.rejects(createRuntime(root,{origin,extensions:[badSchema]}),/^Error: Extension "demo" registration could not be prepared: strict mode: unknown keyword: "notAKeyword"/);
+  // The hosted adapters answer a request with fixed text; the reason goes to the operator's function log only.
+  const logged:unknown[]=[];const consoleError=console.error;console.error=(...args:unknown[])=>{logged.push(...args);};t.after(()=>{console.error=consoleError;});
+  const handler=createLambdaHandler({project:root,origin,extensions:[failing],environment:{}});
+  const result=await handler({version:'2.0',rawPath:'/demo',rawQueryString:'',headers:{},requestContext:{http:{method:'GET'}}});
+  console.error=consoleError;
+  assert.equal(result.statusCode,500);const body=Buffer.from(result.body,'base64').toString();assert.equal(body,'Internal server error\n');assert.ok(!body.includes('maxLength'));
+  assert.ok(logged.some(entry=>entry instanceof ConfigError&&entry.details.extension==='demo'));
+});
+test('validate, test and dev print an extension activation error with its name; other failures stay generic (#714)',async t=>{
+  const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const {activate:_activate,...data}=await registration(root);
+  const failing=join(dir,'failing.mjs'),broken=join(dir,'broken.mjs');
+  await writeFile(failing,`export default {extensions:[{...${JSON.stringify(data)},activate(){throw new Error('MCP server hosted: tool urlcode_yaml_validate inputSchema: maxLength must be an integer from 0 to 8192');}}]};`);
+  // Loading the host module itself is not extension activation: its failure keeps the generic next step.
+  await writeFile(broken,`throw new Error('internal detail /secret/path');\n`);
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const run=(command:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,...args],{encoding:'utf8',timeout:20000});
+  const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string;extension?:string};
+  for(const command of ['validate','test'])await t.test(command,()=>{
+    const out=run(command,'--host-file',failing);assert.equal(out.status,1,out.stderr);
+    assert.deepEqual(lastError(out.stderr),{event:'error',message:'Extension "demo" failed to activate: MCP server hosted: tool urlcode_yaml_validate inputSchema: maxLength must be an integer from 0 to 8192',code:'extension-activation',extension:'demo'});
+    assert.ok(!out.stderr.includes('    at '));
+  });
+  await t.test('dev',()=>{
+    const out=run('dev','--port','0','--host-file',failing);assert.equal(out.status,1,out.stderr);
+    assert.match(lastError(out.stderr).message,/^Extension "demo" failed to activate: MCP server hosted/);
+  });
+  await t.test('non-activation failure',()=>{
+    const out=run('validate','--host-file',broken);assert.equal(out.status,1);
+    assert.deepEqual(lastError(out.stderr),{event:'error',message:'Operation failed; check project files, module dependencies and command options'});
+    assert.ok(!out.stderr.includes('secret'));
+  });
+  assert.equal(describeError(new Error('internal detail')),'Operation failed; check project files, module dependencies and command options');
 });
 
 /** A demo registry written as a host file outside the project, matching the in-process registration above. */

@@ -459,7 +459,10 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    plus focused `fastChecks`. Keep descriptions concrete enough that an agent
    can choose a supported surface instead of copying package behavior.
 4. Activates all configuration, files, services and hooks before serving a
-   request. Invalid or stale configuration fails activation.
+   request. Invalid or stale configuration fails activation. Throw an `Error`
+   whose message names the offending setting: `validate`, `test`, `dev` and
+   `serve` startup print it as `Extension "<name>" failed to activate: <message>`
+   (one line, bounded, no stack); request-time answers stay generic.
 5. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
    policies. It closes resources it owns.
 6. Keeps credentials, storage and provider setup in the operator host. Project
