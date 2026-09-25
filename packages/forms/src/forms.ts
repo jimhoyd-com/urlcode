@@ -1,9 +1,11 @@
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
-import { assertSafePattern, extensionHookContext, extensionHooksSchema, ExtensionHttpError, isSameOriginRequest, loadExtensionHooks, maxPatternInputLength, readBody, readCookie } from '@jimhoyd/urlcode/extensions';
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto';
+import { assertSafePattern, clientKey, extensionHookContext, extensionHooksSchema, ExtensionHttpError, isSameOriginRequest, loadExtensionHooks, maxPatternInputLength, readBody, readCookie } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionHookContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { alert, escapeHtml, field, markup, postForm } from '@jimhoyd/urlcode-ui';
 import { createSignedToken, readSignedToken } from '@jimhoyd/urlcode-ui/host';
 import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
+import type { AbuseAdmission, AbuseBudget, AbuseChallenge, AbuseExports, AbuseNamespace } from '@jimhoyd/urlcode-abuse';
+import type { MailContribution, MailExports } from '@jimhoyd/urlcode-mail';
 
 const FLOW=/^[a-z][a-z0-9-]{0,63}$/, FIELD=/^[a-z][A-Za-z0-9_]{0,63}$/;
 const MAX_BODY=64 * 1024, TOKEN_TTL=10 * 60 * 1000;
@@ -22,12 +24,24 @@ export interface RequiredWhen { field:string; in:string[] }
 export interface RelativeDateBound { from:'today'; add:string }
 /** A number (`type: number`), an absolute date or date-time string, `today`, or a {@link RelativeDateBound} (the last two for `date` and `datetime-local` only). */
 export type DateBound=number|string|RelativeDateBound;
-export interface FormFlowSpec { mount:string; title:string; timeZone?:string; submitLabel:string; confirmation:{title:string; message:string; show?:string[]}; fields:Record<string,FormFieldSpec> }
-/** A flow without its `mount`: what another extension passes to `FormsExports.define` (#529). */
-export type FormFlowBody=Omit<FormFlowSpec,'mount'>;
+export interface FormFlowSpec { mount:string; title:string; timeZone?:string; submitLabel:string; confirmation:{title:string; message:string; show?:string[]}; fields:Record<string,FormFieldSpec>; abuse?:FormAbuseSpec; notify?:FormNotifySpec }
+/**
+ * Rate limiting for one mounted flow, through the abuse extension (node only): at most `client.limit` submissions per
+ * client network in `client.windowMs`; above `challengeAfter` a submission must pass the operator's challenge; a
+ * filled `honeypot` field is accepted silently and dropped.
+ */
+export interface FormAbuseSpec { client:{limit:number; windowMs:number}; challengeAfter?:number; honeypot?:string }
+/** Mail each accepted submission to the operator-named `recipient` (mail({recipients}) in host.mjs), with the `include` fields' values as plain text. */
+export interface FormNotifySpec { recipient:string; include?:string[] }
+/** A flow without its `mount`: what another extension passes to `FormsExports.define` (#529). `abuse` and `notify` belong to mounted flows only. */
+export type FormFlowBody=Omit<FormFlowSpec,'mount'|'abuse'|'notify'>;
 interface FormConfig { flows:Record<string,FormFlowSpec>; hooks?:Record<string,unknown> }
-/** `now` is a clock override for tests (epoch milliseconds); relative date bounds read it per request. */
-export interface FormsExtensionOptions { projectSha256:string; csrfSecret:string|Uint8Array; ui:UiExtension; now?:()=>number }
+/**
+ * `abuse` and `mail` are the exports of those extensions when installed (forms `uses` both); a flow that declares
+ * `abuse` or `notify` refuses to activate without them. `now` is a clock override for tests (epoch milliseconds);
+ * relative date bounds read it per request.
+ */
+export interface FormsExtensionOptions { projectSha256:string; csrfSecret:string|Uint8Array; ui:UiExtension; abuse?:AbuseExports|undefined; mail?:MailExports|undefined; now?:()=>number }
 
 const stringSchema={type:'string',minLength:1,maxLength:512};
 /** Relative bound durations: signed, years/months/days only, at least one part (`P2Y`, `-P18Y`, `P1Y6M`, `P30D`). */
@@ -53,12 +67,27 @@ const flowBodyProperties={
  * forms applies to its own flows. Part of export contract version 1.
  */
 export const formFlowBodySchema={type:'object',additionalProperties:false,required:['title','submitLabel','confirmation','fields'],properties:flowBodyProperties} as const;
+/** A mounted flow's `abuse` block (the abuse extension's budget bounds); validateFlow checks `challengeAfter` < `limit` and the honeypot name. */
+const abuseSchema={type:'object',additionalProperties:false,required:['client'],properties:{
+  client:{type:'object',additionalProperties:false,required:['limit','windowMs'],properties:{limit:{type:'integer',minimum:1,maximum:100000},windowMs:{type:'integer',minimum:1000,maximum:86400000}}},
+  challengeAfter:{type:'integer',minimum:1,maximum:99999},honeypot:{type:'string',pattern:FIELD.source},
+}} as const;
+/** A mounted flow's `notify` block: an operator-named recipient (never an address in YAML) and the fields whose values the message carries. */
+const notifySchema={type:'object',additionalProperties:false,required:['recipient'],properties:{
+  recipient:{type:'string',pattern:'^[a-z][a-z0-9-]{0,63}$'},include:{type:'array',minItems:1,maxItems:32,uniqueItems:true,items:{type:'string',pattern:FIELD.source}},
+}} as const;
 export const formsConfigSchema={type:'object',additionalProperties:false,required:['flows'],properties:{
   hooks:extensionHooksSchema(formHookContracts),
   flows:{type:'object',maxProperties:16,propertyNames:{pattern:FLOW.source},additionalProperties:{type:'object',additionalProperties:false,required:['mount','title','submitLabel','confirmation','fields'],properties:{
-    mount:{type:'string',pattern:'^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$',maxLength:256},...flowBodyProperties,
+    mount:{type:'string',pattern:'^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$',maxLength:256},...flowBodyProperties,abuse:abuseSchema,notify:notifySchema,
   }}
 }}} as const;
+/** The message forms contributes to mail (`contributes.mail`): `forms.submission`, sent to a flow's `notify` recipient. */
+export const formsMail:MailContribution={namespace:'forms',templates:{submission:{
+  subject:'New form submission',
+  text:'A visitor submitted the form "{flow}".\n\n{summary}\n\nSubmitted values are shown as plain text and were not verified.',
+  slots:{flow:'text',summary:'text'},
+}}};
 export const formsAuthoring:ExtensionAuthoringContract={
   description:'Declare a bounded server-rendered form flow with fixed fields and a confirmation page that can show opted-in submitted values (confirmation.show). The forms extension owns HTML escaping, admission, CSRF and field validation; attach auth on the mount when submissions need a signed-in caller.',
   surfaces:[
@@ -123,8 +152,10 @@ function validateRequiredWhen(name:string,flow:FormFlowBody,fieldName:string,spe
 function isRequired(spec:FormFieldSpec,form:URLSearchParams):boolean {if(!spec.requiredWhen)return spec.required!==false;const entries=form.getAll(spec.requiredWhen.field);return entries.length===1&&spec.requiredWhen.in.includes(entries[0]!);}
 function formValues(flow:FormFlowBody, today:string, values:Record<string,string>, errors:Record<string,string>):string {return Object.entries(flow.fields).map(([name,spec])=>{const control=spec.control??'input',uiControl=control==='checkbox'?'input':control;return field({name,label:spec.label,control:uiControl,...(control==='input'?{type:spec.type??'text',...(spec.type==='date'||spec.type==='datetime-local'?boundAttributes(spec,today):{})}:control==='checkbox'?{type:'checkbox'}:{}),required:spec.requiredWhen===undefined&&spec.required!==false,...(spec.description===undefined?{}:{description:spec.description}),...(errors[name]===undefined?{}:{error:errors[name]}),...(control==='checkbox'?{checked:values[name]==='true'}:{value:values[name]??''}),...(control==='textarea'?{maxLength:spec.maxLength??4096}:{}),...(control==='select'?{options:spec.options!,placeholder:'Choose one'}:{})});}).join('');}
 function boundAttributes(spec:FormFieldSpec,today:string):{min?:string;max?:string} {const min=resolveBound(spec,'minimum',today),max=resolveBound(spec,'maximum',today);return {...(min===undefined?{}:{min}),...(max===undefined?{}:{max})};}
-function render(ui:UiExtension, name:string, flow:FormFlowSpec, today:string, csrf:string, values:Record<string,string>={}, errors:Record<string,string>={}, status=200, extraHeaders:[string,string][]=[]):HandlerResult {return formPage(ui,flow,today,csrf,{action:flow.mount,values,errors,status,headers:extraHeaders});}
-interface PageView { action:string; values?:Record<string,string>; errors?:Record<string,string>; status?:number; headers?:[string,string][]; alert?:string; readOnly?:Record<string,string>; labels?:Record<string,FormFieldSpec>; title?:string; submitLabel?:string }
+function render(ui:UiExtension, name:string, flow:FormFlowSpec, today:string, csrf:string, values:Record<string,string>={}, errors:Record<string,string>={}, status=200, extraHeaders:[string,string][]=[], extra?:PageExtra):HandlerResult {return formPage(ui,flow,today,csrf,{action:flow.mount,values,errors,status,headers:extraHeaders,...(extra?{extra}:{})});}
+/** What abuse adds to a flow's form: trusted markup inside the form before the submit button (a honeypot, a challenge widget), and the widget's scripts and CSP sources. */
+interface PageExtra { markup:string; scripts?:readonly {readonly src:string;readonly async:boolean}[]; csp?:{script:string[];frame:string[];connect:string[]} }
+interface PageView { action:string; values?:Record<string,string>; errors?:Record<string,string>; status?:number; headers?:[string,string][]; alert?:string; readOnly?:Record<string,string>; labels?:Record<string,FormFieldSpec>; title?:string; submitLabel?:string; extra?:PageExtra }
 /** A label/value list; `labels` supplies each field's label and display rule. Values are escaped. */
 function valueList(labels:Record<string,FormFieldSpec>,names:readonly string[],values:Record<string,string>):string {const items=names.map(name=>`<div><dt>${escapeHtml(labels[name]!.label)}</dt><dd>${escapeHtml(shownValue(labels[name]!,values[name]!))}</dd></div>`).join('');return items?`<dl>${items}</dl>`:'';}
 /** Longest field error message the page-level alert repeats for a field it cannot highlight. */
@@ -144,7 +175,7 @@ function pageNotice(flow:FormFlowBody, errors:Readonly<Record<string,string>>, d
   if(foreign)sentences.push('This form received a field it does not accept.');
   return sentences.length?alert(sentences.join(' '),'error'):'';
 }
-function formPage(ui:UiExtension, flow:FormFlowBody, today:string, csrf:string, view:PageView):HandlerResult {const errors=view.errors??{};const notice=pageNotice(flow,errors,view.labels??flow.fields,view.alert);const fixed=view.readOnly?valueList(view.labels??flow.fields,Object.keys(view.readOnly),view.readOnly):'';const body=notice+fixed+postForm({action:view.action,csrf,fields:formValues(flow,today,view.values??{},errors),label:view.submitLabel??flow.submitLabel,className:'ui-form-grid'});const result=ui.kit.wrap(markup(body),{title:view.title??flow.title});return {status:view.status??200,headers:[...result.headers,...(view.headers??[])],body:result.body};}
+function formPage(ui:UiExtension, flow:FormFlowBody, today:string, csrf:string, view:PageView):HandlerResult {const errors=view.errors??{};const notice=pageNotice(flow,errors,view.labels??flow.fields,view.alert);const fixed=view.readOnly?valueList(view.labels??flow.fields,Object.keys(view.readOnly),view.readOnly):'';const body=notice+fixed+postForm({action:view.action,csrf,fields:formValues(flow,today,view.values??{},errors)+(view.extra?.markup??''),label:view.submitLabel??flow.submitLabel,className:'ui-form-grid'});const result=ui.kit.wrap(markup(body),{title:view.title??flow.title,...(view.extra?.scripts?{scripts:view.extra.scripts}:{}),...(view.extra?.csp?{csp:view.extra.csp}:{})});return {status:view.status??200,headers:[...result.headers,...(view.headers??[])],body:result.body};}
 /** A shown checkbox reads Yes/No and a shown select its option label; every other value is shown as submitted. */
 function shownValue(spec:FormFieldSpec,value:string):string {if(spec.control==='checkbox')return value==='true'?'Yes':'No';if(spec.control==='select')return spec.options?.find(option=>option.value===value)?.label??value;return value;}
 /**
@@ -193,8 +224,65 @@ function dateBoundError(spec:FormFieldSpec,value:string,today:string):string|und
  * page does not render is refused as not changeable here. The error map has no prototype, so a key such as
  * `__proto__` is recorded (and refused) like any other rather than dropped.
  */
-function admission(flow:FormFlowBody, form:URLSearchParams, today:string, declared:Readonly<Record<string,FormFieldSpec>>=flow.fields):{values:Record<string,string>;errors:Record<string,string>} {const values:Record<string,string>={},errors:Record<string,string>=Object.create(null) as Record<string,string>;for(const key of new Set(form.keys()))if(key!=='csrf'&&!Object.hasOwn(flow.fields,key))errors[key]=Object.hasOwn(declared,key)?'cannot be changed on this form':'is not a declared field';for(const [name,spec] of Object.entries(flow.fields)){const entries=form.getAll(name);if(entries.length>1){errors[name]='must be supplied once';continue;}const raw=entries[0]??(spec.control==='checkbox'?'false':'');values[name]=raw;const value=spec.control==='checkbox'?(raw==='true'?'true':'false'):raw,required=isRequired(spec,form);let bounded:string|undefined;if(spec.control==='checkbox'){if(entries.length&&raw!=='true')errors[name]='must be true or absent';else if(required&&value!=='true')errors[name]='is required';continue;}if(required&&value===''){errors[name]='is required';continue;}if(value===''&&!required)continue;if(spec.minLength!==undefined&&value.length<spec.minLength)errors[name]=`must be at least ${spec.minLength} characters`;else if(spec.maxLength!==undefined&&value.length>spec.maxLength)errors[name]=`must be at most ${spec.maxLength} characters`;else if(spec.pattern!==undefined&&!new RegExp(spec.pattern,'u').test(value))errors[name]='does not match the declared pattern';else if(spec.enum&&!spec.enum.includes(value))errors[name]='is not an allowed value';else if(spec.control==='select'&&!spec.options?.some(option=>option.value===value))errors[name]='is not an allowed option';else if(spec.type==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))errors[name]='must be a valid email address';else if(spec.type==='date'&&!validDate(value))errors[name]='must be a valid date';else if(spec.type==='datetime-local'&&!validDateTimeLocal(value))errors[name]='must be a valid local date and time';else if((spec.type==='date'||spec.type==='datetime-local')&&(bounded=dateBoundError(spec,value,today))!==undefined)errors[name]=bounded;else if(spec.type==='number'){const number=Number(value);if(!Number.isFinite(number))errors[name]='must be a number';else if(typeof spec.minimum==='number'&&number<spec.minimum)errors[name]=`must be at least ${spec.minimum}`;else if(typeof spec.maximum==='number'&&number>spec.maximum)errors[name]=`must be at most ${spec.maximum}`;}}
+function admission(flow:FormFlowBody, form:URLSearchParams, today:string, declared:Readonly<Record<string,FormFieldSpec>>=flow.fields, ignored:ReadonlySet<string>=CSRF_ONLY):{values:Record<string,string>;errors:Record<string,string>} {const values:Record<string,string>={},errors:Record<string,string>=Object.create(null) as Record<string,string>;for(const key of new Set(form.keys()))if(!ignored.has(key)&&!Object.hasOwn(flow.fields,key))errors[key]=Object.hasOwn(declared,key)?'cannot be changed on this form':'is not a declared field';for(const [name,spec] of Object.entries(flow.fields)){const entries=form.getAll(name);if(entries.length>1){errors[name]='must be supplied once';continue;}const raw=entries[0]??(spec.control==='checkbox'?'false':'');values[name]=raw;const value=spec.control==='checkbox'?(raw==='true'?'true':'false'):raw,required=isRequired(spec,form);let bounded:string|undefined;if(spec.control==='checkbox'){if(entries.length&&raw!=='true')errors[name]='must be true or absent';else if(required&&value!=='true')errors[name]='is required';continue;}if(required&&value===''){errors[name]='is required';continue;}if(value===''&&!required)continue;if(spec.minLength!==undefined&&value.length<spec.minLength)errors[name]=`must be at least ${spec.minLength} characters`;else if(spec.maxLength!==undefined&&value.length>spec.maxLength)errors[name]=`must be at most ${spec.maxLength} characters`;else if(spec.pattern!==undefined&&!new RegExp(spec.pattern,'u').test(value))errors[name]='does not match the declared pattern';else if(spec.enum&&!spec.enum.includes(value))errors[name]='is not an allowed value';else if(spec.control==='select'&&!spec.options?.some(option=>option.value===value))errors[name]='is not an allowed option';else if(spec.type==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))errors[name]='must be a valid email address';else if(spec.type==='date'&&!validDate(value))errors[name]='must be a valid date';else if(spec.type==='datetime-local'&&!validDateTimeLocal(value))errors[name]='must be a valid local date and time';else if((spec.type==='date'||spec.type==='datetime-local')&&(bounded=dateBoundError(spec,value,today))!==undefined)errors[name]=bounded;else if(spec.type==='number'){const number=Number(value);if(!Number.isFinite(number))errors[name]='must be a number';else if(typeof spec.minimum==='number'&&number<spec.minimum)errors[name]=`must be at least ${spec.minimum}`;else if(typeof spec.maximum==='number'&&number>spec.maximum)errors[name]=`must be at most ${spec.maximum}`;}}
 return {values,errors};}
+
+/** The fields every flow's admission skips: its own CSRF token. A guarded flow also skips its honeypot and `challengeToken`. */
+const CSRF_ONLY:ReadonlySet<string>=new Set(['csrf']);
+const SUBMIT_FAILED='The form could not be submitted';
+const NO_SUMMARY='(No submitted values are included in this notification.)',SUMMARY_VALUE_MAX=1000,SUMMARY_MAX=8000;
+/** A mounted flow's `abuse` and `notify` rules beyond JSON Schema (validateFlow covers the body). */
+function validateGuards(name:string,flow:FormFlowSpec):void {
+  const abuse=flow.abuse,notify=flow.notify;
+  if(abuse?.challengeAfter!==undefined&&abuse.challengeAfter>=abuse.client.limit)throw new Error(`Form ${name}: abuse.challengeAfter must be below abuse.client.limit`);
+  if(abuse?.honeypot!==undefined&&(Object.hasOwn(flow.fields,abuse.honeypot)||abuse.honeypot==='csrf'||abuse.honeypot==='challengeToken'))throw new Error(`Form ${name}: abuse.honeypot ${abuse.honeypot} collides with a field of the form`);
+  for(const field of notify?.include??[])if(!Object.hasOwn(flow.fields,field))throw new Error(`Form ${name}: notify include lists undeclared field ${field}`);
+}
+/** Deterministic, bounded abuse scope for a flow name of up to 64 characters (29 characters; R11). */
+function flowScope(name:string):string {return `flow-${createHash('sha256').update(name).digest('hex').slice(0,24)}`;}
+/** What a mounted flow enforces beyond CSRF and field validation, resolved once at activation. */
+interface Guard { ignored:ReadonlySet<string>; namespace?:AbuseNamespace; budget?:AbuseBudget; honeypot?:string; challenge?:AbuseChallenge; notify?:{to:string;include:readonly string[]}; extra?:PageExtra }
+/**
+ * Resolves a flow's `abuse` and `notify` against the installed extensions, refusing before serving: abuse counts in
+ * a node-local database, so a flow with `abuse` refuses any other target, and a flow cannot claim protection or
+ * delivery that is not installed and active.
+ */
+function guardOf(name:string,flow:FormFlowSpec,context:ExtensionActivation,options:FormsExtensionOptions):Guard {
+  const ignored=new Set(CSRF_ONLY),guard:Guard={ignored};let markupText='';
+  if(flow.abuse){
+    const spec=flow.abuse,abuse=options.abuse;
+    if(context.target!=='node')throw new Error(`Form ${name}: abuse runs on node only; target ${context.target} cannot enforce it`);
+    if(!abuse?.active)throw new Error(`Form ${name}: abuse needs the abuse extension; run urlcode extensions add abuse`);
+    if(spec.challengeAfter!==undefined&&!abuse.challenge)throw new Error(`Form ${name}: abuse.challengeAfter needs a challenge verifier; pass abuse({challenge}) in host.mjs`);
+    guard.namespace=abuse.namespace('forms');
+    guard.budget=guard.namespace.budget({scope:flowScope(name),limit:spec.client.limit,windowMs:spec.client.windowMs,...(spec.challengeAfter===undefined?{}:{challengeAfter:spec.challengeAfter})});
+    if(spec.honeypot!==undefined){guard.honeypot=spec.honeypot;ignored.add(spec.honeypot);markupText+=abuse.honeypot.markup(spec.honeypot);}
+    if(spec.challengeAfter!==undefined){
+      const widget=abuse.challenge!.widget('forms');guard.challenge=abuse.challenge!;ignored.add('challengeToken');markupText+=widget.markup;
+      guard.extra={markup:'',scripts:widget.scripts,csp:{script:[...widget.csp.script],frame:[...widget.csp.frame],connect:[...widget.csp.connect]}};
+    }
+    guard.extra={...guard.extra,markup:markupText};
+  }
+  if(flow.notify){
+    const mail=options.mail,recipient=flow.notify.recipient;
+    if(!mail)throw new Error(`Form ${name}: notify needs the mail extension; run urlcode extensions add mail`);
+    if(!mail.available)throw new Error(`Form ${name}: notify needs mail delivery, which is disabled (transport: null, mail not declared under extensions, or no transport on a non-loopback origin)`);
+    let to:string;
+    try{to=mail.recipient(recipient);}catch(error){throw new Error(`Form ${name}: notify recipient ${recipient} is not configured; name it in mail({recipients}) in host.mjs`,{cause:error});}
+    guard.notify={to,include:Object.keys(flow.fields).filter(field=>flow.notify!.include?.includes(field))};
+  }
+  return guard;
+}
+/** The fixed 429 page: it names no budget, count or client. */
+function tooMany(ui:UiExtension,retryAfterSeconds:number):HandlerResult {const page=ui.kit.wrap(markup('<section class="ui-stack"><h1>Too many submissions</h1><p>This form has received too many submissions from your network. Try again later.</p></section>'),{title:'Too many submissions'});return {status:429,headers:[...page.headers,['retry-after',String(Math.max(1,retryAfterSeconds))]],body:page.body};}
+/** Mail `text` slots refuse control characters other than newline and tab: line breaks become `\n`, anything else U+FFFD. */
+function mailText(value:string):string {return value.replace(/\r\n?/g,'\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g,'\uFFFD');}
+function cut(value:string,max:number):string {return value.length>max?`${value.slice(0,max-1)}…`:value;}
+/** One `Label: value` line per included field in declaration order, values shown as on the confirmation page, each and the whole bounded. */
+function summaryOf(flow:FormFlowSpec,values:Readonly<Record<string,string>>,include:readonly string[]):string {
+  if(!include.length)return NO_SUMMARY;
+  return cut(include.map(field=>`${mailText(flow.fields[field]!.label).replace(/\n/g,' ')}: ${cut(mailText(shownValue(flow.fields[field]!,values[field]??'')),SUMMARY_VALUE_MAX)}`).join('\n'),SUMMARY_MAX);
+}
 
 /** Creates the forms registration. The CSRF secret is a host-file/operator value and is deliberately absent from project YAML. */
 /** Creates the forms registration. Equivalent to `createForms(options).registration`. */
@@ -204,9 +292,9 @@ export function createFormsExtension(options:FormsExtensionOptions):RuntimeExten
  * that `requires: [forms]` reads through `ctx.get('forms')` (#529). The exports are usable once the
  * runtime has activated this registration.
  */
-export function createForms(options:FormsExtensionOptions):{registration:RuntimeExtension;exports:FormsExports} {if(!/^[a-f0-9]{64}$/.test(options.projectSha256))throw new Error('forms extension requires an explicit operator revision pin');if((typeof options.csrfSecret==='string'&&Buffer.byteLength(options.csrfSecret)<32)||(options.csrfSecret instanceof Uint8Array&&options.csrfSecret.byteLength<32))throw new Error('forms extension requires a CSRF secret of at least 32 bytes');let site:Pick<ExtensionActivation,'origin'|'origins'>|undefined;const registration:RuntimeExtension={name:'forms',version:'1',projectSha256:options.projectSha256,targets:['node','aws','vercel'],schema:formsConfigSchema,hooks:formHookContracts,authoring:formsAuthoring,async activate(raw,context):Promise<ExtensionInstance>{if(!options.ui.active)throw new Error('forms extension requires an active ui extension');const config=raw as unknown as FormConfig;for(const [name,flow] of Object.entries(config.flows)) {validateFlow(name,flow);if(!context.mounts.includes(flow.mount))throw new Error(`Form ${name}: route ${flow.mount}/* with extension: forms is not declared`);}for(const mount of context.mounts)if(!Object.values(config.flows).some(flow=>flow.mount===mount))throw new Error(`Forms mount ${mount} has no declared flow`);const sealKey=confirmationKey(options.csrfSecret);const now=options.now??Date.now;const byMount=new Map(Object.entries(config.flows).map(([name,flow])=>[flow.mount,{name,flow,zone:zoneFormat(name,flow.timeZone)}]));const hooks=await loadExtensionHooks<'onSubmit'>(config.hooks,formHookContracts,context);site=context;const serve=async(request:ExtensionRequest):Promise<HandlerResult>=>{
+export function createForms(options:FormsExtensionOptions):{registration:RuntimeExtension;exports:FormsExports} {if(!/^[a-f0-9]{64}$/.test(options.projectSha256))throw new Error('forms extension requires an explicit operator revision pin');if((typeof options.csrfSecret==='string'&&Buffer.byteLength(options.csrfSecret)<32)||(options.csrfSecret instanceof Uint8Array&&options.csrfSecret.byteLength<32))throw new Error('forms extension requires a CSRF secret of at least 32 bytes');let site:Pick<ExtensionActivation,'origin'|'origins'>|undefined;const registration:RuntimeExtension={name:'forms',version:'1',projectSha256:options.projectSha256,targets:['node','aws','vercel'],schema:formsConfigSchema,hooks:formHookContracts,authoring:formsAuthoring,async activate(raw,context):Promise<ExtensionInstance>{if(!options.ui.active)throw new Error('forms extension requires an active ui extension');const config=raw as unknown as FormConfig;for(const [name,flow] of Object.entries(config.flows)) {validateFlow(name,flow);validateGuards(name,flow);if(!context.mounts.includes(flow.mount))throw new Error(`Form ${name}: route ${flow.mount}/* with extension: forms is not declared`);}for(const mount of context.mounts)if(!Object.values(config.flows).some(flow=>flow.mount===mount))throw new Error(`Forms mount ${mount} has no declared flow`);const sealKey=confirmationKey(options.csrfSecret);const now=options.now??Date.now;const byMount=new Map(Object.entries(config.flows).map(([name,flow])=>[flow.mount,{name,flow,zone:zoneFormat(name,flow.timeZone),guard:guardOf(name,flow,context,options)}]));const hooks=await loadExtensionHooks<'onSubmit'>(config.hooks,formHookContracts,context);site=context;const serve=async(request:ExtensionRequest):Promise<HandlerResult>=>{
   const active=request.mount===null?undefined:byMount.get(request.mount);if(!active)return fail(404,'Not found');
-  const {name,flow,zone}=active;const suffix=request.path.slice(flow.mount.length);
+  const {name,flow,zone,guard}=active;const suffix=request.path.slice(flow.mount.length);
   if(request.method==='GET'||request.method==='HEAD'){
     if(suffix!==''&&suffix!=='/confirmation')return fail(404,'Not found');
     // HEAD answers with the fixed page and leaves any handoff in place; GET opens it (when the flow
@@ -222,7 +310,7 @@ export function createForms(options:FormsExtensionOptions):{registration:Runtime
     // re-issued on every render with a fresh Max-Age so it always outlives the token just minted
     // for this page (#551): otherwise a form loaded late in the cookie's window fails on submit.
     const binding=bindingCookie(request)??globalThis.crypto.randomUUID();
-    const answer=render(options.ui,name,flow,todayIn(zone,now()),token(options.csrfSecret,name,binding),undefined,undefined,200,[setBindingCookie(binding)]);
+    const answer=render(options.ui,name,flow,todayIn(zone,now()),token(options.csrfSecret,name,binding),undefined,undefined,200,[setBindingCookie(binding)],guard.extra);
     return request.method==='HEAD'?{...answer,body:undefined}:answer;
   }
   if(request.method!=='POST'||suffix!=='')return {status:405,headers:[['allow','GET, HEAD, POST'],['content-type','text/plain; charset=utf-8']],body:'Method not allowed'};
@@ -231,9 +319,23 @@ export function createForms(options:FormsExtensionOptions):{registration:Runtime
   const parsed=readForm(request);
   const csrf=parsed.get('csrf')??undefined,binding=bindingCookie(request);
   if(!validToken(options.csrfSecret,name,binding,csrf))return fail(403,'Forbidden');
-  const today=todayIn(zone,now()),{values,errors}=admission(flow,parsed,today);
-  if(Object.keys(errors).length)return render(options.ui,name,flow,today,token(options.csrfSecret,name,binding!),values,errors,422,[setBindingCookie(binding!)]);
-  try{await hooks.onSubmit?.(Object.freeze({flow:name,values:Object.freeze({...values})}),extensionHookContext(request));}catch{return fail(500,'The form could not be submitted');}
+  // A filled honeypot is a bot: accepted silently (the plain confirmation), never counted, handed to onSubmit or mailed.
+  if(guard.honeypot!==undefined&&parsed.getAll(guard.honeypot).some(value=>value!==''))return redirect(`${flow.mount}/confirmation`);
+  const today=todayIn(zone,now());
+  if(guard.budget){
+    // Admission runs before field validation, so invalid spam counts too. Any doubt answers 503, never admits.
+    const client=clientKey(request.client);if(client===undefined)return fail(503,SUBMIT_FAILED);
+    let admitted:AbuseAdmission;try{admitted=await guard.namespace!.admit([{budget:guard.budget,value:client}]);}catch{return fail(503,SUBMIT_FAILED);}
+    if(!admitted.allowed)return admitted.status===429?tooMany(options.ui,admitted.retryAfterSeconds):fail(503,SUBMIT_FAILED);
+    if(admitted.challengeRequired&&!(await guard.challenge!.verify({token:parsed.get('challengeToken')??undefined,client:request.client??null,action:'forms'})))
+      return formPage(options.ui,flow,today,token(options.csrfSecret,name,binding!),{action:flow.mount,values:admission(flow,parsed,today,flow.fields,guard.ignored).values,status:403,headers:[setBindingCookie(binding!)],alert:'Complete the verification and submit again.',...(guard.extra?{extra:guard.extra}:{})});
+  }
+  const {values,errors}=admission(flow,parsed,today,flow.fields,guard.ignored);
+  if(Object.keys(errors).length)return render(options.ui,name,flow,today,token(options.csrfSecret,name,binding!),values,errors,422,[setBindingCookie(binding!)],guard.extra);
+  try{await hooks.onSubmit?.(Object.freeze({flow:name,values:Object.freeze({...values})}),extensionHookContext(request));}catch{return fail(500,SUBMIT_FAILED);}
+  // After onSubmit, before any confirmation: a failed delivery answers 503 and issues none, so a retry may run
+  // onSubmit again (at least once; onSubmit must already be idempotent).
+  if(guard.notify){try{await options.mail!.send({template:'forms.submission',to:guard.notify.to,values:{flow:mailText(flow.title).replace(/\n/g,' '),summary:summaryOf(flow,values,guard.notify.include)}});}catch{return fail(503,SUBMIT_FAILED);}}
   // Hand off only the opted-in values. A handoff over the size cap is not issued (and a stale one is
   // cleared), so the confirmation renders its fixed form.
   const show=flow.confirmation.show;if(!show)return redirect(`${flow.mount}/confirmation`);

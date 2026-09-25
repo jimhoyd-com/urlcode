@@ -10,7 +10,7 @@ import type { ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 import { composeHost } from '@jimhoyd/urlcode/host';
 import ui from '@jimhoyd/urlcode-ui/extension';
 import forms, { formsCsrfKeyFile } from '../src/extension.ts';
-import { formsConfigSchema } from '../src/index.ts';
+import { formsConfigSchema, formsMail } from '../src/index.ts';
 
 const origin = 'https://forms.example.test';
 const request = (site: string) => ({ site, project: join(site, 'app'), installed: ['forms', 'ui'], acknowledgements: [] });
@@ -36,11 +36,22 @@ async function site(t: test.TestContext): Promise<{ site: string; project: strin
   return { site: root, project, results };
 }
 
-test('the definition requires ui and carries the runtime schema', () => {
+test('the definition requires ui, uses abuse and mail, contributes its mail template and carries the runtime schema', () => {
   assert.equal(forms.definition.name, 'forms');
   assert.deepEqual(forms.definition.requires, ['ui']);
+  assert.deepEqual(forms.definition.uses, ['abuse', 'mail']);
   assert.equal(forms.definition.schema, formsConfigSchema);
-  assert.equal(forms.definition.contributes, undefined);
+  assert.deepEqual(forms.definition.contributes, { mail: formsMail });
+  assert.deepEqual(Object.keys(formsMail.templates), ['submission']);
+  assert.deepEqual(formsMail.templates.submission!.slots, { flow: 'text', summary: 'text' });
+});
+
+test('--example rate limits the contact flow with a honeypot only when abuse is installed', async () => {
+  const plain = await forms.definition.example!(request('/srv/site'));
+  assert.equal('abuse' in (plain.config as { flows: { contact: object } }).flows.contact, false);
+  const guarded = await forms.definition.example!({ ...request('/srv/site'), installed: ['abuse', 'forms', 'ui'] });
+  assert.deepEqual((guarded.config as { flows: { contact: { abuse?: unknown } } }).flows.contact.abuse, { client: { limit: 5, windowMs: 3600000 }, honeypot: 'website' });
+  assert.ok(guarded.notes!.some(note => note.includes('abuse.honeypot')));
 });
 
 test('a blank install writes the CSRF key and no flow or route (#711)', async () => {
