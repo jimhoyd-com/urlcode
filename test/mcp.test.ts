@@ -1,10 +1,15 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
-import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {artifactSite,project,redirect} from './helpers.ts';
 import {initProject} from '../packages/core/src/authoring.ts';
 import {readAddonCatalog} from '../packages/core/src/addon-manifest.ts';
 import {addons} from '../scripts/workspaces.ts';
 import {renderMcpConfig} from '../packages/core/src/agents-guide.ts';
+import {fileURLToPath} from 'node:url';
+import {inspectProject,validateProject,explainRoute,buildContext} from '../packages/core/src/tooling.ts';
+import {buildManifest} from '../packages/core/src/manifest.ts';
+import {loadOperatorHost} from '../packages/core/src/operator-host.ts';
+import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 interface Reply { error:{code:number;message:string};result:{protocolVersion:string;tools:unknown[];content:{text:string}[];isError?:boolean} }
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
@@ -197,4 +202,34 @@ test('MCP pre-session bootstrap: a fresh agent session sees the server before ur
  const after=await session(app,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_context',arguments:{}}}]);
  assert.equal(after[1]!.result.isError,undefined);
  assert.equal(JSON.parse(after[1]!.result.content[0]!.text).project.routes,0);
+});
+test('MCP forwards the --host-file registrations to get_context, inspect, validate, explain and get_manifest like the SDK (#755)',async t=>{
+ // The demo example declares a `demo` extension (mount /demo/*, a policy requirement on /private); the host file registers it.
+ const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-mcp-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const registration={name:'demo',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
+  schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},
+  policySchema:{type:'object',properties:{role:{const:'member'}},required:['role'],additionalProperties:false}};
+ const file=join(dir,'host.mjs');
+ await writeFile(file,`export default {extensions:[{...${JSON.stringify(registration)},activate(){throw new Error('inspection must not activate');}}]};`);
+ const calls:[string,Record<string,unknown>][]=[['get_context',{}],['inspect',{}],['validate',{}],['explain',{target:'/private'}],['get_manifest',{}]];
+ const messages=[initialize,ready,...calls.map(([name,args],index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params:{name,arguments:args}}))];
+ const run=async(hostFile?:string)=>{let text='';await serveMcp({project:root,...(hostFile===undefined?{}:{hostFile}),input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
+  return text.trim().split('\n').map(line=>JSON.parse(line) as Reply).slice(1).map(reply=>{assert.equal(reply.result.isError,undefined,reply.result.content[0]!.text);return JSON.parse(reply.result.content[0]!.text) as unknown;});};
+ const [context,inspected,validated,explained,manifest]=await run(file);
+ // The host-aware SDK: the same host file, its registrations passed as `extensions` (buildContext loads it by `hostFile`).
+ const host=await loadOperatorHost(file,root);const extensions=host.extensions;
+ const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as unknown;
+ assert.deepEqual(context,json(await buildContext(root,{projectFlag:'.',hostFile:file})));
+ assert.deepEqual(inspected,json(await inspectProject(root,{extensions})));
+ assert.deepEqual(validated,json(await validateProject(root,{extensions})));
+ assert.deepEqual(explained,json(await explainRoute(root,'/private',{extensions})));
+ assert.deepEqual(manifest,json(await buildManifest(root,{extensions})));
+ // The registration is visible, not just equal: the context names the host and explain names the registered provider.
+ assert.deepEqual((context as {project:{host:unknown}}).project.host,{extensions:['demo'],plugins:0});
+ assert.deepEqual((explained as {policies:{extensions:{demo:{provider:unknown}}}}).policies.extensions.demo.provider,{registered:true,version:'1',targets:['node','aws','vercel'],revisionMatch:true,requirementValid:true});
+ // Without a host file the same tools keep their host-less answers.
+ const [bareContext,,,bareExplained]=await run();
+ assert.equal((bareContext as {project:{host?:unknown}}).project.host,undefined);
+ assert.equal((bareExplained as {policies:{extensions:{demo:{provider?:unknown}}}}).policies.extensions.demo.provider,undefined);
 });

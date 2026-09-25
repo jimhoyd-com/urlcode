@@ -75,9 +75,10 @@ The tooling API consolidates authoring operations without starting a runtime:
   afterwards; without one it lists declarations only. `describeExtensions(project,
   registrations?)` produces the same report from registrations already in hand.
   Neither activates an extension. See [EXTENSIONS.md](EXTENSIONS.md).
-- `buildContext(project, {target?, hostFile?, budget?})` returns the compact
+- `buildContext(project, {target?, hostFile?, host?, budget?})` returns the compact
   project context an authoring agent needs before it writes anything (see
-  below); `renderContext` produces the YAML rendering and `estimateTokens`
+  below); `host` is an operator host the caller already loaded, used in place
+  of `hostFile` and left for the caller to close; `renderContext` produces the YAML rendering and `estimateTokens`
   the characters-per-token estimate the budget uses.
 
 ## Project context
@@ -582,7 +583,10 @@ When the operator starts
 the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
 `inspectExtensions` report; without the option the tool is absent and calls to
-it are rejected. Tools accept no project/file/output path argument; recipe names
+it are rejected. The same registrations reach `get_context` (its `project.host`
+counts), `inspect`, `validate`, `explain`, `get_manifest`, `run_tests`,
+`plan_feature` and `review`, so each answers as the host-aware CLI command or
+SDK call (`extensions` option) does for that host file. Tools accept no project/file/output path argument; recipe names
 come from the fixed catalog, `get_capability` names from the capability catalog,
 `get_schema` paths from the bundled schema, and the two searches match bundled
 metadata locally (see [recipes](RECIPES.md)).

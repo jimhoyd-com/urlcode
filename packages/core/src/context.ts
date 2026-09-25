@@ -10,6 +10,7 @@ import {compilePolicies,closePolicies,effectivePolicies,registry} from './polici
 import {capabilityTargets,getCapabilities,normalizeCapabilityTarget,routeCapabilities} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {loadOperatorHost} from './operator-host.ts';
+import type {OperatorHost} from './operator-host.ts';
 import {handlerNames,resolveHandlerName} from './types.ts';
 import type {CompiledRoute,PolicyName,PolicyShared} from './types.ts';
 
@@ -18,6 +19,8 @@ export interface ContextOptions {
  target?:string|undefined;
  /** Absolute path to a trusted operator host module outside the project; its extensions and plugins are counted, never run. */
  hostFile?:string|undefined;
+ /** An operator host the caller already loaded from its own host file (the MCP server's `--host-file`); used instead of `hostFile`, and left for the caller to close. */
+ host?:OperatorHost|undefined;
  /** Estimated token budget; sections are dropped in a fixed order until the YAML rendering fits. */
  budget?:number|undefined;
  /** What `--project` should say in the emitted commands; defaults to the project argument itself. */
@@ -106,7 +109,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
  const budget=options.budget;
  if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
  const selected:CapabilityTarget[]=options.target===undefined?[...capabilityTargets]:[normalizeCapabilityTarget(options.target)];
- const host=await loadOperatorHost(options.hostFile,project);
+ const owned=options.host===undefined,host=options.host??await loadOperatorHost(options.hostFile,project);
  try {
   const {loaded,compiled,routes}=await compile(project),document=loaded.document;
   const handlers:Record<string,number>={},policyCounts:Record<string,number>={},used=new Set<CapabilityName>();
@@ -148,7 +151,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
     policies:{project:policyNames.filter(name=>topLevel[name]),routes:policyCounts},
     bindings:{env:sorted(env),secrets:sorted(secrets)},site:sorted(Object.keys(document.site??{})),
     files:{includes:loaded.files.slice(1).map(file=>relative(loaded.root,file).split('\\').join('/')),functions:sorted(functions),middleware:sorted(middleware)},
-    ...(options.hostFile===undefined?{}:{host:{extensions:sorted((host.extensions??[]).map(item=>item.name)),plugins:(host.plugins??[]).length}}),
+    ...(options.hostFile===undefined&&owned?{}:{host:{extensions:sorted((host.extensions??[]).map(item=>item.name)),plugins:(host.plugins??[]).length}}),
    },
    routes:routes.map(route=>({path:route.pattern,methods:route.methods,handler:handlerOf(route),sandbox:route.sandbox===true,...(route.sandboxReason?{sandboxReason:route.sandboxReason}:{})})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0),
    constraints:{...constraints},
@@ -162,7 +165,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    },
   };
   return budget===undefined?context:fitBudget(context,budget);
- } finally {await host.close?.();}
+ } finally {if(owned)await host.close?.();}
 }
 // Sections leave in this order; each step is a fixed transformation so two runs agree.
 const drops:[ContextSection,(context:ProjectContext)=>void][]=[

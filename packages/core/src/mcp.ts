@@ -122,12 +122,15 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  // `deployTarget` is canonical; `target` still works on these tools (deprecated) for one release.
  const deployTargetOf=(value:Record<string,unknown>):string|undefined=> {const picked=value.deployTarget??value.target;return typeof picked==='string'?picked:undefined;};
  const call=async(name:string,args:Record<string,unknown>):Promise<unknown>=> {
-  const base=options.origin?{origin:options.origin}:{};
+  // The operator's --host-file registrations reach every compiled-project tool exactly as `urlcode explain/manifest
+  // --host-file` and the SDK's `extensions` option pass them (#755); with no host file nothing is added.
+  const registered=host.extensions===undefined?{}:{extensions:host.extensions};
+  const base={...(options.origin?{origin:options.origin}:{}),...registered};
   // Legacy tool names route to the same handler as their canonical name (see aliasOf/legacyNames).
   switch(aliasOf[name]??name){
    case 'get_context':{const deployTarget=deployTargetOf(args);return typeof args.task==='string'
     ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})
-    :buildContext(project,{projectFlag:'.',...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
+    :buildContext(project,{projectFlag:'.',...(options.hostFile===undefined?{}:{host}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
    case 'run_tests':{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:host.extensions,log:(event:object)=>{events.push(event);}});return {...result,events};}
