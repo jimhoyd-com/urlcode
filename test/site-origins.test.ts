@@ -153,7 +153,8 @@ test('a passkey RP ID is accepted only as the host, or a parent domain, of every
   ];
   for (const [value, list, message] of refused)
     assert.throws(() => passkeyRpId(value, list), (error: unknown) => error instanceof ConfigError && message.test(error.message) && error.details.code === 'invalid-passkey-rp-id', String(value));
-  assert.ok(passkeyPublicSuffixes.includes('co.uk') && passkeyPublicSuffixes.includes('com.au') && Object.isFrozen(passkeyPublicSuffixes));
+  const listedSuffixes = new Set(passkeyPublicSuffixes);
+  assert.ok(listedSuffixes.has('co.uk') && listedSuffixes.has('com.au') && Object.isFrozen(passkeyPublicSuffixes));
 });
 
 test('the runtime refuses an invalid passkey RP ID before activation and hands a valid one to every extension', async t => {
