@@ -42,6 +42,7 @@ configuration digest and route count, so keep them internal.
 | `observer` | `status` (`failed`), `name` | An in-process observer threw; the request was unaffected. Written to the log only, never to observers. Sustained failures mean the observer's own sink is broken. |
 | `throttle`, `agents`, `cache` | `route`, `outcome`; `remaining` or `list` | Policy decisions; see [policies](POLICIES.md). `throttle` logs `allowed` only in report mode. |
 | `site` | `key`, `path`, `status` (`generated`/`shadowed`); or `severity` (`info`/`warning`) and `message` | Activation records for [site conventions](SITE.md). `shadowed` means a declared route took the path; an `info`/`warning` line reports an omitted `Sitemap:` line (no `--origin`), skipped list names or a far-future `security.txt` expiry. |
+| `extension_warning` | `extension`, `message` | An extension reported a non-fatal problem while activating (for example auth's stored passkeys registered under a different relying-party ID, #736). One bounded line per warning, at most 20 per extension per activation; see [activation warnings](EXTENSIONS.md#activation-warnings). Act on it before users hit the condition it describes. |
 
 `urlcode dev`, and `serve` only with `--debug-errors`, also write two
 diagnostics to stderr that are not log records and never reach observers:
