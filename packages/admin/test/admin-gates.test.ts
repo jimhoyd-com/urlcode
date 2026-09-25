@@ -88,3 +88,12 @@ test('admin mutations require a recent sign-in and a bounded reason, and a stale
 test('the console refuses to activate on a mount without an auth policy', async t => {
     await assert.rejects(adminSite(t, { adminRoute: { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } }), /\/admin\/\* must carry an auth policy \(auth: \{onDeny: 404\}\)/);
 });
+
+test('the console refuses to activate when the ui kit lacks the admin templates', async () => {
+    const { createAdmin } = await import('../src/admin.ts');
+    type Options = Parameters<typeof createAdmin>[0];
+    const ui = { active: true, kit: { info: () => undefined } } as unknown as Options['ui'];
+    const auth = { active: true, permissions: [] } as unknown as Options['auth'], audit = { active: true } as unknown as Options['audit'];
+    const registration = createAdmin({ ui, auth, audit, projectSha256: 'a'.repeat(64) });
+    assert.throws(() => registration.activate({}, { origin: 'https://example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/admin'], principalMounts: ['/admin'], root: '/tmp' }), /The ui kit lacks the admin templates \(\d+ of \d+ missing, first admin\//);
+});

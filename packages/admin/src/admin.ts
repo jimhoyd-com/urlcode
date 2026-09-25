@@ -1,3 +1,4 @@
+import {adminTemplateNames} from './admin-templates.ts';
 import {rolesScreen,sessionsScreen,auditScreen,healthScreen,casesScreen,registrationsScreen} from './admin-screens.ts';
 import {adminCopy} from './admin-copy.ts';
 import type {AdminCopy} from './admin-copy.ts';
@@ -52,6 +53,9 @@ export function createAdmin(options: AdminOptions): RuntimeExtension {
                 throw new Error(`${mount}/* must carry an auth policy (auth: {onDeny: 404})`);
             if (!ui.active)
                 throw new Error('The ui extension is not active: admin renders only through the urlcode-ui kit');
+            const missing = adminTemplateNames.filter(name => !ui.kit.info(name));
+            if (missing.length)
+                throw new Error(`The ui kit lacks the admin templates (${missing.length} of ${adminTemplateNames.length} missing, first ${missing[0]}): compose ui through composeHost, which registers what admin contributes, or pass adminUiTemplates to createUiExtension({extensions})`);
             if (!auth.active)
                 throw new Error('The auth extension is not active');
             if (!audit.active)
