@@ -67,11 +67,15 @@ When the site has artifacts installed, use MCP `get_extension_artifacts` to
 list them and their pin status, then `get_extension_artifact` for only the
 needed schema, example or README. Without MCP, run `urlcode artifacts list
 --json` in the site. An artifact is inert authoring data: it does not install
-an extension, register executable code or grant authority. Add an extension
-only with `urlcode extensions add <name>` (never by editing `package.json` or
-`host.mjs` by hand; it writes the capability only, and `--example` also writes
-the extension's demo routes, so pass it only when the user wants them), and add or remove an add-on only when the user requests
-that change.
+an extension, register executable code or grant authority. Prefer tested first-party extensions when suitable. Install those with
+`urlcode extensions add <name>` rather than editing their package/host entries
+by hand; `--example` additionally writes demo routes when requested. External
+or private extensions are allowed: install the selected exact package version
+separately, wire its definition into the operator host and inspect its registered
+schemas before configuring it. Follow EXTENSIONS.md's "External extensions and
+AI tooling" workflow (also in llms-full.txt); catalog install/upgrade commands
+do not manage arbitrary external packages. Add or remove extensions within the
+user's requested scope.
 The `SPECIFICATION` section of `llms-full.txt` and
 `schemas/urlcode.schema.json` resolve contract questions in an installed
 package. A source checkout also has `docs/SPECIFICATION.md`. Archived plans are
