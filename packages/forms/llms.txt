@@ -32,3 +32,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   template engine here. The confirmation shows a submitted value only when its
   field is listed in `confirmation.show`; `{field}` placeholders in its message
   must name listed fields, and a refresh shows the fixed page.
+- "Required only when another field has value X" is declared, not coded:
+  `requiredWhen: {field: <sibling select or enum field>, in: [values]}` on the
+  dependent field, without `required`. One level only, checked at startup,
+  enforced by the server (422 `is required`). AND/OR, not-equal, comparisons,
+  cross-field ordering, conditions on free-text fields and show/hide still
+  belong in `onSubmit`.

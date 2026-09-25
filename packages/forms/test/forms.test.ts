@@ -241,6 +241,53 @@ test('date and datetime-local bounds are checked at activation (#528)',async t=>
   for(const field of [{label:'D',type:'date',minimum:'2026-01-01',maximum:'2026-01-01'},{label:'D',type:'datetime-local',minimum:'2026-01-01T09:00',maximum:'2026-01-01T09:00'},{label:'D',type:'number',minimum:1,maximum:2}]){const app=await startWithFields(t,{d:field});await app.close();}
 });
 
+// Conditional required fields (#528): requiredWhen against a sibling select or enum field, one level only.
+const conditionalFields={kind:{label:'Kind',control:'select',options:[{value:'personal',label:'Personal'},{value:'business',label:'Business'},{value:'charity',label:'Charity'}]},plan:{label:'Plan',required:false,enum:['free','pro']},company:{label:'Company',maxLength:8,requiredWhen:{field:'kind',in:['business','charity']}},seats:{label:'Seats',type:'number',minimum:1,maximum:50,requiredWhen:{field:'plan',in:['pro']}},vat:{label:'VAT',control:'checkbox',requiredWhen:{field:'kind',in:['business']}}};
+test('requiredWhen requires a field only when its sibling select or enum value matches, and its other rules still apply (#528)',async t=>{
+  const app=await startWithFields(t,conditionalFields);t.after(()=>app.close());
+  const cookies=new Map<string,string>();
+  const call=async(path:string,init:RequestInit={})=>{const headers=new Headers(init.headers);if(cookies.size)headers.set('cookie',[...cookies].map(([key,value])=>`${key}=${value}`).join('; '));const response=await fetch(`http://127.0.0.1:${app.address.port}${path}`,{...init,headers,redirect:'manual'});for(const header of response.headers.getSetCookie()){const first=header.split(';')[0]!,index=first.indexOf('=');cookies.set(first.slice(0,index),first.slice(index+1));}return response;};
+  const page=await (await call('/contact')).text();
+  for(const name of ['company','seats','vat'])assert.doesNotMatch(new RegExp(`<input[^>]*name="${name}"[^>]*>`).exec(page)![0],/ required/,`${name} is enforced by the server only, not marked required in HTML`);
+  assert.match(/<select[^>]*name="kind"[^>]*>/.exec(page)![0],/ required/,'an unconditional field is still marked required');
+  const token=/name="csrf" value="([^"]+)"/.exec(page)![1]!;
+  const submit=async(fields:Record<string,string>)=>{const response=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf:token,...fields})});return {status:response.status,html:await response.text()};};
+  const invalid=(html:string,name:string)=>new RegExp(`<input[^>]*name="${name}"[^>]*aria-invalid="true"[^>]*>`).test(html);
+  assert.equal((await submit({kind:'personal'})).status,303,'condition not met: company and vat are optional');
+  assert.equal((await submit({kind:'personal',company:'Acme'})).status,303,'an optional conditional field may still be supplied');
+  for(const kind of ['business','charity']){const answer=await submit({kind,vat:'true'});assert.equal(answer.status,422,kind);assert.match(answer.html,/is required/);assert.ok(invalid(answer.html,'company'),`company is required for ${kind}`);}
+  assert.equal((await submit({kind:'charity',company:'Aid'})).status,303,'vat is required only for business');
+  const noVat=await submit({kind:'business',company:'Acme'});assert.equal(noVat.status,422);assert.ok(invalid(noVat.html,'vat'),'a conditional checkbox must be checked when the condition holds');
+  assert.equal((await submit({kind:'business',company:'Acme',vat:'true'})).status,303);
+  // Enum sibling: an optional input with a fixed value set.
+  assert.equal((await submit({kind:'personal',plan:'free'})).status,303);
+  assert.equal((await submit({kind:'personal',plan:''})).status,303,'an empty sibling does not meet the condition');
+  const pro=await submit({kind:'personal',plan:'pro'});assert.equal(pro.status,422);assert.ok(invalid(pro.html,'seats'));assert.match(pro.html,/is required/);
+  assert.equal((await submit({kind:'personal',plan:'pro',seats:'5'})).status,303);
+  // The dependent field's own rules apply whenever it has a value, whether or not the condition holds.
+  for(const [fields,message] of [[{kind:'business',company:'Much too long',vat:'true'},'must be at most 8 characters'],[{kind:'personal',company:'Much too long'},'must be at most 8 characters'],[{kind:'personal',plan:'pro',seats:'51'},'must be at most 50'],[{kind:'personal',plan:'free',seats:'0'},'must be at least 1'],[{kind:'personal',seats:'many'},'must be a number']] as const){const answer=await submit(fields);assert.equal(answer.status,422,JSON.stringify(fields));assert.match(answer.html,new RegExp(message));}
+  // A sibling value outside its declared set never meets the condition (the sibling gets its own error).
+  const bogus=await submit({kind:'nonprofit'});assert.equal(bogus.status,422);assert.ok(!invalid(bogus.html,'company'),'an unknown sibling value does not make company required');
+});
+
+test('requiredWhen is checked at activation (#528)',async t=>{
+  const kind={label:'Kind',control:'select',options:[{value:'personal',label:'Personal'},{value:'business',label:'Business'}]};
+  for(const [fields,message] of [
+    [{kind,company:{label:'Company',requiredWhen:{field:'missing',in:['business']}}},/requiredWhen of company references undeclared field missing/],
+    [{kind,note:{label:'Note'},company:{label:'Company',requiredWhen:{field:'note',in:['x']}}},/references note, which is not a select or enum field/],
+    [{kind,agree:{label:'Agree',control:'checkbox'},company:{label:'Company',requiredWhen:{field:'agree',in:['true']}}},/references agree, which is not a select or enum field/],
+    [{kind,company:{label:'Company',requiredWhen:{field:'kind',in:['business','nonprofit']}}},/lists "nonprofit", which kind does not allow/],
+    [{plan:{label:'Plan',enum:['free','pro']},seats:{label:'Seats',requiredWhen:{field:'plan',in:['team']}}},/lists "team", which plan does not allow/],
+    [{kind,tier:{label:'Tier',enum:['a','b'],requiredWhen:{field:'kind',in:['business']}},company:{label:'Company',requiredWhen:{field:'tier',in:['a']}}},/references tier, which has its own requiredWhen; conditions are one level only/],
+    [{kind:{...kind,requiredWhen:{field:'kind',in:['business']}}},/requiredWhen of kind cannot reference the field itself/],
+    [{kind,company:{label:'Company',required:true,requiredWhen:{field:'kind',in:['business']}}},/company declares both required and requiredWhen/],
+    [{kind,company:{label:'Company',required:false,requiredWhen:{field:'kind',in:['business']}}},/company declares both required and requiredWhen/],
+  ] as const)await assert.rejects(startWithFields(t,fields),message,JSON.stringify(fields));
+  // The config schema refuses an empty, duplicated or oversized `in`, a missing `in` and unknown keys before validateFlow sees them.
+  for(const requiredWhen of [{field:'kind',in:[]},{field:'kind',in:['business','business']},{field:'kind'},{field:'kind',in:['business'],not:true},{field:'kind',in:Array.from({length:129},(_,index)=>`v${index}`)}])await assert.rejects(startWithFields(t,{kind,company:{label:'Company',requiredWhen}}),JSON.stringify(requiredWhen));
+  const app=await startWithFields(t,{kind,company:{label:'Company',requiredWhen:{field:'kind',in:['business']}}});await app.close();
+});
+
 // Confirmation fields (#527): opted-in values travel in a sealed, browser-bound, short-lived cookie.
 const CONFIRMATION='__Host-urlcode-forms-confirmation',BINDING='__Host-urlcode-forms-csrf';
 const confirmFields={email:{label:'Email <address>',type:'email',required:true,maxLength:320},topic:{label:'Topic',control:'select',required:true,options:[{value:'support',label:'Support & help'},{value:'sales',label:'Sales'}]},terms:{label:'Agree',control:'checkbox',required:true},nickname:{label:'Nickname',required:false,maxLength:4000},secret:{label:'Private note',required:false,maxLength:128}};
