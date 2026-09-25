@@ -45,7 +45,9 @@ but same-site paths, fragments, queries and `http(s)` URLs; theme values match
 a narrow grammar; catalogues may only override existing keys and are bounded
 (1024 keys per registered source, 4096 keys and 512 KiB per effective
 catalogue, every key and message bounded on its own); files must resolve
-inside the project after symlink resolution and are bounded in count and size;
+inside the dedicated `ui/` presentation directory after symlink resolution;
+that directory cannot itself be a symlink. Only publishable content belongs
+there, never operator source, data or secrets. Files are bounded in count and size;
 a stylesheet containing `<script`, `javascript:`, `expression(` or `@import` is
 refused. Pages send `default-src 'none'` with nonce-bound style and scripts, so
 a template cannot add a script or load a remote resource. An extension may

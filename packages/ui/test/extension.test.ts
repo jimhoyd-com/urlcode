@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createUiExtension, uiAssetPrefix, uiConfigSchema } from '../src/host/extension.ts';
@@ -151,4 +151,50 @@ test('the registration declares the immutable asset prefix and asset responses s
         }
     }
     await instance.close?.();
+});
+
+test('presentation files cannot publish sibling operator files, including through symlinks', async (t) => {
+    const root = await project();
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, 'app'));
+    await mkdir(join(root, 'data'));
+    const privateBody = 'synthetic-operator-only-marker';
+    await writeFile(join(root, 'operator-service.mjs'), privateBody);
+    await writeFile(join(root, 'data', 'private.css'), privateBody);
+    await symlink(join(root, 'operator-service.mjs'), join(root, 'ui', 'linked.css'));
+    await symlink(join(root, 'data'), join(root, 'ui', 'linked-dir'));
+    for (const file of ['operator-service.mjs', 'data/private.css', 'ui/../operator-service.mjs', 'ui/linked.css', 'ui/linked-dir/private.css']) {
+        for (const stylesheet of [file, { file }, { file, replace: true }]) {
+            const ui = createUiExtension({ projectSha256: sha, projectRoot: root });
+            await assert.rejects(async () => ui.registration.activate({ stylesheet }, activation(['/assets/ui'], join(root, 'app'))), /inside the project/);
+            assert.equal(ui.active, false);
+            assert.throws(() => ui.kit, /not active/);
+        }
+    }
+    for (const field of ['copy', 'templates']) {
+        await assert.rejects(() => loadProjectUi(root, { [field]: 'data' }), /presentation directory/);
+        await assert.rejects(() => loadProjectUi(root, { [field]: 'ui/linked-dir' }), /inside the project/);
+    }
+    await symlink(join(root, 'operator-service.mjs'), join(root, 'ui', 'copy', 'en.json'));
+    await assert.rejects(() => loadProjectUi(root, { copy: 'ui/copy' }), /inside the project/);
+    await symlink(join(root, 'ui', 'extra.css'), join(root, 'ui', 'allowed.css'));
+    for (const stylesheet of ['ui/allowed.css', { file: 'ui/extra.css', replace: true }]) {
+        const ui = createUiExtension({ projectSha256: sha, projectRoot: root });
+        const instance = await ui.registration.activate({ stylesheet }, activation(['/assets/ui'], join(root, 'app')));
+        const css = ui.kit.assets[0]!;
+        const served = await instance.handle(request(`/assets/ui/static/${css.name}`));
+        assert.equal(served.status, 200);
+        assert.ok(String(served.body).includes('.mine{color:red}'));
+        assert.ok(!String(served.body).includes(privateBody));
+        await instance.close?.();
+    }
+});
+test('the presentation directory itself cannot redirect reads to operator files', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-root-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, 'data'));
+    await writeFile(join(root, 'data', 'private.css'), 'synthetic-private-marker');
+    await symlink(join(root, 'data'), join(root, 'ui'));
+    await assert.rejects(() => loadProjectUi(root, { stylesheet: 'ui/private.css' }), /must not be a symlink/);
+    assert.equal((await loadProjectUi(root, {})).stylesheet, undefined);
 });

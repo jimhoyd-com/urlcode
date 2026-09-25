@@ -107,6 +107,11 @@ beside it and without changing the exports above:
   stylesheet files, and serving the kit assets under `<mount>/static/`, declared
   as `immutableAssets` so the runtime caches them publicly; `loadProjectUi`;
   and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
+  Configured copy, template and stylesheet paths must begin with `ui/` and
+  resolve inside that dedicated presentation directory, which cannot itself
+  be a symlink. Every selected file is checked, including catalogue files.
+  Paths outside it fail before reading; sites must move custom overrides under
+  `ui/`. The directory is for publishable content only.
   The extension contract types it re-exports (`RuntimeExtension`,
   `ExtensionInstance`, `ExtensionRequest` and the rest) are core's own, imported
   from `@jimhoyd/urlcode/extensions` rather than copied, so `ui.registration`

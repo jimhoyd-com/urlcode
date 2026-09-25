@@ -4969,7 +4969,13 @@ middleware, and the host-file trust boundary.
 ### Presentation overrides
 
 The `ui` config's `copy`, `templates` and `stylesheet` paths point at the
-project's own directories. Nothing here forks a package.
+site's dedicated `ui/` presentation directory, beside `host.mjs`. Paths retain
+the `ui/` prefix and must remain inside that directory after symlink resolution.
+The `ui/` directory itself cannot be a symlink. Keep only publishable presentation
+content there: stylesheets become public assets. Operator source, data and secrets
+belong outside it. Existing custom paths outside `ui/` must be moved under `ui/`
+and their configuration updated; activation and `urlcode-ui doctor` reject them.
+Nothing here forks a package.
 
 Treat the result as one application. Auth and admin keep ownership of sessions,
 CSRF, permissions, validation and mutations; the project owns its brand,
