@@ -864,7 +864,8 @@ package was downloaded and extracted but never run: every npm call passes
 command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
-on `/api/todos` (and, with `ui`, its `/todos` screen), forms' `/contact` flow
+on `/api/todos` (and, with `ui`, its `/todos` screen; per-user `ownership: owner`
+when `auth` is installed), forms' `/contact` flow
 and auth's signed-in `/private` page; ui, admin and mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example

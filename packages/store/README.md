@@ -49,7 +49,9 @@ so ui never reads the store's configuration. `ui` is an optional peer, not a
 requirement: without it `screens` is simply not served. See
 [a screen for the collection](../../docs/STORE.md#a-screen-for-the-collection).
 
-When `auth` is installed the example puts `auth: true` on the mount. Without
+When `auth` is installed the example puts `auth: true` on the mount and
+declares the `todos` collection `ownership: owner`, so each signed-in user sees
+and changes only their own todos. Without
 `auth` the example refuses; the refusal prints the exact command, ending in
 `--ack store:public-write`, which acknowledges a public writable endpoint (not
 rate limiting, abuse protection or multi-tenant isolation).

@@ -31,8 +31,10 @@ function scaffold(): ScaffoldResult {
 }
 
 /**
- * `--example`: a `todos` collection on `/api/todos`; the mount carries `auth: true` when auth is installed, and
- * otherwise needs `--ack store:public-write`. When ui is installed too, the store also declares its `/todos` screen
+ * `--example`: a `todos` collection on `/api/todos`. When auth is installed (added in the same command or already
+ * present) the mount carries `auth: true` and the collection is per-user (`ownership: owner`, #331): each signed-in
+ * user sees and changes only their own todos. Without auth it stays a shared collection and needs
+ * `--ack store:public-write`. When ui is installed too, the store also declares its `/todos` screen
  * and the `extension: ui` route that serves it: the screen integration belongs to the store, not to ui.
  */
 function example(request: ScaffoldRequest): ScaffoldResult {
@@ -43,6 +45,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
       mount: '/api/todos',
       fields: { title: { type: 'string', required: true, minLength: 1, maxLength: 200 }, done: { type: 'boolean', default: false } },
       maxRecords: 1000, maxRecordBytes: 4096,
+      ...(withAuth ? { ownership: 'owner' } : {}),
     } }, ...(withUi ? { screens: { [todosScreen]: { collection: 'todos', title: 'Todos' } } } : {}) },
     routes: {
       '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...(withAuth ? { auth: true } : {}) },
@@ -51,9 +54,9 @@ function example(request: ScaffoldRequest): ScaffoldResult {
     },
     ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
     notes: [
-      withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
+      withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount), and each user sees and changes only their own todos (ownership: owner).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
       'Records live in data/store/todos.json, outside app/; back up data/ like any operator data. Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
-      ...(withUi ? [`Open ${todosScreen}: a list and form for the todos collection, declared in extensions.store.config.screens and rendered by ui.`] : []),
+      ...(withUi ? [`Open ${todosScreen}: a list and form for the todos collection, declared in extensions.store.config.screens and rendered by ui.${withAuth ? ' It shows each signed-in user only their own todos.' : ' Everyone who can reach it sees and edits every todo.'}`] : []),
     ],
   };
 }

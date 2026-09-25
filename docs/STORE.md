@@ -70,8 +70,11 @@ curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://
 
 With `auth` installed (`--with ui,auth,store --example` in any order, or `urlcode
 extensions add auth` before `store --example`) the example adds `auth: true` to the
-mount, so only signed-in callers reach the API and the screen; no
-acknowledgement is needed.
+mount, so only signed-in callers reach the API and the screen, and declares the
+`todos` collection `ownership: owner`, so each signed-in user sees and changes
+only their own todos ([per-record ownership](#per-record-ownership)); no
+acknowledgement is needed. Without `auth` the example collection stays shared,
+because there is no principal to own a record.
 
 Without `auth` the mount would be a public writable endpoint, so adding `store`
 (with or without `ui`) refuses, rolls back, and names the two ways forward: add
@@ -417,7 +420,8 @@ Without `auth` the example needs `--ack store:public-write`.
 list with a create form, inline edit and delete. The store owns the screen: it
 is declared under `extensions.store.config.screens`, next to the collection it
 shows, so a Todo app declares its fields once and gets both the API and the
-screen; add a field, re-review and re-pin, and it appears on both. The store
+screen (per user when `auth` is installed, since the example collection is then
+owned); add a field, re-review and re-pin, and it appears on both. The store
 example writes the entry and the screen's route when `ui` is installed:
 
 ```yaml
@@ -453,7 +457,8 @@ which record. The screen is multi-user-safe **only for an
 [owned](#per-record-ownership) collection**: it reads and writes through the
 store's own API with the signed-in caller's session, so on a collection with
 `ownership: owner` each user sees, edits and deletes only their own records. On
-a shared collection (the default, including the `--example` `todos`) every
+a shared collection (the default, and the `--example` `todos` when `auth` is
+not installed) every
 signed-in caller sees and edits the whole collection through this screen, so
 it is a single-user or trusted-group surface; do not read `auth` on the route
 as record-level access control there. Text

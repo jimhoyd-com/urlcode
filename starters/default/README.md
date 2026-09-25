@@ -33,7 +33,8 @@ npx urlcode upgrade --check
 
 `extensions add` installs only the capability (for example auth's `/account/*`
 pages, with no page of yours protected yet); `--example` also writes each added
-extension's demo, such as store's `/api/todos` collection and `/todos` screen or
+extension's demo, such as store's `/api/todos` collection and `/todos` screen (per-user when auth
+is installed) or
 forms' `/contact` flow.
 
 Start with the local MCP `get_context` tool (or `npx urlcode context --project

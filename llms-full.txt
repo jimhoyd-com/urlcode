@@ -740,9 +740,11 @@ persist"` finds the `store-crud` recipe. In a site, `urlcode extensions add
 store auth ui` (or `urlcode init DIR --with ui,auth,store`) installs the
 extension with an empty `collections` block and wires `host.mjs`; declare the
 collection and its mount yourself, or add `--example` for the `todos`
-collection and mount with `auth: true`. The store example without `auth`
-refuses until the operator re-runs with `--ack store:public-write`. Report anything beyond that recipe (filtering, sorting, per-record
-ownership, a database) as a gap. `urlcode context` lists the same built-ins so
+collection and mount with `auth: true`, which makes the collection per-user
+(`ownership: owner`). The store example without `auth`
+refuses until the operator re-runs with `--ack store:public-write`, and its
+collection stays shared. Report anything beyond that recipe (filtering, sorting,
+ownership beyond owner-only records, a database) as a gap. `urlcode context` lists the same built-ins so
 they are visible before you write code.
 
 ### Agent skills
@@ -4093,7 +4095,8 @@ package was downloaded and extracted but never run: every npm call passes
 command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
-on `/api/todos` (and, with `ui`, its `/todos` screen), forms' `/contact` flow
+on `/api/todos` (and, with `ui`, its `/todos` screen; per-user `ownership: owner`
+when `auth` is installed), forms' `/contact` flow
 and auth's signed-in `/private` page; ui, admin and mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
@@ -4330,7 +4333,7 @@ that renders through it, whatever order you name them in.
 | `auth` | `ui` and `auth`: accounts on `/account/*`, rendered through the kit. |
 | `admin` | `ui`, `auth` and `admin`: the full composition above. |
 | `auth,admin,ui` | Same result as `ui,auth,admin`: the order you name them in is ignored. |
-| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API and a `/todos` screen, both protected by `auth: true`. |
+| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API and a `/todos` screen, both protected by `auth: true`, where each user sees only their own todos (`ownership: owner`). |
 | `store` or `ui,store` | Without `--example`: an empty store, nothing mounted, no acknowledgement needed. With `--example`: refused, because the example's writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write example; core rejects any `--ack` no scaffold consumed, such as one with auth installed, `store` absent or no `--example`. |
 
 Every refusal rolls back everything the command changed, including the

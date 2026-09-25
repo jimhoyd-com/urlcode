@@ -18,7 +18,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   plus a route `/todos/*: { extension: ui, methods: [GET, HEAD] }`. The store contributes them to the
   `ui` extension (`contributes.ui.screens`); they are declared here, never under `extensions.ui`.
 - `urlcode extensions add store` writes an empty `collections` block and no mount; `--example`
-  adds the `todos` collection on `/api/todos` (and the `/todos` screen when ui is installed).
+  adds the `todos` collection on `/api/todos` (and the `/todos` screen when ui is installed); with
+  auth installed the mount gets `auth: true` and the collection `ownership: owner` (per-user records).
+- `ownership: owner` on a collection scopes every request to the principal a policy such as
+  `auth: true` on its mount sets; without it (the default) a collection is shared.
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({directory})`) in
   the `composeHost` list; `urlcode extensions add store` writes that line.
 

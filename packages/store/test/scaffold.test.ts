@@ -48,6 +48,9 @@ test('the example returns the todos collection and its route, and validates with
 test('scaffold protects the mount with auth: true when auth is installed, and needs no acknowledgement', async () => {
   const result = await scaffold({ installed: ['auth', 'store', 'ui'], acknowledgements: [] });
   assert.equal((result.routes['/api/todos/*'] as { auth?: boolean }).auth, true);
+  // Behind auth the example collection is per-user (#331): the safer pattern to copy.
+  assert.equal((result.config as { collections: { todos: { ownership?: string } } }).collections.todos.ownership, 'owner');
+  assert.ok(result.notes!.some(note => note.includes('ownership: owner')));
   assert.equal(result.acknowledged, undefined);
   assert.equal(result.routeNotes, undefined);
   const withoutUi = await scaffold({ installed: ['auth', 'store'], acknowledgements: [] });
@@ -75,6 +78,8 @@ test('scaffold refuses a writable mount nothing protects unless store:public-wri
   const open = await scaffold();
   assert.deepEqual(open.acknowledged, ['store:public-write']);
   assert.equal((open.routes['/api/todos/*'] as { auth?: boolean }).auth, undefined);
+  // Without auth there is no principal, so the example stays shared.
+  assert.equal('ownership' in (open.config as { collections: { todos: object } }).collections.todos, false);
   assert.match(open.routeNotes!.join(' '), /public write/i);
 });
 
