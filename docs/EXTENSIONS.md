@@ -659,7 +659,7 @@ Add-ons are versioned in lockstep with core. Only core is published to npm;
 each add-on is released as a tarball on the same GitHub Release as core. The
 release build writes `addons.json` into core's own `dist/`: for every add-on its
 name, kind, `requires`, download URL and sha512 integrity. That file is the
-only catalog. Trust in core's npm provenance therefore extends to every add-on
+only install catalog. Trust in core's npm provenance therefore extends to every add-on
 it installs, and there is nothing else to verify, cache or lock: the site's
 ordinary `package-lock.json` records each tarball, and the add-on commands
 check it against core's pin.
@@ -674,6 +674,51 @@ The first-party add-ons are:
 
 `urlcode extensions available` and `urlcode artifacts available` list what the
 running core pins.
+
+### The release-wide agent catalog
+
+Beside `addons.json`, core's `dist/` carries `addon-catalog.json`: agent
+discovery metadata for every extension and artifact of the same release, built
+from each add-on's `urlcode.json` descriptor. Each entry has the add-on's
+`name`, `kind`, `package`, `version`, `description`, `requires` and, when the
+descriptor declares one, its `agent` block (a description and references whose
+`path` is relative to that add-on's package):
+
+```json
+{
+  "format": 1,
+  "scope": "release",
+  "version": "<core version>",
+  "addons": [
+    {
+      "name": "store-schema",
+      "kind": "artifact",
+      "package": "@jimhoyd/urlcode-store-schema",
+      "version": "<core version>",
+      "description": "…",
+      "requires": [],
+      "agent": { "description": "…", "references": [{ "name": "configuration schema", "description": "…", "path": "schemas/config.json" }] }
+    }
+  ]
+}
+```
+
+It is metadata only: no URL, integrity, schema or code. `npm run build` writes
+it, `npm run build:addons` refreshes it with the descriptors, and
+`node scripts/build-addon-manifest.ts --check` (part of `npm run verify`) fails
+when it differs from what the add-ons' code and descriptors say. The release
+build refuses a core tarball whose catalog differs from the descriptors inside
+the add-on tarballs it pins. `readAddonCatalog()` (`@jimhoyd/urlcode` and
+`@jimhoyd/urlcode/agent-context`) and MCP `get_release_addon_catalog` return it;
+reading it imports, downloads, installs and activates nothing, so a hosted
+authoring service can present every add-on's agent metadata from its pinned
+core without installing the add-ons.
+
+The catalog is release-wide discovery. An add-on appearing in it is not
+evidence that a project installed or activated it. What a project has installed
+stays a local concern: MCP `get_addon_agent_tooling`, `get_extension_artifacts`
+and, with the operator host, `get_extensions`. The descriptor does not record
+whether an extension ships an `--example`; the catalog does not either.
 
 ### The site layout
 

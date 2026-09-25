@@ -346,6 +346,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: node scripts/workspaces.ts run build
+      # Every add-on descriptor matches its code, and dist/addon-catalog.json matches the descriptors (#721).
+      - run: node scripts/build-addon-manifest.ts --check
       # Sites built from the packed runtime and add-ons, pinned by sha512 exactly as a release pins them.
       - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed" --site "$RUNNER_TEMP/site" --with ui,store --example --ack store:public-write
       - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed-host" --site "$RUNNER_TEMP/host-site" --with mcp

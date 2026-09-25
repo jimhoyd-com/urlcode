@@ -253,10 +253,11 @@ async function auditOne(target: string): Promise<void> {
     assert.deepEqual(ignored, [], `Gitignored paths present in packed release (nondeterministic local build artifacts, see #608):\n${ignored.join('\n')}`);
 
     const shipped = new Set(pack.files.map(file => file.path));
-    const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {})]
+    // Core also carries its add-on pins and the release-wide add-on agent catalog beside them (#721).
+    const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {}), ...(kind === 'core' ? ['dist/addons.json', 'dist/addon-catalog.json'] : [])]
       .map(path => path.replace(/^\.\//, ''));
     const missing = required.filter(path => !shipped.has(path));
-    assert.deepEqual(missing, [], `Package exports point to missing files:\n${missing.join('\n')}`);
+    assert.deepEqual(missing, [], `Package exports or required files are missing:\n${missing.join('\n')}`);
     for (const peer of budget.optionalPeers ?? []) {
       assert(!manifest.dependencies?.[peer], `${peer} must not be a default dependency`);
       assert(manifest.peerDependencies?.[peer], `${peer} needs a declared compatibility range`);

@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { parsePackJson } from './pack-json.ts';
 import { unpublishedScripts, withPublishedManifest } from './published-manifest.mjs';
+import { addons } from './workspaces.ts';
 // `npm pack --json` output, as far as the smoke test reads it.
 interface PackReport { name: string; version: string; filename: string; files: { path: string }[] }
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
@@ -170,15 +171,18 @@ process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fix
     // building its own MCP server would (this package's own serveMcp does
     // the same import, see packages/core/src/mcp.ts).
     const consumer = join(install,'agent-context-consumer.mjs');
-    await writeFile(consumer,`import {searchDocs, validateYaml, explainError} from '@jimhoyd/urlcode/agent-context';
+    await writeFile(consumer,`import {searchDocs, validateYaml, explainError, readAddonCatalog} from '@jimhoyd/urlcode/agent-context';
 const found = await searchDocs('sandbox');
 const valid = validateYaml('version: "1"\\nroutes: {}\\n');
 const guidance = explainError('Invalid configuration at /routes');
-process.stdout.write(JSON.stringify({resultCount:found.results.length, valid:valid.valid, nextTools:guidance.nextTools}));`);
-    const report = JSON.parse(command(process.execPath,[consumer],install)) as {resultCount:number;valid:boolean;nextTools:string[]};
+const catalog = await readAddonCatalog();
+process.stdout.write(JSON.stringify({resultCount:found.results.length, valid:valid.valid, nextTools:guidance.nextTools, catalog:{scope:catalog.scope, version:catalog.version, addons:catalog.addons.map(addon => addon.name)}}));`);
+    const report = JSON.parse(command(process.execPath,[consumer],install)) as {resultCount:number;valid:boolean;nextTools:string[];catalog:{scope:string;version:string;addons:string[]}};
     assert.ok(report.resultCount>0,'searchDocs found no results against the installed package');
     assert.equal(report.valid,true);
     assert.deepEqual(report.nextTools,['get_schema','get_capability','validate']);
+    // The release-wide add-on agent catalog (#721) ships beside dist/addons.json and lists every add-on.
+    assert.deepEqual(report.catalog,{scope:'release',version:manifest.version,addons:(await addons()).map(addon => addon.name).sort()});
   }
   {
     // `@jimhoyd/urlcode/skills` (issue #574) is the supported way for a host
@@ -227,7 +231,8 @@ import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput
 import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from '@jimhoyd/urlcode/observability';
 import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from '@jimhoyd/urlcode/compliance';
 import { SandboxPool, functionFile, type SandboxPoolOptions, type SandboxInvocation } from '@jimhoyd/urlcode/sandbox';
-import { listSkills, getSkill, searchDocs, getExample, validateYaml, explainError } from '@jimhoyd/urlcode/agent-context';
+import { listSkills, getSkill, searchDocs, getExample, validateYaml, explainError, readAddonCatalog } from '@jimhoyd/urlcode/agent-context';
+import type { AddonCatalog } from '@jimhoyd/urlcode';
 import { listShippedSkills, type ShippedSkill } from '@jimhoyd/urlcode/skills';
 declare const runtime: Runtime; declare const options: RuntimeOptions; declare const server: Server;
 declare const event: LambdaEvent; declare const lambda: LambdaHandler;
@@ -250,6 +255,7 @@ void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydr
   validatePlugins, activatePlugins, registry, compilePolicies, createObserverSink, createMetrics, runCompliance, loadComplianceRules, runtimeOf,
   SandboxPool, functionFile, sandboxPoolOptions, sandboxInvocation,
   listSkills, getSkill, searchDocs, getExample, validateYaml, explainError,
+  readAddonCatalog as () => Promise<AddonCatalog>,
   listShippedSkills, shippedSkill,
   runtime, options, server, event, lambda, artifact, route, prerender, page, vercel, plugin, host, policies, input, observer, observerEvent, standard, report];
 `);

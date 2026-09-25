@@ -7,8 +7,8 @@ import { readFile } from 'node:fs/promises';
 // entry file declares. Published manifests deliberately have no source-only
 // condition: package-audit verifies every target exists in the tarball.
 const expected: Record<string, string[]> = {
-  '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initSite','initSiteWith','addAddons','removeAddon','listAddons','validateDeclaredExtensions','readAddonManifest','composeHost','defineExtension'],
-  './agent-context': ['listSkills','getSkill','listAgentCatalog','searchDocs','getExample','validateYaml','explainError'],
+  '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initSite','initSiteWith','addAddons','removeAddon','listAddons','validateDeclaredExtensions','readAddonManifest','readAddonCatalog','composeHost','defineExtension'],
+  './agent-context': ['listSkills','getSkill','listAgentCatalog','readAddonCatalog','searchDocs','getExample','validateYaml','explainError'],
   './aws': ['createLambdaHandler'],
   './cloudflare': ['rehydrate','createFetchHandler'],
   './prerender': ['assertLiteralRoutePath','pageFileName','assertNativeProject','prerenderPages'],

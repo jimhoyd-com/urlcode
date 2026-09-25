@@ -14,7 +14,7 @@ import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 // Only the public @jimhoyd/urlcode/agent-context surface is used here; scripts/package-smoke.ts proves that
 // subpath sufficient from the packed package (docs/TOOLING.md). A relative import keeps the source from loading
 // the built dist/, which tests rebuild concurrently.
-import {listSkills,getSkill,listAgentCatalog,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
+import {listSkills,getSkill,listAgentCatalog,readAddonCatalog,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
 import {isRecord as object} from './object-guards.ts';
 import {describeInstalledAgentTooling,describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 // Newest first. The tool surface used here (initialize, tools/list, tools/call,
@@ -53,6 +53,7 @@ const definitions=[
  {name:'list_skills',description:'List every bundled agent skill (name and its own SKILL.md description). Load a skill only when it applies.',properties:{}},
  {name:'get_skill',description:'Load one bundled agent SKILL.md by name.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'list_agent_catalog',description:'List the revision-pinned agent discovery index: core skills/references and signed add-ons. Use get_extensions or get_extension_artifacts for project-installed component details.',properties:{}},
+ {name:'get_release_addon_catalog',description:'Return the release-wide add-on catalog pinned to this core: every signed extension and artifact with its package, version, description, requirements and descriptor agent references (paths relative to that add-on\'s package). Discovery metadata only: it is not evidence that this project installed or activated an add-on, and it never imports, fetches or installs one. Use get_addon_agent_tooling, get_extensions or get_extension_artifacts for what this project has installed.',properties:{}},
  {name:'search_docs',description:'Deterministically search the small packaged agent documentation corpus and return at most three short excerpts.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'validate_yaml',description:'Validate supplied URLCode YAML syntax and schema only. It never reads includes, source files, bindings or a project directory.',properties:{yaml:{type:'string',maxLength:524288}},required:['yaml']},
@@ -140,6 +141,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'list_skills':return listSkills();
    case 'get_skill':return getSkill(args.name as string);
    case 'list_agent_catalog':return listAgentCatalog();
+   case 'get_release_addon_catalog':return readAddonCatalog();
    case 'search_docs':return searchDocs(args.text as string);
    case 'get_example':return getExample(args.name as string);
    case 'validate_yaml':return validateYaml(args.yaml as string);
