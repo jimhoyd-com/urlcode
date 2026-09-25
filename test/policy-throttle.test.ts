@@ -156,3 +156,26 @@ test('client partition is refused on serverless targets, route partition is nati
   assert.equal(runtime.testPlan().policies['/go']?.throttle?.target, 'native');
   assert.deepEqual(throttle.targets({ partition: 'client-route' }), { node: 'native', vercel: 'refused', aws: 'refused', cloudflare: 'refused' });
 });
+
+test('response phase appends its policy to another producer\'s RateLimit fields instead of replacing them (#701)', async () => {
+  const state = await throttle.compile({ quota: 60, window: 60 }, { route: { pattern: '/api/items' }, shared: { now: () => 0 } });
+  const req: PolicyRequest = { method: 'GET', target: '/api/items', path: '/api/items', params: {}, query: new URLSearchParams(),
+    headers: new Headers(), headerCounts: undefined, client: '1.1.1.1', origin: undefined, route: '/api/items', secrets: false };
+  assert.equal(await throttle.onRequest(state, req), undefined);
+  const fields = (result: HandlerResult, name: string) => result.headers.filter(([n]) => n.toLowerCase() === name).map(([, v]) => v);
+  // The auth extension's per-credential refusal, as its authorize() hook answers it.
+  const refusal: HandlerResult = { status: 429, headers: [['content-type', 'application/json'], ['retry-after', '45'],
+    ['ratelimit-policy', '"credential";q=2;w=60'], ['ratelimit', '"credential";r=0;t=45']] };
+  const out = throttle.onResponse(state, req, refusal);
+  assert.deepEqual(fields(out, 'ratelimit-policy'), ['"credential";q=2;w=60, "default";q=60;w=60']);
+  assert.deepEqual(fields(out, 'ratelimit'), ['"credential";r=0;t=45, "default";r=59;t=60']);
+  assert.deepEqual(fields(out, 'retry-after'), ['45'], 'Retry-After stays the producer\'s');
+  // Throttle alone emits exactly one field line of each, holding only its own member.
+  const plain = throttle.onResponse(state, req, { status: 200, headers: [] });
+  assert.deepEqual(fields(plain, 'ratelimit-policy'), ['"default";q=60;w=60']);
+  assert.deepEqual(fields(plain, 'ratelimit'), ['"default";r=59;t=60']);
+  // A prior "default" member (its own, in any field line or as a bare token) is replaced,
+  // never duplicated; a quoted comma inside another member's name does not split it.
+  const again = throttle.onResponse(state, req, { status: 200, headers: [['RateLimit-Policy', '"default";q=1;w=1'], ['ratelimit-policy', '"a,b";q=5;w=9, default;q=2;w=2']] });
+  assert.deepEqual(fields(again, 'ratelimit-policy'), ['"a,b";q=5;w=9, "default";q=60;w=60']);
+});

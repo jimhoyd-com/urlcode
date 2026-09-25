@@ -50,6 +50,42 @@ async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[
     }
     return { request, service, cookies };
 }
+test('a credential-quota 429 on a throttled route carries both the credential and the core throttle RateLimit policies (#701)', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-quota-throttle-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const project = join(root, 'project');
+    await mkdir(project);
+    const kit = kitYaml();
+    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: 'open' } } }, routes: {
+            '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
+            '/api/items': { respond: { json: { items: [] } }, auth: { bearer: { scopes: ['items.read'], quota: { requests: 2, window: 60 } } }, policies: { throttle: { quota: 60, window: 60 } } },
+            ...kit.routes,
+        } }));
+    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
+    const extension = authExtension({ ui, service, csrfKey: randomBytes(32), projectSha256 });
+    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
+    const { key } = await service.issueApiKey({ name: 'items', scopes: ['items.read'] });
+    const call = () => fetch(`http://127.0.0.1:${server.address.port}/api/items`, { headers: { authorization: `Bearer ${key}` } });
+    for (let i = 0; i < 2; i++) {
+        const allowed = await call();
+        assert.equal(allowed.status, 200);
+        await allowed.arrayBuffer();
+        // Only core throttle speaks on an allowed response (urlcode#703 tracks the credential's).
+        assert.equal(allowed.headers.get('ratelimit-policy'), '"default";q=60;w=60');
+        assert.match(allowed.headers.get('ratelimit') ?? '', /^"default";r=\d+;t=\d+$/);
+    }
+    const refused = await call();
+    assert.equal(refused.status, 429);
+    assert.deepEqual(await refused.json(), { error: 'credential_quota_exceeded' });
+    // The refusal is the credential's: its budget and Retry-After survive, and throttle's
+    // own policy is appended to the same list fields rather than replacing them.
+    assert.equal(refused.headers.get('ratelimit-policy'), '"credential";q=2;w=60, "default";q=60;w=60');
+    assert.match(refused.headers.get('ratelimit') ?? '', /^"credential";r=0;t=(\d+), "default";r=\d+;t=\d+$/);
+    const reset = /^"credential";r=0;t=(\d+)/.exec(refused.headers.get('ratelimit') ?? '')![1];
+    assert.equal(refused.headers.get('retry-after'), reset);
+});
 test('real runtime enforces session policy, CSRF and cookie privacy end to end', async (t) => {
     const { request, cookies } = await app(t);
     assert.equal((await request('/private')).status, 401);
