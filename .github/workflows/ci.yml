@@ -106,11 +106,12 @@ jobs:
       - run: npm run typecheck
       # Phase one of JS type-checking (allowJs/checkJs): build/release tooling
       # only (tsconfig.checkjs.json), not the 61 recipe/example .mjs files.
-      # packages/auth/scripts pulls in packages/auth/src, which imports
-      # @jimhoyd/urlcode-ui's types through its built dist/ exports map (the
-      # same self-import resolution `npm run typecheck` above relies on for
-      # `@jimhoyd/urlcode/*`), so the script itself builds ui first — see
-      # `typecheck:tooling` in package.json.
+      # packages/auth/scripts pulls in packages/auth/src, which imports the
+      # types of ui, audit, abuse and mail through their built dist/ exports
+      # maps (the same self-import resolution `npm run typecheck` above relies
+      # on for `@jimhoyd/urlcode/*`), and packages/admin/scripts imports auth's,
+      # so the script itself builds those first — see `typecheck:tooling` in
+      # package.json.
       - run: npm run typecheck:tooling
       # `npm run check` stays complete for local use, but in CI the seven
       # documentation checks it contains already ran in the always-run `docs`

@@ -110,7 +110,7 @@
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
     "prepare": "node --disable-warning=ExperimentalWarning scripts/build.ts --quiet",
     "typecheck": "tsc -p tsconfig.json",
-    "typecheck:tooling": "npm run build --workspace @jimhoyd/urlcode-ui && tsc -p tsconfig.checkjs.json",
+    "typecheck:tooling": "npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-audit --workspace @jimhoyd/urlcode-abuse --workspace @jimhoyd/urlcode-mail && npm run build --workspace @jimhoyd/urlcode-auth && tsc -p tsconfig.checkjs.json",
     "test": "node --conditions=development --test test/*.test.ts",
     "test:shard": "node --conditions=development --test",
     "lint": "eslint .",
