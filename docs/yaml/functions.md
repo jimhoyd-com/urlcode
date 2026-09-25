@@ -134,9 +134,14 @@ Path inputs must be required strings with no default. Query/header scalar types
 are string, integer, number and boolean; arrays are query-only. Booleans are
 exactly `true`/`false`; numbers do not accept exponent notation or whitespace.
 Defaults apply to absence, not empty strings. Duplicate scalar values fail.
-Required, missing and invalid inputs return 400. This is a documented subset,
-not full OpenAPI/JSON Schema: no `pattern`, `format`, nested input objects,
-`oneOf`, `style` or `explode` in parameter schemas.
+Required, missing and invalid inputs return 400. A string input (path, query
+or header) may also declare `format: uuid`, the only supported format, and a
+`pattern`: at most 128 characters, accepted only when it passes the runtime's
+backtracking-safety guard, and only beside a `maxLength` of at most 128
+([restrictions](../HTTP.md#body-schema-and-input-patterns)). A value that does
+not match returns 400. This is a documented subset, not full OpenAPI/JSON
+Schema: no other `format`, nested input objects, `oneOf`, `style` or `explode`
+in parameter schemas.
 
 ## 5. Methods and body validation
 

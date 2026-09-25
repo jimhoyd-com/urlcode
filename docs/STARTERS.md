@@ -105,8 +105,8 @@ points at the agent skill the package ships at `skills/urlcode/SKILL.md`.
 Both paths also write `.mcp.json`, which registers the read-only `urlcode mcp`
 server for Claude Code and Codex with `--project app`; it is
 never overwritten and carries no `--allow-authoring` ([tooling](TOOLING.md#registering-the-server)).
-[URLCode AI](https://urlcode.ai/) is an optional, separate hosted MCP for shared
-skills and LLM tooling; it is never added to the generated file and does not
+[URLCode AI](https://urlcode.ai/) is an optional, separate hosted MCP for
+version-pinned reference and shared skills; it is never added to the generated file and does not
 replace the local project server ([setup](TOOLING.md#optional-hosted-ai-mcp)).
 
 `examples/assets` contains a larger runnable file/page/download demonstration:

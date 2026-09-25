@@ -36,7 +36,9 @@ No regex routes, greedy parameters, optional segments, partial-segment parameter
 other `**` globs, or regex constraints inside `{code}` are implemented. Characters such
 as `.` and `+` have no regex meaning in a literal path. Do not paste a regex into
 a route key: some regex-looking text is legal literal text, while unsupported
-syntax may fail validation. Parameter-schema `pattern` is also unsupported.
+syntax may fail validation. To constrain a segment's value, declare a bounded
+`pattern` or `format: uuid` in its parameter schema instead
+([inputs](SPECIFICATION.md#inputs)); a value that does not match returns 400.
 
 ## Precedence and ambiguity
 
