@@ -29,11 +29,11 @@ through the packages' `file:../..` links (`check-workspace-links.ts`), and
 extension package.
 
 <!-- urlcode-current-version:start -->
-Core `0.6.0` is published to npm, GitHub Releases and Homebrew. For a new
+Core `0.6.1` is published to npm, GitHub Releases and Homebrew. For a new
 composed site:
 
 ```sh
-npx @jimhoyd/urlcode@0.6.0 init site --with ui,auth,admin,store
+npx @jimhoyd/urlcode@0.6.1 init site --with ui,auth,admin,store
 ```
 <!-- urlcode-current-version:end -->
 
