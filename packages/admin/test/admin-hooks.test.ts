@@ -238,6 +238,6 @@ test('the ajv config schema (validated by core before activate()) rejects an unk
     cleanup(t, () => accepted.close());
     // prepareExtensions ajv-validates synchronously before ever returning `.activate()`'s
     // promise, so an invalid config throws immediately: assert.throws, not assert.rejects.
-    assert.throws(() => prepared(service, { notARealHook: './x.mjs' }), /Invalid extension configuration: admin/);
-    assert.throws(() => prepared(service, { beforeRoleChange: { export: 'default' } }), /Invalid extension configuration: admin/);
+    assert.throws(() => prepared(service, { notARealHook: './x.mjs' }), /Invalid extension configuration at \/extensions\/admin\/config\/hooks \(additionalProperties\): unknown key "notARealHook"/);
+    assert.throws(() => prepared(service, { beforeRoleChange: { export: 'default' } }), /Invalid extension configuration at \/extensions\/admin\/config\/hooks\/beforeRoleChange /);
 });

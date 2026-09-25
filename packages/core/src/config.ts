@@ -149,13 +149,14 @@ const listValues = (values: unknown[]): string => values.length > MAX_LISTED_VAL
  * mapping keys, and values the schema itself declares are echoed, never the author's values (they may hold
  * secrets), and never more than MAX_NAMED_KEY characters of a key.
  */
-function describeSchemaError(e: ErrorObject): ConfigError {
-  const base = `Invalid configuration at ${describeLocation(e.instancePath)} (${e.keyword})`;
+function describeSchemaError(e: ErrorObject, scope?: { subject: string; pointer: string; shapeHint: string }): ConfigError {
+  const pointer = (scope?.pointer ?? '') + e.instancePath;
+  const base = `Invalid ${scope?.subject ?? 'configuration'} at ${scope ? boundedPointer(pointer) : describeLocation(pointer)} (${e.keyword})`;
   const parent = e.parentSchema as { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
-  const details = { pointer: e.instancePath, route: routeOf(e.instancePath) };
+  const details = { pointer, route: routeOf(pointer) };
   if (e.keyword === 'additionalProperties') {
     const key = String((e.params as { additionalProperty?: unknown }).additionalProperty);
-    return new ConfigError(`${base}: unknown key ${quoteKey(key)}${keyHint(key, Object.keys(parent?.properties ?? {}))} (run urlcode schema <path> for the shape)`, { ...details, code: 'unknown-key', key });
+    return new ConfigError(`${base}: unknown key ${quoteKey(key)}${keyHint(key, Object.keys(parent?.properties ?? {}))} (${scope?.shapeHint ?? 'run urlcode schema <path> for the shape'})`, { ...details, code: 'unknown-key', key });
   }
   if (e.keyword === 'required') {
     const missing = String((e.params as { missingProperty?: unknown }).missingProperty);
@@ -172,6 +173,21 @@ function describeSchemaError(e: ErrorObject): ConfigError {
   if (e.keyword === 'const') return new ConfigError(`${base}: must be ${JSON.stringify((e.params as { allowedValue?: unknown }).allowedValue)}`, { ...details, code: 'invalid-value' });
   // Ajv's own message is built from the schema (a type, a bound, a pattern), never from the value it rejected.
   return new ConfigError(e.message ? `${base}: ${e.message}` : base, { ...details, code: 'invalid-value' });
+}
+const MAX_POINTER = 300;
+/** A pointer capped for messages; the full pointer stays in the error details. */
+const boundedPointer = (pointer: string): string => pointer.length > MAX_POINTER ? `${pointer.slice(0, MAX_POINTER)}...` : pointer;
+/**
+ * The first violation of an extension's own configuration schema, located under
+ * `/extensions/<name>/config` and described like a core schema error: the failing pointer, the Ajv keyword and a
+ * reason built from the schema, never the author's value. `errors` come from an Ajv validator compiled with
+ * `verbose: true`, so a closed key set can suggest the key that was probably meant.
+ */
+export function extensionConfigError(name: string, errors: ErrorObject[] | null | undefined): ConfigError {
+  const pointer = `/extensions/${escapePointer(name)}/config`;
+  const first = errors?.[0];
+  if (!first) return new ConfigError(`Invalid extension configuration at ${boundedPointer(pointer)}`, { code: 'invalid-value', pointer });
+  return describeSchemaError(first, { subject: 'extension configuration', pointer, shapeHint: 'run urlcode extensions --json for its configuration schema' });
 }
 const routeSchema = (schema as { $defs: { route: { properties: Record<string, unknown>; oneOf: { required: string[] }[] } } }).$defs.route;
 const routeKeys = Object.keys(routeSchema.properties);
