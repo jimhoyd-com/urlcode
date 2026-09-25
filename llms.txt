@@ -6,7 +6,7 @@
 > stored links as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; this revision is `0.6.1`. `function`/`middleware`
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
-> auth, admin, ui, store, forms and mcp extensions are add-ons released with core and pinned by
+> auth, admin, ui, store, forms, form-records and mcp extensions are add-ons released with core and pinned by
 > it; a site adds them with `urlcode extensions add <name>`. Only core is published to npm.
 <!-- urlcode-current-version:end -->
 

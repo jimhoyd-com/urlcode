@@ -81,7 +81,7 @@ test('required gate rejects missing, failed, canceled and unplanned jobs', () =>
 test('routine matrix is Linux Node 24; exact coverage is the full supported matrix', () => {
   for (const event of ['pull_request', 'push']) assert.deepEqual(testMatrix(event, null).include, [{ os: 'ubuntu-latest', node: '24' }]);
   for (const event of ['schedule', 'workflow_dispatch', 'merge_group', 'unknown']) assert.equal(testMatrix(event, null).include.length, 9);
-  for (const path of ['packages/ui/src/styles.ts', 'packages/auth/test/auth.test.ts', 'packages/forms/package.json']) {
+  for (const path of ['packages/ui/src/styles.ts', 'packages/auth/test/auth.test.ts', 'packages/forms/package.json', 'packages/form-records/src/form-records.ts']) {
     assert(!packageSmokeRelevant([path])); assert(!actionRelevant([path])); assert(!containerRelevant([path])); assert(!coreChecksRelevant([path]));
   }
   for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['action/action.yml']]) {
@@ -106,11 +106,14 @@ test('a release run is planned as exact-commit coverage whatever event triggered
 test('workspace selection includes reverse dependencies and reserves integration for release dispatch', () => {
   assert.deepEqual(workspacePackages(['packages/admin/src/admin-ui.ts']), ['admin']);
   assert.deepEqual(workspacePackages(['packages/auth/src/auth-ui.ts']), ['auth', 'admin']);
-  assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'store', 'forms']);
-  assert.deepEqual(workspacePackages(['packages/store/src/screens.ts']), ['store']);
+  assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'store', 'forms', 'form-records']);
+  assert.deepEqual(workspacePackages(['packages/store/src/screens.ts']), ['store', 'form-records']);
+  assert.deepEqual(workspacePackages(['packages/forms/src/forms.ts']), ['forms', 'form-records']);
+  assert.deepEqual(workspacePackages(['packages/form-records/src/form-records.ts']), ['form-records']);
   assert.deepEqual(workspacePackages(['packages/mcp/src/mcp.ts']), ['mcp']);
-  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms', 'mcp']);
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 5);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms', 'form-records', 'mcp']);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 6);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/form-records/README.md']).include[0]!.deps, 'ui forms store');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/store/src/screens.ts']).include[0]!.deps, 'ui');
   for (const event of ['pull_request', 'push', 'schedule']) assert.deepEqual(workspaceIntegrationMatrix(event).include, []);
   assert.deepEqual(workspaceIntegrationMatrix('workflow_dispatch').include, [

@@ -119,7 +119,7 @@ All of it lives in [`docs/`](docs/README.md) in this repository. See
 
 ## The framework
 
-Core plus six extensions, one site shape. A project climbs from redirects to a
+Core plus seven extensions, one site shape. A project climbs from redirects to a
 full application by adding YAML; the operator wires trusted extensions in one
 host file outside the project. The full map, the composition contract and the
 rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
@@ -132,6 +132,7 @@ rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | [admin](packages/admin) extension | Administration: users, sessions, roles, audit, approvals, cases, impersonation | add-on on core's GitHub Release |
 | [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API | add-on on core's GitHub Release |
 | [forms](packages/forms) extension | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation | add-on on core's GitHub Release |
+| [form-records](packages/form-records) extension | Saves a declared form into an owned store collection, with a confirmation and a constrained edit page | add-on on core's GitHub Release |
 | [mcp](packages/mcp) extension | Declarative MCP tool server over a project-declared tool map | add-on on core's GitHub Release |
 | [store-schema](artifacts/store-schema) artifact | Inert store configuration schema and example, for tooling | add-on on core's GitHub Release |
 
@@ -206,7 +207,7 @@ for the vocabulary these two paragraphs use.
 
 <!-- urlcode-current-version:start -->
 This checkout prepares the `0.6.1` core release. The ui, auth, admin, store,
-forms and mcp extensions and the store-schema artifact are workspace packages
+forms, form-records and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or
 `npm view @jimhoyd/urlcode dist-tags`. A stable core

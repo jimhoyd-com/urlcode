@@ -58,12 +58,12 @@ async function copies(dir: string, name: string): Promise<number> {
 test('every extension installs once, composes, serves, and removes in dependency order', { timeout: 900000 }, async t => {
   const { dir } = await site(t);
   const all = (await addons()).filter(addon => addon.kind === 'extension').map(addon => addon.name);
-  // --example reproduces the demos a new user expects: /api/todos and /todos, /contact and /private (#711).
+  // --example reproduces the demos a new user expects: /api/todos and /todos, /contact, /private and /todo-form (#711, #529).
   const added = await urlcode(t, dir, ['extensions', 'add', ...all, '--example']);
   assert.equal(added.status, 0, added.stderr);
   const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string; examples: string[] };
   assert.deepEqual([...result.added].sort(), [...all].sort());
-  assert.deepEqual([...result.examples].sort(), ['auth', 'forms', 'store']);
+  assert.deepEqual([...result.examples].sort(), ['auth', 'form-records', 'forms', 'store']);
   for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
   const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
@@ -91,7 +91,8 @@ test('every extension installs once, composes, serves, and removes in dependency
   // database while the service still holds it open.
   try {
     // /todos is the store's own screen, contributed to ui (#709); signed-in only, so it redirects rather than 404s.
-    for (const path of ['/account/login', '/api/todos', '/todos', '/contact', '/private']) {
+    // /todo-form is form-records' example, saving into the store example's owned todos (#529); signed-in only too.
+    for (const path of ['/account/login', '/api/todos', '/todos', '/contact', '/private', '/todo-form']) {
       const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
       assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
     }
