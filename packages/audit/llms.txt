@@ -1,0 +1,30 @@
+# URLCode audit
+
+> Operator-installed audit log: other extensions record privileged actions
+> into one bounded SQLite file (data/audit.sqlite) through a transactional
+> outbox they own, and readers query it. Serves no routes. Released with core
+> and installed with `urlcode extensions add audit` (auth requires it).
+> Apache-2.0.
+
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code or credentials)
+- `extensions.audit: { version: "1", config: { retention: 100000 } }`;
+  `retention` is 1000..10000000 and is the only setting.
+- No routes: a route with `extension: audit` is refused at startup.
+- Which actions are audited belongs to the producers: auth always, and a store
+  collection with `audit: true`.
+
+## Read in this order
+- [README](README.md): the exports, the event bounds, the query, the producer
+  contract and the CLI.
+- [SECURITY](SECURITY.md): the delivery guarantee, retention and storage.
+
+## Do not guess
+- Do not write audit rows from a handler or a hook; declare the producing
+  feature (for example a store collection's `audit: true`) instead.
+- Audit enforces no permission. Readers check `audit.read` and `audit.export`
+  (granted to roles in the auth operator module).
+- Node only (`node:sqlite`); other targets are refused before serving.
+- `urlcode-audit list` takes `{"database": "<absolute path>", "query": {...}}`
+  on stdin and prints one page of at most 100 events.
