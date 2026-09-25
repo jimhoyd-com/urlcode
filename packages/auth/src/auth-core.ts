@@ -190,7 +190,18 @@ export interface AuthPasskey {
     publicKey: string;
     counter: number;
     transports?: string[];
+    /** The relying-party ID the passkey was registered under; absent for passkeys stored before auth recorded it (#736). */
+    rpId?: string;
 }
+/** Stored passkeys against one relying-party ID, counted without naming any account or credential (#736). */
+export interface PasskeyRelyingPartyCounts {
+    /** Passkeys recorded under a different RP ID: they cannot sign in under this one. */
+    mismatched: number;
+    /** Passkeys stored before auth recorded the RP ID. */
+    unrecorded: number;
+}
+/** A recorded relying-party ID: a lowercase DNS name, as WebAuthn and core's `passkeyRpId` admit. */
+const passkeyRpIdShape = (value: unknown): boolean => value === undefined || typeof value === 'string' && value.length >= 1 && value.length <= 253 && /^[a-z0-9.-]+$/.test(value);
 export interface AuthCase {
     id: string;
     accountId: string;
@@ -437,6 +448,11 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         proof: Omit<PasskeyAuthProof, 'newCounter'>;
     } | null>;
     listPasskeys(accountId: string): Promise<Omit<AuthPasskey, 'accountId'>[]>;
+    /**
+     * One aggregate over every stored passkey: how many were registered under an RP ID other than `rpId`, and how many
+     * have no recorded RP ID. Counts only; auth's activation uses it to warn the operator (#736).
+     */
+    countPasskeysByRelyingParty(rpId: string): Promise<PasskeyRelyingPartyCounts>;
     changePassword(input: {
         token: string;
         currentPassword: string;
@@ -1398,9 +1414,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             if (typeof input.challenge !== 'string' || !/^[A-Za-z0-9_-]{32,1024}$/.test(input.challenge))
                 fail(400, 'invalid_passkey');
             const c = input.credential;
-            if (!c || typeof c.id !== 'string' || !c.id || c.id.length > 2048 || typeof c.publicKey !== 'string' || !c.publicKey || c.publicKey.length > 8192 || !Number.isSafeInteger(c.counter) || c.counter < 0 || c.transports && (!Array.isArray(c.transports) || c.transports.length > 8 || c.transports.some(t => !['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t))))
+            if (!c || typeof c.id !== 'string' || !c.id || c.id.length > 2048 || typeof c.publicKey !== 'string' || !c.publicKey || c.publicKey.length > 8192 || !Number.isSafeInteger(c.counter) || c.counter < 0 || c.transports && (!Array.isArray(c.transports) || c.transports.length > 8 || c.transports.some(t => !['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t))) || !passkeyRpIdShape(c.rpId))
                 fail(400, 'invalid_passkey');
-            const credential = { id: c.id, publicKey: c.publicKey, counter: c.counter, ...(c.transports ? { transports: c.transports } : {}) };
+            const credential = { id: c.id, publicKey: c.publicKey, counter: c.counter, ...(c.transports ? { transports: c.transports } : {}), ...(c.rpId !== undefined ? { rpId: c.rpId } : {}) };
             await store.call('signupCredential', { ...signupBinding(input), challenge: input.challenge, credential });
             return signupState(await signupRead(input, 'profile'), input.flowId);
         },
@@ -1584,9 +1600,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         },
         async addPasskey(input) {
             check();
-            if (!validToken(input.actorToken) || !input.credential || typeof input.credential.id !== 'string' || input.credential.id.length > 2048 || !input.credential.id || typeof input.credential.publicKey !== 'string' || input.credential.publicKey.length > 8192 || !Number.isSafeInteger(input.credential.counter) || input.credential.counter < 0 || (input.credential.transports && (input.credential.transports.length > 8 || input.credential.transports.some(t => !['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t)))))
+            if (!validToken(input.actorToken) || !input.credential || typeof input.credential.id !== 'string' || input.credential.id.length > 2048 || !input.credential.id || typeof input.credential.publicKey !== 'string' || input.credential.publicKey.length > 8192 || !Number.isSafeInteger(input.credential.counter) || input.credential.counter < 0 || (input.credential.transports && (input.credential.transports.length > 8 || input.credential.transports.some(t => !['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t)))) || !passkeyRpIdShape(input.credential.rpId))
                 fail(400, 'invalid_passkey');
-            await store.call('addPasskey', { hash: digest(input.actorToken), credential: { id: input.credential.id, publicKey: input.credential.publicKey, counter: input.credential.counter, ...(input.credential.transports ? { transports: input.credential.transports } : {}) }, now: now() });
+            await store.call('addPasskey', { hash: digest(input.actorToken), credential: { id: input.credential.id, publicKey: input.credential.publicKey, counter: input.credential.counter, ...(input.credential.transports ? { transports: input.credential.transports } : {}), ...(input.credential.rpId !== undefined ? { rpId: input.credential.rpId } : {}) }, now: now() });
         },
         async getPasskey(credentialId) {
             check();
@@ -1599,6 +1615,12 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             } | null>('getPasskey', { id: credentialId });
         },
         async listPasskeys(accountId) { check(); return store.call<Omit<AuthPasskey, 'accountId'>[]>('listPasskeys', { accountId: id(accountId) }); },
+        async countPasskeysByRelyingParty(rpId) {
+            check();
+            if (!passkeyRpIdShape(rpId) || typeof rpId !== 'string')
+                fail(400, 'invalid_rp_id');
+            return store.call<PasskeyRelyingPartyCounts>('countPasskeysByRelyingParty', { rpId });
+        },
         async changePassword(input) {
             const { user } = await lookupSession(input.token, true);
             // Its own namespace: a session-gated re-confirmation never shares budget with an

@@ -139,7 +139,12 @@ export const budgets: Record<string, Budget> = {
   },
   '@jimhoyd/urlcode-auth': {
     packed: 225 * 1024,
-    unpacked: 900 * 1024,
+    // Unpacked raised from 900 to 910 KiB: recording each passkey's RP ID and
+    // the startup warning for mismatched passkeys (#736: dist/auth.js,
+    // dist/auth-core.js, dist/auth-store.js and their declarations, and the
+    // README/SECURITY contract) take the unpacked content to 924773 bytes
+    // (about 903 KiB), just over the old 900 KiB.
+    unpacked: 910 * 1024,
     entries: 90,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json'],
     optionalPeers: ['@aws-sdk/client-sesv2'],

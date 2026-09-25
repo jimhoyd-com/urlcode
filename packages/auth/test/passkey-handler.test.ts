@@ -54,6 +54,8 @@ test('handler passkey registration/login binds browser, consumes challenges and 
     assert.equal((await request('/account/passkeys/register/verify', payload)).status, 200);
     assert.notEqual((await request('/account/passkeys/register/verify', payload)).status, 200);
     assert.equal((await service.listPasskeys(registered.json.user.id)).length, 1);
+    // The credential records the RP ID the ceremony was verified under (#736).
+    assert.equal((await service.getPasskey(id))?.credential.rpId, 'site.example');
     await request('/account/logout', { csrf });
     csrf = (await request('/account/csrf')).json.csrf;
     const foreign = await request('/account/passkeys/login/options', { csrf });

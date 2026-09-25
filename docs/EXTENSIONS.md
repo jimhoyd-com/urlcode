@@ -682,6 +682,9 @@ does exactly that ([auth README](../packages/auth/README.md#passkeys-and-the-rel
 > way round. Setting, changing or removing `--passkey-rp-id` makes every passkey
 > registered under the previous RP ID stop working; users must sign in another
 > way and register a new passkey. Decide on the RP ID before users enrol.
+> First-party `auth` records each new passkey's RP ID and reports stranded
+> passkeys at startup as an [activation warning](#activation-warnings), with
+> counts only ([auth README](../packages/auth/README.md#passkeys-and-the-relying-party-domain)).
 
 Every extension also follows the
 [generic add-on authoring rules](#generic-add-on-authoring-rules).
