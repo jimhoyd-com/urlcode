@@ -36,7 +36,8 @@ The `forms` extension is the browser-flow counterpart: it renders bounded
 declared fields through the `ui` kit, validates URL-encoded submissions with
 its host-supplied CSRF secret, and redirects a successful submission to a
 confirmation page that shows only the submitted fields the flow opts in to. It is a trusted operator extension, needs `ui`, and
-may be mounted with `auth: true` (or `auth: {csrf: origin}`, since it verifies its own token). A flow may declare a
+may be mounted with `auth: {csrf: origin}`, never `auth: true`: it verifies its own token, and auth's default
+token mode would refuse every form POST with 403 because a plain HTML form sends no `x-csrf-token` header. A flow may declare a
 submission budget (`abuse`, when the abuse extension is installed) and a notification (`notify`, through mail). Its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
 

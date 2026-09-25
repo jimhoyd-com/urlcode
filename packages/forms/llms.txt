@@ -13,7 +13,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - `extensions.ui: { version: "1", config: {} }` (required; declaration order does not matter)
 - `extensions.forms: { version: "1", config: { flows: { <name>: { mount, fields, ... } } } }`
 - A mount for each flow, e.g. `/contact: { extension: forms, methods: [GET, HEAD, POST] }`
-- `auth: {csrf: origin}` (or `auth: true`) on a flow's route to require a session before the form handler runs
+- `auth: {csrf: origin}` on a flow's route to require a session before the form handler runs (never `auth: true`:
+  its token mode refuses every form POST with 403)
 - `flows.<name>.abuse: {client: {limit, windowMs}, challengeAfter?, honeypot?}` (needs the abuse extension; node only)
 - `flows.<name>.notify: {recipient, include?}` (needs the mail extension; `recipient` names an operator
   address from `mail({recipients})` in host.mjs, never an address in YAML)

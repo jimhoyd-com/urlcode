@@ -36,11 +36,13 @@ bytes. `forms` receives the shared `ui` kit from the host. See
 [add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
 site layout and commands.
 
-Declare the UI and a form mount in the project. Add `auth: {csrf: origin}` (or
-`auth: true`) to compose the flow with the auth extension; policy
-authorization runs before the form handler. `csrf: origin` is the right auth
-key here: forms verifies its own token on every POST, which a plain HTML form
-can send, while auth's default token would need a header forms does not send. The supplied `onSubmit` hook is trusted project code, runs only after
+Declare the UI and a form mount in the project. Add `auth: {csrf: origin}` to
+compose the flow with the auth extension; policy authorization runs before the
+form handler. Do not use `auth: true` on a form mount: its token mode reads the
+form's `csrf` field, finds forms' own token rather than auth's, and answers 403
+to every POST. `csrf: origin` is the right auth key here: forms verifies its
+own token on every POST, which a plain HTML form can send, while auth's default
+token would need a header forms does not send. The supplied `onSubmit` hook is trusted project code, runs only after
 CSRF and field validation, and should make external effects idempotent.
 
 ```yaml

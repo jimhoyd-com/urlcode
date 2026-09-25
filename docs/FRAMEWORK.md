@@ -83,7 +83,8 @@ Each rung's YAML is valid on every rung above it.
 7. **Bounded data and forms.** The `store` extension supplies declared durable
    collections; the `forms` extension supplies declared browser form flows over
    the shared UI kit. Both are trusted operator extensions, not core YAML
-   handlers. Add `auth: true` where a flow or collection is per-account.
+   handlers. Add `auth: {csrf: origin}` where a flow or collection is per-account
+   (a form mount must not use `auth: true`: auth's token mode refuses its POSTs).
    The `form-records` extension composes them when a form should become a
    record its creator can see again and edit: it saves the submission into
    an owned collection and serves the confirmation and a constrained edit

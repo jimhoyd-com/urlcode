@@ -196,7 +196,7 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
         if (byMount.has(spec.mount)) throw new Error(`Records ${byMount.get(spec.mount)!.name} and ${name} share mount ${spec.mount}`);
         if (!context.mounts.includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* with extension: form-records is not declared`);
         // Fail closed at startup: a record is private to its creator, so the mount must be able to carry a principal.
-        if (!(context.principalMounts ?? []).includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* needs a principal-providing policy (for example auth: true), because each record belongs to the signed-in user who created it`);
+        if (!(context.principalMounts ?? []).includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* needs a principal-providing policy (for example auth: {csrf: origin}), because each record belongs to the signed-in user who created it`);
         byMount.set(spec.mount, binding);
       }
       for (const mount of context.mounts) if (!byMount.has(mount)) throw new Error(`form-records mount ${mount} has no declared record flow`);

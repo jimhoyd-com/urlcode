@@ -427,7 +427,7 @@
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Mount each flow as `/contact/*` with GET, HEAD and POST. Add `auth: true` when the form is for signed-in callers.",
+        "description": "Mount each flow as `/contact/*` with GET, HEAD and POST. Add `auth: {csrf: origin}` (never `auth: true`) when the form is for signed-in callers.",
         "path": "urlcode.yaml"
       }
     ],
