@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A field can be required conditionally with `requiredWhen: {field, in}`
+  (#528): it is required when a sibling `select` or `enum` field was submitted
+  with one of the listed values, and optional otherwise, with the same 422
+  `is required` error. Activation refuses an undeclared, self-referencing,
+  free-text or itself-conditional sibling, an `in` value the sibling does not
+  allow, and `requiredWhen` together with `required`. Enforcement is
+  server-only; AND/OR, not-equal, comparisons and show/hide stay in `onSubmit`.
 - `minimum` and `maximum` now bound `type: date` and `type: datetime-local`
   fields as well as `type: number` (#528). A date bound is a `YYYY-MM-DD`
   string and a date-time bound a whole-minute `YYYY-MM-DDTHH:MM` string;

@@ -64,9 +64,43 @@ Fields are required unless `required: false` is declared. Supported server valid
 (`YYYY-MM-DDTHH:MM` with optional `:SS` and up to three fractional-second
 digits, no timezone offset: the formats browsers submit for those input
 types), a bounded safe `pattern` (only when `maxLength` is at most 128), string
-`enum`, select options, and the checkbox `true` value. Conditional/cross-field
-validation remains application-specific and belongs in a reviewed `onSubmit`
-hook. No arbitrary project HTML template is accepted.
+`enum`, select options, the checkbox `true` value, and a one-level conditional
+requirement (`requiredWhen`, below). Any other cross-field rule remains
+application-specific and belongs in a reviewed `onSubmit` hook. No arbitrary
+project HTML template is accepted.
+
+### Conditionally required fields
+
+`requiredWhen: {field, in}` makes a field required only when a sibling field in
+the same flow was submitted with one of the listed values, and optional
+otherwise:
+
+```yaml
+fields:
+  kind: {label: Account type, control: select, options: [{value: personal, label: Personal}, {value: business, label: Business}, {value: charity, label: Charity}]}
+  companyName: {label: Company name, maxLength: 200, requiredWhen: {field: kind, in: [business, charity]}}
+```
+
+When the condition holds, an empty field gets the same 422 `is required` error
+as an unconditionally required field (a conditional checkbox must be checked).
+When it does not, the field is optional. The field's other rules (length,
+pattern, `enum`, type and bounds) apply whenever it has a value, whether or not
+the condition holds. The requirement is enforced by the server only: the input
+is not marked `required` in HTML and nothing is shown or hidden in the browser,
+so say in the field's `description` when it becomes required.
+
+Activation refuses a `requiredWhen` whose `field` is undeclared, is the field
+itself, or is not a fixed-value field (a `select`, whose values are its
+`options`, or an input with `enum`); an `in` value the sibling does not allow;
+an empty or duplicated `in` (at most 128 values); a sibling that has its own
+`requiredWhen` (conditions are one level only); and `requiredWhen` together
+with `required`. Fields are required by default, so `requiredWhen` takes the
+place of `required` rather than qualifying it.
+
+Not supported, and still `onSubmit` territory: AND/OR combinations of
+conditions, "not equal" and comparisons, conditions on free-text fields,
+ordering between two fields (such as an end date after a start date), and
+showing or hiding fields.
 
 `minimum` and `maximum` bound a field's value, inclusive, in the field's own
 format: a number for `type: number`, a `YYYY-MM-DD` date for `type: date`, and
@@ -89,7 +123,7 @@ so a bound with seconds would make the picker reject ordinary values. A
 submitted value is compared at full precision, so with `maximum:
 "2026-01-09T17:30"` the value `17:30:00` is accepted and `17:30:01` is not.
 Bounds are absolute; relative bounds such as "today" or "two years from now"
-are not supported.
+are not supported (#705).
 
 ## Showing submitted values on the confirmation
 
