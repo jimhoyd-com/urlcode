@@ -162,7 +162,8 @@ validated by `request.body.schema`, not by a parameter (a failure answers 422 as
 JSON listing every issue; see [HTTP](HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
 OpenAPI `style`/`explode` fields are not implemented. This uses a documented
 OpenAPI-like input subset; it is not an OpenAPI document or full JSON Schema
-input vocabulary. String limits are at most 8,192 characters.
+input vocabulary. Parameter string limits are at most 8,192 characters; a
+body schema string may be as long as the request body limit ([HTTP](HTTP.md#body-schema-and-input-patterns)).
 
 Integers use `-?(0|[1-9][0-9]*)` and must be safe JavaScript integers. Numbers
 allow the same grammar plus a fractional suffix; no exponent, plus sign, leading

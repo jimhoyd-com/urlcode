@@ -1,12 +1,12 @@
 import Ajv from 'ajv/dist/2020.js';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { assert, ConfigError, HttpError } from './errors.ts';
+import { assert, ConfigError, extensionError, HttpError } from './errors.ts';
 import { extensionConfigError, extensionPolicyError, functionFile, loadDocument } from './config.ts';
 import { prepareFunctionSnapshot } from './policy.ts';
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import type { HandlerResult } from './http-response.ts';
-import type { ProjectDocument, RouteConfig, TargetName } from './types.ts';
+import type { ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
 import type { AddonAgentTooling } from './addon-manifest.ts';
 export type { HandlerResult } from './http-response.ts';
 /**
@@ -372,7 +372,32 @@ export function isSensitiveExtensionPolicy(names:readonly string[],registrations
   const byName=new Map(registrations.map(registration=>[registration.name,registration.cacheSensitive]));
   return names.some(name=>byName.get(name)!==false);
 }
-export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'>): {activate():Promise<ExtensionRegistry>} {
+/** A compiled Ajv validator for an extension's `policySchema`; absent when the extension declares none. */
+export type PolicyValidator=((data:unknown)=>boolean)&{errors?:import('ajv').ErrorObject[]|null|undefined};
+/** Static stand-in for an installed extension whose descriptor declares no policy schema: an empty requirement only (`auth: true`). */
+export const emptyPolicyOnly:PolicyValidator=data=>!Object.keys(data as object).length;
+/**
+ * Checks each route's effective `policies.extensions.<name>` requirement against that extension's policy schema,
+ * reporting the first violation per route through `report` (throwing by default) and returning the admitted
+ * requirements by route. A requirement that came from the `auth:` short form (`routeAuth`, from
+ * `normalizeRouteAuth`) is located at the route's `auth` key, where the author wrote it; `auth: {required: false,
+ * ...}` emits no policy, but the keys written beside it are still checked. Core knows none of the policy's keys.
+ */
+export function checkExtensionPolicies(document:ProjectDocument,routes:Record<string,RouteConfig>,routeAuth:Record<string,RouteAuthShortForm>|undefined,name:string,validator:PolicyValidator|undefined,report:(error:ConfigError)=>void=error=>{throw error;}):Map<string,Record<string,unknown>> {
+  const admitted=new Map<string,Record<string,unknown>>();
+  const check=(path:string,policy:Record<string,unknown>,written:string|undefined):boolean=>{
+    if(validator&&validator(policy))return true;
+    report(extensionPolicyError(name,path,validator?.errors,written));return false;
+  };
+  for(const [path,route]of Object.entries(routes)){
+    const short=name==='auth'&&routeAuth&&Object.hasOwn(routeAuth,path)?routeAuth[path]:undefined;
+    const policy=effectiveExtensionPolicies(document,route)[name];
+    if(policy&&check(path,policy,short?.required?'auth':undefined))admitted.set(path,policy);
+    if(short&&!short.required&&Object.keys(short.requirement).length)check(path,short.requirement,'auth');
+  }
+  return admitted;
+}
+export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'>,routeAuth?:Record<string,RouteAuthShortForm>): {activate():Promise<ExtensionRegistry>} {
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
   const provided=new Map<string,RuntimeExtension>(),entries=new Map<string,ActiveExtension>(),credentialHeaders=new Set<string>();
   for(const registration of registrations??[]){
@@ -419,14 +444,17 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       assert(declaration.version===registration.version,`Extension contract version mismatch: ${name}`);
       const config=structuredClone(declaration.config);
       const ajv=new Ajv.default({strict:true,allErrors:false,verbose:true});
-      const validateConfig=ajv.compile(registration.schema);
+      // The schemas are the operator's registration, not project YAML: a schema Ajv refuses is reported under
+      // the extension's name rather than as a generic failure.
+      let validateConfig:ReturnType<typeof ajv.compile>,policyValidator:ReturnType<typeof ajv.compile>|undefined;
+      try{validateConfig=ajv.compile(registration.schema);policyValidator=registration.policySchema?ajv.compile(registration.policySchema):undefined;}
+      catch(error){throw extensionError(error,name,'prepare');}
       if(!validateConfig(config))throw extensionConfigError(name,validateConfig.errors);
-      const policyValidator=registration.policySchema?ajv.compile(registration.policySchema):undefined;
       const policies=new Map<string,Readonly<Record<string,unknown>>>();
-      for(const [path,route]of Object.entries(routes)){const policy=effectiveExtensionPolicies(document,route)[name];if(policy){if(!policyValidator||!policyValidator(policy))throw extensionPolicyError(name,path,policyValidator?.errors);policies.set(path,frozen(structuredClone(policy)));}}
+      for(const [path,policy]of checkExtensionPolicies(document,routes,routeAuth,name,policyValidator))policies.set(path,frozen(structuredClone(policy)));
       const declaredHeaders=registration.credentialHeaders??[];
       assert(Array.isArray(declaredHeaders)&&declaredHeaders.length<=64,'Invalid extension credential headers');
-      for(const header of declaredHeaders){assert(typeof header==='string'&&header.length<=128,'Invalid extension credential header');validateHeaderName(header);credentialHeaders.add(header.toLowerCase());}
+      for(const header of declaredHeaders){assert(typeof header==='string'&&header.length<=128,'Invalid extension credential header');try{validateHeaderName(header);}catch(error){throw extensionError(error,name,'prepare');}credentialHeaders.add(header.toLowerCase());}
       // Session and bearer credentials never cross into application guests.
       credentialHeaders.add('cookie');credentialHeaders.add('authorization');
       const mounts=Object.entries(routes).filter(([,route])=>route.extension===name).map(([path])=>path.endsWith('/*')?path.slice(0,-2):path);
@@ -435,7 +463,11 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
   }
   return {async activate(){
     try{for(const {name,registration,config,policies,mounts,assetPrefixes}of preparations){
-      const instance=await registration.activate(config,frozen({...context,mounts}));
+      // What activate throws is the operator's own extension reporting its configuration or environment; it is
+      // named and kept (bounded, without a stack) so validate, test, dev and serve startup can print it.
+      let instance:ExtensionInstance;
+      try{instance=await registration.activate(config,frozen({...context,mounts}));}
+      catch(error){throw extensionError(error,name,'activate');}
       if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes});
       assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);
       entries.set(name,{instance,policies,assetPrefixes});

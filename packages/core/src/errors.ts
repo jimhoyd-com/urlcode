@@ -17,10 +17,13 @@ export interface ErrorDetails {
   pointer?: string | undefined;
   /** The mapping key at `pointer` the failure is about (an unknown or duplicated key). */
   key?: string | undefined;
+  /** The operator-registered extension the failure belongs to. */
+  extension?: string | undefined;
 }
 export class ConfigError extends Error {
   readonly details: ErrorDetails;
-  constructor(message: string, details: ErrorDetails = {}) { super(message); this.details = { ...details }; }
+  /** `options.cause` keeps the original error for the operator's own logs; the CLI prints only `message`. */
+  constructor(message: string, details: ErrorDetails = {}, options?: ErrorOptions) { super(message, options); this.details = { ...details }; }
 }
 export class HttpError extends Error {
   readonly status: number;
@@ -44,6 +47,30 @@ export function routeError(error: unknown, pattern: string): unknown {
   if (!(error instanceof ConfigError) || error.details.route !== undefined) return error;
   const named = error.message.startsWith(`${pattern}: `) || error.message.startsWith(`Route ${pattern} `);
   return new ConfigError(named ? error.message : `Route ${pattern}: ${error.message}`, { ...error.details, code: error.details.code ?? 'invalid-route', route: pattern, pointer: error.details.pointer ?? `/routes/${pattern.replace(/~/g, '~0').replace(/\//g, '~1')}` });
+}
+const MAX_REPORTED_MESSAGE = 500;
+/**
+ * An operator-authored error message made safe to print on one line: control characters and runs of whitespace
+ * collapse to a single space and the text is cut to a bounded length. Never includes a stack.
+ */
+export function boundedMessage(error: unknown, max = MAX_REPORTED_MESSAGE): string {
+  const raw = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  const text = raw.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim();
+  if (!text) return error instanceof Error ? `${error.name || 'Error'} with no message` : 'a non-Error value was thrown';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+/**
+ * Names the extension a failure raised while preparing or activating it belongs to, once. The result is a
+ * ConfigError, so `validate`, `test`, `dev` and `serve` startup print it: the text is what the operator's own
+ * extension code or registration threw, reported on the operator's own console, never in an HTTP response
+ * (request-time answers keep the fixed `Internal server error`). A ConfigError that already names an extension is
+ * returned unchanged; other ConfigErrors keep their details and gain the `extension` field.
+ */
+export function extensionError(error: unknown, name: string, phase: 'activate' | 'prepare'): ConfigError {
+  if (error instanceof ConfigError && error.details.extension !== undefined) return error;
+  const code = phase === 'activate' ? 'extension-activation' : 'extension-registration';
+  const details: ErrorDetails = error instanceof ConfigError ? { ...error.details, code: error.details.code ?? code, extension: name } : { code, extension: name };
+  return new ConfigError(`Extension ${JSON.stringify(name)} ${phase === 'activate' ? 'failed to activate' : 'registration could not be prepared'}: ${boundedMessage(error)}`, details, { cause: error });
 }
 /** The defined detail fields only, for JSON output. */
 export function errorFields(details: ErrorDetails): ErrorDetails {

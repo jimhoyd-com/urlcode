@@ -156,6 +156,19 @@ Optional factories supply Google/Apple/generic OIDC and passkey providers. Uncon
 
 `createPresentation` supplies configured locale catalogues, plural rules, RTL, and validated theme variables/local logo paths. Messages are plain text and escaped by renderers. It does not load executable project templates or arbitrary HTML/CSS. Translation coverage and accessibility require review; the helper does not establish WCAG conformance. Registration metadata is descriptive data and never authorization authority. Private metadata is excluded from public projections; public and unsafe fields remain untrusted.
 
+## Route requirements (`auth:`)
+
+This package owns the vocabulary of a route's `auth:` short form (and of the
+long form `policies.extensions.auth` it expands to). Core maps `auth: true` to
+`{}` and an object to the same object minus `required`, and knows nothing else
+about it; the keys and bounds are this package's `authPolicySchema`
+(`src/auth.ts`), published as `policySchema` in the registration and in
+`urlcode.json`. `urlcode validate`, `validateProject` and runtime startup check
+routes against it and report a failure at the key the author wrote, for example
+`Invalid extension policy at route /api/items, auth.bearer.quota.requests
+(minimum): must be >= 1`. Adding or tightening a route key is a change here, not
+in core's schema. See [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form).
+
 ## Bearer/API-key authentication
 
 `AuthService` also owns an optional, separate credential kind for

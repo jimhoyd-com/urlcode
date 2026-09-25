@@ -8,7 +8,7 @@ import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
 import type { ErrorDetails } from './errors.ts';
 import { reservedResponseHeaders } from './http-policy.ts';
-import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig, SharedBlock } from './types.ts';
+import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteAuthShortForm, RouteConfig, SharedBlock } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message and details. */
 export type ConfigWorkerResult = { value: LoadedDocument } | { error: string; details: ErrorDetails };
@@ -212,12 +212,14 @@ export function extensionConfigError(name: string, errors: ErrorObject[] | null 
 }
 /**
  * The first violation of an extension's route policy schema, described like `extensionConfigError` and located
- * under `/routes/<route>/policies/extensions/<name>`. The policy checked is the route's effective one (project and
- * profile layers merged with the route's own, and the `auth:` short form expanded), so the failing key may be
- * written in one of those layers. Without `errors` the extension declares no policy schema and accepts none.
+ * under `/routes/<route>/policies/extensions/<name>`, or under `/routes/<route>/<written>` when the author wrote the
+ * policy through a route short form (`auth` for `auth:`, which core expands to `policies.extensions.auth`). The
+ * policy checked is the route's effective one (project and profile layers merged with the route's own), so the
+ * failing key may be written in one of those layers. Without `errors` the extension declares no policy schema and
+ * accepts none.
  */
-export function extensionPolicyError(name: string, route: string, errors: ErrorObject[] | null | undefined): ConfigError {
-  const pointer = `/routes/${escapePointer(route)}/policies/extensions/${escapePointer(name)}`;
+export function extensionPolicyError(name: string, route: string, errors: ErrorObject[] | null | undefined, written?: string): ConfigError {
+  const pointer = `/routes/${escapePointer(route)}/${written === undefined ? `policies/extensions/${escapePointer(name)}` : escapePointer(written)}`;
   const first = errors ? selectSchemaError(errors) : undefined;
   if (!first) return new ConfigError(`Invalid extension policy at ${describeLocation(pointer)}: ${errors ? 'rejected by its policy schema' : `extension ${quoteKey(name)} declares no route policy`}`, { code: 'invalid-value', pointer, route });
   return describeSchemaError(first, { subject: 'extension policy', pointer, shapeHint: 'run urlcode extensions --json for its policy schema' });
@@ -409,10 +411,14 @@ export async function loadDocument(project: string, {timeoutMs=10000}: {timeoutM
 }
 /**
  * Expands the route-level `auth` short form into the canonical `policies.extensions.auth` requirement so every
- * downstream consumer (compiler, routes, audit, explain, revision hash) sees one form. `auth: {required: false}`
- * documents intent and emits nothing. Refuses routes that use both forms or lack an `extensions.auth` declaration.
+ * downstream consumer (compiler, routes, audit, explain, revision hash) sees one form. `auth: true` is `{}`, and
+ * `auth: {required: false}` documents intent and emits nothing. Core owns only this mapping: the requirement's keys
+ * belong to the auth extension, whose `policySchema` validates them (`prepareExtensions`). Refuses routes that use
+ * both forms or lack an `extensions.auth` declaration. Returns where each expansion came from, so a policy error
+ * can name the `auth` key the author wrote.
  */
-export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>, routes: Record<string, RouteConfig>): void {
+export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>, routes: Record<string, RouteConfig>): Record<string, RouteAuthShortForm> {
+  const origins: Record<string, RouteAuthShortForm> = Object.create(null) as Record<string, RouteAuthShortForm>;
   for (const [pattern, route] of Object.entries(routes)) {
     if (route.auth === undefined) continue;
     assert(document.extensions?.auth !== undefined, `Route ${pattern} declares auth but the project declares no extensions.auth`);
@@ -421,9 +427,11 @@ export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>
     assert(!(extensions && Object.hasOwn(extensions, 'auth')), `Route ${pattern} declares both auth and policies.extensions.auth; use one form`);
     const { required = true, ...requirement } = route.auth === true ? {} : route.auth;
     delete route.auth;
+    origins[pattern] = { required, requirement: structuredClone(requirement) };
     if (!required) continue;
     route.policies = { ...route.policies, extensions: { ...extensions, auth: requirement } };
   }
+  return origins;
 }
 export async function loadDocumentInWorker(project: string): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
@@ -457,9 +465,9 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     }
   }
   if(Object.keys(extensions).length)document.extensions=extensions;
-  normalizeRouteAuth(document, routes);
+  const routeAuth = normalizeRouteAuth(document, routes);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
-  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
+  return { root, document, routes, files, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
 }
 export async function loadBindings(root: string, local = false, environment: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
   const vars: Record<string, string> = {};

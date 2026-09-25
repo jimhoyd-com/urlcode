@@ -591,8 +591,10 @@ structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
 `invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
 `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
-`unknown-option`), `file`, `line` and `column`, `route` (the pattern as written)
-and `pointer` (an RFC 6901 pointer into the YAML). Configuration messages start
+`unknown-option`, `extension-activation`, `extension-registration`), `file`,
+`line` and `column`, `route` (the pattern as written), `pointer` (an RFC 6901
+pointer into the YAML) and `extension` (the operator extension that failed; see
+[local development](https://github.com/jimhoyd-com/urlcode/blob/main/docs/LOCAL-DEVELOPMENT.md)). Configuration messages start
 with `file:line:column:` where the location is known. Act on `code` and the
 location; the message says what to write instead.
 
@@ -1084,7 +1086,7 @@ See [organization](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/or
 | `shared.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | — |
 | `shared.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.format` | string | no | enum: ["text","json"] | — |
-| `shared.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `shared.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
 | `shared.*.response` | object | no | unknown keys rejected | — |
 | `shared.*.response.headers` | object | no | maxProperties: 64 | — |
 | `shared.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -1146,7 +1148,7 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | — |
 | `routes.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.format` | string | no | enum: ["text","json"] | — |
-| `routes.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `routes.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
 | `routes.*.response` | object | no | unknown keys rejected | — |
 | `routes.*.response.headers` | object | no | maxProperties: 64 | — |
 | `routes.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -1227,21 +1229,10 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.match.cookies.*` | string | no | maxLength: 1024 | — |
 | `routes.*.match.host` | string | no | maxLength: 255 | — |
 | `routes.*.match.method` | string | no | enum: ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS"] | — |
-| `routes.*.auth` | one of the shapes below | no | — | Short form for a route protected by the declared auth extension. true or an object expands to policies.extensions.auth with the same keys minus required; required: false emits no policy. Refused without an extensions.auth declaration or alongside policies.extensions.auth. |
+| `routes.*.auth` | one of the shapes below | no | — | Short form for a route protected by the declared auth extension: true, or an object that expands to policies.extensions.auth with the same keys minus required; required: false emits no policy. Core owns only this mapping; the object's other keys belong to the auth extension, whose policy schema validates them (reported at this route's auth key). Refused without an extensions.auth declaration or alongside policies.extensions.auth. |
 | `routes.*.auth (option 1)` | constant | no | const: true | — |
-| `routes.*.auth (option 2)` | object | no | unknown keys rejected | Keys other than required mirror the auth extension's policy schema; the installed extension validates the expanded requirement. |
+| `routes.*.auth (option 2)` | object | no | — | The auth extension's route requirement, plus required. Only required is defined here: the other keys are the auth extension's own policy vocabulary, validated by its policySchema (urlcode extensions --json) at validate time and at startup. |
 | `routes.*.auth (option 2).required` | boolean | no | default: true | — |
-| `routes.*.auth (option 2).role` | string | no | minLength: 1; maxLength: 64 | — |
-| `routes.*.auth (option 2).permission` | string | no | minLength: 1; maxLength: 128 | — |
-| `routes.*.auth (option 2).verified` | boolean | no | — | — |
-| `routes.*.auth (option 2).freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 | — |
-| `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] | — |
-| `routes.*.auth (option 2).bearer` | object | no | unknown keys rejected | Protects the route with a bearer/API-key credential instead of a signed-in session; exclusive of role/permission/verified/freshWithinSeconds/onDeny. |
-| `routes.*.auth (option 2).bearer.scopes` | array | yes | maxItems: 32 | — |
-| `routes.*.auth (option 2).bearer.scopes[]` | string | no | minLength: 1; maxLength: 128; pattern: "^[a-z][a-z0-9_.:-]*$" | — |
-| `routes.*.auth (option 2).bearer.quota` | object | no | unknown keys rejected | — |
-| `routes.*.auth (option 2).bearer.quota.requests` | integer | yes | minimum: 1; maximum: 1000000 | — |
-| `routes.*.auth (option 2).bearer.quota.window` | integer | yes | minimum: 1; maximum: 2592000 | — |
 | `routes.*.cache` | object | no | unknown keys rejected | Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged. |
 | `routes.*.cache.strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] | — |
 | `routes.*.cache.maxAge` | integer | no | minimum: 0; maximum: 31536000 | Seconds |
@@ -1788,7 +1779,8 @@ validated by `request.body.schema`, not by a parameter (a failure answers 422 as
 JSON listing every issue; see [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
 OpenAPI `style`/`explode` fields are not implemented. This uses a documented
 OpenAPI-like input subset; it is not an OpenAPI document or full JSON Schema
-input vocabulary. String limits are at most 8,192 characters.
+input vocabulary. Parameter string limits are at most 8,192 characters; a
+body schema string may be as long as the request body limit ([HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)).
 
 Integers use `-?(0|[1-9][0-9]*)` and must be safe JavaScript integers. Numbers
 allow the same grammar plus a fractional suffix; no exponent, plus sign, leading
@@ -2268,6 +2260,16 @@ including `$ref`, `oneOf` and `default`, fails activation. A schema is limited t
 6 levels, 128 nodes and 64 properties per object. It is checked by the runtime
 itself, so it behaves the same on every host and is not compiled from author
 code.
+
+A string `minLength`/`maxLength` may be as large as 1,048,576, the largest
+request body any route admits (`request.body.maxBytes` defaults to it and
+cannot exceed it), so a long text field such as a document or a pasted log
+needs no workaround. A string with a `pattern` keeps the 128-character
+`maxLength` described below, because that bound limits regex cost rather than
+size. `minItems`/`maxItems` go up to 10,000. The route's own `maxBytes` is not
+compared with the schema: it is checked first and answers 413, so a
+`maxLength` larger than `maxBytes` allows is accepted but never reached.
+Earlier releases capped string lengths at 8,192.
 
 A failing body answers **422** as `application/json`, whatever the client's
 `Accept` header: a route that declares a JSON body schema is a JSON endpoint,
@@ -3278,14 +3280,36 @@ routes:
 The compiler expands the short form before anything else reads the project:
 `auth: true` becomes `policies.extensions.auth: {}` and an object becomes the
 same object minus `required`. The long form stays the canonical representation,
-so `routes`, `audit` and `explain` show the expansion, the extension revision
-hash covers it, and the installed auth extension validates the expanded
-requirement with its own policy schema. The keys other than `required` are
-exactly that schema's keys (`role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny`, `bearer`); the runtime adds nothing of its own.
-Loading fails, naming the route, when `auth` appears without an
-`extensions.auth` declaration, next to `policies.extensions.auth`, or next to
-`policies.extensions: false`.
+so `routes`, `audit` and `explain` show the expansion and the extension revision
+hash covers it.
+
+Core owns only that mapping and `required`. Every other key belongs to the auth
+extension: the core schema accepts `true` or any object here, and the installed
+extension's own `policySchema` decides which keys and values are valid (today
+`role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny` and `bearer`;
+`urlcode extensions --json` prints the authoritative shape). A new auth policy
+key therefore ships with the auth package, not with core. Loading fails, naming
+the route, when `auth` is neither `true` nor an object, when `required` is not a
+boolean, when `auth` appears without an `extensions.auth` declaration, next to
+`policies.extensions.auth`, or next to `policies.extensions: false`.
+
+The auth policy schema is applied at validate time as well as at startup:
+`urlcode validate` checks it against the installed package's `urlcode.json`
+(or the host file's registration with `--host-file`), `validateProject` against
+the registrations passed as `extensions`, else the installed descriptor, and
+`createRuntime` against the registration it activates. A failure is located at
+the `auth` key the author wrote, not at the `policies.extensions.auth` it
+expands to:
+
+```text
+Invalid extension policy at route /api/items, auth.bearer.quota.requests (minimum): must be >= 1
+Invalid extension policy at route /a, auth (additionalProperties): unknown key "roles"; did you mean "role"? (run urlcode extensions --json for its policy schema)
+```
+
+The error details carry the matching pointer
+(`/routes/~1api~1items/auth/bearer/quota/requests`). Keys written beside
+`required: false` emit no requirement but are still checked, so a typo there
+does not wait until the route is switched back on.
 
 #### Bearer/API-key routes
 
@@ -3370,7 +3394,8 @@ The message names keys and schema-declared bounds, never the rejected value,
 because configuration can hold secrets.
 
 A route policy that fails the registration's `policySchema` is reported the
-same way, located at the route's `policies.extensions.<name>`:
+same way, located at the route's `policies.extensions.<name>` (or at its `auth`
+key when it was written with the [`auth` short form](#protecting-a-route-the-auth-short-form)):
 
 ```text
 Invalid extension policy at route /private, policies.extensions.auth.role (type): must be string (run urlcode extensions --json for its policy schema)
@@ -3382,10 +3407,11 @@ form expanded. The failing key may therefore be written in one of those layers
 rather than on the route. A route that names an extension declaring no
 `policySchema` fails with `extension "<name>" declares no route policy`.
 
-When a value can take more than one shape (a `oneOf`, such as `auth: true` or
-an `auth:` object), core and extension errors report the deepest failure in the
+When a value can take more than one shape (a `oneOf`, such as a `true` or
+object value), core and extension errors report the deepest failure in the
 shape that was tried, not the first alternative. So `auth: {freshWithinSeconds: 0}`
-names `auth.freshWithinSeconds (minimum)` rather than saying `auth` must be `true`.
+names `auth.freshWithinSeconds (minimum)`, reported by the auth extension's
+policy schema, rather than saying `auth` must be `true`.
 
 For extension-protected routes, agents/throttle run before authorization and
 cache access happens only after authorization. This part is unconditional:
@@ -3638,7 +3664,10 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    plus focused `fastChecks`. Keep descriptions concrete enough that an agent
    can choose a supported surface instead of copying package behavior.
 4. Activates all configuration, files, services and hooks before serving a
-   request. Invalid or stale configuration fails activation.
+   request. Invalid or stale configuration fails activation. Throw an `Error`
+   whose message names the offending setting: `validate`, `test`, `dev` and
+   `serve` startup print it as `Extension "<name>" failed to activate: <message>`
+   (one line, bounded, no stack); request-time answers stay generic.
 5. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
    policies. It closes resources it owns.
 6. Keeps credentials, storage and provider setup in the operator host. Project

@@ -123,6 +123,18 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   same stderr diagnostics on for a server; they never reach responses, the JSON
   event log or observers. Sandboxed (`sandbox: true`) routes are unchanged and
   still report only the generic answer.
+- An extension fails to activate: `validate`, `test` and `dev` with
+  `--host-file` print `Extension "<name>" failed to activate: <message>` (or
+  `registration could not be prepared` when core rejects the registration's
+  schemas or credential headers), with `code` `extension-activation` or
+  `extension-registration` and an `extension` field. The message is what the
+  extension threw, on one line, bounded to 500 characters and without a stack.
+  `serve` prints the same line when it refuses to start, because startup output
+  belongs to the operator; a request never sees it. The hosted AWS and Vercel
+  adapters activate on the first request and answer it with a plain `500
+  Internal server error`, logging the reason to the function log. A host file
+  that fails to load before any extension activates still gets the generic
+  `Operation failed` next step.
 - Changed runtime source: stop and restart dev, then `npm run typecheck`. Changed app source: reload is automatic.
 - Missing dependency or wrong Node: check `node --version`, then `npm ci`.
 - Need access from another device: explicitly use `HOST=0.0.0.0` or `--host 0.0.0.0`;

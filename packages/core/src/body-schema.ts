@@ -25,7 +25,15 @@ export interface BodySchema {
 export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const types = ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'];
 const keywords = new Set(['type','properties','required','additionalProperties','items','enum','minLength','maxLength','pattern','format','minimum','maximum','minItems','maxItems']);
-const limits = { depth: 6, nodes: 128, properties: 64, enums: 64, length: 8192, items: 10000 };
+/**
+ * The largest request body any route admits: `request.body.maxBytes` is at most
+ * this and defaults to it, on every host (#713). A JSON string can never hold
+ * more characters than its body has bytes, so it is also the string-length cap
+ * of this subset. A `pattern` node keeps the much smaller
+ * `maxPatternInputLength`, which bounds regex cost rather than size.
+ */
+export const maxRequestBodyBytes = 1048576;
+const limits = { depth: 6, nodes: 128, properties: 64, enums: 64, length: maxRequestBodyBytes, items: 10000 };
 /** The supported subset, stated up front by the capability catalog and checked against the schema description (#587). */
 export const bodySchemaSubset = { keywords: [...keywords], types: [...types], formats: ['uuid'], patternMaxLength: maxPatternInputLength, limits: { ...limits } } as const;
 const patterns = new WeakMap<BodySchema, RegExp>();

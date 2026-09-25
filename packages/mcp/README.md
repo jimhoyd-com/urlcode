@@ -85,10 +85,12 @@ JSON Schema subset `request.body.schema` accepts (`type`, `properties`,
 `required`, `additionalProperties`, `items`, `enum`, string/number/array
 bounds, `pattern` and `format: uuid`) and must declare `type: object` — an
 MCP tool call's `arguments`, and its structured result, are always objects. A
-call whose arguments fail `inputSchema` never reaches the handler; it answers
-a JSON-RPC `-32602 Invalid params` error carrying the same structured
-`issues` list `request.body.schema` produces, rendered as `pointer`/`message`
-text — reused, not reimplemented.
+call whose arguments fail `inputSchema` never reaches the handler. Under
+MCP revision `2025-11-25` it answers a tool result with `isError: true` whose
+text lists the failed checks; under earlier revisions it answers a JSON-RPC
+`-32602 Invalid params` error carrying the same checks as a structured
+`issues` list. Both use the wording `request.body.schema` produces,
+rendered as `pointer`/`message` text — reused, not reimplemented.
 
 A tool may also declare `outputSchema`. When present, the handler's return
 value must be an object conforming to it; `tools/call` then returns both a
@@ -118,7 +120,8 @@ run exactly like any other extension project hook
 code, in-process, with full Node access. `sandbox: true` is refused, the same
 as every other extension hook — v1 of this contract has no sandboxed tool
 protocol. A handler that throws never leaks its message or stack to the MCP
-caller; see [SECURITY.md](SECURITY.md) and `McpExtensionOptions.onToolError`
+caller (the one exception is a tool handler's deliberate `McpToolError`,
+below); see [SECURITY.md](SECURITY.md) and `McpExtensionOptions.onToolError`
 for how the operator observes the real error.
 
 Every handler is called as `handler(input, context)`. `context` is frozen and
@@ -157,8 +160,36 @@ implement").
 A **tool** handler receives the schema-validated `arguments` object as its
 first argument and returns any JSON-serializable value (or a plain string); the extension wraps
 it as a single MCP text content block (plus `structuredContent` when
-`outputSchema` is declared, above). A thrown tool handler error becomes a
-tool result with `isError: true` and a fixed generic message.
+`outputSchema` is declared, above).
+
+A tool handler that needs to tell the caller why a call failed, so the model
+can correct its arguments and retry, throws `McpToolError` (exported by
+`@jimhoyd/urlcode-mcp`). The result is `isError: true` with the error's
+message as its text content, a *tool execution error* in the specification's
+terms:
+
+```js
+// app/mcp-tools/book-flight.mjs
+import { McpToolError } from '@jimhoyd/urlcode-mcp';
+
+export default function bookFlight({ date }) {
+  if (Date.parse(date) < Date.now()) {
+    throw new McpToolError(`Invalid departure date ${date}: it must be in the future.`, { data: { field: 'date' } });
+  }
+  // ...
+}
+```
+
+The message is caller-facing text: write it for the model, and never put a
+secret or internal detail in it. Messages longer than 4096 characters are
+truncated. The optional `data` object is returned as `structuredContent` only
+when the tool declares an `outputSchema` and `data` conforms to it; otherwise
+it is dropped, the message is still returned, and `onToolError` observes the
+mismatch. `onToolError` is not called for an `McpToolError` itself, and
+`onToolCall` reports it as `outcome: 'tool_error'`. Any other thrown error
+becomes a tool result with `isError: true` and the fixed generic message
+`The tool could not complete the request.`; its text never reaches the
+caller.
 
 A **resource** handler receives an empty first argument (MCP resources are addressed
 only by their declared `uri`; parameterized resource templates are not
@@ -193,8 +224,9 @@ export default await composeHost(import.meta.url, [
 ```
 
 `onToolCall` runs once for every tool/resource/prompt handler invocation after
-it settles, with `outcome: 'success'` or `'error'` (the same failures
-`onToolError` observes), its duration and the request id. A call refused before
+it settles, with `outcome: 'success'`, `'tool_error'` (a tool handler threw
+`McpToolError`) or `'error'` (the same failures `onToolError` observes), its
+duration and the request id. A call refused before
 its handler runs (unknown name, arguments failing the schema) is not reported.
 Both callbacks are best-effort: one that throws is swallowed and never changes
 the response.
@@ -220,10 +252,18 @@ extension has no identity or authorization model of its own.
   echoed back verbatim — never a substitute id generated internally. This is
   the specific bug the evidence behind this package's issue reported in a
   hand-written implementation.
-- Protocol version negotiation on `initialize`: the client's requested
-  `protocolVersion` is echoed back when supported, otherwise the server's own
-  preferred version is returned, per the MCP specification's negotiation
-  flow. Behavior does not otherwise vary by negotiated version.
+- Protocol version negotiation on `initialize` for MCP revisions
+  `2025-11-25` (preferred), `2025-06-18`, `2025-03-26` and `2024-11-05`: the
+  client's requested `protocolVersion` is echoed back when supported,
+  otherwise `2025-11-25` is returned, per the MCP specification's negotiation
+  flow. Behavior varies by revision in one place only: under `2025-11-25`
+  (read from the request's `MCP-Protocol-Version` header, since the server
+  keeps no session), `tools/call` arguments that fail the declared
+  `inputSchema` answer a tool execution error (`isError: true`, the schema
+  issues as text) instead of `-32602`, as that revision's tools
+  specification requires so the model can correct its arguments. Every
+  schema the server advertises carries no `$schema` and is valid under the
+  JSON Schema 2020-12 default dialect `2025-11-25` establishes.
 - `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`,
   `resources/read`, `prompts/list`, `prompts/get`, and the
   `notifications/initialized` notification (accepted, produces no response —
@@ -253,7 +293,8 @@ extension has no identity or authorization model of its own.
 - Standard JSON-RPC error codes: `-32700` parse error, `-32600` invalid
   request (including a rejected batch array), `-32601` method not found,
   `-32602` invalid params (unknown tool/prompt name, a schema-failing
-  arguments object, or an invalid pagination cursor), `-32603` reserved for
+  arguments object before `2025-11-25` or for a prompt, a non-object
+  `arguments`, or an invalid pagination cursor), `-32603` reserved for
   an unexpected internal failure (including a thrown resource/prompt handler
   and a tool result that fails its own declared `outputSchema`), `-32002`
   resource not found.
@@ -261,6 +302,10 @@ extension has no identity or authorization model of its own.
   reported to the MCP caller as a generic failure and to the operator, via
   `onToolError`, with the real error and which server/hook/kind it came from
   — the extension makes no logging decision of its own beyond that callback.
+- Caller-facing tool execution errors: a tool handler that throws
+  `McpToolError` answers `isError: true` with its own bounded message (and
+  `structuredContent` from its `data` when that conforms to the declared
+  `outputSchema`).
 - Host-owned usage observation: `onToolCall` reports every handler
   invocation's outcome, duration and request id, success or failure.
 - Handler request context: `handler(input, { env, requestId, server, tool, kind })`,
@@ -295,6 +340,12 @@ extension has no identity or authorization model of its own.
 - OAuth/bearer authorization flows defined by the MCP authorization spec;
   protect a mount with the `auth` extension instead, the same as any other
   extension route.
+- The optional `2025-11-25` additions: `icons` on tools, resources, prompts
+  and `serverInfo`, `serverInfo.description`/`websiteUrl`, the experimental
+  `tasks` utility (no `tasks` capability is advertised and no tool declares
+  `execution.taskSupport`, so every call runs synchronously), and the
+  client-side elicitation and sampling changes, which need server-initiated
+  requests this server does not send.
 
 These are deliberate scope choices for a first, minimal, declarative surface
 ("MCP over HTTP becomes declarative", not a full-featured MCP server) rather

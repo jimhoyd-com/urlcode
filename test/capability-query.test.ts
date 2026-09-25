@@ -64,4 +64,5 @@ test('get_schema and get_capability state the whole request.body.schema subset u
  for(const type of bodySchemaSubset.types)assert.ok(described.includes(type)&&constraints.includes(type),type);
  assert.match(described,new RegExp('maxLength of at most '+bodySchemaSubset.patternMaxLength));assert.match(described,/format \(uuid only\)/);
  assert.match(constraints,new RegExp('at most '+bodySchemaSubset.patternMaxLength));
+ for(const text of [described,constraints])assert.ok(text.includes(String(bodySchemaSubset.limits.length))&&text.includes(String(bodySchemaSubset.limits.items)),'string and item caps are stated (#713)');
 });

@@ -34,9 +34,10 @@ non-loopback bind is not checked, so the `Origin` rule above remains the
 mount's own defence there (`docs/OPERATIONS.md`, host admission on a loopback bind).
 
 **The protocol revision header is checked.** Every message after
-`initialize` must carry a supported `MCP-Protocol-Version`, or none (treated
-as `2025-03-26`, per the transport specification); any other value is
-refused with `400` before dispatch.
+`initialize` must carry a supported `MCP-Protocol-Version` (`2025-11-25`,
+`2025-06-18`, `2025-03-26` or `2024-11-05`), or none (treated as
+`2025-03-26`, per the transport specification); any other value is refused
+with `400` before dispatch.
 
 **Request ids are never substituted.** The value returned as the JSON-RPC
 response `id` is always the exact value read from the request's own `id`
@@ -49,8 +50,9 @@ client-supplied id) that motivated adding this extension.
 
 **Tool arguments are always schema-checked before a handler runs.** A
 `tools/call` whose `arguments` fails the tool's declared `inputSchema` never
-reaches the handler; the caller gets a structured `-32602 Invalid params`
-error listing which declared constraint failed, using the same bounded
+reaches the handler; the caller gets a list of which declared constraint
+failed (under MCP revision `2025-11-25` as an `isError: true` tool result,
+under earlier revisions as a structured `-32602 Invalid params` error), using the same bounded
 validator (`@jimhoyd/urlcode/body-schema`, the exact code
 `request.body.schema` itself runs) a native route body already uses. Nothing
 the caller sent is echoed back in an issue; only the schema's own declared
@@ -71,7 +73,15 @@ handler can still read `process.env` itself.
 
 **A thrown handler error never reaches the MCP caller as written.** The
 caller always receives a fixed generic tool-result failure message
-(`isError: true`) with no error text or stack. The real error, and which
+(`isError: true`) with no error text or stack. The single exception is
+opt-in: a tool handler that throws `McpToolError` has chosen that message for
+the caller, so it is returned as the tool result's text (truncated to 4096
+characters), with its `data` as `structuredContent` only when it conforms to
+the tool's declared `outputSchema`. Only an error carrying the
+`McpToolError` brand is treated this way; any other error, including one whose
+message happens to look user-facing, keeps the generic message. The handler
+author is responsible for keeping secrets and internal detail out of an
+`McpToolError` message. The real error, and which
 server/tool it came from, is handed to the operator's own
 `McpExtensionOptions.onToolError` callback (best-effort: a throwing callback
 is itself swallowed rather than allowed to affect the response) — this is

@@ -928,7 +928,7 @@
           "pattern": "^[a-z][a-z0-9-]{0,63}$"
         },
         "auth": {
-          "description": "Short form for a route protected by the declared auth extension. true or an object expands to policies.extensions.auth with the same keys minus required; required: false emits no policy. Refused without an extensions.auth declaration or alongside policies.extensions.auth.",
+          "description": "Short form for a route protected by the declared auth extension: true, or an object that expands to policies.extensions.auth with the same keys minus required; required: false emits no policy. Core owns only this mapping; the object's other keys belong to the auth extension, whose policy schema validates them (reported at this route's auth key). Refused without an extensions.auth declaration or alongside policies.extensions.auth.",
           "oneOf": [
             {
               "const": true
@@ -1000,80 +1000,13 @@
     },
     "routeAuth": {
       "type": "object",
-      "description": "Keys other than required mirror the auth extension's policy schema; the installed extension validates the expanded requirement.",
+      "description": "The auth extension's route requirement, plus required. Only required is defined here: the other keys are the auth extension's own policy vocabulary, validated by its policySchema (urlcode extensions --json) at validate time and at startup.",
       "properties": {
         "required": {
           "type": "boolean",
           "default": true
-        },
-        "role": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64
-        },
-        "permission": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "verified": {
-          "type": "boolean"
-        },
-        "freshWithinSeconds": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 3600
-        },
-        "onDeny": {
-          "enum": [
-            401,
-            403,
-            404,
-            "sign-in"
-          ]
-        },
-        "bearer": {
-          "type": "object",
-          "description": "Protects the route with a bearer/API-key credential instead of a signed-in session; exclusive of role/permission/verified/freshWithinSeconds/onDeny.",
-          "required": [
-            "scopes"
-          ],
-          "properties": {
-            "scopes": {
-              "type": "array",
-              "maxItems": 32,
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128,
-                "pattern": "^[a-z][a-z0-9_.:-]*$"
-              }
-            },
-            "quota": {
-              "type": "object",
-              "required": [
-                "requests",
-                "window"
-              ],
-              "properties": {
-                "requests": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000000
-                },
-                "window": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 2592000
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
         }
-      },
-      "additionalProperties": false
+      }
     },
     "policyThrottle": {
       "type": "object",
@@ -1851,7 +1784,7 @@
             },
             "schema": {
               "type": "object",
-              "description": "A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object."
+              "description": "A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object."
             }
           },
           "additionalProperties": false

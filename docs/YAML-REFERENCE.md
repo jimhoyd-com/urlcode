@@ -48,7 +48,7 @@ See [organization](yaml/organization.md) for examples.
 | `shared.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | — |
 | `shared.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.format` | string | no | enum: ["text","json"] | — |
-| `shared.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `shared.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
 | `shared.*.response` | object | no | unknown keys rejected | — |
 | `shared.*.response.headers` | object | no | maxProperties: 64 | — |
 | `shared.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -110,7 +110,7 @@ See [functions, inputs and methods](yaml/functions.md) and [bindings, split file
 | `routes.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | — |
 | `routes.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.format` | string | no | enum: ["text","json"] | — |
-| `routes.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `routes.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
 | `routes.*.response` | object | no | unknown keys rejected | — |
 | `routes.*.response.headers` | object | no | maxProperties: 64 | — |
 | `routes.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -191,21 +191,10 @@ See [functions, inputs and methods](yaml/functions.md) and [bindings, split file
 | `routes.*.match.cookies.*` | string | no | maxLength: 1024 | — |
 | `routes.*.match.host` | string | no | maxLength: 255 | — |
 | `routes.*.match.method` | string | no | enum: ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS"] | — |
-| `routes.*.auth` | one of the shapes below | no | — | Short form for a route protected by the declared auth extension. true or an object expands to policies.extensions.auth with the same keys minus required; required: false emits no policy. Refused without an extensions.auth declaration or alongside policies.extensions.auth. |
+| `routes.*.auth` | one of the shapes below | no | — | Short form for a route protected by the declared auth extension: true, or an object that expands to policies.extensions.auth with the same keys minus required; required: false emits no policy. Core owns only this mapping; the object's other keys belong to the auth extension, whose policy schema validates them (reported at this route's auth key). Refused without an extensions.auth declaration or alongside policies.extensions.auth. |
 | `routes.*.auth (option 1)` | constant | no | const: true | — |
-| `routes.*.auth (option 2)` | object | no | unknown keys rejected | Keys other than required mirror the auth extension's policy schema; the installed extension validates the expanded requirement. |
+| `routes.*.auth (option 2)` | object | no | — | The auth extension's route requirement, plus required. Only required is defined here: the other keys are the auth extension's own policy vocabulary, validated by its policySchema (urlcode extensions --json) at validate time and at startup. |
 | `routes.*.auth (option 2).required` | boolean | no | default: true | — |
-| `routes.*.auth (option 2).role` | string | no | minLength: 1; maxLength: 64 | — |
-| `routes.*.auth (option 2).permission` | string | no | minLength: 1; maxLength: 128 | — |
-| `routes.*.auth (option 2).verified` | boolean | no | — | — |
-| `routes.*.auth (option 2).freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 | — |
-| `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] | — |
-| `routes.*.auth (option 2).bearer` | object | no | unknown keys rejected | Protects the route with a bearer/API-key credential instead of a signed-in session; exclusive of role/permission/verified/freshWithinSeconds/onDeny. |
-| `routes.*.auth (option 2).bearer.scopes` | array | yes | maxItems: 32 | — |
-| `routes.*.auth (option 2).bearer.scopes[]` | string | no | minLength: 1; maxLength: 128; pattern: "^[a-z][a-z0-9_.:-]*$" | — |
-| `routes.*.auth (option 2).bearer.quota` | object | no | unknown keys rejected | — |
-| `routes.*.auth (option 2).bearer.quota.requests` | integer | yes | minimum: 1; maximum: 1000000 | — |
-| `routes.*.auth (option 2).bearer.quota.window` | integer | yes | minimum: 1; maximum: 2592000 | — |
 | `routes.*.cache` | object | no | unknown keys rejected | Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged. |
 | `routes.*.cache.strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] | — |
 | `routes.*.cache.maxAge` | integer | no | minimum: 0; maximum: 31536000 | Seconds |

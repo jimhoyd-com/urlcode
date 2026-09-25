@@ -32,10 +32,14 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   their own.
 - A tool/resource/prompt `handler` is trusted project code, runs only after
   arguments pass the declared schema, and must never assume its errors are
-  shown to the MCP caller verbatim (they are not).
+  shown to the MCP caller verbatim (they are not). To return a caller-facing
+  tool error, a tool handler throws `McpToolError` from `@jimhoyd/urlcode-mcp`
+  (`isError: true` with that message; `onToolCall` outcome `'tool_error'`).
 - A present `Origin` that is not exactly the site's `--origin` answers 403 before parsing; no
   `Origin` is admitted; there is no allowlist of other origins. After `initialize`, an
   unsupported `MCP-Protocol-Version` answers 400 (missing means `2025-03-26`).
+- Supported revisions: `2025-11-25` (preferred), `2025-06-18`, `2025-03-26`, `2024-11-05`.
+  Under `2025-11-25`, tool arguments failing `inputSchema` answer an `isError: true` result, not `-32602`.
 - No SSE/streaming transport or session ids in v1 (a core `HandlerResult` has
   no streaming body yet); JSON-RPC batching is refused by design, not
   deferred; see README "What this does not implement".

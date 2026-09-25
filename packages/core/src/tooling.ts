@@ -10,7 +10,11 @@ import type {ImportRoutesOptions,InterchangeFormat} from './interchange.ts';
 import {listRecipes,showRecipe,searchRecipes} from './recipes.ts';
 import {listExamples,searchExamples} from './examples.ts';
 import type {CompiledRoute,PolicyChain,PolicyShared} from './types.ts';
-import {effectiveExtensionPolicies} from './extensions.ts';
+import {checkExtensionPolicies,effectiveExtensionPolicies,emptyPolicyOnly} from './extensions.ts';
+import {readInstalledDescriptor} from './addon-install.ts';
+import Ajv from 'ajv/dist/2020.js';
+import {dirname} from 'node:path';
+import type {LoadedDocument} from './types.ts';
 import type {RuntimeExtension} from './extensions.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {explainCompiledRoute,nearestRoutes} from './explain.ts';
@@ -44,15 +48,37 @@ export async function prepare(project:string,options:InspectOptions={}) {
 }
 function compatibilitySummary(report:CompatibilityReport) {return {target:report.target,compatible:report.compatible,deployment:report.deployment,requirementCount:report.requirements.length,issueCount:report.issues.length};}
 /** Semantic authoring inspection; no binding reads, sandbox execution or runtime activation. */
-export async function inspectProject(project:string,options:InspectOptions={}) {
+export async function inspectProject(project:string,options:InspectOptions={}) {inspectionPage(options);return inspectPrepared(await prepare(project,options),options);}
+function inspectionPage(options:InspectOptions):{offset:number;limit:number} {
  const offset=options.offset??0,limit=options.limit??100;
  if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>1000)throw new Error('Invalid inspection page');
- const {loaded,compiled,routes,projectSha256}=await prepare(project,options);
+ return {offset,limit};
+}
+function inspectPrepared({loaded,compiled,routes,projectSha256}:Awaited<ReturnType<typeof prepare>>,options:InspectOptions) {
+ const {offset,limit}=inspectionPage(options);
  const report=analyzeCompiledCapabilities(loaded.document,compiled,options.target??'self-hosted',options.extensions);
  return {format:1,projectSha256,routeCount:compiled.count,offset,limit,routes:routes.slice(offset,offset+limit).map(route=>({path:route.pattern,methods:route.methods,enabled:route.enabled!==false,capabilities:routeCapabilities(route,loaded.document)})),compatibility:{...compatibilitySummary(report),offset,limit,hasMore:offset+limit<report.issues.length,issues:report.issues.slice(offset,offset+limit)}};
 }
+/**
+ * Each declared extension's route requirements against the policy schema that will judge them at startup: the
+ * supplied operator registration's, else the installed package's static `urlcode.json` descriptor in the enclosing
+ * site. Core does not know any extension's policy keys (not even the `auth:` short form's), so this is what refuses
+ * a bad requirement at validate time. An extension with neither is left to the runtime; nothing is activated.
+ */
+async function validateExtensionPolicies(loaded:LoadedDocument,registrations:RuntimeExtension[]|undefined):Promise<void> {
+ const ajv=new Ajv.default({strict:false,allErrors:false,verbose:true});
+ for(const name of Object.keys(loaded.document.extensions??{})){
+  const registration=registrations?.find(candidate=>candidate?.name===name);
+  if(registration){checkExtensionPolicies(loaded.document,loaded.routes,loaded.routeAuth,name,registration.policySchema?ajv.compile(registration.policySchema):undefined);continue;}
+  const descriptor=await readInstalledDescriptor(dirname(loaded.root),name).catch(()=>undefined);
+  if(descriptor?.kind!=='extension')continue;
+  checkExtensionPolicies(loaded.document,loaded.routes,loaded.routeAuth,name,descriptor.policySchema?ajv.compile(descriptor.policySchema):emptyPolicyOnly);
+ }
+}
 export async function validateProject(project:string,options:InspectOptions={}) {
- const result=await inspectProject(project,{...options,offset:0,limit:1});
+ const prepared=await prepare(project,options);
+ await validateExtensionPolicies(prepared.loaded,options.extensions);
+ const result=inspectPrepared(prepared,{...options,offset:0,limit:1});
  const {target,compatible,deployment,requirementCount,issueCount,issues}=result.compatibility;
  return {valid:true,projectSha256:result.projectSha256,routeCount:result.routeCount,compatibility:{target,compatible,deployment,requirementCount,issueCount,firstIssue:issues[0]??null}};
 }
