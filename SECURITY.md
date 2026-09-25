@@ -74,6 +74,12 @@ confirmed issues use private coordination and a public advisory when appropriate
 
 Bind loopback by default; protect public deployments with HTTPS, rate limits,
 network controls and restricted operational endpoints. See [operations](docs/OPERATIONS.md).
+A server bound to loopback refuses, with 421 and before routing, any request
+whose `Host` is not a loopback name on its bound port or the `--origin`
+authority, so a DNS-rebinding page cannot reach it as same-origin. A
+non-loopback bind (including the container image's `0.0.0.0`) and the
+platform-fronted AWS, Vercel and Cloudflare targets are not checked; see
+[host admission](docs/OPERATIONS.md#host-admission-on-a-loopback-bind).
 
 Use a current reviewed commit: a shared version label alone does not
 identify which hardening patches are present. Internal source-review details are

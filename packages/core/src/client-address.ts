@@ -106,3 +106,43 @@ export function clientKey(address: unknown): string | undefined {
   for (let i = 0; i < clientKeyIpv6Prefix / 8; i += 2) groups.push(((bytes[i]! << 8) | bytes[i + 1]!).toString(16));
   return `${groups.join(':')}::/${clientKeyIpv6Prefix}`;
 }
+
+
+/** Whether a bound socket address is loopback: 127.0.0.0/8, ::1 or an IPv4-mapped 127.x address. */
+export function isLoopbackAddress(address: string): boolean {
+  const bytes = toBytes(address);
+  if (bytes?.length === 4) return bytes[0] === 127;
+  return bytes?.length === 16 && bytes.every((byte, index) => byte === (index === 15 ? 1 : 0));
+}
+
+/**
+ * The Host admission check for a server bound to a loopback address, where a
+ * DNS-rebinding page can otherwise reach it as a same-origin target. Returns
+ * undefined when the bound address is not loopback: such a server is not checked.
+ * The returned function answers whether a request's raw headers and target may
+ * proceed: exactly one Host header naming a loopback alias (or the bound
+ * literal) on the bound port, or the configured public origin's authority.
+ */
+export function loopbackHostCheck(bound: { address: string; port: number }, origin?: string): ((rawHeaders: string[], target: string) => boolean) | undefined {
+  if (!isLoopbackAddress(bound.address)) return undefined;
+  const allowed = new Set<string>();
+  const literal = bound.address.includes(':') ? `[${bound.address.toLowerCase()}]` : bound.address;
+  for (const name of ['localhost', '127.0.0.1', '[::1]', literal]) {
+    allowed.add(`${name}:${bound.port}`);
+    // A Host without a port means the scheme's default; the Node server speaks plain HTTP.
+    if (bound.port === 80) allowed.add(name);
+  }
+  if (origin) {
+    const url = new URL(origin);
+    if (url.port) allowed.add(`${url.hostname}:${url.port}`);
+    else { allowed.add(url.hostname); allowed.add(`${url.hostname}:${url.protocol === 'https:' ? 443 : 80}`); }
+  }
+  return (rawHeaders, target) => {
+    let host: string | undefined, count = 0;
+    for (let i = 0; i < rawHeaders.length; i += 2) if (rawHeaders[i]?.toLowerCase() === 'host') { count++; host = rawHeaders[i + 1]; }
+    if (count !== 1 || host === undefined || !allowed.has(host.toLowerCase())) return false;
+    // An absolute-form target carries its own authority, which RFC 9112 §3.2.2 says wins over Host.
+    const absolute = /^https?:\/\/([^/?#]*)/i.exec(target);
+    return absolute === null || allowed.has((absolute[1] ?? '').toLowerCase());
+  };
+}

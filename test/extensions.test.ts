@@ -71,7 +71,7 @@ test('missing registrations, unsupported versions, invalid config and stale gran
 test('extension mounts receive bounded bodies, preserve cookies in host code and force private responses',async t=>{
   const root=await project(t,{'/demo/*':mount,'/other':{respond:{text:'other'}}},{},{extensions:declarations});
   const app=await startServer({project:root,origin,port:0,extensions:[await registration(root)],log:()=>{}});t.after(()=>app.close());
-  const response=await request(app,'/demo/login',{method:'POST',body:'body',headers:{cookie:'session=yes',host:'attacker.test'}});
+  const response=await request(app,'/demo/login',{method:'POST',body:'body',headers:{cookie:'session=yes','x-forwarded-host':'attacker.test'}});
   assert.equal(response.status,200);assert.deepEqual(JSON.parse(response.body),{label:'hello',path:'/demo/login',mount:'/demo',body:'body',origin,cookie:'session=yes'});
   assert.equal(response.headers['cache-control'],'no-store');assert.equal(response.headers['cdn-cache-control'],undefined);
   assert.equal((await request(app,'/demo')).status,200);assert.equal((await request(app,'/demonstration')).status,404);

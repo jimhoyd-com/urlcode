@@ -1693,7 +1693,9 @@ the operator's `--origin`; `sitemap` refuses activation without one. See
 
 Optional route `match` conjunctively compares exact query/header/cookie strings,
 an uppercase method and the canonical authority of the operator-configured
-public origin. Host/forwarded headers never select the trusted host. A guard
+public origin. Host/forwarded headers never select the trusted host (a
+self-hosted server bound to loopback refuses an unexpected `Host` before routing;
+see [host admission](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#host-admission-on-a-loopback-bind)). A guard
 mismatch returns 404 without trying a less-specific path; route method admission
 still applies after the guard. Conditions are not authentication or authorization.
 

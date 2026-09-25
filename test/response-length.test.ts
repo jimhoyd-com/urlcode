@@ -61,7 +61,8 @@ function pipeline(port: number, raw: string, expected: number): Promise<Parsed[]
     socket.write(raw);
   });
 }
-const get = (path: string): string => `GET ${path} HTTP/1.1\r\nhost: localhost\r\n\r\n`;
+// A URLCode server bound to loopback admits Host only with its bound port; the plain Node server below takes any.
+const get = (path: string, port?: number): string => `GET ${path} HTTP/1.1\r\nhost: localhost${port === undefined ? '' : `:${port}`}\r\n\r\n`;
 
 async function sandboxed(t: TestContext, files: Record<string, string>): Promise<number> {
   const routes = Object.fromEntries(Object.keys(files).map(file => [`/${file.replace('.mjs', '')}`, { sandbox: true, function: { source: file } }]));
@@ -191,11 +192,11 @@ test('a sandboxed GET response stating a length is refused; HEAD keeps the GET l
     }`,
     'text.mjs': `export default () => new Response(${escapeUnsafeChars(JSON.stringify(text))});`,
   });
-  const stated = await pipeline(port, get('/stated') + get('/text'), 2);
+  const stated = await pipeline(port, get('/stated', port) + get('/text', port), 2);
   assert.equal(stated[0]?.status, 502);
   assert.ok(!stated.some(response => response.body === 'inner'));
 
-  const [plain, follow] = await pipeline(port, get('/text') + get('/text'), 2);
+  const [plain, follow] = await pipeline(port, get('/text', port) + get('/text', port), 2);
   assert.equal(plain?.body, text); assert.equal(follow?.body, text);
   assert.equal(plain?.headers['content-length'], String(Buffer.byteLength(text)));
   const head = await request({ address: { port } }, '/text', { method: 'HEAD' });

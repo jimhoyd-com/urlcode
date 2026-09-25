@@ -7,7 +7,7 @@
   {"path":"/beta","status":404},
   {"path":"/beta","headers":{"x-beta-user":"true","cookie":"bucket=beta"},"status":200,"expectBody":"beta preview"},
   {"path":"/beta","headers":{"x-beta-user":"true","cookie":"bucket=beta; bucket=other"},"status":400},
-  {"path":"/host","headers":{"host":"attacker.example.test","x-forwarded-host":"attacker.example.test"},"status":200,"expectBody":"trusted origin"},
+  {"path":"/host","headers":{"x-forwarded-host":"attacker.example.test"},"status":200,"expectBody":"trusted origin"},
   {"path":"/limited","status":200,"expectBody":"get only"},
   {"path":"/limited","method":"HEAD","status":404,"expectBody":""}
 ]
