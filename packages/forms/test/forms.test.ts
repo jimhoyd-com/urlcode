@@ -193,13 +193,13 @@ test('re-issues the binding cookie on every render, so a form rendered at t=9min
   assert.equal(answer.status,303,'the token rendered at t=9min is admitted at t=12min because its binding cookie was refreshed');
 });
 
-async function startWithFields(t:test.TestContext,fields:Record<string,unknown>){
+async function startWithFields(t:test.TestContext,fields:Record<string,unknown>,flowExtra:Record<string,unknown>={},now?:()=>number){
   const root=await mkdtemp(join(tmpdir(),'forms-bounds-'));t.after(()=>rm(root,{recursive:true,force:true}));
   const project=join(root,'app');await mkdir(project);
-  const forms={version:'1',config:{flows:{contact:{mount:'/contact',title:'Contact',submitLabel:'Send',confirmation:{title:'Thanks',message:'Received.'},fields}}}};
+  const forms={version:'1',config:{flows:{contact:{mount:'/contact',title:'Contact',submitLabel:'Send',confirmation:{title:'Thanks',message:'Received.'},fields,...flowExtra}}}};
   await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{ui:{version:'1',config:{}},forms},routes:{'/assets/ui/*':{extension:'ui'},'/contact/*':{extension:'forms',methods:['GET','HEAD','POST']}}}));
   const projectSha256=await inspectExtensionRevision(project),ui=createUiExtension({projectRoot:project,projectSha256});
-  return startServer({project,origin,port:0,log:()=>{},extensions:[ui.registration,createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32)})]});
+  return startServer({project,origin,port:0,log:()=>{},extensions:[ui.registration,createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32),...(now?{now}:{})})]});
 }
 
 test('date and datetime-local bounds are enforced on submission and rendered as HTML min/max (#528)',async t=>{
@@ -239,6 +239,75 @@ test('date and datetime-local bounds are checked at activation (#528)',async t=>
   // The config schema refuses seconds before validateFlow sees them: date-time bounds are whole minutes.
   await assert.rejects(startWithFields(t,{d:{label:'D',type:'datetime-local',minimum:'2026-01-01T09:00:30'}}));
   for(const field of [{label:'D',type:'date',minimum:'2026-01-01',maximum:'2026-01-01'},{label:'D',type:'datetime-local',minimum:'2026-01-01T09:00',maximum:'2026-01-01T09:00'},{label:'D',type:'number',minimum:1,maximum:2}]){const app=await startWithFields(t,{d:field});await app.close();}
+});
+
+// Relative date bounds (#705): "today" in the flow's declared time zone (UTC by default), read per request from an injected clock.
+function boundClient(app:{address:{port:number}}){
+  const cookies=new Map<string,string>();
+  const call=async(path:string,init:RequestInit={})=>{const headers=new Headers(init.headers);if(cookies.size)headers.set('cookie',[...cookies].map(([key,value])=>`${key}=${value}`).join('; '));const response=await fetch(`http://127.0.0.1:${app.address.port}${path}`,{...init,headers,redirect:'manual'});for(const header of response.headers.getSetCookie()){const first=header.split(';')[0]!,index=first.indexOf('=');cookies.set(first.slice(0,index),first.slice(index+1));}return response;};
+  const bounds=async()=>{const page=await (await call('/contact')).text(),found:Record<string,{min?:string;max?:string}>={};for(const [input] of page.matchAll(/<input[^>]*>/g)){const name=/ name="([^"]+)"/.exec(input)?.[1];if(!name||name==='csrf')continue;const min=/ min="([^"]+)"/.exec(input)?.[1],max=/ max="([^"]+)"/.exec(input)?.[1];found[name]={...(min?{min}:{}),...(max?{max}:{})};}return {page,found};};
+  const submit=async(values:Record<string,string>)=>{const {page}=await bounds();const csrf=/name="csrf" value="([^"]+)"/.exec(page)![1]!;const response=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf,...values})});return {status:response.status,html:await response.text()};};
+  return {bounds,submit};
+}
+const relativeFields={birth:{label:'Birth date',type:'date',required:false,maximum:{from:'today',add:'-P18Y'}},start:{label:'Start',type:'date',required:false,minimum:'today',maximum:{from:'today',add:'P1M'}},slot:{label:'Slot',type:'datetime-local',required:false,minimum:'today',maximum:'today'},since:{label:'Since',type:'date',required:false,minimum:'2020-01-01',maximum:'today'}};
+
+test('relative date bounds resolve against today in UTC when the flow declares no time zone, per request (#705)',async t=>{
+  let clock=Date.parse('2026-03-31T23:30:00Z');const app=await startWithFields(t,relativeFields,{},()=>clock);t.after(()=>app.close());const {bounds,submit}=boundClient(app);
+  assert.deepEqual((await bounds()).found,{birth:{max:'2008-03-31'},start:{min:'2026-03-31',max:'2026-04-30'},slot:{min:'2026-03-31T00:00',max:'2026-03-31T23:59'},since:{min:'2020-01-01',max:'2026-03-31'}});
+  for(const values of [{birth:'2008-03-31'},{start:'2026-03-31'},{start:'2026-04-30'},{slot:'2026-03-31T00:00'},{slot:'2026-03-31T23:59:59.999'},{since:'2026-03-31'}])assert.equal((await submit(values)).status,303,JSON.stringify(values));
+  for(const [values,message] of [[{birth:'2008-04-01'},'must be on or before 2008-03-31'],[{start:'2026-03-30'},'must be on or after 2026-03-31'],[{start:'2026-05-01'},'must be on or before 2026-04-30'],[{slot:'2026-03-30T23:59:59.999'},'must be on or after 2026-03-31T00:00'],[{slot:'2026-04-01T00:00'},'must be on or before 2026-03-31T23:59'],[{since:'2026-04-01'},'must be on or before 2026-03-31']] as const){const answer=await submit(values);assert.equal(answer.status,422,JSON.stringify(values));assert.match(answer.html,new RegExp(message));}
+  // The same process, one hour later: the next UTC day. Page attributes and the server check both move.
+  clock=Date.parse('2026-04-01T00:30:00Z');
+  assert.deepEqual((await bounds()).found.start,{min:'2026-04-01',max:'2026-05-01'});
+  assert.equal((await submit({start:'2026-03-31'})).status,422,'yesterday is refused once the clock passes midnight');
+  assert.equal((await submit({start:'2026-05-01'})).status,303);
+});
+
+test('relative date bounds use the declared IANA time zone, not UTC or the host zone, near midnight (#705)',async t=>{
+  // 23:30 UTC on 31 March 2026 is already 1 April in London (BST) and still 31 March in Los Angeles; 10:30 UTC is already the next day in Auckland.
+  const clock=Date.parse('2026-03-31T23:30:00Z');
+  for(const [timeZone,start,birth,slot] of [['Europe/London','2026-04-01','2008-04-01','2026-04-01'],['America/Los_Angeles','2026-03-31','2008-03-31','2026-03-31'],['Etc/UTC','2026-03-31','2008-03-31','2026-03-31']] as const){
+    const app=await startWithFields(t,relativeFields,{timeZone},()=>clock);const {bounds,submit}=boundClient(app);
+    const {found}=await bounds();assert.equal(found.start!.min,start,timeZone);assert.equal(found.birth!.max,birth,timeZone);assert.equal(found.slot!.min,`${slot}T00:00`,timeZone);assert.equal(found.slot!.max,`${slot}T23:59`,timeZone);
+    const yesterday=await submit({start:'2026-03-31'});assert.equal(yesterday.status,timeZone==='Europe/London'?422:303,timeZone);
+    await app.close();
+  }
+  const auckland=await startWithFields(t,relativeFields,{timeZone:'Pacific/Auckland'},()=>Date.parse('2026-03-31T10:30:00Z'));const {bounds}=boundClient(auckland);
+  assert.equal((await bounds()).found.start!.min,'2026-03-31');await auckland.close();
+  const late=await startWithFields(t,relativeFields,{timeZone:'Pacific/Auckland'},()=>Date.parse('2026-03-31T11:30:00Z'));
+  assert.equal((await boundClient(late).bounds()).found.start!.min,'2026-04-01','Auckland (NZDT, UTC+13) reaches 1 April at 11:00 UTC');await late.close();
+});
+
+test('relative bounds move years and months first, clamp to the month end, then move days (#705)',async t=>{
+  let clock=0;const at=(date:string)=>{clock=Date.parse(`${date}T12:00:00Z`);};
+  const fields={month:{label:'M',type:'date',required:false,maximum:{from:'today',add:'P1M'}},back:{label:'B',type:'date',required:false,minimum:{from:'today',add:'-P1M'}},year:{label:'Y',type:'date',required:false,maximum:{from:'today',add:'-P18Y'}},mixed:{label:'X',type:'date',required:false,maximum:{from:'today',add:'P1Y6M'}},days:{label:'D',type:'date',required:false,maximum:{from:'today',add:'P30D'}},both:{label:'MD',type:'date',required:false,maximum:{from:'today',add:'P1M1D'}},low:{label:'L',type:'date',required:false,minimum:{from:'today',add:'-P99999Y'}},high:{label:'H',type:'date',required:false,maximum:{from:'today',add:'P99999Y'}}};
+  const app=await startWithFields(t,fields,{},()=>clock);t.after(()=>app.close());const {bounds}=boundClient(app);
+  at('2026-01-31');let {found}=await bounds();
+  assert.equal(found.month!.max,'2026-02-28','Jan 31 + P1M clamps to the end of February');assert.equal(found.days!.max,'2026-03-02','P30D counts days');assert.equal(found.both!.max,'2026-03-01','P1M1D: months (clamped to Feb 28) and then one day');assert.equal(found.back!.min,'2025-12-31');
+  assert.equal(found.low!.min,'0001-01-01','a result before year 1 clamps to 0001-01-01');assert.equal(found.high!.max,'9999-12-31','a result after year 9999 clamps to 9999-12-31');
+  at('2028-01-31');({found}=await bounds());assert.equal(found.month!.max,'2028-02-29','leap-year February');
+  at('2028-02-29');({found}=await bounds());assert.equal(found.year!.max,'2010-02-28','Feb 29 - P18Y clamps to Feb 28');assert.equal(found.month!.max,'2028-03-29');
+  at('2026-03-31');({found}=await bounds());assert.equal(found.back!.min,'2026-02-28','Mar 31 - P1M clamps to the end of February');
+  at('2026-08-31');({found}=await bounds());assert.equal(found.mixed!.max,'2028-02-29','P1Y6M from Aug 31 lands on a leap-day month end');
+});
+
+test('relative bounds and flow time zones are checked at activation (#705)',async t=>{
+  const date=(bound:unknown)=>({d:{label:'D',type:'date',maximum:bound}});
+  for(const add of ['PT1H','P1W','P','-P','P1.5Y','1Y','P1Y2M3DT4H','+P1D','P1D1M','p1d','P123456D'])await assert.rejects(startWithFields(t,date({from:'today',add})),Error,add);
+  for(const bound of [{from:'yesterday',add:'P1D'},{from:'today'},{from:'today',add:'P1D',extra:true},'Today','now'])await assert.rejects(startWithFields(t,date(bound)),Error,JSON.stringify(bound));
+  await assert.rejects(startWithFields(t,{n:{label:'N',type:'number',minimum:'today'}}),/minimum of n requires type number, date or datetime-local/);
+  await assert.rejects(startWithFields(t,{n:{label:'N',maximum:{from:'today',add:'P1D'}}}),/maximum of n requires type number, date or datetime-local/);
+  await assert.rejects(startWithFields(t,{d:{label:'D',type:'date',minimum:{from:'today',add:'P1D'},maximum:'today'}}),/d minimum exceeds maximum/);
+  await assert.rejects(startWithFields(t,{d:{label:'D',type:'date',minimum:{from:'today',add:'P1M'},maximum:{from:'today',add:'P30D'}}}),/d minimum exceeds maximum/,'P1M is later than P30D on most days');
+  await assert.rejects(startWithFields(t,{d:{label:'D',type:'date',maximum:'today'}},{timeZone:'Mars/Olympus'}),/Form contact: timeZone "Mars\/Olympus" is not a known IANA time zone name/);
+  for(const timeZone of ['+05:00','','Europe/London ','Not a zone'])await assert.rejects(startWithFields(t,{d:{label:'D',type:'date'}},{timeZone}),Error,timeZone);
+  for(const [fields,extra] of [
+    [{d:{label:'D',type:'date',minimum:'today',maximum:'today'}},{}],
+    [{d:{label:'D',type:'date',minimum:{from:'today',add:'-P1D'},maximum:'today'}},{timeZone:'Europe/London'}],
+    [{d:{label:'D',type:'datetime-local',minimum:{from:'today',add:'-P1Y6M'},maximum:{from:'today',add:'P0D'}}},{timeZone:'America/Los_Angeles'}],
+    [{d:{label:'D',type:'date',minimum:'2020-01-01',maximum:{from:'today',add:'-P18Y'}}},{}],
+    [{d:{label:'D',type:'date'}},{timeZone:'UTC'}],
+  ] as const){const app=await startWithFields(t,fields,extra);await app.close();}
 });
 
 // Conditional required fields (#528): requiredWhen against a sibling select or enum field, one level only.

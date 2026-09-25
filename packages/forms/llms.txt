@@ -38,3 +38,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   enforced by the server (422 `is required`). AND/OR, not-equal, comparisons,
   cross-field ordering, conditions on free-text fields and show/hide still
   belong in `onSubmit`.
+- "No earlier than today" or "at least 18 years ago" is declared, not coded:
+  `minimum`/`maximum` on a `date` or `datetime-local` field accept `today` or
+  `{from: today, add: <signed ISO 8601 years/months/days duration, e.g. -P18Y>}`.
+  Today is the date in the flow's `timeZone` (IANA name), UTC when absent,
+  never the host zone; the server resolves it per request. See the README for
+  month-end clamping and the `datetime-local` end-of-day maximum.
