@@ -19,7 +19,8 @@ import type {LoadedDocument,MiddlewareConfig,RouteConfig} from './types.ts';
  * the operator-selected project root (after realpath), through the existing
  * authoring, recipe and scaffold paths. Nothing here reads bindings, creates
  * grants, deploys, or touches operator policy, compliance rules or host files.
- * The runners spawn the CLI against the same root only.
+ * The runners spawn the CLI against the same root only; they activate the local
+ * runtime, so the project's trusted code runs with full Node access.
  */
 const text={type:'string',maxLength:1024};
 const handler={anyOf:[{type:'string',maxLength:2048},{type:'object'}]};
@@ -28,10 +29,14 @@ export const authoringDefinitions=[
  {name:'create_route',description:'Add one route to urlcode.yaml or a named include under the project. The merged project is validated before the write; missing function sources are reported for scaffold_feature.',properties:{path:{type:'string',maxLength:2048},handler,middleware,file:text},required:['path','handler']},
  {name:'add_recipe',description:'Copy a bundled recipe into a new directory inside the project (recipes add). dryRun reports the destination and writes nothing.',properties:{name:{type:'string',maxLength:64},destination:text,dryRun:{type:'boolean'}},required:['name','destination']},
  {name:'scaffold_feature',description:'Create placeholder modules, pages and directories the project YAML references and that do not exist yet; existing files are never edited.',properties:{dryRun:{type:'boolean'}},required:[]},
- {name:'run_validate',description:'Run `urlcode validate --local` against the project; returns exit code and bounded output.',properties:{},required:[]},
- {name:'run_test',description:'Run `urlcode test` against the project (activates the local runtime and executes fixtures); returns exit code and bounded output.',properties:{},required:[]},
- {name:'run_audit',description:'Run `urlcode audit` against the project; returns exit code and bounded output.',properties:{},required:[]},
+ {name:'run_validate',executes:true,description:'Run `urlcode validate --local` against the project in a child process; returns exit code and bounded output. This activates the local runtime, which imports the project\'s trusted function and middleware modules with full Node access (their top-level code runs and may write or delete files, spawn processes or reach the network); the minimal environment is not confinement.',properties:{},required:[]},
+ {name:'run_test',executes:true,description:'Run `urlcode test` against the project in a child process; returns exit code and bounded output. This activates the local runtime and executes the fixtures, so the project\'s trusted function and middleware modules run with full Node access and may write or delete files, spawn processes or reach the network; the minimal environment and scratch data directory are not confinement.',properties:{},required:[]},
+ {name:'run_audit',executes:true,description:'Run `urlcode audit` against the project in a child process; returns exit code and bounded output. This starts the local runtime and sends probe requests, so the project\'s trusted function and middleware modules run with full Node access and may write or delete files, spawn processes or reach the network; the minimal environment is not confinement.',properties:{},required:[]},
 ];
+/** Annotations for an authoring tool: every one writes, and a runner (`executes`) runs trusted project code that can do anything Node can. */
+export function authoringAnnotations(def:{executes?:boolean}):{readOnlyHint:false;destructiveHint:boolean;idempotentHint?:false;openWorldHint:boolean} {
+ return def.executes===true?{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}:{readOnlyHint:false,destructiveHint:false,openWorldHint:false};
+}
 // Operator-owned material never lives under an authoring write, even when an
 // operator mistakenly placed it in the checkout.
 const operatorFile=/^(?:.*policy.*\.json|.*compliance.*\.(?:json|mjs|js|cjs|ts)|host(?:-file)?\.(?:mjs|js|cjs|ts)|.*\.(?:sqlite3?|db)(?:-wal|-shm|-journal)?|urlcode\.yaml\.lock)$/i;

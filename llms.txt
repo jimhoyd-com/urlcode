@@ -86,6 +86,8 @@ binding routes as `gaps` to test by hand. `urlcode diff BEFORE --json` (a YAML f
 too; MCP `summarize_yaml_change`) names the routes, code seams and operator grants a change adds;
 `urlcode report BEFORE > report.html` renders it, the review findings and each route's request path as a read-only page for a person;
 `urlcode studio BEFORE` serves that page on localhost and rebuilds it on every reload.
+The default `urlcode mcp` tools never execute project code: run fixtures with `urlcode test`. MCP `run_tests` executes the
+project's trusted functions, middleware and extensions, so it exists only when the operator adds `--allow-authoring`.
 
 Handler for the response: fixed text or JSON is `respond`; one HTML file is `page`; a directory is
 `static`; an attachment is `download`; a short HTML snippet is `respond` `text` with a

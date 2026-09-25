@@ -1050,7 +1050,9 @@ to check effective methods, policies and cache outcome, and `urlcode manifest`
 for the generated route, capability and requirement summary, instead of
 inferring either from the YAML. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
-command line adds project-confined route, recipe, scaffold and runner tools.
+command line adds project-confined route, recipe and scaffold tools, and runner
+tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
+project's trusted code.
 `urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only
 server for the project ([registering the server](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#registering-the-server)).
 A project-scoped MCP client loads `.mcp.json` only at session start, so an agent
@@ -2145,8 +2147,8 @@ is separate from runtime execution.
 
 The [tooling SDK and optional local MCP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md) inspect and validate without
 executing handlers or reading binding values. MCP defaults to inspection; the
-explicit `--allow-authoring` option enables bounded project writes, separately
-from host-file loading and grants. [Provider conformance](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PROVIDER-VERIFICATION.md)
+explicit `--allow-authoring` option enables bounded project writes and the runner
+tools that execute project code, separately from host-file loading and grants. [Provider conformance](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PROVIDER-VERIFICATION.md)
 distinguishes local adapter replay from actual deployment observations; no real
 provider deployment is implied by CI. [Proxy and signal egress](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EGRESS.md) requires
 external revision-pinned operator grants and bounded host-owned transport;

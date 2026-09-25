@@ -383,8 +383,8 @@ is separate from runtime execution.
 
 The [tooling SDK and optional local MCP](TOOLING.md) inspect and validate without
 executing handlers or reading binding values. MCP defaults to inspection; the
-explicit `--allow-authoring` option enables bounded project writes, separately
-from host-file loading and grants. [Provider conformance](PROVIDER-VERIFICATION.md)
+explicit `--allow-authoring` option enables bounded project writes and the runner
+tools that execute project code, separately from host-file loading and grants. [Provider conformance](PROVIDER-VERIFICATION.md)
 distinguishes local adapter replay from actual deployment observations; no real
 provider deployment is implied by CI. [Proxy and signal egress](EGRESS.md) requires
 external revision-pinned operator grants and bounded host-owned transport;

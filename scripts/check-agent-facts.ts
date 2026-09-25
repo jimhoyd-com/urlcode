@@ -151,7 +151,7 @@ claims.push({
     }
     for (const match of sentence.matchAll(new RegExp(String.raw`--allow-authoring\b[^.]*?\badds\s+${NUMBER}\s+tools\b`, 'gi'))) {
       const count = toNumber(match[1] ?? '');
-      if (count !== undefined && count !== inventory.mcpTools.authoring) return `counts ${count} authoring tools, but packages/core/src/mcp-authoring.ts defines ${inventory.mcpTools.authoring}`;
+      if (count !== undefined && count !== inventory.mcpTools.authoring) return `counts ${count} authoring tools, but packages/core/src/mcp.ts (with mcp-authoring.ts) defines ${inventory.mcpTools.authoring}`;
     }
     return undefined;
   },

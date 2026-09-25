@@ -13,10 +13,10 @@ import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 interface Reply { error:{code:number;message:string};result:{protocolVersion:string;tools:unknown[];content:{text:string}[];isError?:boolean} }
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
-async function session(root:string,messages:unknown[],raw?:string) {let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});await serveMcp({project:root,input:Readable.from([raw??messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply);}
+async function session(root:string,messages:unknown[],raw?:string,options:{allowAuthoring?:boolean}={}) {let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});await serveMcp({project:root,input:Readable.from([raw??messages.map(value=>JSON.stringify(value)+'\n').join('')]),output,...options});return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply);}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
- assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,36);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,35);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
  // get_context is documented as the first call an authoring agent makes; it is first in tools/list too.
  assert.equal((replies[1]!.result.tools[0] as {name:string}).name,'get_context');
 });
@@ -37,13 +37,41 @@ test('MCP accepts the deprecated `target` deploy-target argument alongside the c
   {jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'list_capabilities',arguments:{deployTarget:'cloudflare'}}}]);
  assert.equal(byLegacy!.result.content[0]!.text,byCanonical!.result.content[0]!.text);
 });
-test('MCP run_tests runs project fixtures read-only and writes no project files (#590)',async t=>{
- const root=await project(t,{'/a':redirect()},{'tests/requests.json':JSON.stringify([{path:'/a',status:302}])});
- const before=await import('node:fs/promises').then(fs=>fs.readdir(root));
- const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'run_tests',arguments:{}}}]);
- const result=JSON.parse(replies[1]!.result.content[0]!.text);
+// A synthetic project whose ordinary trusted function writes a marker beside its module when it runs, and another
+// when the module is imported: either file existing proves the project's code executed.
+async function markerProject(t:Parameters<typeof project>[0]) {
+ const fn='import {writeFileSync} from "node:fs";writeFileSync(new URL("./loaded.marker",import.meta.url),"loaded");export default () => {writeFileSync(new URL("./ran.marker",import.meta.url),"ran");return new Response("ok");};';
+ const root=await project(t,{'/f':{function:{source:'functions/f.mjs'}}},{'functions/f.mjs':fn,'tests/requests.json':JSON.stringify([{path:'/f',status:200}])});
+ const exists=(file:string)=>import('node:fs/promises').then(fs=>fs.access(join(root,'functions',file)).then(()=>true,()=>false));
+ return {root,exists};
+}
+test('default MCP does not offer run_tests and refuses it with the --allow-authoring hint, running no project code (#590)',async t=>{
+ const {root,exists}=await markerProject(t);
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'run_tests',arguments:{}}}]);
+ assert.equal((replies[1]!.result.tools as {name:string}[]).some(tool=>tool.name==='run_tests'),false);
+ assert.equal(replies[2]!.error.code,-32602);assert.match(replies[2]!.error.message,/run_tests needs the --allow-authoring option/);
+ assert.equal(await exists('ran.marker'),false);assert.equal(await exists('loaded.marker'),false);
+});
+test('default MCP read tools never execute project code (#590)',async t=>{
+ const {root,exists}=await markerProject(t);
+ const replies=await session(root,[initialize,ready,...[
+  {name:'get_context',arguments:{}},{name:'get_context',arguments:{task:'redirects'}},{name:'inspect',arguments:{}},{name:'validate',arguments:{}},{name:'explain',arguments:{target:'/f'}},
+  {name:'get_manifest',arguments:{}},{name:'preview_export',arguments:{format:'json'}},{name:'suggest_fixtures',arguments:{}},{name:'summarize_yaml_change',arguments:{before:'version: "1"\nroutes: {}\n'}},
+  {name:'plan_feature',arguments:{goal:'contact form'}},{name:'review',arguments:{}},{name:'get_extension_artifacts',arguments:{}},{name:'get_addon_agent_tooling',arguments:{}},
+ ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
+ assert.equal(replies.length,14);for(const reply of replies.slice(1))assert.ok(reply.result,JSON.stringify(reply));
+ assert.equal(await exists('loaded.marker'),false);assert.equal(await exists('ran.marker'),false);
+});
+test('with --allow-authoring, run_tests is listed as executing, non-read-only, and runs the project\'s trusted code (#590)',async t=>{
+ const {root,exists}=await markerProject(t);
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'run_tests',arguments:{}}}],undefined,{allowAuthoring:true});
+ const tool=(replies[1]!.result.tools as {name:string;description:string;annotations:{readOnlyHint:boolean;destructiveHint:boolean;openWorldHint:boolean}}[]).find(candidate=>candidate.name==='run_tests');
+ assert.ok(tool);assert.deepEqual({readOnly:tool!.annotations.readOnlyHint,destructive:tool!.annotations.destructiveHint,openWorld:tool!.annotations.openWorldHint},{readOnly:false,destructive:true,openWorld:true});
+ assert.match(tool!.description,/EXECUTES the project's trusted function and middleware modules/);assert.match(tool!.description,/not confinement/);
+ const result=JSON.parse(replies[2]!.result.content[0]!.text);
  assert.equal(result.total,1);assert.equal(result.failed,0);assert.ok(Array.isArray(result.events)&&result.events.length>=1);
- const after=await import('node:fs/promises').then(fs=>fs.readdir(root));assert.deepEqual(after,before);
+ // The marker beside the module is the side effect the non-read-only annotation declares.
+ assert.equal(await exists('ran.marker'),true);
 });
 test('MCP tools/call adds structuredContent alongside text content for object results (#590)',async t=>{
  const root=await project(t,{'/a':redirect()});

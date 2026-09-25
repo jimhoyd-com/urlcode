@@ -54,7 +54,10 @@ they do not grant guest networking. They require per-route, per-purpose HTTPS
 origin grants pinned to the project revision. Every connection checks public
 addresses and pins DNS, refuses redirects, filters headers and limits resources.
 See [egress semantics and limitations](docs/EGRESS.md). Build-time TypeScript
-transpilation and read-only MCP do not execute project code in the host.
+transpilation and read-only MCP do not execute project code in the host. The
+MCP `run_tests` tool does execute it (trusted functions, middleware and
+extensions, with full Node access), so it exists only when the operator starts
+`urlcode mcp --allow-authoring`.
 
 ## Report a vulnerability privately
 

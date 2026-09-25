@@ -560,7 +560,9 @@ to check effective methods, policies and cache outcome, and `urlcode manifest`
 for the generated route, capability and requirement summary, instead of
 inferring either from the YAML. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
-command line adds project-confined route, recipe, scaffold and runner tools.
+command line adds project-confined route, recipe and scaffold tools, and runner
+tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
+project's trusted code.
 `urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only
 server for the project ([registering the server](TOOLING.md#registering-the-server)).
 A project-scoped MCP client loads `.mcp.json` only at session start, so an agent

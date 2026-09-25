@@ -529,7 +529,7 @@ rather than editing it.
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its canonical, verb-first tools, in the order
 `tools/list` returns them (`get_context` first — it is the documented first
-call), are `get_context`, `inspect`, `validate`, `run_tests`,
+call), are `get_context`, `inspect`, `validate`,
 `list_capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
 `preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`,
@@ -538,9 +538,10 @@ call), are `get_context`, `inspect`, `validate`, `run_tests`,
 `get_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
 `urlcode review`), with `suggest_fixtures` and `summarize_yaml_change` listed
 after `explain_error` (see [fixture suggestions](#fixture-suggestions) and
-[YAML change summaries](#yaml-change-summaries)). `run_tests` runs `tests/requests.json` the way `urlcode
-test` does, against a disposable local server instance; it is read-only in
-that it never writes a project file. `tools/list` additionally lists the
+[YAML change summaries](#yaml-change-summaries)). None of them executes project
+code: running `tests/requests.json` executes the project's trusted functions,
+middleware and extensions, so `run_tests` is offered only in
+[authoring mode](#authoring-mode). `tools/list` additionally lists the
 pre-#590 name of every renamed tool (`capabilities`, `import_preview`,
 `export_preview`, `recipes_list`, `recipes_show`, `review_project`) as a
 working, deprecated alias of its canonical tool — same input schema, same
@@ -584,8 +585,8 @@ the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
 `inspectExtensions` report; without the option the tool is absent and calls to
 it are rejected. The same registrations reach `get_context` (its `project.host`
-counts), `inspect`, `validate`, `explain`, `get_manifest`, `run_tests`,
-`plan_feature` and `review`, so each answers as the host-aware CLI command or
+counts), `inspect`, `validate`, `explain`, `get_manifest`, `plan_feature`
+and `review` (and `run_tests` in authoring mode), so each answers as the host-aware CLI command or
 SDK call (`extensions` option) does for that host file. Tools accept no project/file/output path argument; recipe names
 come from the fixed catalog, `get_capability` names from the capability catalog,
 `get_schema` paths from the bundled schema, and the two searches match bundled
@@ -608,7 +609,8 @@ There is a 1 MiB input-frame and output-message limit; oversized input terminate
 the session after a fixed error, and truncated/invalid frames return protocol
 errors. Import text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the
-flag that adds it, for `get_extensions` and the authoring tools), each unknown,
+flag that adds it, for `get_extensions` and the authoring tools including
+`run_tests`), each unknown,
 missing or invalid argument, and the arguments the tool accepts. A tool that
 fails returns `isError` with the message the CLI prints for the same failure,
 for example the schema location of an invalid route or the valid
@@ -727,8 +729,8 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-six read
-tools above (thirty-seven with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty-five read
+tools above (thirty-six with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 
@@ -755,11 +757,29 @@ What it can do, all inside the selected project root (resolved with realpath):
   `urlcode test` and `urlcode audit` against the project with a minimal
   environment (`PATH` only), a two-minute deadline and stdout/stderr each capped
   at 32 KiB. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
-  `truncated`. `run_test` activates the local runtime and executes fixtures,
-  under the same rules as the CLI.
+  `truncated`. All three activate the local runtime, so they execute the
+  project's trusted code under the same rules as the CLI: `run_validate`
+  imports the trusted function and middleware modules (their top-level code
+  runs), `run_test` executes fixtures and `run_audit` sends probe requests. That
+  code has full Node access; the minimal environment is not confinement.
+  `tools/list` annotates the three `destructiveHint: true`,
+  `idempotentHint: false`, `openWorldHint: true`.
+- `run_tests` runs `tests/requests.json` in the server process the way
+  `urlcode test` does, against a disposable local server instance and a scratch
+  data directory it removes afterward, and returns `total`, `failed` and the
+  per-case `events`. It **executes the project's code**: ordinary trusted
+  `function`/`middleware` modules and registered extensions run with full Node
+  access and may write or delete files, spawn processes or reach the network.
+  The scratch data directory is not confinement. Routes that declare
+  `sandbox: true` still run in their isolated sandbox. `tools/list` annotates it
+  `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`,
+  `openWorldHint: true`; without
+  the flag it is absent and a call to it is refused with a hint naming
+  `--allow-authoring`. It accepts no `--policy` file, so bindings that need an
+  operator-granted policy fail as they do without one.
 
-Every tool returns `validation`, the `validateProject` verdict of the project
-after the operation (or `valid: false` with a generic note; use `run_validate`
+`create_route`, `add_recipe` and `scaffold_feature` return `validation`, the
+`validateProject` verdict of the project after the operation (or `valid: false` with a generic note; use `run_validate`
 for the CLI report).
 
 What it cannot do:
@@ -777,6 +797,10 @@ What it cannot do:
   arbitrary commands, delete or edit existing files (except the one YAML file a
   `create_route` targets), or serve a project other than the one the operator
   selected.
+
+These limits bind the tools' own writes. `run_validate`, `run_test`, `run_audit`
+and `run_tests` execute the project's trusted code, which is bounded only by what that code does, so the
+operator trusts that code whenever the flag is on.
 
 Authoring mode is a local, unauthenticated stdio process for an operator who
 already trusts the assistant to edit this checkout. Review the resulting diff
