@@ -1,0 +1,46 @@
+{
+  "kind": "extension",
+  "name": "audit",
+  "description": "Durable, bounded audit log other extensions record privileged actions into",
+  "requires": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "retention": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 10000000
+      }
+    }
+  },
+  "authoring": {
+    "description": "Durable, bounded audit log. It serves no routes: other extensions record into it (auth always; store collections that declare audit: true) and admin reads it. The project declares only how many events it keeps.",
+    "surfaces": [
+      {
+        "kind": "configuration",
+        "name": "retention",
+        "description": "Newest events kept (1000..10000000, default 100000); older ones are pruned as new ones arrive.",
+        "path": "urlcode.yaml#extensions.audit.config.retention"
+      }
+    ],
+    "fastChecks": [
+      "urlcode validate --project . --host-file <host.mjs> --origin <origin>"
+    ]
+  },
+  "agent": {
+    "description": "Local, revision-pinned references for agents configuring or consuming the audit extension.",
+    "references": [
+      {
+        "name": "audit extension guide",
+        "description": "Configuration, the producer contract and the query API.",
+        "path": "README.md"
+      },
+      {
+        "name": "audit delivery guarantee",
+        "description": "Atomic capture, at-least-once delivery stored once, fail closed at the backlog cap.",
+        "path": "SECURITY.md"
+      }
+    ]
+  }
+}

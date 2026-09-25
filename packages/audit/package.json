@@ -1,0 +1,55 @@
+{
+  "name": "@jimhoyd/urlcode-audit",
+  "version": "0.6.1",
+  "description": "Durable, bounded audit log other extensions record privileged actions into",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jimhoyd-com/urlcode.git",
+    "directory": "packages/audit"
+  },
+  "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/audit#readme",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode/issues"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
+    }
+  },
+  "bin": {
+    "urlcode-audit": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "urlcode.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "test": "node --conditions=development --test --test-timeout=120000 test/*.test.ts",
+    "verify": "npm run typecheck && npm run build && npm test"
+  },
+  "devDependencies": {
+    "@jimhoyd/urlcode": "file:../..",
+    "@types/node": "26.6.2",
+    "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "@jimhoyd/urlcode": "0.6.1"
+  }
+}
