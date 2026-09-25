@@ -46,7 +46,7 @@ function markedVersions(text: string, path: string, version: string): number {
   return blocks;
 }
 
-/** Packages and the peers each must pin exactly: core (required) and every sibling add-on it names (optional). */
+/** Packages and the peers each must pin exactly: core (required) and every sibling add-on it names (optional, except `requiredSiblingPeers`). */
 async function packages(root: string): Promise<{ path: string; manifest: Manifest; lockKey: string }[]> {
   const list = [{ path: 'package.json', manifest: await readJson<Manifest>(root, 'package.json'), lockKey: '' }];
   for (const addon of await addons(root)) {
@@ -55,14 +55,19 @@ async function packages(root: string): Promise<{ path: string; manifest: Manifes
   }
   return list;
 }
-function expectedPeers(manifest: Manifest, names: Set<string>, version: string): { peers: Record<string, string>; meta: Record<string, { optional: true }> } {
-  const peers: Record<string, string> = {}, meta: Record<string, { optional: true }> = {};
+/**
+ * Sibling peers a package imports at runtime even when installed on its own, so npm must install them: required
+ * rather than optional. Auth's store worker imports audit's event validator (spec R12).
+ */
+const requiredSiblingPeers: Readonly<Record<string, readonly string[]>> = { '@jimhoyd/urlcode-auth': ['@jimhoyd/urlcode-audit'] };
+function expectedPeers(manifest: Manifest, names: Set<string>, version: string): { peers: Record<string, string>; meta: Record<string, { optional: true }>; required: string[] } {
+  const peers: Record<string, string> = {}, meta: Record<string, { optional: true }> = {}, required: string[] = [];
   for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
     if (name === core) peers[name] = version;
-    else if (names.has(name)) { peers[name] = version; meta[name] = { optional: true }; }
+    else if (names.has(name)) { peers[name] = version; if (requiredSiblingPeers[manifest.name]?.includes(name)) required.push(name); else meta[name] = { optional: true }; }
     else peers[name] = range;
   }
-  return { peers, meta };
+  return { peers, meta, required };
 }
 
 /** `root` is the checkout to read; tests pass a copy. */
@@ -75,10 +80,11 @@ export async function check(root = repositoryRoot): Promise<string> {
     assert.equal(manifest.version, version, `${path} is ${manifest.version}; every add-on shares core's version ${version}`);
     assert.equal(lock.packages[lockKey]?.version, version, `package-lock.json ${lockKey || 'root'} is not ${version}; run npm install`);
     if (!lockKey) continue;
-    const { peers, meta } = expectedPeers(manifest, names, version);
+    const { peers, meta, required } = expectedPeers(manifest, names, version);
     if (manifest.peerDependencies) assert.equal(manifest.peerDependencies[core], version, `${path} must peer on ${core} ${version} exactly`);
     assert.deepEqual(manifest.peerDependencies ?? {}, peers, `${path}: peers on core and sibling add-ons must be exactly ${version}`);
     for (const name of Object.keys(meta)) assert.equal(manifest.peerDependenciesMeta?.[name]?.optional, true, `${path}: sibling peer ${name} must be optional so npm never installs a second copy`);
+    for (const name of required) assert.notEqual(manifest.peerDependenciesMeta?.[name]?.optional, true, `${path}: sibling peer ${name} is imported at runtime and must be a required peer`);
     assert.deepEqual(lock.packages[lockKey]?.peerDependencies ?? {}, manifest.peerDependencies ?? {}, `package-lock.json ${lockKey} peers differ; run npm install`);
   }
   for (const [path, pattern] of Object.entries(runtimePatterns)) {
@@ -105,9 +111,10 @@ export async function bump(version: string, root = repositoryRoot): Promise<stri
     const locked = lock.packages[lockKey]!;
     locked.version = version;
     if (lockKey && manifest.peerDependencies) {
-      const { peers, meta } = expectedPeers(manifest, names, version);
+      const { peers, meta, required } = expectedPeers(manifest, names, version);
       manifest.peerDependencies = peers;
       if (Object.keys(meta).length) manifest.peerDependenciesMeta = { ...manifest.peerDependenciesMeta, ...meta };
+      if (manifest.peerDependenciesMeta) for (const name of required) delete manifest.peerDependenciesMeta[name];
       locked.peerDependencies = { ...peers };
       if (manifest.peerDependenciesMeta) locked.peerDependenciesMeta = { ...manifest.peerDependenciesMeta };
     }
