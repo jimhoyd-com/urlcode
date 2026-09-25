@@ -166,9 +166,9 @@ export const budgets: Record<string, Budget> = {
     unpacked: 900 * 1024,
     entries: 90,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json'],
-    // audit is a required peer (auth's store worker validates outbox events
-    // with it); abuse is the optional `uses` edge.
-    optionalPeers: ['@jimhoyd/urlcode-abuse'],
+    // Every sibling peer is optional so npm never installs a second copy;
+    // `extensions add auth` installs the required audit, mail and ui itself.
+    optionalPeers: ['@jimhoyd/urlcode-abuse', '@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-mail', '@jimhoyd/urlcode-ui'],
   },
   '@jimhoyd/urlcode-admin': {
     packed: 75 * 1024,

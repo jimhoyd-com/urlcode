@@ -66,6 +66,9 @@
     "@jimhoyd/urlcode-abuse": {
       "optional": true
     },
+    "@jimhoyd/urlcode-audit": {
+      "optional": true
+    },
     "@jimhoyd/urlcode-mail": {
       "optional": true
     },
