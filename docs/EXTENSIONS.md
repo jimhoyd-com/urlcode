@@ -140,9 +140,13 @@ per `window` seconds for each key, counted by key id in the auth store once
 the key has authenticated and covers the route's scopes. The request that
 would exceed it is a 429 with `Retry-After` and
 `RateLimit-Policy`/`RateLimit` fields under the policy name `credential`,
-before the handler runs; on a route that also declares core throttle, that 429
-carries both the `credential` and throttle's `default` policy in the same
-fields. Counting is a fixed window, durable across restarts
+before the handler runs. A key issued with its own `quota` is counted against
+that budget instead of the route's, on every bearer route. An allowed response
+reports the counted budget in the same `credential` fields, added by the
+extension's `middleware()` hook; like every response of an auth-protected
+route it is `Cache-Control: no-store`. On a route that also declares core
+throttle, both the allowed response and the 429 carry the `credential` and
+throttle's `default` policy in the same fields. Counting is a fixed window, durable across restarts
 and shared by processes on one host (not across hosts); a store failure is a
 503, never an uncounted pass. Core [throttle](policies/throttle.md), which runs
 before auth and partitions by client, remains the guard against
@@ -469,7 +473,9 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    YAML contains logical configuration and project-relative hook references.
 
 Consumers add it with `urlcode extensions add <name>`, which declares its YAML
-block and routes and registers it in `host.mjs`. They modify it through declared configuration,
+block and routes and registers it in `host.mjs`. Keep that `scaffold` to the
+capability; put a demo in the definition's optional `example`, which core writes
+only with `--example`. They modify it through declared configuration,
 presentation layers and hooks. A fork is reserved for changing behavior the
 extension has not exposed; that is evidence for a new declarative field or hook.
 See [Composing a site](COMPOSING-A-SITE.md) for the complete ui/auth/admin example.
@@ -542,9 +548,10 @@ URLCode ships two kinds of add-on with one shape:
 | Commands | `urlcode extensions …` | `urlcode artifacts …` |
 
 Every add-on is an npm-packable workspace carrying a static `urlcode.json`
-descriptor: `{kind, name, description, requires, schema?, policySchema?,
-hooks?, authoring?}`. For an extension the descriptor is written from its
-`defineExtension` definition by `npm run build:addons`, and CI fails when the
+descriptor: `{kind, name, description, requires, contributes?, schema?,
+policySchema?, hooks?, authoring?}`. For an extension the descriptor is written from its
+`defineExtension` definition by `npm run build:addons` (including
+`contributes`, the sorted names of the extensions it hands a value to), and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
 contracts without running any of its code. An artifact descriptor carries only
 `kind`, `name`, `description` and `requires`.
@@ -611,7 +618,7 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 | Command | What it does |
 | --- | --- |
 | `urlcode extensions available` / `urlcode artifacts available` | Lists the add-ons of that kind the running core pins, with their requirements |
-| `urlcode extensions add <name>…` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires |
+| `urlcode extensions add <name>… [--example]` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires; for extensions, the capability only unless `--example` also writes each one's demo |
 | `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
 | `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins |
 
@@ -623,7 +630,10 @@ checked to be inert (see [Artifacts](#artifacts)); adding only artifacts to a
 site that already has a `package-lock.json` also refuses if npm added any lock
 entry other than the artifacts themselves. For an extension, `add` then calls
 the extension's
-`scaffold` and writes what it returns:
+`scaffold` (the capability: what the extension needs to function, with no
+sample application endpoints) and, only when `--example` is passed, its
+optional `example` (demo collections, pages and flows) merged on top, and
+writes what they return:
 
 - its `config` as the `extensions.<name>` block of `app/urlcode.yaml`;
 - its routes as `app/routes/<name>.yaml`, added to `includes` (a route the
@@ -644,8 +654,15 @@ and asks you to run `npm ci --ignore-scripts` before continuing. The refused
 package was downloaded and extracted but never run: every npm call passes
 `--ignore-scripts`.
 
-Some scaffolds refuse until the operator acknowledges a named risk; for example
-`store` without `auth` would expose public write on its collection. The refusal
+`--example` is one flag for every extension: it applies to each extension the
+command adds (including requirements it pulls in), refuses when none of them
+ships an example or when nothing is added, and never changes an extension that
+is already installed. The first-party examples are store's `todos` collection
+on `/api/todos` (and, with `ui`, its `/todos` screen), forms' `/contact` flow
+and auth's signed-in `/private` page; ui, admin and mcp ship none.
+
+Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
+the `store` example without `auth` would expose public write on its collection. The refusal
 states the risk and prints the exact re-run command with the qualified
 acknowledgement, such as `--ack store:public-write`. Pass an acknowledgement
 only when a refusal names it: an `--ack` that no scaffold consumes also refuses.
@@ -664,7 +681,7 @@ and `host.mjs` (an extension installed but not declared or not hosted, or
 declared without an installed package), a missing requirement, or an artifact
 that is not inert.
 
-`urlcode init <directory> --with ui,auth [--ack extension:id]` is `init`
+`urlcode init <directory> --with ui,auth [--example] [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.
 
 `urlcode upgrade` moves core and every installed add-on to one version
@@ -698,7 +715,14 @@ every add-on is installed once at the top level of the site. `composeHost`
 orders the listed extensions by `requires` and activates each once. A dependant
 receives the shared services of what it requires through `ctx.get('<name>')`,
 and passes templates and copy catalogues to `ui` through `contributes.ui`,
-which `ui` collects with `ctx.contributions('ui')`. Two copies of one extension
+which `ui` collects with `ctx.contributions('ui')`. A contribution is an
+optional edge: an extension may contribute to one it does not require, and the
+value is simply unused when the target is not installed. The store does this:
+it does not require `ui`, but contributes `screens`, a source ui calls at
+activation to receive generic descriptions of the CRUD screens declared under
+`extensions.store.config.screens`, so ui never reads the store's
+configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
+`package.json` declares `ui` an optional peer. Two copies of one extension
 cannot exist in a site, so duplicate-instance bugs (such as a second `ui` kit
 that never received another extension's templates) cannot happen.
 
@@ -717,7 +741,8 @@ export default defineExtension<MyHostOptions>({
   policySchema,               // optional: per-route policies.extensions.<name>
   hooks, authoring,           // optional project customization contracts
   contributes: {},            // optional static values for another extension, e.g. {ui: {...}}
-  scaffold(request) { return { config, routes, files, env, notes }; },
+  scaffold(request) { return { config, routes, files, env, notes }; },  // the capability
+  example(request) { return { config, routes, notes }; },               // optional demo, only with --example
   host(ctx, options) { return { registration, exports, close }; },
 });
 ```
@@ -727,7 +752,11 @@ into `urlcode.json`.
 
 `scaffold({site, project, installed, acknowledgements})` writes nothing. It
 returns `{config, routes, files?, env?, acknowledged?, routeNotes?, notes?}`,
-and core writes it as described above. `installed` lists every extension in the
+and core writes it as described above. `example` takes the same request and
+returns the same shape; with `--example` core merges it into the scaffold's
+result before writing: `config` deep-merges (plain objects key by key, any
+other example value replaces), a route both return refuses, and the lists and
+`env` are appended. `installed` lists every extension in the
 site after this add; `acknowledgements` holds the sorted `--ack` values. To
 require an acknowledgement, a scaffold throws an `Error` carrying
 `acknowledgement: '<name>:<id>'` whose message states the risk, and lists each

@@ -69,7 +69,8 @@ needed schema, example or README. Without MCP, run `urlcode artifacts list
 --json` in the site. An artifact is inert authoring data: it does not install
 an extension, register executable code or grant authority. Add an extension
 only with `urlcode extensions add <name>` (never by editing `package.json` or
-`host.mjs` by hand), and add or remove an add-on only when the user requests
+`host.mjs` by hand; it writes the capability only, and `--example` also writes
+the extension's demo routes, so pass it only when the user wants them), and add or remove an add-on only when the user requests
 that change.
 The `SPECIFICATION` section of `llms-full.txt` and
 `schemas/urlcode.schema.json` resolve contract questions in an installed

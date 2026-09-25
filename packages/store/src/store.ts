@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, StoreError, collectionSchema, etagOf } from './collection.ts';
 import type { CollectionSpec, StoredRecord } from './collection.ts';
+import { screensSchema, storeScreens } from './screens.ts';
 /** One value per process start (not per `lock()` call), so a stale lock file written by an
  * earlier process that happened to reuse this PID (routine for a container restarted after an
  * unclean exit, especially at PID 1) can be told apart from a lock this process itself still
@@ -110,19 +111,21 @@ export const storeAuthoring: ExtensionAuthoringContract = {
     { kind: 'configuration', name: 'collections', description: 'Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, and `sortable` / `filterable` field lists.', path: 'urlcode.yaml' },
     { kind: 'configuration', name: 'shortLinks', description: 'Optional public GET redirect mounts that look up a collection key, use a declared HTTP(S) destination field, and atomically increment a declared counter.', path: 'urlcode.yaml' },
     { kind: 'extension', name: 'mount', description: 'Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Add `auth: true` to any private mount.', path: 'urlcode.yaml' },
+    { kind: 'configuration', name: 'screens', description: 'Optional list-and-form screens (`/todos: {collection: todos, title?, columns?}`) for declared collections. The store hands them to the ui extension through contributes.ui; each needs a route `<path>/*` with `extension: ui`, methods GET and HEAD. Ignored when ui is not installed.', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
 };
 
 /** The `extensions.store.config` schema: the registration and the extension definition share this one object. */
 export const storeConfigSchema = { type: 'object', additionalProperties: false, required: ['collections'], properties: {
-  collections: { type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema },
+  collections: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema },
   shortLinks: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: {
     type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
       mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 }, collection: { type: 'string', pattern: NAME.source },
       destination: { type: 'string', pattern: FIELD.source }, clicks: { type: 'string', pattern: FIELD.source },
     },
   } },
+  screens: screensSchema,
 } };
 
 /** The operator-installed registration. Storage location and the revision pin are operator choices, never project YAML. */
@@ -137,6 +140,8 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
       if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('Store directory must be outside the route project');
       const declared = (config as { collections: Record<string, CollectionSpec>; shortLinks?: Record<string, ShortLinkSpec> }).collections;
       const declaredLinks = (config as { shortLinks?: Record<string, ShortLinkSpec> }).shortLinks ?? {};
+      // Screens are served by ui, but they name store collections, so an unknown one refuses here too.
+      storeScreens(config);
       const byMount = new Map<string, Collection>();
       const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, directory));
       for (const collection of collections) {

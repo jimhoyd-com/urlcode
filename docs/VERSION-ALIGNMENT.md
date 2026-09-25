@@ -33,7 +33,7 @@ Core `0.6.1` is published to npm, GitHub Releases and Homebrew. For a new
 composed site:
 
 ```sh
-npx @jimhoyd/urlcode@0.6.1 init site --with ui,auth,admin,store
+npx @jimhoyd/urlcode@0.6.1 init site --with ui,auth,admin,store --example
 ```
 <!-- urlcode-current-version:end -->
 

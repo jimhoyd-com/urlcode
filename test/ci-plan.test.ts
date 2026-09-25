@@ -106,10 +106,12 @@ test('a release run is planned as exact-commit coverage whatever event triggered
 test('workspace selection includes reverse dependencies and reserves integration for release dispatch', () => {
   assert.deepEqual(workspacePackages(['packages/admin/src/admin-ui.ts']), ['admin']);
   assert.deepEqual(workspacePackages(['packages/auth/src/auth-ui.ts']), ['auth', 'admin']);
-  assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'forms']);
+  assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'store', 'forms']);
+  assert.deepEqual(workspacePackages(['packages/store/src/screens.ts']), ['store']);
   assert.deepEqual(workspacePackages(['packages/mcp/src/mcp.ts']), ['mcp']);
   for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms', 'mcp']);
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 4);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 5);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/store/src/screens.ts']).include[0]!.deps, 'ui');
   for (const event of ['pull_request', 'push', 'schedule']) assert.deepEqual(workspaceIntegrationMatrix(event).include, []);
   assert.deepEqual(workspaceIntegrationMatrix('workflow_dispatch').include, [
     { os: 'ubuntu-latest', node: '24' }, { os: 'macos-latest', node: '24' }, { os: 'windows-latest', node: '24' },

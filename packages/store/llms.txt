@@ -11,9 +11,14 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.store: { version: "1", config: { collections: { <name>: { fields, sortable, filterable, readOnly, ... } } } }`
 - A mount per collection, e.g. `/api/notes/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE] }`
-- Protect the mount with `auth: true` (the scaffold adds it when auth is installed) unless the
-  scaffold's explicit `--ack store:public-write` was given; an unprotected write mount has no rate
+- Protect the mount with `auth: true` (the example adds it when auth is installed) unless the
+  example's explicit `--ack store:public-write` was given; an unprotected write mount has no rate
   limiting, abuse protection or multi-tenant isolation of its own.
+- Optional list-and-form screens: `extensions.store.config.screens: { /todos: { collection: todos, title?, columns? } }`
+  plus a route `/todos/*: { extension: ui, methods: [GET, HEAD] }`. The store contributes them to the
+  `ui` extension (`contributes.ui.screens`); they are declared here, never under `extensions.ui`.
+- `urlcode extensions add store` writes an empty `collections` block and no mount; `--example`
+  adds the `todos` collection on `/api/todos` (and the `/todos` screen when ui is installed).
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({directory})`) in
   the `composeHost` list; `urlcode extensions add store` writes that line.
 

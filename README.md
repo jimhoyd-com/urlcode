@@ -171,8 +171,9 @@ routes:
 ```
 
 The YAML names logical extensions; it never names packages, code, databases
-or credentials. `urlcode init site --with ui,auth,admin` writes the route
-project in `site/app/`, the operator host `site/host.mjs`, auth's keys and a
+or credentials. `urlcode init site --with ui,auth,admin --example` writes the route
+project in `site/app/` (with `--example`, a signed-in `/private` page like the
+one above; without it, only the extensions' own mounts), the operator host `site/host.mjs`, auth's keys and a
 private `data/` directory; `urlcode serve --host-file host.mjs` loads it. Cross-repository acceptance is tracked in
 [issue 58](https://github.com/jimhoyd-com/urlcode/issues/58).
 

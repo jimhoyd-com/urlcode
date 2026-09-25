@@ -77,12 +77,14 @@ export default defineExtension<AuthHostOptions>({
     references: [{name: 'auth extension guide', description: 'Configuration, operator setup and route integration guidance.', path: 'README.md'}],
   },
   contributes: { ui: uiContribution },
+  // The capability: the account pages at the default /account mount (configurable: move the route, and pass
+  // admin({authMount}) when admin is installed), the operator service with the minimal {member, admin} role model
+  // admin and bootstrap rely on, and the private keys. No application page is protected yet.
   scaffold() {
     return {
       config: { registration: 'off' },
       routes: {
         '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
-        '/private': { respond: { text: 'Signed in' }, auth: true },
       },
       files: [
         { path: OPERATOR_FILE, content: operatorService, mode: 0o600 },
@@ -95,9 +97,17 @@ export default defineExtension<AuthHostOptions>({
       },
       notes: [
         'Bootstrap the first administrator with `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`, passing {"email","password"} JSON on stdin, never in argv.',
-        'Sign in at /account/login; /private requires a session. Registration is off until a reviewed configuration migration opens it.',
+        'Sign in at /account/login. Registration is off until a reviewed configuration migration opens it. Protect a route of your own with `auth: true` (or `auth: {role: admin}`); roles are member and admin, set in operator-service.mjs.',
         'Keep data/ private and back up data/encryption.key and data/csrf.key separately from the database backup.',
       ],
+    };
+  },
+  // `--example`: a /private page that only a signed-in caller can read.
+  example() {
+    return {
+      config: {},
+      routes: { '/private': { respond: { text: 'Signed in' }, auth: true } },
+      notes: ['/private requires a session: open it signed out, then after signing in at /account/login.'],
     };
   },
   async host(ctx, options) {

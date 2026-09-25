@@ -57,7 +57,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-ui` | [`packages/ui`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
-| `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store) | Durable bounded JSON collections exposed as a typed CRUD API | `extensions.store` plus a protected collection mount |
+| `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
@@ -138,11 +138,13 @@ while store is currently Node-only. See each package's README ([auth](https://gi
 An extended project is a site: core plus the add-ons that core pins.
 
 ```sh
-npx @jimhoyd/urlcode init my-site --with ui,auth,admin
+npx @jimhoyd/urlcode init my-site --with ui,auth,admin --example
 ```
 
 That is `urlcode init my-site` followed by `urlcode extensions add ui auth
-admin` in it. Nothing else is discovered by convention:
+admin --example` in it. Without `--example` each extension installs only its
+capability (auth's `/account/*` pages, admin's console, ui's assets); with it,
+each also writes its demo, such as the `/private` page below. Nothing else is discovered by convention:
 
 ```
 my-site/
@@ -190,7 +192,11 @@ export default await composeHost(import.meta.url, [
 `composeHost` orders the list by each extension's `requires`, activates each
 once, hands admin the auth service through `ctx.get('auth')`, and collects the
 templates and catalogues auth and admin contribute to `ui`, so both render
-every screen through the one `ui.kit`. Operator options go inside a call, for
+every screen through the one `ui.kit`. The store contributes to `ui` too,
+without requiring it: the CRUD screens declared under
+`extensions.store.config.screens` reach ui as generic screen descriptions
+through `contributes.ui.screens`, so ui never reads another extension's
+configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)). Operator options go inside a call, for
 example `auth({sendEmailCode})`.
 
 Treat that composition as one application with package ownership boundaries,
@@ -223,7 +229,8 @@ cd my-site
 npm run dev        # urlcode dev --project app --host-file host.mjs
 ```
 
-Each `extensions add` calls the extension's `scaffold` and writes its
+Each `extensions add` calls the extension's `scaffold` (and, with `--example`,
+its optional `example`, merged on top) and writes its
 configuration into `app/urlcode.yaml`, its routes into `app/routes/<name>.yaml`,
 its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is
@@ -385,7 +392,8 @@ Release as core and pinned by core (download URL and sha512 in its
 
 - An **extension** is executable operator code. `urlcode extensions add
   <name>` installs it, writes its configuration and routes into `app/`, and
-  adds it to `host.mjs`, which activates it.
+  adds it to `host.mjs`, which activates it. It writes the capability only;
+  `--example` also writes the extension's demo routes.
 - An **artifact** is inert JSON data, such as a configuration schema and an
   example, that tooling and the read-only MCP tools read. `urlcode artifacts
   add <name>` installs it; nothing ever imports or runs it.
@@ -715,9 +723,10 @@ Data persistence has no native handler. The operator-installed `store` extension
 serves declared collections as a CRUD API, and `urlcode recipes search "crud store
 persist"` finds the `store-crud` recipe. In a site, `urlcode extensions add
 store auth ui` (or `urlcode init DIR --with ui,auth,store`) installs the
-extension, declares its collection and mount with `auth: true`, and wires
-`host.mjs`; `store` without `auth` refuses until the operator re-runs with
-`--ack store:public-write`. Report anything beyond that recipe (filtering, sorting, per-record
+extension with an empty `collections` block and wires `host.mjs`; declare the
+collection and its mount yourself, or add `--example` for the `todos`
+collection and mount with `auth: true`. The store example without `auth`
+refuses until the operator re-runs with `--ack store:public-write`. Report anything beyond that recipe (filtering, sorting, per-record
 ownership, a database) as a gap. `urlcode context` lists the same built-ins so
 they are visible before you write code.
 
@@ -3345,9 +3354,13 @@ per `window` seconds for each key, counted by key id in the auth store once
 the key has authenticated and covers the route's scopes. The request that
 would exceed it is a 429 with `Retry-After` and
 `RateLimit-Policy`/`RateLimit` fields under the policy name `credential`,
-before the handler runs; on a route that also declares core throttle, that 429
-carries both the `credential` and throttle's `default` policy in the same
-fields. Counting is a fixed window, durable across restarts
+before the handler runs. A key issued with its own `quota` is counted against
+that budget instead of the route's, on every bearer route. An allowed response
+reports the counted budget in the same `credential` fields, added by the
+extension's `middleware()` hook; like every response of an auth-protected
+route it is `Cache-Control: no-store`. On a route that also declares core
+throttle, both the allowed response and the 429 carry the `credential` and
+throttle's `default` policy in the same fields. Counting is a fixed window, durable across restarts
 and shared by processes on one host (not across hosts); a store failure is a
 503, never an uncounted pass. Core [throttle](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/throttle.md), which runs
 before auth and partitions by client, remains the guard against
@@ -3674,7 +3687,9 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    YAML contains logical configuration and project-relative hook references.
 
 Consumers add it with `urlcode extensions add <name>`, which declares its YAML
-block and routes and registers it in `host.mjs`. They modify it through declared configuration,
+block and routes and registers it in `host.mjs`. Keep that `scaffold` to the
+capability; put a demo in the definition's optional `example`, which core writes
+only with `--example`. They modify it through declared configuration,
 presentation layers and hooks. A fork is reserved for changing behavior the
 extension has not exposed; that is evidence for a new declarative field or hook.
 See [Composing a site](https://github.com/jimhoyd-com/urlcode/blob/main/docs/COMPOSING-A-SITE.md) for the complete ui/auth/admin example.
@@ -3747,9 +3762,10 @@ URLCode ships two kinds of add-on with one shape:
 | Commands | `urlcode extensions …` | `urlcode artifacts …` |
 
 Every add-on is an npm-packable workspace carrying a static `urlcode.json`
-descriptor: `{kind, name, description, requires, schema?, policySchema?,
-hooks?, authoring?}`. For an extension the descriptor is written from its
-`defineExtension` definition by `npm run build:addons`, and CI fails when the
+descriptor: `{kind, name, description, requires, contributes?, schema?,
+policySchema?, hooks?, authoring?}`. For an extension the descriptor is written from its
+`defineExtension` definition by `npm run build:addons` (including
+`contributes`, the sorted names of the extensions it hands a value to), and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
 contracts without running any of its code. An artifact descriptor carries only
 `kind`, `name`, `description` and `requires`.
@@ -3816,7 +3832,7 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 | Command | What it does |
 | --- | --- |
 | `urlcode extensions available` / `urlcode artifacts available` | Lists the add-ons of that kind the running core pins, with their requirements |
-| `urlcode extensions add <name>…` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires |
+| `urlcode extensions add <name>… [--example]` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires; for extensions, the capability only unless `--example` also writes each one's demo |
 | `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
 | `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins |
 
@@ -3828,7 +3844,10 @@ checked to be inert (see [Artifacts](#artifacts)); adding only artifacts to a
 site that already has a `package-lock.json` also refuses if npm added any lock
 entry other than the artifacts themselves. For an extension, `add` then calls
 the extension's
-`scaffold` and writes what it returns:
+`scaffold` (the capability: what the extension needs to function, with no
+sample application endpoints) and, only when `--example` is passed, its
+optional `example` (demo collections, pages and flows) merged on top, and
+writes what they return:
 
 - its `config` as the `extensions.<name>` block of `app/urlcode.yaml`;
 - its routes as `app/routes/<name>.yaml`, added to `includes` (a route the
@@ -3849,8 +3868,15 @@ and asks you to run `npm ci --ignore-scripts` before continuing. The refused
 package was downloaded and extracted but never run: every npm call passes
 `--ignore-scripts`.
 
-Some scaffolds refuse until the operator acknowledges a named risk; for example
-`store` without `auth` would expose public write on its collection. The refusal
+`--example` is one flag for every extension: it applies to each extension the
+command adds (including requirements it pulls in), refuses when none of them
+ships an example or when nothing is added, and never changes an extension that
+is already installed. The first-party examples are store's `todos` collection
+on `/api/todos` (and, with `ui`, its `/todos` screen), forms' `/contact` flow
+and auth's signed-in `/private` page; ui, admin and mcp ship none.
+
+Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
+the `store` example without `auth` would expose public write on its collection. The refusal
 states the risk and prints the exact re-run command with the qualified
 acknowledgement, such as `--ack store:public-write`. Pass an acknowledgement
 only when a refusal names it: an `--ack` that no scaffold consumes also refuses.
@@ -3869,7 +3895,7 @@ and `host.mjs` (an extension installed but not declared or not hosted, or
 declared without an installed package), a missing requirement, or an artifact
 that is not inert.
 
-`urlcode init <directory> --with ui,auth [--ack extension:id]` is `init`
+`urlcode init <directory> --with ui,auth [--example] [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.
 
 `urlcode upgrade` moves core and every installed add-on to one version
@@ -3903,7 +3929,14 @@ every add-on is installed once at the top level of the site. `composeHost`
 orders the listed extensions by `requires` and activates each once. A dependant
 receives the shared services of what it requires through `ctx.get('<name>')`,
 and passes templates and copy catalogues to `ui` through `contributes.ui`,
-which `ui` collects with `ctx.contributions('ui')`. Two copies of one extension
+which `ui` collects with `ctx.contributions('ui')`. A contribution is an
+optional edge: an extension may contribute to one it does not require, and the
+value is simply unused when the target is not installed. The store does this:
+it does not require `ui`, but contributes `screens`, a source ui calls at
+activation to receive generic descriptions of the CRUD screens declared under
+`extensions.store.config.screens`, so ui never reads the store's
+configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
+`package.json` declares `ui` an optional peer. Two copies of one extension
 cannot exist in a site, so duplicate-instance bugs (such as a second `ui` kit
 that never received another extension's templates) cannot happen.
 
@@ -3922,7 +3955,8 @@ export default defineExtension<MyHostOptions>({
   policySchema,               // optional: per-route policies.extensions.<name>
   hooks, authoring,           // optional project customization contracts
   contributes: {},            // optional static values for another extension, e.g. {ui: {...}}
-  scaffold(request) { return { config, routes, files, env, notes }; },
+  scaffold(request) { return { config, routes, files, env, notes }; },  // the capability
+  example(request) { return { config, routes, notes }; },               // optional demo, only with --example
   host(ctx, options) { return { registration, exports, close }; },
 });
 ```
@@ -3932,7 +3966,11 @@ into `urlcode.json`.
 
 `scaffold({site, project, installed, acknowledgements})` writes nothing. It
 returns `{config, routes, files?, env?, acknowledged?, routeNotes?, notes?}`,
-and core writes it as described above. `installed` lists every extension in the
+and core writes it as described above. `example` takes the same request and
+returns the same shape; with `--example` core merges it into the scaffold's
+result before writing: `config` deep-merges (plain objects key by key, any
+other example value replaces), a route both return refuses, and the lists and
+`env` are appended. `installed` lists every extension in the
 site after this add; `acknowledgements` holds the sorted `--ack` values. To
 require an acknowledgement, a scaffold throws an `Error` carrying
 `acknowledgement: '<name>:<id>'` whose message states the risk, and lists each
@@ -4002,14 +4040,17 @@ One command produces a site that already has accounts, an administration
 console and a presentation kit wired together:
 
 ```sh
-npx @jimhoyd/urlcode init site --with ui,auth,admin
+npx @jimhoyd/urlcode init site --with ui,auth,admin --example
 ```
 
-That is `urlcode init site` followed by `urlcode extensions add ui auth admin`
-in it: npm installs the three add-on tarballs this core pins (by URL and sha512
+That is `urlcode init site` followed by `urlcode extensions add ui auth admin
+--example` in it: npm installs the three add-on tarballs this core pins (by URL and sha512
 in its `addons.json`) at the top level of the site, and each extension's
 scaffold writes its configuration, routes and operator files. `admin` alone
-would do the same, because it requires `auth` and `ui`.
+would do the same, because it requires `auth` and `ui`. `--example` adds each
+extension's demo on top of its capability (here auth's signed-in `/private`
+page); without it you get the accounts, console and kit with no application
+page of your own yet.
 
 This page is the map of what you may then change, and with which tool. It
 covers three different activities that are easy to confuse:
@@ -4026,12 +4067,12 @@ principle](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PROJECT-DIRECTI
 here as much as it does to routes: reach for the next row only when the one
 above it cannot express the requirement.
 
-### What `--with ui,auth,admin` generates
+### What `--with ui,auth,admin --example` generates
 
 - `site/app/` — the route project: `urlcode.yaml` with an `extensions` block
   per extension, and `routes/ui.yaml`, `routes/auth.yaml` and
-  `routes/admin.yaml` holding `/assets/ui/*`, `/account/*`, `/private` and
-  `/admin/*`, each listed in `includes`.
+  `routes/admin.yaml` holding `/assets/ui/*`, `/account/*`, `/private` (the
+  `--example` page) and `/admin/*`, each listed in `includes`.
 - `site/host.mjs` — the operator host module, the one place that holds code.
   It imports each extension's `./extension` entry and passes
   `[ui(), auth(), admin()]` to `composeHost`, which activates `ui` first, hands
@@ -4059,8 +4100,8 @@ that renders through it, whatever order you name them in.
 | `auth` | `ui` and `auth`: accounts on `/account/*`, rendered through the kit. |
 | `admin` | `ui`, `auth` and `admin`: the full composition above. |
 | `auth,admin,ui` | Same result as `ui,auth,admin`: the order you name them in is ignored. |
-| `ui,auth,store` | Todo API and a `/todos` screen, both protected by `auth: true`. |
-| `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write scaffold; core rejects any `--ack` no scaffold consumed, such as one with auth installed or `store` absent. |
+| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API and a `/todos` screen, both protected by `auth: true`. |
+| `store` or `ui,store` | Without `--example`: an empty store, nothing mounted, no acknowledgement needed. With `--example`: refused, because the example's writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write example; core rejects any `--ack` no scaffold consumed, such as one with auth installed, `store` absent or no `--example`. |
 
 Every refusal rolls back everything the command changed, including the
 packages npm had already extracted into `node_modules`; a refusal during

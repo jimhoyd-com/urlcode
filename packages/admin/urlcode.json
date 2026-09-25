@@ -6,6 +6,9 @@
     "auth",
     "ui"
   ],
+  "contributes": [
+    "ui"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

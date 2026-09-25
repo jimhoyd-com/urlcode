@@ -9,10 +9,14 @@ directory. No handler code.
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,store
+npx urlcode init my-site --with ui,auth,store --example
 # or, in an existing site:
-npx urlcode extensions add store
+npx urlcode extensions add store --example
 ```
+
+Without `--example` the store installs as a capability only: an empty
+`collections` block in `app/urlcode.yaml`, no mount and no acknowledgement.
+Declare your own collection and its `extension: store` route there.
 
 `store` is released as a tarball on core's GitHub Release, at core's version,
 and pinned by sha512 in core's `dist/addons.json`; `urlcode extensions add`
@@ -20,8 +24,8 @@ installs it into the site and checks that pin. See
 [add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
 site layout and commands.
 
-The scaffold declares a `todos` collection in `app/urlcode.yaml`, mounts it at
-`/api/todos/*` in `app/routes/store.yaml`, and adds one line to `host.mjs`:
+`--example` declares a `todos` collection in `app/urlcode.yaml` and mounts it at
+`/api/todos/*` in `app/routes/store.yaml`. Either way `add` adds one line to `host.mjs`:
 
 ```js
 // host.mjs (trusted operator code, outside app/)
@@ -36,8 +40,17 @@ export default await composeHost(import.meta.url, [
 Collection files live in `store({ directory })`, else `STORE_DIRECTORY`, else
 `data/store` beside `host.mjs`; the directory must be outside `app/`.
 
-When `auth` is installed the scaffold puts `auth: true` on the mount. Without
-`auth` the scaffold refuses; the refusal prints the exact command, ending in
+When `ui` is installed too, the example also declares a `/todos` list-and-form
+screen under `extensions.store.config.screens` and its `/todos/*` route with
+`extension: ui` (signed-in only when `auth` is installed). The store owns that
+screen: it declares it next to the collection, and hands ui a generic
+description of it through its definition's optional `contributes.ui.screens`,
+so ui never reads the store's configuration. `ui` is an optional peer, not a
+requirement: without it `screens` is simply not served. See
+[a screen for the collection](../../docs/STORE.md#a-screen-for-the-collection).
+
+When `auth` is installed the example puts `auth: true` on the mount. Without
+`auth` the example refuses; the refusal prints the exact command, ending in
 `--ack store:public-write`, which acknowledges a public writable endpoint (not
 rate limiting, abuse protection or multi-tenant isolation).
 

@@ -9,7 +9,7 @@ import { crudScript } from '../src/crud-script.ts';
 import { createKit } from '../src/kit.ts';
 import { createPresentation } from '../src/presentation.ts';
 import { createUiExtension, uiConfigSchema } from '../src/host/extension.ts';
-import type { ExtensionRequest } from '../src/host/extension.ts';
+import type { ExtensionRequest, UiScreen, UiScreenSource } from '../src/host/extension.ts';
 import { FakeDocument, fakeFetch, json, settle } from './support/fake-dom.ts';
 import type { FakeElement } from './support/fake-dom.ts';
 
@@ -213,19 +213,12 @@ test('client: a failed load says so and a wrong shape is ignored', async () => {
     assert.equal(server.calls.length, 0, 'a protocol-relative api base is never fetched');
 });
 
-test('the ui configuration schema accepts screens and refuses anything else under them', async () => {
+test('the ui configuration schema has no screens block: screens arrive from the extension that owns the collection', async () => {
     const Ajv = ((await import('ajv')) as unknown as { default: new (options: object) => { compile(schema: object): (data: unknown) => boolean } }).default;
     const { $schema: _draft, ...schema } = uiConfigSchema;
     const validate = new Ajv({ strict: true }).compile(schema);
-    assert.equal(validate({ screens: { '/todos': { collection: 'todos', title: 'Todos' } } }), true);
-    assert.equal(validate({ screens: { 'todos': { collection: 'todos' } } }), false);
-    assert.equal(validate({ screens: { '/todos': { collection: 'todos', script: 'x' } } }), false);
-    assert.equal(validate({ screens: { '/todos': {} } }), false);
-    const screen = (columns: unknown) => ({ screens: { '/todos': { collection: 'todos', columns } } });
-    assert.equal(validate(screen(['title', { field: 'done', label: 'Done?' }])), true);
-    assert.equal(validate(screen([])), false);
-    assert.equal(validate(screen([{ label: 'x' }])), false);
-    assert.equal(validate(screen([{ field: 'title', extra: 1 }])), false);
+    assert.equal(validate({}), true);
+    assert.equal(validate({ screens: { '/todos': { collection: 'todos', title: 'Todos' } } }), false);
 });
 
 test('columns select, order and relabel fields; the default output is unchanged', () => {
@@ -252,19 +245,22 @@ test('columns validation names the offending key', () => {
     assert.throws(() => crudFields(c, ['__proto__']), /__proto__/);
 });
 
-async function storeProject(collections: unknown): Promise<string> {
+/** A project whose YAML declares another extension's collections and screens; ui must never read them. */
+async function projectWithForeignScreens(): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-crud-'));
-    const store = collections === undefined ? '' : `  store:\n    version: "1"\n    config:\n      collections: ${JSON.stringify(collections)}\n`;
-    await writeFile(join(root, 'urlcode.yaml'), `version: "1"\nextensions:\n  ui:\n    version: "1"\n    config: {}\n${store}routes:\n  /assets/ui/*: {extension: ui}\n`);
+    await writeFile(join(root, 'urlcode.yaml'), `version: "1"\nextensions:\n  ui:\n    version: "1"\n    config: {}\n  store:\n    version: "1"\n    config:\n      collections: ${JSON.stringify({ todos: { mount: '/api/todos', fields: todos.fields } })}\n      screens: {"/todos": {collection: todos}}\nroutes:\n  /assets/ui/*: {extension: ui}\n  /todos/*: {extension: ui}\n`);
     return root;
 }
 const sha = 'a'.repeat(64);
-const activate = async (root: string, mounts: string[], screens: unknown) => createUiExtension({ projectSha256: sha, projectRoot: root }).registration.activate({ screens } as never, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root });
+const activate = async (root: string, mounts: string[], screens: UiScreenSource[] = []) => createUiExtension({ projectSha256: sha, projectRoot: root, screens }).registration.activate({}, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root });
+const source = (screens: Record<string, unknown>): UiScreenSource => () => screens as Record<string, UiScreen>;
 const screenRequest = (path: string, mount: string, method = 'GET'): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: `${mount}/*`, mount, client: null, requestId: 'test-request', env: {} });
 
-test('the ui extension reads the store declaration and serves the screen at its exact mount', async () => {
-    const root = await storeProject({ todos: { mount: '/api/todos', fields: todos.fields } });
-    const instance = await activate(root, ['/assets/ui', '/todos'], { '/todos': { collection: 'todos', title: 'My todos' } });
+test('the ui extension serves a contributed screen at its exact mount', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-crud-'));
+    let seen: string | undefined;
+    const instance = await activate(root, ['/assets/ui', '/todos'], [context => { seen = context.root; return { '/todos': { title: 'My todos', collection: todos } }; }]);
+    assert.equal(seen, root, 'the source receives the route project root');
     const page = await instance.handle(screenRequest('/todos', '/todos'));
     assert.equal(page.status, 200);
     const html = new TextDecoder().decode(page.body as Uint8Array);
@@ -279,21 +275,43 @@ test('the ui extension reads the store declaration and serves the screen at its 
     assert.equal(css.status, 404);
 });
 
-test('the ui extension refuses a screen whose collection the store does not declare, or that has no route, or no store', async () => {
-    const root = await storeProject({ todos: { mount: '/api/todos', fields: todos.fields } });
-    await assert.rejects(activate(root, ['/assets/ui', '/notes'], { '/notes': { collection: 'notes' } }), /names collection notes/);
-    await assert.rejects(activate(root, ['/assets/ui'], { '/todos': { collection: 'todos' } }), /needs a route \/todos\/\*/);
-    await assert.rejects(activate(await storeProject(undefined), ['/assets/ui', '/todos'], { '/todos': { collection: 'todos' } }), /does not declare/);
-    await assert.rejects(activate(root, ['/todos'], { '/todos': { collection: 'todos' } }), /exactly one route mount/);
+test('ui never reads another extension\'s YAML: screens declared there are served only through a contribution (#709)', async () => {
+    const root = await projectWithForeignScreens();
+    // Without a contribution the /todos mount is just a second asset mount, which ui refuses; it does not go looking for store config.
+    await assert.rejects(activate(root, ['/assets/ui', '/todos']), /exactly one route mount/);
+    const plain = await activate(root, ['/assets/ui']);
+    assert.equal((await plain.handle(screenRequest('/todos', '/assets/ui'))).status, 404);
+    // The source code carries no knowledge of the store's name, package or configuration layout.
+    const { readdir, readFile } = await import('node:fs/promises');
+    const sources = join(import.meta.dirname, '..', 'src');
+    const files = (await readdir(sources, { recursive: true })).filter(file => file.endsWith('.ts'));
+    for (const file of files) {
+        const text = await readFile(join(sources, file), 'utf8');
+        assert.doesNotMatch(text, /urlcode-store|extensions\.store|extensions\?\.store|loadDocument|installed\.includes\('store'\)/, `${file} must not reach into the store`);
+    }
 });
 
-test('the ui extension applies screen columns and refuses a bad column at activation, naming the screen and key', async () => {
-    const root = await storeProject({ todos: { mount: '/api/todos', fields: { ...todos.fields, notes: { type: 'string' } } } });
-    const instance = await activate(root, ['/assets/ui', '/todos'], { '/todos': { collection: 'todos', columns: ['title', { field: 'done', label: 'Finished' }] } });
+test('the ui extension refuses a contributed screen with no route, a duplicate path, a bad title or a bad shape', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-crud-'));
+    const good = source({ '/todos': { title: 'Todos', collection: todos } });
+    await assert.rejects(activate(root, ['/assets/ui'], [good]), /needs a route \/todos\/\*/);
+    await assert.rejects(activate(root, ['/todos'], [good]), /exactly one route mount/);
+    await assert.rejects(activate(root, ['/assets/ui', '/todos'], [good, good]), /contributed more than once/);
+    await assert.rejects(activate(root, ['/assets/ui', '/todos'], [source({ '/todos': { title: '', collection: todos } })]), /plain title/);
+    await assert.rejects(activate(root, ['/assets/ui', '/todos'], [source({ '/todos': { title: 'a\nb', collection: todos } })]), /plain title/);
+    await assert.rejects(activate(root, ['/assets/ui', '/x'], [source({ 'x': { title: 'X', collection: todos } })]), /absolute literal path/);
+    await assert.rejects(activate(root, ['/assets/ui', '/todos'], [source({ '/todos': { title: 'T', collection: { mount: 'api', fields: todos.fields } } })]), /ui screen \/todos: .*mount/);
+    await assert.rejects(activate(root, ['/assets/ui'], [(() => 'nope') as unknown as UiScreenSource]), /keyed by path/);
+});
+
+test('the ui extension applies contributed columns and refuses a bad column at activation, naming the screen and key', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-crud-'));
+    const wide = { mount: '/api/todos', fields: { ...todos.fields, notes: { type: 'string' as const } } };
+    const instance = await activate(root, ['/assets/ui', '/todos'], [source({ '/todos': { title: 'Todos', collection: wide, columns: ['title', { field: 'done', label: 'Finished' }] } })]);
     const html = new TextDecoder().decode((await instance.handle(screenRequest('/todos', '/todos'))).body as Uint8Array);
     assert.match(html, /Finished/);
     assert.equal(html.includes('Notes'), false);
-    await assert.rejects(activate(root, ['/assets/ui', '/todos'], { '/todos': { collection: 'todos', columns: ['ghost'] } }), /ui screen \/todos: .*ghost/);
+    await assert.rejects(activate(root, ['/assets/ui', '/todos'], [source({ '/todos': { title: 'Todos', collection: wide, columns: ['ghost'] } })]), /ui screen \/todos: .*ghost/);
 });
 
 const queried: CrudCollection = { mount: '/api/todos', sortable: ['title', 'points'], filterable: ['status', 'done', 'points'], fields: { title: { type: 'string', required: true, maxLength: 80 }, status: { type: 'string', enum: ['open', '<b>x</b>'] }, done: { type: 'boolean', default: false }, points: { type: 'integer' } } };

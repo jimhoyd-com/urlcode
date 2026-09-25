@@ -256,9 +256,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # `admin` imports `auth` and `ui`; `auth` and `forms` import `ui`. The
-      # matrix carries each package's dependencies in build order (empty for
-      # `ui` and `store`, which have none) so this job's own typecheck/build
+      # `admin` imports `auth` and `ui`; `auth`, `forms` and `store` import `ui`
+      # (store contributes its CRUD screen to ui). The matrix carries each
+      # package's dependencies in build order (empty for `ui` and `mcp`, which
+      # have none) so this job's own typecheck/build
       # can resolve them, the way the removed serial script did by ordering.
       - if: matrix.deps != ''
         shell: bash
@@ -346,7 +347,7 @@ jobs:
       - run: npm run build
       - run: node scripts/workspaces.ts run build
       # Sites built from the packed runtime and add-ons, pinned by sha512 exactly as a release pins them.
-      - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed" --site "$RUNNER_TEMP/site" --with ui,store --ack store:public-write
+      - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed" --site "$RUNNER_TEMP/site" --with ui,store --example --ack store:public-write
       - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed-host" --site "$RUNNER_TEMP/host-site" --with mcp
       - name: Run the action on a site whose extensions are checked statically
         uses: ./action

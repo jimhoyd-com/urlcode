@@ -71,9 +71,9 @@ test('scaffold returns config, routes, private operator files, env and notes', a
   const result = await scaffoldResult();
   assert.deepEqual(Object.keys(result).sort(), ['config', 'env', 'files', 'notes', 'routes']);
   assert.deepEqual(result.config, { registration: 'off' });
+  // The capability only: the account mount; the /private demo page is the example (#711).
   assert.deepEqual(result.routes, {
     '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
-    '/private': { respond: { text: 'Signed in' }, auth: true },
   });
   assert.deepEqual(result.files!.map(file => file.path).sort(), ['data/csrf.key', 'data/encryption.key', 'operator-service.mjs']);
   for (const file of result.files!) {
@@ -86,13 +86,25 @@ test('scaffold returns config, routes, private operator files, env and notes', a
   assert.ok(operator.includes("'./data/encryption.key'") && operator.includes("'./data/auth.sqlite'"));
   assert.ok(result.env && 'AUTH_ORIGIN' in result.env && 'AUTH_CONFIG_FROM' in result.env);
   assert.ok(result.notes!.some(note => note.includes('npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"')));
+  assert.ok(result.notes!.every(note => !note.includes('/private')));
+  // The minimal role model is capability configuration, kept in the operator file and documented.
+  assert.ok(operator.includes("roles: {member: [], admin: ['*']}") && operator.includes("defaultRole: 'member'"));
+});
+
+test('--example adds only the /private page on top of the capability (#711)', async () => {
+  assert.ok(auth.definition.example);
+  const example = await auth.definition.example(request);
+  assert.deepEqual(example.config, {});
+  assert.deepEqual(example.routes, { '/private': { respond: { text: 'Signed in' }, auth: true } });
+  assert.equal(example.files, undefined);
+  assert.ok(example.notes!.some(note => note.includes('/private')));
 });
 
 test('scaffold routes merged into a version 1 project validate with core', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-scaffold-'));
   cleanup(t, () => rm(root, { recursive: true, force: true }));
-  const result = await scaffoldResult();
-  await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: result.config } }, routes: result.routes }));
+  const result = await scaffoldResult(), example = await auth.definition.example!(request);
+  await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: result.config } }, routes: { ...result.routes, ...example.routes } }));
   const report = await validateProject(root);
   assert.equal(report.valid, true);
   assert.equal(report.routeCount, 2);

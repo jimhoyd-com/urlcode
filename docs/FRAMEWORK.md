@@ -13,7 +13,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-ui` | [`packages/ui`](../packages/ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
-| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API | `extensions.store` plus a protected collection mount |
+| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
@@ -94,11 +94,13 @@ while store is currently Node-only. See each package's README ([auth](../package
 An extended project is a site: core plus the add-ons that core pins.
 
 ```sh
-npx @jimhoyd/urlcode init my-site --with ui,auth,admin
+npx @jimhoyd/urlcode init my-site --with ui,auth,admin --example
 ```
 
 That is `urlcode init my-site` followed by `urlcode extensions add ui auth
-admin` in it. Nothing else is discovered by convention:
+admin --example` in it. Without `--example` each extension installs only its
+capability (auth's `/account/*` pages, admin's console, ui's assets); with it,
+each also writes its demo, such as the `/private` page below. Nothing else is discovered by convention:
 
 ```
 my-site/
@@ -146,7 +148,11 @@ export default await composeHost(import.meta.url, [
 `composeHost` orders the list by each extension's `requires`, activates each
 once, hands admin the auth service through `ctx.get('auth')`, and collects the
 templates and catalogues auth and admin contribute to `ui`, so both render
-every screen through the one `ui.kit`. Operator options go inside a call, for
+every screen through the one `ui.kit`. The store contributes to `ui` too,
+without requiring it: the CRUD screens declared under
+`extensions.store.config.screens` reach ui as generic screen descriptions
+through `contributes.ui.screens`, so ui never reads another extension's
+configuration ([nesting](EXTENSIONS.md#nesting)). Operator options go inside a call, for
 example `auth({sendEmailCode})`.
 
 Treat that composition as one application with package ownership boundaries,
@@ -179,7 +185,8 @@ cd my-site
 npm run dev        # urlcode dev --project app --host-file host.mjs
 ```
 
-Each `extensions add` calls the extension's `scaffold` and writes its
+Each `extensions add` calls the extension's `scaffold` (and, with `--example`,
+its optional `example`, merged on top) and writes its
 configuration into `app/urlcode.yaml`, its routes into `app/routes/<name>.yaml`,
 its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is

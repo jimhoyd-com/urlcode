@@ -1,5 +1,11 @@
 # @jimhoyd/urlcode-store
 
+## Unreleased
+
+**Default behavior change:** `urlcode extensions add` (and `init --with`) now installs only the capability; the new `--example` flag, the same for every extension, writes the sample behavior it used to write by default (#711). A blank `extensions add store` writes an empty `collections` block, no mount and needs no acknowledgement (`collections` may now be empty); `--example` writes the `todos` collection on `/api/todos` and, with ui, its `/todos` screen, and still requires `--ack store:public-write` without auth. To reproduce the old result, add `--example`.
+
+The store owns its CRUD screen (#709). Screens are declared under `extensions.store.config.screens` (`/todos: {collection: todos, title?, columns?}`, the shape that used to live under `extensions.ui.config.screens`), activation refuses a screen naming an undeclared collection, and the definition's optional `contributes.ui.screens` hands ui a generic description of each, so ui no longer reads `extensions.store`. The scaffold adds the `/todos` screen and its `extension: ui` route when ui is installed. `@jimhoyd/urlcode-ui` is declared an optional peer, and `urlcode.json` records the optional edge as `contributes: ["ui"]`.
+
 ## 0.5.0
 
 Align the coordinated stable release at `0.5.0` on npm’s `latest` channel. Internal peer minimums advance to this release.

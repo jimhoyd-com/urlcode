@@ -83,7 +83,8 @@ Release as core and pinned by core (download URL and sha512 in its
 
 - An **extension** is executable operator code. `urlcode extensions add
   <name>` installs it, writes its configuration and routes into `app/`, and
-  adds it to `host.mjs`, which activates it.
+  adds it to `host.mjs`, which activates it. It writes the capability only;
+  `--example` also writes the extension's demo routes.
 - An **artifact** is inert JSON data, such as a configuration schema and an
   example, that tooling and the read-only MCP tools read. `urlcode artifacts
   add <name>` installs it; nothing ever imports or runs it.

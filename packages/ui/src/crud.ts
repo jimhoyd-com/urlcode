@@ -1,7 +1,8 @@
 /**
- * The data-bound list and form screen. It takes a collection declaration in the
- * shape `@jimhoyd/urlcode-store` uses, so an application declares its fields
- * once and gets both the JSON API (the store) and this screen (the kit). Node-free.
+ * The data-bound list and form screen. It takes a generic collection
+ * description (an HTTP collection API mount and its typed fields), so the
+ * extension that serves the API can hand the same declaration to this screen
+ * and an application declares its fields once. Node-free.
  *
  * The server renders the shell only: a heading, the declaration as escaped data
  * attributes and a no-script notice. The `crud` kit script (see `crud-script.ts`)
@@ -15,7 +16,7 @@ import { Markup, escapeHtml } from './escape.ts';
 import type { Kit, PageOptions, PageResult } from './kit.ts';
 import type { PresentationContext, LocalePreferences } from './presentation.ts';
 
-/** A field as the store declares it; only what the screen needs. */
+/** A field as the collection API declares it; only what the screen needs. */
 export interface CrudFieldSpec {
     type: 'string' | 'integer' | 'number' | 'boolean';
     required?: boolean | undefined;
@@ -26,15 +27,15 @@ export interface CrudFieldSpec {
     maximum?: number | undefined;
     enum?: readonly (string | number)[] | undefined;
 }
-/** A collection declaration as the store takes it (`extensions.store.config.collections.<name>`). */
+/** A collection API the screen binds to: its mount and declared fields. */
 export interface CrudCollection {
-    /** The API mount the store serves the collection at, for example `/api/todos`. */
+    /** The API mount that serves the collection, for example `/api/todos`. */
     mount: string;
     fields: Readonly<Record<string, CrudFieldSpec>>;
     readOnly?: boolean | undefined;
-    /** Fields the store lets a list request sort by; the screen offers exactly these, and nothing when absent. */
+    /** Fields the API lets a list request sort by; the screen offers exactly these, and nothing when absent. */
     sortable?: readonly string[] | undefined;
-    /** Fields the store lets a list request filter on by equality; the screen offers exactly these. */
+    /** Fields the API lets a list request filter on by equality; the screen offers exactly these. */
     filterable?: readonly string[] | undefined;
 }
 /** A column choice: a declared field name, or a field with its own label. */
@@ -131,7 +132,7 @@ export function crudMarkup(context: PresentationContext, options: Pick<CrudScree
     const copy: Record<string, string> = {};
     for (const key of crudCopyKeys) copy[key] = context.text(`ui.crud.${key}`);
     const attribute = (value: unknown) => escapeHtml(JSON.stringify(value));
-    // Sort and filter controls come only from the store's declared lists; a collection that declares none renders exactly as before.
+    // Sort and filter controls come only from the collection's declared lists; a collection that declares none renders exactly as before.
     const sortable = queryNames(options.collection, 'sortable'), filterable = queryNames(options.collection, 'filterable');
     let query = '';
     if (sortable.length || filterable.length) {

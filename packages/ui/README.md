@@ -107,8 +107,9 @@ link a hashed stylesheet and send their own nonce CSP, so they need none of this
 ## Data-bound screens
 
 `crudScreen(kit, {collection, title})` renders a list with a create form, inline
-edit and delete for one collection declared the way `@jimhoyd/urlcode-store`
-declares it (`{mount, fields, readOnly?}`), so fields are written once. The page
+edit and delete for one collection API, described generically as `{mount,
+fields, readOnly?, sortable?, filterable?}`, so the extension that serves the
+API can hand the same declaration to the screen and fields are written once. The page
 carries only an escaped shell; the `crud` kit script (loaded with the page nonce,
 CSP `connect-src 'self'`) fetches the records from `mount` and builds every node
 with `textContent` and `value`, never markup. An in-progress edit is kept as a
@@ -116,18 +117,24 @@ per-record draft and restored, with focus and caret, whenever the list re-render
 a checkbox toggle is applied first and rolled back with a message when the update
 fails.
 
-In a composed site the `ui` extension does this for you. Add
-`extensions.ui.config.screens` (`/todos: {collection: todos, title: Todos}`) and a
-route `/todos/*` with `extension: ui`; at activation the extension reads the
-collection from `extensions.store` in the project, so nothing is declared twice.
-`urlcode extensions add ui store` (or `urlcode init <site> --with ui,store`)
-writes both. Field types map to controls: strings
+In a composed site the `ui` extension serves these screens for the extensions
+that contribute them; it never reads another extension's configuration. An
+extension that owns collections passes a screen source through its
+definition's `contributes.ui.screens` (see `UiContribution` in the
+[contract](CONTRACT.md)). At activation `ui` calls each source once with the
+route project root and receives `{<path>: {title, collection, columns?}}`; each
+path must have a route `<path>/*` with `extension: ui`, a path claimed twice
+refuses, and a bad collection, column or title fails activation naming the
+screen. The store extension is one such contributor: its screens are declared
+under `extensions.store.config.screens`, next to the collections they show
+(see [store screens](../../docs/STORE.md#a-screen-for-the-collection)).
+Field types map to controls: strings
 to inputs (textarea above 200 characters or with no `maxLength`), `enum` to a
 select, numbers to number inputs, booleans to checkboxes.
 
 By default every declared field appears, labelled from its name. `columns` on a
-screen (`columns: [title, {field: done, label: Finished}]`, or the `columns`
-option of `crudScreen`) chooses which fields appear, in what order, and
+screen (a contributed screen's `columns`, or the `columns` option of
+`crudScreen`) chooses which fields appear, in what order, and
 optionally a label of 1 to 80 plain characters; the create form and the rows
 follow it. Labels are written as text, never markup. A bad name, a repeated
 field or a bad label fails at activation with a message naming the key, and so
@@ -147,8 +154,8 @@ it did before: no controls, no `data-query` attribute, byte-identical output.
 
 A plain project (no host file) can still `import` this package from a trusted
 function and render static, kit-styled markup, but the kit assets, nonce CSP and
-data binding need the operator host, which `urlcode extensions add ui store`
-wires.
+data binding need the operator host, which `urlcode extensions add ui` (plus
+the extension that contributes the screen) wires.
 
 ## Appearance selection
 

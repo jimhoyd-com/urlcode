@@ -183,6 +183,33 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   assert.ok((await readFile(log, 'utf8')).split('\n').filter(Boolean).every(line => JSON.parse(line).includes('--ignore-scripts')), 'npm never runs lifecycle scripts');
 });
 
+test('extensions add installs the capability only; --example adds the example on top (#711)', async t => {
+  const m = manifest();
+  const blank = await site(t);
+  const plain = await addAddons(blank, 'extension', ['alpha'], { manifest: m });
+  assert.deepEqual(plain.examples, []);
+  const loadedBlank = await loadDocument(join(blank, 'app'));
+  assert.deepEqual(Object.keys(loadedBlank.routes), ['/alpha/*'], 'a blank install adds no sample endpoint');
+  assert.deepEqual(loadedBlank.document.extensions?.alpha?.config, { greeting: 'hello' });
+  assert.deepEqual(plain.notes, ['installed: alpha']);
+  await assert.rejects(addAddons(blank, 'extension', ['alpha'], { manifest: m, example: true }), /--example has no effect: alpha is already installed/);
+
+  const demo = await site(t);
+  const withExample = await addAddons(demo, 'extension', ['alpha'], { manifest: m, example: true });
+  assert.deepEqual(withExample.examples, ['alpha']);
+  const loaded = await loadDocument(join(demo, 'app'));
+  assert.deepEqual(Object.keys(loaded.routes).sort(), ['/alpha-demo', '/alpha/*']);
+  assert.deepEqual(loaded.document.extensions?.alpha?.config, { greeting: 'hello from the example' }, 'example config merges over the capability');
+  assert.deepEqual(withExample.notes, ['installed: alpha', 'example: open /alpha-demo']);
+  assert.deepEqual(withExample.env, { ALPHA_MODE: 'Optional mode for the fixture' });
+
+  // An extension with no example refuses --example rather than silently doing nothing, and rolls back.
+  const before = await readFile(join(demo, 'package.json'), 'utf8');
+  await assert.rejects(addAddons(demo, 'extension', ['beta'], { manifest: m, example: true, acknowledgements: ['beta:risky'] }), /--example has no effect: beta ships no example/);
+  assert.equal(await readFile(join(demo, 'package.json'), 'utf8'), before);
+  await assert.rejects(addAddons(demo, 'artifact', ['notes'], { manifest: m, example: true }), /--example is only supported by extensions add/);
+});
+
 test('a failed npm install rolls every file back, and node_modules with them', async t => {
   const dir = await site(t);
   process.env.FAKE_NPM_FAIL = 'install';

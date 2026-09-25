@@ -91,3 +91,28 @@ test('purge removes only accounts whose deletion grace has elapsed', async (t) =
     assert.equal(await reopened.getUser(user.user.id), null);
     assert.equal((await reopened.dashboard()).users, 1);
 });
+test('api-key-issue accepts a key quota on stdin, refuses an invalid one, and api-key-list reports it (urlcode#703)', async (t) => {
+    const { root, database, run } = await fixture('urlcode-auth-cli-api-key-quota-');
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const planned = run('api-key-issue', { name: 'plan-gold', scopes: ['items.read'], quota: { requests: 5000, window: 3600 } });
+    assert.equal(planned.status, 0, planned.stderr);
+    const issued = JSON.parse(planned.stdout) as { id: string; key: string; quota: unknown };
+    assert.deepEqual(issued.quota, { requests: 5000, window: 3600 });
+    const plain = run('api-key-issue', { name: 'plain', scopes: ['items.read'] });
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.equal(JSON.parse(plain.stdout).quota, null);
+    for (const quota of [{ requests: 0, window: 60 }, { requests: 10, window: 2592001 }, { requests: 10 }, { requests: 10, window: 60, burst: 1 }, [10, 60], 'ten', null]) {
+        const refused = run('api-key-issue', { name: 'bad', scopes: ['items.read'], quota });
+        assert.equal(refused.status, 1, JSON.stringify(quota));
+        assert.equal(refused.stdout, '');
+    }
+    const listed = run('api-key-list');
+    assert.equal(listed.status, 0, listed.stderr);
+    const keys = JSON.parse(listed.stdout) as { id: string; name: string; quota: unknown }[];
+    assert.deepEqual(keys.map(key => key.name).sort(), ['plain', 'plan-gold']);
+    assert.deepEqual(keys.find(key => key.id === issued.id)!.quota, { requests: 5000, window: 3600 });
+    assert.ok(!listed.stdout.includes(issued.key));
+    const service = await createAuthService({ database, encryptionKey: new Uint8Array(32).fill(7), roles, defaultRole: 'member' });
+    cleanup(t, () => service.close());
+    assert.deepEqual((await service.authenticateApiKey(issued.key))?.quota, { requests: 5000, window: 3600 });
+});

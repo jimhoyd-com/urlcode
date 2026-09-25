@@ -34,7 +34,7 @@ returns installed extension configuration/policy schemas, declared project
 hook contracts, supported authoring surfaces and fast checks. Otherwise use `urlcode extensions --project app --host-file host.mjs --json`
 from the site when the operator has supplied that host file.
 If the site has artifacts installed, call `get_extension_artifacts`, then `get_extension_artifact` for only the schema, example or README needed; without MCP, run `urlcode artifacts list --json` in the site.
-These are pinned, inert authoring inputs, not proof of an installed executable extension. Add extensions only with `urlcode extensions add <name>`, and add or remove an add-on only when the user requests that change.
+These are pinned, inert authoring inputs, not proof of an installed executable extension. Add extensions only with `urlcode extensions add <name>` (capability only; `--example` also writes its demo routes), and add or remove an add-on only when the user requests that change.
 Without the server, run the CLI equivalents and read only the output:
 
 ```sh

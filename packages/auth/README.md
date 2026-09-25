@@ -10,10 +10,18 @@ The implementation is under active review. Local tests and builds are evidence o
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth
+npx urlcode init my-site --with ui,auth --example
 # or, in an existing site:
-npx urlcode extensions add auth
+npx urlcode extensions add auth --example
 ```
+
+Without `--example`, auth installs its capability only: the `/account/*`
+pages (the default mount; move the route to change it), the operator service
+with the minimal `{member, admin}` role model and `defaultRole: member` in
+`operator-service.mjs` (edit it to change the roles), and private keys in
+`data/`. No page of yours is protected until you add `auth: true` to a route.
+`--example` also writes a `/private` page that only a signed-in caller can
+read.
 
 auth is released as a tarball on core's GitHub Release, at core's version, and
 pinned by sha512 in core's `dist/addons.json`; only core is on npm.
@@ -187,6 +195,9 @@ echo '{"name":"ci-deploy-bot","scopes":["deploys.write"],"expiresInMs":777600000
   | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
 ```
 
+An optional `quota: {requests, window}` gives the key its own budget (see
+[per-credential quota](#per-credential-quota)).
+
 `issueApiKey` returns the raw key (`uak_<id>.<secret>`) exactly once; only its
 scrypt hash (the same derivation `createAuthService` uses for passwords) is
 stored, so it cannot be recovered afterward — treat it like any other secret.
@@ -234,10 +245,38 @@ routes:
 ```
 
 `requests` (1 to 1,000,000) per `window` seconds (1 to 2,592,000, 30 days) use
-the units of core's `policies.throttle` `quota`/`window`. The gate counts a
-request only after the key has authenticated and covers the route's scopes, so
-401 and 403 keep their meaning; the request that would exceed the budget is
-refused with a 429 before the route's handler runs:
+the units of core's `policies.throttle` `quota`/`window`.
+
+A key can also carry its own budget, set when it is issued
+([urlcode#703](https://github.com/jimhoyd-com/urlcode/issues/703)): pass
+`quota: {requests, window}` (same bounds) to `issueApiKey`, or in the
+`api-key-issue` JSON on stdin:
+
+```sh
+echo '{"name":"plan-gold","scopes":["items.read"],"quota":{"requests":50000,"window":3600}}' \
+  | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
+```
+
+**A key's own quota replaces the route's.** A key issued with one is counted
+only against it, on every bearer route it authenticates on, whether or not the
+route declares a `quota`; the route's `auth.bearer.quota` applies to keys issued
+without one. This is how plan tiers work: one route, different keys, different
+budgets. The quota is fixed at issuance (issue a new key and revoke the old one
+to change it); `listApiKeys` and `api-key-list` report it, and keys issued before
+this field existed have none (`quota: null`). Core `policies.throttle` is
+separate: it still applies to every request, per client, before auth runs.
+
+The gate counts a request only after the key has authenticated and covers the
+route's scopes, so 401 and 403 keep their meaning. An allowed request's
+response reports the budget it was counted against, in the same fields the
+refusal uses: `RateLimit-Policy: "credential";q=<requests>;w=<window>` and
+`RateLimit: "credential";r=<remaining>;t=<seconds>` (added by the extension's
+`middleware()` hook after the route's handler has answered). These values are
+per credential, so they must never reach a shared cache: core already sends
+`Cache-Control: no-store` on every response of a route auth protects, and
+refuses to start with a `cache` strategy other than `no-store` on such a route.
+The request that would exceed the budget is refused with a 429 before the
+route's handler runs:
 
 - body `{"error":"credential_quota_exceeded"}`, `Cache-Control: no-store`;
 - `Retry-After: <seconds>` until the window closes;
@@ -250,7 +289,8 @@ Semantics, matching the sign-in attempt counter:
 - **Fixed window per credential.** The window opens at the key's first counted
   request; a refused request is not counted, so a retry loop cannot keep its
   own window open. Routes that restate the same `requests`/`window` share one
-  counter per key; a route with a different budget gets its own.
+  counter per key; a route with a different budget gets its own. A key's own
+  quota is one counter for that key across every route.
 - **Counted by key id, never the secret.** The counter row is a SHA-256 of the
   key's public id and the budget, in the same `auth_attempts` table (100,000-row
   ceiling, expired rows swept on write and by `urlcode-auth cleanup`).
@@ -261,16 +301,20 @@ Semantics, matching the sign-in attempt counter:
   capacity, the request fails with a 503 (as the key lookup itself does); it is
   never waved through uncounted.
 
-Scope: the budget is declared per route. There is no per-key override (a
-different budget for one key) — issue separate keys against routes with
-different budgets ([urlcode#703](https://github.com/jimhoyd-com/urlcode/issues/703)
-tracks both gaps). On an allowed request the gate cannot add RateLimit fields
-to the response (an `authorize()` hook only refuses).
+On a route that also declares core `throttle`, both budgets share the same
+structured-field lists. On an allowed response the list is
+`"credential", "default"`:
 
-On a route that also declares core `throttle`, the 429 keeps the credential's
-policy: core's response phase appends its own `default` member to the same
-structured-field lists, so the refusal carries both budgets and `Retry-After`
-stays the credential's:
+```http
+HTTP/1.1 200 OK
+Cache-Control: no-store
+RateLimit-Policy: "credential";q=2;w=60, "default";q=60;w=60
+RateLimit: "credential";r=1;t=60, "default";r=59;t=60
+```
+
+The 429 keeps the credential's policy: core's response phase appends its own
+`default` member to the same lists, so the refusal carries both budgets and
+`Retry-After` stays the credential's:
 
 ```http
 HTTP/1.1 429 Too Many Requests
@@ -327,7 +371,7 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 | `cleanup` | `--operator-file` | Sweep expired sessions/tokens (bounded batch) |
 | `configuration` | `--operator-file` | Print configuration revision, registration mode, security policy and roles |
 | `doctor` | `--operator-file` | Local database/configuration readiness check |
-| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?}` on stdin | Issue a bearer/API key; returns the raw key once, never stored |
+| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?,quota?}` on stdin | Issue a bearer/API key; returns the raw key once, never stored |
 | `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed; never the raw key or its hash) |
 | `api-key-revoke` | `--operator-file`, JSON `{id}` on stdin | Revoke a key by its id |
 | `validate` | `--operator-file` | Offline validation of the loaded service's configuration |

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `date` and `datetime-local` bounds can be relative (#705): `minimum` and
+  `maximum` accept `today` or `{from: today, add: <duration>}`, a signed ISO
+  8601 duration of years, months and days such as `-P18Y`, `P30D` or `P1Y6M`.
+  Today is the date in the flow's new `timeZone` (an IANA name), or UTC when it
+  is absent, never the host's zone. Years and months move first and clamp to
+  the month end (31 January + `P1M` is 28 or 29 February), then days. For
+  `datetime-local`, a relative minimum is 00:00 and a relative maximum the end
+  of that day. The server resolves the bounds per request, and that check is
+  authoritative. The rendered `min`/`max` are computed when the page is served,
+  so they can go stale across midnight. Activation refuses unknown zones,
+  durations with weeks or time parts, and two relative bounds whose window is
+  empty on some day.
+- **Default behavior change:** `urlcode extensions add` (and `init --with`) now installs only the capability; the new `--example` flag, the same for every extension, writes the sample behavior it used to write by default (#711). A blank `extensions add forms` writes the CSRF key and an empty `flows` block (`flows` may now be empty) and mounts nothing; `--example` writes the `/contact` flow and route. To reproduce the old result, add `--example`.
 - A field can be required conditionally with `requiredWhen: {field, in}`
   (#528): it is required when a sibling `select` or `enum` field was submitted
   with one of the listed values, and optional otherwise, with the same 422
@@ -15,8 +28,7 @@
   activation refuses malformed bounds and a `minimum` later than `maximum`, a
   submission outside the bounds gets a 422 field error ("must be on or after
   …" / "must be on or before …"), and the input renders the matching HTML
-  `min` and `max` attributes. Bounds are absolute; relative dates are not
-  supported.
+  `min` and `max` attributes.
 - The confirmation page can show submitted values the flow opts in to with
   `confirmation.show`, and `confirmation.message` may place them as `{field}`
   placeholders (#527). The values reach the confirmation in an encrypted,

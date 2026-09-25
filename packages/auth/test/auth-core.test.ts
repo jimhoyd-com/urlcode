@@ -1242,7 +1242,9 @@ test('bearer/API-key issuance, verification, expiry, revocation and secret secre
     assert.equal(listed[0]!.lastUsed, null);
     assert.ok(!('key' in listed[0]!) && !('secretHash' in listed[0]!));
     const authenticated = await service.authenticateApiKey(issued.key);
-    assert.deepEqual(authenticated, { id: issued.id, name: 'ci-deploy-bot', scopes: ['deploys.write'] });
+    assert.deepEqual(authenticated, { id: issued.id, name: 'ci-deploy-bot', scopes: ['deploys.write'], quota: null });
+    assert.equal(issued.quota, null);
+    assert.equal(listed[0]!.quota, null);
     // Wrong secret against a real id, garbage input, and an unknown id all fail closed.
     assert.equal(await service.authenticateApiKey(`uak_${issued.id}.${'x'.repeat(43)}`), null);
     assert.equal(await service.authenticateApiKey('not-a-key'), null);
@@ -1306,4 +1308,43 @@ try { process.stdout.write(JSON.stringify(await service.consumeApiKeyQuota(proce
     for (const bad of [{ requests: 0, window: 60 }, { requests: 1.5, window: 60 }, { requests: 1, window: 0 }, { requests: 1, window: 2592001 }, { requests: 1000001, window: 60 }, null])
         await assert.rejects(restarted.consumeApiKeyQuota(first.id, bad as never), { code: 'invalid_api_key_quota' });
     await assert.rejects(restarted.consumeApiKeyQuota('', quota), { code: 'invalid_api_key_id' });
+});
+test('bearer/API-key own quota (urlcode#703): stored at issuance, returned by lookup and list, bounded like the route quota', async (t) => {
+    const { service, options } = await setup(t);
+    const planned = await service.issueApiKey({ name: 'plan-gold', scopes: ['read'], quota: { requests: 5000, window: 3600 } });
+    assert.deepEqual(planned.quota, { requests: 5000, window: 3600 });
+    const plain = await service.issueApiKey({ name: 'plain', scopes: ['read'] });
+    assert.equal(plain.quota, null);
+    assert.deepEqual((await service.authenticateApiKey(planned.key))?.quota, { requests: 5000, window: 3600 });
+    assert.equal((await service.authenticateApiKey(plain.key))?.quota, null);
+    const listed = new Map((await service.listApiKeys()).map(row => [row.id, row.quota]));
+    assert.deepEqual(listed.get(planned.id), { requests: 5000, window: 3600 });
+    assert.equal(listed.get(plain.id), null);
+    // Same bounds as `auth.bearer.quota`; unknown fields are refused rather than dropped.
+    for (const bad of [{ requests: 0, window: 60 }, { requests: 1.5, window: 60 }, { requests: 1, window: 0 }, { requests: 1, window: 2592001 }, { requests: 1000001, window: 60 }, { requests: 10 }, { requests: 10, window: 60, burst: 5 }, null, 'ten'])
+        await assert.rejects(service.issueApiKey({ name: 'bad-quota', scopes: ['read'], quota: bad as never }), { code: 'invalid_api_key_quota' });
+    assert.equal((await service.listApiKeys()).length, 2);
+    // Durable across a restart.
+    await service.close();
+    const restarted = await createAuthService(options);
+    cleanup(t, () => restarted.close());
+    assert.deepEqual((await restarted.authenticateApiKey(planned.key))?.quota, { requests: 5000, window: 3600 });
+});
+test('bearer/API-key quota columns are added to a database created before them; existing keys have no quota', async (t) => {
+    const { service, options, database } = await setup(t);
+    const legacy = await service.issueApiKey({ name: 'legacy', scopes: ['read'] });
+    await service.close();
+    // Recreate the pre-#703 table shape, keeping the row.
+    const db = new DatabaseSync(database);
+    try {
+        db.exec('ALTER TABLE auth_api_keys DROP COLUMN quota_requests;ALTER TABLE auth_api_keys DROP COLUMN quota_window;');
+        assert.ok(!db.prepare('PRAGMA table_info(auth_api_keys)').all().some(row => String(row.name).startsWith('quota_')));
+    }
+    finally { db.close(); }
+    const migrated = await createAuthService(options);
+    cleanup(t, () => migrated.close());
+    assert.deepEqual(await migrated.authenticateApiKey(legacy.key), { id: legacy.id, name: 'legacy', scopes: ['read'], quota: null });
+    assert.equal((await migrated.listApiKeys())[0]!.quota, null);
+    const issued = await migrated.issueApiKey({ name: 'after-migration', scopes: ['read'], quota: { requests: 10, window: 60 } });
+    assert.deepEqual((await migrated.authenticateApiKey(issued.key))?.quota, { requests: 10, window: 60 });
 });

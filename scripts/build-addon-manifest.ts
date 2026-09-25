@@ -25,8 +25,9 @@ export async function expectedFiles(root = repositoryRoot): Promise<Map<string, 
     const module = await import(pathToFileURL(join(addon.directory, 'dist', 'extension.js')).href) as { default?: { definition?: Record<string, unknown> } };
     const definition = module.default?.definition;
     if (!definition || definition.name !== addon.name) throw new Error(`${addon.packageName}/extension must default-export defineExtension({name: '${addon.name}'})`);
+    const contributes = Object.keys((definition.contributes ?? {}) as Record<string, unknown>).sort();
     const descriptor = { kind: 'extension', name: definition.name, description: definition.description, requires: definition.requires ?? [],
-      schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
+      ...(contributes.length ? { contributes } : {}), schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
     descriptors.set(addon.name, descriptor);
     files.set(join(addon.directory, 'urlcode.json'), render(descriptor));
   }

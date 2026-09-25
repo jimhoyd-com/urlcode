@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { addons, repositoryRoot } from '../scripts/workspaces.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
 import { packAddons } from '../scripts/pack-addons.ts';
 import type { PackedAddons } from '../scripts/pack-addons.ts';
 
@@ -57,10 +58,12 @@ async function copies(dir: string, name: string): Promise<number> {
 test('every extension installs once, composes, serves, and removes in dependency order', { timeout: 900000 }, async t => {
   const { dir } = await site(t);
   const all = (await addons()).filter(addon => addon.kind === 'extension').map(addon => addon.name);
-  const added = await urlcode(t, dir, ['extensions', 'add', ...all]);
+  // --example reproduces the demos a new user expects: /api/todos and /todos, /contact and /private (#711).
+  const added = await urlcode(t, dir, ['extensions', 'add', ...all, '--example']);
   assert.equal(added.status, 0, added.stderr);
-  const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string };
+  const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string; examples: string[] };
   assert.deepEqual([...result.added].sort(), [...all].sort());
+  assert.deepEqual([...result.examples].sort(), ['auth', 'forms', 'store']);
   for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
   const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
@@ -83,7 +86,8 @@ test('every extension installs once, composes, serves, and removes in dependency
   // Closed here, not in an after hook: the site is removed in one, and Windows cannot delete the auth
   // database while the service still holds it open.
   try {
-    for (const path of ['/account/login', '/api/todos', '/contact', '/private']) {
+    // /todos is the store's own screen, contributed to ui (#709); signed-in only, so it redirects rather than 404s.
+    for (const path of ['/account/login', '/api/todos', '/todos', '/contact', '/private']) {
       const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
       assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
     }
@@ -99,6 +103,25 @@ test('every extension installs once, composes, serves, and removes in dependency
   const removed = await urlcode(t, dir, ['extensions', 'remove', 'admin']);
   assert.equal(removed.status, 0, removed.stderr);
   assert.doesNotMatch(await readFile(join(dir, 'host.mjs'), 'utf8'), /urlcode-admin/);
+});
+
+test('a blank install adds every capability and no sample endpoint (#711)', { timeout: 900000 }, async t => {
+  const { dir } = await site(t);
+  const all = (await addons()).filter(addon => addon.kind === 'extension').map(addon => addon.name);
+  const added = await urlcode(t, dir, ['extensions', 'add', ...all]);
+  assert.equal(added.status, 0, added.stderr);
+  const result = JSON.parse(added.stdout) as { projectSha256: string; examples: string[] };
+  assert.deepEqual(result.examples, []);
+  const routes = Object.keys((await loadDocument(join(dir, 'app'))).routes).sort();
+  // Only the capabilities are mounted: ui's assets, auth's account pages and admin's console.
+  assert.deepEqual(routes, ['/account/*', '/admin/*', '/assets/ui/*']);
+  const env = { PROJECT_SHA256: result.projectSha256, AUTH_ORIGIN: 'https://site.example' };
+  const full = await urlcode(t, dir, ['validate', '--project', 'app', '--host-file', 'host.mjs', '--origin', 'https://site.example'], env);
+  assert.equal(full.status, 0, full.stderr);
+  // --ack only applies to the store example, so a blank add refuses it as having no effect.
+  const unused = await urlcode(t, (await site(t)).dir, ['extensions', 'add', 'store', '--ack', 'store:public-write']);
+  assert.notEqual(unused.status, 0);
+  assert.match(unused.stderr, /--ack store:public-write has no effect/);
 });
 
 test('artifacts install inert, and a tarball that does not match its pin rolls back', { timeout: 600000 }, async t => {
@@ -124,8 +147,8 @@ test('artifacts install inert, and a tarball that does not match its pin rolls b
 
 test('the order extensions are named in never changes the site', { timeout: 600000 }, async t => {
   const one = await site(t), two = await site(t);
-  const first = await urlcode(t, one.dir, ['extensions', 'add', 'store', 'ui', 'auth']);
-  const second = await urlcode(t, two.dir, ['extensions', 'add', 'auth', 'store', 'ui']);
+  const first = await urlcode(t, one.dir, ['extensions', 'add', 'store', 'ui', 'auth', '--example']);
+  const second = await urlcode(t, two.dir, ['extensions', 'add', 'auth', 'store', 'ui', '--example']);
   assert.equal(first.status, 0, first.stderr); assert.equal(second.status, 0, second.stderr);
   assert.equal(await readFile(join(one.dir, 'host.mjs'), 'utf8'), await readFile(join(two.dir, 'host.mjs'), 'utf8'));
   assert.equal(await readFile(join(one.dir, 'app', 'urlcode.yaml'), 'utf8'), await readFile(join(two.dir, 'app', 'urlcode.yaml'), 'utf8'));

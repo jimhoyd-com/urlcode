@@ -8,8 +8,9 @@ shows only the submitted fields the flow opts in to. It is not a database, email
 
 The extension requires the `ui` extension and an operator-provided CSRF secret.
 Install it into a site with `urlcode extensions add forms` (which adds `ui` too
-when the site lacks it). The scaffold writes a sample `/contact` flow and route,
-a random CSRF secret at `data/forms-csrf.key`, and one line in `host.mjs`. The
+when the site lacks it). The scaffold writes an empty `flows` block, a random
+CSRF secret at `data/forms-csrf.key`, and one line in `host.mjs`; add
+`--example` for a sample `/contact` flow and route. The
 secret and the reviewed project SHA live with the host, never in
 `urlcode.yaml`:
 
@@ -104,8 +105,9 @@ showing or hiding fields.
 
 `minimum` and `maximum` bound a field's value, inclusive, in the field's own
 format: a number for `type: number`, a `YYYY-MM-DD` date for `type: date`, and
-a `YYYY-MM-DDTHH:MM` local date and time for `type: datetime-local`. Either
-side may be omitted. Date bounds are also rendered as the input's HTML `min`
+a `YYYY-MM-DDTHH:MM` local date and time for `type: datetime-local`, or, for
+the two date types, a bound relative to today (below). Either side may be
+omitted. Date bounds are also rendered as the input's HTML `min`
 and `max` attributes, so the browser's picker and its own validation agree
 with the server; numeric bounds are enforced by the server only.
 
@@ -122,8 +124,57 @@ bound is whole minutes: browsers step a `datetime-local` input from its `min`,
 so a bound with seconds would make the picker reject ordinary values. A
 submitted value is compared at full precision, so with `maximum:
 "2026-01-09T17:30"` the value `17:30:00` is accepted and `17:30:01` is not.
-Bounds are absolute; relative bounds such as "today" or "two years from now"
-are not supported (#705).
+
+### Bounds relative to today
+
+A `date` or `datetime-local` bound can also be `today`, or today moved by a
+signed ISO 8601 duration of years, months and days:
+`{from: today, add: <duration>}`. "Today" is the calendar date in the flow's
+`timeZone`, an IANA name such as `Europe/London`, or in UTC when the flow
+declares none. It never depends on the host's local zone, so the same YAML
+behaves identically on node, aws and vercel.
+
+```yaml
+flows:
+  signup:
+    mount: /signup
+    timeZone: Europe/London
+    # title, submitLabel and confirmation as usual
+    fields:
+      birthDate: {label: Date of birth, type: date, maximum: {from: today, add: -P18Y}}
+      startDate: {label: Start date, type: date, minimum: today, maximum: {from: today, add: P1Y6M}}
+      callback: {label: Callback time, type: datetime-local, required: false, minimum: today, maximum: {from: today, add: P30D}}
+      since: {label: Customer since, type: date, required: false, minimum: "2000-01-01", maximum: today}
+```
+
+- **Durations** are `P` followed by years, months and days in that order,
+  each at most five digits, with an optional leading `-`: `P2Y`, `-P18Y`,
+  `P30D`, `P1Y6M`, `P1M1D`. Weeks, time parts (`PT1H`), fractions and any
+  expression are refused at activation, as are any other `from` than `today`
+  and a zone name `Intl` does not know.
+- **Month ends.** Years and months move first, clamping the day to the last
+  day of the resulting month, then days move: from 31 January, `P1M` is
+  28 February (29 in a leap year) and `P1M1D` is 1 March; from 29 February,
+  `-P18Y` is 28 February, so someone born on 29 February is 18 on 1 March in
+  a non-leap year. A result before `0001-01-01` or after `9999-12-31` is
+  clamped to that date, which no submitted value can cross anyway.
+- **`datetime-local`.** A relative `minimum` is 00:00 on its date. A relative
+  `maximum` is the end of its date: it renders as `T23:59` and admits values up
+  to 23:59:59.999 of that day, so `maximum: today` means "no later than
+  today" rather than "before today started". The error message names the
+  resolved bound (for example "must be on or before 2026-09-25T23:59").
+- **Per request.** The server resolves today on every submission, and that
+  check is authoritative. The rendered `min` and `max` attributes are
+  computed when the page is served, as a convenience for the browser picker:
+  a page left open across midnight in the flow's zone keeps yesterday's
+  attributes until it is reloaded, and the server's answer can then differ
+  from the browser's.
+- **Order.** Activation refuses `minimum` later than `maximum` for two
+  absolute bounds, and for two relative bounds when the window would be empty
+  on any day (month-end clamping makes that date-dependent: `minimum: {from:
+  today, add: P1M}` with `maximum: {from: today, add: P30D}` is refused). An
+  absolute bound against a relative one is not compared at activation; once
+  the relative side passes the absolute one, every value is refused with a 422.
 
 ## Showing submitted values on the confirmation
 

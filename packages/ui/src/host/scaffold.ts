@@ -5,8 +5,6 @@
  */
 import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 
-/** Path of the generated list and form screen when `store` is installed. */
-const todosScreen = '/todos';
 /** Where the site keeps its presentation overrides, relative to the site directory (outside `app/`). */
 export const uiDirectory = 'ui';
 const segments = (path: string): string[] => path.replace(/\\/g, '/').split('/').filter(part => part !== '' && part !== '.');
@@ -21,7 +19,7 @@ function extensionsFlag(installed: readonly string[]): string {
 export function scaffold(request: ScaffoldRequest): ScaffoldResult {
     const { site, installed } = request;
     const name = directoryName(site).replace(/[^A-Za-z0-9 ._-]/g, ' ').trim().slice(0, 80) || 'Site';
-    const withStore = installed.includes('store'), withAuth = installed.includes('auth');
+    const withAuth = installed.includes('auth');
     const flag = extensionsFlag(installed);
     return {
         config: {
@@ -31,12 +29,9 @@ export function scaffold(request: ScaffoldRequest): ScaffoldResult {
             copy: `${uiDirectory}/copy`,
             templates: `${uiDirectory}/templates`,
             stylesheet: `${uiDirectory}/extra.css`,
-            // The screen reads the collection the store declares, so its fields are written once, in extensions.store.
-            ...(withStore ? { screens: { [todosScreen]: { collection: 'todos', title: 'Todos' } } } : {}),
         },
         routes: {
             '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] },
-            ...(withStore ? { [`${todosScreen}/*`]: { extension: 'ui', methods: ['GET', 'HEAD'], ...(withAuth ? { auth: true } : {}) } } : {}),
         },
         files: [
             { path: `${uiDirectory}/copy/.gitkeep`, content: '' },
@@ -44,7 +39,6 @@ export function scaffold(request: ScaffoldRequest): ScaffoldResult {
             { path: `${uiDirectory}/extra.css`, content: `/* Appended after the kit stylesheet (extensions.ui.stylesheet). Override shadcn/ui variables or add rules here; imports, scripts and expressions are refused. */\n` },
         ],
         notes: [
-            ...(withStore ? [`Open ${todosScreen}: a list and form generated from the todos collection in extensions.store.`] : []),
             `Customize ui/copy/<locale>.json, ui/templates/<name>.html and ui/extra.css; check them with npx urlcode-ui doctor --project .${flag} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`,
             `Copy a shipped template to customize it: npx urlcode-ui eject ${withAuth ? 'auth/sign-in' : 'layout'} --out ${uiDirectory}/templates${flag}`,
         ],

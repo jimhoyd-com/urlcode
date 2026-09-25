@@ -124,14 +124,20 @@ beside it and without changing the exports above:
 - The `./extension` entry (Node only): the default-exported `ui` extension
   definition (`defineExtension` from core, the one peer) that host.mjs lists as
   `ui()` in `composeHost`. Its `scaffold` returns the `extensions.ui` block
-  with a starter theme named after the site, the `/assets/ui/*` route (and a
-  `/todos/*` screen route when `store` is installed), and `ui/copy`,
+  with a starter theme named after the site, the `/assets/ui/*` route, and `ui/copy`,
   `ui/templates` and `ui/extra.css` placeholders beside host.mjs; it writes
   nothing itself. Its `host()` calls `createUiExtension` with `projectRoot` set
   to the site and registers the catalogues and templates every other installed
   extension contributes through `contributes.ui` (`UiContribution`:
-  `{sources, templates}`), then the operator's `ui({sources, extensions,
-  theme})`. `requires` on auth, admin and forms makes `composeHost` activate
+  `{sources, templates, screens}`), then the operator's `ui({sources, extensions,
+  theme})`. `screens` is an optional `UiScreenSource`, a function ui calls once
+  at activation with `{root}` (the route project) that returns `{<path>:
+  {title, collection: {mount, fields, readOnly?, sortable?, filterable?},
+  columns?}}`; ui serves each at its exact `extension: ui` mount. ui does not
+  know which extension contributed a screen or how that extension declares it:
+  it never loads the project document or reads another extension's block. The
+  scaffold never adds another extension's screen; the owner scaffolds its own
+  (the store adds `/todos` when ui is installed). `requires` on auth, admin and forms makes `composeHost` activate
   `ui` before them and hand them the kit.
 
 The main entry stays dependency-free and free of Node imports. The `./host`

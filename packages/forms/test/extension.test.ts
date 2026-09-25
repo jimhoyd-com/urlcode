@@ -24,7 +24,9 @@ function withSha(t: test.TestContext, sha: string): void {
 async function site(t: test.TestContext): Promise<{ site: string; project: string; results: Record<string, ScaffoldResult> }> {
   const root = await mkdtemp(join(tmpdir(), 'forms-extension-')); t.after(() => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'); await mkdir(project);
-  const results = { ui: await ui.definition.scaffold!(request(root)), forms: await forms.definition.scaffold!(request(root)) };
+  const capability = await forms.definition.scaffold!(request(root)), example = await forms.definition.example!(request(root));
+  // What `extensions add forms --example` writes: the capability (key, empty flows) with the contact flow on top.
+  const results = { ui: await ui.definition.scaffold!(request(root)), forms: { ...capability, config: example.config, routes: example.routes } };
   for (const result of Object.values(results)) for (const file of result.files ?? []) {
     await mkdir(join(root, file.path, '..'), { recursive: true });
     await writeFile(join(root, file.path), file.content, { flag: 'wx', ...(file.mode === undefined ? {} : { mode: file.mode }) });
@@ -41,17 +43,26 @@ test('the definition requires ui and carries the runtime schema', () => {
   assert.equal(forms.definition.contributes, undefined);
 });
 
-test('scaffold writes a fresh 32-byte private CSRF key and a public contact flow', async t => {
+test('a blank install writes the CSRF key and no flow or route (#711)', async () => {
+  const blank = await forms.definition.scaffold!(request('/srv/site'));
+  assert.deepEqual(blank.config, { flows: {} });
+  assert.deepEqual(blank.routes, {});
+  assert.deepEqual(blank.files!.map(file => file.path), [formsCsrfKeyFile]);
+  assert.ok(blank.notes!.every(note => !note.includes('/contact')));
+});
+
+test('scaffold writes a fresh 32-byte private CSRF key, and --example a public contact flow', async t => {
   const first = await forms.definition.scaffold!(request('/srv/site')), second = await forms.definition.scaffold!(request('/srv/site'));
+  const example = await forms.definition.example!(request('/srv/site'));
   const [key] = first.files!;
   assert.equal(key!.path, formsCsrfKeyFile); assert.equal(key!.mode, 0o600);
   assert.ok(key!.content instanceof Uint8Array && key!.content.byteLength === 32);
   assert.notDeepEqual(key!.content, second.files![0]!.content, 'every site gets its own secret');
   assert.ok(!key!.path.startsWith('app/') && !key!.path.startsWith('node_modules/'));
   assert.equal('version' in first.config, false, 'config is the inner block; core wraps it');
-  assert.deepEqual(Object.keys((first.config as { flows: { contact: { fields: object } } }).flows.contact.fields), ['name', 'email', 'message']);
-  assert.deepEqual(first.routes, { '/contact/*': { extension: 'forms', methods: ['GET', 'HEAD', 'POST'] } });
-  assert.ok(first.notes!.length > 0 && first.notes!.every(note => !note.includes('\n')));
+  assert.deepEqual(Object.keys((example.config as { flows: { contact: { fields: object } } }).flows.contact.fields), ['name', 'email', 'message']);
+  assert.deepEqual(example.routes, { '/contact/*': { extension: 'forms', methods: ['GET', 'HEAD', 'POST'] } });
+  assert.ok([...first.notes!, ...example.notes!].every(note => !note.includes('\n')));
   const { site: root } = await site(t);
   // Windows has no POSIX modes; everywhere else the key must be private to its owner.
   if (process.platform !== 'win32') assert.equal((await stat(join(root, formsCsrfKeyFile))).mode & 0o777, 0o600);

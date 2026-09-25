@@ -503,6 +503,10 @@ if (!isMainThread && workerData?.authStore) {
         // public identifier (embedded in the issued token); `secret_hash` is the scrypt-based
         // hash of its secret half, the same format/derivation auth-core.ts uses for passwords.
         db.exec('CREATE TABLE IF NOT EXISTS auth_api_keys(id TEXT PRIMARY KEY,name TEXT NOT NULL,scopes TEXT NOT NULL,secret_hash TEXT NOT NULL,created INTEGER NOT NULL,expires INTEGER,revoked INTEGER NOT NULL DEFAULT 0,last_used INTEGER);CREATE INDEX IF NOT EXISTS auth_api_keys_expiry ON auth_api_keys(expires);');
+        // A key's own quota (urlcode#703), replacing a bearer route's `quota` for that key. Added in place, like the
+        // columns above: an existing key keeps NULLs, meaning no quota of its own.
+        if (!db.prepare('PRAGMA table_info(auth_api_keys)').all().some(row => row.name === 'quota_requests'))
+            db.exec('ALTER TABLE auth_api_keys ADD COLUMN quota_requests INTEGER;ALTER TABLE auth_api_keys ADD COLUMN quota_window INTEGER;');
         if (!db.prepare('PRAGMA table_info(auth_sessions)').all().some(row => row.name === 'recovery_enrollment'))
             db.exec('ALTER TABLE auth_sessions ADD COLUMN recovery_enrollment INTEGER NOT NULL DEFAULT 0');
         const configuration = createHash('sha256').update(JSON.stringify({ roles: Object.fromEntries(Object.keys(roles).sort().map(name => [name, [...roles[name]!].sort()])), defaultRole: options.defaultRole, registration: options.registration, ...(options.configurationTag !== undefined ? { configurationTag: options.configurationTag } : {}), ...(options.sessionTtlMs !== 86400000 || options.sessionIdleMs !== 1800000 ? { sessionLimits: { absoluteMs: options.sessionTtlMs, idleMs: options.sessionIdleMs } } : {}), ...(options.securityPolicy.allowManualRecovery || options.securityPolicy.allowPasskeySecondFactor || options.securityPolicy.trustedDeviceTtlMs || options.securityPolicy.allowEmailFactorRecovery || options.securityPolicy.requireEmailVerification || options.securityPolicy.requireMfa || options.securityPolicy.deletionGraceMs !== 604800000 ? { securityPolicy: options.securityPolicy } : {}) })).digest('hex');
