@@ -64,8 +64,30 @@ Fields are required unless `required: false` is declared. Supported server valid
 (`YYYY-MM-DDTHH:MM` with optional `:SS` and up to three fractional-second
 digits, no timezone offset: the formats browsers submit for those input
 types), a bounded safe `pattern` (only when `maxLength` is at most 128), string
-`enum`, select options, and the checkbox `true` value. Date and time fields
-have no minimum or maximum bound. Conditional/cross-field
+`enum`, select options, and the checkbox `true` value. Conditional/cross-field
 validation remains application-specific and belongs in a reviewed `onSubmit`
 hook. No arbitrary project HTML template is accepted.
+
+`minimum` and `maximum` bound a field's value, inclusive, in the field's own
+format: a number for `type: number`, a `YYYY-MM-DD` date for `type: date`, and
+a `YYYY-MM-DDTHH:MM` local date and time for `type: datetime-local`. Either
+side may be omitted. Date bounds are also rendered as the input's HTML `min`
+and `max` attributes, so the browser's picker and its own validation agree
+with the server; numeric bounds are enforced by the server only.
+
+```yaml
+fields:
+  startDate: {label: Start date, type: date, minimum: "2026-01-01", maximum: "2027-12-31"}
+  callback: {label: Callback time, type: datetime-local, required: false, minimum: "2026-01-05T09:00", maximum: "2026-01-09T17:30"}
+```
+
+Activation fails when a bound is not a real date or time in the field's
+format, when `minimum` is later than `maximum`, or when a bound is set on a
+field that is not `number`, `date` or `datetime-local`. A `datetime-local`
+bound is whole minutes: browsers step a `datetime-local` input from its `min`,
+so a bound with seconds would make the picker reject ordinary values. A
+submitted value is compared at full precision, so with `maximum:
+"2026-01-09T17:30"` the value `17:30:00` is accepted and `17:30:01` is not.
+Bounds are absolute; relative bounds such as "today" or "two years from now"
+are not supported.
 

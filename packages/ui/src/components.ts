@@ -19,13 +19,19 @@ export interface FieldOptions {name:string;label:string;id?:string;type?:string;
  /** select only: a leading empty choice, so a required select does not preselect a real value. */
  placeholder?:string;
  /** checkbox only: whether the control is initially selected. */
- checked?:boolean}
+ checked?:boolean;
+ /** number, date and datetime-local inputs only: the HTML `min` and `max` attributes, so the browser enforces the same bounds the server checks. */
+ min?:string;
+ max?:string}
 export function field(options:FieldOptions):string {
  const {name,label}=options,control=options.control??'input',type=options.type??'text',id=options.id??name+'-'+crypto.randomUUID().replaceAll('-','');
  if(!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(name)||!['input','textarea','select'].includes(control)||(control==='input'&&!['text','email','password','number','search','tel','url','date','datetime-local','checkbox'].includes(type)))throw new Error('Invalid field');
  const description=options.description?`${id}-description`:undefined,error=options.error?`${id}-error`:undefined,described=[description,error].filter(Boolean).join(' ');
  const controlClass=control==='textarea'?'ui-input ui-textarea':control==='select'?'ui-input ui-select':'ui-input';
  const common=`class="${controlClass}" data-slot="${control}" id="${escapeHtml(id)}" name="${escapeHtml(name)}"`,tail=`${options.required!==false?' required':''}${described?` aria-describedby="${escapeHtml(described)}"`:''}${error?' aria-invalid="true"':''}`;
+ const bounded=options.min!==undefined||options.max!==undefined;
+ if(bounded&&(control!=='input'||!['number','date','datetime-local'].includes(type)||[options.min,options.max].some(bound=>bound!==undefined&&!/^-?[0-9][0-9T:.eE+-]{0,63}$/.test(bound))))throw new Error('Invalid field bounds');
+ const bounds=`${options.min!==undefined?` min="${escapeHtml(options.min)}"`:''}${options.max!==undefined?` max="${escapeHtml(options.max)}"`:''}`;
  let control_:string;
  if(control==='textarea'){
   const rows=options.rows??5,max=options.maxLength??4096;
@@ -38,7 +44,7 @@ export function field(options:FieldOptions):string {
  }else if(type==='checkbox') {
   if(options.value!==undefined&&options.value!=='true')throw new Error('Invalid checkbox value');
   control_=`<input ${common} type="checkbox" autocomplete="${escapeHtml(options.autocomplete??'off')}" value="true"${options.checked?' checked':''}${tail}>`;
- }else control_=`<input ${common} type="${type}" autocomplete="${escapeHtml(options.autocomplete??'off')}" maxlength="1024"${tail}${options.value!==undefined?` value="${escapeHtml(options.value)}"`:''}>`;
+ }else control_=`<input ${common} type="${type}" autocomplete="${escapeHtml(options.autocomplete??'off')}" maxlength="1024"${bounds}${tail}${options.value!==undefined?` value="${escapeHtml(options.value)}"`:''}>`;
  return `<div class="ui-field" data-slot="field"${error?' data-invalid="true"':''}><label class="ui-label" data-slot="field-label" for="${escapeHtml(id)}">${escapeHtml(label)}</label>${control_}${description?`<p class="ui-help" data-slot="field-description" id="${escapeHtml(description)}">${escapeHtml(options.description)}</p>`:''}${error?`<p class="ui-error" data-slot="field-error" id="${escapeHtml(error)}" role="alert">${escapeHtml(options.error)}</p>`:''}</div>`;
 }
 export function button(label:string,type:'submit'|'button'='submit',iconName?:IconName):string {if(!['submit','button'].includes(type))throw new Error('Invalid button');return `<button class="ui-button ui-button-primary" data-slot="button" type="${type}">${iconName?icon(iconName).replace('<svg ','<svg data-icon="inline-start" '):''}${escapeHtml(label)}</button>`;}

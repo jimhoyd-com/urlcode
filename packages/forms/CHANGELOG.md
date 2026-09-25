@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `minimum` and `maximum` now bound `type: date` and `type: datetime-local`
+  fields as well as `type: number` (#528). A date bound is a `YYYY-MM-DD`
+  string and a date-time bound a whole-minute `YYYY-MM-DDTHH:MM` string;
+  activation refuses malformed bounds and a `minimum` later than `maximum`, a
+  submission outside the bounds gets a 422 field error ("must be on or after
+  …" / "must be on or before …"), and the input renders the matching HTML
+  `min` and `max` attributes. Bounds are absolute; relative dates are not
+  supported.
+
 - `type: date` and `type: datetime-local` fields are now validated on
   submission (#682). A `date` value must be `YYYY-MM-DD` and a
   `datetime-local` value `YYYY-MM-DDTHH:MM` with optional seconds and up to

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+`field()` accepts `min` and `max` for `number`, `date` and `datetime-local` inputs and renders them as the HTML attributes; any other control or type, or a value that is not number- or date-shaped, throws (#528).
+
 `transformView` and `transformPage` receive core's generic hook context as a second argument; these presentation filters do not run on behalf of one request, so it is `{requestId: null, env: {}}` (#678).
 
 ## 0.5.0
