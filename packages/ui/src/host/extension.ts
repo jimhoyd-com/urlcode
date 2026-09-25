@@ -37,7 +37,7 @@ export const uiAssetPrefix = '/static';
 export interface UiExtensionOptions {
     /** The exact reviewed project revision, from `inspectExtensionRevision`. */
     projectSha256: string;
-    /** The project directory, so the extension can read the copy, template and stylesheet files the block names. */
+    /** The site directory; configured presentation files are confined to its ui/ subdirectory. */
     projectRoot: string;
     /** English catalogues from other extensions, registered before activation. */
     sources?: readonly Catalogue[] | undefined;
