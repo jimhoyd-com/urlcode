@@ -12,7 +12,8 @@ The store is not core and does not activate on its own.
 - In a site, `urlcode extensions add store` installs the extension core pins
   and registers it in `host.mjs`, kept outside the project.
   `urlcode init DIR --with ui,auth,store --example` scaffolds a protected site
-  with this collection in one step; without `auth`, the store example needs
+  with this collection in one step, declared `ownership: owner` so each
+  signed-in user has their own todos; without `auth`, the store example needs
   `--ack store:public-write`. Without `--example` the store installs with no
   collection.
 - The data directory must be outside the project. It is single-writer: one
@@ -52,7 +53,9 @@ curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://
 
 The mount is public unless you protect it: add `auth: true` (with the auth
 extension) or another policy before any writable collection is reachable. Every
-caller sees the whole collection; there is no per-user ownership. Changing
+caller sees the whole collection, which is shared by default; for per-user data
+declare `ownership: owner` on the collection and keep `auth: true` on its mount
+([per-record ownership](../../docs/STORE.md#per-record-ownership)). Changing
 `urlcode.yaml` changes the revision and needs a new pin. Cloudflare and static
 targets refuse extensions, and the store writes local files, so run it on the
 self-hosted runtime with a persistent disk.

@@ -1,4 +1,4 @@
-import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders } from './extensions.ts';
+import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders, installPrincipalSlot } from './extensions.ts';
 import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
@@ -249,7 +249,10 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // (RIM-EXT-CONTEXT-001, docs/RUNTIME-IMPLEMENTATION.md).
         const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:stripReservedContextHeaders(new Headers(headers)),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null,requestId,env:Object.freeze({...route.env})};
         if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,route.request?.body?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
-        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;if(typeof entry.instance.authorize!=='function')continue;const result=await entry.instance.authorize(entry.policies.get(route.pattern)!,extensionRequest);if(result)return result;}return undefined;};
+        // The request's opaque principal (RIM-EXT-PRINCIPAL-001): null until a principal-providing extension's
+        // authorize() on this route sets it and allows the request; never read from the client request.
+        const principalSlot=installPrincipalSlot(extensionRequest);
+        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;const hook=entry.instance.authorize;if(typeof hook!=='function')continue;const result=await principalSlot.authorize(name,entry.providesPrincipal,()=>hook.call(entry.instance,entry.policies.get(route.pattern)!,extensionRequest));if(result)return result;}return undefined;};
         if (policy || plugins.length || protectedRoute) {
           policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
           trace.client = policyReq.client;

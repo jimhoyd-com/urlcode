@@ -96,8 +96,21 @@ export const budgets: Record<string, Budget> = {
     // adds one runtime module (dist/site-origins.js), taking the archive to
     // 451 files; the other ten keep headroom for the next small module
     // without loosening the allowlist or size checks.
-    packed: 660 * 1024,
-    unpacked: 2700 * 1024,
+    //
+    // Unpacked raised from 2700 to 2720 KiB: per-record store ownership
+    // (#331) adds the core request-principal contract (RIM-EXT-PRINCIPAL-001:
+    // dist/extensions.js and its declarations), the "Request principal" and
+    // "Per-record ownership" sections of docs/EXTENSIONS.md and docs/STORE.md,
+    // and their copies in llms-full.txt, taking the unpacked content to
+    // 2765326 bytes (about 2700.5 KiB, 526 bytes over). Packed stays at 660
+    // KiB: the same tree packs to 674409 bytes on Node 26, about 1.4 KiB under.
+    //
+    // Packed raised from 660 to 680 KiB: per-record store ownership (#331)
+    // and its request-principal contract take the archive to about 659 KiB
+    // (674409 bytes on Node 26), within the ~2 KiB cross-Node gzip variance
+    // of the old budget.
+    packed: 680 * 1024,
+    unpacked: 2720 * 1024,
     entries: 460,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -117,7 +130,13 @@ export const budgets: Record<string, Budget> = {
   },
   '@jimhoyd/urlcode-store': {
     packed: 40 * 1024,
-    unpacked: 120 * 1024,
+    // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
+    // the owner scoping in dist/collection.js and dist/store.js, the operator
+    // step for legacy records (dist/ownership.js, the urlcode-store bin
+    // dist/cli.js, with declarations) and the ownership contract in
+    // SECURITY.md and README.md, taking the unpacked content to 138043 bytes
+    // (about 134.8 KiB). It still packs to 35306 bytes, under 40 KiB.
+    unpacked: 140 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

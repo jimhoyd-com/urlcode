@@ -67,6 +67,10 @@ test('every extension installs once, composes, serves, and removes in dependency
   for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
   const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
+  // auth is installed in the same command, so the example todos are per-user (#331) and the owned collection
+  // must activate behind auth's principal below.
+  const todos = (await loadDocument(join(dir, 'app'))).document.extensions?.store?.config as { collections: { todos: { ownership?: string } } };
+  assert.equal(todos.collections.todos.ownership, 'owner');
 
   // Static validation needs no host, and the full runtime activates every extension through composeHost.
   const staticCheck = await urlcode(t, dir, ['validate', '--project', 'app']);

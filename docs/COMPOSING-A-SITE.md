@@ -64,7 +64,7 @@ that renders through it, whatever order you name them in.
 | `auth` | `ui` and `auth`: accounts on `/account/*`, rendered through the kit. |
 | `admin` | `ui`, `auth` and `admin`: the full composition above. |
 | `auth,admin,ui` | Same result as `ui,auth,admin`: the order you name them in is ignored. |
-| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API and a `/todos` screen, both protected by `auth: true`. |
+| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API and a `/todos` screen, both protected by `auth: true`, where each user sees only their own todos (`ownership: owner`). |
 | `store` or `ui,store` | Without `--example`: an empty store, nothing mounted, no acknowledgement needed. With `--example`: refused, because the example's writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write example; core rejects any `--ack` no scaffold consumed, such as one with auth installed, `store` absent or no `--example`. |
 
 Every refusal rolls back everything the command changed, including the

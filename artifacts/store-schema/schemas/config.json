@@ -165,6 +165,12 @@
               "type": "string",
               "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
             }
+          },
+          "ownership": {
+            "enum": [
+              "shared",
+              "owner"
+            ]
           }
         }
       }

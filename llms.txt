@@ -61,7 +61,7 @@ or bypass target limits or operator grants ([design principle](https://github.co
 | Fixed JSON/text/headers | `respond` and `response.headers` |
 | robots.txt, sitemap, favicon, security.txt | top-level `site` ([site](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SITE.md)) |
 | Sign-in, roles, protected routes | `extensions.auth`, then `auth: true` ([extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md)) |
-| Persistence | operator-installed store extension, recipe `store-crud`; a database, filtering and per-record ownership beyond it are gaps |
+| Persistence | operator-installed store extension, recipe `store-crud`, per-record ownership (`ownership: owner` on a collection behind `auth: true`, [store ownership](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#per-record-ownership)); a database and filtering beyond it are gaps |
 | Stored short links (create, redirect, click count) | operator-installed store extension's `shortLinks` capability: a collection `key`, an HTTP(S) `destination` field, one `increments` counter, and a public `/go`-style redirect mount; no function needed (`urlcode docs search "shortLinks"`, MCP `search_docs`) |
 
 When only code can do it, one function serves one or more routes:

@@ -52,7 +52,10 @@
       "optional": true
     }
   },
-  "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/store#readme",
+  "bin": {
+    "urlcode-store": "./dist/cli.js"
+  },
+  "homepage":"https://github.com/jimhoyd-com/urlcode/tree/main/packages/store#readme",
   "bugs": {
     "url": "https://github.com/jimhoyd-com/urlcode/issues"
   }

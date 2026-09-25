@@ -173,6 +173,12 @@
                 "type": "string",
                 "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
               }
+            },
+            "ownership": {
+              "enum": [
+                "shared",
+                "owner"
+              ]
             }
           }
         }
@@ -278,7 +284,7 @@
       {
         "kind": "configuration",
         "name": "collections",
-        "description": "Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, and `sortable` / `filterable` field lists.",
+        "description": "Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` field lists, and `ownership: owner` (per-record ownership: each signed-in principal sees and changes only its own records; the mount must be guarded by a principal-providing policy such as `auth: true`).",
         "path": "urlcode.yaml"
       },
       {
@@ -290,7 +296,7 @@
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Add `auth: true` to any private mount.",
+        "description": "Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Add `auth: true` to any private mount; an `ownership: owner` collection requires it (or another principal-providing policy).",
         "path": "urlcode.yaml"
       },
       {

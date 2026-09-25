@@ -48,6 +48,14 @@ export interface ExtensionActivation {
    */
   origins?:readonly string[];
   target:TargetName; projectSha256:string; mounts:readonly string[]; root:string;
+  /**
+   * The subset of `mounts` whose route carries an effective `policies.extensions` entry for at least one extension
+   * whose registration declares `providesPrincipal: true` (RIM-EXT-PRINCIPAL-001): the mounts where a request can
+   * arrive with a `principal`. It says nothing about whether a given request will have one (a provider may allow
+   * without setting it); an extension that needs one still refuses a request whose `principal` is `null`. The
+   * runtime always sets it; treat an absent value as empty (fail closed).
+   */
+  principalMounts?:readonly string[];
 }
 /**
  * The reserved header namespace an `authorize()`/`middleware()` hook can write into
@@ -91,12 +99,83 @@ export interface ExtensionRequest {
   /** The id this request is answered with in the `X-Request-Id` response header and the request log. */
   requestId:string;
   /**
+   * The request's opaque, authenticated principal (RIM-EXT-PRINCIPAL-001): `null` until an extension that declares
+   * `providesPrincipal: true` sets it from its own `authorize()` on this route and then allows the request. Core
+   * sets it only through `setPrincipal`, never from a header, cookie, query value or YAML, and it is frozen. A
+   * later `authorize()`, every `middleware()` and the mount's `handle()` on the same route read it here. Optional
+   * only so a request built by hand (a test) may omit it; absent means no principal.
+   */
+  readonly principal?:ExtensionPrincipal|null;
+  /**
+   * Sets `principal`. Callable only while the runtime is awaiting the `authorize()` of an extension that declares
+   * `providesPrincipal: true`, at most once per call, and only when no other extension has already set one for this
+   * request; any other call throws. The value is committed only if that `authorize()` then allows the request
+   * (returns `undefined`). See `ExtensionPrincipalInput` for what is accepted.
+   */
+  readonly setPrincipal?:(principal:ExtensionPrincipalInput)=>void;
+  /**
    * The matched route's compiled `env` bindings: the same values a function route's `context.env`
    * receives, resolved from the route's `env:` block under the operator's revision-pinned
    * `permissions.routes[pattern].env` grant. Empty when the route declares none. Route `secrets`
    * are never included. An injection convenience for trusted extension code, not a restriction on it.
    */
   env:Readonly<Record<string,string>>;
+}
+/**
+ * What a principal-providing extension passes to `ExtensionRequest.setPrincipal`: a plain object whose only own key
+ * is `id`, a stable opaque identifier matching `principalIdPattern` (1 to 128 characters: ASCII letters and digits,
+ * then also `.`, `_`, `:` and `-`). Use a stable account or credential id, never an email address, name, session
+ * token or secret. Core knows nothing else about it.
+ */
+export interface ExtensionPrincipalInput { id:string }
+/** The frozen principal core carries on a request: the provider's `id`, and `provider`, the extension name core stamped (never the provider's choice). */
+export interface ExtensionPrincipal { readonly id:string; readonly provider:string }
+export const principalIdPattern=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+/** Validates a principal a provider passed to `setPrincipal` and freezes it with core's `provider` stamp. */
+export function validatePrincipal(value:unknown,provider:string):ExtensionPrincipal {
+  assert(value!==null&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value) as object|null),`Extension ${provider} set an invalid principal: expected a plain object`);
+  const keys=Reflect.ownKeys(value);
+  assert(keys.length===1&&keys[0]==='id',`Extension ${provider} set an invalid principal: its only key must be id`);
+  const id=(value as {id:unknown}).id;
+  assert(typeof id==='string'&&principalIdPattern.test(id),`Extension ${provider} set an invalid principal id`);
+  return Object.freeze({id,provider});
+}
+/**
+ * Installs the request's principal slot (RIM-EXT-PRINCIPAL-001) on a freshly built `ExtensionRequest`: a read-only
+ * `principal` (initially `null`) and a `setPrincipal` that works only inside `authorize(name, providesPrincipal, call)`.
+ * The runtime routes every `authorize()` call on the route through the returned `authorize`, in route order. A
+ * value staged by the running provider is committed only when its `authorize()` allows the request; a denial or a
+ * throw discards it. A second extension trying to set a principal once one is committed is refused (it throws, and
+ * the request fails with a server error), as is a set from any extension that does not declare `providesPrincipal`,
+ * from `middleware()`/`handle()`, after `authorize()` has returned, or twice in one call. The slot is per request.
+ * Extensions are trusted in-process code: this is a contract that fails closed on mistakes, not a sandbox.
+ */
+export function installPrincipalSlot(request:ExtensionRequest):{authorize(name:string,providesPrincipal:boolean,call:()=>HandlerResult|undefined|Promise<HandlerResult|undefined>):Promise<HandlerResult|undefined>} {
+  let committed:ExtensionPrincipal|null=null;
+  interface Frame { name:string; provides:boolean; open:boolean; staged?:ExtensionPrincipal; set:(value:ExtensionPrincipalInput)=>void }
+  let frame:Frame|null=null;
+  const closed=():never=>{throw new Error('setPrincipal is only callable from a principal-providing extension\'s authorize()');};
+  const refuseSecond=(name:string,holder:ExtensionPrincipal):never=>{throw new Error(`Extension ${name} cannot set a principal: extension ${holder.provider} already set one for this request`);};
+  Object.defineProperty(request,'principal',{get:()=>committed,enumerable:true,configurable:false});
+  Object.defineProperty(request,'setPrincipal',{get:()=>frame?.open?frame.set:closed,enumerable:false,configurable:false});
+  return {async authorize(name,providesPrincipal,call){
+    const current:Frame={name,provides:providesPrincipal,open:true,set:value=>{
+      if(!current.open)closed();
+      if(!current.provides)throw new Error(`Extension ${name} does not declare providesPrincipal and cannot set a principal`);
+      if(current.staged)throw new Error(`Extension ${name} already set a principal for this request`);
+      if(committed)refuseSecond(name,committed);
+      current.staged=validatePrincipal(value,name);
+    }};
+    frame=current;
+    let result:HandlerResult|undefined;
+    try{result=await call();}
+    finally{current.open=false;if(frame===current)frame=null;}
+    if(result===undefined&&current.staged){
+      if(committed)refuseSecond(name,committed);
+      committed=current.staged;
+    }
+    return result;
+  }};
 }
 /**
  * The generic second argument every extension hook loaded by `loadExtensionHooks` receives. Packages
@@ -253,6 +332,13 @@ export interface RuntimeExtension {
    * floor, never weaken it, and it never changes whether `authorize()` runs.
    */
   cacheSensitive?:boolean;
+  /**
+   * Declares that this extension's `authorize()` may set the request's opaque principal through
+   * `ExtensionRequest.setPrincipal` (RIM-EXT-PRINCIPAL-001). Only a registration that declares it can set one, and
+   * only a route naming it in `policies.extensions` counts toward another extension's `principalMounts`. An
+   * extension that declares it and is named in a route policy must implement `authorize()`.
+   */
+  providesPrincipal?:boolean;
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
 /**
@@ -355,7 +441,7 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
 }
-export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[] }
+export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean }
 /** What the runtime knows about the request when it applies the privacy floor. */
 export interface ExtensionAssetContext { method:string; path:string; prefixes:readonly string[] }
 export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; credentialHeaders:string[]; close():Promise<void> }
@@ -433,6 +519,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(registration&&typeof registration==='object'&&typeof registration.name==='string'&&namePattern.test(registration.name),'Invalid extension registration');
     assert(!provided.has(registration.name),'Duplicate extension provider');
     assert(registration.version==='1'&&typeof registration.activate==='function','Invalid extension version or activation hook');
+    assert(registration.providesPrincipal===undefined||typeof registration.providesPrincipal==='boolean','Invalid extension providesPrincipal');
     assert(Array.isArray(registration.targets)&&registration.targets.every(target=>['node','aws','vercel'].includes(target)),'Extension targets must be node, aws or vercel');
     assert(typeof registration.projectSha256==='string'&&/^[a-f0-9]{64}$/.test(registration.projectSha256),'Extension requires an explicit operator revision pin');
     const hookNames=new Set<string>();
@@ -465,7 +552,8 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     if(route.extension)assert(Object.hasOwn(declarations,route.extension),'Extension route has no declaration');
     for(const name of Object.keys(effectiveExtensionPolicies(document,route)))assert(Object.hasOwn(declarations,name),'Extension policy has no declaration');
   }
-  const preparations:{name:string;registration:RuntimeExtension;config:Readonly<Record<string,unknown>>;policies:Map<string,Readonly<Record<string,unknown>>>;mounts:string[];assetPrefixes:string[]}[]=[];
+  const principalProviders=new Set([...provided.values()].filter(registration=>registration.providesPrincipal===true).map(registration=>registration.name));
+  const preparations:{name:string;registration:RuntimeExtension;config:Readonly<Record<string,unknown>>;policies:Map<string,Readonly<Record<string,unknown>>>;mounts:string[];principalMounts:string[];assetPrefixes:string[]}[]=[];
   for(const [name,declaration]of Object.entries(declarations)){
       const registration=provided.get(name);assert(registration,`Missing operator extension: ${name}`);
       assert(registration.projectSha256===context.projectSha256,`Extension revision pin mismatch: ${name}`);
@@ -486,20 +574,25 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       for(const header of declaredHeaders){assert(typeof header==='string'&&header.length<=128,'Invalid extension credential header');try{validateHeaderName(header);}catch(error){throw extensionError(error,name,'prepare');}credentialHeaders.add(header.toLowerCase());}
       // Session and bearer credentials never cross into application guests.
       credentialHeaders.add('cookie');credentialHeaders.add('authorization');
-      const mounts=Object.entries(routes).filter(([,route])=>route.extension===name).map(([path])=>path.endsWith('/*')?path.slice(0,-2):path);
+      const mountRoutes=Object.entries(routes).filter(([,route])=>route.extension===name);
+      const mountOf=(path:string):string=>path.endsWith('/*')?path.slice(0,-2):path;
+      const mounts=mountRoutes.map(([path])=>mountOf(path));
+      const principalMounts=mountRoutes.filter(([,route])=>Object.keys(effectiveExtensionPolicies(document,route)).some(policy=>principalProviders.has(policy))).map(([path])=>mountOf(path));
       const assetPrefixes=registration.immutableAssets===undefined?[]:mounts.map(mount=>mount+validateAssetPrefix((registration.immutableAssets as ExtensionImmutableAssets).prefix,name)+'/');
-      preparations.push({name,registration,config:frozen(config),policies,mounts,assetPrefixes});
+      preparations.push({name,registration,config:frozen(config),policies,mounts,principalMounts,assetPrefixes});
   }
   return {async activate(){
-    try{for(const {name,registration,config,policies,mounts,assetPrefixes}of preparations){
+    try{for(const {name,registration,config,policies,mounts,principalMounts,assetPrefixes}of preparations){
       // What activate throws is the operator's own extension reporting its configuration or environment; it is
       // named and kept (bounded, without a stack) so validate, test, dev and serve startup can print it.
       let instance:ExtensionInstance;
-      try{instance=await registration.activate(config,frozen({...context,mounts}));}
+      try{instance=await registration.activate(config,frozen({...context,mounts,principalMounts}));}
       catch(error){throw extensionError(error,name,'activate');}
-      if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes});
+      const providesPrincipal=registration.providesPrincipal===true;
+      if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes,providesPrincipal});
       assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);
-      entries.set(name,{instance,policies,assetPrefixes});
+      assert(!providesPrincipal||!policies.size||typeof instance.authorize==='function',`Extension ${name} declares providesPrincipal but has no authorization hook`);
+      entries.set(name,{instance,policies,assetPrefixes,providesPrincipal});
     }}catch(error){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
     return {entries,credentialHeaders:[...credentialHeaders],async close(){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
   }};

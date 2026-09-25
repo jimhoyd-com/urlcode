@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Auth provides core's opaque request principal (#331, `RIM-EXT-PRINCIPAL-001`): the registration declares `providesPrincipal: true`, and `authorize()` sets the principal only on a request it allows — the signed-in user's stable id for a session-protected route (after the CSRF check on a write), or `apikey:<key id>` for a bearer route (operator-issued keys have no owning user, so the key is the principal, namespaced apart from user ids; `apiKeyPrincipalId` is exported). An owned store collection scopes its records by it. Nothing auth decides changes.
+
 The same-origin CSRF check admits the operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`) in `Origin` beside the canonical origin, using core's `isSiteOrigin`; `AuthHttp` takes the list as a new `origins` option. `Origin` is still required, and CSRF tokens, links and passkeys stay bound to the canonical origin (#717).
 
 **Default behavior change:** `urlcode extensions add` (and `init --with`) now installs only the capability; the new `--example` flag, the same for every extension, writes the sample behavior it used to write by default (#711). A blank `extensions add auth` writes the `/account/*` mount, the operator service (the documented `{member, admin}` role model with `defaultRole: member`, kept as capability configuration) and keys, and no `/private` page; `--example` adds the signed-in `/private` page. To reproduce the old result, add `--example`.
