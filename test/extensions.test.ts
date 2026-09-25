@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFile,mkdtemp,rm,realpath} from 'node:fs/promises';
+import {writeFile,mkdtemp,mkdir,readFile,rm,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {join} from 'node:path';
@@ -14,7 +14,7 @@ import {buildCloudflare} from '../packages/core/src/build-cloudflare.ts';
 import {inspectExtensionRevision,effectiveExtensionPolicies} from '../packages/core/src/extensions.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import type {ProjectDocument} from '../packages/core/src/types.ts';
-import {inspectExtensions,describeExtensions} from '../packages/core/src/tooling.ts';
+import {inspectExtensions,describeExtensions,validateProject} from '../packages/core/src/tooling.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
 import {Readable,Writable} from 'node:stream';
 const origin='https://extensions.example.test';
@@ -254,11 +254,50 @@ test('route auth short form expands to the canonical policies.extensions.auth re
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true}})),/Route \/a declares auth but the project declares no extensions\.auth/);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:{auth:{role:'member'}}}}},{},{extensions:{auth}})),/Route \/a declares both auth and policies\.extensions\.auth/);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:false}}},{},{extensions:{auth}})),/Route \/a declares auth alongside policies\.extensions: false/);
-  // An object that fails routeAuth names its own failing field, not the `auth: true` branch it was never meant for (#702).
-  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{roles:['member']}}},{},{extensions:{auth}})),/: Invalid configuration at route \/a, auth \(additionalProperties\): unknown key "roles"; did you mean "role"\? \(run urlcode schema <path> for the shape\)$/);
-  await assert.rejects(loadDocument(await project(t,{'/api/items':{respond:{text:'a'},auth:{bearer:{scopes:['items:read'],quota:{requests:0,window:60}}}}},{},{extensions:{auth}})),/: Invalid configuration at route \/api\/items, auth\.bearer\.quota\.requests \(minimum\): must be >= 1$/);
-  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{freshWithinSeconds:0}}},{},{extensions:{auth}})),/: Invalid configuration at route \/a, auth\.freshWithinSeconds \(minimum\): must be >= 1$/);
+  // Core owns only the mapping: the object's keys belong to the auth extension, so loading admits any object and
+  // refuses only a value that is neither `true` nor an object, or a non-boolean `required` (#710).
+  const loose=await loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{roles:['member']}}},{},{extensions:{auth}}));
+  assert.deepEqual(loose.routeAuth,{'/a':{required:true,requirement:{roles:['member']}}});
+  assert.equal(short.routeAuth?.['/c']?.required,false);assert.equal(long.routeAuth,undefined);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:'yes'}},{},{extensions:{auth}})),/Invalid configuration at route \/a, auth \((const|type)\)/);
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{required:'no'}}},{},{extensions:{auth}})),/Invalid configuration at route \/a, auth\.required \(type\)/);
+});
+/** A stand-in for the auth extension's own policy schema; core's schema no longer carries this vocabulary. */
+const authPolicySchema={type:'object',additionalProperties:false,properties:{role:{type:'string',minLength:1,maxLength:64},freshWithinSeconds:{type:'integer',minimum:1,maximum:3600},bearer:{type:'object',additionalProperties:false,required:['scopes'],properties:{scopes:{type:'array',items:{type:'string'}},quota:{type:'object',additionalProperties:false,required:['requests','window'],properties:{requests:{type:'integer',minimum:1,maximum:1000000},window:{type:'integer',minimum:1,maximum:2592000}}}}}}};
+test('the auth extension policy schema judges the auth short form and errors name the auth key',async t=>{
+  const auth={version:'1',config:{label:'hello'}};
+  const refuse=async(route:Record<string,unknown>,path:string,message:RegExp,pointer:string)=>{
+    const root=await project(t,{'/auth/*':{extension:'auth'},[path]:{respond:{text:'x'},...route}},{},{extensions:{auth}});
+    const extension={...await registration(root),name:'auth',policySchema:authPolicySchema};
+    for(const attempt of [()=>createRuntime(root,{origin,extensions:[extension]}),()=>validateProject(root,{origin,extensions:[extension]})])
+      await assert.rejects(attempt,(error:Error&{details?:{pointer?:string;route?:string}})=>{assert.match(error.message,message);assert.equal(error.details?.pointer,pointer);assert.equal(error.details?.route,path);return true;});
+  };
+  // An unknown key under `auth:` is refused by the extension's schema, at the key the author wrote (#702, #710).
+  await refuse({auth:{roles:['member']}},'/a',/^Invalid extension policy at route \/a, auth \(additionalProperties\): unknown key "roles"; did you mean "role"\? \(run urlcode extensions --json for its policy schema\)$/,'/routes/~1a/auth');
+  await refuse({auth:{bearer:{scopes:['items:read'],quota:{requests:0,window:60}}}},'/api/items',/^Invalid extension policy at route \/api\/items, auth\.bearer\.quota\.requests \(minimum\): must be >= 1$/,'/routes/~1api~1items/auth/bearer/quota/requests');
+  await refuse({auth:{freshWithinSeconds:0}},'/a',/^Invalid extension policy at route \/a, auth\.freshWithinSeconds \(minimum\): must be >= 1$/,'/routes/~1a/auth/freshWithinSeconds');
+  // `required: false` emits no policy, but the keys written beside it are still the extension's to judge.
+  await refuse({auth:{required:false,rol:'member'}},'/a',/^Invalid extension policy at route \/a, auth \(additionalProperties\): unknown key "rol"; did you mean "role"\?/,'/routes/~1a/auth');
+  // The canonical long form is still located under policies.extensions.
+  await refuse({policies:{extensions:{auth:{freshWithinSeconds:0}}}},'/a',/^Invalid extension policy at route \/a, policies\.extensions\.auth\.freshWithinSeconds \(minimum\): must be >= 1$/,'/routes/~1a/policies/extensions/auth/freshWithinSeconds');
+  // Without a host file, validateProject judges the requirement against the installed package's static descriptor.
+  const site=await mkdtemp(join(tmpdir(),'urlcode-auth-site-'));t.after(()=>rm(site,{recursive:true,force:true}));
+  const app=join(site,'app'),descriptor=join(site,'node_modules','@jimhoyd','urlcode-auth');
+  await mkdir(app);await mkdir(descriptor,{recursive:true});
+  await writeFile(join(descriptor,'urlcode.json'),await readFile(new URL('../packages/auth/urlcode.json',import.meta.url),'utf8'));
+  const write=(value:unknown)=>writeFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:'off'}}},routes:{'/account/*':{extension:'auth'},'/api/items':{respond:{text:'x'},auth:value}}}));
+  await write({bearer:{scopes:['items.read'],quota:{requests:100,window:60}}});assert.equal((await validateProject(app)).valid,true);
+  await write({bearer:{scopes:['items.read'],quota:{requests:100,window:60,burst:5}}});
+  await assert.rejects(validateProject(app),/Invalid extension policy at route \/api\/items, auth\.bearer\.quota \(additionalProperties\): unknown key "burst"/);
+  await write({roles:['admin']});
+  await assert.rejects(validateProject(app),/Invalid extension policy at route \/api\/items, auth \(additionalProperties\): unknown key "roles"; did you mean "role"\?/);
+});
+test('core types and schema carry no auth policy vocabulary',async()=>{
+  const schema=JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json',import.meta.url),'utf8')) as {$defs:{routeAuth:{properties:Record<string,unknown>}}};
+  assert.deepEqual(Object.keys(schema.$defs.routeAuth.properties),['required']);
+  const text=JSON.stringify(schema.$defs.routeAuth),types=await readFile(new URL('../packages/core/src/types.ts',import.meta.url),'utf8');
+  const declaration=types.split('\n').find(line=>line.startsWith('type RouteAuthConfig'));assert.ok(declaration);
+  for(const key of ['role','permission','verified','freshWithinSeconds','onDeny','bearer','scopes','quota']){assert.doesNotMatch(text,new RegExp(`"${key}"`));assert.ok(!declaration.includes(key),key);}
 });
 test('runtime protects a short-form auth route with the demo registry',async t=>{
   const root=await project(t,{'/auth/*':{extension:'auth',methods:['GET','HEAD','POST']},'/private':{respond:{text:'private'},auth:{role:'member'}},'/open':{respond:{text:'open'},auth:{required:false}}},{},{extensions:{auth:{version:'1',config:{label:'hello'}}}});

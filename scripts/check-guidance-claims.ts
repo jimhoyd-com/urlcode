@@ -36,8 +36,11 @@
 // every authored Markdown file instead, because the example a human copies is
 // usually in reference or explanatory prose that no agent surface contains:
 // #168 found `auth: { required: true, roles: [admin] }` in a planning document,
-// where `routeAuth` closes its key set and the shipped field is `role`
+// where the auth policy closes its key set and the shipped field is `role`
 // singular. That YAML is rejected by the validator, and nothing flagged it.
+// Since #710 the `auth:` short form's keys belong to the auth extension, not
+// the core schema, so its closed set comes from the auth package's
+// `policySchema` (packages/auth/urlcode.json) plus core's own `required`.
 //
 // Opting out
 // ----------
@@ -209,6 +212,19 @@ const closedKeys = new Map<string, Set<string>>();
     else collect(value);
   }
 })(schema);
+// The `auth:` short form is open in the core schema (#710): the auth extension
+// owns its keys, so they are read from the auth package's generated descriptor.
+{
+  const descriptor = JSON.parse(await readFile(new URL('packages/auth/urlcode.json', root), 'utf8'));
+  const policy = deref(descriptor.policySchema);
+  if (isNode(policy) && policy.additionalProperties === false && propertiesOf(policy)) {
+    closedKeys.set('auth', new Set(['required', ...Object.keys(propertiesOf(policy) ?? {})]));
+    for (const [name, value] of Object.entries(propertiesOf(policy) ?? {})) {
+      const shapes = objectShapes(value);
+      if (shapes.length && shapes.every(shape => shape.additionalProperties === false && propertiesOf(shape)) && !closedKeys.has(name)) closedKeys.set(name, new Set(shapes.flatMap(shape => Object.keys(propertiesOf(shape) ?? {}))));
+    }
+  }
+}
 
 const failures: string[] = [];
 let scanned = 0;
@@ -276,7 +292,7 @@ for (const target of [...TARGETS, ...(await packageTargets())]) {
 // different things at different depths -- `page: {from: query, name: page}` is
 // a function argument named `page`, not the `page` handler, and
 // `auth: {signedIn: true}` is an extension's own policy under
-// `policies.extensions`, not the closed `routeAuth`. Requiring at least one
+// `policies.extensions`, not the closed `auth:` short form. Requiring at least one
 // declared key alongside the undeclared one identifies the mapping as the
 // closed shape and drops all 14, while still catching the #168 defect, where
 // `required` sits beside `roles`.
@@ -334,7 +350,7 @@ for (const target of rule4Targets) {
         const keys = [...(match[1] ?? '').matchAll(/(?:^|,)\s*([A-Za-z][\w-]*)\s*:/g)].map(entry => entry[1] ?? '');
         const undeclared = keys.filter(key => !allowed.has(key));
         if (!undeclared.length || !keys.some(key => allowed.has(key))) continue;
-        failures.push(`${target}:${index + 1}  closed-object-keys: \`${name}\` closes its key set in schemas/urlcode.schema.json, which does not declare ${undeclared.map(key => `\`${key}\``).join(', ')}. This example is rejected by the validator.`);
+        failures.push(`${target}:${index + 1}  closed-object-keys: \`${name}\` closes its key set in ${name === 'auth' ? 'the auth extension\'s policySchema (packages/auth/urlcode.json)' : 'schemas/urlcode.schema.json'}, which does not declare ${undeclared.map(key => `\`${key}\``).join(', ')}. This example is rejected by the validator.`);
       }
     }
   }

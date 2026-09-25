@@ -104,17 +104,22 @@ test('authorize() enforces a bearer quota per credential: 429 with Retry-After a
 test('bearer quota configuration is validated with path-named errors', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-quota-schema-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
-    const validate = async (quota: unknown) => {
-        await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } } }, routes: { '/account/*': { extension: 'auth' }, '/api/items': { redirect: { url: 'https://example.test/' }, auth: { bearer: { scopes: ['items.read'], quota } } } } }));
-        return validateProject(root).then(report => report.valid, (error: Error & { details?: unknown }) => `${error.message} ${JSON.stringify(error.details)}`);
+    const validateAuth = async (auth: unknown) => {
+        await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } } }, routes: { '/account/*': { extension: 'auth' }, '/api/items': { redirect: { url: 'https://example.test/' }, auth } } }));
+        // The registration only supplies its policy schema here; validation never activates it.
+        return validateProject(root, { extensions: [authExtension({ projectSha256: 'a'.repeat(64) } as Parameters<typeof authExtension>[0])] }).then(report => report.valid, (error: Error & { details?: unknown }) => `${error.message} ${JSON.stringify(error.details)}`);
     };
+    const validate = (quota: unknown) => validateAuth({ bearer: { scopes: ['items.read'], quota } });
     assert.equal(await validate({ requests: 100, window: 60 }), true);
-    // Core reports the deepest failure of the `auth` short form's `true | object` union, so the
-    // refusal names the nested quota field rather than the union's `const: true` branch (urlcode#702).
+    // Core no longer knows the auth vocabulary; an unknown key under `auth:` is refused by this package's schema.
+    assert.equal(await validateAuth({ roles: ['admin'] }), 'Invalid extension policy at route /api/items, auth (additionalProperties): unknown key "roles"; did you mean "role"? (run urlcode extensions --json for its policy schema) {"pointer":"/routes/~1api~1items/auth","route":"/api/items","code":"unknown-key","key":"roles"}');
+    assert.equal(await validateAuth({ role: 'member', freshWithinSeconds: 60 }), true);
+    // The auth extension's own policy schema judges the `auth:` short form (urlcode#710), and the refusal names the
+    // nested quota field at the `auth` key the author wrote, not the union's `const: true` branch (urlcode#702).
     for (const quota of [{ requests: 0, window: 60 }, { requests: 10, window: 'a minute' }, { requests: 10, window: 2592001 }, { requests: 1000001, window: 60 }, { requests: 10 }, { requests: 10, window: 60, burst: 5 }]) {
         const refused = await validate(quota);
         assert.equal(typeof refused, 'string', JSON.stringify(quota));
-        assert.ok((refused as string).includes('route /api/items, auth.bearer.quota') && (refused as string).includes('"pointer":"/routes/~1api~1items/auth/bearer/quota'), `${JSON.stringify(quota)}: ${refused}`);
+        assert.ok((refused as string).startsWith('Invalid extension policy at route /api/items, auth.bearer.quota') && (refused as string).includes('"pointer":"/routes/~1api~1items/auth/bearer/quota'), `${JSON.stringify(quota)}: ${refused}`);
     }
 });
 test('email change sends old-address cancellation first and rolls back on failed delivery', async (t) => {

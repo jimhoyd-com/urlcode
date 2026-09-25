@@ -75,14 +75,36 @@ routes:
 The compiler expands the short form before anything else reads the project:
 `auth: true` becomes `policies.extensions.auth: {}` and an object becomes the
 same object minus `required`. The long form stays the canonical representation,
-so `routes`, `audit` and `explain` show the expansion, the extension revision
-hash covers it, and the installed auth extension validates the expanded
-requirement with its own policy schema. The keys other than `required` are
-exactly that schema's keys (`role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny`, `bearer`); the runtime adds nothing of its own.
-Loading fails, naming the route, when `auth` appears without an
-`extensions.auth` declaration, next to `policies.extensions.auth`, or next to
-`policies.extensions: false`.
+so `routes`, `audit` and `explain` show the expansion and the extension revision
+hash covers it.
+
+Core owns only that mapping and `required`. Every other key belongs to the auth
+extension: the core schema accepts `true` or any object here, and the installed
+extension's own `policySchema` decides which keys and values are valid (today
+`role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny` and `bearer`;
+`urlcode extensions --json` prints the authoritative shape). A new auth policy
+key therefore ships with the auth package, not with core. Loading fails, naming
+the route, when `auth` is neither `true` nor an object, when `required` is not a
+boolean, when `auth` appears without an `extensions.auth` declaration, next to
+`policies.extensions.auth`, or next to `policies.extensions: false`.
+
+The auth policy schema is applied at validate time as well as at startup:
+`urlcode validate` checks it against the installed package's `urlcode.json`
+(or the host file's registration with `--host-file`), `validateProject` against
+the registrations passed as `extensions`, else the installed descriptor, and
+`createRuntime` against the registration it activates. A failure is located at
+the `auth` key the author wrote, not at the `policies.extensions.auth` it
+expands to:
+
+```text
+Invalid extension policy at route /api/items, auth.bearer.quota.requests (minimum): must be >= 1
+Invalid extension policy at route /a, auth (additionalProperties): unknown key "roles"; did you mean "role"? (run urlcode extensions --json for its policy schema)
+```
+
+The error details carry the matching pointer
+(`/routes/~1api~1items/auth/bearer/quota/requests`). Keys written beside
+`required: false` emit no requirement but are still checked, so a typo there
+does not wait until the route is switched back on.
 
 ### Bearer/API-key routes
 
@@ -167,7 +189,8 @@ The message names keys and schema-declared bounds, never the rejected value,
 because configuration can hold secrets.
 
 A route policy that fails the registration's `policySchema` is reported the
-same way, located at the route's `policies.extensions.<name>`:
+same way, located at the route's `policies.extensions.<name>` (or at its `auth`
+key when it was written with the [`auth` short form](#protecting-a-route-the-auth-short-form)):
 
 ```text
 Invalid extension policy at route /private, policies.extensions.auth.role (type): must be string (run urlcode extensions --json for its policy schema)
@@ -179,10 +202,11 @@ form expanded. The failing key may therefore be written in one of those layers
 rather than on the route. A route that names an extension declaring no
 `policySchema` fails with `extension "<name>" declares no route policy`.
 
-When a value can take more than one shape (a `oneOf`, such as `auth: true` or
-an `auth:` object), core and extension errors report the deepest failure in the
+When a value can take more than one shape (a `oneOf`, such as a `true` or
+object value), core and extension errors report the deepest failure in the
 shape that was tried, not the first alternative. So `auth: {freshWithinSeconds: 0}`
-names `auth.freshWithinSeconds (minimum)` rather than saying `auth` must be `true`.
+names `auth.freshWithinSeconds (minimum)`, reported by the auth extension's
+policy schema, rather than saying `auth` must be `true`.
 
 For extension-protected routes, agents/throttle run before authorization and
 cache access happens only after authorization. This part is unconditional:

@@ -69,8 +69,18 @@ interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMatch })[
 export type EgressHeaders = Record<string,string|{secret:string}>;
 interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
 interface SignalConfig { url:string; headers?:EgressHeaders }
-/** Route-level `auth` short form. Keys other than `required` mirror the auth extension's policy schema and expand to `policies.extensions.auth`. `bearer` is exclusive of the session-cookie keys (role/permission/verified/freshWithinSeconds/onDeny): a route is protected by a signed-in session or by a bearer/API-key credential, never both. */
-interface RouteAuthConfig { required?: boolean; role?: string; permission?: string; verified?: boolean; freshWithinSeconds?: number; onDeny?: 401 | 403 | 404 | 'sign-in'; bearer?: { scopes: string[]; quota?: { requests: number; window: number } } }
+/**
+ * Route-level `auth` short form: `true`, or an object that expands to `policies.extensions.auth`. Core owns only
+ * the mapping and `required` (`false` emits no policy); every other key belongs to the auth extension, whose
+ * `policySchema` validates it. Core deliberately does not know that vocabulary.
+ */
+type RouteAuthConfig = { required?: boolean } & Record<string, unknown>;
+/**
+ * Where a route's `auth:` short form came from, recorded by `normalizeRouteAuth` so the extension's policy errors
+ * can point at `auth` rather than the canonical `policies.extensions.auth` the author never wrote. `requirement`
+ * is the value as written minus `required`; with `required: false` it emits no policy but is still validated.
+ */
+export interface RouteAuthShortForm { required: boolean; requirement: Record<string, unknown> }
 export interface RouteConfig {
   extension?:string; auth?: true | RouteAuthConfig;
   /** Route-level `cache` short form: the same object accepted by `policies.cache`, expanded to it before anything else reads the project. */
@@ -116,7 +126,7 @@ export interface ProjectDocument {
   policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; shared?: Record<string, SharedBlock>; site?: SiteConfig;
 }
 /** What config.ts returns: the entry document, the merged route table and the files it came from. */
-export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string }
+export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string; /** Routes whose `policies.extensions.auth` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm> }
 
 // ---------------------------------------------------------------------------
 // Compiled routes and assets.

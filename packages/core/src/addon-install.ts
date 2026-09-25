@@ -6,7 +6,7 @@ import Ajv from 'ajv/dist/2020.js';
 import { parseDocument, stringify } from 'yaml';
 import { loadDocument, parseYaml, validateDocument } from './config.ts';
 import { ConfigError, assert } from './errors.ts';
-import { effectiveExtensionPolicies, inspectExtensionRevision } from './extensions.ts';
+import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, inspectExtensionRevision } from './extensions.ts';
 import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './extensions.ts';
 import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
@@ -490,19 +490,16 @@ export async function validateDeclaredExtensions(project: string): Promise<strin
   if (!Object.keys(declared).length) return [];
   const site = dirname(loaded.root), problems: string[] = [];
   const ajv = new Ajv.default({ strict: false, allErrors: true });
-  const policyValidators = new Map<string, ReturnType<typeof ajv.compile> | undefined>();
+  // Policies are reported like the runtime reports them (the first violation per route, located where the author
+  // wrote it, `auth` for the `auth:` short form), which needs the failing schema node for key suggestions.
+  const policyAjv = new Ajv.default({ strict: false, allErrors: false, verbose: true });
   for (const [name, declaration] of Object.entries(declared)) {
     const descriptor = await readInstalledDescriptor(site, name).catch(() => undefined);
     if (!descriptor || descriptor.kind !== 'extension' || !descriptor.schema) { problems.push(`extensions.${name}: ${addonPackage(name)} is not installed in ${site}; run \`urlcode extensions add ${name}\` or npm ci`); continue; }
     const validate = ajv.compile(descriptor.schema);
     if (!validate(declaration.config)) problems.push(`extensions.${name}.config: ${ajv.errorsText(validate.errors)}`);
-    policyValidators.set(name, descriptor.policySchema ? ajv.compile(descriptor.policySchema) : undefined);
-  }
-  for (const [pattern, route] of Object.entries(loaded.routes)) for (const [name, requirement] of Object.entries(effectiveExtensionPolicies(loaded.document, route))) {
-    if (!policyValidators.has(name)) continue;
-    const validate = policyValidators.get(name);
-    if (!validate) { if (Object.keys(requirement).length) problems.push(`${pattern}: ${name} takes no route requirement`); continue; }
-    if (!validate(requirement)) problems.push(`${pattern}: policies.extensions.${name}: ${ajv.errorsText(validate.errors)}`);
+    const policyValidator = descriptor.policySchema ? policyAjv.compile(descriptor.policySchema) : emptyPolicyOnly;
+    checkExtensionPolicies(loaded.document, loaded.routes, loaded.routeAuth, name, policyValidator, error => problems.push(error.message));
   }
   return problems;
 }

@@ -15,7 +15,11 @@ The tooling API consolidates authoring operations without starting a runtime:
 - `validateProject(project, options)` returns the same compilation verdict and
   compatibility verdict and global counts without route or issue pages.
   `firstIssue` is the first issue across the whole project, or null; supplied
-  pagination settings do not change it. The low-level
+  pagination settings do not change it. It also refuses a route requirement
+  (including the `auth:` short form) that fails its extension's policy schema:
+  the registration's when `options.extensions` supplies one, else the installed
+  package's `urlcode.json` in the enclosing site; an extension with neither is
+  left to startup. Nothing is activated. The low-level
   `analyzeCompiledCapabilities` API still returns the complete report.
   For unusually long route paths, request smaller pages to fit the MCP output
   byte limit; page entry bounds do not override that transport limit.
