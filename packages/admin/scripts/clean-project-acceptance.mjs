@@ -14,12 +14,12 @@ const args = process.argv.slice(2);
 const options = {};
 for (let i = 0; i < args.length; i++) {
   const name = args[i] ?? assert.fail('Missing argument name');
-  assert.ok(['--core', '--ui', '--auth', '--admin', '--out', '--phase', '--keep', '--hostname', '--kit'].includes(name), `Unknown argument ${name}`);
+  assert.ok(['--core', '--ui', '--audit', '--mail', '--auth', '--admin', '--out', '--phase', '--keep', '--hostname'].includes(name), `Unknown argument ${name}`);
   assert.equal(options[name], undefined, `Repeated argument ${name}`);
-  options[name] = ['--keep', '--kit'].includes(name) ? true : (args[++i] ?? assert.fail(`Missing value for ${name}`));
+  options[name] = name === '--keep' ? true : (args[++i] ?? assert.fail(`Missing value for ${name}`));
   assert.ok(options[name], `Missing value for ${name}`);
 }
-assert.ok(options['--out'], 'Required: --core TAR --ui TAR --auth TAR --admin TAR --out NEW_DIRECTORY [--keep]');
+assert.ok(options['--out'], 'Required: --core TAR --ui TAR --audit TAR --mail TAR --auth TAR --admin TAR --out NEW_DIRECTORY [--keep]');
 const directory = resolve(/** @type {string} */ (options['--out']));
 const hostname = /** @type {string} */ (options['--hostname'] || '127.0.0.1');
 assert.ok(['127.0.0.1', 'localhost'].includes(hostname), 'Hostname must be localhost or 127.0.0.1');
@@ -34,7 +34,7 @@ async function run(/** @type {string} */ command, /** @type {string[]} */ argv) 
 if (!options['--phase']) {
   /** @type {Record<string, { path: string, sha256: string }>} */
   const archives = {};
-  for (const name of ['core', 'ui', 'auth', 'admin']) {
+  for (const name of ['core', 'ui', 'audit', 'mail', 'auth', 'admin']) {
     assert.ok(options['--' + name], `Missing --${name}`);
     const path = resolve(/** @type {string} */ (options['--' + name]));
     assert.ok((await lstat(path)).isFile(), `${name} must be an actual local tarball`);
@@ -44,9 +44,9 @@ if (!options['--phase']) {
   await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'urlcode-clean-acceptance', private: true, type: 'module' }) + '\n', { mode: 0o600 });
   await writeFile(join(directory, 'source-manifest.json'), JSON.stringify(archives, null, 2) + '\n', { mode: 0o600 });
   const install = (/** @type {string[]} */ names) => run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...names.map(name => (archives[name] ?? assert.fail(`Missing archive ${name}`)).path)]);
-  const phase = (/** @type {string} */ name) => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, '--hostname', hostname, ...(options['--kit'] ? ['--kit'] : []), ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
+  const phase = (/** @type {string} */ name) => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, '--hostname', hostname, ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
   await install(['core']); await phase('core');
-  await install(['ui', 'auth']); await phase('auth');
+  await install(['ui', 'audit', 'mail', 'auth']); await phase('auth');
   await install(['admin']); await phase('admin');
   process.exit(0);
 }
@@ -67,6 +67,8 @@ const yaml = createRequire(require.resolve('@jimhoyd/urlcode'))('yaml');
 let service;
 /** @type {any} */
 let runtime;
+/** @type {any} */
+let host;
 const csrfKeyPath = join(directory, 'csrf.key'), encryptionKeyPath = join(directory, 'encryption.key');
 const credentials = { admin: { email: 'owner@example.test', password: 'synthetic owner acceptance passphrase' }, member: { email: 'member@example.test', password: 'synthetic member acceptance passphrase' } };
 if (phase === 'core') {
@@ -142,34 +144,28 @@ try {
     }
     const auth = await installed('@jimhoyd/urlcode-auth');
     const document = yaml.parse(await readFile(config, 'utf8'));
-    document.extensions = { ...(options['--kit'] ? { ui: { version: '1', config: {} } } : {}), auth: { version: '1', config: { registration: 'open' } }, ...(phase === 'admin' ? { admin: { version: '1', config: {} } } : {}) };
-    if (options['--kit']) document.routes['/assets/ui/*'] = { extension: 'ui', methods: ['GET', 'HEAD'] };
+    // Auth requires ui, audit and mail; admin requires auth, ui and audit. The site composes them as host.mjs would.
+    document.extensions = { ui: { version: '1', config: {} }, audit: { version: '1', config: {} }, mail: { version: '1', config: {} }, auth: { version: '1', config: { registration: 'open' } }, ...(phase === 'admin' ? { admin: { version: '1', config: {} } } : {}) };
+    document.routes['/assets/ui/*'] = { extension: 'ui', methods: ['GET', 'HEAD'] };
     document.routes['/account/*'] = { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] };
     document.routes['/private'] = { respond: { text: 'Authenticated application' }, policies: { extensions: { auth: {} } } };
-    if (phase === 'admin') document.routes['/admin/*'] = { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] };
+    if (phase === 'admin') document.routes['/admin/*'] = { extension: 'admin', methods: ['GET', 'HEAD', 'POST'], auth: { onDeny: 404 } };
     await writeFile(config, yaml.stringify(document));
     service = await auth.createAuthService({ database: join(directory, 'auth.sqlite'), encryptionKey: await readFile(encryptionKeyPath), roles: { member: [], admin: ['*'] }, defaultRole: 'member', registrationMode: 'open' });
     if (phase === 'auth') await service.bootstrapAdmin(credentials.admin);
     const { inspectExtensionRevision } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode/extensions')).href);
-    /** @type {{ service: any, csrfKey: Buffer, projectSha256: any, ui?: any }} */
-    const authOptions = { service, csrfKey: await readFile(csrfKeyPath), projectSha256: await inspectExtensionRevision(project) };
-    const admin = phase === 'admin' ? await installed('@jimhoyd/urlcode-admin') : undefined;
-    // The console has one render path, so its activation refuses without the kit: the admin phase cannot run unkitted.
-    if (admin && !options['--kit']) throw new Error('The admin phase requires --kit: adminExtension refuses to activate without the ui extension.');
-    let kit;
-    if (options['--kit']) {
-      const { createUiExtension } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode-ui/host')).href);
-      kit = createUiExtension({ projectRoot: project, projectSha256: authOptions.projectSha256, sources: [auth.authCatalogue], extensions: [auth.authUiTemplates, ...(admin ? [admin.adminUiTemplates] : [])] });
-      authOptions.ui = kit;
-    }
-    const registrations = kit ? [kit.registration] : [];
-    if (admin) runtime = await admin.createAdministrationRuntime(project, { auth: authOptions, admin: { ui: kit }, runtime: { origin, extensions: registrations } });
-    else runtime = await core.createRuntime(project, { origin, extensions: [...registrations, auth.authExtension(authOptions)] });
+    const { composeHost } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode/host')).href);
+    process.env.PROJECT_SHA256 = await inspectExtensionRevision(project);
+    const mail = await installed('@jimhoyd/urlcode-mail');
+    const entries = [(await installed('@jimhoyd/urlcode-ui/extension')).default(), (await installed('@jimhoyd/urlcode-audit/extension')).default(), (await installed('@jimhoyd/urlcode-mail/extension')).default({ transport: mail.recordingTransport() }), (await installed('@jimhoyd/urlcode-auth/extension')).default({ service, csrfKey: await readFile(csrfKeyPath) })];
+    if (phase === 'admin') entries.push((await installed('@jimhoyd/urlcode-admin/extension')).default());
+    host = await composeHost(pathToFileURL(join(directory, 'host.mjs')), entries);
+    runtime = await core.createRuntime(project, { origin, extensions: host.extensions });
   }
   const anonymous = browser();
   check('Initial application survives ' + phase, (await anonymous.request('/acceptance')).body, 'Clean project preserved');
   if (phase !== 'core') {
-    if (options['--kit']) {
+    {
       const signin = await anonymous.request('/account/login', undefined, undefined, true);
       assert.equal(signin.status, 200);
       const stylesheet = /href="(\/assets\/ui\/static\/kit\.[0-9a-f]{12}\.css)"/.exec(signin.body)?.[1];
@@ -216,15 +212,16 @@ try {
       check('Live runtime health available', (await owner.request('/admin/health')).status, 200);
     }
   }
-  await writeFile(join(directory, phase + '-results.json'), JSON.stringify({ phase, renderPath: options['--kit'] ? 'kit' : 'primitives', checks, passed: true }, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(join(directory, phase + '-results.json'), JSON.stringify({ phase, renderPath: 'kit', checks, passed: true }, null, 2) + '\n', { mode: 0o600 });
   console.log(`${phase}: ${checks.length} clean-project checks passed`);
   if (options['--keep'] && phase === 'admin') {
-    await writeFile(join(directory, 'browser-fixture.json'), JSON.stringify({ origin, renderPath: options['--kit'] ? 'kit' : 'primitives', pid: process.pid, syntheticOnly: true, credentials }, null, 2) + '\n', { mode: 0o600 });
+    await writeFile(join(directory, 'browser-fixture.json'), JSON.stringify({ origin, renderPath: 'kit', pid: process.pid, syntheticOnly: true, credentials }, null, 2) + '\n', { mode: 0o600 });
     console.log(`Synthetic browser fixture: ${join(directory, 'browser-fixture.json')}`);
     await new Promise(resolveStop => { process.once('SIGINT', resolveStop); process.once('SIGTERM', resolveStop); });
   }
 } finally {
   await new Promise(resolveClose => server.close(resolveClose));
   if (runtime) await runtime.close();
+  if (host) await host.close();
   if (service) await service.close();
 }

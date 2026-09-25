@@ -1,130 +1,115 @@
 import {rolesScreen,sessionsScreen,auditScreen,healthScreen,casesScreen,registrationsScreen} from './admin-screens.ts';
-import {createAdminPresentation} from './admin-copy.ts';
+import {adminCopy} from './admin-copy.ts';
+import type {AdminCopy} from './admin-copy.ts';
 import {userDirectory} from './admin-users.ts';
-import {postForm,withDeadline} from '@jimhoyd/urlcode-ui';
-import type {IconName,LocalePreferences} from '@jimhoyd/urlcode-ui';
-import {failureResponse,markup,presentationSource,requireKit,screenResponse} from './admin-ui.ts';
-import type {ScreenOptions,UiHost} from './admin-ui.ts';
-import type {ViewModel} from '@jimhoyd/urlcode-ui';
+import {postForm} from '@jimhoyd/urlcode-ui';
+import type {IconName,LocalePreferences,ViewModel} from '@jimhoyd/urlcode-ui';
+import type {UiExtension} from '@jimhoyd/urlcode-ui/host';
+import {AdminHttpError,failureResponse,formField as baseField,markup,screenResponse} from './admin-ui.ts';
+import type {ScreenOptions} from './admin-ui.ts';
 import {dashboardSummary} from './admin-dashboard.ts';
 import {accountDetail} from './admin-detail.ts';
-import { exportUserRange } from './admin-user-export.ts';
 import {createAdminAccount} from './admin-account.ts';
-import type {AdminAccountDelivery} from '@jimhoyd/urlcode-auth';
-import { createAdminRecovery } from './admin-recovery.ts';
-import type { ManualRecoveryDelivery } from '@jimhoyd/urlcode-auth';
-import { exportAuditRange } from './admin-audit-export.ts';
-import { createHealthReader } from './admin-health.ts';
-import type { AdminHealthProvider } from './admin-health.ts';
-import { maskEmail, sessionFilters, userFilters, userFilterKeys, auditFilters, selectedNames, selectedAccounts, usersCsv } from './admin-reporting.ts';
-import { extensionHookContext } from '@jimhoyd/urlcode/extensions';
-import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
-import type { AuthService, AuthPrincipal, Presentation } from '@jimhoyd/urlcode-auth';
-import { AuthHttp, AuthHttpError, formField as baseField, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
-import { adminHookContracts, adminHooksSchema, loadAdminHooks } from './admin-hooks.ts';
-export interface AdminExtensionOptions {
-    sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;
-    sendRecovery?: (message: ManualRecoveryDelivery) => Promise<void>;
-    presentation?: Presentation;
-    /** The `ui` extension from `createUiExtension`, declared before admin in the project and the host file. Every console screen renders through its kit; activation refuses without it. */
-    ui: UiHost;
-    health?: AdminHealthProvider;
-    service: AuthService;
-    csrfKey: Uint8Array;
+import {createAdminRecovery} from './admin-recovery.ts';
+import {exportAuditRange} from './admin-audit-export.ts';
+import {createHealthReader} from './admin-health.ts';
+import type {AdminHealthProvider} from './admin-health.ts';
+import {maskEmail,sessionFilters,userFilters,userFilterKeys,auditFilters,selectedField,selectedAccounts,usersCsv} from './admin-reporting.ts';
+import {extensionHookContext,jsonResponse,readFields,wantsJson} from '@jimhoyd/urlcode/extensions';
+import type {RuntimeExtension,ExtensionRequest,HandlerResult} from '@jimhoyd/urlcode/extensions';
+import type {AuthAccount,AuthExports} from '@jimhoyd/urlcode-auth';
+import type {AuditExports} from '@jimhoyd/urlcode-audit';
+export interface AdminOptions {
+    auth: AuthExports;
+    ui: UiExtension;
+    audit: AuditExports;
+    health?: AdminHealthProvider | undefined;
     projectSha256: string;
-    authMount?: string;
-    notifyImpersonation?: (message: {
-        email: string;
-        actorId: string;
-        reason: string;
-        signal: AbortSignal;
-    }) => Promise<void>;
-    sendSetup?: (message: {
-        email: string;
-        token: string;
-        signal: AbortSignal;
-    }) => Promise<void>;
-    sendInvitation?: (message: {
-        email: string;
-        token: string;
-        signal: AbortSignal;
-    }) => Promise<void>;
 }
-const defaultPresentation = createAdminPresentation();
-/** The `extensions.admin.config` schema: one object, shared by the runtime registration and the extension definition. */
-export const adminConfigSchema = { type: 'object', additionalProperties: false, properties: { hooks: adminHooksSchema } };
-const permissions = ['auth.users.reveal', 'auth.audit.export', 'auth.health.read', 'auth.cases.read', 'auth.cases.manage', 'auth.users.impersonate', 'auth.users.export', 'auth.users.create', 'auth.users.read', 'auth.users.manage', 'auth.audit.read', 'auth.sessions.manage', 'auth.roles.read'];
+/** The `extensions.admin.config` schema: admin has no configuration of its own. */
+export const adminConfigSchema = { type: 'object', additionalProperties: false, properties: {} };
+/** Audit permissions: granted by roles like auth's, checked by admin (audit carries no authorization of its own). */
+const auditPermissions = ['audit.read', 'audit.export'] as const;
 export const adminAuthoring = Object.freeze({
-    description: 'The administration console is part of the application, while this package keeps ownership of permissions, freshness checks, auditing and transactional account operations. Customize its UI and declared hooks before replacing behavior.',
+    description: 'The administration console is part of the application, while auth keeps ownership of permissions, freshness checks, lifecycle hooks and transactional account operations, and audit keeps the log. Customize the console copy and screens before replacing behavior.',
     surfaces: Object.freeze([
-        { kind: 'copy' as const, name: 'administration copy', description: 'Change console wording through the UI catalogue.', path: 'ui/copy/<locale>.json' },
+        { kind: 'copy' as const, name: 'administration copy', description: 'Change console wording through the admin.* keys of the UI catalogue.', path: 'ui/copy/<locale>.json' },
         { kind: 'template' as const, name: 'administration screens', description: 'Override one admin/* screen when its structure must change; keep permissions and mutation behavior package-owned.', path: 'ui/templates/admin/<screen>.html', command: 'urlcode-ui list --project . --extensions @jimhoyd/urlcode-admin' },
-        { kind: 'hook' as const, name: 'administration lifecycle', description: 'Use declared role, registration and account-status hooks for product behavior at supported lifecycle points.', path: 'extensions.admin.config.hooks' },
+        { kind: 'hook' as const, name: 'account lifecycle', description: 'Role, registration and account-status hooks are auth\'s: they fire for the console and every other caller.', path: 'extensions.auth.config.hooks' },
     ]),
     fastChecks: Object.freeze(['urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css', 'urlcode validate --local', 'urlcode test']),
 });
-export function adminExtension(options: AdminExtensionOptions): RuntimeExtension {
-    const authMount = options.authMount || '/account';
-    if (!/^\/[A-Za-z0-9/_-]*$/.test(authMount) || authMount.includes('//'))
-        throw new Error('Invalid auth mount');
-    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema: adminConfigSchema, hooks: adminHookContracts, authoring: adminAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
-        async activate(config, context) {
+/** The console registration: `/admin/*` behind auth's session policy, reading the account auth resolved for the request. */
+export function createAdmin(options: AdminOptions): RuntimeExtension {
+    const { auth, ui, audit } = options;
+    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema: adminConfigSchema, authoring: adminAuthoring,
+        activate(_config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Admin requires exactly one mount');
-            requireKit(options.ui);
-            // Fails fast during activation: a missing/broken hook module or an
-            // unsupported `sandbox: true` throws here, never on first request.
-            const hooks = await loadAdminHooks(config, context.root);
+            const mount = context.mounts[0]!;
+            // Auth's policy is the console's only way in: it resolves the session, verifies CSRF and sets the principal.
+            if (!context.principalMounts?.includes(mount))
+                throw new Error(`${mount}/* must carry an auth policy (auth: {onDeny: 404})`);
+            if (!ui.active)
+                throw new Error('The ui extension is not active: admin renders only through the urlcode-ui kit');
+            if (!auth.active)
+                throw new Error('The auth extension is not active');
+            if (!audit.active)
+                throw new Error('The audit extension is not active');
             const readHealth = options.health ? createHealthReader(options.health) : undefined;
-            const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, origins: context.origins, csrfKey: options.csrfKey }), service = options.service;
-            const accounts=createAdminAccount({service,hooks,...(options.sendAccountAdministration?{sendAccountAdministration:options.sendAccountAdministration}:{})},http,mount);
-            const recovery = createAdminRecovery({ service, ...(options.sendRecovery ? { sendRecovery: options.sendRecovery } : {}) }, http, mount);
-            function requirePermission(principal: AuthPrincipal, permission: string): void {
-                if (!hasPermission(principal, permission))
-                    throw new AuthHttpError(403, 'Permission required');
+            const gate = [...auth.permissions, ...auditPermissions];
+            const accounts = createAdminAccount(auth, mount), recovery = createAdminRecovery(auth, mount);
+            const administration = () => auth.administration;
+            function requirePermission(account: AuthAccount, permission: string): void {
+                if (!account.has(permission))
+                    throw new AdminHttpError(403, 'Permission required');
             }
-            function navigation(principal: AuthPrincipal, text: (source: string) => string, tr: (key: string) => string, current: string): NonNullable<ScreenOptions['shell']> {
-                const isCurrent=(path:string)=>path==='/'?(current==='/'||current==='/dashboard'):current===path||current.startsWith(path+'/');
-                const items:{href:string;label:string;current:boolean;icon:IconName}[]=[{href:mount+'/',label:tr('nav.overview'),current:isCurrent('/'),icon:'home'},...([['users','Users','auth.users.read','users'],['sessions','Sessions','auth.sessions.manage','monitor'],['registrations','Registration','auth.users.manage','mail'],['roles','Roles','auth.roles.read','shield'],['audit','Audit','auth.audit.read','list'],['cases','Cases','auth.cases.read','circle-alert'],['health','Service health','auth.health.read','activity']] as const).filter(([_path,_label,permission])=>hasPermission(principal,permission!)).map(([path,label,,symbol])=>({href:mount+'/'+path,label:text(label),current:isCurrent('/'+path),icon:symbol})),...(accounts.enabled()&&hasPermission(principal,'auth.users.manage')?[{href:mount+'/account-operations',label:tr('adminOps.title'),current:isCurrent('/account-operations'),icon:'settings' as const}]:[]),...(recovery.enabled()&&hasPermission(principal,'auth.cases.read')?[{href:mount+'/recovery-cases',label:tr('manualRecovery.title'),current:isCurrent('/recovery-cases'),icon:'key' as const}]:[])];
-                const menu={label:tr('nav.account'),items:[{href:authMount+'/account',label:tr('nav.account')},{href:authMount+'/step-up',label:tr('action.confirm')}]};
+            /** Auth's step-up page, returning to this console path (or the console's root when the path cannot be a return target). */
+            function stepUp(current: string): string {
+                try { return auth.urls.stepUp(mount + current); }
+                catch { return auth.urls.stepUp(mount + '/'); }
+            }
+            function navigation(account: AuthAccount, copy: AdminCopy, current: string): NonNullable<ScreenOptions['shell']> {
+                const isCurrent = (path: string) => path === '/' ? (current === '/' || current === '/dashboard') : current === path || current.startsWith(path + '/');
+                const sections: readonly (readonly [string, string, string, IconName])[] = [['users', 'admin.nav.users', 'auth.users.read', 'users'], ['sessions', 'admin.nav.sessions', 'auth.sessions.manage', 'monitor'], ['registrations', 'admin.nav.registration', 'auth.users.manage', 'mail'], ['roles', 'admin.nav.roles', 'auth.roles.read', 'shield'], ['audit', 'admin.nav.audit', 'audit.read', 'list'], ['cases', 'admin.nav.cases', 'auth.cases.read', 'circle-alert'], ['health', 'admin.nav.health', 'auth.health.read', 'activity']];
+                const items: { href: string; label: string; current: boolean; icon: IconName }[] = [{ href: mount + '/', label: copy.t('admin.nav.overview'), current: isCurrent('/'), icon: 'home' }, ...sections.filter(([, , permission]) => account.has(permission)).map(([path, key, , symbol]) => ({ href: mount + '/' + path, label: copy.t(key), current: isCurrent('/' + path), icon: symbol })), ...(accounts.enabled() && account.has('auth.users.manage') ? [{ href: mount + '/account-operations', label: copy.t('admin.ops.title'), current: isCurrent('/account-operations'), icon: 'settings' as const }] : []), ...(recovery.enabled() && account.has('auth.cases.read') ? [{ href: mount + '/recovery-cases', label: copy.t('admin.recovery.title'), current: isCurrent('/recovery-cases'), icon: 'key' as const }] : [])];
+                const menu = { label: copy.t('admin.nav.account'), items: [{ href: auth.urls.account(), label: copy.t('admin.nav.account') }, { href: stepUp(current), label: copy.t('admin.action.confirm') }] };
                 // The kit builds the sidebar, the page header and the skip target from these links: one representation of the console shell, not two.
-                return {nav:items,menu};
+                return { nav: items, menu };
             }
-            return { async handle(request: ExtensionRequest) {
-                    // Activation proved the kit is there; it is still read per request, never captured, so a reloaded ui extension is picked up.
-                    const source = presentationSource(options.presentation, options.ui, defaultPresentation);
-                    let preferences: LocalePreferences = { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) };
-                    let presentation = source.resolve(preferences);
-                    const render = (): ScreenOptions => ({ presentation, ui: options.ui });
-                    const tr = (key: string, values?: Readonly<Record<string, string | number>>) => presentation.text(key, values);
-                    const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation.textSource(label), type, autocomplete, required);
-                    const form = (action: string, csrf: string, fields: string, button: string) => postForm({ action, csrf, fields, label: presentation.textSource(button), className: 'ui-form-grid' });
+            return { async handle(request: ExtensionRequest): Promise<HandlerResult> {
+                    const account = auth.account(request);
+                    const preferences: LocalePreferences = { ...(account?.locale ? { accountLocale: account.locale } : {}), ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) };
+                    // Read per request, never captured: a reloaded ui extension is picked up.
+                    const copy = adminCopy(ui.kit.resolveContext(preferences));
+                    const path = request.path.slice(mount.length) || '/';
+                    const render: ScreenOptions = { copy, ui, ...(account ? { stepUp: { href: stepUp(path), label: copy.t('admin.action.confirm') } } : {}) };
+                    const tr = (key: string, values?: Readonly<Record<string, string | number>>) => copy.t(key, values);
+                    const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, copy.s(label), type, autocomplete, required);
+                    const form = (action: string, csrf: string, fields: string, button: string) => postForm({ action, csrf, fields, label: copy.s(button), className: 'ui-form-grid' });
                     try {
-                        const token = http.session(request), principal = token ? await service.authenticate(token) : null;
-                        if (!token || !principal || principal.impersonatorId || !permissions.some(permission => hasPermission(principal, permission)))
-                            throw new AuthHttpError(404, 'Not found');
-                        const accountLocale = (await service.getUser(principal.id))?.profile?.locale;
-                        if (accountLocale) { preferences = { accountLocale, ...preferences }; presentation = source.resolve(preferences); }
-                        const path = request.path.slice(mount.length) || '/';
+                        // The console's existence is not revealed: no account, a support session or no console permission is 404.
+                        if (!account || account.impersonated || !gate.some(permission => account.has(permission)))
+                            throw new AdminHttpError(404, 'Not found');
                         if (!['GET', 'HEAD', 'POST'].includes(request.method))
                             return jsonResponse(405, { error: 'Method not allowed' }, [['allow', 'GET, HEAD, POST']]);
-                        const csrf = http.token(token), shell = navigation(principal, value => presentation.textSource(value), tr, path);
-                        const screen = (title: string, name: string, view: ViewModel, status?: number, headers?: [string, string][]) => screenResponse(title, { name: 'admin/' + name, view }, { ...render(), shell, status, headers });
+                        const csrf = auth.csrf.token(request), shell = navigation(account, copy, path), actor = account.actor;
+                        const options: ScreenOptions = { ...render, shell };
+                        const screen = (title: string, name: string, view: ViewModel, status?: number, headers?: [string, string][]) => screenResponse(title, { name: 'admin/' + name, view }, { ...options, status, headers });
                         const status = (title: string, message: string, href: string | null = null, label: string | null = null) => screen(title, 'status', { alert: false, message, href, label });
-                        const accountResult=await accounts.handle(request,principal,token,{...render(),shell});if(accountResult)return accountResult;
-                        const recoveryResult = await recovery.handle(request, principal, token, {...render(),shell});
+                        const accountResult = await accounts.handle(request, account, csrf, options);
+                        if (accountResult)
+                            return accountResult;
+                        const recoveryResult = await recovery.handle(request, account, csrf, options);
                         if (recoveryResult)
                             return recoveryResult;
+                        const input = { mount, csrf, account, copy, query: request.query };
                         if (request.method !== 'POST') {
                             if (path === '/' || path === '/dashboard') {
-                                const granted = permissions.filter(permission => hasPermission(principal, permission));
-                                const stats = hasPermission(principal, 'auth.users.read') ? await service.dashboard() : undefined;
-                                const users = hasPermission(principal, 'auth.users.read') ? await service.listUsers({ limit: 50 }) : undefined;
-                                const methodCounts = new Map<string, {
-                                    signUps: number;
-                                    signIns: number;
-                                    failedSignIns: number;
-                                }>();
+                                const granted = gate.filter(permission => account.has(permission));
+                                const stats = account.has('auth.users.read') ? await administration().dashboard(actor) : undefined;
+                                const users = account.has('auth.users.read') ? await administration().users.list(actor, { limit: 50 }) : undefined;
+                                const methodCounts = new Map<string, { signUps: number; signIns: number; failedSignIns: number }>();
                                 for (const day of stats?.daily ?? [])
                                     for (const entry of day.methods) {
                                         const total = methodCounts.get(entry.method) ?? { signUps: 0, signIns: 0, failedSignIns: 0 };
@@ -133,260 +118,208 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                                         total.failedSignIns += entry.failedSignIns;
                                         methodCounts.set(entry.method, total);
                                     }
-                                const recent = hasPermission(principal, 'auth.audit.read') ? await service.listAudit({ limit: 20 }) : undefined;
+                                // Recent means newest first (#746).
+                                const recent = account.has('audit.read') ? await audit.query({ limit: 20, order: 'desc' }) : undefined;
                                 if (wantsJson(request)) return jsonResponse(200, { permissions: granted, csrf, ...(users ? { accounts: stats, accountsShown: users.users.length, moreAccounts: !!users.next } : {}), ...(recent ? { recentEvents: recent.events } : {}) });
-                                const number = (value: number) => tr('number.value', { value }), counts = (total: { signUps: number; signIns: number; failedSignIns: number }) => ({ signUps: number(total.signUps), signIns: number(total.signIns), failedSignIns: number(total.failedSignIns) });
+                                const number = (value: number) => tr('admin.number.value', { value }), counts = (total: { signUps: number; signIns: number; failedSignIns: number }) => ({ signUps: number(total.signUps), signIns: number(total.signIns), failedSignIns: number(total.failedSignIns) });
                                 return screen('Administration', 'dashboard', {
-                                    impersonation: hasPermission(principal, 'auth.users.impersonate') && options.notifyImpersonation ? { summary: presentation.textSource('Start ten-minute support impersonation'), form: markup(form(mount + '/impersonate', csrf, formField('accountId', 'Account ID') + formField('reason', 'Reason'), 'Start ten-minute support impersonation')) } : null,
-                                    intro: tr('copy.selectASectionOnlyPermittedOperationsAreShownConfigurationRemainsInVersionControlledProjectFiles'),
-                                    summary: stats ? markup(dashboardSummary(stats, mount, principal, presentation)) : null,
-                                    activity: stats ? { heading: presentation.textSource('View activity totals'), description: tr('copy.recordedAccountCreationsSuccessfulSignInsAndFailedSignInsTheseFiguresDescribeAuthenticationActivityDeploymentH'), dailyCaption: tr('copy.dailyAuthenticationCounts'), methodsCaption: tr('copy.authenticationMethodsOverTheSame30Days'), dayHeading: tr('copy.uTCDay'), methodHeading: tr('copy.method'), signUps: tr('copy.signUps'), signIns: tr('copy.signIns'), failedSignIns: tr('copy.failedSignIns'), days: stats.daily.map(day => ({ day: day.day, ...counts(day) })), methods: [...methodCounts].map(([method, total]) => ({ method, ...counts(total) })) } : null,
-                                    recent: recent ? { heading: tr('copy.recentEvents'), auditHref: mount + '/audit', auditLabel: tr('nav.audit'), events: recent.events.slice(0, 8).map(event => ({ action: event.action, datetime: new Date(event.created).toISOString(), label: new Date(event.created).toISOString().replace('T', ' ').slice(0, 16) })), empty: presentation.textSource('No account activity recorded.') } : null,
+                                    impersonation: account.has('auth.users.impersonate') && administration().capabilities.impersonation ? { summary: copy.s('Start ten-minute support impersonation'), form: markup(form(mount + '/impersonate', csrf, formField('accountId', 'Account ID') + formField('reason', 'Reason'), 'Start ten-minute support impersonation')) } : null,
+                                    intro: tr('admin.copy.selectASectionOnlyPermittedOperationsAreShownConfigurationRemainsInVersionControlledProjectFiles'),
+                                    summary: stats ? markup(dashboardSummary(stats, mount, account, copy)) : null,
+                                    activity: stats ? { heading: copy.s('View activity totals'), description: tr('admin.copy.recordedAccountCreationsSuccessfulSignInsAndFailedSignInsTheseFiguresDescribeAuthenticationActivityDeploymentH'), dailyCaption: tr('admin.copy.dailyAuthenticationCounts'), methodsCaption: tr('admin.copy.authenticationMethodsOverTheSame30Days'), dayHeading: tr('admin.copy.uTCDay'), methodHeading: tr('admin.copy.method'), signUps: tr('admin.copy.signUps'), signIns: tr('admin.copy.signIns'), failedSignIns: tr('admin.copy.failedSignIns'), days: stats.daily.map(day => ({ day: day.day, ...counts(day) })), methods: [...methodCounts].map(([method, total]) => ({ method, ...counts(total) })) } : null,
+                                    recent: recent ? { heading: tr('admin.copy.recentEvents'), auditHref: mount + '/audit', auditLabel: tr('admin.nav.audit'), events: recent.events.slice(0, 8).map(event => ({ action: event.action, datetime: new Date(event.at).toISOString(), label: new Date(event.at).toISOString().replace('T', ' ').slice(0, 16) })), empty: copy.s('No account activity recorded.') } : null,
                                 });
                             }
                             if (path === '/health') {
-                                requirePermission(principal, 'auth.health.read');
+                                requirePermission(account, 'auth.health.read');
                                 const health = readHealth ? await readHealth() : null;
                                 if (wantsJson(request))
                                     return jsonResponse(health || !readHealth ? 200 : 503, { configured: !!readHealth, health });
-                                const view = healthScreen({health,configured:!!readHealth,mount,csrf,principal,presentation,query:request.query}); return screenResponse('Service health', view, { ...render(), shell });
+                                return screenResponse('Service health', healthScreen({ ...input, health, configured: !!readHealth }), options);
                             }
                             if (path === '/cases') {
-                                requirePermission(principal, 'auth.cases.read');
-                                const result = await service.listCases({ limit: 50, ...(request.query.get('after') ? { after: request.query.get('after')! } : {}) });
+                                requirePermission(account, 'auth.cases.read');
+                                const result = await administration().cases.list(actor, { limit: 50, ...(request.query.get('after') ? { after: request.query.get('after')! } : {}) });
                                 if (wantsJson(request))
                                     return jsonResponse(200, { ...result, csrf });
-                                return screenResponse('Support cases', casesScreen({result,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
+                                return screenResponse('Support cases', casesScreen({ ...input, result }), options);
                             }
                             if (path === '/registrations') {
-                                requirePermission(principal, 'auth.users.manage');
-                                const result = await service.listRegistrationRequests({ limit: 50, ...(request.query.get('after') ? { after: request.query.get('after')! } : {}) });
+                                requirePermission(account, 'auth.users.manage');
+                                const result = await administration().registrations.list(actor, { limit: 50, ...(request.query.get('after') ? { after: request.query.get('after')! } : {}) });
                                 if (wantsJson(request))
                                     return jsonResponse(200, { ...result, requests: result.requests.map(item => ({ ...item, email: maskEmail(item.email) })), csrf });
-                                return screenResponse('Registration requests', registrationsScreen({result,mount,csrf,principal,presentation,query:request.query,canInvite:!!options.sendInvitation}), { ...render(), shell });
+                                return screenResponse('Registration requests', registrationsScreen({ ...input, result, canInvite: administration().capabilities.invitations }), options);
                             }
                             if (path === '/users/detail') {
-                                requirePermission(principal, 'auth.users.read');
-                                const account = await service.getUser(request.query.get('id') || '');
-                                if (!account)
-                                    throw new AuthHttpError(404, 'Account not found');
-                                const activity = hasPermission(principal, 'auth.audit.read') ? await service.listAudit({ limit: 20, subject: account.id }) : undefined;
-                                const notes = hasPermission(principal, 'auth.audit.read') ? await service.listAudit({limit:50,subject:account.id,action:'admin.note'}) : undefined;
-                                const user = { ...account, email: maskEmail(account.email) }, sessions = hasPermission(principal, 'auth.sessions.manage') ? await service.listSessions(user.id) : undefined;
+                                requirePermission(account, 'auth.users.read');
+                                const found = await administration().users.get(actor, request.query.get('id') || '');
+                                if (!found)
+                                    throw new AdminHttpError(404, 'Account not found');
+                                const activity = account.has('audit.read') ? await audit.query({ subject: found.id, limit: 20, order: 'desc' }) : undefined;
+                                const notes = account.has('audit.read') ? await audit.query({ subject: found.id, action: 'admin.note', limit: 50, order: 'desc' }) : undefined;
+                                const user = { ...found, email: maskEmail(found.email) }, sessions = account.has('auth.sessions.manage') ? await administration().users.sessions(actor, user.id) : undefined;
                                 if (wantsJson(request))
                                     return jsonResponse(200, { user, ...(sessions ? { sessions } : {}), ...(activity ? { activity: activity.events } : {}), csrf });
-                                return screenResponse('Account details', accountDetail({user,principal,mount,csrf,presentation,...(sessions?{sessions}:{}),...(activity?{activity}:{}),...(notes?{notes}:{}),operations:accounts.enabled(),recovery:recovery.enabled()}), { ...render(), shell });
+                                return screenResponse('Account details', accountDetail({ user, account, mount, csrf, copy, ...(sessions ? { sessions } : {}), ...(activity ? { activity } : {}), ...(notes ? { notes } : {}), operations: accounts.enabled(), recovery: recovery.enabled() }), options);
                             }
                             if (path === '/users') {
-                                requirePermission(principal, 'auth.users.read');
-                                const result = await service.listUsers(userFilters(request.query)), users = result.users.map(user => ({ ...user, email: maskEmail(user.email) }));
+                                requirePermission(account, 'auth.users.read');
+                                const result = await administration().users.list(actor, userFilters(request.query)), users = result.users.map(user => ({ ...user, email: maskEmail(user.email) }));
                                 if (wantsJson(request))
                                     return jsonResponse(200, { users, ...(result.next ? { next: result.next } : {}), csrf });
-                                return screenResponse('Users', userDirectory({users,...(result.next?{next:result.next}:{}),query:request.query,principal,mount,csrf,presentation,canSendSetup:!!options.sendSetup}), { ...render(), shell });
+                                return screenResponse('Users', userDirectory({ ...input, users, ...(result.next ? { next: result.next } : {}), canSendSetup: administration().capabilities.delivery }), options);
                             }
                             if (path === '/roles') {
-                                requirePermission(principal, 'auth.roles.read');
-                                const roles = service.getRoles();
+                                requirePermission(account, 'auth.roles.read');
+                                const roles = await administration().roles(actor);
                                 if (wantsJson(request))
                                     return jsonResponse(200, { roles, csrf });
-                                return screenResponse('Roles', rolesScreen({roles,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
+                                return screenResponse('Roles', rolesScreen({ ...input, roles }), options);
                             }
                             if (path === '/sessions') {
-                                requirePermission(principal, 'auth.sessions.manage');
-                                const result = await service.listAllSessions(sessionFilters(request.query));
+                                requirePermission(account, 'auth.sessions.manage');
+                                const result = await administration().sessions.list(actor, sessionFilters(request.query));
                                 if (wantsJson(request))
-                                    return jsonResponse(200, { ...result, sessions: result.sessions.map(session => ({ ...session, ...('email' in session ? { email: maskEmail(String(session.email)) } : {}) })), csrf });
-                                return screenResponse('Sessions', sessionsScreen({result,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
+                                    return jsonResponse(200, { ...result, sessions: result.sessions.map(session => ({ ...session, email: maskEmail(session.email) })), csrf });
+                                return screenResponse('Sessions', sessionsScreen({ ...input, result }), options);
                             }
                             if (path === '/audit/export') {
-                                requirePermission(principal, 'auth.audit.read');
-                                requirePermission(principal, 'auth.audit.export');
+                                requirePermission(account, 'audit.read');
+                                requirePermission(account, 'audit.export');
                                 const exportReason = request.query.get('reason') || '';
                                 if (!exportReason.trim() || exportReason.length > 256)
-                                    throw new AuthHttpError(400, 'A reason is required');
-                                if (Date.now() - principal.authenticatedAt > 5 * 60 * 1000)
-                                    throw new AuthHttpError(403, 'Confirm your identity before this action');
-                                return jsonResponse(200, await exportAuditRange(service, token, request.query, exportReason), [['content-disposition', 'attachment; filename="audit-range.json"']]);
+                                    throw new AdminHttpError(400, 'A reason is required');
+                                if (!account.fresh)
+                                    throw new AdminHttpError(403, 'Confirm your identity before this action');
+                                return jsonResponse(200, await exportAuditRange(audit, auth, account, request.query, exportReason), [['content-disposition', 'attachment; filename="audit-range.json"']]);
                             }
                             if (path === '/audit') {
-                                requirePermission(principal, 'auth.audit.read');
-                                const result = await service.listAudit(auditFilters(request.query));
+                                requirePermission(account, 'audit.read');
+                                const result = await audit.query(auditFilters(request.query));
                                 if (wantsJson(request))
                                     return jsonResponse(200, result);
-                                return screenResponse('Audit', auditScreen({result,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
+                                return screenResponse('Audit', auditScreen({ ...input, result }), options);
                             }
-                            throw new AuthHttpError(404, 'Not found');
+                            throw new AdminHttpError(404, 'Not found');
                         }
-                        const fields = readFields(request, [...selectedNames(request.body, request.headers.get('content-type')), 'accountIds', 'confirmation', ...userFilterKeys, 'after', 'accountId', 'roles', 'status', 'reason', 'requestId', 'email', 'action', 'caseId', 'sessionId']);
-                        http.verify(request, fields);
+                        const fields = readFields(request, { fields: ['csrf', 'accountIds', 'confirmation', ...userFilterKeys, 'after', 'accountId', 'roles', 'status', 'reason', 'requestId', 'email', 'action', 'caseId', 'sessionId'], patterns: [selectedField] });
                         if (!fields.reason?.trim() || fields.reason.length > 256)
-                            throw new AuthHttpError(400, 'A reason is required');
-                        if (Date.now() - principal.authenticatedAt > 5 * 60 * 1000)
-                            throw new AuthHttpError(403, 'Confirm your identity before this action');
+                            throw new AdminHttpError(400, 'A reason is required');
+                        // A UX pre-check: auth's store refuses a stale proof inside every mutation's transaction too.
+                        if (!account.fresh)
+                            throw new AdminHttpError(403, 'Confirm your identity before this action');
+                        const context = extensionHookContext(request), reason = fields.reason;
                         if (path === '/users/note') {
-                            requirePermission(principal, 'auth.users.manage');
-                            await service.adminAddNote({actorToken:token,accountId:fields.accountId||'',reason:fields.reason});
-                            return wantsJson(request)?jsonResponse(200,{saved:true}):status('Note saved',presentation.textSource('Administrator note saved.'));
+                            requirePermission(account, 'auth.users.manage');
+                            await administration().users.addNote(actor, { accountId: fields.accountId || '', reason });
+                            return wantsJson(request) ? jsonResponse(200, { saved: true }) : status('Note saved', copy.s('Administrator note saved.'));
                         }
                         if (path === '/users/bulk') {
                             if (!['lock', 'unlock', 'revoke-sessions'].includes(fields.action || ''))
-                                throw new AuthHttpError(400, 'Invalid bulk action');
+                                throw new AdminHttpError(400, 'Invalid bulk action');
                             const action = fields.action as 'lock' | 'unlock' | 'revoke-sessions';
-                            requirePermission(principal, action === 'revoke-sessions' ? 'auth.sessions.manage' : 'auth.users.manage');
+                            requirePermission(account, action === 'revoke-sessions' ? 'auth.sessions.manage' : 'auth.users.manage');
                             const accountIds = selectedAccounts(fields);
                             if (fields.confirmation !== action.toUpperCase() + ' ' + accountIds.length)
-                                throw new AuthHttpError(400, 'Typed confirmation must match the action and selected count');
-                            const result = await service.adminBulk({ actorToken: token, accountIds, action, reason: fields.reason });
-                            if ((action === 'lock' || action === 'unlock') && hooks.onAccountStatusChanged)
-                                for (const accountId of accountIds)
-                                    await hooks.onAccountStatusChanged({ accountId, status: action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
-                            return wantsJson(request) ? jsonResponse(200, result) : status('Bulk update completed', tr('message.bulkUpdated', { count: result.affected }));
+                                throw new AdminHttpError(400, 'Typed confirmation must match the action and selected count');
+                            const result = await administration().users.bulk(actor, { accountIds, action, reason, context });
+                            return wantsJson(request) ? jsonResponse(200, result) : status('Bulk update completed', tr('admin.message.bulkUpdated', { count: result.affected }));
                         }
                         if (path === '/users/export-range') {
-                            requirePermission(principal, 'auth.users.export');
-                            requirePermission(principal, 'auth.users.read');
+                            requirePermission(account, 'auth.users.export');
+                            requirePermission(account, 'auth.users.read');
                             const filters = new URLSearchParams();
                             for (const key of userFilterKeys) if (fields[key]) filters.set(key, fields[key]);
-                            const body = await exportUserRange(service, token, filters, fields.reason || '');
-                            const base = jsonResponse(200, {});
-                            return { ...base, headers: [...base.headers.filter(([name]) => name !== 'content-type'), ['content-type', 'text/csv; charset=utf-8'], ['content-disposition', 'attachment; filename="accounts-filtered.csv"']] as [string, string][], body };
+                            const { limit: _limit, ...query } = userFilters(filters);
+                            const rows = await administration().users.exportRange(actor, { query, reason });
+                            return { status: 200, headers: [...jsonResponse(200, {}).headers.filter(([name]) => name !== 'content-type'), ['content-type', 'text/csv; charset=utf-8'], ['content-disposition', 'attachment; filename="accounts-filtered.csv"']], body: usersCsv(rows, 5000) };
                         }
                         if (path === '/users/export-page') {
-                            requirePermission(principal, 'auth.users.export');
-                            requirePermission(principal, 'auth.users.read');
+                            requirePermission(account, 'auth.users.export');
+                            requirePermission(account, 'auth.users.read');
                             const filterValues = new URLSearchParams();
                             for (const key of [...userFilterKeys, 'after'])
                                 if (fields[key])
                                     filterValues.set(key, fields[key]);
-                            const page = await service.listUsers(userFilters(filterValues));
+                            const page = await administration().users.list(actor, userFilters(filterValues));
                             const users = [];
                             for (const user of page.users) {
-                                const exported = await service.adminExport({ actorToken: token, accountId: user.id, reason: fields.reason });
-                                users.push({ ...exported.user, ...('observedLastSeen' in user ? { observedLastSeen: user.observedLastSeen } : {}) });
+                                const exported = await administration().users.export(actor, { accountId: user.id, reason });
+                                users.push({ ...exported.user, ...(user.observedLastSeen !== undefined ? { observedLastSeen: user.observedLastSeen } : {}) });
                             }
-                            const base = jsonResponse(200, {});
-                            return { ...base, headers: [...base.headers.filter(([name]) => name !== 'content-type'), ['content-type', 'text/csv; charset=utf-8'], ['content-disposition', 'attachment; filename="accounts-page.csv"'], ...(page.next ? [['x-next-cursor', page.next] as [
-                                            string,
-                                            string
-                                        ]] : [])], body: usersCsv(users) };
+                            return { status: 200, headers: [...jsonResponse(200, {}).headers.filter(([name]) => name !== 'content-type'), ['content-type', 'text/csv; charset=utf-8'], ['content-disposition', 'attachment; filename="accounts-page.csv"'], ...(page.next ? [['x-next-cursor', page.next] as [string, string]] : [])], body: usersCsv(users) };
                         }
                         if (path === '/users/reveal') {
-                            requirePermission(principal, 'auth.users.read');
-                            requirePermission(principal, 'auth.users.reveal');
-                            const result = await service.adminReveal({ actorToken: token, accountId: fields.accountId || '', reason: fields.reason });
-                            return wantsJson(request) ? jsonResponse(200, result) : screen('Account identifier', 'reveal', { idLabel: tr('field.accountId'), id: result.id, emailLabel: tr('copy.email'), email: result.email });
+                            requirePermission(account, 'auth.users.read');
+                            requirePermission(account, 'auth.users.reveal');
+                            const result = await administration().users.reveal(actor, { accountId: fields.accountId || '', reason });
+                            return wantsJson(request) ? jsonResponse(200, result) : screen('Account identifier', 'reveal', { idLabel: tr('admin.field.accountId'), id: result.id, emailLabel: tr('admin.copy.email'), email: result.email });
                         }
                         if (path === '/users/export') {
-                            requirePermission(principal, 'auth.users.export');
-                            return jsonResponse(200, await service.adminExport({ actorToken: token, accountId: fields.accountId || '', reason: fields.reason }), [['content-disposition', 'attachment; filename="account-export.json"']]);
+                            requirePermission(account, 'auth.users.export');
+                            return jsonResponse(200, await administration().users.export(actor, { accountId: fields.accountId || '', reason }), [['content-disposition', 'attachment; filename="account-export.json"']]);
                         }
-                        else if (path === '/users/create') {
-                            requirePermission(principal, 'auth.users.create');
-                            if (!options.sendSetup)
-                                throw new AuthHttpError(503, 'Setup delivery unavailable');
-                            const created = await service.adminCreateUser({ actorToken: token, email: fields.email || '', reason: fields.reason });
-                            await withDeadline(signal => options.sendSetup!({ email: created.user.email, token: created.setupToken, signal }), 5000, 'Setup delivery timeout');
+                        if (path === '/impersonate') {
+                            requirePermission(account, 'auth.users.impersonate');
+                            const started = await administration().impersonate(actor, { accountId: fields.accountId || '', reason });
+                            return jsonResponse(303, { impersonating: true }, [['location', started.location], ...started.headers]);
+                        }
+                        if (path === '/users/create') {
+                            requirePermission(account, 'auth.users.create');
+                            await administration().users.create(actor, { email: fields.email || '', reason, context });
                         }
                         else if (path === '/sessions/revoke-one') {
-                            requirePermission(principal, 'auth.sessions.manage');
-                            await service.adminRevokeSession({ actorToken: token, sessionId: fields.sessionId || '', reason: fields.reason });
+                            requirePermission(account, 'auth.sessions.manage');
+                            await administration().sessions.revoke(actor, { sessionId: fields.sessionId || '', reason });
                         }
                         else if (path === '/cases/create') {
-                            requirePermission(principal, 'auth.cases.manage');
+                            requirePermission(account, 'auth.cases.manage');
                             if (!['reset-factors', 'lock', 'unlock', 'roles'].includes(fields.action || ''))
-                                throw new AuthHttpError(400, 'Invalid case action');
-                            const caseRoles = fields.roles ? fields.roles.split(',').map(role => role.trim()).filter(Boolean) : undefined;
-                            // Early feedback: a case that a project policy would veto on approval is
-                            // refused at creation too, rather than only discovered by the approver.
-                            if (fields.action === 'roles' && hooks.beforeRoleChange) {
-                                const current = await service.getUser(fields.accountId || '');
-                                const verdict = await hooks.beforeRoleChange({ accountId: fields.accountId || '', currentRoles: current?.roles ?? [], requestedRoles: caseRoles ?? [], actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
-                                if (!verdict?.allow)
-                                    throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
-                            }
-                            await service.createCase({ actorToken: token, accountId: fields.accountId || '', action: fields.action as 'reset-factors' | 'lock' | 'unlock' | 'roles', ...(caseRoles ? { roles: caseRoles } : {}), reason: fields.reason });
+                                throw new AdminHttpError(400, 'Invalid case action');
+                            const roles = fields.roles ? fields.roles.split(',').map(role => role.trim()).filter(Boolean) : undefined;
+                            await administration().cases.create(actor, { accountId: fields.accountId || '', action: fields.action as 'reset-factors' | 'lock' | 'unlock' | 'roles', ...(roles ? { roles } : {}), reason, context });
                         }
                         else if (path === '/cases/note') {
-                            requirePermission(principal, 'auth.cases.manage');
-                            await service.addCaseNote({ actorToken: token, caseId: fields.caseId || '', note: fields.reason });
+                            requirePermission(account, 'auth.cases.manage');
+                            await administration().cases.note(actor, { caseId: fields.caseId || '', note: reason });
                         }
                         else if (path === '/cases/close') {
-                            requirePermission(principal, 'auth.cases.manage');
-                            await service.closeCase({ actorToken: token, caseId: fields.caseId || '', reason: fields.reason });
+                            requirePermission(account, 'auth.cases.manage');
+                            await administration().cases.close(actor, { caseId: fields.caseId || '', reason });
                         }
                         else if (path === '/cases/approve') {
-                            requirePermission(principal, 'auth.cases.manage');
-                            // The case actually applies its role/status change atomically inside
-                            // approveCase, so the veto hook is evaluated from the case's own record
-                            // beforehand (mirroring /users/roles) rather than after the fact.
-                            const pending = (hooks.beforeRoleChange || hooks.onAccountStatusChanged) ? await service.getCase(fields.caseId || '') : null;
-                            if (pending?.action === 'roles' && hooks.beforeRoleChange) {
-                                const current = await service.getUser(pending.accountId);
-                                const verdict = await hooks.beforeRoleChange({ accountId: pending.accountId, currentRoles: current?.roles ?? [], requestedRoles: pending.roles ?? [], actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
-                                if (!verdict?.allow)
-                                    throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
-                            }
-                            await service.approveCase({ actorToken: token, caseId: fields.caseId || '', reason: fields.reason });
-                            if (pending && (pending.action === 'lock' || pending.action === 'unlock') && hooks.onAccountStatusChanged)
-                                await hooks.onAccountStatusChanged({ accountId: pending.accountId, status: pending.action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
-                        }
-                        else if (path === '/impersonate') {
-                            requirePermission(principal, 'auth.users.impersonate');
-                            if (!options.notifyImpersonation)
-                                throw new AuthHttpError(503, 'Impersonation notification is required');
-                            const result = await service.createImpersonation({ actorToken: token, accountId: fields.accountId || '', reason: fields.reason });
-                            try {
-                                await withDeadline(signal => options.notifyImpersonation!({ email: result.user.email, actorId: principal.id, reason: fields.reason!, signal }), 5000, 'Notification timeout');
-                            }
-                            catch (error) {
-                                await service.logout(result.token);
-                                throw error;
-                            }
-                            return jsonResponse(303, { impersonating: true }, [['location', authMount + '/account'], ...http.sessionHeaders(result.token)]);
+                            requirePermission(account, 'auth.cases.manage');
+                            await administration().cases.approve(actor, { caseId: fields.caseId || '', reason, context });
                         }
                         else if (path === '/registrations/approve') {
-                            requirePermission(principal, 'auth.users.manage');
-                            const approved = await service.approveRegistration({ actorToken: token, requestId: fields.requestId || '', reason: fields.reason });
-                            if (hooks.onRegistrationApproved)
-                                await hooks.onRegistrationApproved({ requestId: fields.requestId || '', accountId: approved.id, email: approved.email, actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
+                            requirePermission(account, 'auth.users.manage');
+                            await administration().registrations.approve(actor, { requestId: fields.requestId || '', reason, context });
                         }
                         else if (path === '/invitations') {
-                            requirePermission(principal, 'auth.users.create');
-                            if (!options.sendInvitation)
-                                throw new AuthHttpError(503, 'Invitation delivery unavailable');
-                            const issued = await service.invite({ actorToken: token, email: fields.email || '' });
-                            await withDeadline(signal => options.sendInvitation!({ email: fields.email || '', token: issued.token, signal }), 5000, 'Delivery timeout');
+                            requirePermission(account, 'auth.users.create');
+                            await administration().registrations.invite(actor, { email: fields.email || '' });
                         }
                         else if (path === '/users/roles') {
-                            requirePermission(principal, 'auth.users.manage');
-                            const roles = (fields.roles || '').split(',').map(role => role.trim()).filter(Boolean);
-                            const accountId = fields.accountId || '';
-                            if (hooks.beforeRoleChange) {
-                                const current = await service.getUser(accountId);
-                                const verdict = await hooks.beforeRoleChange({ accountId, currentRoles: current?.roles ?? [], requestedRoles: roles, actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
-                                if (!verdict?.allow)
-                                    throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
-                            }
-                            await service.adminSetRoles({ actorToken: token, accountId, roles, reason: fields.reason });
+                            requirePermission(account, 'auth.users.manage');
+                            await administration().users.setRoles(actor, { accountId: fields.accountId || '', roles: (fields.roles || '').split(',').map(role => role.trim()).filter(Boolean), reason, context });
                         }
                         else if (path === '/users/status') {
-                            requirePermission(principal, 'auth.users.manage');
+                            requirePermission(account, 'auth.users.manage');
                             if (fields.status !== 'active' && fields.status !== 'locked')
-                                throw new AuthHttpError(400, 'Invalid status');
-                            await service.adminSetStatus({ actorToken: token, accountId: fields.accountId || '', status: fields.status, reason: fields.reason });
-                            if (hooks.onAccountStatusChanged)
-                                await hooks.onAccountStatusChanged({ accountId: fields.accountId || '', status: fields.status, actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
+                                throw new AdminHttpError(400, 'Invalid status');
+                            await administration().users.setStatus(actor, { accountId: fields.accountId || '', status: fields.status, reason, context });
                         }
                         else if (path === '/sessions/revoke') {
-                            requirePermission(principal, 'auth.sessions.manage');
-                            await service.adminRevokeSessions({ actorToken: token, accountId: fields.accountId || '', reason: fields.reason });
+                            requirePermission(account, 'auth.sessions.manage');
+                            await administration().users.revokeSessions(actor, { accountId: fields.accountId || '', reason });
                         }
                         else
-                            throw new AuthHttpError(404, 'Not found');
-                        return wantsJson(request) ? jsonResponse(200, { updated: true }) : status('Update completed', tr('message.operationCompleted'), mount, presentation.textSource('Return to overview'));
+                            throw new AdminHttpError(404, 'Not found');
+                        return wantsJson(request) ? jsonResponse(200, { updated: true }) : status('Update completed', tr('admin.message.operationCompleted'), mount, copy.s('Return to overview'));
                     }
                     catch (error) {
-                        return failureResponse(error, request, render());
+                        return failureResponse(error, request, render);
                     }
                 } };
         } };

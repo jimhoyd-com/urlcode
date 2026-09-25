@@ -1,10 +1,11 @@
 {
   "kind": "extension",
   "name": "admin",
-  "description": "Administration console for users, sessions, roles and audit, on top of the auth extension",
+  "description": "Administration console for users, sessions, roles and audit, on top of the auth and audit extensions",
   "requires": [
     "auth",
-    "ui"
+    "ui",
+    "audit"
   ],
   "contributes": [
     "ui"
@@ -12,249 +13,15 @@
   "schema": {
     "type": "object",
     "additionalProperties": false,
-    "properties": {
-      "hooks": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "beforeRoleChange": {
-            "oneOf": [
-              {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1024
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "source"
-                ],
-                "properties": {
-                  "source": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1024
-                  },
-                  "export": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "sandbox": {
-                    "type": "boolean"
-                  },
-                  "sandboxReason": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 512
-                  }
-                }
-              }
-            ]
-          },
-          "onRegistrationApproved": {
-            "oneOf": [
-              {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1024
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "source"
-                ],
-                "properties": {
-                  "source": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1024
-                  },
-                  "export": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "sandbox": {
-                    "type": "boolean"
-                  },
-                  "sandboxReason": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 512
-                  }
-                }
-              }
-            ]
-          },
-          "onAccountStatusChanged": {
-            "oneOf": [
-              {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1024
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "source"
-                ],
-                "properties": {
-                  "source": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1024
-                  },
-                  "export": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "sandbox": {
-                    "type": "boolean"
-                  },
-                  "sandboxReason": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 512
-                  }
-                }
-              }
-            ]
-          }
-        }
-      }
-    }
+    "properties": {}
   },
-  "hooks": [
-    {
-      "name": "beforeRoleChange",
-      "kind": "filter",
-      "description": "Runs before an administrator changes account roles and may return an allow/deny verdict.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "accountId",
-          "currentRoles",
-          "requestedRoles",
-          "actorId",
-          "reason"
-        ],
-        "properties": {
-          "accountId": {
-            "type": "string"
-          },
-          "currentRoles": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "requestedRoles": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "actorId": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          }
-        }
-      },
-      "outputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "allow"
-        ],
-        "properties": {
-          "allow": {
-            "type": "boolean"
-          },
-          "reason": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "name": "onRegistrationApproved",
-      "kind": "action",
-      "description": "Runs after a waitlisted registration is approved.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "requestId",
-          "accountId",
-          "email",
-          "actorId",
-          "reason"
-        ],
-        "properties": {
-          "requestId": {
-            "type": "string"
-          },
-          "accountId": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "actorId": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "name": "onAccountStatusChanged",
-      "kind": "action",
-      "description": "Runs after an account is locked or unlocked.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "accountId",
-          "status",
-          "actorId",
-          "reason"
-        ],
-        "properties": {
-          "accountId": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "locked"
-            ]
-          },
-          "actorId": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          }
-        }
-      }
-    }
-  ],
   "authoring": {
-    "description": "The administration console is part of the application, while this package keeps ownership of permissions, freshness checks, auditing and transactional account operations. Customize its UI and declared hooks before replacing behavior.",
+    "description": "The administration console is part of the application, while auth keeps ownership of permissions, freshness checks, lifecycle hooks and transactional account operations, and audit keeps the log. Customize the console copy and screens before replacing behavior.",
     "surfaces": [
       {
         "kind": "copy",
         "name": "administration copy",
-        "description": "Change console wording through the UI catalogue.",
+        "description": "Change console wording through the admin.* keys of the UI catalogue.",
         "path": "ui/copy/<locale>.json"
       },
       {
@@ -266,9 +33,9 @@
       },
       {
         "kind": "hook",
-        "name": "administration lifecycle",
-        "description": "Use declared role, registration and account-status hooks for product behavior at supported lifecycle points.",
-        "path": "extensions.admin.config.hooks"
+        "name": "account lifecycle",
+        "description": "Role, registration and account-status hooks are auth's: they fire for the console and every other caller.",
+        "path": "extensions.auth.config.hooks"
       }
     ],
     "fastChecks": [

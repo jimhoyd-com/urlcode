@@ -75,11 +75,10 @@ const screens:Record<string,{body:string;sample:ViewModel}>={
 export const adminTemplates:Readonly<Record<string,AdminTemplate>>=Object.freeze(Object.fromEntries(Object.entries(screens).map(([name,screen])=>[`admin/${name}`,Object.freeze({source:declare(name,screen.body),sample:screen.sample})])));
 export const adminTemplateNames:readonly string[]=Object.freeze(Object.keys(adminTemplates));
 /**
- * What the host hands to `createUiExtension({ extensions: [adminUiTemplates] })`. It also carries the view
- * model samples, so `urlcode-ui --extensions @jimhoyd/urlcode-admin` lists, ejects, previews and
- * drift-checks these screens from this one export. No `catalogue`: these templates place a view model the
- * console computes and use no copy key, and `adminCatalogue` is composed onto the kit's presentation by
- * `createAdminPresentation` rather than registered in it, so the kit's copy coverage does not cover it.
+ * What admin contributes to ui (`contributes.ui.templates`). It also carries the view model samples, so
+ * `urlcode-ui --extensions @jimhoyd/urlcode-admin` lists, ejects, previews and drift-checks these screens from this
+ * one export. The templates use no copy key: they place a view model the console computes, whose text comes from
+ * `adminCatalogue`, contributed beside them (`contributes.ui.sources`).
  */
 export const adminUiTemplates:ExtensionTemplates&{readonly name:'admin';readonly templates:Readonly<Record<string,string>>;readonly samples:Readonly<Record<string,ViewModel>>}=Object.freeze({
  name:'admin',
