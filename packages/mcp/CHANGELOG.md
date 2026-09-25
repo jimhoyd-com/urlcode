@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- MCP protocol revision `2025-11-25` is supported and preferred: `initialize`
+  echoes it when requested and offers it for an unrecognized revision, and
+  `MCP-Protocol-Version: 2025-11-25` is accepted. Under that revision a
+  `tools/call` whose arguments fail the declared `inputSchema` answers an
+  `isError: true` tool result listing the failed checks, as its tools
+  specification requires, instead of `-32602`; earlier revisions are
+  unchanged. Its other additions (icons, tasks, elicitation and sampling
+  changes) are optional and not implemented (#719).
+
 - A tool handler can throw the new exported `McpToolError` to return a
   caller-facing tool execution error: the result is `isError: true` with the
   error's message (truncated to 4096 characters) as text, plus

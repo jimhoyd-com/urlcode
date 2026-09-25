@@ -13,17 +13,31 @@ const PAGE_SIZE = 20;
  * echoes the client's requested revision back when it is one of these;
  * otherwise it answers with the first (our default), exactly as the MCP
  * specification's negotiation flow expects — the client then decides whether
- * to proceed or disconnect. Behavior does not vary by negotiated revision:
- * the bounded surface here (`initialize`, `ping`, `tools/list`, `tools/call`,
- * `resources/list`, `resources/read`, `prompts/list`, `prompts/get`) is
- * stable across all of them. JSON-RPC batching (arrays of requests) is
+ * to proceed or disconnect. The bounded surface here (`initialize`, `ping`,
+ * `tools/list`, `tools/call`, `resources/list`, `resources/read`,
+ * `prompts/list`, `prompts/get`) behaves the same under every one of them
+ * with a single exception, gated on the request's `MCP-Protocol-Version`
+ * (see `TOOL_INPUT_ERRORS_AS_RESULTS`): from 2025-11-25, `tools/call`
+ * arguments that fail the declared `inputSchema` answer a tool execution
+ * error (`isError: true`) rather than a `-32602` protocol error. The other
+ * 2025-11-25 additions (icons, tasks, `Implementation.description`, URL
+ * elicitation, sampling tools, authorization discovery, SSE polling) are
+ * optional features this server does not offer, and every schema it
+ * advertises is valid under the JSON Schema 2020-12 default dialect that
+ * revision establishes. JSON-RPC batching (arrays of requests) is
  * refused for every supported revision, including the two that predate the
  * 2025-06-18 revision's removal of batching from the specification: the
  * bounded declarative surface this extension serves has no use for a client
  * that requires batched delivery, so this is a confirmed scope decision, not
  * an unaddressed gap.
  */
-export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'] as const;
+export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const;
+/**
+ * The first revision whose tools specification classifies input validation
+ * failures as tool execution errors (SEP-1303), so the model can read them
+ * and retry. Earlier revisions list "invalid arguments" as a protocol error.
+ */
+const TOOL_INPUT_ERRORS_AS_RESULTS = '2025-11-25';
 export const JSONRPC_VERSION = '2.0' as const;
 
 /**
@@ -267,10 +281,18 @@ function rpc(status: number, id: JsonRpcId, body: { result: unknown } | { error:
  * revisions, so a missing header is always accepted.
  */
 const DEFAULT_HEADER_PROTOCOL_VERSION = '2025-03-26';
-/** `true` when a non-`initialize` request's `MCP-Protocol-Version` header (missing: the transport's assumed default) is a supported revision. */
+/**
+ * The revision a non-`initialize` request was sent under: its
+ * `MCP-Protocol-Version` header, or the transport's assumed default when it
+ * has none. The server keeps no session, so this header is the negotiated
+ * revision as far as a single request is concerned.
+ */
+function requestProtocolVersion(request: ExtensionRequest): string {
+  return request.headers.get('mcp-protocol-version') ?? DEFAULT_HEADER_PROTOCOL_VERSION;
+}
+/** `true` when a non-`initialize` request's revision (see `requestProtocolVersion`) is a supported one. */
 function supportedProtocolVersionHeader(request: ExtensionRequest): boolean {
-  const version = request.headers.get('mcp-protocol-version') ?? DEFAULT_HEADER_PROTOCOL_VERSION;
-  return (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(version);
+  return (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requestProtocolVersion(request));
 }
 function negotiateProtocolVersion(params: unknown): string {
   const requested = isRecord(params) && typeof params.protocolVersion === 'string' ? params.protocolVersion : undefined;
@@ -394,7 +416,16 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     const args = own(params, 'arguments') ? params.arguments : {};
     if (!isRecord(args)) return { error: { code: -32602, message: 'Invalid params: "arguments" must be an object' } };
     const issues = bodySchemaIssues(tool.spec.inputSchema, args);
-    if (issues.length) return { error: { code: -32602, message: 'Invalid params: arguments failed the declared input schema', data: { issues: issues.map(bodySchemaLine) } } };
+    if (issues.length) {
+      const lines = issues.map(bodySchemaLine);
+      // 2025-11-25 (SEP-1303): an input validation failure is a tool execution error the model can
+      // act on; earlier revisions keep the -32602 protocol error. The handler never runs either way.
+      // Revisions are ISO dates, so string order is chronological order.
+      if (requestProtocolVersion(request) >= TOOL_INPUT_ERRORS_AS_RESULTS) {
+        return { result: { content: [{ type: 'text', text: boundedText(`Invalid arguments for tool ${params.name}: ${lines.join('; ')}`) }], isError: true } };
+      }
+      return { error: { code: -32602, message: 'Invalid params: arguments failed the declared input schema', data: { issues: lines } } };
+    }
     const { context, report } = invocation('tool', params.name);
     const fail = (error: unknown): { result: unknown } => {
       try { onToolError?.(error, { server: server.name, tool: params.name as string, kind: 'tool' }); } catch { /* host callback errors are never allowed to reach the caller */ }
@@ -578,7 +609,7 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           if (!message) return rpc(200, null, { error: { code: -32600, message: 'Invalid Request' } });
           // Every message after initialize (requests and notifications alike) carries the negotiated
           // revision in MCP-Protocol-Version; an unsupported one is refused with 400, as the
-          // 2025-06-18 transport specifies. initialize itself negotiates from params.protocolVersion.
+          // 2025-06-18 and 2025-11-25 transports specify. initialize itself negotiates from params.protocolVersion.
           if (message.method !== 'initialize' && !supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
           const isNotification = !own(message as unknown as Record<string, unknown>, 'id');
           if (isNotification) return { status: 202, headers: [] };

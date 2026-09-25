@@ -61,7 +61,55 @@ test('initialize falls back to the default supported protocol version for an unr
   const { call } = await boot(t);
   const response = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '1999-01-01' } });
   const json = await response.json() as { result: { protocolVersion: string } };
-  assert.equal(json.result.protocolVersion, '2025-06-18');
+  assert.equal(json.result.protocolVersion, '2025-11-25');
+});
+
+test('initialize negotiates 2025-11-25 when requested and still echoes every older supported revision', async t => {
+  const { call } = await boot(t);
+  for (const version of ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']) {
+    const response = await call({ jsonrpc: '2.0', id: version, method: 'initialize', params: { protocolVersion: version, capabilities: {}, clientInfo: { name: 'test-client', version: '0.0.1' } } });
+    const json = await response.json() as { id: unknown; result: { protocolVersion: string } };
+    assert.equal(json.id, version);
+    assert.equal(json.result.protocolVersion, version, `${version} must be echoed back`);
+  }
+});
+
+test('tools/call arguments that fail the input schema answer a tool execution error under 2025-11-25 and a -32602 protocol error under older revisions', async t => {
+  const calls: string[] = [];
+  const p = await project(t);
+  await p.write('echo.mjs', 'export default function echo(input) { return { echoed: input.message }; }\n');
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'revisions', serverVersion: '1.0.0',
+    tools: { echo: { description: 'Echoes', inputSchema: { type: 'object', properties: { message: { type: 'string', minLength: 1 } }, required: ['message'], additionalProperties: false }, handler: './echo.mjs' } },
+  }, undefined, info => calls.push(info.outcome));
+  const invalid = { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'echo', arguments: {} } };
+
+  const current = await call(invalid, { headers: { 'mcp-protocol-version': '2025-11-25' } });
+  assert.equal(current.status, 200);
+  const currentJson = await current.json() as { id: unknown; result: { content: { type: string; text: string }[]; isError: boolean }; error?: unknown };
+  assert.equal(currentJson.id, 7);
+  assert.equal(currentJson.error, undefined);
+  assert.equal(currentJson.result.isError, true);
+  assert.equal(currentJson.result.content[0]!.type, 'text');
+  assert.match(currentJson.result.content[0]!.text, /^Invalid arguments for tool echo: .*missing required property message/);
+
+  for (const version of ['2025-06-18', '2025-03-26', '2024-11-05', undefined]) {
+    const older = await call(invalid, version ? { headers: { 'mcp-protocol-version': version } } : {});
+    const olderJson = await older.json() as { error: { code: number; data: { issues: string[] } } };
+    assert.equal(olderJson.error.code, -32602, `revision ${version ?? '(no header)'}`);
+    assert.ok(olderJson.error.data.issues.some(issue => issue.includes('missing required property message')));
+  }
+
+  // Protocol errors stay protocol errors under 2025-11-25: an unknown tool and a malformed arguments value.
+  const unknown = await call({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'nope', arguments: {} } }, { headers: { 'mcp-protocol-version': '2025-11-25' } });
+  assert.equal((await unknown.json() as { error: { code: number } }).error.code, -32602);
+  const malformed = await call({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'echo', arguments: 'text' } }, { headers: { 'mcp-protocol-version': '2025-11-25' } });
+  assert.equal((await malformed.json() as { error: { code: number } }).error.code, -32602);
+
+  // A valid call behaves identically under 2025-11-25.
+  const ok = await call({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'echo', arguments: { message: 'hi' } } }, { headers: { 'mcp-protocol-version': '2025-11-25' } });
+  assert.deepEqual((await ok.json() as { result: unknown }).result, { content: [{ type: 'text', text: '{"echoed":"hi"}' }], isError: false });
+  assert.deepEqual(calls, ['success'], 'a call refused before its handler runs is not reported, under any revision');
 });
 
 test('request ids of every JSON-RPC-legal shape (integer, zero, negative, string) round-trip exactly, never coerced', async t => {
@@ -368,7 +416,7 @@ test('MCP-Protocol-Version: an unsupported header on a non-initialize message is
 
   const missing = await call(ping);
   assert.equal(missing.status, 200, 'a missing header is treated as 2025-03-26, which is supported');
-  for (const version of ['2025-06-18', '2025-03-26', '2024-11-05']) {
+  for (const version of ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']) {
     assert.equal((await call(ping, { headers: { 'mcp-protocol-version': version } })).status, 200, version);
   }
 

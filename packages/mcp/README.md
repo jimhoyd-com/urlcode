@@ -85,10 +85,12 @@ JSON Schema subset `request.body.schema` accepts (`type`, `properties`,
 `required`, `additionalProperties`, `items`, `enum`, string/number/array
 bounds, `pattern` and `format: uuid`) and must declare `type: object` — an
 MCP tool call's `arguments`, and its structured result, are always objects. A
-call whose arguments fail `inputSchema` never reaches the handler; it answers
-a JSON-RPC `-32602 Invalid params` error carrying the same structured
-`issues` list `request.body.schema` produces, rendered as `pointer`/`message`
-text — reused, not reimplemented.
+call whose arguments fail `inputSchema` never reaches the handler. Under
+MCP revision `2025-11-25` it answers a tool result with `isError: true` whose
+text lists the failed checks; under earlier revisions it answers a JSON-RPC
+`-32602 Invalid params` error carrying the same checks as a structured
+`issues` list. Both use the wording `request.body.schema` produces,
+rendered as `pointer`/`message` text — reused, not reimplemented.
 
 A tool may also declare `outputSchema`. When present, the handler's return
 value must be an object conforming to it; `tools/call` then returns both a
@@ -250,10 +252,18 @@ extension has no identity or authorization model of its own.
   echoed back verbatim — never a substitute id generated internally. This is
   the specific bug the evidence behind this package's issue reported in a
   hand-written implementation.
-- Protocol version negotiation on `initialize`: the client's requested
-  `protocolVersion` is echoed back when supported, otherwise the server's own
-  preferred version is returned, per the MCP specification's negotiation
-  flow. Behavior does not otherwise vary by negotiated version.
+- Protocol version negotiation on `initialize` for MCP revisions
+  `2025-11-25` (preferred), `2025-06-18`, `2025-03-26` and `2024-11-05`: the
+  client's requested `protocolVersion` is echoed back when supported,
+  otherwise `2025-11-25` is returned, per the MCP specification's negotiation
+  flow. Behavior varies by revision in one place only: under `2025-11-25`
+  (read from the request's `MCP-Protocol-Version` header, since the server
+  keeps no session), `tools/call` arguments that fail the declared
+  `inputSchema` answer a tool execution error (`isError: true`, the schema
+  issues as text) instead of `-32602`, as that revision's tools
+  specification requires so the model can correct its arguments. Every
+  schema the server advertises carries no `$schema` and is valid under the
+  JSON Schema 2020-12 default dialect `2025-11-25` establishes.
 - `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`,
   `resources/read`, `prompts/list`, `prompts/get`, and the
   `notifications/initialized` notification (accepted, produces no response —
@@ -283,7 +293,8 @@ extension has no identity or authorization model of its own.
 - Standard JSON-RPC error codes: `-32700` parse error, `-32600` invalid
   request (including a rejected batch array), `-32601` method not found,
   `-32602` invalid params (unknown tool/prompt name, a schema-failing
-  arguments object, or an invalid pagination cursor), `-32603` reserved for
+  arguments object before `2025-11-25` or for a prompt, a non-object
+  `arguments`, or an invalid pagination cursor), `-32603` reserved for
   an unexpected internal failure (including a thrown resource/prompt handler
   and a tool result that fails its own declared `outputSchema`), `-32002`
   resource not found.
@@ -329,6 +340,12 @@ extension has no identity or authorization model of its own.
 - OAuth/bearer authorization flows defined by the MCP authorization spec;
   protect a mount with the `auth` extension instead, the same as any other
   extension route.
+- The optional `2025-11-25` additions: `icons` on tools, resources, prompts
+  and `serverInfo`, `serverInfo.description`/`websiteUrl`, the experimental
+  `tasks` utility (no `tasks` capability is advertised and no tool declares
+  `execution.taskSupport`, so every call runs synchronously), and the
+  client-side elicitation and sampling changes, which need server-initiated
+  requests this server does not send.
 
 These are deliberate scope choices for a first, minimal, declarative surface
 ("MCP over HTTP becomes declarative", not a full-featured MCP server) rather
