@@ -40,6 +40,11 @@ export interface CollectionSpec {
   filterable?: string[];
   /** `owner` scopes every list, read, update, delete and increment to the request principal and stamps it on create. */
   ownership?: Ownership;
+  /**
+   * On an owned collection only: how many records one principal may hold (urlcode#731). At most `maxRecords`, which
+   * stays the ceiling for the whole collection. Legacy records with no owner count toward no principal.
+   */
+  maxRecordsPerOwner?: number;
 }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
@@ -75,6 +80,7 @@ export const collectionSchema = {
     sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
     ownership: { enum: ['shared', 'owner'] },
+    maxRecordsPerOwner: { type: 'integer', minimum: 1, maximum: LIMITS.records },
   },
 } as const;
 
@@ -111,6 +117,7 @@ function checkValue(spec: FieldSpec, value: unknown): string | undefined {
 export interface NormalizedSpec {
   mount: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
+  maxRecordsPerOwner?: number;
 }
 /** Validates a declaration beyond JSON Schema; throws plain Errors for the operator. */
 export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
@@ -149,13 +156,26 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
   // A collection-wide unique key would tell one owner that another owner already uses a value (409 key_exists), and
   // keys exist for public short links, which cannot serve owned records. Refused rather than scoped silently.
   if (ownership === 'owner' && key !== undefined) throw new Error(`Collection ${name}: key is not supported with ownership: owner`);
+  const maxRecords = spec.maxRecords ?? 1000, perOwner = spec.maxRecordsPerOwner;
+  if (perOwner !== undefined) {
+    // A per-owner limit has no owner to count on a shared collection; refused rather than ignored.
+    if (ownership !== 'owner') throw new Error(`Collection ${name}: maxRecordsPerOwner needs ownership: owner`);
+    if (perOwner > maxRecords) throw new Error(`Collection ${name}: maxRecordsPerOwner exceeds maxRecords (${maxRecords})`);
+  }
   const increments = spec.increments ?? [];
   for (const fieldName of increments) {
     const field = spec.fields[fieldName];
     if (!field) throw new Error(`Collection ${name}: increment field ${fieldName} is not declared`);
     if (!['integer', 'number'].includes(field.type) || typeof field.default !== 'number') throw new Error(`Collection ${name}: increment field ${fieldName} must be numeric with a numeric default`);
   }
-  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, maxRecords: spec.maxRecords ?? 1000, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
+  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
+}
+
+/** How many records each owner holds; a record with no owner (written before the collection became owned) counts toward nobody. */
+function countOwners(records: StoredRecord[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const record of records) { const owner = record[OWNER_FIELD]; if (typeof owner === 'string') counts.set(owner, (counts.get(owner) ?? 0) + 1); }
+  return counts;
 }
 
 /**
@@ -167,6 +187,8 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
 export class Collection {
   readonly name: string; readonly spec: NormalizedSpec;
   private records: StoredRecord[] = []; private byId = new Map<string, StoredRecord>(); private byKey = new Map<string, StoredRecord>(); private idempotency: string[] = [];
+  /** Records per owner on an owned collection, rebuilt from the records on load and on every commit (never persisted). */
+  private owners = new Map<string, number>();
   private readonly file: string; private tail: Promise<unknown> = Promise.resolve();
   private get owned(): boolean { return this.spec.ownership === 'owner'; }
   constructor(name: string, spec: CollectionSpec, directory: string) { this.name = name; this.spec = normalize(name, spec); this.file = join(directory, `${name}.json`); }
@@ -196,6 +218,7 @@ export class Collection {
       const record: StoredRecord = { id: item.id, createdAt: item.createdAt, updatedAt: item.updatedAt, ...(owner === undefined ? {} : { [OWNER_FIELD]: owner }), ...clean };
       if (this.spec.key && (typeof record[this.spec.key] !== 'string' || this.byKey.has(record[this.spec.key] as string))) throw new Error(`Collection ${this.name}: data file holds an invalid record key`);
       this.records.push(record); this.byId.set(item.id, record);
+      if (owner !== undefined) this.owners.set(owner as string, (this.owners.get(owner as string) ?? 0) + 1);
       if (this.spec.key) this.byKey.set(record[this.spec.key] as string, record);
     }
     this.idempotency = retained as string[];
@@ -240,6 +263,7 @@ export class Collection {
     try { await this.persist(next, idempotency); }
     catch { throw new StoreError(503, 'storage_unavailable', 'The store could not save this change'); } // no path or system detail
     this.records = next; this.byId = new Map(next.map(record => [record.id as string, record])); this.byKey = this.spec.key ? new Map(next.map(record => [record[this.spec.key!] as string, record])) : new Map(); this.idempotency = idempotency;
+    if (this.owned) this.owners = countOwners(next);
   }
   private claimed(key: string | undefined): string[] {
     const config = this.validateIdempotency(key);
@@ -293,6 +317,9 @@ export class Collection {
       if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
       const clean = this.check(input, true);
       if (this.spec.key && this.byKey.has(clean[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
+      // Checked before the collection-wide ceiling, and the message is fixed: it states neither the caller's count, any
+      // other owner's count nor the collection total (urlcode#731).
+      if (scope !== undefined && this.spec.maxRecordsPerOwner !== undefined && (this.owners.get(scope) ?? 0) >= this.spec.maxRecordsPerOwner) throw new StoreError(409, 'owner_quota_exceeded', 'You hold the most records this collection allows each user');
       if (this.records.length >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
       const now = new Date().toISOString(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
       this.sized(record);

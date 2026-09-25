@@ -64,7 +64,8 @@ wins, no transactions. A collection is shared by default; one that holds
 per-user data declares `ownership: owner`, and every request is then scoped to
 the principal a policy such as `auth: true` on its mount sets (another user's
 record is a `404`, records written before it became owned are served to nobody
-until `urlcode-store ownerless-assign` or `ownerless-delete` handles them; see
+until `urlcode-store ownerless-assign` or `ownerless-delete` handles them, and
+`maxRecordsPerOwner` caps each user's records with `409 owner_quota_exceeded`; see
 [per-record ownership](../../docs/STORE.md#per-record-ownership)). A collection may declare
 `sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`
 and `?<field>=<value>` list queries (one sort field, equality filters, `id`

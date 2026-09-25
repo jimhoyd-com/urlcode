@@ -114,7 +114,8 @@ neither `--origin` nor an operator
 (`403`). Errors are `{error: {code, message, fields?}}` where
 `fields` maps field names to fixed messages; submitted values are never echoed.
 Status codes: `400` invalid record or JSON, `404`, `405` with `Allow`, `409`
-`collection_full`, `413` body or record too large, `415`, `503` when the disk
+`collection_full` (or `owner_quota_exceeded` on an
+[owned collection with a per-owner limit](#per-owner-record-limit)), `413` body or record too large, `415`, `503` when the disk
 write failed, `500` for anything unexpected (no cause in the body).
 
 ## Bounded keyed transitions
@@ -218,7 +219,8 @@ this schema and does not depend on request-body validation in core ([#254]).
 Unknown fields are rejected. `id`, `createdAt` and `updatedAt` are reserved.
 
 Limits per collection: up to 64 fields, `maxRecords` up to 10,000 (default
-1,000), `maxRecordBytes` up to 65,536 (default 4,096), `pageSize` up to 200
+1,000), on an owned collection `maxRecordsPerOwner` up to `maxRecords`
+([per-owner record limit](#per-owner-record-limit)), `maxRecordBytes` up to 65,536 (default 4,096), `pageSize` up to 200
 (default 50), at most 32 collections per project, `readOnly: true` to refuse
 writes through the record API — the store's own short-link click counter is
 the one exception, described above. The request body is refused above
@@ -326,13 +328,52 @@ On an owned collection:
   an owned record.
 
 Limits that stay true on an owned collection: `maxRecords` still caps the whole
-collection, so one principal can fill it and every create then answers `409
-collection_full` (there is no per-owner quota yet); all owners' records share
+collection, and `409 collection_full` still tells any caller that it is full
+(with or without `maxRecordsPerOwner`, enough principals together can fill it,
+so size `maxRecords` for them); all owners' records share
 one file, one lock and one write sequence; the store is still trusted operator
 code on one host, not a hostile multi-tenant boundary; and backups copy every
 owner's records together. Access by an operator or support role to another
 user's records is not modelled: auth's impersonation gives the impersonated
 user's principal, so an impersonating operator acts on that user's records.
+
+### Per-owner record limit
+
+`maxRecords` caps the whole collection, so without more one principal could fill
+an owned collection and every create would then answer `409 collection_full`
+for everyone. An owned collection can also cap each principal
+([#731](https://github.com/jimhoyd-com/urlcode/issues/731)):
+
+```yaml
+notes:
+  mount: /api/notes
+  ownership: owner
+  maxRecords: 5000           # the whole collection (default 1,000)
+  maxRecordsPerOwner: 100    # each principal
+  fields:
+    title: {type: string, required: true, maxLength: 200}
+```
+
+- A `POST` by a principal that already holds `maxRecordsPerOwner` records
+  answers `409 owner_quota_exceeded` with a fixed message that states no count,
+  no limit and no collection total. Deleting one of its own records frees a
+  slot for that principal only.
+- `maxRecords` stays the ceiling: a principal under its own limit still gets
+  `409 collection_full` once the collection as a whole is full. A principal at
+  its own limit is told `owner_quota_exceeded` first.
+- `maxRecordsPerOwner` must be at most the collection's `maxRecords` (or its
+  default of 1,000). Activation refuses it on a shared collection, where there
+  is no owner to count.
+- Only a create adds a record, and the limit is checked in the same write
+  sequence as the create, so concurrent creates cannot overshoot it. A replayed
+  `Idempotency-Key` is refused as a duplicate before anything is counted.
+- The counts are derived from the records in memory, rebuilt when the store
+  activates and after every write; nothing extra is stored. Records with no
+  owner (see below) count toward the collection but toward no principal.
+  `ownerless-assign` can leave a principal above its limit, and lowering the
+  limit can too: the store still activates, the principal's existing records
+  stay readable and changeable, and it cannot create more until it is back
+  under the limit.
 
 ### Making an existing collection owned
 
@@ -477,6 +518,5 @@ Recorded in [open decisions](OPEN-DECISIONS.md): a SQLite backend, ranges and
 text search, and richer screens beyond the first slice ([#262]): labels,
 columns, sort and filter controls have all shipped
 ([#330](https://github.com/jimhoyd-com/urlcode/issues/330)). Owned collections
-([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only: per-owner quotas,
-sharing a record with other principals and manager or support access are not
+([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only: sharing a record with other principals and manager or support access are not
 built.
