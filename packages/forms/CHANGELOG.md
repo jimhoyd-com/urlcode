@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- A 422 whose errors include a field the page does not render no longer shows
+  only "Correct the highlighted fields." (#739). The alert names a declared
+  field the page does not render (an `only()` handle's other fields, now
+  "cannot be changed on this form") by its label, and reports any undeclared
+  submitted name with the fixed "This form received a field it does not
+  accept.", never echoing the name or a submitted value. This applies to flows
+  forms serves and to exported flows, including form-records' create and edit
+  pages. An undeclared field named `__proto__` is now refused like any other
+  rather than silently dropped.
+
 - A typed export for other extensions (#529): `host()` now returns
   `FormsExports` (contract version 1), read with `ctx.get('forms')` by an
   extension that requires forms. `define(name, body)` validates a flow body

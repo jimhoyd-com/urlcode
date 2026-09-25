@@ -114,7 +114,14 @@ test('only() narrows the admitted fields and shows the others read-only; confirm
   assert.match(page, /Edit comment/); assert.match(page, /<dt>Rating<\/dt><dd>Great<\/dd>/); assert.ok(!/name="rating"/.test(page));
   const token = await csrf('/survey/comment');
   assert.equal((await post('/survey/comment', { csrf: token, comment: 'ok' })).status, 200);
-  assert.equal((await post('/survey/comment', { csrf: token, comment: 'ok', rating: '1' })).status, 422, 'a field outside only() is refused');
+  const outside = await post('/survey/comment', { csrf: token, comment: 'ok', rating: '1' }), outsideHtml = await outside.text();
+  assert.equal(outside.status, 422, 'a field outside only() is refused');
+  // #739: the refused field has no input on this page, so the alert names it by its label rather than only "Correct the highlighted fields".
+  assert.match(outsideHtml, /role="alert">Rating cannot be changed on this form\.<\/p>/);
+  const undeclared = await post('/survey/comment', { csrf: token, comment: 'ok', 'x<y>': '<b>v</b>' }), undeclaredHtml = await undeclared.text();
+  assert.equal(undeclared.status, 422);
+  assert.match(undeclaredHtml, /role="alert">This form received a field it does not accept\.<\/p>/);
+  assert.ok(!undeclaredHtml.includes('x&lt;y&gt;') && !undeclaredHtml.includes('<b>v</b>') && !undeclaredHtml.includes('&lt;b&gt;v'), 'the undeclared name and value are not echoed');
   const done = await (await call('/survey/done')).text();
   assert.match(done, /Rated Great\./); assert.match(done, /<a href="\/survey">Again<\/a>/);
   assert.throws(() => flow().only(['missing']), /missing is not a declared field/);

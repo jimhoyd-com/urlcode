@@ -171,9 +171,19 @@ test('a field outside editable cannot be changed through the edit page', async t
   const alice = browser('alice');
   const id = await created(alice);
   const edit = await page(alice, `/onboarding/${id}/edit`);
-  const answer = await post(alice, edit.action, { csrf: edit.csrf, team: 'blue', name: 'Eve' });
+  const answer = await post(alice, edit.action, { csrf: edit.csrf, team: 'blue', name: 'Evelyn-Q7' });
   const html = await answer.text();
-  assert.equal(answer.status, 422); assert.match(html, /Correct the highlighted fields/); assert.ok(!/name="name"/.test(html), 'the refused field is still not offered');
+  assert.equal(answer.status, 422); assert.ok(!/name="name"/.test(html), 'the refused field is still not offered');
+  // #739: the refused field is not on the page, so the alert names it instead of pointing at a highlighted field.
+  assert.match(html, /role="alert">Name cannot be changed on this form\.<\/p>/); assert.ok(!html.includes('Evelyn-Q7'), 'the submitted value is not echoed');
+  const crafted = await post(alice, edit.action, { csrf: edit.csrf, team: 'blue', owner: 'mallory' });
+  const craftedHtml = await crafted.text();
+  assert.equal(crafted.status, 422); assert.match(craftedHtml, /This form received a field it does not accept\./); assert.ok(!craftedHtml.includes('mallory') && !craftedHtml.includes('owner'));
+  const create = await page(alice, '/onboarding');
+  const stray = await post(alice, '/onboarding', { csrf: create.csrf, name: 'Zed', team: 'red', admin: 'true' });
+  const strayHtml = await stray.text();
+  assert.equal(stray.status, 422); assert.match(strayHtml, /role="alert">This form received a field it does not accept\.<\/p>/); assert.ok(!strayHtml.includes('admin'));
+  assert.equal((await stored()).records.length, 1, 'the crafted create saved nothing');
   const record = (await stored()).records[0]!;
   assert.equal(record.name, 'Ada'); assert.equal(record.team, 'red', 'a refused submission changes nothing');
 });

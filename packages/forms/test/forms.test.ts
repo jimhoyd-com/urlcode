@@ -56,6 +56,25 @@ test('returns 422 field errors without echoing hostile values, validates email/s
   const newForm=await (await call('/contact')).text();assert.ok(!newForm.includes(hostile),'a later request cannot see an earlier caller\'s values');
 });
 
+test('a 422 for a field that is not on the page says so in the alert without echoing the name or value (#739)',async t=>{
+  const {call}=await boot(t);
+  const valid={email:'person@example.test',topic:'support',message:'Need assistance now',terms:'true'};
+  const send=async(extra:Record<string,string>)=>{const body=new URLSearchParams({csrf:await csrf(call),...valid});for(const [key,value] of Object.entries(extra))body.append(key,value);return call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body,redirect:'manual'});};
+  const hostileName='<script>steal()</script>',hostileValue='"><img src=x onerror=alert(2)>';
+  const stray=await send({[hostileName]:hostileValue});const html=await stray.text();
+  assert.equal(stray.status,422);
+  assert.match(html,/role="alert">This form received a field it does not accept\.<\/p>/);
+  assert.ok(!html.includes('Correct the highlighted fields'),'no field is highlighted, so the alert does not point at one');
+  assert.ok(!html.includes('steal()')&&!html.includes('onerror=alert(2)'),'neither the undeclared name nor its value reaches the page');
+  const mixed=await send({email:'x',nickname:'Bob'});const mixedHtml=await mixed.text();
+  assert.equal(mixed.status,422);
+  assert.match(mixedHtml,/Correct the highlighted fields\. This form received a field it does not accept\./);
+  assert.match(mixedHtml,/must be supplied once/);assert.ok(!mixedHtml.includes('nickname'));
+  const proto=await send({['__proto__']:'x'});
+  assert.equal(proto.status,422,'__proto__ is refused like any other undeclared field, not silently dropped');
+  assert.match(await proto.text(),/This form received a field it does not accept\./);
+});
+
 test('validates date and datetime-local submissions in the formats browsers send, rejecting impossible calendar values (#682)',async t=>{
   const {call}=await boot(t);const token=await csrf(call);
   const submit=async(extra:Record<string,string>)=>{const response=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf:token,email:'person@example.test',topic:'sales',message:'A valid message',terms:'true',...extra}),redirect:'manual'});return {status:response.status,html:await response.text()};};
