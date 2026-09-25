@@ -21,6 +21,7 @@ unavailable diffs fail closed.
 | Prose | `plan`, `docs` and `verify-complete`; code jobs intentionally skip. The narrow allowlist is root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`, and package contributor/governance prose. |
 | Extension-only | Static checks plus the changed extension and reverse dependencies on Linux/Node 24. Unrelated core tests, examples/drills, audit, package, Action, container and reproducibility proofs skip. |
 | Runtime, shared, shipping or unknown | Static checks, Linux/Node 24 core shards, all consuming extensions and applicable root-runtime proofs. |
+| High-impact (pull requests only, on top of the rows above) | A Windows/Node 24 test leg and the Linux/Node 24 packed add-on integration; see [high-impact pull requests](#high-impact-pull-requests). |
 
 The prose allowlist is reviewed non-executable contributor prose, not every
 Markdown file. Skills, starters, recipes, examples, schemas, manifests,
@@ -39,6 +40,47 @@ with Node 24, so a version is published only after that proof passes on its
 exact commit. `build-fidelity` (`npm run ci:build-fidelity`) builds everything
 twice from clean builds and packs both with the release packer on the
 `.node-version` toolchain; the tarballs and add-on pins must be byte-identical.
+
+### High-impact pull requests
+
+Some failures used to surface only in release coverage, after merge: Windows
+process and path assumptions, a source-to-dist test race, and Windows SQLite
+cleanup order ([#668](https://github.com/jimhoyd-com/urlcode/issues/668),
+[#669](https://github.com/jimhoyd-com/urlcode/issues/669),
+[#673](https://github.com/jimhoyd-com/urlcode/issues/673)). A pull request
+whose diff touches one of these areas keeps the lane above and adds two things
+([#744](https://github.com/jimhoyd-com/urlcode/issues/744)):
+
+| Area | Paths (`HIGH_IMPACT` in `scripts/ci-plan.ts`) |
+| --- | --- |
+| Installer, upgrade and scaffolding | `packages/core/src/{addon-install,extensions-cli,init-with,scaffold,recipes}.ts`, `packages/core/src/upgrade*`, `scripts/create-extension*`, `starters/**` |
+| Package manifests and dependency wiring | every `package.json` and `package-lock.json`, `packages/*/urlcode.json`, `scripts/{workspaces,build-addon-manifest,check-workspace-links}.ts` |
+| Release tooling | `scripts/release-*.ts`, `scripts/pack-addons.ts`, `scripts/package-*.ts`, `scripts/npm-command.ts`, `.github/workflows/publish.yml` |
+| Integration and cleanup | `test/addons.integration.ts`, `scripts/test-addons*`, `packages/*/test/cleanup.ts` |
+| Shared inputs (fail closed) | anything under `.github/`, any root-level file that is not admitted prose, and an empty or unclassifiable diff |
+
+- **Windows/Node 24 tests.** `verify` gains Windows entries for all three
+  shards: `node --test-shard` splits by file, so process- and
+  filesystem-sensitive tests are spread across every shard. An extension-only
+  high-impact change (an add-on's `package.json`, `urlcode.json` or
+  `test/cleanup.ts`) skips the core shards, so its Windows leg runs the
+  selected packages' `workspace-verify` suites instead.
+- **Packed add-on integration.** `workspace-integration` runs its Linux/Node 24
+  leg, the same job releases run on every OS: pack core and every add-on, add,
+  serve and remove them in a site, plus the UI browser check.
+
+Docs-only and ordinary source pull requests do not get either. Main pushes are
+unchanged, and exact-commit runs already cover every OS. The plan reports
+`highImpact` and `platformLegs`; jobs receive the extra entries through the
+existing `shards`, `workspacePackages` and `workspaceIntegration*` outputs, so
+no job is renamed and `verify-complete` accepts a skipped
+`workspace-integration` only when the plan did not select it.
+
+Whether this finds platform and packaging failures earlier, and what it costs,
+is not yet measured. Over the next releases, record first-attempt elapsed time,
+job execution time, reruns and release-discovered failures for pull requests
+before and after this selection, on #744. No speed or reliability improvement is
+claimed until then.
 
 None of those Node versions is the documented package floor itself (`engines`:
 `>=22.13.0` on core and every first-party extension, [Install](INSTALL.md)):
@@ -66,8 +108,9 @@ Auth/admin fixtures register cleanup in package-local `test/cleanup.ts` in
 reverse acquisition order, closing servers and SQLite before temporary
 directories. Every closer is attempted even if one fails. The suites use a
 five-minute test-file timeout; platform-sensitive Windows coverage is Node 24
-in the cross-workspace integration, while sweep/exact-commit runs cover all
-supported Node versions.
+in the cross-workspace integration and in the Windows leg of a
+[high-impact pull request](#high-impact-pull-requests), while sweep/exact-commit
+runs cover all supported Node versions.
 
 ```sh
 npm run ci:plan -- BASE_SHA HEAD_SHA

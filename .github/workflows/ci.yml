@@ -45,6 +45,10 @@ jobs:
       container: ${{ steps.plan.outputs.container }}
       coreChecks: ${{ steps.plan.outputs.coreChecks }}
       packageFloorSmoke: ${{ steps.plan.outputs.packageFloorSmoke }}
+      # Diagnostics for #744's high-impact selection. Jobs consume it through
+      # `shards`, `workspacePackages` and `workspaceIntegration*` above.
+      highImpact: ${{ steps.plan.outputs.highImpact }}
+      platformLegs: ${{ steps.plan.outputs.platformLegs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -124,8 +128,11 @@ jobs:
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
     strategy:
       fail-fast: false
-      # Routine PR/main feedback is Linux Node 24; scheduled, merge-queue and
-      # manually dispatched exact-commit runs retain the full OS x Node matrix.
+      # Routine PR/main feedback is Linux Node 24; a pull request touching a
+      # high-impact path (installer, manifests, release tooling, integration
+      # cleanup, shared config; scripts/ci-plan.ts) adds Windows Node 24 shards.
+      # Scheduled, merge-queue and manually dispatched exact-commit runs retain
+      # the full OS x Node matrix.
       matrix: ${{ fromJSON(needs.plan.outputs.shards) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -278,9 +285,11 @@ jobs:
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'
     strategy:
       fail-fast: false
-      # This integration is release-only: a release run (publish.yml calling
-      # this workflow with `release: true`) and an explicit dispatch cover
-      # every supported OS on the default Node runtime.
+      # A release run (publish.yml calling this workflow with `release: true`)
+      # and an explicit dispatch cover every supported OS on the default Node
+      # runtime; a pull request touching a high-impact path runs the Linux
+      # Node 24 leg (#744). Other routine runs skip it, and `verify-complete`
+      # accepts that skip only when the plan did not select it.
       matrix: ${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}
     runs-on: ${{ matrix.os }}
     # Real npm installs of the packed runtime and every add-on, several sites per run; Windows is the slowest leg.
