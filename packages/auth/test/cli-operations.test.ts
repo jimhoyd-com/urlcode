@@ -116,3 +116,27 @@ test('api-key-issue accepts a key quota on stdin, refuses an invalid one, and ap
     cleanup(t, () => service.close());
     assert.deepEqual((await service.authenticateApiKey(issued.key))?.quota, { requests: 5000, window: 3600 });
 });
+test('api-key-issue links a key to an existing user with userId, refuses an unknown one, and api-key-list reports it (urlcode#732)', async (t) => {
+    const { root, database, run } = await fixture('urlcode-auth-cli-api-key-user-');
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const service = await createAuthService({ database, encryptionKey: new Uint8Array(32).fill(7), roles, defaultRole: 'member' });
+    const user = await service.register({ email: 'agent-owner@example.com', password });
+    await service.close();
+    const linked = run('api-key-issue', { name: 'agent', scopes: ['items.read'], userId: user.user.id });
+    assert.equal(linked.status, 0, linked.stderr);
+    const issued = JSON.parse(linked.stdout) as { id: string; key: string; userId: unknown };
+    assert.equal(issued.userId, user.user.id);
+    const plain = run('api-key-issue', { name: 'service', scopes: ['items.read'] });
+    assert.equal(JSON.parse(plain.stdout).userId, null);
+    for (const userId of ['00000000-0000-4000-8000-000000000000', 7, null, '']) {
+        const refused = run('api-key-issue', { name: 'bad', scopes: ['items.read'], userId });
+        assert.equal(refused.status, 1, JSON.stringify(userId));
+        assert.equal(refused.stdout, '');
+    }
+    const listed = JSON.parse(run('api-key-list').stdout) as { id: string; userId: unknown; userDisabled: boolean }[];
+    assert.deepEqual(listed.map(key => key.userId).sort(), [null, user.user.id].sort());
+    assert.equal(listed.find(key => key.id === issued.id)!.userDisabled, false);
+    const reopened = await createAuthService({ database, encryptionKey: new Uint8Array(32).fill(7), roles, defaultRole: 'member' });
+    cleanup(t, () => reopened.close());
+    assert.equal((await reopened.authenticateApiKey(issued.key))?.userId, user.user.id);
+});

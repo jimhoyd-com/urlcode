@@ -1242,7 +1242,10 @@ test('bearer/API-key issuance, verification, expiry, revocation and secret secre
     assert.equal(listed[0]!.lastUsed, null);
     assert.ok(!('key' in listed[0]!) && !('secretHash' in listed[0]!));
     const authenticated = await service.authenticateApiKey(issued.key);
-    assert.deepEqual(authenticated, { id: issued.id, name: 'ci-deploy-bot', scopes: ['deploys.write'], quota: null });
+    assert.deepEqual(authenticated, { id: issued.id, name: 'ci-deploy-bot', scopes: ['deploys.write'], quota: null, userId: null });
+    assert.equal(issued.userId, null);
+    assert.equal(listed[0]!.userId, null);
+    assert.equal(listed[0]!.userDisabled, false);
     assert.equal(issued.quota, null);
     assert.equal(listed[0]!.quota, null);
     // Wrong secret against a real id, garbage input, and an unknown id all fail closed.
@@ -1343,8 +1346,65 @@ test('bearer/API-key quota columns are added to a database created before them; 
     finally { db.close(); }
     const migrated = await createAuthService(options);
     cleanup(t, () => migrated.close());
-    assert.deepEqual(await migrated.authenticateApiKey(legacy.key), { id: legacy.id, name: 'legacy', scopes: ['read'], quota: null });
+    assert.deepEqual(await migrated.authenticateApiKey(legacy.key), { id: legacy.id, name: 'legacy', scopes: ['read'], quota: null, userId: null });
     assert.equal((await migrated.listApiKeys())[0]!.quota, null);
     const issued = await migrated.issueApiKey({ name: 'after-migration', scopes: ['read'], quota: { requests: 10, window: 60 } });
     assert.deepEqual((await migrated.authenticateApiKey(issued.key))?.quota, { requests: 10, window: 60 });
+});
+test('user-linked API keys (urlcode#732): issued only for an active user, disabled while the user is locked or pending deletion, revoked when purged', async (t) => {
+    const { service, advance } = await setup(t);
+    const admin = await service.bootstrapAdmin({ email: 'owner@example.com', password }), alice = await service.register({ email: 'alice@example.com', password });
+    const linked = await service.issueApiKey({ name: 'alice-agent', scopes: ['notes.read'], userId: alice.user.id });
+    assert.equal(linked.userId, alice.user.id);
+    const service_ = await service.issueApiKey({ name: 'service', scopes: ['notes.read'] });
+    assert.deepEqual(await service.authenticateApiKey(linked.key), { id: linked.id, name: 'alice-agent', scopes: ['notes.read'], quota: null, userId: alice.user.id });
+    const listed = () => service.listApiKeys().then(rows => new Map(rows.map(row => [row.id, row])));
+    assert.equal((await listed()).get(linked.id)!.userId, alice.user.id);
+    assert.equal((await listed()).get(linked.id)!.userDisabled, false);
+    assert.equal((await listed()).get(service_.id)!.userId, null);
+    // Unknown, malformed, locked and deleted users are refused with one code; nothing is stored.
+    for (const userId of ['00000000-0000-4000-8000-000000000000', '', 'has space', 'x'.repeat(129), 7 as never])
+        await assert.rejects(service.issueApiKey({ name: 'bad-user', scopes: ['read'], userId }), { code: 'invalid_api_key_user' });
+    assert.equal((await service.listApiKeys()).length, 2);
+    // Locking the user disables the key (and only that user's keys); unlocking restores it.
+    await service.adminSetStatus({ actorToken: admin.token, accountId: alice.user.id, status: 'locked' });
+    assert.equal(await service.authenticateApiKey(linked.key), null);
+    assert.equal((await listed()).get(linked.id)!.userDisabled, true);
+    assert.equal((await listed()).get(linked.id)!.revoked, false);
+    assert.ok(await service.authenticateApiKey(service_.key));
+    await assert.rejects(service.issueApiKey({ name: 'locked-user', scopes: ['read'], userId: alice.user.id }), { code: 'invalid_api_key_user' });
+    await service.adminSetStatus({ actorToken: admin.token, accountId: alice.user.id, status: 'active' });
+    assert.equal((await service.authenticateApiKey(linked.key))?.userId, alice.user.id);
+    // Deleting the account disables the key through the grace period, and purging revokes it for good.
+    const bob = await service.register({ email: 'bob@example.com', password });
+    const bobKey = await service.issueApiKey({ name: 'bob-agent', scopes: ['read'], userId: bob.user.id });
+    await service.deleteAccount({ token: bob.token, password });
+    assert.equal(await service.authenticateApiKey(bobKey.key), null);
+    assert.equal((await listed()).get(bobKey.id)!.userDisabled, true);
+    await assert.rejects(service.issueApiKey({ name: 'deleting-user', scopes: ['read'], userId: bob.user.id }), { code: 'invalid_api_key_user' });
+    advance(8 * 86400000);
+    await service.purgeDeleted();
+    assert.equal(await service.getUser(bob.user.id), null);
+    assert.equal(await service.authenticateApiKey(bobKey.key), null);
+    assert.equal((await listed()).get(bobKey.id)!.revoked, true);
+    await assert.rejects(service.issueApiKey({ name: 'purged-user', scopes: ['read'], userId: bob.user.id }), { code: 'invalid_api_key_user' });
+    assert.equal((await service.authenticateApiKey(linked.key))?.userId, alice.user.id);
+});
+test('bearer/API-key user_id column is added to a database created before it; existing keys stay service keys', async (t) => {
+    const { service, options, database } = await setup(t);
+    const legacy = await service.issueApiKey({ name: 'legacy', scopes: ['read'] });
+    await service.close();
+    const db = new DatabaseSync(database);
+    try {
+        db.exec('DROP INDEX auth_api_keys_user;ALTER TABLE auth_api_keys DROP COLUMN user_id;');
+        assert.ok(!db.prepare('PRAGMA table_info(auth_api_keys)').all().some(row => row.name === 'user_id'));
+    }
+    finally { db.close(); }
+    const migrated = await createAuthService(options);
+    cleanup(t, () => migrated.close());
+    assert.equal((await migrated.authenticateApiKey(legacy.key))?.userId, null);
+    assert.deepEqual((await migrated.listApiKeys()).map(row => [row.userId, row.userDisabled]), [[null, false]]);
+    const user = await migrated.register({ email: 'after@example.com', password });
+    const linked = await migrated.issueApiKey({ name: 'after-migration', scopes: ['read'], userId: user.user.id });
+    assert.equal((await migrated.authenticateApiKey(linked.key))?.userId, user.user.id);
 });

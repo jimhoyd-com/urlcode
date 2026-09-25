@@ -134,9 +134,13 @@ id/name/scopes (never the raw key) are written into the reserved
 route's own `function`/`middleware` can read who authenticated directly off
 its `Request` object — see [handing data forward into a protected route's own
 context](#handing-data-forward-into-a-protected-routes-own-context). Auth also
-sets the core [request principal](#request-principal) to `apikey:<key id>`
-(for a session-protected route, to the signed-in user's id), which is what an
-owned store collection scopes records by.
+sets the core [request principal](#request-principal), which is what an owned
+store collection scopes records by: `apikey:<key id>` for a service key, the
+user's id for a key the operator issued with `userId` (it acts for that user,
+so records survive rotating the key, but only within its own scopes; locking
+or deleting the user disables it), and the signed-in user's id for a
+session-protected route. See
+[keys that act for a user](../packages/auth/README.md#keys-that-act-for-a-user).
 
 `bearer.quota: {requests, window}` adds a budget per credential: `requests`
 per `window` seconds for each key, counted by key id in the auth store once
@@ -385,8 +389,9 @@ for.
   missing from it (fail closed), and still refuses a request whose principal is
   `null`, because a provider may allow a request without setting one.
 
-`auth` is the first-party provider (the signed-in user's id for a session,
-`apikey:<key id>` for a bearer key) and `store` the first consumer; the core
+`auth` is the first-party provider (the signed-in user's id for a session or
+for a bearer key issued to act for a user, `apikey:<key id>` for any other
+bearer key) and `store` the first consumer; the core
 fixture `test/extension-principal.test.ts` proves the seam with a synthetic,
 non-auth provider. Extensions are trusted in-process code, so this contract
 fails closed on mistakes and misconfiguration; it is not a sandbox between

@@ -29,6 +29,7 @@ test('auth sets the core principal to the user id for a session and apikey:<id> 
         const result = await slot.authorize('auth', true, () => instance.authorize!(requirement, value));
         return { status: result?.status, principal: value.principal };
     };
+    const admin = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
     const alice = await service.register({ email: 'alice@example.test', password: 'correct horse battery staple' });
     const cookie = '__Host-urlcode-session=' + alice.token;
     // Session: the stable user id, never the email, and frozen with core's provider stamp.
@@ -58,6 +59,27 @@ test('auth sets the core principal to the user id for a session and apikey:<id> 
     // A cookie on a bearer route does not give a principal either.
     const cookieOnBearer = await principalOf({ bearer: { scopes: ['notes.read'] } }, request('GET', { cookie }));
     assert.equal(cookieOnBearer.status, 401); assert.equal(cookieOnBearer.principal, null);
+    // urlcode#732: a key issued for a user acts for that user, so records survive rotating the key, but only within the
+    // key's own scopes: alice's session role does not widen it. Locking alice disables it.
+    const linked = await service.issueApiKey({ name: 'alice-agent', scopes: ['notes.read'], userId: alice.user.id });
+    const acting = await principalOf({ bearer: { scopes: ['notes.read'] } }, request('GET', { authorization: 'Bearer ' + linked.key }));
+    assert.equal(acting.status, undefined);
+    assert.deepEqual(acting.principal, { id: alice.user.id, provider: 'auth' });
+    const linkedRequest = request('GET', { authorization: 'Bearer ' + linked.key });
+    await principalOf({ bearer: { scopes: ['notes.read'] } }, linkedRequest);
+    assert.deepEqual(JSON.parse(Buffer.from(linkedRequest.headers.get('x-urlcode-context-auth-principal')!, 'base64').toString()), { id: linked.id, name: 'alice-agent', scopes: ['notes.read'], userId: alice.user.id });
+    const rotated = await service.issueApiKey({ name: 'alice-agent-2', scopes: ['notes.read'], userId: alice.user.id });
+    await service.revokeApiKey(linked.id);
+    assert.deepEqual((await principalOf({ bearer: { scopes: ['notes.read'] } }, request('GET', { authorization: 'Bearer ' + rotated.key }))).principal, { id: alice.user.id, provider: 'auth' });
+    const beyondScopes = await principalOf({ bearer: { scopes: ['notes.write'] } }, request('GET', { authorization: 'Bearer ' + rotated.key }));
+    assert.equal(beyondScopes.status, 403); assert.equal(beyondScopes.principal, null);
+    // Service keys are unchanged: the unlinked key's header carries no userId.
+    const serviceRequest = request('GET', { authorization: 'Bearer ' + key.key });
+    await principalOf({ bearer: { scopes: ['notes.read'] } }, serviceRequest);
+    assert.ok(!('userId' in JSON.parse(Buffer.from(serviceRequest.headers.get('x-urlcode-context-auth-principal')!, 'base64').toString())));
+    await service.adminSetStatus({ actorToken: admin.token, accountId: alice.user.id, status: 'locked' });
+    const locked = await principalOf({ bearer: { scopes: ['notes.read'] } }, request('GET', { authorization: 'Bearer ' + rotated.key }));
+    assert.equal(locked.status, 401); assert.equal(locked.principal, null);
     // A revoked key stops producing a principal on the next request.
     await service.revokeApiKey(key.id);
     assert.equal((await principalOf({ bearer: { scopes: ['notes.read'] } }, request('GET', { authorization: 'Bearer ' + key.key }))).principal, null);

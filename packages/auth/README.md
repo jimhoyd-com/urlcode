@@ -204,7 +204,8 @@ echo '{"name":"ci-deploy-bot","scopes":["deploys.write"],"expiresInMs":777600000
 ```
 
 An optional `quota: {requests, window}` gives the key its own budget (see
-[per-credential quota](#per-credential-quota)).
+[per-credential quota](#per-credential-quota)), and an optional `userId` makes
+it act for a user (see [keys that act for a user](#keys-that-act-for-a-user)).
 
 `issueApiKey` returns the raw key (`uak_<id>.<secret>`) exactly once; only its
 scrypt hash (the same derivation `createAuthService` uses for passwords) is
@@ -248,15 +249,56 @@ request its `authorize()` allows, it sets core's opaque request principal:
 | Route protection | Principal id |
 |---|---|
 | session (`auth: true`, `role`, `permission`, ...) | the signed-in user's stable id (never the email), set after the CSRF check on a write |
-| `bearer` | `apikey:<key id>` (`apiKeyPrincipalId(id)`) |
+| `bearer`, key issued with `userId` | that user's id |
+| `bearer`, service key (no `userId`) | `apikey:<key id>` (`apiKeyPrincipalId(id)`) |
 
-API keys are issued by the operator and belong to no user, so a key is its own
-principal, namespaced so it can never equal a user id: records a key creates in
-an [owned store collection](../../docs/STORE.md#per-record-ownership) belong to
+A service key belongs to no user, so it is its own principal, namespaced so it
+can never equal a user id: records it creates in an
+[owned store collection](../../docs/STORE.md#per-record-ownership) belong to
 that key, and stop being reachable through the API once it is revoked or
-expires. A denied request never carries a principal. An impersonation session
-carries the impersonated user's id, so an operator impersonating a user acts on
-that user's owned records.
+expires.
+A denied request never carries a principal. An impersonation session carries
+the impersonated user's id, so an operator impersonating a user acts on that
+user's owned records.
+
+### Keys that act for a user
+
+An operator can issue a key for an existing user
+([urlcode#732](https://github.com/jimhoyd-com/urlcode/issues/732)): pass
+`userId` (the id from `urlcode-auth users`) to `issueApiKey`, or in the
+`api-key-issue` JSON:
+
+```sh
+echo '{"name":"alice-sync","scopes":["notes.read","notes.write"],"userId":"<user id>"}' \
+  | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
+```
+
+- **Principal.** The key sets the request principal to that user's id, so
+  records it creates in an owned store collection belong to the user: they are
+  the same records the user sees when signed in, and they survive rotating the
+  key (issue a new key for the same user, then revoke the old one).
+- **Authority.** The key still acts only within its own `scopes`, checked
+  against the route's `auth.bearer.scopes`. The user's roles and permissions do
+  not apply to it, and it never passes a session-protected route
+  (`auth: true`, `role`, `permission`, ...), which still needs a session.
+- **Validation.** `userId` must name an existing account whose status is
+  `active`; an unknown id, a locked account or one pending deletion is refused
+  with `invalid_api_key_user` and nothing is stored.
+- **Disable and delete.** A user-linked key authenticates only while its user is
+  `active`. Locking the account, or the account entering its deletion grace
+  period, makes every key linked to it fail with the same 401 `invalid_token` a
+  revoked key gets, from the next request; unlocking the account, or cancelling
+  the deletion, makes them work again. When the account is purged its keys are
+  revoked for good. `listApiKeys` and `api-key-list` report each key's `userId`
+  (`null` for a service key) and `userDisabled` (`true` while the linked user is
+  not active). Revoke a key explicitly when it must never return.
+- **Handler context.** The `x-urlcode-context-auth-principal` header also
+  carries `userId` for such a key (`{id, name, scopes, userId}`); it is absent
+  for a service key.
+
+Keys issued before this field existed, and keys issued without it, are service
+keys (`userId: null`); an existing database gains the nullable `user_id` column
+in place when the service opens it.
 
 ### Per-credential quota
 
@@ -399,8 +441,8 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 | `cleanup` | `--operator-file` | Sweep expired sessions/tokens (bounded batch) |
 | `configuration` | `--operator-file` | Print configuration revision, registration mode, security policy and roles |
 | `doctor` | `--operator-file` | Local database/configuration readiness check |
-| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?,quota?}` on stdin | Issue a bearer/API key; returns the raw key once, never stored |
-| `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed; never the raw key or its hash) |
+| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?,quota?,userId?}` on stdin | Issue a bearer/API key, optionally acting for an active user; returns the raw key once, never stored |
+| `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed/quota/userId/userDisabled; never the raw key or its hash) |
 | `api-key-revoke` | `--operator-file`, JSON `{id}` on stdin | Revoke a key by its id |
 | `validate` | `--operator-file` | Offline validation of the loaded service's configuration |
 | `auth-baseline` | none (refuses `--operator-file`) | Offline synthetic checks against a temporary runtime |
