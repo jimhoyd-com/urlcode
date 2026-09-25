@@ -16,7 +16,7 @@ import { createAuthFlows } from './auth-flows.ts';
 import type { OidcProvider } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
 import { extensionContextHeaderPrefix, extensionHookContext } from '@jimhoyd/urlcode/extensions';
-import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
+import type { RuntimeExtension, ExtensionRequest, ExtensionActivation } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
 import type { AuthHttpResponse, Screen, UiHost } from './auth-ui.ts';
@@ -134,13 +134,24 @@ export const authAuthoring = Object.freeze({
     fastChecks: Object.freeze(['urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth --copy ui/copy --templates ui/templates --stylesheet ui/extra.css', 'urlcode validate --local', 'urlcode test']),
 });
 const hidden = hiddenField;
+/** Binds the operator's passkey provider to the activation's `passkeyRpId` and site origins, when the operator set one. */
+function sitePasskeys(options: AuthExtensionOptions, context: ExtensionActivation): AuthExtensionOptions {
+    if (context.passkeyRpId === undefined || !options.passkeys)
+        return options;
+    if (typeof options.passkeys.withSite !== 'function')
+        throw new Error('Auth cannot apply the operator passkey RP ID: the passkeys provider has no withSite(); use createPasskeyProvider()');
+    return { ...options, passkeys: options.passkeys.withSite({ rpId: context.passkeyRpId, origins: context.origins ?? [context.origin] }) };
+}
 const m = (html: string) => new Markup(html);
-export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
-    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema: authConfigSchema, policySchema: authPolicySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+export function authExtension(configured: AuthExtensionOptions): RuntimeExtension {
+    return { name: 'auth', version: '1', projectSha256: configured.projectSha256, targets: ['node'], schema: authConfigSchema, policySchema: authPolicySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         // Sets core's opaque request principal (RIM-EXT-PRINCIPAL-001, urlcode#331) from authorize() on every
         // allowed request: the user id for a session, `apikey:<key id>` for a bearer key. See `principalIdFor`.
         providesPrincipal: true,
         async activate(config, context) {
+            // The operator's shared relying-party domain (issue #729) rebinds passkey ceremonies for this
+            // activation only; without it the configured provider (canonical host, canonical origin) is used as is.
+            const options = sitePasskeys(configured, context);
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');
             // Account screens render only through the kit, so a missing or unactivated `ui`

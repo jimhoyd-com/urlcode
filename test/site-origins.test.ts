@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ConfigError } from '../packages/core/src/errors.ts';
-import { isSiteOrigin, maxAliasOrigins, siteOrigins } from '../packages/core/src/site-origins.ts';
+import { isSiteOrigin, maxAliasOrigins, passkeyPublicSuffixes, passkeyRpId, siteOrigins } from '../packages/core/src/site-origins.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
 import { prepareFunctionSnapshot } from '../packages/core/src/policy.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
 import { loopbackHostCheck } from '../packages/core/src/client-address.ts';
-import { resolveAliasOrigins } from '../packages/core/src/adapters.ts';
+import { resolveAliasOrigins, resolvePasskeyRpId } from '../packages/core/src/adapters.ts';
 import type { ExtensionActivation, RuntimeExtension } from '../packages/core/src/extensions.ts';
 import { project } from './helpers.ts';
 
@@ -116,4 +116,77 @@ test('the CLI accepts a repeatable --alias-origin on validate and refuses it on 
   const elsewhere = run('permissions', '--project', root, '--alias-origin', 'https://www.site.example');
   assert.notEqual(elsewhere.status, 0);
   assert.match(elsewhere.stderr + elsewhere.stdout, /--alias-origin is only supported by dev\/serve\/validate\/test\/routes\/audit\/benchmark/);
+});
+
+test('a passkey RP ID is accepted only as the host, or a parent domain, of every site origin', () => {
+  const origins = siteOrigins(canonical, ['https://www.site.example', 'https://eu.app.site.example:8443']);
+  assert.equal(passkeyRpId(undefined, origins), undefined, 'unset stays unset');
+  assert.equal(passkeyRpId('site.example', origins), 'site.example');
+  assert.equal(passkeyRpId('site.example', [canonical]), 'site.example', 'the canonical host itself');
+  assert.equal(passkeyRpId('app.site.example', siteOrigins('https://app.site.example', ['https://eu.app.site.example'])), 'app.site.example');
+  assert.equal(passkeyRpId('xn--bcher-kva.example', siteOrigins('https://xn--bcher-kva.example', ['https://www.xn--bcher-kva.example'])), 'xn--bcher-kva.example');
+  assert.equal(passkeyRpId('localhost', siteOrigins('https://localhost:8443', ['http://localhost:3000'])), 'localhost');
+  const refused: [unknown, readonly string[], RegExp][] = [
+    ['', origins, /non-empty domain name/],
+    [42, origins, /non-empty domain name/],
+    ['Site.Example', origins, /lowercase DNS name/],
+    ['site.example.', origins, /lowercase DNS name/],
+    ['https://site.example', origins, /lowercase DNS name/],
+    ['site.example:443', origins, /lowercase DNS name/],
+    ['*.site.example', origins, /lowercase DNS name/],
+    ['bücher.example', origins, /lowercase DNS name/],
+    ['-site.example', origins, /lowercase DNS name/],
+    ['127.0.0.1', siteOrigins('https://127.0.0.1', []), /IP address/],
+    ['[::1]', origins, /lowercase DNS name/],
+    ['example', origins, /single label/],
+    ['com', siteOrigins('https://site.com', []), /single label/],
+    ['localhost', origins, /allowed only when the canonical origin's host is localhost/],
+    ['co.uk', siteOrigins('https://site.co.uk', ['https://other.co.uk']), /public suffix/],
+    ['vercel.app', siteOrigins('https://mine.vercel.app', ['https://theirs.vercel.app']), /public suffix/],
+    ['other.example', origins, /neither the host of https:\/\/site\.example nor a parent domain/],
+    ['www.site.example', origins, /neither the host of https:\/\/site\.example nor a parent domain/],
+    ['e.example', siteOrigins('https://site.example', []), /nor a parent domain/],
+    ['ite.example', siteOrigins('https://site.example', []), /nor a parent domain/],
+    ['site.example', siteOrigins(canonical, ['https://site.example.evil.example']), /https:\/\/site\.example\.evil\.example/],
+    ['site.example', siteOrigins(canonical, ['http://127.0.0.1:3000']), /http:\/\/127\.0\.0\.1:3000/],
+    ['site.example', [], /needs a canonical origin; pass --origin/],
+  ];
+  for (const [value, list, message] of refused)
+    assert.throws(() => passkeyRpId(value, list), (error: unknown) => error instanceof ConfigError && message.test(error.message) && error.details.code === 'invalid-passkey-rp-id', String(value));
+  assert.ok(passkeyPublicSuffixes.includes('co.uk') && passkeyPublicSuffixes.includes('com.au') && Object.isFrozen(passkeyPublicSuffixes));
+});
+
+test('the runtime refuses an invalid passkey RP ID before activation and hands a valid one to every extension', async t => {
+  const { root, probe, seen } = await extensionProject(t);
+  await assert.rejects(createRuntime(root, { origin: canonical, aliasOrigins: ['https://other.example'], passkeyRpId: 'site.example', extensions: [probe], log: () => {} }), /neither the host of https:\/\/other\.example/);
+  await assert.rejects(createRuntime(root, { passkeyRpId: 'site.example', extensions: [probe], log: () => {} }), /needs a canonical origin/);
+  assert.equal(seen.length, 0);
+  const runtime = await createRuntime(root, { origin: 'https://app.site.example', aliasOrigins: ['https://www.site.example'], passkeyRpId: 'site.example', extensions: [probe], log: () => {} });
+  t.after(() => runtime.close());
+  assert.equal(seen[0]!.passkeyRpId, 'site.example');
+  assert.equal(seen[0]!.origin, 'https://app.site.example', 'the canonical origin is unchanged');
+  const plain = await extensionProject(t);
+  const second = await createRuntime(plain.root, { origin: canonical, aliasOrigins: ['https://www.site.example'], extensions: [plain.probe], log: () => {} });
+  t.after(() => second.close());
+  assert.equal('passkeyRpId' in plain.seen[0]!, false, 'unset: activations carry no RP ID, so extensions keep their default');
+});
+
+test('hosted adapters read URLCODE_PASSKEY_RP_ID; the handler option wins', () => {
+  assert.equal(resolvePasskeyRpId(undefined, {}), undefined);
+  assert.equal(resolvePasskeyRpId(undefined, { URLCODE_PASSKEY_RP_ID: '  ' }), undefined);
+  assert.equal(resolvePasskeyRpId(undefined, { URLCODE_PASSKEY_RP_ID: ' site.example ' }), 'site.example');
+  assert.equal(resolvePasskeyRpId('app.example', { URLCODE_PASSKEY_RP_ID: 'site.example' }), 'app.example');
+});
+
+test('the CLI accepts --passkey-rp-id on validate, validates it, and refuses it on other commands', async t => {
+  const root = await project(t, { '/hello': { respond: { text: 'hi' } } });
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', timeout: 20000 });
+  const ok = run('validate', '--project', root, '--origin', 'https://app.site.example', '--alias-origin', 'https://www.site.example', '--passkey-rp-id', 'site.example');
+  assert.equal(ok.status, 0, ok.stderr);
+  const invalid = run('validate', '--project', root, '--origin', canonical, '--alias-origin', 'https://other.example', '--passkey-rp-id', 'site.example');
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr + invalid.stdout, /neither the host of https:\/\/other\.example nor a parent domain/);
+  const elsewhere = run('permissions', '--project', root, '--passkey-rp-id', 'site.example');
+  assert.notEqual(elsewhere.status, 0);
+  assert.match(elsewhere.stderr + elsewhere.stdout, /--passkey-rp-id is only supported by dev\/serve\/validate\/test\/routes\/audit\/benchmark/);
 });
