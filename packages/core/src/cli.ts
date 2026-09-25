@@ -115,6 +115,10 @@ const helpEntries: HelpEntry[] = [
 `  urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
     [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
 ` },
+  { name:'report', group:'Check', text:
+`  urlcode report [before.yaml|before-directory] [--project directory] [--policy /absolute/policy.json] [--host-file /absolute/operator/host.mjs] [--json] > report.html
+    # read-only HTML page for a person reviewing a change: what needs attention, what changed since BEFORE, and each route's request path; no script, no values
+` },
   { name:'permissions', group:'Check', text:
 `  urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
 ` },
@@ -337,7 +341,7 @@ try {
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
     if (values['passkey-rp-id'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--passkey-rp-id is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff','report'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
       if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list');
@@ -384,6 +388,13 @@ try {
     }else if(command==='review'){
       const review=await reviewProject(values.project,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
       print(values.json?review:stringifyYaml(review,{lineWidth:0,aliasDuplicateObjects:false}));
+    }else if(command==='report'){
+      // A view over explain, review and diff; reads nothing they do not (docs/TOOLING.md#review-report).
+      const {buildProjectReport,renderProjectReport}=await import('./project-report.ts');
+      const before=arg===undefined?undefined:{label:arg,input:(await stat(arg)).isDirectory()?{project:arg}:{yaml:await readFile(arg,'utf8')}};
+      const policy=verifiedPolicy??await loadOperatorPolicy(values.policy,values.project);
+      const report=await buildProjectReport(values.project,{extensions:operatorHost.extensions,policy,before});
+      print(values.json?report:renderProjectReport(report));
     }else if(command==='context'){
       if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
       const { buildContext, buildTaskContext, renderContext, renderTaskContext, estimateTokens, documentationTokens } = await import('./context.ts');

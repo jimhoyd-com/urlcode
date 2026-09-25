@@ -98,7 +98,7 @@ npm test           # urlcode test --project app --host-file host.mjs
 npm run audit      # urlcode audit --expect-routes ${routes} --project app --host-file host.mjs
 \`\`\`
 
-${auditGuidance} \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`app/tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). A case is \`{path, status, method?, headers?, body?, expectHeaders?, expectBody?}\` and nothing else (the runtime's \`schemas/requests.schema.json\`): send JSON as a text \`body\` with a \`content-type\` header and assert its exact text in \`expectBody\`. Without a global install, run any other command as \`npx --no --package @jimhoyd/urlcode urlcode … --project app --host-file host.mjs\`.
+${auditGuidance} \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`app/tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). A case is \`{path, status, method?, headers?, body?, expectHeaders?, expectBody?}\` and nothing else (the runtime's \`schemas/requests.schema.json\`): send JSON as a text \`body\` with a \`content-type\` header and assert its exact text in \`expectBody\`. Without a global install, run any other command as \`npx --no --package @jimhoyd/urlcode urlcode … --project app --host-file host.mjs\`. Hand a person \`urlcode report BEFORE … > report.html\` (BEFORE: the earlier checkout) to review a change; it does not replace these checks.
 
 ## Feedback
 

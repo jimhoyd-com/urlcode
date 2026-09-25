@@ -421,7 +421,10 @@ routes added, removed and changed with the changed keys, capability names,
 trusted and sandboxed code seams including `sandbox:` flips, and the env,
 secret, egress and extension grants the new version asks the operator for.
 Report those grants to the user; never approve them yourself. See
-[YAML change summaries](TOOLING.md#yaml-change-summaries).
+[YAML change summaries](TOOLING.md#yaml-change-summaries). For the person
+reviewing the change, `urlcode report BEFORE > report.html` renders the same
+summary with the review findings and each route's request path as one
+read-only page ([review report](TOOLING.md#review-report)).
 
 ## Deciding when a route needs `sandbox: true`
 
