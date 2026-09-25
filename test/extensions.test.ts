@@ -60,6 +60,12 @@ test('missing registrations, unsupported versions, invalid config and stale gran
   await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,schema:{type:'object',additionalProperties:false}}]}),{message:'Invalid extension configuration at /extensions/demo/config (additionalProperties): unknown key "label"; no keys are allowed here (run urlcode extensions --json for its configuration schema)'});
   // The failing field and check are named; the rejected value (which may be a secret) never is.
   await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,schema:{type:'object',properties:{label:{type:'integer'}}}}]}),(error:Error)=>/^Invalid extension configuration at \/extensions\/demo\/config\/label \(type\): must be integer$/.test(error.message)&&!error.message.includes('hello'));
+  // A route policy that fails the policy schema names its effective location and check, never the value (#696).
+  const policed=await project(t,{'/demo/*':mount,'/private':{respond:{text:'p'},policies:{extensions:{demo:{role:'secret-admin'}}}}},{},{extensions:declarations});
+  const policedExtension=await registration(policed,{activate(){activations++;throw new Error('must not run');}});
+  await assert.rejects(createRuntime(policed,{origin,extensions:[policedExtension]}),(error:Error)=>error.message==='Invalid extension policy at route /private, policies.extensions.demo.role (const): must be "member"'&&!error.message.includes('secret-admin'));
+  await assert.rejects(createRuntime(policed,{origin,extensions:[{...policedExtension,policySchema:{type:'object',properties:{role:{type:'string'},tier:{type:'string'}},required:['tier']}}]}),{message:'Invalid extension policy at route /private, policies.extensions.demo (required): missing required key "tier"'});
+  await assert.rejects(createRuntime(policed,{origin,extensions:[(({policySchema:_,...rest})=>rest)(policedExtension)]}),{message:'Invalid extension policy at route /private, policies.extensions.demo: extension "demo" declares no route policy'});
   await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,authoring:{description:'Customize it.',surfaces:[{kind:'widget' as never,name:'widget',description:'Unsupported surface.'}]}}]}),/Invalid extension authoring surface kind/);
   assert.equal(activations,0);
   await assert.rejects(buildCloudflare(root,{out:join(root,'out')}),/extension/);
@@ -248,7 +254,11 @@ test('route auth short form expands to the canonical policies.extensions.auth re
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true}})),/Route \/a declares auth but the project declares no extensions\.auth/);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:{auth:{role:'member'}}}}},{},{extensions:{auth}})),/Route \/a declares both auth and policies\.extensions\.auth/);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:false}}},{},{extensions:{auth}})),/Route \/a declares auth alongside policies\.extensions: false/);
-  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{roles:['member']}}},{},{extensions:{auth}})),/Invalid configuration at route \/a, auth \(const\): must be true/);
+  // An object that fails routeAuth names its own failing field, not the `auth: true` branch it was never meant for (#702).
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{roles:['member']}}},{},{extensions:{auth}})),/: Invalid configuration at route \/a, auth \(additionalProperties\): unknown key "roles"; did you mean "role"\? \(run urlcode schema <path> for the shape\)$/);
+  await assert.rejects(loadDocument(await project(t,{'/api/items':{respond:{text:'a'},auth:{bearer:{scopes:['items:read'],quota:{requests:0,window:60}}}}},{},{extensions:{auth}})),/: Invalid configuration at route \/api\/items, auth\.bearer\.quota\.requests \(minimum\): must be >= 1$/);
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{freshWithinSeconds:0}}},{},{extensions:{auth}})),/: Invalid configuration at route \/a, auth\.freshWithinSeconds \(minimum\): must be >= 1$/);
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:'yes'}},{},{extensions:{auth}})),/Invalid configuration at route \/a, auth \((const|type)\)/);
 });
 test('runtime protects a short-form auth route with the demo registry',async t=>{
   const root=await project(t,{'/auth/*':{extension:'auth',methods:['GET','HEAD','POST']},'/private':{respond:{text:'private'},auth:{role:'member'}},'/open':{respond:{text:'open'},auth:{required:false}}},{},{extensions:{auth:{version:'1',config:{label:'hello'}}}});

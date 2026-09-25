@@ -166,6 +166,24 @@ Invalid extension configuration at /extensions/mcp/config/servers/docs/tools/sea
 The message names keys and schema-declared bounds, never the rejected value,
 because configuration can hold secrets.
 
+A route policy that fails the registration's `policySchema` is reported the
+same way, located at the route's `policies.extensions.<name>`:
+
+```text
+Invalid extension policy at route /private, policies.extensions.auth.role (type): must be string (run urlcode extensions --json for its policy schema)
+```
+
+The policy checked is the route's effective one: project and profile
+`policies.extensions` layers merged with the route's own, and the `auth:` short
+form expanded. The failing key may therefore be written in one of those layers
+rather than on the route. A route that names an extension declaring no
+`policySchema` fails with `extension "<name>" declares no route policy`.
+
+When a value can take more than one shape (a `oneOf`, such as `auth: true` or
+an `auth:` object), core and extension errors report the deepest failure in the
+shape that was tried, not the first alternative. So `auth: {freshWithinSeconds: 0}`
+names `auth.freshWithinSeconds (minimum)` rather than saying `auth` must be `true`.
+
 For extension-protected routes, agents/throttle run before authorization and
 cache access happens only after authorization. This part is unconditional:
 naming any extension in `policies.extensions` always runs its `authorize()`
