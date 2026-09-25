@@ -123,7 +123,7 @@ token or a cookie:
 
 | Member | What it is |
 |---|---|
-| `version`, `active` | `1`, and whether auth is activated; every other member throws `AuthError` 503 `auth_inactive` while it is not |
+| `version`, `active` | `1`, and whether auth is activated. While it is not, `account()`, `csrf.token()`, `urls.*` and `administration` throw `AuthError` 503 `auth_inactive`; `permissions`, `csrf.field` and `csrf.header` are static and never throw, so read `active` to tell whether auth is activated |
 | `permissions` | The 11 permission names auth enforces (`authPermissions`) |
 | `account(request)` | The signed-in account of a request an auth session policy authorized: `{id, email, emailVerified, roles, permissions, restricted, impersonated, authenticatedAt, freshUntil, fresh, locale, has(permission), actor}`, or `null`. `has()` accepts any name, for example `audit.read`. `actor` is an opaque capability for `administration` |
 | `csrf` | `{field: 'csrf', header: 'x-csrf-token', token(request)}`: the session-bound token to embed in a form or send as the header |
