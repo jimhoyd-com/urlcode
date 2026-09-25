@@ -642,6 +642,13 @@ writes what they return:
   existing file is kept, never overwritten);
 - one import and one list line in `host.mjs`.
 
+`add` and `remove` edit `app/urlcode.yaml` in place: they insert or delete only
+the `extensions.<name>` entry and the `includes` item, and every other line,
+including flow collections, long scalars, comments and spacing, stays byte for
+byte as you wrote it. A layout they cannot edit that way (for example an
+`includes:` that is not a list) refuses and prints the block to write yourself;
+it is never reformatted.
+
 It prints the environment variables the host reads, next steps, and the new
 project revision to review and set as `PROJECT_SHA256` where the host runs.
 Any failure or refusal, by `add` or `remove`, rolls every change back:
