@@ -165,9 +165,9 @@ export function createAdministration({ service, delivery, site, now = Date.now }
             async list(actor, query) { await permitted(actor, 'auth.users.read'); return service.listUsers(query); },
             async get(actor, accountId) { await permitted(actor, 'auth.users.read'); return service.getUser(accountId); },
             async sessions(actor, accountId) { await permitted(actor, 'auth.sessions.manage'); return service.listSessions(accountId); },
-            authentication: (actor, input) => service.inspectAccountAuthentication({ actorToken: tokenOf(actor), ...input }),
-            reveal: (actor, input) => service.adminReveal({ actorToken: tokenOf(actor), ...input }),
-            export: (actor, input) => service.adminExport({ actorToken: tokenOf(actor), ...input }),
+            authentication: async (actor, input) => service.inspectAccountAuthentication({ actorToken: tokenOf(actor), ...input }),
+            reveal: async (actor, input) => service.adminReveal({ actorToken: tokenOf(actor), ...input }),
+            export: async (actor, input) => service.adminExport({ actorToken: tokenOf(actor), ...input }),
             async exportRange(actor, input) {
                 if (!input || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 256)
                     throw new AuthError(400, 'invalid_reason');
@@ -214,17 +214,19 @@ export function createAdministration({ service, delivery, site, now = Date.now }
                     throw tooLarge();
                 return rows;
             },
-            addNote: (actor, input) => service.adminAddNote({ actorToken: tokenOf(actor), ...input }),
-            setRoles: (actor, input) => service.adminSetRoles({ actorToken: tokenOf(actor), ...input }),
-            setStatus: (actor, input) => service.adminSetStatus({ actorToken: tokenOf(actor), ...input }),
-            revokeSessions: (actor, input) => service.adminRevokeSessions({ actorToken: tokenOf(actor), ...input }),
-            bulk: (actor, input) => service.adminBulk({ actorToken: tokenOf(actor), ...input }),
+            addNote: async (actor, input) => service.adminAddNote({ actorToken: tokenOf(actor), ...input }),
+            setRoles: async (actor, input) => service.adminSetRoles({ actorToken: tokenOf(actor), ...input }),
+            setStatus: async (actor, input) => service.adminSetStatus({ actorToken: tokenOf(actor), ...input }),
+            revokeSessions: async (actor, input) => service.adminRevokeSessions({ actorToken: tokenOf(actor), ...input }),
+            bulk: async (actor, input) => service.adminBulk({ actorToken: tokenOf(actor), ...input }),
             async create(actor, input) {
                 const actorToken = tokenOf(actor);
                 required();
-                const created = await service.adminCreateUser({ actorToken, ...input });
-                await slot(() => delivery.token('account-setup', created.user.email, created.setupToken, created.user.profile?.locale, { strict: true, signal: AbortSignal.timeout(DELIVERY_MS) })).catch(failed);
-                return { user: created.user };
+                return await slot(async () => {
+                    const created = await service.adminCreateUser({ actorToken, ...input });
+                    await delivery.token('account-setup', created.user.email, created.setupToken, created.user.profile?.locale, { strict: true, signal: AbortSignal.timeout(DELIVERY_MS) }).catch(failed);
+                    return { user: created.user };
+                });
             },
             async administer(actor, input) {
                 const actorToken = tokenOf(actor);
@@ -253,29 +255,31 @@ export function createAdministration({ service, delivery, site, now = Date.now }
         },
         sessions: {
             async list(actor, filters) { await permitted(actor, 'auth.sessions.manage'); return service.listAllSessions(filters); },
-            revoke: (actor, input) => service.adminRevokeSession({ actorToken: tokenOf(actor), ...input }),
+            revoke: async (actor, input) => service.adminRevokeSession({ actorToken: tokenOf(actor), ...input }),
         },
         registrations: {
             async list(actor, page) { await permitted(actor, 'auth.users.manage'); return service.listRegistrationRequests(page); },
-            approve: (actor, input) => service.approveRegistration({ actorToken: tokenOf(actor), ...input }),
+            approve: async (actor, input) => service.approveRegistration({ actorToken: tokenOf(actor), ...input }),
             async invite(actor, input) {
                 const actorToken = tokenOf(actor);
                 required();
-                const issued = await service.invite({ actorToken, email: input.email });
-                await slot(() => delivery.token('invitation', input.email, issued.token, undefined, { strict: true, signal: AbortSignal.timeout(DELIVERY_MS) })).catch(failed);
+                await slot(async () => {
+                    const issued = await service.invite({ actorToken, email: input.email });
+                    await delivery.token('invitation', input.email, issued.token, undefined, { strict: true, signal: AbortSignal.timeout(DELIVERY_MS) }).catch(failed);
+                });
             },
         },
         cases: {
             async list(actor, page) { await permitted(actor, 'auth.cases.read'); return service.listCases(page); },
             async get(actor, caseId) { await permitted(actor, 'auth.cases.read'); return service.getCase(caseId); },
-            create: (actor, input) => service.createCase({ actorToken: tokenOf(actor), ...input }),
-            note: (actor, input) => service.addCaseNote({ actorToken: tokenOf(actor), ...input }),
-            close: (actor, input) => service.closeCase({ actorToken: tokenOf(actor), ...input }),
-            approve: (actor, input) => service.approveCase({ actorToken: tokenOf(actor), ...input }),
+            create: async (actor, input) => service.createCase({ actorToken: tokenOf(actor), ...input }),
+            note: async (actor, input) => service.addCaseNote({ actorToken: tokenOf(actor), ...input }),
+            close: async (actor, input) => service.closeCase({ actorToken: tokenOf(actor), ...input }),
+            approve: async (actor, input) => service.approveCase({ actorToken: tokenOf(actor), ...input }),
         },
         recovery: {
             async list(actor, page) { await permitted(actor, 'auth.cases.read'); return service.listRecoveryCases(page); },
-            create: (actor, input) => service.createRecoveryCase({ actorToken: tokenOf(actor), ...input }),
+            create: async (actor, input) => service.createRecoveryCase({ actorToken: tokenOf(actor), ...input }),
             async approve(actor, input) {
                 const actorToken = tokenOf(actor);
                 if (!capabilities.manualRecovery)
@@ -300,15 +304,18 @@ export function createAdministration({ service, delivery, site, now = Date.now }
             const actorToken = tokenOf(actor), current = active();
             if (!capabilities.impersonation)
                 throw new AuthError(503, 'impersonation_unavailable');
-            const started = await service.createImpersonation({ actorToken, ...input });
-            try {
-                await slot(() => delivery.send('impersonation-started', started.user.email, { reason: input.reason, link: delivery.page('/account') }, started.user.profile?.locale, { strict: true, signal: AbortSignal.timeout(DELIVERY_MS) }));
-            }
-            catch (error) {
-                await service.logout(started.token).catch(() => {});
-                throw error;
-            }
-            return { headers: Object.freeze(current.sessionHeaders(started.token)), location: current.mount + '/account' };
+            return await slot(async () => {
+                const started = await service.createImpersonation({ actorToken, ...input });
+                try {
+                    await delivery.send('impersonation-started', started.user.email, { reason: input.reason, link: delivery.page('/account') }, started.user.profile?.locale, { strict: true, signal: AbortSignal.timeout(DELIVERY_MS) });
+                }
+                catch (error) {
+                    // The notice is mandatory: a support session nobody was told about does not survive.
+                    await service.logout(started.token).catch(() => {});
+                    throw error;
+                }
+                return { headers: Object.freeze(current.sessionHeaders(started.token)), location: current.mount + '/account' };
+            });
         },
         reauthorize,
     };

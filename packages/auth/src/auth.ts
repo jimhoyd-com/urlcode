@@ -185,17 +185,14 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
             const abuse = activateAbuse(config.abuse as AbuseConfig | undefined, options.abuse);
             // Fail-fast: a configured hook whose module fails to load or whose named export is missing fails
             // activation here, never the first request that reaches it; `sandbox: true` is refused by core's loader.
-            const detachHooks = service.attachLifecycleHooks(await loadAuthHooks(config.hooks as Readonly<Record<string, unknown>> | undefined, context.root));
-            try { await warnForeignPasskeys(service, context); }
-            catch (error) { detachHooks(); throw error; }
+            const loadedHooks = await loadAuthHooks(config.hooks as Readonly<Record<string, unknown>> | undefined, context.root);
+            await warnForeignPasskeys(service, context);
             const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, origins: context.origins, csrfKey: options.csrfKey }), registrationMode = String(config.registration || 'off'), registration = registrationMode === 'open';
             // The runtime activated `ui` before auth, but its kit is read per request, never captured at activation.
             const source = () => options.presentation ?? options.ui.kit.presentation;
             const lazyPresentation: Presentation = { get locales() { return source().locales; }, get defaultLocale() { return source().defaultLocale; }, get english() { return source().english; }, resolve: preferences => source().resolve(preferences), coverage: locale => source().coverage(locale) };
-            if (registrationMode !== service.getRegistrationMode()) {
-                detachHooks();
+            if (registrationMode !== service.getRegistrationMode())
                 throw new Error('Project registration mode must match operator auth service mode');
-            }
             const registrationSchema = service.getRegistrationSchema();
             const metadataFields = Object.entries(registrationSchema.metadata ?? {});
             function profileInput(fields: Record<string, string>): RegistrationInput {
@@ -267,6 +264,8 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
             // object core hands both authorize() and middleware(), so middleware() can report
             // it on the response (urlcode#703). A WeakMap: nothing outlives the request.
             const counted = new WeakMap<ExtensionRequest, { quota: { requests: number; window: number }; remaining: number; reset: number }>();
+            // Only once nothing else can refuse this activation: the hooks and the exports go live together.
+            const detachHooks = service.attachLifecycleHooks(loadedHooks);
             const activation = { mount, origin: context.origin, http };
             current = activation;
             return {
