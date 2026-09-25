@@ -90,7 +90,7 @@ export function createEntryGuard(http: AuthHttp, mount: string, ui: UiExtension,
         if (wantsJson(request))
             return jsonResponse(403, { error: message, challengeRequired: true });
         const retry = signup ? '/signup' : path === '/forgot-password' || path === '/recover-factor' ? path : path === '/send-email-code' ? '/email-code' : '/login';
-        return screenResponse('Verification required', { name: 'auth/status', view: { alert: true, message, href: mount + retry, label: presentation?.textSource('Try again') ?? 'Try again' } }, { status: 403, presentation, ui });
+        return screenResponse((presentation ?? ui.kit.resolveContext()).text('abuse.title'), { name: 'auth/status', view: { alert: true, message, href: mount + retry, label: presentation?.textSource('Try again') ?? 'Try again' } }, { status: 403, presentation, ui });
     };
 }
 /** The password backoff around a sign-in or step-up: a blocked address is refused before any password is checked. */

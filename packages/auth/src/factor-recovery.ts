@@ -1,6 +1,4 @@
 import type {AbuseChallengeWidget} from '@jimhoyd/urlcode-abuse';
-import {createPresentation} from '@jimhoyd/urlcode-ui';
-import {englishCatalogue} from './presentation.ts';
 import type {PresentationContext} from './presentation.ts';
 import {randomBytes} from 'node:crypto';
 import {jsonResponse,wantsJson} from '@jimhoyd/urlcode/extensions';
@@ -24,7 +22,7 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
  const browserCookie='__Host-urlcode-factor-recovery';
  const enabled=()=>options.service.getFactorRecoveryEnabled()&&options.delivery.available;
  const hidden=(token:string)=>hiddenField('token',token);
- return {enabled,async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation({defaults:englishCatalogue}).resolve()):Promise<AuthHttpResponse|undefined>{
+ return {enabled,async handle(request:ExtensionRequest,presentation:PresentationContext=options.ui.kit.resolveContext()):Promise<AuthHttpResponse|undefined>{
   const tr=(key:string,values?:Record<string,string|number>)=>presentation.text(key,values);
  const form=(path:string,csrf:string,markup:string,label:string)=>`<form method="post" action="${escapeHtml(mount+path+'?lang='+encodeURIComponent(presentation.locale))}">${hiddenField('csrf', csrf)}${markup}<button type="submit">${escapeHtml(label)}</button></form>`;
 
@@ -54,9 +52,9 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
     catch{if(issued.cancelToken)await options.service.cancelFactorRecovery(issued.cancelToken).catch(()=>{});}
    }
    const responseHeaders:[string,string][]=[['set-cookie',http.setCookie(browserCookie,browserToken,5*86400)]];
-   return wantsJson(request)?jsonResponse(200,{message:'If this account is eligible, recovery instructions will be sent. Continue in this browser.'},responseHeaders):status(presentation.textSource('Check your email'),presentation.textSource('If this account is eligible, recovery instructions will be sent. Continue in this browser.'),responseHeaders);
+   return wantsJson(request)?jsonResponse(200,{message:'If this account is eligible, recovery instructions will be sent. Continue in this browser.'},responseHeaders):status(presentation.text('page.checkEmail'),presentation.textSource('If this account is eligible, recovery instructions will be sent. Continue in this browser.'),responseHeaders);
   }
-  if(path==='/recover-factor/cancel'){await options.service.cancelFactorRecovery(fields.token||'');return wantsJson(request)?jsonResponse(200,{cancelled:true}):status(presentation.textSource('Recovery cancelled'),presentation.textSource('This recovery request has been cancelled. Your existing sign-in methods are unchanged.'));}
+  if(path==='/recover-factor/cancel'){await options.service.cancelFactorRecovery(fields.token||'');return wantsJson(request)?jsonResponse(200,{cancelled:true}):status(presentation.text('page.recoveryCancelled'),presentation.textSource('This recovery request has been cancelled. Your existing sign-in methods are unchanged.'));}
   const browserToken=http.cookie(request,browserCookie);if(!browserToken)throw new AuthHttpError(403,'Use the browser that requested recovery');
   if(path==='/recover-factor/confirm'){
    const result=await options.service.confirmFactorRecovery({token:fields.token||'',browserToken});

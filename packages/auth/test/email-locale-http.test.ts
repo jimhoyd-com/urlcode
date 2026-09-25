@@ -7,22 +7,17 @@ import {join} from 'node:path';
 import {randomBytes,createHmac} from 'node:crypto';
 import {createAuthService} from '../src/auth-core.ts';
 import {authFor} from './support/companions.ts';
-import { createPresentation as createUiPresentation } from '@jimhoyd/urlcode-ui';
-import type { PresentationOptions } from '@jimhoyd/urlcode-ui';
-import { englishCatalogue } from '../src/presentation.ts';
-/** ui's presentation over auth's English catalogue, as the host registers it. */
-const createPresentation = (options: Omit<PresentationOptions, 'defaults'> = {}) => createUiPresentation({ ...options, defaults: englishCatalogue });
 import {createRegistrationPolicy} from '../src/registration.ts';
 import type { CsrfBody, MessageBody, SessionBody, SignupStatusBody } from './support/json-api.ts';
-import { activatedUi } from './support/render.ts';
+import { activatedUi, writeCopy } from './support/render.ts';
 function totp(secret:string){const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';let bits=0,value=0;const bytes:number[]=[];for(const char of secret){value=(value<<5)|alphabet.indexOf(char);bits+=5;if(bits>=8){bits-=8;bytes.push((value>>>bits)&255);}}const counter=Buffer.alloc(8);counter.writeBigUInt64BE(BigInt(Math.floor(Date.now()/30000)));const digest=createHmac('sha1',Buffer.from(bytes)).update(counter).digest(),offset=digest.at(-1)!&15;return String((digest.readUInt32BE(offset)&0x7fffffff)%1000000).padStart(6,'0');}
 
 test('HTTP email callbacks receive scoped locales and known-account notices prefer saved locale without public enumeration',async t=>{
  const root=await mkdtemp(join(tmpdir(),'mail-locale-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read']},defaultRole:'member',requireEmailVerification:true,allowEmailFactorRecovery:true,registrationPolicy:createRegistrationPolicy({locales:['en','fr']})});cleanup(t, ()=>service.close());
  const user=await service.register({email:'reader@example.test',password:'correct horse battery staple',profile:{locale:'fr'}}),origin='https://site.example',projectSha256='a'.repeat(64);
- const ui=await activatedUi(t,import.meta.dirname,projectSha256,origin);
- const hosted=await authFor(t,root,{service,projectSha256,csrfKey:randomBytes(32),ui,presentation:createPresentation({catalogues:{fr:{'page.signIn':'Connexion'}}})},origin,{locales:['fr']});
+ const ui=await activatedUi(t,root,projectSha256,origin,await writeCopy(root,{fr:{'page.signIn':'Connexion'}}));
+ const hosted=await authFor(t,root,{service,projectSha256,csrfKey:randomBytes(32),ui},origin,{locales:['fr']});
  // What mail rendered: the template key and the locale of the copy auth asked for.
  const messages=hosted.sent as readonly {template:string;locale:string}[];
  const kind=(template:string)=>template.slice('auth.'.length);
@@ -56,8 +51,8 @@ test('confirmed email change sends a localized notice to the verified replacemen
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[]},defaultRole:'member',now:()=>now});cleanup(t, ()=>service.close());
  const password='synthetic strong password phrase',user=await service.register({email:'old@example.test',password,profile:{locale:'fr'}}),change=await service.requestEmailChange({token:user.token,email:'new@example.test',password});now+=86400000;
  const messages:{to:string;template:string;locale:string}[]=[],origin='https://site.example',projectSha256='a'.repeat(64),csrfKey=randomBytes(32),binding=randomBytes(32).toString('base64url');
- const ui=await activatedUi(t,import.meta.dirname,projectSha256,origin);
- const instance=await (await authFor(t,root,{service,projectSha256,csrfKey,ui,presentation:createPresentation({catalogues:{fr:{'page.signIn':'Connexion'}}})},origin,{locales:['fr'],transport:{kind:'failing',development:true,async deliver(envelope){messages.push(envelope);throw new Error('synthetic sender failure');}}})).registration.activate({registration:'open'},{origin,target:'node',projectSha256,mounts:['/account'], root: import.meta.dirname});
+ const ui=await activatedUi(t,root,projectSha256,origin,await writeCopy(root,{fr:{'page.signIn':'Connexion'}}));
+ const instance=await (await authFor(t,root,{service,projectSha256,csrfKey,ui},origin,{locales:['fr'],transport:{kind:'failing',development:true,async deliver(envelope){messages.push(envelope);throw new Error('synthetic sender failure');}}})).registration.activate({registration:'open'},{origin,target:'node',projectSha256,mounts:['/account'], root: import.meta.dirname});
  const csrf=createHmac('sha256',csrfKey).update('urlcode-csrf\0'+origin+'\0'+binding).digest('hex');
  const response=await instance.handle({method:'POST',path:'/account/verify-email-change',target:'/account/verify-email-change',query:new URLSearchParams(),headers:new Headers({origin,cookie:'__Host-urlcode-flow='+binding,'content-type':'application/json',accept:'application/json'}),headerCounts:{origin:1,cookie:1},body:Buffer.from(JSON.stringify({csrf,token:change.verificationToken})),origin,mount:'/account',route:'/account/*',client:null, requestId: 'test-request', env: {}});
  assert.equal(response.status,200);assert.equal(messages[0]?.template,'auth.email-changed');assert.equal(messages[0]?.to,'new@example.test');assert.equal(messages[0]?.locale,'fr');assert.equal((await service.getUser(user.user.id))?.email,'new@example.test');

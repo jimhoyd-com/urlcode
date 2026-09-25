@@ -1,11 +1,6 @@
 import { cleanup } from './cleanup.ts';
 import { TOTP } from 'otpauth';
 import { createRegistrationPolicy } from '../src/registration.ts';
-import { createPresentation as createUiPresentation } from '@jimhoyd/urlcode-ui';
-import type { PresentationOptions } from '@jimhoyd/urlcode-ui';
-import { englishCatalogue } from '../src/presentation.ts';
-/** ui's presentation over auth's English catalogue, as the host registers it. */
-const createPresentation = (options: Omit<PresentationOptions, 'defaults'> = {}) => createUiPresentation({ ...options, defaults: englishCatalogue });
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -19,23 +14,25 @@ import { createAuth } from '../src/auth.ts';
 import type { AuthExtensionOptions } from '../src/auth.ts';
 import { siteCompanions, lastSent, linkIn } from './support/companions.ts';
 import type { TestContext } from 'node:test';
-import { kitSetup, kitYaml } from './support/render.ts';
+import { kitSetup, kitYaml, writeCopy } from './support/render.ts';
 /** `delivery`: mail records what auth sends (`sent`); without it mail has no transport and auth serves password sign-in only. */
-async function app(t: TestContext, { delivery = false, providers, presentation, serviceOptions, aliasOrigins }: { delivery?: boolean; providers?: AuthExtensionOptions['providers']; presentation?: AuthExtensionOptions['presentation']; serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>; aliasOrigins?: string[] } = {}) {
+async function app(t: TestContext, { delivery = false, providers, uiConfig = {}, copy = {}, serviceOptions, aliasOrigins }: { delivery?: boolean; providers?: AuthExtensionOptions['providers']; /** `extensions.ui.config`, and project catalogues written to `ui/copy/<locale>.json`. */ uiConfig?: Record<string, unknown>; copy?: Record<string, Record<string, string>>; serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>; aliasOrigins?: string[] } = {}) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-http-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
-    const kit = kitYaml();
+    if (Object.keys(copy).length)
+        uiConfig = { ...uiConfig, ...await writeCopy(project, copy) };
+    const kit = kitYaml(uiConfig);
     await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: serviceOptions?.registrationMode ?? 'open' } } }, routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
             '/private': { respond: { json: { protected: true } }, methods: ['GET', 'POST'], policies: { extensions: { auth: { permission: 'site.read' } } } },
             ...kit.routes,
         } }));
-    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
+    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256, uiConfig);
     const hosted = await siteCompanions(t, root, projectSha256, delivery ? {} : { transport: false });
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member', ...serviceOptions });
-    const extension = createAuth({ ...(providers ? { providers } : {}), ...(presentation ? { presentation } : {}), ui, service, csrfKey: randomBytes(32), projectSha256, audit: hosted.audit, mail: hosted.mail }).registration;
+    const extension = createAuth({ ...(providers ? { providers } : {}), ui, service, csrfKey: randomBytes(32), projectSha256, audit: hosted.audit, mail: hosted.mail }).registration;
     const server = await startServer({ project, origin: 'https://example.test', ...(aliasOrigins ? { aliasOrigins } : {}), port: 0, extensions: [...registrations, ...hosted.registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const cookies = new Map<string, string>();
@@ -311,15 +308,14 @@ test('OIDC subjects are scoped to verified issuer across operator provider repla
     assert.equal(second.user.email, email);
 });
 test('locale and safe theme apply to trusted HTML while translated text remains escaped', async (t) => {
-    const presentation = createPresentation({ catalogues: { fr: { 'page.signIn': 'Connexion <test>', 'field.email': 'Adresse électronique', 'nav.skip': 'Aller au contenu' } }, theme: { '--ui-accent': '#123456' } });
-    const { request } = await app(t, { presentation });
+    const { request } = await app(t, { uiConfig: { theme: { colors: { accent: '#123456' } } }, copy: { fr: { 'page.signIn': 'Connexion <test>', 'field.email': 'Adresse électronique', 'nav.skip': 'Aller au contenu' } } });
     const page = await request('/account/login?lang=fr');
     const html = await page.text();
     assert.match(html, /lang="fr"/);
     assert.match(html, /Connexion &lt;test&gt;/);
     assert.match(html, /Adresse électronique/);
     assert.match(html, /Aller au contenu/);
-    assert.match(html, /--ui-accent:#123456/);
+    assert.match(html, /--accent:#123456/);
     assert.doesNotMatch(html, /<test>/);
 });
 test('registration HTTP enforces consent, schema boundaries, honeypot and invitation mode', async (t) => {

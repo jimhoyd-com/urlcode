@@ -10,7 +10,6 @@ import {createManualRecoveryFlows} from './manual-recovery.ts';
 import {createFactorRecoveryFlows} from './factor-recovery.ts';
 import type { PresentationContext } from './presentation.ts';
 import type { RegistrationInput, MetadataValue } from './registration.ts';
-import type { Presentation } from './presentation.ts';
 import { createSecondFactorFlows } from './second-factor-flows.ts';
 import { createSignup } from './auth-signup.ts';
 import { createAuthFlows } from './auth-flows.ts';
@@ -31,7 +30,6 @@ import type { AuthExports, ResolvedSession } from './exports.ts';
 import { supportSessionResponse } from './support-session.ts';
 import type { SupportBanner } from './support-session.ts';
 export interface AuthExtensionOptions {
-    presentation?: Presentation;
     /** The `ui` extension's exports. Every account screen renders through its kit; activation refuses without it. */
     ui: UiExtension;
     /** The audit extension's exports: auth's outbox drains into it, so activation refuses while it is inactive. */
@@ -190,8 +188,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
             await warnForeignPasskeys(service, context);
             const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, origins: context.origins, csrfKey: options.csrfKey }), registrationMode = String(config.registration || 'off'), registration = registrationMode === 'open';
             // The runtime activated `ui` before auth, but its kit is read per request, never captured at activation.
-            const source = () => options.presentation ?? options.ui.kit.presentation;
-            const lazyPresentation: Presentation = { get locales() { return source().locales; }, get defaultLocale() { return source().defaultLocale; }, get english() { return source().english; }, resolve: preferences => source().resolve(preferences), coverage: locale => source().coverage(locale) };
+            const source = () => options.ui.kit.presentation;
             if (registrationMode !== service.getRegistrationMode())
                 throw new Error('Project registration mode must match operator auth service mode');
             const registrationSchema = service.getRegistrationSchema();
@@ -223,14 +220,14 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
             const trustedCookie = '__Host-urlcode-trusted-device';
             const trusted = (request: ExtensionRequest) => { const token = service.getSecurityPolicy().trustedDeviceTtlMs ? http.cookie(request, trustedCookie) : undefined; return token ? {trustedDevice:token} : {}; };
             const noticeLocale = (request: ExtensionRequest, user: AuthUser) => source().resolve({ ...(user.profile?.locale ? {accountLocale:user.profile.locale} : {}), ...(request.query.get('lang') ? {queryLocale:request.query.get('lang')!} : {}), ...(request.headers.get('accept-language') ? {acceptLanguage:request.headers.get('accept-language')!} : {}) }).locale;
-            const flows = createAuthFlows({ ...options, service, presentation: lazyPresentation, onSession: async (request, result) => {
+            const flows = createAuthFlows({ ...options, service, onSession: async (request, result) => {
                     if (result.newDevice)
                         await delivery.notice('new-device', result.user.email, noticeLocale(request,result.user));
                     return http.device(request).headers;
                 }, enrollment: { required: !!registrationSchema.termsVersion || metadataFields.some(([, field]) => field.required), fields: (presentation) => profileMarkup(presentation), read: profileInput, names: ['displayName', 'locale', 'termsAccepted', ...metadataFields.map(([name]) => 'meta.' + name)] } }, http, mount, registration);
             const factorRecovery=createFactorRecoveryFlows({service,delivery,ui:options.ui,challenge:abuse?.widget},http,mount);
             const manualRecovery=createManualRecoveryFlows(service,http,mount,options.ui);
-            const signup = createSignup({ ...options, service, presentation: lazyPresentation, delivery, challenge: abuse?.widget }, http, mount, { fields: p => profileMarkup(p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] });
+            const signup = createSignup({ ...options, service, delivery, challenge: abuse?.widget }, http, mount, { fields: p => profileMarkup(p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] });
             const passkeyButton = (kind: 'register' | 'login' | 'step-up', text: (value: string) => string = value => value) => options.passkeys ? `<button type="button" data-passkey="${kind}" data-base="${escapeHtml(mount)}" data-unavailable="${escapeHtml(text('Passkeys are unavailable in this browser. Use another sign-in method.'))}" data-failed="${escapeHtml(text('Passkey request failed'))}" data-cancelled="${escapeHtml(text('Passkey ceremony cancelled'))}">${escapeHtml(text(kind === 'register' ? 'Add a passkey' : kind === 'step-up' ? 'Confirm identity with a passkey' : 'Sign in with a passkey'))}</button><p role="status" aria-live="polite" data-passkey-status></p>` : '';
             async function principal(request: ExtensionRequest): Promise<{
                 token: string;
@@ -379,7 +376,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                     let submittedEmail: string | undefined, submittedReturnTo: string | undefined;
                     const returnField = (value: string | null | undefined) => validReturnTo(value, mount) ? hidden('returnTo', value) : '';
                     const passwordPage = (email: string, csrf: string, failed = false, returnTo?: string) => {
-                        return screen('Enter your password', 'password', { failed: failed ? presentation.text('ux.signInFailed') : null, intro: '', email, changeHref: lang('/login'), changeLabel: presentation.text('ux.change'), form: m(form(mount + '/login', csrf, hidden('email', email) + returnField(returnTo) + formField('password', 'Password', 'password', 'current-password') + (mail.available ? `<p class="ui-link-list"><a href="${escapeHtml(lang('/forgot-password'))}">${tr('nav.forgotPassword')}</a></p>` : '') + factors(), 'Sign in')) }, failed ? 401 : 200, [], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                        return screen(presentation.text('page.enterPassword'), 'password', { failed: failed ? presentation.text('ux.signInFailed') : null, intro: '', email, changeHref: lang('/login'), changeLabel: presentation.text('ux.change'), form: m(form(mount + '/login', csrf, hidden('email', email) + returnField(returnTo) + formField('password', 'Password', 'password', 'current-password') + (mail.available ? `<p class="ui-link-list"><a href="${escapeHtml(lang('/forgot-password'))}">${tr('nav.forgotPassword')}</a></p>` : '') + factors(), 'Sign in')) }, failed ? 401 : 200, [], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                     };
                     try {
                         const path = request.path.slice(mount.length) || '/';
@@ -423,19 +420,19 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                             if (path === '/csrf')
                                 return jsonResponse(200, { csrf }, headers);
                             if (path === '/' || path === '/login')
-                                return screen('Sign in', 'sign-in', { intro: presentation.text('ux.signInIntro'), form: m(form(mount + '/identify', csrf, returnField(request.query.get('returnTo')) + formField('email', 'Email address', 'email', 'username'), 'Continue')), alternativeLabel: presentation.text('ux.orContinueWith'), passkey: m(passkeyLogin(csrf)), providers: m(flows.buttons(csrf, false, text, presentation.locale, presentation)), linksLabel: text('Sign-in methods'), links: [...(registrationMode !== 'off' ? [{ href: mount + '/register', label: presentation.text('action.register') }] : []), ...(factorRecovery.enabled() ? [{ href: mount + '/recover-factor', label: presentation.text('recovery.lost') }] : []), ...(mail.available ? [{ href: mount + '/forgot-password', label: presentation.text('nav.forgotPassword') }] : []), ...(mail.available ? [{ href: mount + '/email-code', label: presentation.text('copy.emailSignIn') }] : [])] }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                                return screen(presentation.text('page.signIn'), 'sign-in', { intro: presentation.text('ux.signInIntro'), form: m(form(mount + '/identify', csrf, returnField(request.query.get('returnTo')) + formField('email', 'Email address', 'email', 'username'), 'Continue')), alternativeLabel: presentation.text('ux.orContinueWith'), passkey: m(passkeyLogin(csrf)), providers: m(flows.buttons(csrf, false, text, presentation.locale, presentation)), linksLabel: text('Sign-in methods'), links: [...(registrationMode !== 'off' ? [{ href: mount + '/register', label: presentation.text('action.register') }] : []), ...(factorRecovery.enabled() ? [{ href: mount + '/recover-factor', label: presentation.text('recovery.lost') }] : []), ...(mail.available ? [{ href: mount + '/forgot-password', label: presentation.text('nav.forgotPassword') }] : []), ...(mail.available ? [{ href: mount + '/email-code', label: presentation.text('copy.emailSignIn') }] : [])] }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                             if (path === '/register') {
                                 const invitations = request.query.getAll('token');
                                 if (invitations.length > 1 || invitations.some(token => token.length > 512))
                                     throw new AuthHttpError(400, 'Invalid invitation');
                                 if (registrationMode === 'off')
                                     throw new AuthHttpError(404, 'Not found');
-                                return screen(registrationMode === 'waitlist' ? 'Request an account' : 'Create account', 'register', { form: m(form(mount + '/register', csrf, formField('email', 'Email address', 'email', 'username') + formField('password', 'Password (at least 15 characters)', 'password', 'new-password') + profileFields() + `<div hidden><label>${tr("copy.leaveEmpty")}<input name="website" tabindex="-1" autocomplete="off"></label></div>` + (registrationMode === 'invite-only' ? (invitations.length ? hidden('invitationToken', invitations[0]!) : formField('invitationToken', 'Invitation token')) : ''), registrationMode === 'waitlist' ? 'Request account' : 'Create account')) }, 200, headers);
+                                return screen(presentation.text(registrationMode === 'waitlist' ? 'page.registrationRequest' : 'page.register'), 'register', { form: m(form(mount + '/register', csrf, formField('email', 'Email address', 'email', 'username') + formField('password', 'Password (at least 15 characters)', 'password', 'new-password') + profileFields() + `<div hidden><label>${tr("copy.leaveEmpty")}<input name="website" tabindex="-1" autocomplete="off"></label></div>` + (registrationMode === 'invite-only' ? (invitations.length ? hidden('invitationToken', invitations[0]!) : formField('invitationToken', 'Invitation token')) : ''), registrationMode === 'waitlist' ? 'Request account' : 'Create account')) }, 200, headers);
                             }
                             if (path === '/forgot-password') {
                                 if (!mail.available)
                                     throw new AuthHttpError(404, 'Not found');
-                                return screen('Reset password', 'forgot-password', { intro: presentation.text('ux.resetIntro'), form: m(form(mount + '/forgot-password', csrf, formField('email', 'Email address', 'email', 'username'), 'Send reset link')) }, 200, headers);
+                                return screen(presentation.text('page.passwordReset'), 'forgot-password', { intro: presentation.text('ux.resetIntro'), form: m(form(mount + '/forgot-password', csrf, formField('email', 'Email address', 'email', 'username'), 'Send reset link')) }, 200, headers);
                             }
                             if (path === '/email-code') {
                                 if (!mail.available)
@@ -443,25 +440,25 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                                 const flows = request.query.getAll('flowId');
                                 if (flows.length > 1 || flows.some(value => !/^[A-Za-z0-9_-]{43}$/.test(value)))
                                     throw new AuthHttpError(400, 'Invalid email flow');
-                                return screen('Sign in by email', 'email-code', { form: m(flows.length ? form(mount + '/email-code', csrf, hidden('flowId', flows[0]!) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in') : form(mount + '/send-email-code', csrf, formField('email', 'Email address', 'email', 'username'), 'Send sign-in code')) }, 200, headers);
+                                return screen(presentation.text('page.emailCode'), 'email-code', { form: m(flows.length ? form(mount + '/email-code', csrf, hidden('flowId', flows[0]!) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in') : form(mount + '/send-email-code', csrf, formField('email', 'Email address', 'email', 'username'), 'Send sign-in code')) }, 200, headers);
                             }
                             if (path === '/verify-email-change' || path === '/cancel-email-change') {
                                 const tokens = request.query.getAll('token');
                                 if (tokens.length !== 1 || tokens[0]!.length > 512)
                                     throw new AuthHttpError(400, 'A single token is required');
-                                return screen(path === '/verify-email-change' ? 'Confirm new email after the 24-hour cooling period' : 'Cancel email change', 'confirm-token', { form: m(form(mount + path, csrf, hidden('token', tokens[0]!), 'Confirm')) }, 200, headers);
+                                return screen(presentation.text(path === '/verify-email-change' ? 'page.verifyEmailChange' : 'page.cancelEmailChange'), 'confirm-token', { form: m(form(mount + path, csrf, hidden('token', tokens[0]!), 'Confirm')) }, 200, headers);
                             }
                             if (path === '/cancel-deletion') {
                                 const tokens = request.query.getAll('token');
                                 if (tokens.length !== 1 || tokens[0]!.length > 512)
                                     throw new AuthHttpError(400, 'A single token is required');
-                                return screen('Cancel account deletion', 'confirm-token', { form: m(form(mount + path, csrf, hidden('token', tokens[0]!), 'Keep my account')) }, 200, headers);
+                                return screen(presentation.text('page.deletionCancellation'), 'confirm-token', { form: m(form(mount + path, csrf, hidden('token', tokens[0]!), 'Keep my account')) }, 200, headers);
                             }
                             if (path === '/verify' || path === '/reset') {
                                 const tokens = request.query.getAll('token');
                                 if (tokens.length !== 1 || tokens[0]!.length > 512)
                                     throw new AuthHttpError(400, 'A single token is required');
-                                return screen(path === '/verify' ? 'Verify email' : 'Choose a new password', 'confirm-token', { form: m(form(mount + path, csrf, (path === '/verify' ? `<p>${tr("copy.verifyEmailConfirmNotice")}</p>` : '') + hidden('token', tokens[0]!) + (path === '/reset' ? formField('password', 'New password', 'password', 'new-password') : ''), path === '/verify' ? 'Verify email' : 'Reset password')) }, 200, headers);
+                                return screen(presentation.text(path === '/verify' ? 'page.emailVerification' : 'page.newPassword'), 'confirm-token', { form: m(form(mount + path, csrf, (path === '/verify' ? `<p>${tr("copy.verifyEmailConfirmNotice")}</p>` : '') + hidden('token', tokens[0]!) + (path === '/reset' ? formField('password', 'New password', 'password', 'new-password') : ''), path === '/verify' ? 'Verify email' : 'Reset password')) }, 200, headers);
                             }
                             const current = await principal(request);
                             if (path === '/account') {
@@ -473,10 +470,10 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                                 if (enrollmentRequired(current.principal)) {
                                     const needsEmail = current.principal.restrictions!.includes('verify-email');
                                     const passkeyOffer = !needsEmail && service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys;
-                                    return screen('Complete account enrollment', 'enrollment', { status: presentation.text('copy.applicationAccessRemainsBlockedUntilAllRequiredEnrollmentStepsAreComplete'), email: user.email, heading: presentation.text(needsEmail ? 'copy.verifyYourEmailFirst' : 'copy.enrollAnAuthenticator'), form: needsEmail ? (mail.available ? m(form(mount + '/send-verification', csrf, '', 'Send verification email')) : null) : m(form(mount + '/totp/begin', csrf, '', 'Set up authenticator')), unavailable: needsEmail && !mail.available ? presentation.text('copy.emailDeliveryIsUnavailableContactTheSiteOperator') : null, passkeyHref: passkeyOffer ? mount + '/second-factors' : null, passkeyLabel: passkeyOffer ? text('Set up a passkey second factor') : null, stepUpHref: mount + '/step-up', stepUpLabel: presentation.text('page.stepUp'), stepUpHelp: presentation.text('copy.ifYourRecentSignInHasExpired'), signOut: m(form(mount + '/logout', csrf, '', 'Sign out')) }, 200, headers);
+                                    return screen(presentation.text('page.completeAccountEnrollment'), 'enrollment', { status: presentation.text('copy.applicationAccessRemainsBlockedUntilAllRequiredEnrollmentStepsAreComplete'), email: user.email, heading: presentation.text(needsEmail ? 'copy.verifyYourEmailFirst' : 'copy.enrollAnAuthenticator'), form: needsEmail ? (mail.available ? m(form(mount + '/send-verification', csrf, '', 'Send verification email')) : null) : m(form(mount + '/totp/begin', csrf, '', 'Set up authenticator')), unavailable: needsEmail && !mail.available ? presentation.text('copy.emailDeliveryIsUnavailableContactTheSiteOperator') : null, passkeyHref: passkeyOffer ? mount + '/second-factors' : null, passkeyLabel: passkeyOffer ? text('Set up a passkey second factor') : null, stepUpHref: mount + '/step-up', stepUpLabel: presentation.text('page.stepUp'), stepUpHelp: presentation.text('copy.ifYourRecentSignInHasExpired'), signOut: m(form(mount + '/logout', csrf, '', 'Sign out')) }, 200, headers);
                                 }
                                 if (current.principal.impersonatorId)
-                                    return screen('Support impersonation', 'impersonation', { navigation: m(navigation), alert: presentation.text('copy.youAreViewingThisAccountAsASupportAdministratorAccountSecurityChangesAreDisabledEndImpersonationToSignInAsYour'), form: m(form(mount + '/logout', csrf, '', 'End impersonation')) }, 200, headers);
+                                    return screen(presentation.text('page.supportImpersonation'), 'impersonation', { navigation: m(navigation), alert: presentation.text('copy.youAreViewingThisAccountAsASupportAdministratorAccountSecurityChangesAreDisabledEndImpersonationToSignInAsYour'), form: m(form(mount + '/logout', csrf, '', 'End impersonation')) }, 200, headers);
                                 const section = (heading: string, content: string, danger = false) => ({ heading: text(heading), content: m(content), danger });
                                 const profile = section('Profile', form(mount + '/profile', csrf, profileFields(), 'Update profile'));
                                 const password = section('Password', form(mount + '/change-password', csrf, formField('currentPassword', 'Current password', 'password', 'current-password') + formField('password', 'New password', 'password', 'new-password') + factors(), 'Change password and sign out all sessions'));
@@ -485,35 +482,35 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                                 const methods = passkeyButton('register', text) + flows.buttons(csrf, true, text, presentation.locale, presentation);
                                 const data = section('Account data', form(mount + '/export', csrf, '', 'Export account data'));
                                 const deletion = mail.available ? section('Delete account', form(mount + '/delete', csrf, `<p>${tr('message.deletionGrace', { days: service.getSecurityPolicy().deletionGraceMs / 86400000 })}</p>` + formField('confirmation', 'Type DELETE to confirm') + formField('password', 'Password (if configured)', 'password', 'current-password', false) + factors(), 'Schedule account deletion'), true) : undefined;
-                                return screen('Your account', 'account', { navigation: m(navigation), overviewLabel: presentation.text('page.account'), email: user.email, signOut: m(form(mount + '/logout', csrf, '', 'Sign out')), state: presentation.text('message.accountState', { email: presentation.text(user.emailVerified ? 'state.verified' : 'state.unverified'), authenticator: presentation.text(user.totpEnabled ? 'state.enabled' : 'state.disabled') }), verification: m(mail.available && !user.emailVerified ? form(mount + '/send-verification', csrf, '', 'Send verification email') : ''), sections: [profile, password, authenticator, ...(email ? [email] : []), ...(methods ? [section('Sign-in methods', methods)] : []), data, ...(deletion ? [deletion] : [])] }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                                return screen(presentation.text('page.account'), 'account', { navigation: m(navigation), overviewLabel: presentation.text('page.account'), email: user.email, signOut: m(form(mount + '/logout', csrf, '', 'Sign out')), state: presentation.text('message.accountState', { email: presentation.text(user.emailVerified ? 'state.verified' : 'state.unverified'), authenticator: presentation.text(user.totpEnabled ? 'state.enabled' : 'state.disabled') }), verification: m(mail.available && !user.emailVerified ? form(mount + '/send-verification', csrf, '', 'Send verification email') : ''), sections: [profile, password, authenticator, ...(email ? [email] : []), ...(methods ? [section('Sign-in methods', methods)] : []), data, ...(deletion ? [deletion] : [])] }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                             }
                             if(path==='/second-factors') {
                                 if(!service.getSecurityPolicy().allowPasskeySecondFactor || !options.passkeys)throw new AuthHttpError(404,'Not found');
                                 const keys=await service.listPasskeys(current.principal.id);
                                 const passkeys=keys.map(key=>({id:key.id,secondFactor:key.secondFactor===true}));
                                 if(wantsJson(request))return jsonResponse(200,{passkeys,csrf},headers);
-                                return screen('Second factors','second-factors',{navigation:m(navigation),csrf:m(hiddenField('csrf', csrf)),intro:text('A second-factor passkey must be different from the passkey used for primary sign-in.'),register:m(passkeyButton('register',text)),passkeys:passkeys.map(key=>({id:key.id,state:text(key.secondFactor?'Enabled':'Disabled'),form:m(form(mount+'/passkeys/second-factor',csrf,hidden('credentialId',key.id)+hidden('enabled',key.secondFactor?'false':'true')+(key.secondFactor?'':secondFactorButton(mount,text)),key.secondFactor?'Disable passkey second factor':'Enable passkey second factor'))}))},200,headers,mount+'/assets/passkeys.js');
+                                return screen(presentation.text('page.secondFactors'),'second-factors',{navigation:m(navigation),csrf:m(hiddenField('csrf', csrf)),intro:text('A second-factor passkey must be different from the passkey used for primary sign-in.'),register:m(passkeyButton('register',text)),passkeys:passkeys.map(key=>({id:key.id,state:text(key.secondFactor?'Enabled':'Disabled'),form:m(form(mount+'/passkeys/second-factor',csrf,hidden('credentialId',key.id)+hidden('enabled',key.secondFactor?'false':'true')+(key.secondFactor?'':secondFactorButton(mount,text)),key.secondFactor?'Disable passkey second factor':'Enable passkey second factor'))}))},200,headers,mount+'/assets/passkeys.js');
                             }
                             if(path==='/trusted-devices') {
                                 if(!service.getSecurityPolicy().trustedDeviceTtlMs)throw new AuthHttpError(404,'Not found');
                                 const devices=await service.listTrustedDevices(current.token);
                                 if(wantsJson(request))return jsonResponse(200,{devices,csrf},headers);
-                                return screen('Remembered devices','trusted-devices',{navigation:m(navigation),intro:text('Remembering a device requires a real second factor. Sensitive actions still require fresh verification.'),form:m(form(mount+'/trusted-devices/remember',csrf,formField('label','Device label','text','off',false),'Remember this device')),devices:devices.map(device=>({label:device.label,expires:new Date(device.expires).toISOString(),form:m(form(mount+'/trusted-devices/revoke',csrf,hidden('deviceId',device.id),'Forget device'))}))},200,headers);
+                                return screen(presentation.text('page.trustedDevices'),'trusted-devices',{navigation:m(navigation),intro:text('Remembering a device requires a real second factor. Sensitive actions still require fresh verification.'),form:m(form(mount+'/trusted-devices/remember',csrf,formField('label','Device label','text','off',false),'Remember this device')),devices:devices.map(device=>({label:device.label,expires:new Date(device.expires).toISOString(),form:m(form(mount+'/trusted-devices/revoke',csrf,hidden('deviceId',device.id),'Forget device'))}))},200,headers);
                             }
                             if (path === '/sessions') {
                                 const sessions = await service.listSessions(current.principal.id);
                                 if (wantsJson(request))
                                     return jsonResponse(200, { sessions, csrf }, headers);
-                                return screen('Your sessions', 'sessions', { navigation: m(navigation), sessions: sessions.map(session => ({ summary: presentation.text('message.sessionStarted', { created: new Date(session.created).toISOString(), expires: new Date(session.expires).toISOString() }), form: m(form(mount + '/revoke-session', csrf, hidden('sessionId', session.id), 'Revoke this session')) })), form: m(form(mount + '/revoke-sessions', csrf, '', 'Sign out all sessions')) }, 200, headers);
+                                return screen(presentation.text('page.sessions'), 'sessions', { navigation: m(navigation), sessions: sessions.map(session => ({ summary: presentation.text('message.sessionStarted', { created: new Date(session.created).toISOString(), expires: new Date(session.expires).toISOString() }), form: m(form(mount + '/revoke-session', csrf, hidden('sessionId', session.id), 'Revoke this session')) })), form: m(form(mount + '/revoke-sessions', csrf, '', 'Sign out all sessions')) }, 200, headers);
                             }
                             if (path === '/methods') {
                                 const methods = await service.exportAccount(current.token);
                                 if (wantsJson(request))
                                     return jsonResponse(200, { passkeys: methods.passkeys, identities: methods.identities, csrf }, headers);
-                                return screen('Sign-in methods', 'methods', { navigation: m(navigation), passkeysHeading: presentation.text('copy.passkeys'), passkeys: methods.passkeys.map(key => ({ form: m(form(mount + '/passkeys/remove', csrf, hidden('credentialId', key.id) + `<p>${escapeHtml(key.id)}</p>`, 'Remove passkey')) })), providersHeading: presentation.text('copy.linkedProviders'), identities: methods.identities.map(identity => ({ form: m(form(mount + '/providers/unlink', csrf, hidden('provider', identity.provider) + hidden('subject', identity.subject) + `<p>${escapeHtml(identity.provider)}: ${escapeHtml(identity.subject)}</p>`, 'Unlink provider')) })), note: presentation.text('copy.theLastSignInMethodCannotBeRemoved') }, 200, headers);
+                                return screen(presentation.text('page.signInMethods'), 'methods', { navigation: m(navigation), passkeysHeading: presentation.text('copy.passkeys'), passkeys: methods.passkeys.map(key => ({ form: m(form(mount + '/passkeys/remove', csrf, hidden('credentialId', key.id) + `<p>${escapeHtml(key.id)}</p>`, 'Remove passkey')) })), providersHeading: presentation.text('copy.linkedProviders'), identities: methods.identities.map(identity => ({ form: m(form(mount + '/providers/unlink', csrf, hidden('provider', identity.provider) + hidden('subject', identity.subject) + `<p>${escapeHtml(identity.provider)}: ${escapeHtml(identity.subject)}</p>`, 'Unlink provider')) })), note: presentation.text('copy.theLastSignInMethodCannotBeRemoved') }, 200, headers);
                             }
                             if (path === '/step-up')
-                                return screen('Confirm your identity', 'step-up', { navigation: m(navigation), form: m(form(mount + '/step-up', csrf, returnField(request.query.get('returnTo')) + formField('password', 'Password', 'password', 'current-password') + factors(), 'Confirm identity')), passkey: m(passkeyButton('step-up', text)) }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                                return screen(presentation.text('page.stepUp'), 'step-up', { navigation: m(navigation), form: m(form(mount + '/step-up', csrf, returnField(request.query.get('returnTo')) + formField('password', 'Password', 'password', 'current-password') + factors(), 'Confirm identity')), passkey: m(passkeyButton('step-up', text)) }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                             throw new AuthHttpError(404, 'Not found');
                         }
                         const fields = readAuthFields(request, ['email', 'password', 'currentPassword', 'confirmation', 'invitationToken', 'totp', 'recoveryCode', 'token', 'code', 'sessionId', 'credentialId', 'provider', 'subject', 'flowId', 'displayName', 'locale', 'termsAccepted', 'website', 'secondFactorToken', 'enabled', 'deviceId', 'label', 'returnTo', ...metadataFields.map(([name]) => 'meta.' + name)]);
@@ -579,7 +576,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                             // (JSON-API.md). A decoy is never stored server-side, so it never verifies anything. Delivery
                             // is best-effort: the code is already issued and the flow continues on the verification step.
                             await delivery.signInCode(email, issued.flowId, issued.code ?? String(randomInt(1000000)).padStart(6, '0'), presentation.locale);
-                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a sign-in code will be sent.'), flowId: issued.flowId }) : screen('Enter your email code', 'email-code', { form: m(form(mount + '/email-code', fields.csrf || '', hidden('flowId', issued.flowId) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in')) });
+                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a sign-in code will be sent.'), flowId: issued.flowId }) : screen(presentation.text('page.enterEmailCode'), 'email-code', { form: m(form(mount + '/email-code', fields.csrf || '', hidden('flowId', issued.flowId) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in')) });
                         }
                         if (path === '/email-code') {
                             if (!mail.available)
@@ -592,7 +589,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                         }
                         if (path === '/forgot-password') {
                             await notify(fields.email || '', 'reset-password',presentation.locale);
-                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a reset message will be sent.') }) : screen('Check your email', 'status', { alert: false, message: presentation.text('ux.resetSent'), href: mount + '/login', label: presentation.text('ux.backSignIn') });
+                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a reset message will be sent.') }) : screen(presentation.text('page.checkEmail'), 'status', { alert: false, message: presentation.text('ux.resetSent'), href: mount + '/login', label: presentation.text('ux.backSignIn') });
                         }
                         if (path === '/verify-email-change') {
                             const changed = await service.confirmEmailChange(fields.token || '');
@@ -601,25 +598,25 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                         }
                         if (path === '/cancel-email-change') {
                             await service.cancelEmailChange(fields.token || '');
-                            return completed({cancelled:true}, 'Request cancelled', 'Your request has been cancelled.');
+                            return completed({cancelled:true}, presentation.text('page.requestCancelled'), 'Your request has been cancelled.');
                         }
                         if (path === '/cancel-deletion') {
                             await service.cancelDeletion(fields.token || '');
-                            return completed({cancelled:true}, 'Request cancelled', 'Your request has been cancelled.');
+                            return completed({cancelled:true}, presentation.text('page.requestCancelled'), 'Your request has been cancelled.');
                         }
                         if (path === '/verify') {
                             const verified = await service.consumeVerification(fields.token || '', sessionToken);
                             if (verified.signInMethodsReset)
-                                return wantsJson(request) ? jsonResponse(200, { verified: true, signInRequired: true, passwordResetRequired: true }) : screen('Email verified', 'status', { alert: false, message: presentation.text('ux.emailVerifiedMethodsReset'), href: lang('/forgot-password'), label: presentation.text('nav.forgotPassword') });
+                                return wantsJson(request) ? jsonResponse(200, { verified: true, signInRequired: true, passwordResetRequired: true }) : screen(presentation.text('page.emailVerified'), 'status', { alert: false, message: presentation.text('ux.emailVerifiedMethodsReset'), href: lang('/forgot-password'), label: presentation.text('nav.forgotPassword') });
                             if (service.getSecurityPolicy().requireEmailVerification)
                                 return wantsJson(request) ? jsonResponse(200, { verified: true, signInRequired: true }, http.clearSession()) : redirect(mount + '/login', http.clearSession());
-                            return completed({verified:true}, 'Email verified', 'Your email address has been verified.');
+                            return completed({verified:true}, presentation.text('page.emailVerified'), 'Your email address has been verified.');
                         }
                         if (path === '/reset') {
                             const changed = await service.resetPassword({ token: fields.token || '', password: fields.password || '' });
                             await backoff.clear(changed.email);
                             await delivery.notice('password-changed', changed.email, noticeLocale(request, changed));
-                            return wantsJson(request) ? jsonResponse(200, { reset: true }, http.clearSession()) : screen('Password updated', 'status', { alert: false, message: presentation.text('ux.passwordUpdated'), href: mount + '/login', label: presentation.text('action.signIn') }, 200, http.clearSession());
+                            return wantsJson(request) ? jsonResponse(200, { reset: true }, http.clearSession()) : screen(presentation.text('page.passwordUpdated'), 'status', { alert: false, message: presentation.text('ux.passwordUpdated'), href: mount + '/login', label: presentation.text('action.signIn') }, 200, http.clearSession());
                         }
                         const current = await principal(request);
                         if (current.principal.impersonatorId && path !== '/logout')
@@ -659,11 +656,11 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                                 await service.cancelEmailChange(change.cancelToken);
                                 throw new AuthHttpError(503, 'Email delivery failed; change cancelled');
                             }
-                            return completed({requested:true,activateAfter:change.activateAfter}, 'Check your email', 'Check your new email for confirmation instructions. The change can only finish after the 24-hour cooling period.');
+                            return completed({requested:true,activateAfter:change.activateAfter}, presentation.text('page.checkEmail'), 'Check your new email for confirmation instructions. The change can only finish after the 24-hour cooling period.');
                         }
                         if (path === '/revoke-session') {
                             await service.revokeSession({ token: current.token, sessionId: fields.sessionId || '' });
-                            return completed({revoked:true}, 'Session signed out', 'The selected session has been signed out.');
+                            return completed({revoked:true}, presentation.text('page.sessionSignedOut'), 'The selected session has been signed out.');
                         }
                         if (path === '/profile') {
                             const profile = await service.updateProfile({ token: current.token, profile: profileInput(fields) });
@@ -683,7 +680,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                                 throw new AuthHttpError(400, 'Deletion confirmation required');
                             const result = await service.deleteAccount({ token: current.token, ...(fields.password ? { password: fields.password } : {}), ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor, context: extensionHookContext(request) });
                             await delivery.token('cancel-deletion', current.principal.email, result.cancelToken, presentation.locale);
-                            return completed({deletionScheduled:true,deleteAfter:result.deleteAfter,cancellationDays:service.getSecurityPolicy().deletionGraceMs / 86400000}, 'Account deletion scheduled', 'Your account deletion is scheduled. Check your email for cancellation instructions if you change your mind.', http.clearSession(), '/login');
+                            return completed({deletionScheduled:true,deleteAfter:result.deleteAfter,cancellationDays:service.getSecurityPolicy().deletionGraceMs / 86400000}, presentation.text('page.deletionScheduled'), 'Your account deletion is scheduled. Check your email for cancellation instructions if you change your mind.', http.clearSession(), '/login');
                         }
                         if (path === '/logout') {
                             await service.logout(current.token);
@@ -705,17 +702,17 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                         }
                         if (path === '/send-verification') {
                             await notify(current.principal.email, 'verify-email',presentation.locale);
-                            return completed({message:presentation.textSource('If this account is eligible, a verification message will be sent.')}, 'Check your email', 'If this account is eligible, a verification message will be sent.');
+                            return completed({message:presentation.textSource('If this account is eligible, a verification message will be sent.')}, presentation.text('page.checkEmail'), 'If this account is eligible, a verification message will be sent.');
                         }
                         if (path === '/totp/begin') {
                             const enrollment = await service.beginTotp(current.token);
                             if (wantsJson(request))
                                 return jsonResponse(200, enrollment);
-                            return screen('Set up authenticator', 'totp-setup', { intro: presentation.text('copy.addThisKeyToYourAuthenticator'), secret: enrollment.secret, form: m(form(mount + '/totp/confirm', http.token(current.token), formField('code', 'Authenticator code', 'text', 'one-time-code'), 'Confirm authenticator')) });
+                            return screen(presentation.text('page.totpSetup'), 'totp-setup', { intro: presentation.text('copy.addThisKeyToYourAuthenticator'), secret: enrollment.secret, form: m(form(mount + '/totp/confirm', http.token(current.token), formField('code', 'Authenticator code', 'text', 'one-time-code'), 'Confirm authenticator')) });
                         }
                         if (path === '/totp/confirm') {
                             const enrolled = await service.confirmTotp({ token: current.token, code: fields.code || '' });
-                            return wantsJson(request) ? jsonResponse(200, enrolled) : screen('Save your recovery codes', 'recovery-codes', { intro: presentation.text('copy.storeTheseCodesSecurelyEachCanBeUsedOnce'), codes: enrolled.recoveryCodes, href: mount + '/account', label: presentation.text('copy.continueToYourAccount') });
+                            return wantsJson(request) ? jsonResponse(200, enrolled) : screen(presentation.text('page.recoveryCodes'), 'recovery-codes', { intro: presentation.text('copy.storeTheseCodesSecurelyEachCanBeUsedOnce'), codes: enrolled.recoveryCodes, href: mount + '/account', label: presentation.text('copy.continueToYourAccount') });
                         }
                         if (path === '/totp/disable') {
                             await service.disableTotp({ token: current.token, password: fields.password || '', code: fields.code || '', ...secondFactor });

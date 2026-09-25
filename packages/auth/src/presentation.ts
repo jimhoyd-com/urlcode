@@ -210,7 +210,7 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     "page.recoveryCodes": "Save your recovery codes",
     "page.supportImpersonation": "Support impersonation",
     "page.registrationRequest": "Request an account",
-    "page.verifyEmailChange": "Verify email change",
+    "page.verifyEmailChange": "Confirm new email after the 24-hour cooling period",
     "page.cancelEmailChange": "Cancel email change",
     "page.secondFactor": "Confirm second factor",
     "page.users": "Users",

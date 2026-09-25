@@ -5,7 +5,6 @@ import { signHmac, verifyHmac } from '@jimhoyd/urlcode-ui/host';
 import type { AbuseChallengeWidget } from '@jimhoyd/urlcode-abuse';
 import { authTemplates } from './auth-templates.ts';
 import { AuthError } from './auth-store.ts';
-import { englishCatalogue } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
 import { randomBytes } from 'node:crypto';
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody, readCookie, readFields, wantsJson } from '@jimhoyd/urlcode/extensions';
@@ -35,10 +34,6 @@ export interface ScreenOptions {
 }
 /** Test hook: sees every screen before it renders. */
 export const screenObserver: { current?: ((screen: Screen) => void) | undefined } = {};
-function pageTitle(title: string, presentation?: PresentationContext): string {
-    const titleKey = Object.entries(englishCatalogue).find(([key, value]) => key.startsWith('page.') && value === title)?.[0];
-    return presentation ? (titleKey ? presentation.text(titleKey) : presentation.textSource(title)) : title;
-}
 /** Places the challenge widget's trusted markup at the start of each POST form (at most 16). */
 function insertChallenge(markup: string, widget: AbuseChallengeWidget | undefined): { markup: string; enabled: boolean } {
     if (!widget)
@@ -53,7 +48,7 @@ function insertChallenge(markup: string, widget: AbuseChallengeWidget | undefine
     });
     return { markup: result, enabled: count > 0 };
 }
-/** Renders a screen through `ui.kit`, the only render path; activation already refused a missing or inactive `ui`. */
+/** Renders a screen through `ui.kit`, the only render path; activation already refused a missing or inactive `ui`. `title` is already resolved in the request's locale. */
 export function screenResponse(title: string, screen: Screen, options: ScreenOptions): AuthHttpResponse {
     if (!Object.hasOwn(authTemplates, screen.name)) throw new Error(`Unknown auth screen: ${screen.name.slice(0, 64)}`);
     const kit = options.ui.kit;
@@ -61,7 +56,7 @@ export function screenResponse(title: string, screen: Screen, options: ScreenOpt
     const context = options.presentation ?? kit.resolveContext();
     const challenge = insertChallenge(kit.render(screen.name, screen.view, context).html, options.challenge);
     const scripts = [...(options.scriptPath ? [{ src: options.scriptPath }] : []), ...(challenge.enabled ? options.challenge!.scripts.map(script => ({ src: script.src, async: script.async })) : [])];
-    return kit.wrap(new Markup(challenge.markup), { title: pageTitle(title, context), context, ...(options.layout ? {layout: options.layout} : {}), ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(scripts.length ? { scripts } : {}), ...(challenge.enabled ? { csp: { script: [...options.challenge!.csp.script], frame: [...options.challenge!.csp.frame], connect: [...options.challenge!.csp.connect] } } : {}), ...(options.flash ? { flash: options.flash } : {}) });
+    return kit.wrap(new Markup(challenge.markup), { title, context, ...(options.layout ? {layout: options.layout} : {}), ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(scripts.length ? { scripts } : {}), ...(challenge.enabled ? { csp: { script: [...options.challenge!.csp.script], frame: [...options.challenge!.csp.frame], connect: [...options.challenge!.csp.connect] } } : {}), ...(options.flash ? { flash: options.flash } : {}) });
 }
 /** Auth's form fields: the listed names plus `csrf` and a challenge token, each at most 4096 (the token 2048) characters. */
 export function readAuthFields(request: ExtensionRequest, allowed: readonly string[]): Record<string, string> {
@@ -205,7 +200,7 @@ export function httpFailure(error: unknown, request: ExtensionRequest, presentat
     const status = known ? statusOf : 500;
     const source = error instanceof AuthHttpError || error instanceof ExtensionHttpError ? error.message : error instanceof AuthError && error.reason ? error.reason : status >= 500 ? 'Service unavailable' : 'Request could not be completed';
     const message = presentation?.textSource(source) ?? source, headers = error instanceof AuthHttpError ? [...error.headers] : [];
-    return wantsJson(request) ? jsonResponse(status, { error: message }, headers) : screenResponse('Request could not be completed', { name: 'auth/status', view: { alert: true, message, href: recovery?.href ?? null, label: recovery?.label ?? null } }, { status, headers, presentation, layout: 'compact', ui });
+    return wantsJson(request) ? jsonResponse(status, { error: message }, headers) : screenResponse((presentation ?? ui.kit.resolveContext()).text('page.error'), { name: 'auth/status', view: { alert: true, message, href: recovery?.href ?? null, label: recovery?.label ?? null } }, { status, headers, presentation, layout: 'compact', ui });
 }
 /** Proof token stays in the submitting form and is consumed once with the primary proof. */
 export function secondFactorButton(base: string, text: (source: string) => string = value => value): string {

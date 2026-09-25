@@ -35,7 +35,7 @@ export function createSignup(options: SignupOptions, http: AuthHttp, mount: stri
   const form=(action:string,fields:string,button:string)=>`<form class="ui-stack" method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${hiddenField('csrf', prepared.csrf)}${fields}<button>${action==='begin'||action==='password'?icon('arrow-right'):action==='verify'?icon('check'):action==='complete'?icon('user'):''}${e(button)}</button></form>`;
   const field=(name:string,label:string,type='text',autocomplete='off')=>uiField({name,label:text(label),type,autocomplete});
   if(request.method!=='POST') {
-   if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):screenResponse('Request an account',{name:'auth/status',view:{alert:false,message:text('Your request has been received. If eligible, an administrator will review it before you can sign in.'),href:null,label:null}},{status:200,headers,presentation,layout:'compact',ui:options.ui});
+   if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):screenResponse(presentation.text('page.registrationRequest'),{name:'auth/status',view:{alert:false,message:text('Your request has been received. If eligible, an administrator will review it before you can sign in.'),href:null,label:null}},{status:200,headers,presentation,layout:'compact',ui:options.ui});
    let state;
    if(binding) { state=await service.getSignup(binding); if(!state)headers.push(...clear()); }
    if(wantsJson(request))return jsonResponse(200,{step:state?.step??'identifier',csrf:prepared.csrf,...(state?{expires:state.expires}:{})},headers);
@@ -43,7 +43,7 @@ export function createSignup(options: SignupOptions, http: AuthHttp, mount: stri
    const steps = ['Email address', ...(verificationRequired ? ['Verify email'] : []), 'Secure your account', 'Your details'];
    const currentStep = !state ? 0 : state.step === 'verify-email' ? 1 : state.step === 'credential' ? (verificationRequired ? 2 : 1) : steps.length - 1;
    const progress = steps.map((label,index)=>({number:index+1,label:text(label),current:index===currentStep}));
-   const title = !state ? (service.getRegistrationMode()==='waitlist' ? 'Request an account' : 'Create account') : state.step === 'verify-email' ? 'Check your email' : state.step === 'credential' ? (options.passkeys ? 'Secure your account' : 'Create a password') : 'Your details';
+   const title = presentation.text(!state ? (service.getRegistrationMode()==='waitlist' ? 'page.registrationRequest' : 'page.register') : state.step === 'verify-email' ? 'page.checkEmail' : state.step === 'credential' ? (options.passkeys ? 'page.secureAccount' : 'page.createPassword') : 'page.yourDetails');
    let intro:string, markup:string, passkey='', identifier:string|null=null;
    if(!state){
     const invitations=request.query.getAll('token');
@@ -89,7 +89,7 @@ export function createSignup(options: SignupOptions, http: AuthHttp, mount: stri
   } else if(path==='/signup/complete') {
    const device=http.device(request),result=await service.completeSignup({...binding,profile:profile.read(fields),device:{id:device.id,label:device.label},context:extensionHookContext(request)});
    const resultHeaders=[...headers,...clear(),...(result?http.sessionHeaders(result.token):[])];
-   if(result?.newDevice)await delivery({kind:'new-device',email:result.user.email},options.presentation?.resolve({...(result.user.profile?.locale?{accountLocale:result.user.profile.locale}:{}),queryLocale:presentation.locale}).locale??presentation.locale);
+   if(result?.newDevice)await delivery({kind:'new-device',email:result.user.email},options.ui.kit.presentation.resolve({...(result.user.profile?.locale?{accountLocale:result.user.profile.locale}:{}),queryLocale:presentation.locale}).locale);
    // One redirect target regardless of outcome (JSON-API.md's no-enumeration guarantee): an
    // existing-email attempt completes with `result` null and no session, so `/account` simply
    // bounces an unauthenticated visitor onward; a real registration lands there authenticated.
