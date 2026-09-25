@@ -246,6 +246,15 @@ it has no effect on `authorize()`, which runs the same way regardless, and
 `auth`/`admin`-style extensions gating real access must leave it at the
 default.
 
+The refusal names the reason, so the declaration to change is obvious: a
+cached `policies.extensions` route fails with, for example, `/api/items:
+routes protected by extension "auth" cannot be cached; use cache: {strategy:
+no-store} or remove cache`, and a cached mount with `routes served by
+extension "<name>"`. A permissive `Cache-Control`-family header in
+`response.headers` on such a route is refused the same way. Only `match` and
+`conditional` routes report `conditional routing requires cache disabled or
+no-store`.
+
 ## Wrapping a route: extension middleware
 
 `authorize` is a gate: it runs once, before the route's handler, and can only

@@ -100,7 +100,7 @@ test('authorization inherits per extension, rejects cache sharing and precedes t
   const admitted=await request(app,'/private',{headers:{cookie:'session=yes'}});assert.equal(admitted.status,200);assert.equal(admitted.headers['cache-control'],'no-store');assert.equal(admitted.headers['cdn-cache-control'],undefined);
   assert.ok(app.testPlan().inventory.find(item=>item.path==='/private')?.policies.includes('extensions.demo'));assert.ok(!app.testPlan().cases.some(item=>item.path==='/private'));
   const cached=await project(t,{'/demo/*':mount,'/private':{respond:{text:'private'},policies:{extensions:{demo:{role:'member'}},cache:{strategy:'micro'}}}},{},{extensions:declarations});
-  await assert.rejects(createRuntime(cached,{origin,extensions:[await registration(cached)]}),/no-store/);
+  await assert.rejects(createRuntime(cached,{origin,extensions:[await registration(cached)]}),{message:'/private: routes protected by extension "demo" cannot be cached; use cache: {strategy: no-store} or remove cache'});
 });
 test('extension credentials never reach guests, including recreated header defaults',async t=>{
   const root=await project(t,{'/demo/*':mount,'/guest':{parameters:[{name:'cookie',in:'header',schema:{type:'string',default:'default-cookie'}}],function:{source:'guest.mjs'}}},{'guest.mjs':'export default (request, context) => Response.json({cookie:request.headers.get("cookie"),authorization:request.headers.get("authorization"),input:context.inputs.header.cookie??null});'},{extensions:declarations});
@@ -212,7 +212,7 @@ test('an extension explicitly declared cacheSensitive: false preserves the wrapp
 test('a route compiling a static permissive Cache-Control still requires no-store unless its extension is declared cache-transparent',async t=>{
   const routes={'/static':{respond:{text:'ok'},response:{headers:{'cache-control':'public, max-age=60'}},policies:{extensions:{mw:{}}}}};
   const sensitive=await project(t,routes,{},{extensions:{mw:{version:'1',config:{}}}});
-  await assert.rejects(createRuntime(sensitive,{origin,extensions:[await passThroughExtension(sensitive,'mw')]}),/no-store/);
+  await assert.rejects(createRuntime(sensitive,{origin,extensions:[await passThroughExtension(sensitive,'mw')]}),{message:'/static: routes protected by extension "mw" cannot send a cacheable response header; set it to no-store or remove it'});
   const transparent=await project(t,routes,{},{extensions:{mw:{version:'1',config:{}}}});
   const runtime=await createRuntime(transparent,{origin,extensions:[await passThroughExtension(transparent,'mw',false)]});t.after(()=>runtime.close());
   const result=await runtime.handle({target:'/static',method:'GET'});
@@ -445,7 +445,7 @@ test('immutable assets stay no-store without a declaration and never widen cache
   const hooked=await startServer({project:root,origin,port:0,extensions:[await assetRegistration(root)],plugins:[{name:'late',version:'1',targets:['node'],onResponse:(_request,result)=>({...result,headers:[...result.headers,['set-cookie','late=1']]})}],log:()=>{}});t.after(()=>hooked.close());
   assert.equal((await request(hooked,'/demo/static/app.abc123.css')).headers['cache-control'],'no-store');
   const cached=await project(t,{'/demo/*':{...mount,policies:{cache:{strategy:'immutable'}}}},{},{extensions:declarations});
-  await assert.rejects(createRuntime(cached,{origin,extensions:[await assetRegistration(cached)]}),/no-store/);
+  await assert.rejects(createRuntime(cached,{origin,extensions:[await assetRegistration(cached)]}),{message:'/demo/*: routes served by extension "demo" cannot be cached; use cache: {strategy: no-store} or remove cache'});
 });
 test('immutable asset prefixes are validated and belong to the operator registration, not the pinned revision',async t=>{
   const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});

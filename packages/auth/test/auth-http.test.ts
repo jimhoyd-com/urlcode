@@ -109,7 +109,7 @@ test('allowed bearer responses carry the credential RateLimit fields, a key quot
     // it as confidential (auth declares no `cacheSensitive: false`), so per-credential fields
     // can never be stored in or served from its cache.
     await write({ strategy: 'public', maxAge: 300 });
-    await assert.rejects(start(), /requires cache disabled or no-store/);
+    await assert.rejects(start(), { message: '/api/items: routes protected by extension "auth" cannot be cached; use cache: {strategy: no-store} or remove cache' });
     await write();
     const server = await start().catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
