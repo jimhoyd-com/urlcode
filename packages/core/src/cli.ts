@@ -46,10 +46,11 @@ interface HelpEntry { name: string; group: string; text: string }
 const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
 const helpEntries: HelpEntry[] = [
   { name:'init', group:'Start', text:
-`  urlcode init <directory> [--with ui,auth,admin] [--ack extension:id]
+`  urlcode init <directory> [--with ui,auth,admin [--example]] [--ack extension:id]
     # Writes one site: app/ (the route project: urlcode.yaml), host.mjs (the operator host), package.json (exact runtime pin and npm scripts), AGENTS.md, .mcp.json, a Makefile and CI. Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json keeps every key and gains only a missing runtime pin and missing scripts
     # --with: then runs \`urlcode extensions add\` for those extensions (npm install of the add-on tarballs this runtime pins); a refusal undoes the whole init
+    # --example: with --with, also writes each extension's example (a Todo collection and screen, a contact form, a signed-in page); without it only the capabilities are installed
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command
 ` },
   { name:'dev', group:'Start', text:
@@ -142,11 +143,12 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'extensions', group:'Extensions', text:
 `  urlcode extensions available [--json]
-  urlcode extensions add <name> [<name>…] [--ack extension:id] [--site directory]
+  urlcode extensions add <name> [<name>…] [--example] [--ack extension:id] [--site directory]
   urlcode extensions remove <name> [--site directory]
   urlcode extensions list [--strict] [--json] [--site directory]
   urlcode extensions [--project directory] [--host-file operator/host.mjs] [--json]  # without a subcommand: registered contracts and schemas; executes trusted host code, activates nothing
     # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
+    # add installs the capability only (no sample endpoints); --example also writes each added extension's example, for example store's /api/todos collection or forms' /contact flow
     # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
     # list --strict exits 1 on a pin mismatch, a nested copy or drift between package.json, app/urlcode.yaml and host.mjs
 ` },
@@ -306,6 +308,7 @@ try {
     }
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
     if (values.ack !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--ack is only supported by init --with and extensions add');
+    if (values.example !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--example is only supported by init --with and extensions add');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions and artifacts list');
@@ -457,7 +460,7 @@ try {
             else print({ event:'created', path:created, nextSteps });
             break;
           }
-          const created = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [] });
+          const created = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [], example: values.example ?? false });
           const review = `Review ${created.site}/app and pin its revision explicitly: PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
           if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
           else print({ event:'created', ...created, review });

@@ -4,14 +4,17 @@ One command produces a site that already has accounts, an administration
 console and a presentation kit wired together:
 
 ```sh
-npx @jimhoyd/urlcode init site --with ui,auth,admin
+npx @jimhoyd/urlcode init site --with ui,auth,admin --example
 ```
 
-That is `urlcode init site` followed by `urlcode extensions add ui auth admin`
-in it: npm installs the three add-on tarballs this core pins (by URL and sha512
+That is `urlcode init site` followed by `urlcode extensions add ui auth admin
+--example` in it: npm installs the three add-on tarballs this core pins (by URL and sha512
 in its `addons.json`) at the top level of the site, and each extension's
 scaffold writes its configuration, routes and operator files. `admin` alone
-would do the same, because it requires `auth` and `ui`.
+would do the same, because it requires `auth` and `ui`. `--example` adds each
+extension's demo on top of its capability (here auth's signed-in `/private`
+page); without it you get the accounts, console and kit with no application
+page of your own yet.
 
 This page is the map of what you may then change, and with which tool. It
 covers three different activities that are easy to confuse:
@@ -28,12 +31,12 @@ principle](PROJECT-DIRECTION.md#design-principle-declarative-first) applies
 here as much as it does to routes: reach for the next row only when the one
 above it cannot express the requirement.
 
-## What `--with ui,auth,admin` generates
+## What `--with ui,auth,admin --example` generates
 
 - `site/app/` — the route project: `urlcode.yaml` with an `extensions` block
   per extension, and `routes/ui.yaml`, `routes/auth.yaml` and
-  `routes/admin.yaml` holding `/assets/ui/*`, `/account/*`, `/private` and
-  `/admin/*`, each listed in `includes`.
+  `routes/admin.yaml` holding `/assets/ui/*`, `/account/*`, `/private` (the
+  `--example` page) and `/admin/*`, each listed in `includes`.
 - `site/host.mjs` — the operator host module, the one place that holds code.
   It imports each extension's `./extension` entry and passes
   `[ui(), auth(), admin()]` to `composeHost`, which activates `ui` first, hands
@@ -61,8 +64,8 @@ that renders through it, whatever order you name them in.
 | `auth` | `ui` and `auth`: accounts on `/account/*`, rendered through the kit. |
 | `admin` | `ui`, `auth` and `admin`: the full composition above. |
 | `auth,admin,ui` | Same result as `ui,auth,admin`: the order you name them in is ignored. |
-| `ui,auth,store` | Todo API and a `/todos` screen, both protected by `auth: true`. |
-| `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write scaffold; core rejects any `--ack` no scaffold consumed, such as one with auth installed or `store` absent. |
+| `ui,auth,store` | Without `--example`: an empty store, nothing mounted. With `--example`: a Todo API and a `/todos` screen, both protected by `auth: true`. |
+| `store` or `ui,store` | Without `--example`: an empty store, nothing mounted, no acknowledgement needed. With `--example`: refused, because the example's writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write example; core rejects any `--ack` no scaffold consumed, such as one with auth installed, `store` absent or no `--example`. |
 
 Every refusal rolls back everything the command changed, including the
 packages npm had already extracted into `node_modules`; a refusal during

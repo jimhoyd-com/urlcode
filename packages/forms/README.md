@@ -8,8 +8,9 @@ shows only the submitted fields the flow opts in to. It is not a database, email
 
 The extension requires the `ui` extension and an operator-provided CSRF secret.
 Install it into a site with `urlcode extensions add forms` (which adds `ui` too
-when the site lacks it). The scaffold writes a sample `/contact` flow and route,
-a random CSRF secret at `data/forms-csrf.key`, and one line in `host.mjs`. The
+when the site lacks it). The scaffold writes an empty `flows` block, a random
+CSRF secret at `data/forms-csrf.key`, and one line in `host.mjs`; add
+`--example` for a sample `/contact` flow and route. The
 secret and the reviewed project SHA live with the host, never in
 `urlcode.yaml`:
 

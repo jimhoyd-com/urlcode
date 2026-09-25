@@ -240,9 +240,9 @@ export interface RuntimeExtension {
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
 /**
- * What core hands an extension definition's `scaffold` when `urlcode extensions add <name>` (or `init --with`)
- * adds it to a site. `scaffold` writes nothing: it returns the configuration, routes and operator files core
- * writes for it.
+ * What core hands an extension definition's `scaffold` (and `example`) when `urlcode extensions add <name>` (or
+ * `init --with`) adds it to a site. Neither writes anything: each returns the configuration, routes and operator
+ * files core writes for it.
  */
 export interface ScaffoldRequest {
   /** Absolute site directory (holds package.json and host.mjs); `files` paths in the result are relative to it. */
@@ -312,7 +312,19 @@ export interface ExtensionDefinition<Options=Record<string,never>> {
   agent?:AddonAgentTooling;
   /** Static values handed to another installed extension, keyed by its name (for example templates for `ui`). */
   contributes?:Readonly<Record<string,unknown>>;
+  /**
+   * The capability: what `extensions add` always writes. It adds no sample application endpoints, only what the
+   * extension needs to function (its own mount, keys, a documented default configuration).
+   */
   scaffold?(request:ScaffoldRequest):ScaffoldResult|Promise<ScaffoldResult>;
+  /**
+   * Optional sample application behavior (demo collections, pages, flows), written on top of `scaffold` only when
+   * the operator passes `--example`. Core merges it into the capability result: `config` deep-merges (plain objects
+   * key by key, any other value from the example replaces), `routes` must not collide, and `files`, `env`,
+   * `acknowledged`, `routeNotes` and `notes` are appended. It may require an acknowledgement exactly as `scaffold`
+   * does.
+   */
+  example?(request:ScaffoldRequest):ScaffoldResult|Promise<ScaffoldResult>;
   host(context:HostContext,options:Options):HostedExtension|Promise<HostedExtension>;
 }
 export interface ExtensionEntry { readonly definition:ExtensionDefinition<unknown>; readonly options:unknown }
@@ -323,6 +335,7 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   assert(typeof definition.description==='string'&&definition.description.length>0&&definition.description.length<=300,`Extension ${definition.name} needs a one-line description`);
   assert(definition.schema&&typeof definition.schema==='object'&&typeof definition.host==='function',`Extension ${definition.name} needs a schema and a host function`);
   assert((definition.requires??[]).every(name=>namePattern.test(name)&&name!==definition.name),`Extension ${definition.name} requires must list other extension names`);
+  assert((definition.scaffold===undefined||typeof definition.scaffold==='function')&&(definition.example===undefined||typeof definition.example==='function'),`Extension ${definition.name} scaffold and example must be functions`);
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
 }

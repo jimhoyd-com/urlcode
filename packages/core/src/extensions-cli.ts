@@ -4,7 +4,7 @@ import type { AddonKind } from './addon-manifest.ts';
 import { ConfigError } from './errors.ts';
 
 type Print = (value: unknown) => boolean;
-interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined }
+interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined }
 
 export const addonCommands = ['available', 'add', 'remove', 'list'] as const;
 
@@ -16,6 +16,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
   const kind: AddonKind = command === 'extensions' ? 'extension' : 'artifact';
   const site = values.site ?? '.';
   if (values.ack?.length && operation !== 'add') throw new ConfigError(`--ack is only supported by ${command} add`);
+  if (values.example && (operation !== 'add' || kind !== 'extension')) throw new ConfigError('--example is only supported by extensions add');
   if (values.strict && operation !== 'list') throw new ConfigError(`--strict is only supported by ${command} list`);
   switch (operation) {
     case 'available': {
@@ -26,10 +27,11 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       return undefined;
     }
     case 'add': {
-      if (!names.length) throw new ConfigError(`Use urlcode ${command} add <name> [<name>…]${kind === 'extension' ? ' [--ack <extension>:<id>]' : ''} [--site directory]`);
-      const result = await addAddons(site, kind, names, { acknowledgements: values.ack });
+      if (!names.length) throw new ConfigError(`Use urlcode ${command} add <name> [<name>…]${kind === 'extension' ? ' [--example] [--ack <extension>:<id>]' : ''} [--site directory]`);
+      const result = await addAddons(site, kind, names, { acknowledgements: values.ack, example: values.example });
       print(values.json ? { event: `${kind}s-added`, ...result } : [
         result.added.length ? `Added ${result.added.join(', ')}${result.development ? ' (development install from local sources, not pinned)' : ''}.` : `${names.join(', ')} already installed; nothing to do.`,
+        ...(result.examples.length ? [`Example written for ${result.examples.join(', ')} (--example).`] : kind === 'extension' && result.added.length ? ['Capability only: no sample routes were written. Add --example to a fresh add for a working demo.'] : []),
         ...result.keptFiles.map(file => `Kept existing ${file}.`),
         ...Object.entries(result.env).map(([key, text]) => `Environment: ${key}: ${text}`),
         ...result.notes.map(note => `Next: ${note}`),

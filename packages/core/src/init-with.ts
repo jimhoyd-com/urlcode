@@ -13,15 +13,15 @@ export function parseWithNames(value: string): string[] {
 }
 
 /**
- * `urlcode init <directory> --with a,b`: the site layout, then `urlcode extensions add a b` in it. A refusal at
+ * `urlcode init <directory> --with a,b [--example]`: the site layout, then `urlcode extensions add a b` in it. A refusal at
  * any step undoes the whole init, so nothing is left behind.
  */
-export async function initSiteWith(destination: string, names: readonly string[], { acknowledgements = [], manifest }: { acknowledgements?: readonly string[]; manifest?: AddonManifest } = {}): Promise<AddResult & { site: string }> {
+export async function initSiteWith(destination: string, names: readonly string[], { acknowledgements = [], example = false, manifest }: { acknowledgements?: readonly string[]; example?: boolean; manifest?: AddonManifest } = {}): Promise<AddResult & { site: string }> {
   assert(names.length > 0, 'Provide at least one --with name');
   const { site, undo } = await initSite(destination);
   const quote = (value: string): string => /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
   try {
-    const result = await addAddons(site, 'extension', names, { acknowledgements, manifest, retry: acks => ['urlcode init', quote(destination), '--with', names.join(','), ...acks.flatMap(ack => ['--ack', ack])].join(' ') });
+    const result = await addAddons(site, 'extension', names, { acknowledgements, example, manifest, retry: acks => ['urlcode init', quote(destination), '--with', names.join(','), ...(example ? ['--example'] : []), ...acks.flatMap(ack => ['--ack', ack])].join(' ') });
     return { site, ...result };
   } catch (error) { await undo(); throw error; }
 }

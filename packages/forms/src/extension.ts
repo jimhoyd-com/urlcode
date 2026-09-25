@@ -27,7 +27,21 @@ export default defineExtension<FormsHostOptions>({
   hooks: formHookContracts,
   authoring: formsAuthoring,
   agent: {description: 'Local, revision-pinned references for agents configuring the forms extension.', references: [{name: 'forms extension guide', description: 'Configuration and integration guidance for declarative form flows.', path: 'README.md'}]},
+  // The capability: the CSRF key the extension needs and an empty flows block; no form is mounted.
   scaffold() {
+    return {
+      config: { flows: {} },
+      routes: {},
+      // A fresh secret per site; an existing file is kept, so outstanding tokens survive remove and re-add.
+      files: [{ path: formsCsrfKeyFile, content: new Uint8Array(randomBytes(32)), mode: 0o600 }],
+      notes: [
+        'forms is installed with no flows: declare one under extensions.forms.config.flows and mount it with a route <mount>/* using extension: forms (GET, HEAD, POST). See the @jimhoyd/urlcode-forms README.',
+        `Keep ${formsCsrfKeyFile} secret and out of version control; it signs the forms CSRF tokens.`,
+      ],
+    };
+  },
+  // `--example`: a public contact form on /contact.
+  example() {
     return {
       config: {
         flows: {
@@ -43,12 +57,9 @@ export default defineExtension<FormsHostOptions>({
         },
       },
       routes: { '/contact/*': { extension: 'forms', methods: ['GET', 'HEAD', 'POST'] } },
-      // A fresh secret per site; an existing file is kept, so outstanding tokens survive remove and re-add.
-      files: [{ path: formsCsrfKeyFile, content: new Uint8Array(randomBytes(32)), mode: 0o600 }],
       notes: [
         'Open /contact: a sample form declared in app/urlcode.yaml under extensions.forms.config.flows; edit its fields or add flows there.',
         'Handle submissions with a trusted onSubmit hook (extensions.forms.config.hooks.onSubmit); without one a valid submission only shows the confirmation.',
-        `Keep ${formsCsrfKeyFile} secret and out of version control; it signs the forms CSRF tokens.`,
       ],
     };
   },

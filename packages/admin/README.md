@@ -10,10 +10,16 @@ This is an actively reviewed Node/SQLite implementation. Still outstanding: live
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,admin
+npx urlcode init my-site --with ui,auth,admin --example
 # or, in an existing site:
-npx urlcode extensions add admin
+npx urlcode extensions add admin --example
 ```
+
+admin ships no example of its own: its capability is the `/admin/*` console.
+`--example` here writes auth's demo (a signed-in `/private` page) when this
+command adds auth too. The console expects auth's account pages at `/account`
+by default; if you mount auth elsewhere, pass `admin({authMount})` in
+`host.mjs`.
 
 admin is released as a tarball on core's GitHub Release, at core's version,
 and pinned by sha512 in core's `dist/addons.json`; only core is on npm.

@@ -11,7 +11,8 @@ import { storeConfigSchema } from '../src/store.ts';
 
 const PROJECT_SHA256 = 'a'.repeat(64);
 const request = { site: '/tmp/site', project: '/tmp/site/app', installed: ['store'], acknowledgements: ['store:public-write'] } as const;
-const scaffold = (overrides: Partial<{ installed: readonly string[]; acknowledgements: readonly string[] }> = {}) => store.definition.scaffold!({ ...request, ...overrides });
+/** The store's `--example` output (#711); the capability scaffold alone is checked separately below. */
+const scaffold = (overrides: Partial<{ installed: readonly string[]; acknowledgements: readonly string[] }> = {}) => store.definition.example!({ ...request, ...overrides });
 
 test('the definition names the store, requires nothing and shares the runtime schema', () => {
   assert.equal(store.definition.name, 'store');
@@ -22,7 +23,19 @@ test('the definition names the store, requires nothing and shares the runtime sc
   assert.equal(typeof (store.definition.contributes!.ui as { screens?: unknown }).screens, 'function');
 });
 
-test('scaffold returns the todos collection and its route, and validates with core', async () => {
+test('a blank install declares no collection, no route and needs no acknowledgement (#711)', async () => {
+  for (const installed of [['store'], ['store', 'ui'], ['auth', 'store', 'ui']]) {
+    const blank = await store.definition.scaffold!({ ...request, installed, acknowledgements: [] });
+    assert.deepEqual(blank.config, { collections: {} });
+    assert.deepEqual(blank.routes, {});
+    assert.equal(blank.acknowledged, undefined);
+    assert.ok(blank.notes!.some(note => note.includes('--example')));
+    const document = validateDocument({ version: '1', extensions: { store: { version: '1', config: blank.config } }, routes: {} });
+    assert.deepEqual(document.routes, {});
+  }
+});
+
+test('the example returns the todos collection and its route, and validates with core', async () => {
   const result = await scaffold();
   assert.deepEqual(Object.keys(result.config), ['collections']);
   assert.deepEqual(Object.keys(result.routes), ['/api/todos/*']);

@@ -15,13 +15,29 @@ const publicWrite = 'store:public-write';
 const todosScreen = '/todos';
 
 /**
- * Adds a `todos` collection on `/api/todos`; the mount carries `auth: true` when auth is installed, and otherwise
- * needs `--ack store:public-write`. When ui is installed too, the store also declares its `/todos` screen and the
- * `extension: ui` route that serves it: the screen integration belongs to the store, not to ui.
+ * The capability: an empty `collections` block and nothing mounted. The store adds no endpoint until the project
+ * declares a collection and its `extension: store` route, so a blank install writes nothing anyone can reach.
  */
-function scaffold(request: ScaffoldRequest): ScaffoldResult {
+function scaffold(): ScaffoldResult {
+  return {
+    config: { collections: {} },
+    routes: {},
+    env: { STORE_DIRECTORY: 'Optional absolute directory for collection files (default data/store beside host.mjs); must be outside app/.' },
+    notes: [
+      'store is installed with no collections: declare one under extensions.store.config.collections and mount it with a route <mount>/* using extension: store (add auth: true to protect writes). See docs/STORE.md.',
+      'For a working demo, add the store to a fresh site with --example: a todos collection on /api/todos (and a /todos screen when ui is installed).',
+    ],
+  };
+}
+
+/**
+ * `--example`: a `todos` collection on `/api/todos`; the mount carries `auth: true` when auth is installed, and
+ * otherwise needs `--ack store:public-write`. When ui is installed too, the store also declares its `/todos` screen
+ * and the `extension: ui` route that serves it: the screen integration belongs to the store, not to ui.
+ */
+function example(request: ScaffoldRequest): ScaffoldResult {
   const withAuth = request.installed.includes('auth'), withUi = request.installed.includes('ui');
-  if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('store scaffolds POST, PUT, PATCH and DELETE on /api/todos, and no installed extension protects them, so anyone could write. Add auth first (urlcode extensions add auth), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
+  if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('the store example serves POST, PUT, PATCH and DELETE on /api/todos, and no installed extension protects them, so anyone could write. Add auth first (urlcode extensions add auth), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
   return {
     config: { collections: { todos: {
       mount: '/api/todos',
@@ -34,7 +50,6 @@ function scaffold(request: ScaffoldRequest): ScaffoldResult {
       ...(withUi ? { [`${todosScreen}/*`]: { extension: 'ui', methods: ['GET', 'HEAD'], ...(withAuth ? { auth: true } : {}) } } : {}),
     },
     ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
-    env: { STORE_DIRECTORY: 'Optional absolute directory for collection files (default data/store beside host.mjs); must be outside app/.' },
     notes: [
       withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
       'Records live in data/store/todos.json, outside app/; back up data/ like any operator data. Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
@@ -54,6 +69,7 @@ export default defineExtension<StoreHostOptions>({
   authoring: storeAuthoring,
   agent: {description: 'Local, revision-pinned references for agents configuring the store extension.', references: [{name: 'store extension guide', description: 'Configuration and data-model guidance for the store extension.', path: 'README.md'}]},
   scaffold,
+  example,
   host(context, options) {
     const directory = options.directory ?? process.env.STORE_DIRECTORY ?? join(context.site, 'data', 'store');
     return { registration: storeExtension({ directory, projectSha256: context.projectSha256 }) };

@@ -10,10 +10,18 @@ The implementation is under active review. Local tests and builds are evidence o
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth
+npx urlcode init my-site --with ui,auth --example
 # or, in an existing site:
-npx urlcode extensions add auth
+npx urlcode extensions add auth --example
 ```
+
+Without `--example`, auth installs its capability only: the `/account/*`
+pages (the default mount; move the route to change it), the operator service
+with the minimal `{member, admin}` role model and `defaultRole: member` in
+`operator-service.mjs` (edit it to change the roles), and private keys in
+`data/`. No page of yours is protected until you add `auth: true` to a route.
+`--example` also writes a `/private` page that only a signed-in caller can
+read.
 
 auth is released as a tarball on core's GitHub Release, at core's version, and
 pinned by sha512 in core's `dist/addons.json`; only core is on npm.

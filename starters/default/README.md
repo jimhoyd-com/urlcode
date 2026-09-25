@@ -26,10 +26,15 @@ from the site directory:
 
 ```sh
 npx urlcode extensions available
-npx urlcode extensions add ui
-npx urlcode extensions remove ui
+npx urlcode extensions add ui auth --example   # --example adds working demos, such as a signed-in /private page
+npx urlcode extensions remove auth
 npx urlcode upgrade --check
 ```
+
+`extensions add` installs only the capability (for example auth's `/account/*`
+pages, with no page of yours protected yet); `--example` also writes each added
+extension's demo, such as store's `/api/todos` collection and `/todos` screen or
+forms' `/contact` flow.
 
 Start with the local MCP `get_context` tool (or `npx urlcode context --project
 app`), then add the smallest declarative route or custom code the task requires.

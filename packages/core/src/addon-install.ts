@@ -255,12 +255,33 @@ const kindNoun = (kind: AddonKind): string => kind === 'extension' ? 'extensions
 
 export interface AddOptions {
   acknowledgements?: readonly string[] | undefined;
+  /** `--example`: also write each added extension's `example` on top of its capability scaffold. */
+  example?: boolean | undefined;
   /** The command that would proceed with one more acknowledgement; `init --with` passes its own. */
   retry?: ((acknowledgements: readonly string[]) => string) | undefined;
   /** Test/offline seam: an already-read manifest. */
   manifest?: AddonManifest | undefined;
 }
-export interface AddResult { added: string[]; alreadyInstalled: string[]; projectSha256: string | undefined; env: Record<string, string>; notes: string[]; keptFiles: string[]; development: boolean }
+export interface AddResult { added: string[]; alreadyInstalled: string[]; projectSha256: string | undefined; env: Record<string, string>; notes: string[]; keptFiles: string[]; development: boolean; examples: string[] }
+
+/** Plain objects merge key by key; any other value from `over` replaces. Neither input is changed. */
+function deepMerge(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(over)) merged[key] = isRecord(value) && isRecord(merged[key]) ? deepMerge(merged[key] as Record<string, unknown>, value) : value;
+  return merged;
+}
+/** The capability scaffold with an extension's example written on top of it (see `ExtensionDefinition.example`). */
+export function withExample(name: string, capability: ScaffoldResult, example: ScaffoldResult): ScaffoldResult {
+  assert(isRecord(example) && isRecord(example.config) && isRecord(example.routes), `${name} example must return config and routes objects`);
+  for (const route of Object.keys(example.routes)) assert(!Object.hasOwn(capability.routes, route), `${name} example adds route ${route}, which its capability scaffold already adds`);
+  const list = <T>(a: T[] | undefined, b: T[] | undefined): T[] | undefined => a || b ? [...(a ?? []), ...(b ?? [])] : undefined;
+  const files = list(capability.files, example.files), acknowledged = list(capability.acknowledged, example.acknowledged), routeNotes = list(capability.routeNotes, example.routeNotes), notes = list(capability.notes, example.notes);
+  const env = capability.env || example.env ? { ...capability.env, ...example.env } : undefined;
+  return {
+    config: deepMerge(capability.config, example.config), routes: { ...capability.routes, ...example.routes },
+    ...(files ? { files } : {}), ...(env ? { env } : {}), ...(acknowledged ? { acknowledged } : {}), ...(routeNotes ? { routeNotes } : {}), ...(notes ? { notes } : {}),
+  };
+}
 
 /**
  * `urlcode extensions add` / `urlcode artifacts add`. Names of the other kind refuse. Requirements are added too,
@@ -270,6 +291,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   assert(requested.length > 0 && requested.every(name => addonNamePattern.test(name)), `Name at least one ${kind}`);
   const site = await openSite(directory), manifest = options.manifest ?? await readAddonManifest();
   const acknowledgements = [...new Set(options.acknowledgements ?? [])].sort();
+  assert(!options.example || kind === 'extension', '--example is only supported by extensions add; artifacts are inert data');
   assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
   for (const name of requested) {
     const pin = manifest.addons[name];
@@ -282,8 +304,12 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   const before = new Set(managedNames(manifest, pkg));
   const wanted = withRequirements(manifest, requested);
   const toAdd = wanted.filter(name => !before.has(name) || pkg.dependencies?.[manifest.addons[name]!.package] !== manifest.addons[name]!.url);
-  const result: AddResult = { added: [], alreadyInstalled: wanted.filter(name => !toAdd.includes(name)), projectSha256: undefined, env: {}, notes: [], keptFiles: [], development: isDevelopmentManifest(manifest) };
-  if (!toAdd.length) { assert(acknowledgements.length === 0, `--ack ${acknowledgements.join(', ')} has no effect: ${requested.join(', ')} is already installed`); return result; }
+  const result: AddResult = { added: [], alreadyInstalled: wanted.filter(name => !toAdd.includes(name)), projectSha256: undefined, env: {}, notes: [], keptFiles: [], development: isDevelopmentManifest(manifest), examples: [] };
+  if (!toAdd.length) {
+    assert(acknowledgements.length === 0, `--ack ${acknowledgements.join(', ')} has no effect: ${requested.join(', ')} is already installed`);
+    assert(!options.example, `--example has no effect: ${requested.join(', ')} is already installed; an example is written only when an extension is added`);
+    return result;
+  }
   const yamlFile = join(site.project, 'urlcode.yaml');
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile]);
   const tree = await dependencyTree(site.site);
@@ -320,25 +346,31 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         const definition = definitions.get(name)!;
         for (const requirement of definition.requires ?? []) assert(installed.includes(requirement), `${name} requires ${requirement}`);
         assert(!Object.hasOwn(loaded.document.extensions ?? {}, name), `${PROJECT_DIRECTORY}/urlcode.yaml already declares extensions.${name}; remove that block first`);
-        let scaffold: ScaffoldResult = { config: {}, routes: {} };
-        if (definition.scaffold) {
-          try { scaffold = await definition.scaffold({ site: site.site, project: site.project, installed, acknowledgements }); }
+        const request = { site: site.site, project: site.project, installed, acknowledgements };
+        const call = async (step: (value: typeof request) => ScaffoldResult | Promise<ScaffoldResult>): Promise<ScaffoldResult> => {
+          try { return await step(request); }
           catch (error) {
             const id = isRecord(error) ? error.acknowledgement : undefined, message = error instanceof Error ? error.message : String(error);
             if (typeof id === 'string' && acknowledgementPattern.test(id) && id.startsWith(`${name}:`) && !acknowledgements.includes(id)) {
-              const retry = options.retry ?? ((acks: readonly string[]) => [`urlcode ${kindNoun(kind)} add`, requested.join(' '), ...acks.flatMap(ack => ['--ack', ack])].join(' '));
+              const retry = options.retry ?? ((acks: readonly string[]) => [`urlcode ${kindNoun(kind)} add`, requested.join(' '), ...(options.example ? ['--example'] : []), ...acks.flatMap(ack => ['--ack', ack])].join(' '));
               throw new ConfigError(`${name} refused: ${message}. If you accept that risk, re-run with the acknowledgement: ${retry([...acknowledgements, id].sort())}`);
             }
             throw new ConfigError(`${name} refused: ${message}`);
           }
-        }
+        };
+        let scaffold: ScaffoldResult = definition.scaffold ? await call(value => definition.scaffold!(value)) : { config: {}, routes: {} };
         assert(isRecord(scaffold) && isRecord(scaffold.config) && isRecord(scaffold.routes), `${name} scaffold must return config and routes objects`);
+        if (options.example && definition.example) {
+          scaffold = withExample(name, scaffold, await call(value => definition.example!(value)));
+          result.examples.push(name);
+        }
         assert((scaffold.acknowledged ?? []).every(id => acknowledgements.includes(id) && id.startsWith(`${name}:`)), `${name} scaffold may only acknowledge ${name}:<id> values the operator passed`);
         assert((scaffold.routeNotes ?? []).every(note => typeof note === 'string' && note.length <= 300 && !/[\r\n]/.test(note)), `${name} routeNotes must be single-line strings`);
         for (const route of Object.keys(scaffold.routes)) assert(!Object.hasOwn(loaded.routes, route) && !scaffolds.some(other => Object.hasOwn(other.result.routes, route)), `${name} adds route ${route}, which the project already has`);
         for (const file of scaffold.files ?? []) { if (file.content instanceof Uint8Array) secrets.push(file.content); scaffoldPath(site.site, file.path); }
         scaffolds.push({ name, result: scaffold });
       }
+      assert(!options.example || result.examples.length > 0, `--example has no effect: ${newExtensions.join(', ')} ${newExtensions.length === 1 ? 'ships' : 'ship'} no example`);
       const consumed = new Set(scaffolds.flatMap(item => item.result.acknowledged ?? []));
       const unused = acknowledgements.filter(id => !consumed.has(id));
       assert(!unused.length, `--ack ${unused.join(', ')} has no effect: no extension being added consumed it`);

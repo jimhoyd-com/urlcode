@@ -68,7 +68,9 @@ test('end to end: the scaffolded Todos screen is served by ui from the store con
   const root = await mkdtemp(join(tmpdir(), 'store-screens-')); t.after(() => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'); await mkdir(project);
   const request = { site: root, project, installed: ['store', 'ui'], acknowledgements: ['store:public-write'] };
-  const results: Record<string, ScaffoldResult> = { ui: await ui.definition.scaffold!(request), store: await store.definition.scaffold!(request) };
+  // What `extensions add store ui --example` writes: the store's capability with its example on top.
+  const capability = await store.definition.scaffold!(request), example = await store.definition.example!(request);
+  const results: Record<string, ScaffoldResult> = { ui: await ui.definition.scaffold!(request), store: { ...example, config: { ...capability.config, ...example.config } } };
   for (const result of Object.values(results)) for (const file of result.files ?? []) {
     await mkdir(join(root, file.path, '..'), { recursive: true });
     await writeFile(join(root, file.path), file.content);

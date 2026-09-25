@@ -4,8 +4,10 @@
 > roles and an account page for a `urlcode.yaml` project. Node with a patched
 > SQLite build; released with core, pending independent review. Apache-2.0.
 >
-> Install core from npm, then run `npx urlcode init my-site --with ui,auth`, or
-> `npx urlcode extensions add auth` in an existing site (it adds `ui` too).
+> Install core from npm, then run `npx urlcode init my-site --with ui,auth --example`, or
+> `npx urlcode extensions add auth` in an existing site (it adds `ui` too). Without `--example`
+> only `/account/*`, the operator service (roles member/admin) and keys are written; `--example`
+> adds a signed-in `/private` page.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 

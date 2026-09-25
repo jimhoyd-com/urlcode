@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+**Default behavior change:** `urlcode extensions add` (and `init --with`) now installs only the capability; the new `--example` flag, the same for every extension, writes the sample behavior it used to write by default (#711). A blank `extensions add auth` writes the `/account/*` mount, the operator service (the documented `{member, admin}` role model with `defaultRole: member`, kept as capability configuration) and keys, and no `/private` page; `--example` adds the signed-in `/private` page. To reproduce the old result, add `--example`.
+
 Bearer routes accept a per-credential quota, `auth: {bearer: {scopes, quota: {requests, window}}}` (#572): each API key gets `requests` per `window` seconds, counted by key id in the auth SQLite store (fixed window, durable, shared by processes on one host). The request over budget is refused with 429, `Retry-After` and `RateLimit-Policy`/`RateLimit` under the policy name `credential`, before the handler runs. `AuthService.consumeApiKeyQuota` is the service method behind it.
 
 An API key can carry its own quota, `issueApiKey({name, scopes, quota: {requests, window}})` or `quota` in the `api-key-issue` JSON (#703). A key's own quota replaces the route's `auth.bearer.quota` for that key, on every bearer route; keys without one use the route's. Existing databases gain the columns in place and existing keys have no quota. `authenticateApiKey` and `listApiKeys` return `quota` (`null` when unset). Allowed, counted bearer responses now carry `RateLimit-Policy`/`RateLimit` under `credential` (the extension's `middleware()` hook), ahead of core throttle's `default` member when both apply.

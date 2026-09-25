@@ -62,6 +62,9 @@ test('scaffold returns an empty config, the /admin mount and notes, and no files
   assert.deepEqual(result.config, {});
   assert.deepEqual(result.routes, { '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } });
   assert.ok(result.notes!.length > 0 && result.notes!.every(note => typeof note === 'string' && !note.includes('\n')));
+  // The console is the capability; admin ships no example, and names auth's mount as a configurable default.
+  assert.equal(admin.definition.example, undefined);
+  assert.ok(result.notes!.some(note => note.includes('authMount')));
 });
 
 test('merged with auth, the routes validate with core', async () => {

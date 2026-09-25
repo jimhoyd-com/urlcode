@@ -30,12 +30,13 @@ export default defineExtension<AdminHostOptions>({
   authoring: adminAuthoring,
   agent: {description: 'Local, revision-pinned references for agents configuring the admin extension.', references: [{name: 'admin extension guide', description: 'Configuration and operational guidance for users, sessions and roles.', path: 'README.md'}]},
   contributes: { ui: uiContribution },
+  // The capability is the console itself; admin ships no example.
   scaffold() {
     return {
       config: {},
       routes: { '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } },
       notes: [
-        'After bootstrapping the first administrator and signing in at /account/login, open /admin.',
+        'After bootstrapping the first administrator and signing in at auth\'s mount (/account/login by default; if you moved auth\'s /account/* route, pass admin({authMount}) in host.mjs), open /admin.',
         'Configure sender callbacks in host.mjs (admin({...})) before inviting users; impersonation stays disabled until explicitly enabled.',
       ],
     };

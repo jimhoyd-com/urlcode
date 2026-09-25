@@ -316,9 +316,10 @@ Data persistence has no native handler. The operator-installed `store` extension
 serves declared collections as a CRUD API, and `urlcode recipes search "crud store
 persist"` finds the `store-crud` recipe. In a site, `urlcode extensions add
 store auth ui` (or `urlcode init DIR --with ui,auth,store`) installs the
-extension, declares its collection and mount with `auth: true`, and wires
-`host.mjs`; `store` without `auth` refuses until the operator re-runs with
-`--ack store:public-write`. Report anything beyond that recipe (filtering, sorting, per-record
+extension with an empty `collections` block and wires `host.mjs`; declare the
+collection and its mount yourself, or add `--example` for the `todos`
+collection and mount with `auth: true`. The store example without `auth`
+refuses until the operator re-runs with `--ack store:public-write`. Report anything beyond that recipe (filtering, sorting, per-record
 ownership, a database) as a gap. `urlcode context` lists the same built-ins so
 they are visible before you write code.
 

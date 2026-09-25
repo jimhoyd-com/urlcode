@@ -41,7 +41,7 @@ const fieldSchema={type:'object',additionalProperties:false,required:['label'],p
 export const formHookContracts=[{name:'onSubmit',kind:'action',description:'Runs after the extension has admitted and validated a form submission, before the confirmation redirect. It is trusted project code and receives only declared field values.',inputSchema:{type:'object',additionalProperties:false,required:['flow','values'],properties:{flow:{type:'string'},values:{type:'object'}}}}] as const satisfies readonly ExtensionHookContract[];
 export const formsConfigSchema={type:'object',additionalProperties:false,required:['flows'],properties:{
   hooks:extensionHooksSchema(formHookContracts),
-  flows:{type:'object',minProperties:1,maxProperties:16,propertyNames:{pattern:FLOW.source},additionalProperties:{type:'object',additionalProperties:false,required:['mount','title','submitLabel','confirmation','fields'],properties:{
+  flows:{type:'object',maxProperties:16,propertyNames:{pattern:FLOW.source},additionalProperties:{type:'object',additionalProperties:false,required:['mount','title','submitLabel','confirmation','fields'],properties:{
     mount:{type:'string',pattern:'^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$',maxLength:256},title:stringSchema,timeZone:{type:'string',pattern:ZONE.source},submitLabel:stringSchema,
     confirmation:{type:'object',additionalProperties:false,required:['title','message'],properties:{title:stringSchema,message:{type:'string',minLength:1,maxLength:2048},show:{type:'array',minItems:1,maxItems:32,uniqueItems:true,items:{type:'string',pattern:FIELD.source}}}},
     fields:{type:'object',minProperties:1,maxProperties:32,propertyNames:{pattern:FIELD.source},additionalProperties:fieldSchema},

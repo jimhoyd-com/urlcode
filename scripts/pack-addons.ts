@@ -1,7 +1,7 @@
 // Packs core and every add-on with npm pack, and writes the addons.json that pins each add-on tarball by sha512.
 // The integration test and CI pin `file:` tarballs; the release passes the GitHub Release download base instead.
 //
-//   node scripts/pack-addons.ts <out-directory> [--site <directory> --with a,b [--ack x:y]]
+//   node scripts/pack-addons.ts <out-directory> [--site <directory> --with a,b [--example] [--ack x:y]]
 //
 // With --site it also creates a site from the packed runtime and adds the named extensions to it (the CI action job).
 import { execFileSync } from 'node:child_process';
@@ -55,7 +55,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     pkg.dependencies['@jimhoyd/urlcode'] = `file:${packed.core}`;
     await writeFile(file, JSON.stringify(pkg, null, 2) + '\n');
     const names = (option('--with') ?? '').split(',').filter(Boolean), ack = option('--ack');
-    if (names.length) run(['extensions', 'add', ...names, ...(ack ? ['--ack', ack] : [])], resolve(site));
+    if (names.length) run(['extensions', 'add', ...names, ...(args.includes('--example') ? ['--example'] : []), ...(ack ? ['--ack', ack] : [])], resolve(site));
     else npm(['install', '--ignore-scripts'], resolve(site), env);
   }
 }

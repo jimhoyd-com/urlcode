@@ -5,8 +5,9 @@
 > two-person cases, support impersonation, health. Released with core.
 > Apache-2.0.
 
-Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin`, or
-`npx urlcode extensions add admin` in an existing site (it adds `auth` and `ui` too).
+Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin --example`, or
+`npx urlcode extensions add admin` in an existing site (it adds `auth` and `ui` too; `--example`
+adds auth's `/private` demo page, admin itself has no example).
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 

@@ -321,7 +321,11 @@ import { create${Name}Extension, ${camel}Authoring, ${camel}ConfigSchema } from 
 /** Operator choices passed in host.mjs, for example \`${camel}({...})\`. TODO: add real options or leave empty. */
 export type ${Name}HostOptions = Record<string, never>;
 
-/** TODO: return what \`urlcode extensions add ${name}\` should write for this extension. */
+/**
+ * TODO: return what \`urlcode extensions add ${name}\` should write: the capability only, what the extension needs to
+ * function, with no sample application endpoints. Put a demo in an optional \`example(request)\` on the definition;
+ * core writes it on top only with \`--example\`.
+ */
 function scaffold(_request: ScaffoldRequest): ScaffoldResult {
   return {
     config: { mounts: { example: { mount: '/${name}', message: 'Hello from ${name}.' } } },

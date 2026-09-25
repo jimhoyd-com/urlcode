@@ -14,6 +14,7 @@
   so they can go stale across midnight. Activation refuses unknown zones,
   durations with weeks or time parts, and two relative bounds whose window is
   empty on some day.
+- **Default behavior change:** `urlcode extensions add` (and `init --with`) now installs only the capability; the new `--example` flag, the same for every extension, writes the sample behavior it used to write by default (#711). A blank `extensions add forms` writes the CSRF key and an empty `flows` block (`flows` may now be empty) and mounts nothing; `--example` writes the `/contact` flow and route. To reproduce the old result, add `--example`.
 - A field can be required conditionally with `requiredWhen: {field, in}`
   (#528): it is required when a sibling `select` or `enum` field was submitted
   with one of the listed values, and optional otherwise, with the same 422

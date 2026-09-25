@@ -232,7 +232,7 @@ Or `make validate`, `make test` and `make audit ARGS='--expect-routes 2'`
 from the starter Makefile. The runtime repository exercises the action on
 full-lane pull requests (`.github/workflows/ci.yml`, job `action`) against a
 site built from the packed runtime and add-ons (`scripts/pack-addons.ts --site
-… --with ui,store`), once with extensions checked statically and once through
+… --with ui,store --example`), once with extensions checked statically and once through
 `host.mjs`, and `test/action.test.ts`
 checks that `action.yml` is a composite action with the inputs above and that
 every third-party action it or the starter workflow uses is pinned to a

@@ -94,11 +94,13 @@ while store is currently Node-only. See each package's README ([auth](../package
 An extended project is a site: core plus the add-ons that core pins.
 
 ```sh
-npx @jimhoyd/urlcode init my-site --with ui,auth,admin
+npx @jimhoyd/urlcode init my-site --with ui,auth,admin --example
 ```
 
 That is `urlcode init my-site` followed by `urlcode extensions add ui auth
-admin` in it. Nothing else is discovered by convention:
+admin --example` in it. Without `--example` each extension installs only its
+capability (auth's `/account/*` pages, admin's console, ui's assets); with it,
+each also writes its demo, such as the `/private` page below. Nothing else is discovered by convention:
 
 ```
 my-site/
@@ -183,7 +185,8 @@ cd my-site
 npm run dev        # urlcode dev --project app --host-file host.mjs
 ```
 
-Each `extensions add` calls the extension's `scaffold` and writes its
+Each `extensions add` calls the extension's `scaffold` (and, with `--example`,
+its optional `example`, merged on top) and writes its
 configuration into `app/urlcode.yaml`, its routes into `app/routes/<name>.yaml`,
 its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is

@@ -12,6 +12,12 @@ const definition = {
     env: { ALPHA_MODE: 'Optional mode for the fixture' },
     notes: [`installed: ${installed.join(',')}`],
   }),
+  // Sample behavior written only with --example: a demo route and a greeting that overrides the capability's.
+  example: () => ({
+    config: { greeting: 'hello from the example' },
+    routes: { '/alpha-demo': { respond: { text: 'demo' } } },
+    notes: ['example: open /alpha-demo'],
+  }),
   async host(ctx, options) {
     const key = await readFile(join(ctx.site, 'data', 'alpha.key'));
     return {

@@ -118,7 +118,7 @@ export const storeAuthoring: ExtensionAuthoringContract = {
 
 /** The `extensions.store.config` schema: the registration and the extension definition share this one object. */
 export const storeConfigSchema = { type: 'object', additionalProperties: false, required: ['collections'], properties: {
-  collections: { type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema },
+  collections: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema },
   shortLinks: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: {
     type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
       mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 }, collection: { type: 'string', pattern: NAME.source },
