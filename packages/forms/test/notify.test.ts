@@ -11,11 +11,10 @@ import mail from '@jimhoyd/urlcode-mail/extension';
 import { recordingTransport } from '@jimhoyd/urlcode-mail';
 import type { MailTransport } from '@jimhoyd/urlcode-mail';
 import forms from '../src/extension.ts';
-import { contact, origin, recordingHook, serve, site, valid } from './support.ts';
+import { contact, hookCalls, origin, recordingHook, serve, site, valid } from './support.ts';
 
 const csrfSecret = 'c'.repeat(32);
 const recipients = { office: 'office@example.test' };
-const calls = (key: string): unknown[] => (globalThis as unknown as Record<string, unknown[] | undefined>)[key] ?? [];
 const confirmationCookie = (response: Response) => response.headers.getSetCookie().some(header => header.startsWith('__Host-urlcode-forms-confirmation=') && !header.includes('Max-Age=0'));
 
 test('an accepted submission sends one forms.submission message to the recipient, with only the included fields', async t => {
@@ -58,10 +57,10 @@ test('without include the message carries no values; a flow without notify sends
 });
 
 test('onSubmit runs before the mail; onSubmit throwing, a honeypot or a failed validation sends nothing', async t => {
-  const transport = recordingTransport(), key = '__formsNotifyOrder';
+  const transport = recordingTransport();
   const order: string[] = [];
-  const observed: MailTransport = { kind: 'observed', development: true, async deliver(envelope, signal) { order.push(`mail:${calls(key).length}`); await transport.deliver(envelope, signal); } };
-  const where = await site(t, { contact: contact({ notify: { recipient: 'office' }, abuse: { client: { limit: 50, windowMs: 3600000 }, honeypot: 'website' } }) }, { declare: ['abuse', 'mail'], hook: recordingHook(key) });
+  const observed: MailTransport = { kind: 'observed', development: true, async deliver(envelope, signal) { order.push(`mail:${hookCalls().length}`); await transport.deliver(envelope, signal); } };
+  const where = await site(t, { contact: contact({ notify: { recipient: 'office' }, abuse: { client: { limit: 50, windowMs: 3600000 }, honeypot: 'website' } }) }, { declare: ['abuse', 'mail'], hook: recordingHook });
   const { submit } = await serve(t, where, [ui(), forms({ csrfSecret }), abuse({ key: randomBytes(32) }), mail({ transport: observed, recipients })]);
   assert.equal((await submit(valid)).status, 303);
   assert.deepEqual(order, ['mail:1'], 'onSubmit had run (one call recorded) when the mail was delivered');

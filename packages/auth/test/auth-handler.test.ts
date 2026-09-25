@@ -253,7 +253,7 @@ test('new-device notices follow a stable HttpOnly device cookie and do not repea
     const first = await call('/login', { email: 'device@example.test', password: 'correct horse battery staple', csrf: prepared.data.csrf });
     assert.equal(first.response.status, 200);
     assert.deepEqual(notices(), ['auth.new-device']);
-    assert.equal(lastSent(hosted.sent, 'auth.new-device').text.includes('https://example.test/account/account'), true);
+    assert.match(lastSent(hosted.sent, 'auth.new-device').text, /(?:^|\s)https:\/\/example\.test\/account\/account(?=\.?(?:\s|$))/, 'the notice links the account page on the site origin');
     await call('/logout', { csrf: first.data.csrf });
     prepared = await call('/csrf');
     const second = await call('/login', { email: 'device@example.test', password: 'correct horse battery staple', csrf: prepared.data.csrf });

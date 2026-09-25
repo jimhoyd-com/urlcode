@@ -20,8 +20,10 @@ export function contact(extra: Record<string, unknown> = {}) {
     ...extra,
   };
 }
-/** An onSubmit hook that records each call on globalThis[key] and throws for a message containing "boom". */
-export const recordingHook = (key: string) => `export default async function onSubmit(input) { if (input.values.message.includes('boom')) throw new Error('boom'); (globalThis[${JSON.stringify(key)}] ??= []).push(input); }\n`;
+/** An onSubmit hook that records each call on `globalThis.__formsHookCalls` and throws for a message containing "boom". A fixed source: `site()` resets the record for each site it writes. */
+export const recordingHook = `export default async function onSubmit(input) { if (input.values.message.includes('boom')) throw new Error('boom'); (globalThis.__formsHookCalls ??= []).push(input); }\n`;
+/** The onSubmit calls `recordingHook` recorded since the current site was written. */
+export const hookCalls = (): unknown[] => (globalThis as unknown as { __formsHookCalls?: unknown[] }).__formsHookCalls ?? [];
 
 export interface SiteOptions { declare?: readonly string[]; hook?: string }
 /** Writes app/urlcode.yaml with ui, forms (the given flows) and any extra `declare`d extensions, and pins its revision. */
@@ -30,7 +32,7 @@ export async function site(t: TestContext, flows: Record<string, unknown>, optio
   t.after(() => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app');
   await mkdir(project);
-  if (options.hook) await writeFile(join(project, 'on-submit.mjs'), options.hook);
+  if (options.hook) { (globalThis as unknown as { __formsHookCalls?: unknown[] }).__formsHookCalls = []; await writeFile(join(project, 'on-submit.mjs'), options.hook); }
   const routes: Record<string, unknown> = { '/assets/ui/*': { extension: 'ui' } };
   for (const flow of Object.values(flows) as { mount: string }[]) routes[`${flow.mount}/*`] = { extension: 'forms', methods: ['GET', 'HEAD', 'POST'] };
   const extensions: Record<string, unknown> = { ui: { version: '1', config: {} }, forms: { version: '1', config: { flows, ...(options.hook ? { hooks: { onSubmit: './on-submit.mjs' } } : {}) } } };

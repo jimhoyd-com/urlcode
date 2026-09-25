@@ -9,7 +9,7 @@ import ui from '@jimhoyd/urlcode-ui/extension';
 import abuse from '@jimhoyd/urlcode-abuse/extension';
 import type { AbuseChallengeProvider } from '@jimhoyd/urlcode-abuse';
 import forms from '../src/extension.ts';
-import { contact, origin, recordingHook, serve, site, valid } from './support.ts';
+import { contact, hookCalls, origin, recordingHook, serve, site, valid } from './support.ts';
 
 const csrfSecret = 'c'.repeat(32);
 const challengeOrigin = 'https://challenge.example.test';
@@ -22,10 +22,9 @@ function provider(calls: { token: string; client: string; action: string }[] = [
     async verify(input) { calls.push({ token: input.token, client: input.client, action: input.action }); return input.token === 'good-token'; },
   };
 }
-const calls = (key: string): unknown[] => (globalThis as unknown as Record<string, unknown[] | undefined>)[key] ?? [];
 
 test('the sixth submission in a window gets 429 with Retry-After, and invalid submissions count too', async t => {
-  const where = await site(t, { contact: contact({ abuse: { client: { limit: 5, windowMs: 3600000 } } }) }, { declare: ['abuse'], hook: recordingHook('__formsAbuseLimit') });
+  const where = await site(t, { contact: contact({ abuse: { client: { limit: 5, windowMs: 3600000 } } }) }, { declare: ['abuse'], hook: recordingHook });
   const { submit } = await serve(t, where, [ui(), forms({ csrfSecret }), abuse({ key: randomBytes(32) })]);
   for (let index = 0; index < 3; index++) assert.equal((await submit(valid)).status, 303);
   assert.equal((await submit({ ...valid, email: 'not-an-email' })).status, 422, 'an invalid submission is refused after it is counted');
@@ -37,7 +36,7 @@ test('the sixth submission in a window gets 429 with Retry-After, and invalid su
   const page = await limited.text();
   assert.match(page, /Too many submissions/);
   assert.ok(!page.includes('127.0.0.1'), 'the page names no client');
-  assert.equal(calls('__formsAbuseLimit').length, 4, 'onSubmit ran for the four admitted valid submissions only');
+  assert.equal(hookCalls().length, 4, 'onSubmit ran for the four admitted valid submissions only');
 });
 
 test('above challengeAfter the form re-renders 403 with the widget and the values; a verified token is admitted', async t => {
@@ -51,7 +50,7 @@ test('above challengeAfter the form re-renders 403 with the widget and the value
   assert.equal((await submit(valid)).status, 303);
   const challenged = await submit({ ...valid, message: 'Keep <this> text', challengeToken: 'bad-token' });
   assert.equal(challenged.status, 403);
-  assert.ok((challenged.headers.get('content-security-policy') ?? '').includes(challengeOrigin), 'the widget origin is allowed by the page CSP');
+  assert.ok((challenged.headers.get('content-security-policy') ?? '').split(';').some(directive => directive.trim().split(/\s+/).slice(1).includes(challengeOrigin)), 'the widget origin is a source in the page CSP');
   const html = await challenged.text();
   assert.match(html, /Complete the verification and submit again/);
   assert.match(html, /Keep &lt;this&gt; text/, 'the entered values are kept, escaped');
@@ -63,16 +62,16 @@ test('above challengeAfter the form re-renders 403 with the widget and the value
 });
 
 test('a filled honeypot is accepted with the confirmation redirect and never reaches onSubmit', async t => {
-  const where = await site(t, { contact: contact({ abuse: { client: { limit: 5, windowMs: 3600000 }, honeypot: 'website' } }) }, { declare: ['abuse'], hook: recordingHook('__formsHoneypot') });
+  const where = await site(t, { contact: contact({ abuse: { client: { limit: 5, windowMs: 3600000 }, honeypot: 'website' } }) }, { declare: ['abuse'], hook: recordingHook });
   const { form, submit } = await serve(t, where, [ui(), forms({ csrfSecret }), abuse({ key: randomBytes(32) })]);
   assert.match((await form()).html, /<div hidden><label>Leave this field empty<input name="website"/);
   const bot = await submit({ ...valid, website: 'https://spam.example' });
   assert.equal(bot.status, 303);
   assert.equal(bot.headers.get('location'), '/contact/confirmation');
-  assert.equal(calls('__formsHoneypot').length, 0);
+  assert.equal(hookCalls().length, 0);
   const person = await submit({ ...valid, website: '' });
   assert.equal(person.status, 303, 'an empty honeypot is not refused as an undeclared field');
-  assert.equal(calls('__formsHoneypot').length, 1);
+  assert.equal(hookCalls().length, 1);
 });
 
 test('activation refuses abuse that cannot be enforced: missing, off node, or a challenge without a verifier', async t => {
