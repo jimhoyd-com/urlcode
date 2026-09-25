@@ -5,10 +5,11 @@ import {randomBytes} from 'node:crypto';
 import {jsonResponse,wantsJson} from '@jimhoyd/urlcode/extensions';
 import type {ExtensionRequest} from '@jimhoyd/urlcode/extensions';
 import type {AuthSessionResult} from './auth-core.ts';
-import {AuthHttp,AuthHttpError,csrfField,escapeHtml,formField,readAuthFields,screenResponse} from './auth-ui.ts';
-import type {AuthHttpResponse,UiHost} from './auth-ui.ts';
+import {AuthHttp,AuthHttpError,readAuthFields,screenResponse} from './auth-ui.ts';
+import type {AuthHttpResponse} from './auth-ui.ts';
+import type {UiExtension} from '@jimhoyd/urlcode-ui/host';
 import type {Delivery} from './delivery.ts';
-import {hiddenField,Markup} from '@jimhoyd/urlcode-ui';
+import {escapeHtml,field,hiddenField,Markup} from '@jimhoyd/urlcode-ui';
 export interface FactorRecoveryService {
  getFactorRecoveryEnabled():boolean;
  beginFactorRecovery(input:{email:string;browserToken:string}):Promise<{verificationToken:string|null;cancelToken:string|null}>;
@@ -16,7 +17,7 @@ export interface FactorRecoveryService {
  cancelFactorRecovery(token:string):Promise<void>;
  completeFactorRecovery(input:{token:string;browserToken:string}):Promise<AuthSessionResult>;
 }
-interface FactorRecoveryOptions {challenge?:AbuseChallengeWidget|undefined;service:FactorRecoveryService;delivery:Delivery;ui:UiHost}
+interface FactorRecoveryOptions {challenge?:AbuseChallengeWidget|undefined;service:FactorRecoveryService;delivery:Delivery;ui:UiExtension}
 /** Opt-in email fallback lowers factor assurance; it never creates an unrestricted session. */
 export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:AuthHttp,mount:string){
  const browserCookie='__Host-urlcode-factor-recovery';
@@ -24,7 +25,7 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
  const hidden=(token:string)=>hiddenField('token',token);
  return {enabled,async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation().resolve()):Promise<AuthHttpResponse|undefined>{
   const tr=(key:string,values?:Record<string,string|number>)=>presentation.text(key,values);
- const form=(path:string,csrf:string,markup:string,label:string)=>`<form method="post" action="${escapeHtml(mount+path+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(csrf)}${markup}<button type="submit">${escapeHtml(label)}</button></form>`;
+ const form=(path:string,csrf:string,markup:string,label:string)=>`<form method="post" action="${escapeHtml(mount+path+'?lang='+encodeURIComponent(presentation.locale))}">${hiddenField('csrf', csrf)}${markup}<button type="submit">${escapeHtml(label)}</button></form>`;
 
   const page=(title:string,view:{intro:string|null;form:string},status=200,headers:[string,string][]=[])=>screenResponse(title,{name:'auth/recover-factor',view:{intro:view.intro,form:new Markup(view.form)}},{status,headers,presentation,challenge:request.path===mount+'/recover-factor'&&request.method!=='POST'?options.challenge:undefined,layout:'compact',ui:options.ui});
   const status=(title:string,message:string,headers:[string,string][]=[])=>screenResponse(title,{name:'auth/status',view:{alert:false,message,href:mount+'/login',label:presentation.textSource('Back to sign in')}},{status:200,headers,presentation,layout:'compact',ui:options.ui});
@@ -33,7 +34,7 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
   if(!['GET','HEAD','POST'].includes(request.method))throw new AuthHttpError(405,'GET, HEAD or POST required');
   if(request.method!=='POST'){
    const prepared=http.prepare(request);
-   if(path==='/recover-factor')return page(tr('recovery.title'),{intro:tr('recovery.intro'),form:form(path,prepared.csrf,formField('email',presentation.textSource('Email address'),'email','username'),tr('recovery.send'))},200,prepared.headers);
+   if(path==='/recover-factor')return page(tr('recovery.title'),{intro:tr('recovery.intro'),form:form(path,prepared.csrf,field({name:'email',label:presentation.textSource('Email address'),type:'email',autocomplete:'username'}),tr('recovery.send'))},200,prepared.headers);
    const tokens=request.query.getAll('token');if(tokens.length!==1||!/^[A-Za-z0-9_-]{43}$/.test(tokens[0]!))throw new AuthHttpError(400,'A single recovery token is required');
    if(path==='/recover-factor/cancel')return page(tr('recovery.cancelTitle'),{intro:null,form:form(path,prepared.csrf,hidden(tokens[0]!),tr('recovery.cancel'))},200,prepared.headers);
    return page(tr('recovery.confirmTitle'),{intro:tr('recovery.confirmInfo'),form:form('/recover-factor/confirm',prepared.csrf,hidden(tokens[0]!),tr('recovery.confirm'))+form('/recover-factor/complete',prepared.csrf,hidden(tokens[0]!),tr('recovery.complete'))},200,prepared.headers);

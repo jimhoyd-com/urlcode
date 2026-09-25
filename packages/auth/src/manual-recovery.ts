@@ -3,9 +3,9 @@ import type {AuthSessionResult} from './auth-core.ts';
 import type {PresentationContext} from './presentation.ts';
 import {createPresentation} from './presentation.ts';
 import {jsonResponse,wantsJson} from '@jimhoyd/urlcode/extensions';
-import {AuthHttp,AuthHttpError,csrfField,escapeHtml,formField,readAuthFields,screenResponse} from './auth-ui.ts';
-import type {UiHost} from './auth-ui.ts';
-import {Markup} from '@jimhoyd/urlcode-ui';
+import {AuthHttp,AuthHttpError,readAuthFields,screenResponse} from './auth-ui.ts';
+import type {UiExtension} from '@jimhoyd/urlcode-ui/host';
+import {escapeHtml,field,hiddenField,Markup} from '@jimhoyd/urlcode-ui';
 import type {AuthHttpResponse} from './auth-ui.ts';
 
 /** Evidence is an internal human assessment, never an automatic identity assertion. */
@@ -32,7 +32,7 @@ export function validateRecoveryEvidence(input:ManualRecoveryEvidence):ManualRec
  return {summary:input.summary.trim(),...(input.reference!==undefined?{reference:input.reference.trim()}:{})};
 }
 /** Redemption is POST-only and creates an enrollment session, never normal access. */
-export function createManualRecoveryFlows(service:ManualRecoveryService,http:AuthHttp,mount:string,ui:UiHost){
+export function createManualRecoveryFlows(service:ManualRecoveryService,http:AuthHttp,mount:string,ui:UiExtension){
  return {async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation().resolve()):Promise<AuthHttpResponse|undefined>{
   const tr=(key:string)=>presentation.text('manualRecovery.'+key);
   if(request.path.slice(mount.length)!=='/restore-access')return;
@@ -41,7 +41,7 @@ export function createManualRecoveryFlows(service:ManualRecoveryService,http:Aut
   if(request.method!=='POST'){
    const tokens=request.query.getAll('token');if(tokens.length!==1||!/^[A-Za-z0-9_-]{43}$/.test(tokens[0]!))throw new AuthHttpError(400,'A single restoration token is required');
    const prepared=http.prepare(request);
-   return screenResponse(tr('restoreTitle'),{name:'auth/restore-access',view:{intro:tr('restoreIntro'),form:new Markup(`<form method="post" action="${escapeHtml(mount+'/restore-access?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}<input type="hidden" name="token" value="${escapeHtml(tokens[0]!)}">${formField('password',tr('newPassword'),'password','new-password')}<button type="submit">${escapeHtml(tr('replace'))}</button></form>`)}},{status:200,headers:prepared.headers,presentation,layout:'compact',ui});
+   return screenResponse(tr('restoreTitle'),{name:'auth/restore-access',view:{intro:tr('restoreIntro'),form:new Markup(`<form method="post" action="${escapeHtml(mount+'/restore-access?lang='+encodeURIComponent(presentation.locale))}">${hiddenField('csrf', prepared.csrf)}<input type="hidden" name="token" value="${escapeHtml(tokens[0]!)}">${field({name:'password',label:tr('newPassword'),type:'password',autocomplete:'new-password'})}<button type="submit">${escapeHtml(tr('replace'))}</button></form>`)}},{status:200,headers:prepared.headers,presentation,layout:'compact',ui});
   }
   const fields=readAuthFields(request,['token','password']);http.verify(request,fields);
   const result=await service.redeemRecoveryCase({token:fields.token||'',password:fields.password||''});

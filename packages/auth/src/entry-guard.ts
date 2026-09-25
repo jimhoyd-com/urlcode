@@ -9,7 +9,8 @@ import { normalizeEmail } from './auth-core.ts';
 import { AuthError } from './auth-store.ts';
 import { jsonResponse, wantsJson } from '@jimhoyd/urlcode/extensions';
 import { AuthHttp, AuthHttpError, screenResponse } from './auth-ui.ts';
-import type { AuthHttpResponse, UiHost } from './auth-ui.ts';
+import type { AuthHttpResponse } from './auth-ui.ts';
+import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
 import type { PresentationContext } from './presentation.ts';
 import { isHoneypotFilled } from './registration.ts';
 
@@ -28,7 +29,7 @@ export interface AuthAbuse {
 const entries = ['/login', '/register', '/signup/begin', '/forgot-password', '/send-email-code', '/recover-factor', '/passkeys/login/options'];
 const unavailable = () => new AuthError(503, 'abuse_unavailable');
 
-export function createEntryGuard(http: AuthHttp, mount: string, ui: UiHost, abuse: AuthAbuse | undefined) {
+export function createEntryGuard(http: AuthHttp, mount: string, ui: UiExtension, abuse: AuthAbuse | undefined) {
     return async (request: ExtensionRequest, presentation?: PresentationContext): Promise<AuthHttpResponse | undefined> => {
         const path = request.path.slice(mount.length), signup = path === '/register' || path === '/signup/begin';
         if (request.method !== 'POST' || !(entries.includes(path) || /^\/providers\/[a-z][a-z0-9-]{0,31}\/start$/.test(path)))

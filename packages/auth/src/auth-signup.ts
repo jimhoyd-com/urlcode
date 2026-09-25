@@ -1,4 +1,4 @@
-import { field as uiField, icon } from '@jimhoyd/urlcode-ui';
+import { escapeHtml, field as uiField, hiddenField, icon } from '@jimhoyd/urlcode-ui';
 import { createHash, randomBytes } from 'node:crypto';
 import { extensionHookContext, jsonResponse, wantsJson } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
@@ -8,7 +8,7 @@ import type { AuthExtensionOptions } from './auth.ts';
 import type { Delivery } from './delivery.ts';
 import type { PresentationContext } from './presentation.ts';
 import type { RegistrationInput } from './registration.ts';
-import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField, readAuthFields, screenResponse } from './auth-ui.ts';
+import { AuthHttp, AuthHttpError, readAuthFields, screenResponse } from './auth-ui.ts';
 import { Markup } from '@jimhoyd/urlcode-ui';
 
 type SignupOptions = Omit<AuthExtensionOptions, 'service'> & { service: AuthServiceInternal; delivery: Delivery; challenge?: AbuseChallengeWidget | undefined };
@@ -32,8 +32,8 @@ export function createSignup(options: SignupOptions, http: AuthHttp, mount: stri
   const text=(source:string)=>presentation.textSource(source), e=(source:string)=>escapeHtml(text(source));
   const route=mount+'/signup?lang='+encodeURIComponent(presentation.locale);
   const redirect=(extra:[string,string][]=[])=>(jsonResponse(303,{redirect:route},[['location',route],...headers,...extra]));
-  const form=(action:string,fields:string,button:string)=>`<form class="ui-stack" method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}${fields}<button>${action==='begin'||action==='password'?icon('arrow-right'):action==='verify'?icon('check'):action==='complete'?icon('user'):''}${e(button)}</button></form>`;
-  const field=(name:string,label:string,type='text',autocomplete='off')=>formField(name,text(label),type,autocomplete);
+  const form=(action:string,fields:string,button:string)=>`<form class="ui-stack" method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${hiddenField('csrf', prepared.csrf)}${fields}<button>${action==='begin'||action==='password'?icon('arrow-right'):action==='verify'?icon('check'):action==='complete'?icon('user'):''}${e(button)}</button></form>`;
+  const field=(name:string,label:string,type='text',autocomplete='off')=>uiField({name,label:text(label),type,autocomplete});
   if(request.method!=='POST') {
    if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):screenResponse('Request an account',{name:'auth/status',view:{alert:false,message:text('Your request has been received. If eligible, an administrator will review it before you can sign in.'),href:null,label:null}},{status:200,headers,presentation,layout:'compact',ui:options.ui});
    let state;

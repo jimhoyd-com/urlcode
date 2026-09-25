@@ -1,5 +1,5 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { icon, hiddenField, postForm, Markup } from '@jimhoyd/urlcode-ui';
+import { escapeHtml, field, icon, hiddenField, postForm, Markup } from '@jimhoyd/urlcode-ui';
 import type { IconName } from '@jimhoyd/urlcode-ui';
 import type { AbuseExports } from '@jimhoyd/urlcode-abuse';
 import type { AuditExports } from '@jimhoyd/urlcode-audit';
@@ -20,8 +20,9 @@ import { extensionContextHeaderPrefix, extensionHookContext, jsonResponse, wants
 import type { RuntimeExtension, ExtensionRequest, ExtensionActivation } from '@jimhoyd/urlcode/extensions';
 import { internal } from './auth-core.ts';
 import type { AuthService, AuthServiceInternal, AuthPrincipal, AuthUser } from './auth-core.ts';
-import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, readAuthFields, screenResponse, passkeyScript, secondFactorButton } from './auth-ui.ts';
-import type { AuthHttpResponse, Screen, UiHost } from './auth-ui.ts';
+import { AuthHttp, AuthHttpError, httpFailure, readAuthFields, screenResponse, passkeyScript, secondFactorButton } from './auth-ui.ts';
+import type { AuthHttpResponse, Screen } from './auth-ui.ts';
+import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
 import { authHookContracts, hooksConfigSchema, loadAuthHooks } from './lifecycle-hooks.ts';
 import { createAdministration } from './administration.ts';
 import { createDelivery } from './delivery.ts';
@@ -32,7 +33,7 @@ import type { SupportBanner } from './support-session.ts';
 export interface AuthExtensionOptions {
     presentation?: Presentation;
     /** The `ui` extension's exports. Every account screen renders through its kit; activation refuses without it. */
-    ui: UiHost;
+    ui: UiExtension;
     /** The audit extension's exports: auth's outbox drains into it, so activation refuses while it is inactive. */
     audit: AuditExports;
     /** The mail extension's exports: every message auth sends. `available: false` still serves password-only sites. */
@@ -216,7 +217,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                 }
                 return { ...(fields.displayName !== undefined ? { displayName: fields.displayName } : {}), ...(fields.locale ? { locale: fields.locale } : {}), ...(Object.keys(metadata).length ? { metadata } : {}), ...(fields.termsAccepted !== undefined ? { termsAccepted: fields.termsAccepted === 'true' } : {}) };
             }
-            const profileMarkup = (formField: typeof baseField = baseField, presentation?: PresentationContext) => formField('displayName', 'Display name', 'text', 'nickname', false) + formField('locale', 'Preferred language', 'text', 'language', false) + metadataFields.map(([name, field]) => baseField('meta.' + name, name + (field.type === 'boolean' ? ' (' + (presentation?.text('field.booleanHint') ?? 'true or false') + ')' : ''), field.type === 'number' ? 'number' : 'text', 'off', field.required === true)).join('') + (registrationSchema.termsVersion ? `<label><input type="checkbox" name="termsAccepted" value="true" required> ${escapeHtml((presentation ?? source().resolve()).text('message.acceptTerms', { version: registrationSchema.termsVersion }))}</label>` : '');
+            const profileMarkup = (presentation?: PresentationContext) => field({ name: 'displayName', label: presentation?.textSource('Display name') ?? 'Display name', autocomplete: 'nickname', required: false }) + field({ name: 'locale', label: presentation?.textSource('Preferred language') ?? 'Preferred language', autocomplete: 'language', required: false }) + metadataFields.map(([name, meta]) => field({ name: 'meta.' + name, label: name + (meta.type === 'boolean' ? ' (' + (presentation?.text('field.booleanHint') ?? 'true or false') + ')' : ''), type: meta.type === 'number' ? 'number' : 'text', autocomplete: 'off', required: meta.required === true })).join('') + (registrationSchema.termsVersion ? `<label><input type="checkbox" name="termsAccepted" value="true" required> ${escapeHtml((presentation ?? source().resolve()).text('message.acceptTerms', { version: registrationSchema.termsVersion }))}</label>` : '');
             const entryGuard = createEntryGuard(http, mount, options.ui, abuse), backoff = passwordBackoff(abuse?.passwordBackoff);
             const secondFactors = createSecondFactorFlows({ ...options, service }, http, mount);
             const trustedCookie = '__Host-urlcode-trusted-device';
@@ -226,10 +227,10 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                     if (result.newDevice)
                         await delivery.notice('new-device', result.user.email, noticeLocale(request,result.user));
                     return http.device(request).headers;
-                }, enrollment: { required: !!registrationSchema.termsVersion || metadataFields.some(([, field]) => field.required), fields: (presentation) => profileMarkup((name, label, ...rest) => baseField(name, presentation?.textSource(label) ?? label, ...rest), presentation), read: profileInput, names: ['displayName', 'locale', 'termsAccepted', ...metadataFields.map(([name]) => 'meta.' + name)] } }, http, mount, registration);
+                }, enrollment: { required: !!registrationSchema.termsVersion || metadataFields.some(([, field]) => field.required), fields: (presentation) => profileMarkup(presentation), read: profileInput, names: ['displayName', 'locale', 'termsAccepted', ...metadataFields.map(([name]) => 'meta.' + name)] } }, http, mount, registration);
             const factorRecovery=createFactorRecoveryFlows({service,delivery,ui:options.ui,challenge:abuse?.widget},http,mount);
             const manualRecovery=createManualRecoveryFlows(service,http,mount,options.ui);
-            const signup = createSignup({ ...options, service, presentation: lazyPresentation, delivery, challenge: abuse?.widget }, http, mount, { fields: p => profileMarkup((name,label,...rest)=>baseField(name,p.textSource(label),...rest),p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] });
+            const signup = createSignup({ ...options, service, presentation: lazyPresentation, delivery, challenge: abuse?.widget }, http, mount, { fields: p => profileMarkup(p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] });
             const passkeyButton = (kind: 'register' | 'login' | 'step-up', text: (value: string) => string = value => value) => options.passkeys ? `<button type="button" data-passkey="${kind}" data-base="${escapeHtml(mount)}" data-unavailable="${escapeHtml(text('Passkeys are unavailable in this browser. Use another sign-in method.'))}" data-failed="${escapeHtml(text('Passkey request failed'))}" data-cancelled="${escapeHtml(text('Passkey ceremony cancelled'))}">${escapeHtml(text(kind === 'register' ? 'Add a passkey' : kind === 'step-up' ? 'Confirm identity with a passkey' : 'Sign in with a passkey'))}</button><p role="status" aria-live="polite" data-passkey-status></p>` : '';
             async function principal(request: ExtensionRequest): Promise<{
                 token: string;
@@ -369,11 +370,11 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                     const navigation = createNavigation(source => presentation?.textSource(source) ?? source, request.path.slice(mount.length));
                     const screen = (title: string, name: string, view: Screen['view'], status = 200, headers: [string, string][] = [], scriptPath?: string) => screenResponse(title, { name: 'auth/' + name, view }, { status, headers, scriptPath: scriptPath ?? (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? mount + '/assets/passkeys.js' : undefined), presentation, challenge: abuse?.widget && (['/','/login','/identify','/forgot-password'].includes(request.path.slice(mount.length)||'/') || request.path.slice(mount.length)==='/email-code'&&!request.query.has('flowId')) ? abuse.widget : undefined, layout: ['/account', '/sessions', '/methods', '/second-factors', '/trusted-devices'].includes(request.path.slice(mount.length)) ? 'default' : 'compact', ui: options.ui, ...(supportSession ? { flash: { kind: 'warning' as const, message: supportBanner(presentation).message } } : {}) });
                     const lang = (path: string) => mount + path + '?lang=' + encodeURIComponent(presentation.locale);
-                    const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation?.textSource(label) ?? label, type, autocomplete, required);
+                    const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => field({ name, label: presentation?.textSource(label) ?? label, type, autocomplete, required });
                     const form = (action: string, csrf: string, fields: string, button: string) => { const actionName = action.split('?')[0]!.split('/').at(-1)!; return postForm({ action: action + (action.includes('?') ? '&' : '?') + 'lang=' + encodeURIComponent(presentation.locale), csrf, fields, label: presentation?.textSource(button) ?? button, ...(actionIcons[actionName] ? { icon: actionIcons[actionName] } : {}) }); };
-                    const profileFields = () => profileMarkup(formField, presentation);
+                    const profileFields = () => profileMarkup(presentation);
                     const factors = () => `<details class="ui-disclosure"><summary>${tr('ux.twoStep')}</summary><p class="ui-muted">${tr('ux.twoStepHelp')}</p>` + formField('totp', 'Authenticator code (if enabled)', 'text', 'one-time-code', false) + formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false) + (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount,text) : '') + '</details>';
-                    const passkeyLogin = (csrf: string) => options.passkeys ? `<form method="post" action="${escapeHtml(mount+'/login')}">${csrfField(csrf)}<fieldset><legend>${escapeHtml(text('Passkey sign-in'))}</legend><p>${escapeHtml(text('If your account uses a second factor, confirm it before choosing your sign-in passkey.'))}</p>${factors()}${passkeyButton('login',text)}</fieldset></form>` : '';
+                    const passkeyLogin = (csrf: string) => options.passkeys ? `<form method="post" action="${escapeHtml(mount+'/login')}">${hiddenField('csrf', csrf)}<fieldset><legend>${escapeHtml(text('Passkey sign-in'))}</legend><p>${escapeHtml(text('If your account uses a second factor, confirm it before choosing your sign-in passkey.'))}</p>${factors()}${passkeyButton('login',text)}</fieldset></form>` : '';
                     const completed = (value: unknown, title: string, message: string, headers: [string,string][] = [], destination = '/account') => wantsJson(request) ? jsonResponse(200, value, headers) : screen(title, 'status', { alert: false, message: text(message), href: lang(destination), label: presentation.text(destination === '/login' ? 'ux.backSignIn' : 'copy.continueToYourAccount') }, 200, headers);
                     let submittedEmail: string | undefined, submittedReturnTo: string | undefined;
                     const returnField = (value: string | null | undefined) => validReturnTo(value, mount) ? hidden('returnTo', value) : '';
@@ -491,7 +492,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                                 const keys=await service.listPasskeys(current.principal.id);
                                 const passkeys=keys.map(key=>({id:key.id,secondFactor:key.secondFactor===true}));
                                 if(wantsJson(request))return jsonResponse(200,{passkeys,csrf},headers);
-                                return screen('Second factors','second-factors',{navigation:m(navigation),csrf:m(csrfField(csrf)),intro:text('A second-factor passkey must be different from the passkey used for primary sign-in.'),register:m(passkeyButton('register',text)),passkeys:passkeys.map(key=>({id:key.id,state:text(key.secondFactor?'Enabled':'Disabled'),form:m(form(mount+'/passkeys/second-factor',csrf,hidden('credentialId',key.id)+hidden('enabled',key.secondFactor?'false':'true')+(key.secondFactor?'':secondFactorButton(mount,text)),key.secondFactor?'Disable passkey second factor':'Enable passkey second factor'))}))},200,headers,mount+'/assets/passkeys.js');
+                                return screen('Second factors','second-factors',{navigation:m(navigation),csrf:m(hiddenField('csrf', csrf)),intro:text('A second-factor passkey must be different from the passkey used for primary sign-in.'),register:m(passkeyButton('register',text)),passkeys:passkeys.map(key=>({id:key.id,state:text(key.secondFactor?'Enabled':'Disabled'),form:m(form(mount+'/passkeys/second-factor',csrf,hidden('credentialId',key.id)+hidden('enabled',key.secondFactor?'false':'true')+(key.secondFactor?'':secondFactorButton(mount,text)),key.secondFactor?'Disable passkey second factor':'Enable passkey second factor'))}))},200,headers,mount+'/assets/passkeys.js');
                             }
                             if(path==='/trusted-devices') {
                                 if(!service.getSecurityPolicy().trustedDeviceTtlMs)throw new AuthHttpError(404,'Not found');

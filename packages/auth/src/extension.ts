@@ -26,7 +26,7 @@ import { authMail } from './mail-templates.ts';
 import type { OidcProvider } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
 import { englishCatalogue } from './presentation.ts';
-import type { UiHost } from './auth-ui.ts';
+import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
 
 const OPERATOR_FILE = 'operator-service.mjs', ENCRYPTION_KEY = 'data/encryption.key', CSRF_KEY = 'data/csrf.key';
 
@@ -85,8 +85,7 @@ export default defineExtension<AuthHostOptions>({
     references: [{name: 'auth extension guide', description: 'Configuration, operator setup and route integration guidance.', path: 'README.md'}],
   },
   contributes: { ui: uiContribution, mail: authMail },
-  // The capability: the account pages at the default /account mount (configurable: move the route, and pass
-  // admin({authMount}) when admin is installed), the operator service with the minimal {member, admin} role model
+  // The capability: the account pages at the default /account mount (configurable: move the route), the operator service with the minimal {member, admin} role model
   // admin and bootstrap rely on, and the private keys. No application page is protected yet.
   scaffold() {
     return {
@@ -120,7 +119,7 @@ export default defineExtension<AuthHostOptions>({
     };
   },
   async host(ctx, options) {
-    const ui = ctx.get<UiHost>('ui'), audit = ctx.get<AuditExports>('audit'), mail = ctx.get<MailExports>('mail'), abuse = ctx.get<AbuseExports | undefined>('abuse');
+    const ui = ctx.get<UiExtension>('ui'), audit = ctx.get<AuditExports>('audit'), mail = ctx.get<MailExports>('mail'), abuse = ctx.get<AbuseExports | undefined>('abuse');
     if (audit?.version !== 1) throw new Error('auth needs audit exports version 1');
     if (mail?.version !== 1) throw new Error('auth needs mail exports version 1');
     if (abuse !== undefined && abuse.version !== 1) throw new Error('auth needs abuse exports version 1');

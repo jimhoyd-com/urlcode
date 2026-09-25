@@ -1,7 +1,7 @@
-import {field,escapeHtml,Markup} from '@jimhoyd/urlcode-ui';
-import type {ViewModel,Kit} from '@jimhoyd/urlcode-ui';
+import {escapeHtml,Markup} from '@jimhoyd/urlcode-ui';
+import type {ViewModel} from '@jimhoyd/urlcode-ui';
+import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
 import { signHmac, verifyHmac } from '@jimhoyd/urlcode-ui/host';
-export {escapeHtml} from '@jimhoyd/urlcode-ui';
 import type { AbuseChallengeWidget } from '@jimhoyd/urlcode-abuse';
 import { authTemplates } from './auth-templates.ts';
 import { AuthError } from './auth-store.ts';
@@ -17,8 +17,6 @@ export class AuthHttpError extends Error {
     readonly headers: readonly [string, string][];
     constructor(status: number, message: string, headers: readonly [string, string][] = []) { super(message); this.status = status; this.headers = headers; }
 }
-/** The object `createUiExtension` returns, structurally: the kit once the runtime has activated the `ui` extension. */
-export interface UiHost { readonly kit: Kit; readonly active: boolean }
 /** One account screen: an `auth/*` template name and the view model the extension computed for it. */
 export interface Screen { name: string; view: ViewModel }
 export interface ScreenOptions {
@@ -33,7 +31,7 @@ export interface ScreenOptions {
     flash?: { kind: 'error' | 'warning' | 'success' | 'info'; message: string } | undefined;
     layout?: 'default' | 'compact' | 'application' | undefined;
     /** The kit every account screen renders through; `authExtension` refuses activation without it. */
-    ui: UiHost;
+    ui: UiExtension;
 }
 /** Test hook: sees every screen before it renders. */
 export const screenObserver: { current?: ((screen: Screen) => void) | undefined } = {};
@@ -65,8 +63,6 @@ export function screenResponse(title: string, screen: Screen, options: ScreenOpt
     const scripts = [...(options.scriptPath ? [{ src: options.scriptPath }] : []), ...(challenge.enabled ? options.challenge!.scripts.map(script => ({ src: script.src, async: script.async })) : [])];
     return kit.wrap(new Markup(challenge.markup), { title: pageTitle(title, context), context, ...(options.layout ? {layout: options.layout} : {}), ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(scripts.length ? { scripts } : {}), ...(challenge.enabled ? { csp: { script: [...options.challenge!.csp.script], frame: [...options.challenge!.csp.frame], connect: [...options.challenge!.csp.connect] } } : {}), ...(options.flash ? { flash: options.flash } : {}) });
 }
-export function formField(name: string, label: string, type = 'text', autocomplete = 'off', required = true): string { return field({name,label,type,autocomplete,required}); }
-export function csrfField(token: string): string { return `<input type="hidden" name="csrf" value="${escapeHtml(token)}">`; }
 /** Auth's form fields: the listed names plus `csrf` and a challenge token, each at most 4096 (the token 2048) characters. */
 export function readAuthFields(request: ExtensionRequest, allowed: readonly string[]): Record<string, string> {
     return { ...readFields(request, { fields: [...allowed, 'csrf', 'challengeToken'], limits: { challengeToken: 2048 } }) };
@@ -203,7 +199,7 @@ export class AuthHttp {
  * The answer for a failed request. Only auth's own refusals, core's request-helper refusals and a project hook's denial
  * reason are shown as they are; any other 4xx reads 'Request could not be completed' and anything else is a 500.
  */
-export function httpFailure(error: unknown, request: ExtensionRequest, presentation: PresentationContext | undefined, recovery: {href:string;label:string} | undefined, ui: UiHost): AuthHttpResponse {
+export function httpFailure(error: unknown, request: ExtensionRequest, presentation: PresentationContext | undefined, recovery: {href:string;label:string} | undefined, ui: UiExtension): AuthHttpResponse {
     const statusOf = error instanceof Error && 'status' in error && typeof error.status === 'number' ? error.status : 500;
     const known = error instanceof AuthHttpError || statusOf >= 400 && statusOf < 500 || error instanceof AuthError && statusOf === 503;
     const status = known ? statusOf : 500;
