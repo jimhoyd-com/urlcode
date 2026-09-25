@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-forms",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Operator-installed declarative HTML form flows for URLCode",
   "private": true,
   "type": "module",
@@ -50,10 +50,10 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.1",
-    "@jimhoyd/urlcode-abuse": "0.6.1",
-    "@jimhoyd/urlcode-mail": "0.6.1",
-    "@jimhoyd/urlcode-ui": "0.6.1"
+    "@jimhoyd/urlcode": "0.6.2",
+    "@jimhoyd/urlcode-abuse": "0.6.2",
+    "@jimhoyd/urlcode-mail": "0.6.2",
+    "@jimhoyd/urlcode-ui": "0.6.2"
   },
   "peerDependenciesMeta": {
     "@jimhoyd/urlcode-abuse": {

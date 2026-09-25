@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-form-records",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Operator-installed composition for URLCode: saves a declared form into an owned store collection, with confirmation and constrained edit pages",
   "private": true,
   "type": "module",
@@ -51,10 +51,10 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.1",
-    "@jimhoyd/urlcode-forms": "0.6.1",
-    "@jimhoyd/urlcode-store": "0.6.1",
-    "@jimhoyd/urlcode-ui": "0.6.1"
+    "@jimhoyd/urlcode": "0.6.2",
+    "@jimhoyd/urlcode-forms": "0.6.2",
+    "@jimhoyd/urlcode-store": "0.6.2",
+    "@jimhoyd/urlcode-ui": "0.6.2"
   },
   "peerDependenciesMeta": {
     "@jimhoyd/urlcode-forms": {
