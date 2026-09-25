@@ -43,7 +43,9 @@ export interface ProjectReportOptions {
 
 export async function buildProjectReport(project:string,options:ProjectReportOptions={}):Promise<ProjectReport> {
   const inspect:InspectOptions=options.extensions?{extensions:options.extensions}:{};
-  const [explained,review]=await Promise.all([explainProject(project,inspect),reviewProject(project,inspect)]);
+  // One load at a time: loadDocument admits two per process (config.ts), and a parallel sibling left running after
+  // the other failed would hold a slot past this call.
+  const explained=await explainProject(project,inspect),review=await reviewProject(project,inspect);
   const change=options.before?{...await summarizeChange(options.before.input,{project}),before:options.before.label}:undefined;
   const attention=attentionOf(explained.routes,review,change);
   if(options.policy){
@@ -187,22 +189,32 @@ function unchecked(report:ProjectReport):string[] {
   if(!report.policy&&wanted.some(item=>!item.startsWith('add-on ')))lines.push('No operator policy: env, secret and outbound grants and their revision pin are not checked (pass --policy).');
   return lines;
 }
+/** The page's Content-Security-Policy: no script, no external fetch. `urlcode studio` sends it as a header too. */
+export const reportContentSecurityPolicy="default-src 'none'; style-src 'unsafe-inline'";
+function page(title:string,body:string):string {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="${reportContentSecurityPolicy}">
+<title>${esc(title)}</title><style>${style}</style></head>
+<body><main>
+${body}
+</main></body></html>
+`;
+}
 export function renderProjectReport(report:ProjectReport):string {
   const attention=report.attention.length
     ?report.attention.map(item=>`<div class="item ${item.level}"><span class="lvl">${item.level==='fix'?'Fix':'Check'}</span><span>${item.route?`<a href="#${esc(encodeURIComponent(item.route))}">${code(item.route)}</a> `:''}${esc(item.message)}</span></div>`).join('')
     :'<p class="muted">Nothing needs attention.</p>';
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-<title>URLCode report ${esc(report.projectSha256.slice(0,12))}</title><style>${style}</style></head>
-<body><main>
-<header><h1>URLCode report</h1><p class="muted">Revision ${code(report.projectSha256)} · ${report.routeCount} route${report.routeCount===1?'':'s'}</p>${unchecked(report).map(line=>`<p class="muted">${line}</p>`).join('')}</header>
+  return page(`URLCode report ${report.projectSha256.slice(0,12)}`,`<header><h1>URLCode report</h1><p class="muted">Revision ${code(report.projectSha256)} · ${report.routeCount} route${report.routeCount===1?'':'s'}</p>${unchecked(report).map(line=>`<p class="muted">${line}</p>`).join('')}</header>
 <section><h2>Needs attention (${report.attention.length})</h2>${attention}</section>
 ${report.change?changeSection(report.change):''}
 <section><h2>Routes</h2><p class="muted">Open a route to see what happens to a request.</p><div class="scroll"><table><thead><tr><th>Route</th><th>Handler</th><th>Methods</th><th>Code</th><th>Policies</th><th>Needs from the host</th></tr></thead><tbody>
 ${report.routes.map(routeRow).join('\n')}
 </tbody></table></div></section>
-<footer class="muted"><p>Read-only. Derived from the compiled configuration by <code>urlcode explain</code>, <code>review</code> and <code>diff</code>: no request was evaluated, no project code ran and no binding value was read. Grants remain operator decisions.</p></footer>
-</main></body></html>
-`;
+<footer class="muted"><p>Read-only. Derived from the compiled configuration by <code>urlcode explain</code>, <code>review</code> and <code>diff</code>: no request was evaluated, no project code ran and no binding value was read. Grants remain operator decisions.</p></footer>`);
+}
+/** The page shown when the project does not load, for example while `urlcode.yaml` is mid-edit. */
+export function renderReportError(message:string):string {
+  return page('URLCode report: project does not load',`<header><h1>URLCode report</h1></header>
+<section><h2>The project does not load</h2><div class="item fix"><span class="lvl">Fix</span><span>${esc(message)}</span></div><p class="muted">Fix it, then reload this page.</p></section>`);
 }

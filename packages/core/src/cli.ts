@@ -27,7 +27,7 @@ import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.t
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
@@ -118,6 +118,10 @@ const helpEntries: HelpEntry[] = [
   { name:'report', group:'Check', text:
 `  urlcode report [before.yaml|before-directory] [--project directory] [--policy /absolute/policy.json] [--host-file /absolute/operator/host.mjs] [--json] > report.html
     # read-only HTML page for a person reviewing a change: what needs attention, what changed since BEFORE, and each route's request path; no script, no values
+` },
+  { name:'studio', group:'Check', text:
+`  urlcode studio [before.yaml|before-directory] [--project directory] [--port 4100] [--host 127.0.0.1] [--policy /absolute/policy.json] [--host-file /absolute/operator/host.mjs]
+    # serves the report on this machine only and rebuilds it on every page load; read-only
 ` },
   { name:'permissions', group:'Check', text:
 `  urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
@@ -341,7 +345,7 @@ try {
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
     if (values['passkey-rp-id'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--passkey-rp-id is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff','report'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
       if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list');
@@ -380,9 +384,8 @@ try {
         result=await suggestProjectFixtures(values.project);
       }else{
         if(arg===undefined||extra.length>1)throw new ConfigError('Use urlcode diff <before.yaml|before-directory> [after.yaml|after-directory] [--project directory] [--json]');
-        const {summarizeChange}=await import('./yaml-change.ts');
-        const side=async(path:string)=>(await stat(path)).isDirectory()?{project:path}:{yaml:await readFile(path,'utf8')};
-        result=await summarizeChange(await side(arg),extra[0]===undefined?{project:values.project}:await side(extra[0]));
+        const {summarizeChange,readChangeInput}=await import('./yaml-change.ts');
+        result=await summarizeChange(await readChangeInput(arg),extra[0]===undefined?{project:values.project}:await readChangeInput(extra[0]));
       }
       print(values.json?result:stringifyYaml(result,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='review'){
@@ -391,10 +394,22 @@ try {
     }else if(command==='report'){
       // A view over explain, review and diff; reads nothing they do not (docs/TOOLING.md#review-report).
       const {buildProjectReport,renderProjectReport}=await import('./project-report.ts');
-      const before=arg===undefined?undefined:{label:arg,input:(await stat(arg)).isDirectory()?{project:arg}:{yaml:await readFile(arg,'utf8')}};
+      const {readChangeInput}=await import('./yaml-change.ts');
+      const before=arg===undefined?undefined:{label:arg,input:await readChangeInput(arg)};
       const policy=verifiedPolicy??await loadOperatorPolicy(values.policy,values.project);
       const report=await buildProjectReport(values.project,{extensions:operatorHost.extensions,policy,before});
       print(values.json?report:renderProjectReport(report));
+    }else if(command==='studio'){
+      // The report, served on loopback and rebuilt per request (docs/TOOLING.md#studio). PORT is the container
+      // convention for serve/dev, so studio reads only an explicit --port.
+      const port=Number(parsed.port??'4100');
+      if(!/^\d+$/.test(parsed.port??'4100')||port>65535)throw new ConfigError('Invalid port');
+      const {startStudio}=await import('./studio.ts');
+      const studio=await startStudio({project:values.project,host:values.host,port,before:arg,policyFile:values.policy,extensions:operatorHost.extensions});
+      print(human?`URLCode Studio on ${studio.url} — reload the page after a change; Ctrl+C stops it\n`:{event:'listening',mode:'studio',url:studio.url});
+      serving=true;
+      const stop=async()=>{try{await studio.close();}finally{await operatorHost.close?.();}};
+      process.once('SIGINT',stop);process.once('SIGTERM',stop);
     }else if(command==='context'){
       if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
       const { buildContext, buildTaskContext, renderContext, renderTaskContext, estimateTokens, documentationTokens } = await import('./context.ts');
