@@ -256,12 +256,14 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # `admin` imports `auth` and `ui`; `auth`, `forms` and `store` import `ui`
-      # (store contributes its CRUD screen to ui); `form-records` imports
-      # `forms` and `store`. The matrix carries each
-      # package's dependencies in build order (empty for `ui` and `mcp`, which
-      # have none) so this job's own typecheck/build
-      # can resolve them, the way the removed serial script did by ordering.
+      # `auth` imports `ui`, `audit`, `mail` and `abuse`; `admin` imports
+      # `auth` and so needs its dependencies too; `store` imports `ui` and
+      # `audit`; `forms` imports `ui`, `abuse` and `mail`; `form-records`
+      # imports `forms` and `store`. The matrix carries each package's
+      # transitive dependencies in build order (empty for `ui`, `audit`,
+      # `abuse`, `mail` and `mcp`, which have none) so this job's own
+      # typecheck/build can resolve them, the way the removed serial script
+      # did by ordering.
       - if: matrix.deps != ''
         shell: bash
         run: |

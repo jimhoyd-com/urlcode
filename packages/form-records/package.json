@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
+    "@jimhoyd/urlcode-audit": "file:../audit",
     "@jimhoyd/urlcode-forms": "file:../forms",
     "@jimhoyd/urlcode-store": "file:../store",
     "@jimhoyd/urlcode-ui": "file:../ui",
