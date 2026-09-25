@@ -2,7 +2,7 @@
 // activates through `composeHost`:
 //
 //   import audit from '@jimhoyd/urlcode-audit/extension';
-//   export default await composeHost(import.meta.url, [audit(), ui(), auth()]);
+//   export default await composeHost(import.meta.url, [audit(), mail(), ui(), auth()]);
 //
 // Other extensions read its exports (AuditExports v1) through ctx.get('audit'). It serves no routes.
 import { mkdir } from 'node:fs/promises';

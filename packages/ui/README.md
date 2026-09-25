@@ -205,20 +205,25 @@ Hashed assets are served under `/assets/ui/static/` and declared as `immutableAs
 ```js
 // host.mjs (trusted operator code, outside app/)
 import { composeHost } from '@jimhoyd/urlcode/host';
+import audit from '@jimhoyd/urlcode-audit/extension';
+import mail from '@jimhoyd/urlcode-mail/extension';
 import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
 
 export default await composeHost(import.meta.url, [
+  audit(),
+  mail(),
   ui(),      // or ui({ theme, sources, extensions })
-  auth(),
+  auth(),    // requires ui, audit and mail
 ]);
 ```
 
 `ui({...})` takes extra English catalogues (`sources`), extra extension
 templates (`extensions`), both registered after what installed extensions
 contribute, and `theme` values the host sets that the project may not.
-Declare `ui` first under `extensions` in `app/urlcode.yaml`; `ui.kit` is
-available once the runtime has activated it.
+The order of `extensions` in `app/urlcode.yaml` does not matter: the runtime
+activates `ui` before every extension that requires it, and `ui.kit` is
+available once it has.
 `urlcode extensions add ui` composes all of this: `host.mjs` lists `ui()`, whose
 `host()` calls `createUiExtension` with `projectRoot` set to the site directory
 and registers the copy and templates every installed extension contributes

@@ -31,7 +31,7 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
 /**
  * Builds the operator host from host.mjs's list of extensions:
  *
- *   export default await composeHost(import.meta.url, [ui(), auth(), admin()]);
+ *   export default await composeHost(import.meta.url, [audit(), mail(), ui(), auth(), admin()]);
  *
  * It reads the reviewed project revision once (the verified `--policy` revision when a CLI command was given both
  * `--policy` and `--host-file`, otherwise `PROJECT_SHA256`; both present and different refuses), passes it to every
@@ -43,7 +43,7 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
  */
 export async function composeHost(hostUrl: string | URL, entries: readonly ExtensionEntry[], { plugins }: ComposeOptions = {}): Promise<OperatorHost> {
   const site = dirname(fileURLToPath(hostUrl));
-  assert(Array.isArray(entries) && entries.every(entry => entry && typeof entry === 'object' && typeof entry.definition?.host === 'function'), 'composeHost takes the extension list from host.mjs, for example [ui(), auth()]');
+  assert(Array.isArray(entries) && entries.every(entry => entry && typeof entry === 'object' && typeof entry.definition?.host === 'function'), 'composeHost takes the extension list from host.mjs, for example [audit(), mail(), ui(), auth()]');
   // A site with no extensions has nothing to pin.
   if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
   const projectSha256 = hostRevisionPin();
