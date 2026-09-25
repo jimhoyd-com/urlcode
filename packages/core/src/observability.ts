@@ -23,6 +23,8 @@ export const events = Object.freeze({
   agents: Object.freeze(['event', 'route', 'list', 'outcome']),
   cache: Object.freeze(['event', 'route', 'outcome']),
   listening: Object.freeze(['event', 'address', 'port', 'mode', 'origin']),
+  // An extension's own activation warning (ExtensionActivation.warn): operator-written text, prefixed and bounded by core.
+  warning: Object.freeze(['event', 'code', 'extension', 'message']),
 });
 
 /** One log record: a flat object whose `event` key names the kind (see `events`). */

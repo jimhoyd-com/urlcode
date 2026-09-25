@@ -120,6 +120,10 @@ test('host.mjs lines are added and removed one line each, and hand edits refuse'
 
 test('withRequirements adds requirements once, in dependency order', () => {
   assert.deepEqual(withRequirements(manifest(), ['beta', 'alpha']), ['alpha', 'beta']);
+  const optional = parseAddonManifest({ format: 1, version: '9.9.9', addons: { ...manifest().addons, alpha: { ...manifest().addons.alpha!, uses: ['notes'] } } }, 'uses manifest');
+  assert.deepEqual(optional.addons.alpha!.uses, ['notes']);
+  assert.deepEqual(withRequirements(optional, ['alpha']), ['alpha'], 'uses is never followed');
+  assert.throws(() => parseAddonManifest({ format: 1, version: '9.9.9', addons: { ...manifest().addons, beta: { ...manifest().addons.beta!, uses: ['alpha'] } } }, 'overlap'), /beta has malformed uses/);
   assert.throws(() => withRequirements(manifest(), ['gamma']), /Unknown add-on gamma/);
 });
 
@@ -164,8 +168,11 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   await writeFile(yaml, (await readFile(yaml, 'utf8')).replace('greeting: 5', 'greeting: hello'));
 
   await assert.rejects(removeAddon(dir, 'extension', 'alpha', { manifest: m }), /beta requires alpha; remove it first/);
-  const removed = await removeAddon(dir, 'extension', 'beta', { manifest: m });
+  // An add-on that only uses the removed one does not block removal; it gets one note.
+  const using = parseAddonManifest({ ...structuredClone(m), addons: { ...structuredClone(m.addons), alpha: { ...m.addons.alpha!, uses: ['beta'] } } }, 'uses manifest');
+  const removed = await removeAddon(dir, 'extension', 'beta', { manifest: using });
   assert.deepEqual(removed.kept, []);
+  assert.deepEqual(removed.notes, ['alpha uses beta; features of alpha that need beta will refuse to activate']);
   await assert.rejects(stat(join(dir, 'app', 'routes', 'beta.yaml')), /ENOENT/);
   const afterBeta = await loadDocument(join(dir, 'app'));
   assert.deepEqual(Object.keys(afterBeta.document.extensions ?? {}), ['alpha']);
@@ -177,6 +184,7 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   await writeFile(join(dir, 'app', 'urlcode.yaml'), (await readFile(join(dir, 'app', 'urlcode.yaml'), 'utf8')).replace('routes:\n  /mine:\n    extension: alpha\n    methods: [GET]', 'routes: {}'));
   const removedAlpha = await removeAddon(dir, 'extension', 'alpha', { manifest: m });
   assert.deepEqual(removedAlpha.kept, ['data/alpha.key'], 'operator files and data are never deleted');
+  assert.deepEqual(removedAlpha.notes, []);
   assert.equal(await readFile(join(dir, 'host.mjs'), 'utf8'), renderInitialHost());
   const readded = await addAddons(dir, 'extension', ['alpha'], { manifest: m });
   assert.deepEqual(readded.keptFiles, ['data/alpha.key'], 're-adding keeps the existing key');

@@ -7,8 +7,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
-import { addonCatalog, syncExpectedFiles } from '../scripts/build-addon-manifest.ts';
-import { buildAddonCatalog, parseAddonCatalog, readAddonCatalog } from '../packages/core/src/addon-manifest.ts';
+import { addonCatalog, developmentManifest, syncExpectedFiles } from '../scripts/build-addon-manifest.ts';
+import { buildAddonCatalog, parseAddonCatalog, parseAddonManifest, parseDescriptor, readAddonCatalog, withRequirements } from '../packages/core/src/addon-manifest.ts';
 
 const json = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
 const agent = (name: string) => ({ description: `References for ${name}.`, references: [{ name: `${name} guide`, description: `How to configure ${name}.`, path: 'README.md' }] });
@@ -73,6 +73,23 @@ test('building and parsing refuse a catalog that is not bounded metadata of one 
   assert.throws(() => parseAddonCatalog({ ...catalog, scope: 'project' }, 'wrong scope'), /is not an add-on catalog/);
   assert.throws(() => parseAddonCatalog({ ...catalog, addons: [...catalog.addons, catalog.addons[0]] }, 'duplicate'), /listed twice/);
   assert.throws(() => parseAddonCatalog({ ...catalog, addons: [{ ...catalog.addons[0], package: '@jimhoyd/urlcode-other' }] }, 'package'), /malformed/);
+});
+
+test('uses round-trips from the definition through urlcode.json, the catalog and the development manifest, never as a requirement', async t => {
+  const root = await checkout(t);
+  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', schema: { type: 'object' }, uses: ['zeta', 'mail'] })} };\n`);
+  await syncExpectedFiles(root);
+  const descriptor = JSON.parse(await readFile(join(root, 'packages/alpha/urlcode.json'), 'utf8')) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(descriptor).slice(0, 5), ['kind', 'name', 'description', 'requires', 'uses'], 'uses follows requires');
+  assert.deepEqual([descriptor.requires, descriptor.uses], [[], ['mail', 'zeta']]);
+  const catalog = parseAddonCatalog(JSON.parse(await readFile(join(root, 'dist', 'addon-catalog.json'), 'utf8')), 'catalog');
+  assert.deepEqual(catalog.addons.find(entry => entry.name === 'alpha'), { name: 'alpha', kind: 'extension', package: '@jimhoyd/urlcode-alpha', version: '9.9.9', description: 'Alpha extension', requires: [], uses: ['mail', 'zeta'] }, 'a used add-on need not be in the release');
+  const manifest = parseAddonManifest(JSON.parse(await developmentManifest(root)), 'development manifest');
+  assert.deepEqual([manifest.addons.alpha!.requires, manifest.addons.alpha!.uses], [[], ['mail', 'zeta']]);
+  assert.deepEqual(withRequirements(manifest, ['alpha']), ['alpha'], 'uses never enters the requires closure');
+  assert.throws(() => parseDescriptor({ ...descriptor, requires: ['mail'] }, 'overlap'), /uses must be a list of other extension names, disjoint from requires/);
+  assert.throws(() => parseDescriptor({ ...descriptor, uses: ['alpha'] }, 'self'), /disjoint from requires/);
+  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', requires: [], uses: ['alpha'] }, 'artifact'), /carries no extension contract/);
 });
 
 test('readAddonCatalog reads the catalog file without importing, installing or activating any add-on', async t => {

@@ -525,7 +525,9 @@ try {
             if (problems.length) throw new ConfigError(`Extension configuration does not match the installed schemas:\n${problems.map(problem => `  ${problem}`).join('\n')}`);
             print({ event:'valid', static:true, extensions:declared, note:'Checked against installed extension schemas; pass --host-file to activate them and validate the whole runtime' }); break;
           }
-          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'] });
+          // Extension activation warnings go where an activation error would: the operator's stderr, one JSON line each.
+          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'],
+            log:(event:object) => { if ((event as {event?:unknown}).event === 'warning') process.stderr.write(JSON.stringify(event) + '\n'); } });
           print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }
         case 'add':
