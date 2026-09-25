@@ -55,13 +55,16 @@ const phase = /** @type {string} */ (options['--phase']);
 assert.ok(['core', 'auth', 'admin'].includes(phase));
 const require = createRequire(join(directory, 'package.json'));
 async function installed(/** @type {string} */ name) {
-  assert.equal((await lstat(join(directory, 'node_modules', name))).isSymbolicLink(), false, `No source symlink: ${name}`);
+  // A subpath (`@scope/pkg/extension`) is checked at its package directory.
+  const pkg = name.split('/').slice(0, name.startsWith('@') ? 2 : 1).join('/');
+  assert.equal((await lstat(join(directory, 'node_modules', pkg))).isSymbolicLink(), false, `No source symlink: ${pkg}`);
   const path = require.resolve(name);
   assert.ok(path.includes('/dist/'), `${name} must use compiled default exports`);
   return import(pathToFileURL(path).href);
 }
 const core = await installed('@jimhoyd/urlcode');
-const project = join(directory, 'app'), config = join(project, 'urlcode.yaml');
+// initProject creates a site whose route project is <site>/app, beside its host.mjs.
+const site = join(directory, 'site'), project = join(site, 'app'), config = join(project, 'urlcode.yaml');
 const yaml = createRequire(require.resolve('@jimhoyd/urlcode'))('yaml');
 /** @type {any} */
 let service;
@@ -72,7 +75,7 @@ let host;
 const csrfKeyPath = join(directory, 'csrf.key'), encryptionKeyPath = join(directory, 'encryption.key');
 const credentials = { admin: { email: 'owner@example.test', password: 'synthetic owner acceptance passphrase' }, member: { email: 'member@example.test', password: 'synthetic member acceptance passphrase' } };
 if (phase === 'core') {
-  await core.initProject(project);
+  await core.initProject(site);
   const document = yaml.parse(await readFile(config, 'utf8'));
   document.routes['/acceptance'] = { respond: { text: 'Clean project preserved' } };
   await writeFile(config, yaml.stringify(document));
