@@ -4580,9 +4580,7 @@ Each extension declares what it needs:
 | `form-records` | `forms`, `store`, `ui` | | |
 
 A sibling add-on is an optional exact peer dependency, never a nested
-dependency, so every add-on is installed once at the top level of the site.
-The one required peer is auth's `@jimhoyd/urlcode-audit`, which auth imports
-at runtime, so installing auth alone still brings audit to the top level;
+dependency, so every add-on is installed once at the top level of the site;
 `urlcode extensions add` installs every `requires` entry with the extension
 that names it. `composeHost` orders the listed extensions by `requires` and by
 each installed `uses` entry (ties keep a stable lexical order) and runs each
