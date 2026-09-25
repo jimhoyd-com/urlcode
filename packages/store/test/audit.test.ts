@@ -120,7 +120,7 @@ test('every write kind emits one event naming the changed fields only; an idempo
   const patch = await call(`/api/notes/${id}`, { method: 'PATCH', who: 'alice', headers: { 'if-match': etag }, body: { title: null } });
   assert.equal(patch.status, 200);
   assert.equal((await call(`/api/notes/${id}/increment/clicks`, { method: 'POST', who: 'carol' })).status, 200);
-  assert.equal((await call('/go/first')).status, 302, 'the short-link redirect counts a click');
+  assert.equal((await call('/go/first')).status, 302, 'the short-link redirect counts a click, unaudited');
   const latest = await call(`/api/notes/${id}`, { who: 'alice' });
   assert.equal((await call(`/api/notes/${id}`, { method: 'DELETE', who: 'alice', headers: { 'if-match': latest.headers.get('etag')! } })).status, 204);
   assert.equal((await call('/api/plain', { method: 'POST', who: 'alice', body: { title: 'not audited' } })).status, 201);
@@ -128,14 +128,13 @@ test('every write kind emits one event naming the changed fields only; an idempo
   const events = await storeEvents(log);
   assert.deepEqual(events.map(event => [event.action, event.actor]), [
     ['store.record.created', 'alice'], ['store.record.replaced', 'bob'], ['store.record.updated', 'alice'],
-    ['store.record.incremented', 'carol'], ['store.record.incremented', 'anonymous'], ['store.record.deleted', 'alice'],
-  ], 'one event per write, none for the replay or the unaudited collection');
+    ['store.record.incremented', 'carol'], ['store.record.deleted', 'alice'],
+  ], 'one event per write, none for the replay, the anonymous short-link click or the unaudited collection');
   assert.ok(events.every(event => event.source === 'store' && event.subject === `notes/${id}`));
   assert.deepEqual(events.map(event => event.metadata), [
     { collection: 'notes', fields: ['code', 'destination', 'title', 'clicks'] },
     { collection: 'notes', fields: ['destination'] },
     { collection: 'notes', fields: ['title'] },
-    { collection: 'notes', fields: ['clicks'] },
     { collection: 'notes', fields: ['clicks'] },
     { collection: 'notes', fields: ['code', 'destination', 'clicks'] },
   ]);
@@ -154,7 +153,7 @@ async function stalled(t: TestContext, root: string) {
   return { log, exports };
 }
 function activation(root: string, mounts = ['/api/notes', '/go']): ExtensionActivation {
-  return { origin, target: 'node', projectSha256: pin, mounts, root: join(root, 'app') };
+  return { origin, target: 'node', projectSha256: pin, mounts, principalMounts: mounts.filter(mount => mount !== '/go'), root: join(root, 'app') };
 }
 const config = { collections: { notes }, shortLinks: { public: { mount: '/go', collection: 'notes', destination: 'destination', clicks: 'clicks' } } };
 
@@ -218,6 +217,16 @@ test('the producer peeks the oldest events across collections, so a flush never 
   assert.equal(batch.length, 100);
   assert.deepEqual(batch.slice(0, 5).map(event => event.subject.split('/')[0]), ['beta', 'beta', 'beta', 'beta', 'beta'], 'the older collection comes first');
   assert.ok(batch.every((event, index) => index === 0 || batch[index - 1]!.at <= event.at));
+});
+
+test('audit: true refuses a collection mount no principal-providing policy guards', async t => {
+  const root = await tempRoot(t), directory = join(root, 'data');
+  await mkdir(join(root, 'app')); await mkdir(directory);
+  const { exports } = await stalled(t, root);
+  const instance = createStore({ directory, projectSha256: pin, audit: exports });
+  t.after(() => instance.close());
+  const unguarded = { ...activation(root), principalMounts: [] };
+  await assert.rejects(Promise.resolve().then(() => instance.registration.activate(config, unguarded)), /Collection notes: audit: true needs route \/api\/notes\/\* guarded by a principal-providing policy/);
 });
 
 test('audit: true refuses activation without an active audit; the store runs without audit when nothing opts in', async t => {

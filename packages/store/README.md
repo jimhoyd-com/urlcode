@@ -82,8 +82,9 @@ that sets a field to `null` removes it; a required field refuses that with a
 
 A collection that declares `audit: true` records every write in the audit
 log (the store `uses` the `audit` extension; activation refuses such a
-collection when audit is not installed). Each create, replace, update, delete
-and increment is an event (`store.record.created`, `.replaced`, `.updated`,
+collection when audit is not installed, or when no principal-providing policy
+guards its mount). Each create, replace, update, delete and increment (never a
+short-link click) is an event (`store.record.created`, `.replaced`, `.updated`,
 `.deleted`, `.incremented`) with subject `<collection>/<id>`, the principal id
 or `anonymous` as actor, and the changed field names, never values. The event
 is written into the collection's data file (its `audit` array) in the same

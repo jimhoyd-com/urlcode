@@ -497,6 +497,14 @@ and declared (the store `uses` it); without it, activation refuses:
 `collection <name> declares audit: true; install the audit extension (urlcode
 extensions add audit)`.
 
+Audit's retention is one count shared with auth's privileged events, so writes
+that need no credentials must not be able to fill it. An audited collection's
+mount must therefore be guarded by a principal-providing policy (for example
+`auth: {csrf: origin}`), or activation refuses: `Collection <name>: audit: true
+needs route <mount>/* guarded by a principal-providing policy`. A short-link
+click is never audited: it is anonymous and unthrottled, and the counter it
+bumps is not a privileged change.
+
 ```yaml
 extensions:
   audit: {version: "1", config: {}}
@@ -518,10 +526,10 @@ extensions:
 | `PUT` | `store.record.replaced` |
 | `PATCH` | `store.record.updated` |
 | `DELETE` | `store.record.deleted` |
-| increment (a keyed transition or a short-link click) | `store.record.incremented` |
+| increment (a keyed transition; never a short-link click) | `store.record.incremented` |
 
 Each event's subject is `<collection>/<id>` and its actor the request
-principal's id, or `anonymous` (a short-link click is always `anonymous`). Its
+principal's id, or `anonymous` when the guarding policy set none. Its
 metadata is `{collection, fields}`: the names of the declared fields the write
 stored or changed, never their values, cut with `truncated: true` when the list
 would exceed audit's metadata bound.

@@ -58,6 +58,12 @@ Batches and pages are at most 100 events and every query is indexed.
 Retention is a capacity bound, not a legal retention policy: export what you
 must keep before it ages out.
 
+Retention is one count across every producer, so any producer's events can
+age out another's, including auth's privileged events. A producer must not
+record events that clients can cause without credentials: the store audits
+only collections behind a principal-providing policy and never audits a
+short-link click. Size `retention` for the busiest audited traffic.
+
 ## Storage
 
 - One SQLite file, `<site>/data/audit.sqlite` by default, opened on the main

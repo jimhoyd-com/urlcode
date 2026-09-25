@@ -24,7 +24,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   records) and, with audit installed, `audit: true`.
 - `audit: true` on a collection records every write in the audit extension's log (field names, never
   values) through an outbox in the data file; at 1000 undelivered events writes answer `503 audit_backlog`.
-  Activation refuses it without the audit extension.
+  Activation refuses it without the audit extension or on a mount no principal-providing policy guards
+  (for example `auth: {csrf: origin}`). Short-link clicks are never audited.
 - `ownership: owner` on a collection scopes every request to the principal a policy such as
   `auth: true` on its mount sets; without it (the default) a collection is shared. An owned
   collection may add `maxRecordsPerOwner: N` (at most `maxRecords`): a principal holding N records
