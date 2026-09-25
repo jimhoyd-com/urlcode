@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { execFile } from 'node:child_process';
 import { TOTP } from 'otpauth';
 import { createAuthService, normalizeEmail, sessionReference, hashWaitBudgetMs } from '../src/auth-core.ts';
 import type { AuthOptions, AuthService } from '../src/auth-core.ts';
@@ -1260,4 +1261,49 @@ test('bearer/API-key issuance, verification, expiry, revocation and secret secre
     await assert.rejects(service.issueApiKey({ name: 'bad-expiry', scopes: ['read'], expiresInMs: 1 }), { code: 'invalid_api_key_expiry' });
     await assert.rejects(service.revokeApiKey(''), { code: 'invalid_api_key_id' });
     assert.equal((await readFile(database)).includes(Buffer.from(issued.key.split('.')[1]!)), false);
+});
+test('bearer/API-key quota: per-credential fixed window, durable across restart, shared by processes on one database file', async (t) => {
+    const { service, options, database, advance, now } = await setup(t);
+    const first = await service.issueApiKey({ name: 'quota-a', scopes: ['read'] }), second = await service.issueApiKey({ name: 'quota-b', scopes: ['read'] });
+    const quota = { requests: 3, window: 60 };
+    assert.deepEqual(await service.consumeApiKeyQuota(first.id, quota), { allowed: true, remaining: 2, reset: 60 });
+    assert.deepEqual(await service.consumeApiKeyQuota(first.id, quota), { allowed: true, remaining: 1, reset: 60 });
+    advance(10000);
+    assert.deepEqual(await service.consumeApiKeyQuota(first.id, quota), { allowed: true, remaining: 0, reset: 50 });
+    // Refused, and a refusal is not counted (a retry loop cannot keep its own window open).
+    assert.deepEqual(await service.consumeApiKeyQuota(first.id, quota), { allowed: false, remaining: 0, reset: 50 });
+    assert.deepEqual(await service.consumeApiKeyQuota(first.id, quota), { allowed: false, remaining: 0, reset: 50 });
+    // A separate credential, and the same credential under a different budget, count separately.
+    assert.equal((await service.consumeApiKeyQuota(second.id, quota)).allowed, true);
+    assert.equal((await service.consumeApiKeyQuota(first.id, { requests: 3, window: 120 })).allowed, true);
+    // Survives a restart on the same SQLite file.
+    await service.close();
+    const restarted = await createAuthService(options);
+    cleanup(t, () => restarted.close());
+    assert.equal((await restarted.consumeApiKeyQuota(first.id, quota)).allowed, false);
+    // Another OS process opening the same database file sees, and adds to, the same count.
+    const child = (id: string) => new Promise<string>((resolve, reject) => {
+        const script = `import { createAuthService } from ${JSON.stringify(new URL('../src/auth-core.ts', import.meta.url).href)};
+const service = await createAuthService({ database: process.env.DB, encryptionKey: Buffer.alloc(32, 7), roles: ${JSON.stringify(roles)}, defaultRole: 'user', now: () => Number(process.env.NOW) });
+try { process.stdout.write(JSON.stringify(await service.consumeApiKeyQuota(process.env.KEY_ID, { requests: 3, window: 60 }))); } finally { await service.close(); }`;
+        execFile(process.execPath, ['--conditions=development', '--input-type=module', '-e', script], { env: { ...process.env, DB: database, NOW: String(now()), KEY_ID: id } }, (error, stdout, stderr) => error ? reject(new Error(stderr || error.message)) : resolve(stdout));
+    });
+    assert.deepEqual(JSON.parse(await child(first.id)), { allowed: false, remaining: 0, reset: 50 });
+    assert.deepEqual(JSON.parse(await child(second.id)), { allowed: true, remaining: 1, reset: 60 });
+    assert.deepEqual(await restarted.consumeApiKeyQuota(second.id, quota), { allowed: true, remaining: 0, reset: 60 });
+    assert.equal((await restarted.consumeApiKeyQuota(second.id, quota)).allowed, false);
+    // The window resets once it closes.
+    advance(50000);
+    assert.deepEqual(await restarted.consumeApiKeyQuota(first.id, quota), { allowed: true, remaining: 2, reset: 60 });
+    // Only the key id is counted, hashed: neither the id nor the raw secret appears in the counter table.
+    const db = new DatabaseSync(database, { readOnly: true });
+    try {
+        const keys = db.prepare('SELECT key FROM auth_attempts').all().map(row => String(row.key));
+        assert.ok(keys.length >= 3 && keys.every(key => /^[a-f0-9]{64}$/.test(key)));
+        assert.ok(!keys.some(key => key.includes(first.id) || key.includes(first.key.split('.')[1]!)));
+    }
+    finally { db.close(); }
+    for (const bad of [{ requests: 0, window: 60 }, { requests: 1.5, window: 60 }, { requests: 1, window: 0 }, { requests: 1, window: 2592001 }, { requests: 1000001, window: 60 }, null])
+        await assert.rejects(restarted.consumeApiKeyQuota(first.id, bad as never), { code: 'invalid_api_key_quota' });
+    await assert.rejects(restarted.consumeApiKeyQuota('', quota), { code: 'invalid_api_key_id' });
 });

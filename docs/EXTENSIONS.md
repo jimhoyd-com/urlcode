@@ -113,6 +113,18 @@ route's own `function`/`middleware` can read who authenticated directly off
 its `Request` object — see [handing data forward into a protected route's own
 context](#handing-data-forward-into-a-protected-routes-own-context).
 
+`bearer.quota: {requests, window}` adds a budget per credential: `requests`
+per `window` seconds for each key, counted by key id in the auth store once
+the key has authenticated and covers the route's scopes. The request that
+would exceed it is a 429 with `Retry-After` and
+`RateLimit-Policy`/`RateLimit` fields under the policy name `credential`,
+before the handler runs. Counting is a fixed window, durable across restarts
+and shared by processes on one host (not across hosts); a store failure is a
+503, never an uncounted pass. Core [throttle](policies/throttle.md), which runs
+before auth and partitions by client, remains the guard against
+unauthenticated floods — declare both. Details in
+[packages/auth/README.md](../packages/auth/README.md#per-credential-quota).
+
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
 [policies](POLICIES.md)).

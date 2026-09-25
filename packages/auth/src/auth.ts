@@ -63,7 +63,11 @@ export const authConfigSchema = { type: 'object', additionalProperties: false, p
 // (role/permission/verified/freshWithinSeconds/onDeny, checked against the signed-in
 // cookie session) or bearer-protected (checked against an operator-issued API key), never
 // both — see `authorize()` below and docs/EXTENSIONS.md.
-const bearerSchema = { type: 'object', additionalProperties: false, required: ['scopes'], properties: { scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' } } } };
+// `quota` (urlcode#572) budgets each credential separately: `requests` per `window`
+// seconds, the same units as core's `policies.throttle` (quota/window), counted by
+// key id in the auth SQLite store. Bounds match auth-core.ts `validApiKeyQuota`.
+const apiKeyQuotaSchema = { type: 'object', additionalProperties: false, required: ['requests', 'window'], properties: { requests: { type: 'integer', minimum: 1, maximum: 1000000 }, window: { type: 'integer', minimum: 1, maximum: 2592000 } } };
+const bearerSchema = { type: 'object', additionalProperties: false, required: ['scopes'], properties: { scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' } }, quota: apiKeyQuotaSchema } };
 /**
  * Reserved-namespace header (core's `extensionContextHeaderPrefix`,
  * @jimhoyd/urlcode/extensions) a bearer-protected route's own trusted
@@ -243,6 +247,19 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         const missing = required.filter(scope => !principal.scopes.includes(scope));
                         if (missing.length)
                             return jsonResponse(403, { error: 'insufficient_scope', requiredScopes: missing }, [['www-authenticate', `Bearer error="insufficient_scope", scope="${missing.join(' ')}"`]]);
+                        // Per-credential quota (urlcode#572): counted only once the key has
+                        // authenticated and covers the route's scopes, so 401/403 keep their
+                        // meaning and an unauthenticated flood stays core throttle's job (by
+                        // client). A refusal mirrors core throttle's 429: Retry-After plus the
+                        // IETF RateLimit-Policy/RateLimit fields, under the policy name
+                        // "credential". A store failure throws (fails closed), as the key
+                        // lookup above does.
+                        const quota = (requirement.bearer as { quota?: { requests: number; window: number } }).quota;
+                        if (quota) {
+                            const budget = await service.consumeApiKeyQuota(principal.id, quota);
+                            if (!budget.allowed)
+                                return jsonResponse(429, { error: 'credential_quota_exceeded' }, [['retry-after', String(budget.reset)], ['ratelimit-policy', `"credential";q=${quota.requests};w=${quota.window}`], ['ratelimit', `"credential";r=0;t=${budget.reset}`]]);
+                        }
                         request.headers.set(authPrincipalHeader, Buffer.from(JSON.stringify({ id: principal.id, name: principal.name, scopes: principal.scopes })).toString('base64'));
                         return undefined;
                     }

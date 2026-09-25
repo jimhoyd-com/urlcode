@@ -656,7 +656,10 @@ to load. Only `required`, `role`, `permission`, `verified`,
 or `permissions` list. `auth: {required: false}` emits nothing.
 `auth: {bearer: {scopes: [...]}}` protects the route with an operator-issued
 API key instead of a signed-in session and is exclusive of the other keys
-(see [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#bearerapi-key-routes)).
+(see [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#bearerapi-key-routes)). A per-key budget is
+`bearer: {scopes: [...], quota: {requests, window}}` (window in seconds), not a
+hand-written counter in a function; keep `policies.throttle` for per-client
+limits on the same route.
 
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
@@ -1236,6 +1239,9 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.auth (option 2).bearer` | object | no | unknown keys rejected | Protects the route with a bearer/API-key credential instead of a signed-in session; exclusive of role/permission/verified/freshWithinSeconds/onDeny. |
 | `routes.*.auth (option 2).bearer.scopes` | array | yes | maxItems: 32 | — |
 | `routes.*.auth (option 2).bearer.scopes[]` | string | no | minLength: 1; maxLength: 128; pattern: "^[a-z][a-z0-9_.:-]*$" | — |
+| `routes.*.auth (option 2).bearer.quota` | object | no | unknown keys rejected | — |
+| `routes.*.auth (option 2).bearer.quota.requests` | integer | yes | minimum: 1; maximum: 1000000 | — |
+| `routes.*.auth (option 2).bearer.quota.window` | integer | yes | minimum: 1; maximum: 2592000 | — |
 | `routes.*.cache` | object | no | unknown keys rejected | Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged. |
 | `routes.*.cache.strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] | — |
 | `routes.*.cache.maxAge` | integer | no | minimum: 0; maximum: 31536000 | Seconds |
@@ -3309,6 +3315,18 @@ id/name/scopes (never the raw key) are written into the reserved
 route's own `function`/`middleware` can read who authenticated directly off
 its `Request` object — see [handing data forward into a protected route's own
 context](#handing-data-forward-into-a-protected-routes-own-context).
+
+`bearer.quota: {requests, window}` adds a budget per credential: `requests`
+per `window` seconds for each key, counted by key id in the auth store once
+the key has authenticated and covers the route's scopes. The request that
+would exceed it is a 429 with `Retry-After` and
+`RateLimit-Policy`/`RateLimit` fields under the policy name `credential`,
+before the handler runs. Counting is a fixed window, durable across restarts
+and shared by processes on one host (not across hosts); a store failure is a
+503, never an uncounted pass. Core [throttle](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/throttle.md), which runs
+before auth and partitions by client, remains the guard against
+unauthenticated floods — declare both. Details in
+[packages/auth/README.md](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#per-credential-quota).
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see

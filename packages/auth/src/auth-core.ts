@@ -720,9 +720,37 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         name: string;
         scopes: string[];
     } | null>;
+    /**
+     * Counts one request against a bearer/API-key credential's quota (a route's
+     * `auth: {bearer: {quota: {requests, window}}}`, urlcode#572). `id` is the
+     * key's public id from `authenticateApiKey`, never its secret. Fixed window,
+     * like the sign-in attempt counter: the window opens at the credential's
+     * first counted request and `requests` are allowed until it closes. A
+     * refused request is not counted. Routes that restate the same
+     * `requests`/`window` share one counter per credential; a different budget
+     * gets its own. Counted in the auth SQLite store, so the count survives a
+     * restart and is shared by every process on the host opening the same
+     * database file (not across hosts). Throws `AuthError` 503 when the store is
+     * unavailable or its counter table is at capacity — never allows by default.
+     */
+    consumeApiKeyQuota(id: string, quota: {
+        requests: number;
+        window: number;
+    }): Promise<{
+        allowed: boolean;
+        remaining: number;
+        reset: number;
+    }>;
     close(): Promise<void>;
 }
 const fail = (status: number, code: string): never => { throw new AuthError(status, code); };
+/** Same bounds as the `bearer.quota` policy schema (auth.ts `apiKeyQuotaSchema`): 1..1,000,000 requests per 1..2,592,000 seconds (30 days). */
+function validApiKeyQuota(quota: unknown): quota is { requests: number; window: number } {
+    if (!quota || typeof quota !== 'object')
+        return false;
+    const { requests, window } = quota as Record<string, unknown>;
+    return Number.isSafeInteger(requests) && Number(requests) >= 1 && Number(requests) <= 1000000 && Number.isSafeInteger(window) && Number(window) >= 1 && Number(window) <= 2592000;
+}
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 /**
  * The opaque, irreversible reference a session token hashes to (the same value
@@ -1940,6 +1968,17 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             // Best-effort: a failed last-used update must not fail authentication.
             store.call('apiKeyTouch', { id: keyId, now: now() }).catch(() => undefined);
             return { id: record.id, name: record.name, scopes: record.scopes };
+        },
+        async consumeApiKeyQuota(keyId, quota) {
+            check();
+            if (typeof keyId !== 'string' || !keyId || keyId.length > 64)
+                fail(400, 'invalid_api_key_id');
+            if (!validApiKeyQuota(quota))
+                fail(400, 'invalid_api_key_quota');
+            // Hashed like the attempt counter's keys; the budget is part of the key so
+            // routes restating one quota share a counter while a different one does not.
+            const key = createHash('sha256').update(`urlcode-auth-api-key-quota:${keyId}:${quota.requests}/${quota.window}`).digest('hex');
+            return store.call<{ allowed: boolean; remaining: number; reset: number }>('apiKeyQuota', { key, requests: quota.requests, windowMs: quota.window * 1000, now: now() });
         },
         async close() {
             if (closed)

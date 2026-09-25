@@ -31,6 +31,25 @@ export function apiKeyOperation(operation: string, args: Record<string, unknown>
         db.prepare('UPDATE auth_api_keys SET revoked=1 WHERE id=?').run(String(args.id));
         return { value: undefined };
     }
+    if (operation === 'apiKeyQuota') {
+        // Per-credential quota (urlcode#572), kept in the same `auth_attempts` table and
+        // fixed-window shape as the sign-in attempt counter (auth-store.ts `attempt`): the
+        // window opens at the first counted request, a refused request is not counted, expired
+        // rows are swept here and by `cleanup`, and the table's 100,000-row ceiling applies.
+        // The store runs every operation inside BEGIN IMMEDIATE, so processes sharing the
+        // database file serialize on it and share one count.
+        const key = String(args.key), requests = Number(args.requests), windowMs = Number(args.windowMs);
+        db.prepare('DELETE FROM auth_attempts WHERE key IN (SELECT key FROM auth_attempts WHERE expires<=? LIMIT 1000)').run(now);
+        const prior = db.prepare('SELECT count,expires FROM auth_attempts WHERE key=? AND expires>?').get(key, now);
+        const seconds = (expires: number) => Math.max(1, Math.ceil((expires - now) / 1000));
+        if (prior && Number(prior.count) >= requests)
+            return { value: { allowed: false, remaining: 0, reset: seconds(Number(prior.expires)) } };
+        if (!prior && Number(db.prepare('SELECT count(*) AS n FROM auth_attempts').get()?.n) >= 100000)
+            fail(503, 'auth_capacity_reached');
+        const count = prior ? Number(prior.count) + 1 : 1, expires = prior ? Number(prior.expires) : now + windowMs;
+        db.prepare('INSERT INTO auth_attempts VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=excluded.count,expires=excluded.expires').run(key, count, expires);
+        return { value: { allowed: true, remaining: requests - count, reset: seconds(expires) } };
+    }
     if (operation === 'apiKeyList') {
         const rows = db.prepare('SELECT id,name,scopes,created,expires,revoked,last_used AS lastUsed FROM auth_api_keys ORDER BY created DESC LIMIT 1000').all();
         return { value: rows.map(row => ({ id: String(row.id), name: String(row.name), scopes: JSON.parse(String(row.scopes)) as string[], created: Number(row.created), expires: row.expires === null ? null : Number(row.expires), revoked: Boolean(row.revoked), lastUsed: row.lastUsed === null ? null : Number(row.lastUsed) })) };

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Bearer routes accept a per-credential quota, `auth: {bearer: {scopes, quota: {requests, window}}}` (#572): each API key gets `requests` per `window` seconds, counted by key id in the auth SQLite store (fixed window, durable, shared by processes on one host). The request over budget is refused with 429, `Retry-After` and `RateLimit-Policy`/`RateLimit` under the policy name `credential`, before the handler runs. `AuthService.consumeApiKeyQuota` is the service method behind it.
+
 Lifecycle hooks (`beforeRegister`, `onSignUp`, `onDelete`) receive core's generic hook context, `{requestId, env}`, as a second argument (#678).
 
 ## 0.5.0

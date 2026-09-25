@@ -100,8 +100,17 @@ In enforce mode only `exceeded` is logged.
   (`onRequest` returning a refusal, backed by whatever store you run) is the
   place for a cluster-wide budget; see the plugin contract in
   [docs/PLUGINS.md](../PLUGINS.md).
-- No per-user or per-token keys. The partition is address or route; a token
-  bucket per API key is again a plugin.
+- No per-user or per-token keys. The partition is address or route, because
+  throttle runs before authentication and never sees who is calling. A budget
+  per API key is the auth extension's `auth: {bearer: {scopes, quota:
+  {requests, window}}}`, counted by key id in the auth SQLite store (durable,
+  shared by processes on one host) — see
+  [per-credential quota](../../packages/auth/README.md#per-credential-quota).
+  Keep throttle on the same route for unauthenticated and invalid-key floods:
+  it refuses them per client before any key is verified. On a 429 from the
+  credential quota, throttle's response phase replaces the `RateLimit` and
+  `RateLimit-Policy` fields with its own `default` policy; `Retry-After`
+  stays the credential's ([#701](https://github.com/jimhoyd-com/urlcode/issues/701)).
 - Counters do not survive a reload: a new snapshot starts empty.
 - `maxKeys` bounds memory with least-recently-used eviction; an evicted key
   starts fresh, so a table sized below the number of concurrent clients
