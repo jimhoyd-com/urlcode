@@ -474,6 +474,27 @@ is deterministic, carries a Content-Security-Policy that allows no script and
 escapes all project text, so it is safe to publish as a pull request artifact.
 It is read-only: it grants nothing and does not replace `validate` or `test`.
 
+### Studio
+
+`urlcode studio [BEFORE] [--project DIR] [--port 4100] [--host 127.0.0.1]
+[--policy F] [--host-file F]` serves the same page while you work: it prints
+a URL, and every page load rebuilds the report from disk, so reloading shows
+the project as it is now. It takes `BEFORE`, `--policy` and `--host-file`
+exactly as `report` does. The policy file and `BEFORE` are re-read on each
+load, so a re-pin shows on reload. The host file is trusted operator code: it
+is loaded once at start, and a change to it needs a restart. When the project
+does not load (for example while `urlcode.yaml` is mid-edit), the page shows
+the error and the studio keeps running.
+
+It adds nothing to the report and changes nothing: one read-only page, no
+editing, no project code run. It listens on this machine only (`--host` must
+be `127.0.0.1`, `::1` or `localhost`) and answers only requests whose `Host`
+is one of those names, so another web page cannot read it through DNS
+rebinding. It reads only an explicit `--port`, never `PORT`, which stays the
+container setting for `serve` and `dev`. Page loads that arrive while a page
+is being built share that build, so extra tabs and quick reloads do not start
+more project loads.
+
 ## Explain and manifest
 
 `urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--json]`
