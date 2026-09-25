@@ -147,9 +147,9 @@ const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms', 'mcp'] as c
 // The serial script used to get this for free from running packages in order;
 // a package's own job now has to build its declared dependencies first.
 // `mcp`, like `store`, only peers on core.
-const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: [], forms: ['ui'], mcp: [] };
+const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: ['ui'], forms: ['ui'], mcp: [] };
 const WORKSPACE_DEPENDENTS: Record<string, readonly string[]> = {
-  ui: ['auth', 'admin', 'forms'], auth: ['admin'], admin: [], store: [], forms: [], mcp: [],
+  ui: ['auth', 'admin', 'store', 'forms'], auth: ['admin'], admin: [], store: [], forms: [], mcp: [],
 };
 
 /**
