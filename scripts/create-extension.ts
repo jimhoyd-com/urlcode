@@ -3,7 +3,7 @@
 // (released with core at core's version, exports "." and "./extension"),
 // README/SECURITY/CHANGELOG/AGENTS/llms.txt, a tsconfig pair, a RuntimeExtension
 // source module, `src/extension.ts` (the `defineExtension` definition: scaffold
-// and host), a `urlcode.json` stub, and a real integration test.
+// and host), its `urlcode.json` descriptor, and a real integration test.
 //
 // Usage:
 //   node scripts/create-extension.ts <name> [--from <existing-package>] [--description "..."]
@@ -137,9 +137,42 @@ function packageJson(name: string, description: string, core: CoreManifest, fork
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
-/** Stub descriptor so the add-on list sees the package; `npm run build:addons` regenerates it from src/extension.ts. */
+/** The generated configuration schema, written into both src/<name>.ts and urlcode.json so the two agree. */
+function configSchema(): Record<string, unknown> {
+  return {
+    type: 'object', additionalProperties: false, required: ['mounts'],
+    properties: {
+      mounts: {
+        type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' },
+        additionalProperties: {
+          type: 'object', additionalProperties: false, required: ['mount', 'message'],
+          properties: {
+            mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256 },
+            message: { type: 'string', minLength: 1, maxLength: 512 },
+          },
+        },
+      },
+    },
+  };
+}
+/** The generated authoring contract, written into both src/<name>.ts and urlcode.json. */
+function authoringContract(name: string): Record<string, unknown> {
+  return {
+    description: 'TODO: describe what this extension declares and owns. This is a generated placeholder (create-extension) -- replace the mounts/message example with the real declarative surface.',
+    surfaces: [
+      { kind: 'configuration', name: 'mounts', description: 'TODO: describe the real declared configuration surface.', path: `urlcode.yaml#extensions.${name}.config.mounts` },
+      { kind: 'extension', name: 'mount', description: 'Mount each declared entry with GET and HEAD.', path: 'urlcode.yaml' },
+    ],
+    fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
+  };
+}
+
+/**
+ * The descriptor `npm run build:addons` would write from the generated src/extension.ts, so the root install's
+ * prepare step (which builds the add-on catalog from every urlcode.json) accepts the package before its first build.
+ */
 function urlcodeJson(name: string, description: string, fork: ForkShape | undefined): string {
-  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name) }, null, 2)}\n`;
+  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name), schema: configSchema(), authoring: authoringContract(name) }, null, 2)}\n`;
 }
 
 function readmeMd(name: string, camel: string, description: string, fork: ForkShape | undefined): string {
@@ -363,8 +396,6 @@ function extensionSourceTs(name: string, Name: string, camel: string): string {
 // extension package under packages/ follows; see docs/EXTENSIONS.md.
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 
-const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
-
 export interface ${Name}MountSpec { mount: string; message: string }
 interface ${Name}Config { mounts: Record<string, ${Name}MountSpec> }
 export interface ${Name}ExtensionOptions {
@@ -372,31 +403,9 @@ export interface ${Name}ExtensionOptions {
   projectSha256: string;
 }
 
-const stringSchema = { type: 'string', minLength: 1, maxLength: 512 };
-export const ${camel}ConfigSchema = {
-  type: 'object', additionalProperties: false, required: ['mounts'],
-  properties: {
-    mounts: {
-      type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: NAME.source },
-      additionalProperties: {
-        type: 'object', additionalProperties: false, required: ['mount', 'message'],
-        properties: {
-          mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256 },
-          message: stringSchema,
-        },
-      },
-    },
-  },
-} as const;
+export const ${camel}ConfigSchema = ${JSON.stringify(configSchema(), null, 2)} as const;
 
-export const ${camel}Authoring: ExtensionAuthoringContract = {
-  description: 'TODO: describe what this extension declares and owns. This is a generated placeholder (create-extension) -- replace the mounts/message example with the real declarative surface.',
-  surfaces: [
-    { kind: 'configuration', name: 'mounts', description: 'TODO: describe the real declared configuration surface.', path: 'urlcode.yaml#extensions.${name}.config.mounts' },
-    { kind: 'extension', name: 'mount', description: 'Mount each declared entry with GET and HEAD.', path: 'urlcode.yaml' },
-  ],
-  fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
-};
+export const ${camel}Authoring: ExtensionAuthoringContract = ${JSON.stringify(authoringContract(name), null, 2)};
 
 function textResponse(status: number, body: string): HandlerResult {
   return { status, headers: [['content-type', 'text/plain; charset=utf-8']], body };

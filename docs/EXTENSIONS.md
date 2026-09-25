@@ -568,8 +568,9 @@ every extension package follows: `package.json` (released with core at core's
 version, exporting `.` and `./extension`), `README.md`/`SECURITY.md`/
 `CHANGELOG.md`/`AGENTS.md`, a `RuntimeExtension` source module,
 `src/extension.ts` (the `defineExtension` definition with `scaffold` and
-`host`), a `urlcode.json` stub and a real integration test, all as placeholders
-to replace. `--from <existing-package>` forks an existing package's file
+`host`), its `urlcode.json` descriptor (exactly what `build:addons` writes from
+that definition, so the root install's prepare step accepts the new package)
+and a real integration test, all as placeholders to replace. `--from <existing-package>` forks an existing package's file
 *shape* (which optional docs it carries, which siblings it requires) as a
 starting point -- never its source code. The tool only creates files; run
 `npm install` and `npm run build:addons` afterwards so the workspace and its
