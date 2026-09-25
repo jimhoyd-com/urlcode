@@ -3,13 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { baseCatalogue, createPresentation, kitCatalogue, mergeCatalogues } from '@jimhoyd/urlcode-ui';
 import admin from '../src/extension.ts';
 import auth from '@jimhoyd/urlcode-auth/extension';
 import type { Catalogue } from '@jimhoyd/urlcode-ui';
 import { adminCatalogue, adminCopy, copyObserver } from '../src/admin-copy.ts';
 
-const src = new URL('../src/', import.meta.url).pathname;
+const src = fileURLToPath(new URL('../src/', import.meta.url));
 const sources = readdirSync(src).filter(name => name.endsWith('.ts') && name !== 'admin-copy.ts').map(name => [name, readFileSync(join(src, name), 'utf8')] as const);
 const english = new Set(Object.values(adminCatalogue).filter(value => typeof value === 'string'));
 
