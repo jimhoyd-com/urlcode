@@ -21,7 +21,12 @@ export function readPolicyFromEnvironment(environment: Environment): OperatorPol
 // Activates a project for a native-handler-only host, refusing the whole
 // deployment rather than letting individual routes fail at request time.
 export async function activateNativeOnly(project: string, environment: Environment, { target, plugins, extensions, origin, aliasOrigins, passkeyRpId }: NativeOnlyOptions): Promise<Runtime> {
-  return createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins, extensions, origin, aliasOrigins, passkeyRpId });
+  return createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins, extensions, origin, aliasOrigins, passkeyRpId, log: hostedLog });
+}
+// A hosted function has no event log of its own; extension activation warnings (RIM-EXT-WARN-001) go to the
+// platform's function log, like an activation failure does. Every other runtime event stays unlogged there.
+function hostedLog(event: Record<string, unknown>): void {
+  if (event.event === 'extension_warning') console.warn(JSON.stringify(event));
 }
 
 // Caches a successful activation for the life of the instance. A failure is not

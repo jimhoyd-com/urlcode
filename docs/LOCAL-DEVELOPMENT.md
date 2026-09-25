@@ -133,6 +133,17 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   belongs to the operator; a request never sees it. The hosted AWS and Vercel
   adapters activate on the first request and answer it with a plain `500
   Internal server error`, logging the reason to the function log.
+- An extension warns while it activates: the site still starts, and `validate`,
+  `test` and `dev`/`serve` print one
+  `{"event":"extension_warning","extension":"<name>","message":"..."}` line on
+  stdout per warning (`dev` and `serve` on a terminal render it as
+  `Extension "<name>" warning: <message>`); `test` prints it even without
+  `--verbose`. The message uses the same one-line, 500-character, stackless
+  form as an activation error; at most 20 are printed per extension per
+  activation, then one `further warnings suppressed` line. A warning is the
+  extension telling the operator to act (for example auth's passkey
+  relying-party ID check); requests never see it. See
+  [activation warnings](EXTENSIONS.md#activation-warnings).
 - The host file fails before any extension activates: when `host.mjs` itself
   throws while it is imported (a top-level error or an import that cannot be
   resolved), the same commands print `Host file failed to load: <message>`

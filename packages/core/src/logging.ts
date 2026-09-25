@@ -24,7 +24,7 @@ export function createJsonLogger(stream: LogSink = process.stdout, maxBufferByte
 export type EventFormatter = (event: Record<string, unknown>) => string | undefined;
 type JsonLogger = (event: object) => void;
 /**
- * Human-readable `dev`/`serve` request/reload/watch lines for a TTY (`GET /go 302 0.9ms`), falling back to the JSON
+ * Human-readable `dev`/`serve` request/reload/watch/extension-warning lines for a TTY (`GET /go 302 0.9ms`), falling back to the JSON
  * line (via `createJsonLogger`'s own fallback) for any event this does not render. `routes` is a mutable box the
  * caller owns and seeds from the started server's route count: this formatter only ever updates it from `reload`'s
  * own `routes` field afterwards, never by inferring one from a route pattern. No event carries a raw request path
@@ -39,6 +39,7 @@ export function createDevEventFormatter(routes: { count: number }): EventFormatt
       return event.status === 'ok' ? `Reloaded — ${String(event.routes)} route${event.routes === 1 ? '' : 's'}` : 'Reload rejected — kept serving the previous version';
     }
     if (kind === 'watch') return 'Could not watch the project for changes';
+    if (kind === 'extension_warning') return `Extension ${JSON.stringify(String(event.extension))} warning: ${String(event.message)}`;
     if (kind !== 'request') return undefined;
     const { status, durationMs, method, route } = event as { status?: unknown; durationMs?: unknown; method?: unknown; route?: unknown };
     const parts = [typeof method === 'string' ? method : undefined, typeof route === 'string' ? route : route === null ? '(unmatched)' : undefined, String(status), `${String(durationMs)}ms`].filter((part): part is string => part !== undefined);
