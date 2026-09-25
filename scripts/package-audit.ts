@@ -167,8 +167,9 @@ export const budgets: Record<string, Budget> = {
     // (#529: dist/records.js and its declarations, and the export's contract
     // in SECURITY.md and CHANGELOG.md) took the unpacked content to 146313
     // bytes (about 142.9 KiB).
-    // STORE_COMBINED_PLACEHOLDER
-    unpacked: 150 * 1024,
+    // Together, #731/#732 and #529 measure 158673 unpacked bytes (about
+    // 155 KiB), so the store budget is 170 KiB unpacked.
+    unpacked: 170 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
