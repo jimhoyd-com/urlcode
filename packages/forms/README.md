@@ -210,3 +210,40 @@ that way. A handoff whose values exceed 2 KiB of JSON is not issued, so give
 shown free-text fields a `maxLength` well under that. `HEAD` always answers
 with the fixed form and leaves the cookie in place.
 
+
+## Using a flow from another extension
+
+An extension that `requires: [forms]` can serve a form of its own through the
+typed export forms hands it, `ctx.get('forms')` in its definition's `host()`
+(`FormsExports`, contract version 1, #529). It never reads
+`extensions.forms.config`; it declares the form in its own configuration,
+embedding `formFlowBodySchema` (a flow without `mount`) in its schema:
+
+```ts
+const forms = context.get<FormsExports>('forms');   // in host()
+// once forms is active (declare forms first under extensions):
+const flow = forms.define('signup', body);           // same cross-field rules as a declared flow
+flow.render(request, { action: '/signup', scope: 'my-extension:signup' });
+const sent = flow.submit(request, { action: '/signup', scope: 'my-extension:signup' });
+if (!sent.ok) return sent.response;                  // 403, 405, 413, 415 or the 422 page, as for forms' own flows
+```
+
+- `define(name, body)` validates the body exactly as forms validates a
+  declared flow and throws an `Error` naming the problem; it refuses until
+  forms is active.
+- `render` and `submit` keep forms' escaping, same-origin admission, 64 KiB
+  body bound, CSRF and field validation. The CSRF token also carries the
+  page's `scope`: a token minted under one scope is refused under another, and
+  a scoped token never admits a flow forms serves itself (nor the reverse).
+- `only(names)` returns a handle that renders and admits only those fields; a
+  submission carrying any other field is a 422. A `requiredWhen` field must
+  keep its sibling. `readOnly` shows other declared fields' values as a list
+  above the form, and `alert`, `title`, `submitLabel` and `status` adjust the
+  page.
+- `confirmationPage(values, {links})` renders the flow's confirmation from
+  values the consumer supplies (for example a saved record), with optional
+  same-site links.
+
+A flow defined this way has no mount and no `onSubmit` hook: the consumer
+decides what a valid submission does. [form-records](../form-records/README.md)
+is the first-party consumer.

@@ -71,6 +71,16 @@ POST. Put a mount behind `auth: true` where its submissions require an account;
 the form extension does not create identities, ownership rules, rate limits or
 storage.
 
+A flow another extension defines through the forms export (`FormsExports`,
+#529) is admitted by the same code: the same same-origin rule, body bound,
+URL-encoded requirement, field validation and escaping, and a CSRF token signed
+with the same secret and bound to the same browser. That token also carries the
+consumer's `scope` (for example one per record edit page); a token is refused
+under any other scope, and a scoped token never admits a flow forms serves
+itself, nor the reverse. The consumer extension is trusted operator code that
+decides what a valid submission does; forms does not add ownership or storage
+for it.
+
 Passing tests does not establish independent security assessment, hostile
 multi-tenant readiness, production abuse resistance, or delivery guarantees.
 Report suspected vulnerabilities through the repository's private reporting
