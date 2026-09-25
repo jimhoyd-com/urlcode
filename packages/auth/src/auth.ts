@@ -122,7 +122,7 @@ const authPrincipalHeader = `${extensionContextHeaderPrefix}auth-principal`;
  */
 export function apiKeyPrincipalId(keyId: string): string { return `apikey:${keyId}`; }
 /** The `policies.extensions.auth` schema. */
-export const authPolicySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, bearer: bearerSchema }, minProperties: 0 };
+export const authPolicySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, csrf: { enum: ['token', 'origin'] }, bearer: bearerSchema }, not: { properties: { csrf: true, bearer: true }, required: ['csrf', 'bearer'] }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
 export const authAuthoring = Object.freeze({
     description: 'Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.',
@@ -335,7 +335,7 @@ export function authExtension(configured: AuthExtensionOptions): RuntimeExtensio
                         const allowed = user && !enrollmentRequired(user) && (!requirement.role || user.roles.includes(String(requirement.role))) && (!requirement.permission || hasPermission(user, String(requirement.permission))) && (!requirement.verified || user.emailVerified) && (!requirement.freshWithinSeconds || Date.now() - user.authenticatedAt <= Number(requirement.freshWithinSeconds) * 1000);
                         if (allowed) {
                             if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method))
-                                http.verify(request, {});
+                                http.verifyWrite(request, requirement.csrf === 'origin' ? 'origin' : 'token');
                             // Only after the CSRF check passed: a refused write never carries a principal.
                             request.setPrincipal?.({ id: user.id });
                             return undefined;

@@ -8,7 +8,7 @@ import type { TurnstileWidget } from './challenge-ui.ts';
 import { englishCatalogue } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
 import { randomBytes } from 'node:crypto';
-import { isSiteOrigin } from '@jimhoyd/urlcode/extensions';
+import { isSameOriginRequest, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 export interface AuthHttpResponse {
     status: number;
@@ -112,6 +112,20 @@ export function readFields(request: ExtensionRequest, allowed: string[]): Record
     }
     return result;
 }
+/** The body's `csrf` field for a route write that sent no header; anything unreadable asks for the header instead. */
+function bodyToken(request: ExtensionRequest): string | undefined {
+    let body: ReturnType<typeof readBody>;
+    try { body = readBody(request, { accept: ['form', 'json'], maxBytes: 16384 }); }
+    catch { throw new AuthHttpError(403, 'Send the CSRF token in the x-csrf-token header'); }
+    if (body.kind === 'form') {
+        const values = body.entries.filter(([name]) => name === 'csrf');
+        if (values.length > 1)
+            throw new AuthHttpError(403, 'Invalid CSRF token');
+        return values[0]?.[1];
+    }
+    const value = body.value as Record<string, unknown> | null;
+    return value && typeof value === 'object' && !Array.isArray(value) && typeof value.csrf === 'string' ? value.csrf : undefined;
+}
 export interface AuthHttpOptions {
     csrfKey: Uint8Array;
     /** The canonical origin: CSRF tokens are bound to it and generated links use it. */
@@ -193,12 +207,34 @@ export class AuthHttp {
                         string
                     ]]), ...this.device(request).headers] };
     }
-    verify(request: ExtensionRequest, fields: Record<string, string>): void {
-        if (request.origin !== this.origin || !isSiteOrigin(this, request.headers.get('origin')) || request.headers.get('sec-fetch-site') === 'cross-site')
+    /** Same-origin admission for every write: the canonical origin, then core's one rule with no provenance refused. */
+    admit(request: ExtensionRequest): void {
+        if (request.origin !== this.origin || !isSameOriginRequest(request, this, { whenAbsent: 'refuse' }))
             throw new AuthHttpError(403, 'Same-origin request required');
-        if ((request.headerCounts['origin'] || 0) > 1 || (request.headerCounts['x-csrf-token'] || 0) > 1)
+    }
+    /** A write to auth's own mount: admission, then the session- or flow-bound token from the header or the read `csrf` field. */
+    verify(request: ExtensionRequest, fields: Record<string, string>): void {
+        this.admit(request);
+        if ((request.headerCounts['x-csrf-token'] || 0) > 1)
             throw new AuthHttpError(403, 'Invalid CSRF token');
-        const binding = this.session(request) || this.cookie(request, this.flowCookie), provided = request.headers.get('x-csrf-token') || fields.csrf;
+        this.#check(request, request.headers.get('x-csrf-token') || fields.csrf);
+    }
+    /**
+     * A write to a route an auth session policy protects (jimhoyd-com/urlcode#745). `origin` is admission alone, for a
+     * mount that verifies its own token or accepts JSON only. `token` also needs the session-bound token: the single
+     * `x-csrf-token` header, or only when that is absent the body's `csrf` field (one form entry, or a top-level JSON
+     * string), read from at most 16384 bytes of form or JSON without consuming the body the route reads next.
+     */
+    verifyWrite(request: ExtensionRequest, csrf: 'token' | 'origin'): void {
+        this.admit(request);
+        if (csrf === 'origin')
+            return;
+        if ((request.headerCounts['x-csrf-token'] || 0) > 1)
+            throw new AuthHttpError(403, 'Invalid CSRF token');
+        this.#check(request, request.headers.get('x-csrf-token') ?? bodyToken(request));
+    }
+    #check(request: ExtensionRequest, provided: string | undefined): void {
+        const binding = this.session(request) || this.cookie(request, this.flowCookie);
         if (!binding || !provided || !/^[a-f0-9]{64}$/.test(provided) || !verifyHmac(this.#key, 'urlcode-csrf\0' + this.origin + '\0' + binding, provided, 'hex'))
             throw new AuthHttpError(403, 'Invalid CSRF token');
     }

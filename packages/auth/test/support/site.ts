@@ -1,0 +1,16 @@
+/** The extensions a real auth site composes in host.mjs, for suites that run a whole site through composeHost. */
+import type { TestContext } from 'node:test';
+import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import type { ExtensionEntry } from '@jimhoyd/urlcode/extensions';
+import auth from '../../src/extension.ts';
+import { createAuthService } from '../../src/auth-core.ts';
+import type { AuthOptions, AuthService } from '../../src/auth-core.ts';
+import { cleanup } from '../cleanup.ts';
+
+export async function siteHost(t: TestContext, root: string, csrfKey: Uint8Array, options: Partial<AuthOptions> = {}): Promise<{ entries: ExtensionEntry[]; service: AuthService }> {
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member', registrationMode: 'open', ...options });
+    cleanup(t, () => service.close());
+    return { entries: [ui(), auth({ service, csrfKey })], service };
+}
