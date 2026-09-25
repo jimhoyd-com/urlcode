@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- A typed export for other extensions (#529): `host()` now returns
+  `FormsExports` (contract version 1), read with `ctx.get('forms')` by an
+  extension that requires forms. `define(name, body)` validates a flow body
+  (the new `formFlowBodySchema`: a flow without `mount`) with the same rules as
+  a declared flow, and the handle renders, admits and confirms it with forms'
+  escaping, same-origin admission, body bound, CSRF and 422 handling. Its CSRF
+  tokens carry a `scope`, so a token for one consumer page is refused on
+  another and never admits a forms-served flow; `only(names)` narrows the
+  admitted fields for an edit page. `createForms` returns the registration and
+  the exports; `createFormsExtension` is unchanged. Flows declared under
+  `extensions.forms.config.flows`, and their tokens, behave as before.
+
 - The same-origin check (`Origin`, and the `Referer` fallback) admits the
   operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`) beside
   the canonical origin, using core's `isSiteOrigin`; unlisted origins are

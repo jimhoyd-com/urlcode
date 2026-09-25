@@ -1,11 +1,11 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the seven workspace packages are, how a
+One page for people and AI agents. It says what the eight workspace packages are, how a
 project grows from a handful of redirects into an application with accounts
 and an administration console, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Seven workspace packages, one project shape
+## Eight workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
@@ -15,10 +15,11 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 | `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
+| `@jimhoyd/urlcode-form-records` | [`packages/form-records`](../packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back and an edit page limited to declared fields, through the typed exports of `forms` and `store` | `extensions.form-records` (declared after `forms` and `store`) plus a `GET, HEAD, POST` mount with `auth: true`, over an `ownership: owner` collection |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All seven are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The six extensions, and the inert `store-schema` artifact in
+All eight are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The seven extensions, and the inert `store-schema` artifact in
 [`artifacts/store-schema`](../artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
@@ -70,6 +71,10 @@ Each rung's YAML is valid on every rung above it.
    collections; the `forms` extension supplies declared browser form flows over
    the shared UI kit. Both are trusted operator extensions, not core YAML
    handlers. Add `auth: true` where a flow or collection is per-account.
+   The `form-records` extension composes them when a form should become a
+   record its creator can see again and edit: it saves the submission into
+   an owned collection and serves the confirmation and a constrained edit
+   page, with no handler code.
 8. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
    tool server: JSON-RPC 2.0 framing, protocol negotiation and dispatch are the
    extension's; each tool's own logic is a trusted project handler module the
@@ -84,9 +89,10 @@ Rungs 1 to 3 need only the core package. Rungs 4 to 8 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
 operator host. Auth and admin additionally need the Node/SQLite runtime
 their packages document; forms and mcp declare Node, AWS and Vercel targets,
-while store is currently Node-only. See each package's README ([auth](../packages/auth/README.md),
+while store, and so form-records, are currently Node-only. See each package's README ([auth](../packages/auth/README.md),
 [admin](../packages/admin/README.md), [ui](../packages/ui/README.md),
 [store](../packages/store/README.md), [forms](../packages/forms/README.md),
+[form-records](../packages/form-records/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
 
 ## The composition contract
@@ -184,7 +190,10 @@ Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store
 collection) reads it, without either knowing the other
-([request principal](EXTENSIONS.md#request-principal)).
+([request principal](EXTENSIONS.md#request-principal)). A composition reaches
+the add-ons it requires only through their typed, versioned exports:
+`form-records` reads `FormsExports` and `StoreExports` with `ctx.get`, never
+their configuration ([nesting](EXTENSIONS.md#nesting)).
 
 An artifact is a separate, optional authoring input, not another way to
 compose executable behavior. `urlcode artifacts add store-schema` installs
@@ -268,6 +277,7 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Write or change routes | [YAML guide](YAML-GUIDE.md), [field reference](YAML-REFERENCE.md), [cookbook](../examples/cookbook/README.md) |
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
 | Add administration | [admin README](../packages/admin/README.md) |
+| Save a form as an editable record | [form-records README](../packages/form-records/README.md), [data store](STORE.md) |
 | Restyle every page | [ui README](../packages/ui/README.md), [ui contract](../packages/ui/CONTRACT.md) |
 | Write an extension | [extensions](EXTENSIONS.md), [authoring rules](EXTENSIONS.md#generic-add-on-authoring-rules) |
 | Run it | [operations](OPERATIONS.md), [install](INSTALL.md), [deployment checks](DEPLOYMENT-CHECKS.md) |

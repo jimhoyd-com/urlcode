@@ -27,8 +27,8 @@
   behavior or onboarding changes.
 - Report actual evidence and remaining limitations. CI passing is not an
   independent security review or deployment/soak/recovery proof.
-- The auth, admin, ui, store, forms and mcp extensions are workspace packages in this repository
-  (packages/auth, packages/admin, packages/ui, packages/store, packages/forms, packages/mcp) and consume the generic contract
+- The auth, admin, ui, store, forms, form-records and mcp extensions are workspace packages in this repository
+  (packages/auth, packages/admin, packages/ui, packages/store, packages/forms, packages/form-records, packages/mcp) and consume the generic contract
   in packages/core/src/extensions.ts. Core still never imports them: consolidating the
   packages into one repository did not make the dependency two-way, and a core
   change must not reach for a package. The packages that depend on core resolve
@@ -38,7 +38,7 @@
   Markdown pointing at one of them, or at a relative path that does not exist,
   fails scripts/check-local-links.ts — label genuinely historical release
   evidence with `<!-- local-links: historical -->` rather than rewriting it.
-  docs/FRAMEWORK.md describes how the seven packages compose; keep it and
+  docs/FRAMEWORK.md describes how the eight packages compose; keep it and
   llms.txt accurate when the contract or the CLI changes. Current version
   numbers live in the manifests and docs/VERSION-ALIGNMENT.md; do not copy them
   into other prose, which is how they went stale before.
@@ -80,6 +80,7 @@ repository that owns the code, using that repository's issue templates:
 | Accounts, sign-in, protected routes (`packages/auth`) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 | Users, sessions, roles, audit (`packages/admin`) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 | Extension page styling and copy (`packages/ui`) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
+| Forms-to-store composition (`packages/form-records`) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 | Per-route middleware (the native `middleware:` array) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 
 Feature requests are wanted, not just bugs: if the vocabulary made you generate

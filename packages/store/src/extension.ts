@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { defineExtension } from '@jimhoyd/urlcode/extensions';
 import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
-import { storeAuthoring, storeConfigSchema, storeExtension } from './store.ts';
+import { createStore, storeAuthoring, storeConfigSchema } from './store.ts';
 import { contributedScreens } from './screens.ts';
 
 /** Operator choices for the store in host.mjs. Every field is optional. */
@@ -75,6 +75,7 @@ export default defineExtension<StoreHostOptions>({
   example,
   host(context, options) {
     const directory = options.directory ?? process.env.STORE_DIRECTORY ?? join(context.site, 'data', 'store');
-    return { registration: storeExtension({ directory, projectSha256: context.projectSha256 }) };
+    // `exports` is the StoreExports records API (version 1) an extension that requires store reads with ctx.get('store').
+    return createStore({ directory, projectSha256: context.projectSha256 });
   },
 });

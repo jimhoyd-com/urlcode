@@ -6,6 +6,8 @@ import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionInstance
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
 import type { CollectionSpec, StoredRecord } from './collection.ts';
 import { screensSchema, storeScreens } from './screens.ts';
+import { storeExports } from './records.ts';
+import type { StoreExports } from './records.ts';
 /** One value per process start (not per `lock()` call), so a stale lock file written by an
  * earlier process that happened to reuse this PID (routine for a container restarted after an
  * unclean exit, especially at PID 1) can be told apart from a lock this process itself still
@@ -133,8 +135,16 @@ export const storeConfigSchema = { type: 'object', additionalProperties: false, 
 
 /** The operator-installed registration. Storage location and the revision pin are operator choices, never project YAML. */
 export function storeExtension(options: StoreExtensionOptions): RuntimeExtension {
+  return createStore(options).registration;
+}
+/**
+ * The registration and its `StoreExports` (#529), the typed records API an extension that `requires: [store]`
+ * reads through `ctx.get('store')`; usable once the runtime has activated this registration.
+ */
+export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports } {
   if (!isAbsolute(options.directory)) throw new Error('Store directory must be an absolute path');
-  return {
+  const shared = storeExports();
+  const registration: RuntimeExtension = {
     name: 'store', version: '1', projectSha256: options.projectSha256, targets: ['node'],
     schema: storeConfigSchema,
     authoring: storeAuthoring,
@@ -173,12 +183,14 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
       const unlock = await lockStoreDirectory(directory);
       try { for (const collection of collections) await collection.load(); }
       catch (error) { await unlock(); throw error; }
+      const exported = shared.attach(collections);
       return {
         handle: request => dispatch(byMount, shortByMount, context, request),
-        async close() { await unlock(); },
+        async close() { shared.detach(exported); await unlock(); },
       };
     },
   };
+  return { registration, exports: shared.exports };
 }
 
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }

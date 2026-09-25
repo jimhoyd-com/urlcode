@@ -162,7 +162,14 @@ export const budgets: Record<string, Budget> = {
     // `urlcode-store reassign` command (#732: reassignOwner in dist/ownership.js,
     // its CLI and declarations, and its SECURITY.md/README.md contract) take the
     // unpacked content to 150984 bytes (about 147.4 KiB).
-    unpacked: 150 * 1024,
+    //
+    // Raised from 140 to 150 KiB: the records export for other extensions
+    // (#529: dist/records.js and its declarations, and the export's contract
+    // in SECURITY.md and CHANGELOG.md) took the unpacked content to 146313
+    // bytes (about 142.9 KiB).
+    // Together, #731/#732 and #529 measure 158673 unpacked bytes (about
+    // 155 KiB), so the store budget is 170 KiB unpacked.
+    unpacked: 170 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
@@ -170,6 +177,15 @@ export const budgets: Record<string, Budget> = {
     packed: 45 * 1024,
     unpacked: 140 * 1024,
     entries: 31,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
+  },
+  // The forms-to-store composition (#529): a small module over the forms and
+  // store exports, with no dependencies of its own. First measured at 18226
+  // packed and 77778 unpacked bytes in 12 files.
+  '@jimhoyd/urlcode-form-records': {
+    packed: 30 * 1024,
+    unpacked: 100 * 1024,
+    entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-mcp': {

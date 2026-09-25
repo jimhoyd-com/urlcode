@@ -566,6 +566,31 @@ labels come from the field names unless the screen sets `columns`
 relabel the fields shown. Details and limits are in the
 [ui package README](../packages/ui/README.md#data-bound-screens).
 
+## Using a collection from another extension
+
+An extension that `requires: [store]` reaches declared collections through the
+store's typed export, `ctx.get('store')` in its definition's `host()`
+(`StoreExports`, contract version 1, #529), never by reading
+`extensions.store.config`. Once the store is active (declare it first under
+`extensions`), `records('<collection>')` returns the collection's `ownership`,
+`readOnly` and declared `fields`, and three calls that take the request
+principal (`request.principal`):
+
+- `create(principal, values)` stamps the principal as owner on an owned
+  collection;
+- `get(principal, id)` returns a record in the principal's scope;
+- `update(principal, id, patch, {ifMatch})` is a partial update (PATCH).
+
+Each returns `{record, etag}` (the record never includes its owner) and
+applies exactly the JSON API's rules: another owner's record and a missing id
+are the same `404`, no principal on an owned collection is `401`, field
+errors are `400` with field names, `maxRecords` is `409 collection_full`, and
+a stale `ifMatch` is `412`. Failures are `StoreError`s with the same status and
+code as the HTTP answer. The export performs no request admission of its own:
+the consumer handles CSRF and origins for the requests it serves.
+[form-records](../packages/form-records/README.md) uses it to save a declared
+form into an owned collection, with a confirmation and a constrained edit page.
+
 ## Not built yet
 
 Recorded in [open decisions](OPEN-DECISIONS.md): a SQLite backend, ranges and

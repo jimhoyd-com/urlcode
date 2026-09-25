@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { defineExtension } from '@jimhoyd/urlcode/extensions';
 import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
-import { createFormsExtension, formHookContracts, formsAuthoring, formsConfigSchema } from './forms.ts';
+import { createForms, formHookContracts, formsAuthoring, formsConfigSchema } from './forms.ts';
 
 /** The CSRF secret file, relative to the site; `data/` is outside app/ and ignored by the starter's .gitignore. */
 export const formsCsrfKeyFile = 'data/forms-csrf.key';
@@ -72,6 +72,7 @@ export default defineExtension<FormsHostOptions>({
         throw new Error(`forms needs its CSRF secret at ${path} (urlcode extensions add forms writes it), or pass forms({csrfSecret})`, { cause: error });
       }
     }
-    return { registration: createFormsExtension({ projectSha256: context.projectSha256, csrfSecret, ui: context.get<UiExtension>('ui') }) };
+    // `exports` is the FormsExports contract (version 1) an extension that requires forms reads with ctx.get('forms').
+    return createForms({ projectSha256: context.projectSha256, csrfSecret, ui: context.get<UiExtension>('ui') });
   },
 });

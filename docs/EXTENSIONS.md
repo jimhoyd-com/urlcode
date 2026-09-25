@@ -2,7 +2,7 @@
 
 Extensions are trusted operator modules, separate from a project's own
 `function`/`middleware` code. The first-party extensions (`ui`, `auth`,
-`admin`, `store`, `forms`, `mcp`) are workspace packages in this repository
+`admin`, `store`, `forms`, `form-records`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
 a package: the operator's `host.mjs` does that (see
@@ -24,6 +24,14 @@ its host-supplied CSRF secret, and redirects a successful submission to a
 confirmation page that shows only the submitted fields the flow opts in to. It is a trusted operator extension, needs `ui`, and
 may be mounted with `auth: true`; its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
+
+The `form-records` extension composes the two: it requires `forms` and
+`store`, and saves a declared form into an `ownership: owner` collection, with a
+confirmation page that reads the saved record back and an edit page limited to
+declared fields. It reaches both only through their typed exports
+(`FormsExports` and `StoreExports`, read with `ctx.get`), never through their
+configuration, and refuses a shared collection or a mount without a
+principal-providing policy. See the [form-records package](../packages/form-records/README.md).
 
 The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
 server: named tools with a description, a `request.body.schema`-shaped input
@@ -786,7 +794,8 @@ check it against core's pin.
 The first-party add-ons are:
 
 - Extensions: `ui`, `auth` (requires `ui`), `admin` (requires `auth` and `ui`),
-  `forms` (requires `ui`), `store`, `mcp`.
+  `forms` (requires `ui`), `store`, `form-records` (requires `forms` and
+  `store`), `mcp`.
 - Artifacts: `store-schema`, the `store` extension's configuration schema and an
   example configuration. Its schema is generated from the store extension's
   definition by `npm run build:addons`, so the two cannot drift.
@@ -931,8 +940,10 @@ command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
 on `/api/todos` (and, with `ui`, its `/todos` screen; per-user `ownership: owner`
-when `auth` is installed), forms' `/contact` flow
-and auth's signed-in `/private` page; ui, admin and mcp ship none.
+when `auth` is installed), forms' `/contact` flow,
+auth's signed-in `/private` page and form-records' signed-in `/todo-form`
+(which needs `auth` and saves into the store example's `todos`); ui, admin and
+mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
 the `store` example without `auth` would expose public write on its collection. The refusal
@@ -991,7 +1002,8 @@ or `npx urlcode-ui doctor --project app`.
 
 ### Nesting
 
-`admin` requires `auth` and `ui`; `auth` and `forms` require `ui`. A sibling
+`admin` requires `auth` and `ui`; `auth` and `forms` require `ui`;
+`form-records` requires `forms` and `store`. A sibling
 add-on is an optional exact peer dependency, never a nested dependency, so
 every add-on is installed once at the top level of the site. `composeHost`
 orders the listed extensions by `requires` and activates each once. A dependant
@@ -1004,7 +1016,12 @@ it does not require `ui`, but contributes `screens`, a source ui calls at
 activation to receive generic descriptions of the CRUD screens declared under
 `extensions.store.config.screens`, so ui never reads the store's
 configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
-`package.json` declares `ui` an optional peer. Two copies of one extension
+`package.json` declares `ui` an optional peer. `forms` and `store` export
+typed, versioned contracts (`FormsExports` and `StoreExports`, version 1:
+a flow renderer and validator, and an ownership-honouring records API), which
+`form-records` reads with `ctx.get`; an export is usable once its extension
+is active, so a dependant is declared after what it requires under
+`extensions`. Two copies of one extension
 cannot exist in a site, so duplicate-instance bugs (such as a second `ui` kit
 that never received another extension's templates) cannot happen.
 
