@@ -162,8 +162,13 @@ export const budgets: Record<string, Budget> = {
     optionalPeers: ['@aws-sdk/client-sesv2'],
   },
   '@jimhoyd/urlcode-auth': {
-    packed: 225 * 1024,
-    unpacked: 900 * 1024,
+    // Raised from 225/900 KiB for the extension split: AuthExports v1 and the
+    // actor-bound administration API (dist/exports.js, dist/administration.js,
+    // dist/delivery.js), the contributed mail templates and the audit outbox,
+    // with their declarations and README/SECURITY contract, measure 237400
+    // packed and 967920 unpacked bytes in 83 files.
+    packed: 250 * 1024,
+    unpacked: 1000 * 1024,
     entries: 90,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json'],
     // Every sibling peer is optional so npm never installs a second copy;
@@ -181,7 +186,7 @@ export const budgets: Record<string, Budget> = {
     // update and the records export's paginated list (#738: dist/collection.js,
     // dist/records.js and their declarations, and the README contract) take the
     // packed tarball from 40915 to 42040 bytes, just over the old 40 KiB.
-    packed: 42 * 1024,
+    packed: 50 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -199,13 +204,20 @@ export const budgets: Record<string, Budget> = {
     // bytes (about 142.9 KiB).
     // Together, #731/#732 and #529 measure 158673 unpacked bytes (about
     // 155 KiB), so the store budget is 170 KiB unpacked.
-    unpacked: 170 * 1024,
+    //
+    // Raised to 50 KiB packed and 190 KiB unpacked for audited writes (the
+    // collection outbox and its producer, with declarations and the
+    // README/SECURITY contract): 46693 packed and 177677 unpacked bytes.
+    unpacked: 190 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-forms': {
     packed: 45 * 1024,
-    unpacked: 140 * 1024,
+    // Raised from 140 KiB for per-flow abuse budgets and mail notifications
+    // (the contributed template, their declarations and README/SECURITY
+    // contract): 148862 unpacked bytes.
+    unpacked: 160 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
