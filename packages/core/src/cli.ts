@@ -20,14 +20,14 @@ import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions, type OperatorPolicy } from './policy.ts';
-import { loadDocument, safeFile } from './config.ts';
+import { loadDocument } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
 import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { access, readFile, realpath } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
@@ -54,16 +54,16 @@ const helpEntries: HelpEntry[] = [
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command
 ` },
   { name:'dev', group:'Start', text:
-`  urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+`  urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example] [--alias-origin https://www.links.example]… [--passkey-rp-id links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
     capacity/logging/policies/health/shutdown/timeouts: same flags as \`serve\`, see \`urlcode serve --help\`
     # stderr names the route, source file and stack of a failing function (the response stays a generic 502) and why a reload was rejected
     # loads .env.local and watches the project; on a TTY, prints readable startup and request lines instead of JSON (--json forces JSON; piped stdout always uses JSON)
 ` },
   { name:'validate', group:'Start', text:
-`  urlcode validate [--project directory] [--local] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]  # origin: absolute URLs in site.* files
+`  urlcode validate [--project directory] [--local] [--origin https://links.example] [--alias-origin https://www.links.example]… [--passkey-rp-id links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]  # origin: absolute URLs in site.* files
 ` },
   { name:'test', group:'Start', text:
-`  urlcode test [--project directory] [--origin https://links.example] [--alias-origin https://www.links.example]… [--verbose] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+`  urlcode test [--project directory] [--origin https://links.example] [--alias-origin https://www.links.example]… [--passkey-rp-id links.example] [--verbose] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
     # quiet by default: prints failing cases and the summary; --verbose adds every request log
 ` },
   { name:'scaffold', group:'Author', text:
@@ -73,7 +73,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode add <destination-url> [--alias short-code] [--project directory]
 ` },
   { name:'routes', group:'Author', text:
-`  urlcode routes [--project directory] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+`  urlcode routes [--project directory] [--origin https://links.example] [--alias-origin https://www.links.example]… [--passkey-rp-id links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
     diff: [--compare previous-routes.json] [--format json|markdown]  # added/removed/changed routes against an earlier report; always exits 0
 ` },
   { name:'import', group:'Author', text:
@@ -124,6 +124,7 @@ const helpEntries: HelpEntry[] = [
   { name:'serve', group:'Deploy', text:
 `  urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
     origins:  [--alias-origin https://www.links.example]…  # repeatable, at most 16: other https: origins (or loopback http:) the site is also served from; extensions' same-origin checks admit them, generated links keep --origin
+    passkeys: [--passkey-rp-id links.example]  # shared WebAuthn RP ID: a registrable domain equal to or a parent of the --origin host and every --alias-origin host; unset = the --origin host. Changing it makes existing passkeys stop working
     # --port defaults to the PORT environment variable, then 3000, so a container/PaaS can set the listen port without changing the command
     # on a loopback --host (the default), a request whose Host is not localhost, 127.0.0.1 or [::1] on the bound port, or the --origin or an --alias-origin authority, gets 421 before routing (DNS-rebinding defence; dev too)
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
@@ -197,11 +198,11 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'fixtures', group:'Agent tooling', text:
 `  urlcode fixtures suggest [--project directory] [--json]
-    # tests/requests.json candidates only for routes urlcode.yaml alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, include, pattern and binding routes are listed as gaps, never as covered. Reads urlcode.yaml only; writes nothing
+    # tests/requests.json candidates only for routes the project's YAML alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, pattern and binding routes are listed as gaps, never as covered. Reads urlcode.yaml and its includes (each entry names its file) only; writes nothing
 ` },
   { name:'diff', group:'Agent tooling', text:
-`  urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]  # after defaults to the project's urlcode.yaml
-    # route, capability, trusted/sandboxed code seam and newly requested operator grant changes between two YAML documents, by name only (no values); always exits 0
+`  urlcode diff <before.yaml|directory> [after.yaml|directory] [--project directory] [--json]  # after defaults to the project
+    # route, capability, trusted/sandboxed code seam and newly requested operator grant changes, by name only (no values); a directory is read with its includes (each route names its file), a file as text; always exits 0
 ` },
   { name:'review', group:'Agent tooling', text:
 `  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
@@ -334,6 +335,7 @@ try {
     if (values.site !== undefined && !['extensions', 'artifacts', 'upgrade'].includes(command)) throw new ConfigError('--site is only supported by extensions, artifacts and upgrade');
     if ((values.to !== undefined || values.check) && command !== 'upgrade') throw new ConfigError('--to and --check are only supported by upgrade');
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
+    if (values['passkey-rp-id'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--passkey-rp-id is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
@@ -364,17 +366,19 @@ try {
       const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='fixtures'||command==='diff'){
-      // Both read YAML text only: no include, source file, binding or operator policy is read, and nothing executes.
-      const projectYaml=async()=>readFile(await safeFile(await realpath(values.project),'urlcode.yaml'),'utf8');
+      // Both read YAML only: a project directory through the configuration loader (urlcode.yaml and its
+      // root-confined includes), a file as text (its includes unread). No source file, binding or operator policy is
+      // read, and nothing executes (#733).
       let result: unknown;
       if(command==='fixtures'){
         if(arg!=='suggest')throw new ConfigError('Use urlcode fixtures suggest [--project directory] [--json]');
-        const {suggestFixtures}=await import('./fixture-suggestions.ts');
-        result=suggestFixtures(await projectYaml());
+        const {suggestProjectFixtures}=await import('./fixture-suggestions.ts');
+        result=await suggestProjectFixtures(values.project);
       }else{
-        if(arg===undefined||extra.length>1)throw new ConfigError('Use urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]');
-        const {summarizeYamlChange}=await import('./yaml-change.ts');
-        result=summarizeYamlChange(await readFile(arg,'utf8'),extra[0]===undefined?await projectYaml():await readFile(extra[0],'utf8'));
+        if(arg===undefined||extra.length>1)throw new ConfigError('Use urlcode diff <before.yaml|before-directory> [after.yaml|after-directory] [--project directory] [--json]');
+        const {summarizeChange}=await import('./yaml-change.ts');
+        const side=async(path:string)=>(await stat(path)).isDirectory()?{project:path}:{yaml:await readFile(path,'utf8')};
+        result=await summarizeChange(await side(arg),extra[0]===undefined?{project:values.project}:await side(extra[0]));
       }
       print(values.json?result:stringifyYaml(result,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='review'){
@@ -413,7 +417,7 @@ try {
           if(!['json','markdown'].includes(format))throw new ConfigError('Use --format json or markdown');
           if(values.format!==undefined && values.compare===undefined)throw new ConfigError('--format applies to routes --compare');
           const started=performance.now();
-          const serverOptions={...hostOptions,project:values.project,port:0,local:true,permissions,origin:values.origin,aliasOrigins:values['alias-origin'],log:()=>{}};
+          const serverOptions={...hostOptions,project:values.project,port:0,local:true,permissions,origin:values.origin,aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'],log:()=>{}};
           // Only audit replays fixtures, so only audit needs a server its restart steps can restart.
           const app=command==='audit'?await startRestartable(serverOptions):await startServer(serverOptions);
           const startupMs=performance.now()-started;
@@ -521,14 +525,14 @@ try {
             if (problems.length) throw new ConfigError(`Extension configuration does not match the installed schemas:\n${problems.map(problem => `  ${problem}`).join('\n')}`);
             print({ event:'valid', static:true, extensions:declared, note:'Checked against installed extension schemas; pass --host-file to activate them and validate the whole runtime' }); break;
           }
-          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin, aliasOrigins:values['alias-origin'] });
+          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'] });
           print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }
         case 'add':
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { const { event:kind, pass } = event as {event?:string;pass?:boolean}; if ((kind === 'test' && pass === false) || kind === 'warning') print(event); }, permissions, origin:values.origin, aliasOrigins:values['alias-origin'] });
+          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { const { event:kind, pass } = event as {event?:string;pass?:boolean}; if ((kind === 'test' && pass === false) || kind === 'warning') print(event); }, permissions, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'] });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
@@ -542,7 +546,7 @@ try {
           if (human && values['request-log'] === undefined) values['request-log'] = 'detailed';
           const routes = { count: 0 };
           const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
-            local:command === 'dev', watch:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, aliasOrigins:values['alias-origin'], permissions,
+            local:command === 'dev', watch:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'], permissions,
             ...(human ? { log:createJsonLogger(process.stdout, undefined, createDevEventFormatter(routes)) } : {}),
             ...serverCapacity(values) });
           routes.count = app.testPlan().inventory.length;

@@ -185,10 +185,13 @@ There is no `json` or `expectJson` key: send JSON as `body` with a
 ```
 
 `urlcode fixtures suggest --json` (MCP `suggest_fixtures`) proposes cases for
-the routes whose answer `urlcode.yaml` alone determines (redirects, `respond`,
-pages and downloads, method refusals, simple input refusals, an unmatched
-path) and lists every function, middleware, proxy, extension, include,
-pattern-constrained and binding route under `gaps` instead of covering it.
+the routes whose answer the project's YAML alone determines (redirects,
+`respond`, pages and downloads, method refusals, simple input refusals, an
+unmatched path), reading `urlcode.yaml` and its includes the way the loader
+does and naming each route's `file`, and lists every function, middleware,
+proxy, extension, pattern-constrained and binding route under `gaps` instead
+of covering it. Supplied YAML (MCP `yaml`) is read as text only, so its
+includes are gaps too.
 Start from its `fixtures`, then write the cases it names under `gaps` and
 `review` yourself; see [fixture suggestions](TOOLING.md#fixture-suggestions).
 
@@ -397,8 +400,10 @@ source fingerprints. Both support `--dry-run`. See [recipes](RECIPES.md),
 Provider conversion requires explicit acknowledgment of semantic differences;
 do not describe an acknowledged migration candidate as lossless.
 
-Before handing a change back, `urlcode diff BEFORE.yaml --json` (MCP
-`summarize_yaml_change`) summarizes it against the earlier `urlcode.yaml`:
+Before handing a change back, `urlcode diff BEFORE --json` (MCP
+`summarize_yaml_change`) summarizes it against the earlier version: pass the
+earlier `urlcode.yaml`, or a directory holding the earlier project so changes
+inside includes are compared too (each route names its `file`). It reports
 routes added, removed and changed with the changed keys, capability names,
 trusted and sandboxed code seams including `sandbox:` flips, and the env,
 secret, egress and extension grants the new version asks the operator for.

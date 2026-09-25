@@ -287,11 +287,29 @@ is preferable to an incorrect automatic refactor.
 `suggest_fixtures {yaml?, maxFixtures?}`, SDK `suggestFixtures(yaml,
 {maxFixtures?})` from `@jimhoyd/urlcode/agent-context`) proposes
 [`tests/requests.json`](AI-AUTHORING.md#request-fixtures-testsrequestsjson)
-cases from one URLCode YAML document: the project's entry `urlcode.yaml`, or
-YAML the caller supplies. It reads that text only. Includes, function and
-middleware sources, asset files, bindings and operator policy are never read,
-nothing is executed or fetched, and nothing is written; review the result and
-save the `fixtures` you accept yourself.
+cases from URLCode YAML, in one of two modes:
+
+- **Project mode** (the CLI, and MCP `suggest_fixtures` without `yaml`) reads
+  the project's `urlcode.yaml` and its
+  [includes](ORGANIZATION.md#mix-inline-and-included-routes) through the same configuration loader that
+  serving uses, so include paths are resolved, confined to the project root
+  and checked (no nesting, no duplicate routes, the same size limits) exactly
+  as `urlcode validate` does; an include the loader refuses is refused here
+  with the same message. Included routes are analysed like entry routes, the
+  result's `scope` is `project-yaml`, `files` lists the YAML files read
+  (`urlcode.yaml` first), and every `cases`, `gaps` and `review` entry about a
+  route names the `file` that declares it (`urlcode.yaml` or the include path
+  as written, for example `"file":"routes/store.yaml"`).
+- **Text mode** (the SDK, and MCP `suggest_fixtures` with `yaml`) reads the
+  supplied text only, with `scope: "supplied-yaml-only"`. Its includes are not
+  read: each is reported as an `include` gap, and because an unread include
+  could hold a more specific route or match any path, parameterized and
+  wildcard routes go to `review` as `include-shadowing` and no unknown-path
+  case is generated. A hosted service that calls the SDK never touches a file.
+
+Neither mode reads function or middleware sources, asset files, bindings or
+operator policy; nothing is executed or fetched, and nothing is written. Review
+the result and save the `fixtures` you accept yourself.
 
 A case is generated only when the YAML alone determines the answer:
 
@@ -307,16 +325,16 @@ A case is generated only when the YAML alone determines the answer:
 | `body-required` | no body for a route with `request.body.required` | `400` |
 | `unknown-path` | a path no route matches | `404` |
 
-Every other route is reported instead of tested. `gaps` lists a route (or an
-include file) whose answer depends on something the YAML cannot know, with
+Every other route is reported instead of tested. `gaps` lists a route (or, in
+text mode, an include file) whose answer depends on something the YAML cannot know, with
 `codes`: `function`, `middleware`, `proxy`, `signals`, `extension`,
 `extension-policy` (including `auth:`), `external-binding` (an `env` read from
 the host or a `secret`), `pattern-constrained` (an input with `pattern` or
-`format`) and `include`. `review` lists a route the helper could not write a
+`format`) and `include` (text mode only). `review` lists a route the helper could not write a
 certain case for, with one `code`: `conditional` (`match`/`conditional`),
 `expires`, `static-directory`, `policy` (an `agents` or `throttle` policy that
 can answer first), `parameter-schema`, `shadowed`, `include-shadowing` (a
-parameterized or wildcard route in a document with includes), `request-body`,
+parameterized or wildcard route in a text-mode document with includes), `request-body`,
 `site`, `unknown-path` and `size`. A route in `gaps` or `review` never appears
 in `cases`, so a suggestion never reads as coverage it is not.
 
@@ -333,7 +351,7 @@ in `cases`, so a suggestion never reads as coverage it is not.
 ```
 
 `cases` is parallel to `fixtures`. Routes are visited in code-point order, so
-the same text always gives the same bytes. `maxFixtures` defaults to 200
+the same text (or the same project files) always gives the same bytes. `maxFixtures` defaults to 200
 (at most 1,000); fixtures also stop at 384 KiB of JSON, `review` and `gaps` at
 200 entries each, and `truncated` counts what a limit dropped. Invalid YAML is
 refused with the validator's message. The cases assume the local
@@ -342,15 +360,37 @@ routes the YAML does not name are outside what the YAML says.
 
 ## YAML change summaries
 
-`urlcode diff BEFORE.yaml [AFTER.yaml] [--project DIR] [--json]` (MCP
+`urlcode diff BEFORE [AFTER] [--project DIR] [--json]` (MCP
 `summarize_yaml_change {before, after?}`, SDK `summarizeYamlChange(before,
-after)` from `@jimhoyd/urlcode/agent-context`) compares two URLCode YAML
-documents; `AFTER` defaults to the project's `urlcode.yaml`. Both must
-validate. It reports names and keys, never values: no redirect destination,
-literal, `env` default or secret appears in the result. Like fixture
-suggestions it reads the supplied text only and always exits 0.
+after)` from `@jimhoyd/urlcode/agent-context`) compares two versions of a
+URLCode project. Both must validate. It reports names and keys, never values:
+no redirect destination, literal, `env` default or secret appears in the
+result, and it always exits 0.
 
-- `routes`: `added` and `removed` (pattern, handler, execution `mode`) and
+Each side is read the way [fixture suggestions](#fixture-suggestions) read
+theirs. On the CLI, `BEFORE` and `AFTER` are each a YAML file (read as text,
+its includes unread) or a project directory (read through the configuration
+loader with its root-confined includes); `AFTER` defaults to the `--project`
+directory. So `urlcode diff old-checkout/ .` compares two projects include by
+include. MCP `before` is always YAML text; `after` is YAML text, or by default
+the served project with its includes. The SDK compares two texts only.
+`scope` is `supplied-yaml-only` (two texts; the result shape is exactly that
+of earlier releases), `project-yaml` (two projects) or `mixed`; for the last
+two `sides` says how each side was read (`yaml` or `project`). A git revision
+is not accepted: check the earlier revision out into a directory (for example
+with `git worktree add`) and pass that.
+
+On a project side every `routes.added`, `routes.removed`, `routes.changed` and
+`code` entry names the `file` that declares its route. When both sides are
+projects, a route that moved to another file carries `movedFrom`, the file it
+was in before; one that only moved is listed under `changed` with empty `keys`. In a `mixed` comparison the text side's includes are
+unread, so project-side routes (and extension declarations) from an include
+the text side also lists cannot be classed: they are listed under
+`routes.unresolved` (`{route, file, side}`) and left out of every other list,
+never reported as added or removed.
+
+- `routes`: `added` and `removed` (pattern, handler, execution `mode`, and
+  `file` on a project side) and
   `changed`, each with the top-level route `keys` that differ (after `use:` and
   `auth:` expansion), the handler before and after and the route's capability
   names added and removed. A project-level policy or profile change that alters
@@ -369,8 +409,9 @@ suggestions it reads the supplied text only and always exits 0.
   register (`via` a `declaration`, a `mount` or a route `policy`). The helper
   never grants anything; `note` restates that grants are revision-pinned
   operator policy that any change must re-review.
-- `project`: the other top-level keys that changed and the includes added and
-  removed (their routes are not read).
+- `project`: the other top-level keys that changed and the `includes` entries
+  added and removed (a text side does not read their routes; a project side
+  reports them with the other routes).
 
 ```json
 {"format":1,"scope":"supplied-yaml-only","changed":true,

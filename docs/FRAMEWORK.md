@@ -177,6 +177,9 @@ Activation likewise carries the canonical `origin` and the operator's full
 `origins` list (`--alias-origin`); every same-origin check goes through core's
 `isSiteOrigin`, so mcp, forms, store, auth and admin admit the same origins
 ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
+When the operator sets `--passkey-rp-id`, activation also carries
+`passkeyRpId`, and auth runs passkey ceremonies under that shared domain for
+every site origin ([shared passkey RP ID](EXTENSIONS.md#shared-passkey-relying-party-domain)).
 Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store

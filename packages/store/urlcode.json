@@ -179,6 +179,11 @@
                 "shared",
                 "owner"
               ]
+            },
+            "maxRecordsPerOwner": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
             }
           }
         }
@@ -284,7 +289,7 @@
       {
         "kind": "configuration",
         "name": "collections",
-        "description": "Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` field lists, and `ownership: owner` (per-record ownership: each signed-in principal sees and changes only its own records; the mount must be guarded by a principal-providing policy such as `auth: true`).",
+        "description": "Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` field lists, and `ownership: owner` (per-record ownership: each signed-in principal sees and changes only its own records; the mount must be guarded by a principal-providing policy such as `auth: true`) with an optional `maxRecordsPerOwner` (at most maxRecords; a principal at it gets `409 owner_quota_exceeded`).",
         "path": "urlcode.yaml"
       },
       {

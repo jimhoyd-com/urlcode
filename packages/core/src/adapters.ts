@@ -6,7 +6,7 @@ import { ConfigError } from './errors.ts';
 
 /** The subset of process.env a hosted adapter reads. */
 export type Environment = Record<string, string | undefined>;
-interface NativeOnlyOptions { target: 'aws' | 'vercel'; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined; origin?:string|undefined; aliasOrigins?:readonly string[]|undefined }
+interface NativeOnlyOptions { target: 'aws' | 'vercel'; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined; origin?:string|undefined; aliasOrigins?:readonly string[]|undefined; passkeyRpId?:string|undefined }
 
 export function readPolicyFromEnvironment(environment: Environment): OperatorPolicy | undefined {
   if (!environment.URLCODE_POLICY) return undefined;
@@ -20,8 +20,8 @@ export function readPolicyFromEnvironment(environment: Environment): OperatorPol
 
 // Activates a project for a native-handler-only host, refusing the whole
 // deployment rather than letting individual routes fail at request time.
-export async function activateNativeOnly(project: string, environment: Environment, { target, plugins, extensions, origin, aliasOrigins }: NativeOnlyOptions): Promise<Runtime> {
-  return createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins, extensions, origin, aliasOrigins });
+export async function activateNativeOnly(project: string, environment: Environment, { target, plugins, extensions, origin, aliasOrigins, passkeyRpId }: NativeOnlyOptions): Promise<Runtime> {
+  return createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins, extensions, origin, aliasOrigins, passkeyRpId });
 }
 
 // Caches a successful activation for the life of the instance. A failure is not
@@ -45,4 +45,12 @@ export function resolveAliasOrigins(aliasOrigins: readonly string[] | undefined,
   if (aliasOrigins !== undefined) return aliasOrigins;
   const listed = environment.URLCODE_ALIAS_ORIGINS?.split(',').map(value => value.trim()).filter(Boolean);
   return listed?.length ? listed : undefined;
+}
+
+// The handler option wins; otherwise URLCODE_PASSKEY_RP_ID, which the operator
+// sets beside URLCODE_ORIGIN and URLCODE_ALIAS_ORIGINS. createRuntime validates it.
+export function resolvePasskeyRpId(passkeyRpId: string | undefined, environment: Environment): string | undefined {
+  if (passkeyRpId !== undefined) return passkeyRpId;
+  const value = environment.URLCODE_PASSKEY_RP_ID?.trim();
+  return value ? value : undefined;
 }

@@ -134,9 +134,13 @@ id/name/scopes (never the raw key) are written into the reserved
 route's own `function`/`middleware` can read who authenticated directly off
 its `Request` object — see [handing data forward into a protected route's own
 context](#handing-data-forward-into-a-protected-routes-own-context). Auth also
-sets the core [request principal](#request-principal) to `apikey:<key id>`
-(for a session-protected route, to the signed-in user's id), which is what an
-owned store collection scopes records by.
+sets the core [request principal](#request-principal), which is what an owned
+store collection scopes records by: `apikey:<key id>` for a service key, the
+user's id for a key the operator issued with `userId` (it acts for that user,
+so records survive rotating the key, but only within its own scopes; locking
+or deleting the user disables it), and the signed-in user's id for a
+session-protected route. See
+[keys that act for a user](../packages/auth/README.md#keys-that-act-for-a-user).
 
 `bearer.quota: {requests, window}` adds a budget per credential: `requests`
 per `window` seconds for each key, counted by key id in the auth store once
@@ -385,8 +389,9 @@ for.
   missing from it (fail closed), and still refuses a request whose principal is
   `null`, because a provider may allow a request without setting one.
 
-`auth` is the first-party provider (the signed-in user's id for a session,
-`apikey:<key id>` for a bearer key) and `store` the first consumer; the core
+`auth` is the first-party provider (the signed-in user's id for a session or
+for a bearer key issued to act for a user, `apikey:<key id>` for any other
+bearer key) and `store` the first consumer; the core
 fixture `test/extension-principal.test.ts` proves the seam with a synthetic,
 non-auth provider. Extensions are trusted in-process code, so this contract
 fails closed on mistakes and misconfiguration; it is not a sandbox between
@@ -566,10 +571,12 @@ canonical origin is always a site origin; listing it again is harmless.
 An extension's activation context carries both:
 
 - `origin`: the canonical origin, the only one to build absolute URLs,
-  redirects, email links, CSRF bindings and passkey relying-party checks from;
+  redirects, email links and CSRF bindings from;
 - `origins`: the canonical origin first, then the alias origins, frozen.
   (It is optional in the type only so a hand-built activation in a test still
   means the canonical origin alone; the runtime always sets it.)
+- `passkeyRpId`: present only when the operator set a
+  [shared passkey relying-party domain](#shared-passkey-relying-party-domain).
 
 `isSiteOrigin(context, value)` is the one match every extension uses for an
 `Origin` header, or for the origin of a `Referer`: the value must be a bare
@@ -583,6 +590,54 @@ with a foreign `Origin` are 403) and the `auth` and `admin` CSRF check (which
 also still requires `Origin`). On a loopback bind the server's
 [host admission](OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
 alias authority too.
+
+#### Shared passkey relying-party domain
+
+A passkey (WebAuthn credential) is bound to one relying-party ID, a domain.
+By default an extension that runs passkey ceremonies uses the canonical host as
+the RP ID and accepts a ceremony only from the canonical origin, so alias
+origins do not get passkeys. An operator whose origins share a registrable
+domain (`app.site.example` and `www.site.example` under `site.example`) can opt
+in to one shared RP ID (issue #729). It is operator configuration, never project
+YAML:
+
+| Where | How |
+|---|---|
+| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit`, `benchmark` | `--passkey-rp-id site.example` beside `--origin` and `--alias-origin` |
+| `createRuntime`, `startServer`, `runProjectTests` | `passkeyRpId: 'site.example'` |
+| AWS and Vercel handlers | the `passkeyRpId` handler option, otherwise `URLCODE_PASSKEY_RP_ID` |
+
+Core validates it together with the origins and refuses to start with a
+`ConfigError` (code `invalid-passkey-rp-id`) unless it is:
+
+- a lowercase ASCII DNS name (punycode for an international name) with no
+  scheme, port, path, wildcard or trailing dot, and at most 253 characters;
+- not an IP address, and not a single label: `localhost` is accepted only when
+  the canonical origin's host is `localhost`;
+- not one of the common public suffixes core lists (`co.uk`, `com.au`,
+  `github.io`, `vercel.app` and similar; `passkeyPublicSuffixes` in
+  `packages/core/src/site-origins.ts`);
+- the host of the canonical origin and of every alias origin, or a parent domain
+  of each at a label boundary (`site.example` covers `www.site.example`, never
+  `mysite.example` or `site.example.evil.example`). An alias on another domain,
+  or on `127.0.0.1`, cannot share an RP ID, so it is refused rather than left
+  without passkeys.
+
+Node carries no Public Suffix List and core does not ship one, so the public
+suffix check is deliberately short. Browsers enforce the full list themselves
+and refuse a ceremony whose RP ID is a public suffix, so a suffix missing from
+core's list fails closed in the browser, not open.
+
+The activation context then carries `passkeyRpId`. An extension that runs
+ceremonies uses it as the RP ID and may accept any entry of `origins` as the
+ceremony's client origin; without it, it keeps its default. First-party `auth`
+does exactly that ([auth README](../packages/auth/README.md#passkeys-and-the-relying-party-domain)).
+
+> **Changing the RP ID invalidates existing passkeys.** A credential registered
+> under `app.site.example` cannot be used under `site.example`, or the other
+> way round. Setting, changing or removing `--passkey-rp-id` makes every passkey
+> registered under the previous RP ID stop working; users must sign in another
+> way and register a new passkey. Decide on the RP ID before users enrol.
 
 Every extension also follows the
 [generic add-on authoring rules](#generic-add-on-authoring-rules).

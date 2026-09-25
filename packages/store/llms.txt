@@ -21,7 +21,13 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   adds the `todos` collection on `/api/todos` (and the `/todos` screen when ui is installed); with
   auth installed the mount gets `auth: true` and the collection `ownership: owner` (per-user records).
 - `ownership: owner` on a collection scopes every request to the principal a policy such as
-  `auth: true` on its mount sets; without it (the default) a collection is shared.
+  `auth: true` on its mount sets; without it (the default) a collection is shared. An owned
+  collection may add `maxRecordsPerOwner: N` (at most `maxRecords`): a principal holding N records
+  gets `409 owner_quota_exceeded`; `maxRecords` still caps the whole collection.
+- With the server stopped, `urlcode-store reassign --directory <dir> --project <app> --from <id>
+  --to <id> [--collection <name>] [--dry-run]` moves one principal's records to another (a
+  rotated API key's records to its replacement); it refuses as a whole if `--to` would exceed
+  a collection's `maxRecordsPerOwner`.
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({directory})`) in
   the `composeHost` list; `urlcode extensions add store` writes that line.
 

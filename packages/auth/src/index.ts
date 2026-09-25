@@ -10,7 +10,7 @@ export type { AuthTemplate } from './auth-templates.ts';
 export { createOidcProvider } from './oidc.ts';
 export type { OidcProvider, OidcFlow, OidcIdentity, OidcProviderOptions } from './oidc.ts';
 export { createPasskeyProvider } from './passkeys.ts';
-export type { PasskeyProvider, StoredPasskey, PasskeyProviderOptions } from './passkeys.ts';
+export type { PasskeyProvider, StoredPasskey, PasskeyProviderOptions, PasskeySite } from './passkeys.ts';
 export { createSesSender, createDevelopmentSender } from './senders.ts';
 export { createPresentation, englishCatalogue, englishCatalogue as authCatalogue } from './presentation.ts';
 export type { Presentation, PresentationOptions, PresentationContext, Catalogue, ThemeVariables } from './presentation.ts';

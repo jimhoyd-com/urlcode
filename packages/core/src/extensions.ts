@@ -47,6 +47,15 @@ export interface ExtensionActivation {
    * Compare an `Origin`/`Referer` value against it with `isSiteOrigin(context, value)`, never by hand.
    */
   origins?:readonly string[];
+  /**
+   * The operator's shared passkey (WebAuthn) relying-party ID (`--passkey-rp-id`, `passkeyRpId`,
+   * `URLCODE_PASSKEY_RP_ID`): a lowercase registrable domain that core has checked equals, or is a parent domain of,
+   * the host of every entry in `origins`, and is not an IP address or a known public suffix. Absent unless the
+   * operator set it; an extension that runs WebAuthn ceremonies then keeps its own default (the canonical host and
+   * the canonical origin alone). When present, a ceremony uses it as the RP ID and may accept any entry of
+   * `origins` as the client origin. Changing it invalidates every passkey registered under the previous RP ID.
+   */
+  passkeyRpId?:string;
   target:TargetName; projectSha256:string; mounts:readonly string[]; root:string;
   /**
    * The subset of `mounts` whose route carries an effective `policies.extensions` entry for at least one extension

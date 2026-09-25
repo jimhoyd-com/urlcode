@@ -124,8 +124,15 @@ export const budgets: Record<string, Budget> = {
     // Together, #331 and #722 measure 691356 packed bytes (about 675 KiB)
     // and 2821737 unpacked bytes (about 2756 KiB) on Node 26, so the
     // combined budgets are 690 KiB packed and 2800 KiB unpacked.
-    packed: 690 * 1024,
-    unpacked: 2800 * 1024,
+    //
+    // Raised to 720 KiB packed and 2900 KiB unpacked for the follow-up batch:
+    // per-owner record limits (#731), include-aware authoring tools (#733),
+    // the shared passkey relying-party domain (#729) and user-linked API keys
+    // with store reassign (#732) measure 703205 packed and 2863298 unpacked
+    // bytes on Node 26, under 4 KiB from the previous budgets and inside the
+    // ~2 KiB cross-Node gzip variance.
+    packed: 720 * 1024,
+    unpacked: 2900 * 1024,
     entries: 460,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -151,7 +158,11 @@ export const budgets: Record<string, Budget> = {
     // dist/cli.js, with declarations) and the ownership contract in
     // SECURITY.md and README.md, taking the unpacked content to 138043 bytes
     // (about 134.8 KiB). It still packs to 35306 bytes, under 40 KiB.
-    unpacked: 140 * 1024,
+    // Raised from 140 to 150 KiB: the per-owner limit (#731) and the operator
+    // `urlcode-store reassign` command (#732: reassignOwner in dist/ownership.js,
+    // its CLI and declarations, and its SECURITY.md/README.md contract) take the
+    // unpacked content to 150984 bytes (about 147.4 KiB).
+    unpacked: 150 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

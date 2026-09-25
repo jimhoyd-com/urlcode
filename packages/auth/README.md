@@ -162,6 +162,14 @@ refused explicitly at activation. Declare a hook without `sandbox` (or with
 
 Optional factories supply Google/Apple/generic OIDC and passkey providers. Unconfigured providers are not offered. Synthetic cryptographic fixtures do not prove real Google, Apple, authenticator or SES deployment behavior. The auth extension currently declares **Node only**; generic core extension support for AWS/Vercel does not make this SQLite service portable to their deployment environments.
 
+### Passkeys and the relying-party domain
+
+`createPasskeyProvider({origin, rpId, rpName})` (and `createAuthPreset`) binds passkeys to the canonical HTTPS origin with the canonical host as the WebAuthn relying-party ID; the provider refuses any other `rpId`. That is the default, and it is unchanged: ceremonies are accepted only from the canonical origin, so an operator [`--alias-origin`](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) gets no passkeys.
+
+To share passkeys across origins that sit under one registrable domain, the operator sets a [shared passkey relying-party domain](../../docs/EXTENSIONS.md#shared-passkey-relying-party-domain) beside the origins: `urlcode serve --origin https://app.site.example --alias-origin https://www.site.example --passkey-rp-id site.example`. Core validates it (a lowercase registrable domain equal to, or a parent of, every site origin's host; no IP address, single label or listed public suffix) and passes it to the activation as `passkeyRpId`. Auth then calls the provider's `withSite({rpId, origins})`: registration and authentication options carry the shared RP ID, and verification accepts a client origin that is any site origin (canonical or alias) and nothing else. A provider without `withSite` is refused at activation. It is never set in project YAML.
+
+**Changing the RP ID makes existing passkeys stop working.** A credential is bound to the RP ID it was registered under: turning `--passkey-rp-id` on, changing it or turning it off strands every passkey registered under the previous RP ID, and those users must sign in with another method and register a new passkey (an account whose only sign-in method is a passkey needs [manual recovery](#operations-and-recovery)). Choose the RP ID before users enrol. Auth does not record the RP ID a credential was registered under, so it cannot detect or warn about such a change at startup (tracked in issue #736); the operator setting is the only record.
+
 `createPresentation` supplies configured locale catalogues, plural rules, RTL, and validated theme variables/local logo paths. Messages are plain text and escaped by renderers. It does not load executable project templates or arbitrary HTML/CSS. Translation coverage and accessibility require review; the helper does not establish WCAG conformance. Registration metadata is descriptive data and never authorization authority. Private metadata is excluded from public projections; public and unsafe fields remain untrusted.
 
 ## Route requirements (`auth:`)
@@ -196,7 +204,8 @@ echo '{"name":"ci-deploy-bot","scopes":["deploys.write"],"expiresInMs":777600000
 ```
 
 An optional `quota: {requests, window}` gives the key its own budget (see
-[per-credential quota](#per-credential-quota)).
+[per-credential quota](#per-credential-quota)), and an optional `userId` makes
+it act for a user (see [keys that act for a user](#keys-that-act-for-a-user)).
 
 `issueApiKey` returns the raw key (`uak_<id>.<secret>`) exactly once; only its
 scrypt hash (the same derivation `createAuthService` uses for passwords) is
@@ -240,15 +249,57 @@ request its `authorize()` allows, it sets core's opaque request principal:
 | Route protection | Principal id |
 |---|---|
 | session (`auth: true`, `role`, `permission`, ...) | the signed-in user's stable id (never the email), set after the CSRF check on a write |
-| `bearer` | `apikey:<key id>` (`apiKeyPrincipalId(id)`) |
+| `bearer`, key issued with `userId` | that user's id |
+| `bearer`, service key (no `userId`) | `apikey:<key id>` (`apiKeyPrincipalId(id)`) |
 
-API keys are issued by the operator and belong to no user, so a key is its own
-principal, namespaced so it can never equal a user id: records a key creates in
-an [owned store collection](../../docs/STORE.md#per-record-ownership) belong to
+A service key belongs to no user, so it is its own principal, namespaced so it
+can never equal a user id: records it creates in an
+[owned store collection](../../docs/STORE.md#per-record-ownership) belong to
 that key, and stop being reachable through the API once it is revoked or
-expires. A denied request never carries a principal. An impersonation session
-carries the impersonated user's id, so an operator impersonating a user acts on
-that user's owned records.
+expires; the operator can move them to another principal with
+[`urlcode-store reassign`](../../docs/STORE.md#moving-records-to-another-principal).
+A denied request never carries a principal. An impersonation session carries
+the impersonated user's id, so an operator impersonating a user acts on that
+user's owned records.
+
+### Keys that act for a user
+
+An operator can issue a key for an existing user
+([urlcode#732](https://github.com/jimhoyd-com/urlcode/issues/732)): pass
+`userId` (the id from `urlcode-auth users`) to `issueApiKey`, or in the
+`api-key-issue` JSON:
+
+```sh
+echo '{"name":"alice-sync","scopes":["notes.read","notes.write"],"userId":"<user id>"}' \
+  | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
+```
+
+- **Principal.** The key sets the request principal to that user's id, so
+  records it creates in an owned store collection belong to the user: they are
+  the same records the user sees when signed in, and they survive rotating the
+  key (issue a new key for the same user, then revoke the old one).
+- **Authority.** The key still acts only within its own `scopes`, checked
+  against the route's `auth.bearer.scopes`. The user's roles and permissions do
+  not apply to it, and it never passes a session-protected route
+  (`auth: true`, `role`, `permission`, ...), which still needs a session.
+- **Validation.** `userId` must name an existing account whose status is
+  `active`; an unknown id, a locked account or one pending deletion is refused
+  with `invalid_api_key_user` and nothing is stored.
+- **Disable and delete.** A user-linked key authenticates only while its user is
+  `active`. Locking the account, or the account entering its deletion grace
+  period, makes every key linked to it fail with the same 401 `invalid_token` a
+  revoked key gets, from the next request; unlocking the account, or cancelling
+  the deletion, makes them work again. When the account is purged its keys are
+  revoked for good. `listApiKeys` and `api-key-list` report each key's `userId`
+  (`null` for a service key) and `userDisabled` (`true` while the linked user is
+  not active). Revoke a key explicitly when it must never return.
+- **Handler context.** The `x-urlcode-context-auth-principal` header also
+  carries `userId` for such a key (`{id, name, scopes, userId}`); it is absent
+  for a service key.
+
+Keys issued before this field existed, and keys issued without it, are service
+keys (`userId: null`); an existing database gains the nullable `user_id` column
+in place when the service opens it.
 
 ### Per-credential quota
 
@@ -391,8 +442,8 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 | `cleanup` | `--operator-file` | Sweep expired sessions/tokens (bounded batch) |
 | `configuration` | `--operator-file` | Print configuration revision, registration mode, security policy and roles |
 | `doctor` | `--operator-file` | Local database/configuration readiness check |
-| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?,quota?}` on stdin | Issue a bearer/API key; returns the raw key once, never stored |
-| `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed; never the raw key or its hash) |
+| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?,quota?,userId?}` on stdin | Issue a bearer/API key, optionally acting for an active user; returns the raw key once, never stored |
+| `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed/quota/userId/userDisabled; never the raw key or its hash) |
 | `api-key-revoke` | `--operator-file`, JSON `{id}` on stdin | Revoke a key by its id |
 | `validate` | `--operator-file` | Offline validation of the loaded service's configuration |
 | `auth-baseline` | none (refuses `--operator-file`) | Offline synthetic checks against a temporary runtime |
@@ -568,4 +619,4 @@ Pass `emailCopy: createEmailCopy({catalogues: {...}})` to a sender helper to cus
 
 `AuthOptions.abuse` enables durable progressive password backoff and trusted-client/signup-domain velocity budgets. Configure the runtime trusted-proxy boundary before enabling client limits. Every per-client auth budget (the per-client password-attempt budget and the `client`/`signupClient` limits) keys an IPv4 address, including an IPv4-mapped IPv6 address, by the address itself and an IPv6 address by its /64 network, so rotating addresses inside one allocation earns no fresh budget; callers behind one IPv6 /64 share a budget. The /64 grouping is fixed and matches core's [throttle client identity](../../docs/policies/operations.md#client-identity-and---trusted-proxies). Optional `createTurnstileChallenge` supplies a fixed-origin widget and bounded server verification; challenge success never overrides a hard budget. Provider callbacks and existing token redemption keep their own bound proofs.
 
-Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must carry an `Origin` that is one of the site's origins: the canonical `--origin`, or an operator [`--alias-origin`](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) (matched by core's `isSiteOrigin`; `AuthHttp` takes the list as its `origins` option). Missing, null or foreign Origin headers remain rejected. CSRF tokens, email links and passkey relying-party checks stay bound to the canonical origin, so passkey ceremonies work only there. Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
+Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must carry an `Origin` that is one of the site's origins: the canonical `--origin`, or an operator [`--alias-origin`](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) (matched by core's `isSiteOrigin`; `AuthHttp` takes the list as its `origins` option). Missing, null or foreign Origin headers remain rejected. CSRF tokens and email links stay bound to the canonical origin. Passkey ceremonies work only on the canonical origin unless the operator sets a [shared passkey RP ID](#passkeys-and-the-relying-party-domain). Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.

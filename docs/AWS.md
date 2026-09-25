@@ -67,6 +67,13 @@ option or `URLCODE_ALIAS_ORIGINS` (comma-separated `https:` origins, at most
 and an invalid entry fails activation. See
 [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
 
+A shared passkey relying-party domain for those origins goes in the
+`passkeyRpId` handler option or `URLCODE_PASSKEY_RP_ID`; it is validated at
+activation like `--passkey-rp-id`, and changing it makes existing passkeys stop
+working. The first-party `auth` extension is Node only, so this matters here
+only to an operator's own extension that runs WebAuthn ceremonies. See
+[shared passkey relying-party domain](EXTENSIONS.md#shared-passkey-relying-party-domain).
+
 ## Limits worth knowing before you deploy
 
 | Limit | Consequence |

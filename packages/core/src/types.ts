@@ -126,7 +126,9 @@ export interface ProjectDocument {
   policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; shared?: Record<string, SharedBlock>; site?: SiteConfig;
 }
 /** What config.ts returns: the entry document, the merged route table and the files it came from. */
-export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string; /** Routes whose `policies.extensions.auth` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm> }
+export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string; /** Routes whose `policies.extensions.auth` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm>;
+  /** Only when loaded with `sources`: the file (`urlcode.yaml` or the include path as written) each route and extension declaration came from. */
+  sources?: { routes: Record<string, string>; extensions: Record<string, string> } }
 
 // ---------------------------------------------------------------------------
 // Compiled routes and assets.

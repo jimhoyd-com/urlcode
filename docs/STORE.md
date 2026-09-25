@@ -114,7 +114,8 @@ neither `--origin` nor an operator
 (`403`). Errors are `{error: {code, message, fields?}}` where
 `fields` maps field names to fixed messages; submitted values are never echoed.
 Status codes: `400` invalid record or JSON, `404`, `405` with `Allow`, `409`
-`collection_full`, `413` body or record too large, `415`, `503` when the disk
+`collection_full` (or `owner_quota_exceeded` on an
+[owned collection with a per-owner limit](#per-owner-record-limit)), `413` body or record too large, `415`, `503` when the disk
 write failed, `500` for anything unexpected (no cause in the body).
 
 ## Bounded keyed transitions
@@ -218,7 +219,8 @@ this schema and does not depend on request-body validation in core ([#254]).
 Unknown fields are rejected. `id`, `createdAt` and `updatedAt` are reserved.
 
 Limits per collection: up to 64 fields, `maxRecords` up to 10,000 (default
-1,000), `maxRecordBytes` up to 65,536 (default 4,096), `pageSize` up to 200
+1,000), on an owned collection `maxRecordsPerOwner` up to `maxRecords`
+([per-owner record limit](#per-owner-record-limit)), `maxRecordBytes` up to 65,536 (default 4,096), `pageSize` up to 200
 (default 50), at most 32 collections per project, `readOnly: true` to refuse
 writes through the record API — the store's own short-link click counter is
 the one exception, described above. The request body is refused above
@@ -296,9 +298,12 @@ routes:
 The owner is the request's **principal**: an opaque, stable id that a
 principal-providing extension on the mount's route sets from its `authorize()`
 ([request principal](EXTENSIONS.md#request-principal)). With `auth` that is the
-signed-in user's id, or `apikey:<key id>` for a
-[bearer key](EXTENSIONS.md#bearerapi-key-routes) (operator-issued keys belong to
-no user, so records a key creates belong to that key). The store never reads a
+signed-in user's id, or for a
+[bearer key](EXTENSIONS.md#bearerapi-key-routes) either the id of the user the
+operator issued it for (`userId`, so its records belong to that user and survive
+rotating the key) or, for a service key with no user, `apikey:<key id>` (records
+it creates belong to that key; [move them](#moving-records-to-another-principal)
+when the key is replaced). The store never reads a
 cookie, header or auth table itself, and it compares the id for equality only.
 
 On an owned collection:
@@ -306,7 +311,8 @@ On an owned collection:
 - `POST` stamps the caller's principal on the new record. The owner is stored in
   the data file as `_owner` and never appears in a response; a body naming
   `_owner` is `400` like any undeclared field, and `PUT`/`PATCH` keep the stored
-  owner. There is no transfer.
+  owner. There is no transfer through the API; the operator can
+  [move records](#moving-records-to-another-principal) with the server stopped.
 - `GET` lists only the caller's records: `total`, `limit`, `cursor`, sorting and
   filtering all work over that set, so a caller learns nothing about how many
   records other principals hold.
@@ -326,13 +332,52 @@ On an owned collection:
   an owned record.
 
 Limits that stay true on an owned collection: `maxRecords` still caps the whole
-collection, so one principal can fill it and every create then answers `409
-collection_full` (there is no per-owner quota yet); all owners' records share
+collection, and `409 collection_full` still tells any caller that it is full
+(with or without `maxRecordsPerOwner`, enough principals together can fill it,
+so size `maxRecords` for them); all owners' records share
 one file, one lock and one write sequence; the store is still trusted operator
 code on one host, not a hostile multi-tenant boundary; and backups copy every
 owner's records together. Access by an operator or support role to another
 user's records is not modelled: auth's impersonation gives the impersonated
 user's principal, so an impersonating operator acts on that user's records.
+
+### Per-owner record limit
+
+`maxRecords` caps the whole collection, so without more one principal could fill
+an owned collection and every create would then answer `409 collection_full`
+for everyone. An owned collection can also cap each principal
+([#731](https://github.com/jimhoyd-com/urlcode/issues/731)):
+
+```yaml
+notes:
+  mount: /api/notes
+  ownership: owner
+  maxRecords: 5000           # the whole collection (default 1,000)
+  maxRecordsPerOwner: 100    # each principal
+  fields:
+    title: {type: string, required: true, maxLength: 200}
+```
+
+- A `POST` by a principal that already holds `maxRecordsPerOwner` records
+  answers `409 owner_quota_exceeded` with a fixed message that states no count,
+  no limit and no collection total. Deleting one of its own records frees a
+  slot for that principal only.
+- `maxRecords` stays the ceiling: a principal under its own limit still gets
+  `409 collection_full` once the collection as a whole is full. A principal at
+  its own limit is told `owner_quota_exceeded` first.
+- `maxRecordsPerOwner` must be at most the collection's `maxRecords` (or its
+  default of 1,000). Activation refuses it on a shared collection, where there
+  is no owner to count.
+- Only a create adds a record, and the limit is checked in the same write
+  sequence as the create, so concurrent creates cannot overshoot it. A replayed
+  `Idempotency-Key` is refused as a duplicate before anything is counted.
+- The counts are derived from the records in memory, rebuilt when the store
+  activates and after every write; nothing extra is stored. Records with no
+  owner (see below) count toward the collection but toward no principal.
+  `ownerless-assign` can leave a principal above its limit, and lowering the
+  limit can too: the store still activates, the principal's existing records
+  stay readable and changeable, and it cannot create more until it is back
+  under the limit.
 
 ### Making an existing collection owned
 
@@ -360,6 +405,56 @@ user's records to every caller. Remove the owners from a stopped copy of the
 file deliberately if that is really intended. A store older than this feature
 refuses such a file too (`_owner` is not a declared field), so ownership is a
 one-way change for older releases.
+
+### Moving records to another principal
+
+Records belong to the principal that created them. When that principal is
+replaced, for example a service API key (`apikey:<key id>`) that is rotated or
+revoked, its records stay in the file but nobody can reach them. With the server
+stopped, the operator moves them
+([#732](https://github.com/jimhoyd-com/urlcode/issues/732)); run `--dry-run`
+first to see the counts:
+
+```sh
+npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
+  --from apikey:<old key id> --to apikey:<new key id> --dry-run
+npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
+  --from apikey:<old key id> --to apikey:<new key id>
+```
+
+- `--from` and `--to` are principal ids exactly as the provider sets them (for
+  auth, a user's id from `urlcode-auth users`, or `apikey:<key id>`), validated
+  with the same pattern core applies to a principal. The two must differ.
+- `--project` is the site's route project (the `app/` directory). The command
+  reads it through core's project loader to learn which collections are
+  declared `ownership: owner` and each one's `maxRecordsPerOwner`; only those
+  collections are touched. `--collection <name>` limits the move to one of them
+  (a shared or undeclared name is refused). A declared collection with no data
+  file yet has nothing to move.
+- Only each record's owner changes. Records owned by anyone else, and records
+  with no owner (see below), are left alone.
+- It prints `{from, to, dryRun, moved, collections: [{collection, moved,
+  toBefore, toAfter, maxRecordsPerOwner}]}` as JSON. `--dry-run` takes the lock,
+  counts and writes nothing.
+- **The per-owner limit is respected.** When moving would leave `--to` holding
+  more than a collection's `maxRecordsPerOwner`, the whole command is refused,
+  naming the collection and the counts, and no collection is changed (a dry run
+  is refused the same way). Delete or move some of `--to`'s records first, or
+  raise the limit. `maxRecords` is unaffected, since no record is added.
+- Like the `ownerless` commands it takes the directory lock and refuses while a
+  store process holds it. All counts are checked before anything is written;
+  each changed collection file is then replaced atomically, one after another. A
+  disk failure between two files can leave the earlier collections moved, and
+  running the same command again moves the rest.
+- It does not touch `Idempotency-Key` retention, which is scoped by principal: a
+  retry by `--to` with a key `--from` used is not recognised as a duplicate.
+
+The same operation is exported as `reassignOwner(directory, {from, to,
+collections, collection?, dryRun?})`, where `collections` is the declared
+`extensions.store.config.collections`. A key that should keep a user's records
+across rotation can be issued for that user in the first place
+([keys that act for a user](../packages/auth/README.md#keys-that-act-for-a-user));
+then no move is needed.
 
 ## Storage and concurrency: what it does and does not guarantee
 
@@ -477,6 +572,5 @@ Recorded in [open decisions](OPEN-DECISIONS.md): a SQLite backend, ranges and
 text search, and richer screens beyond the first slice ([#262]): labels,
 columns, sort and filter controls have all shipped
 ([#330](https://github.com/jimhoyd-com/urlcode/issues/330)). Owned collections
-([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only: per-owner quotas,
-sharing a record with other principals and manager or support access are not
+([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only: sharing a record with other principals and manager or support access are not
 built.

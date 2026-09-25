@@ -33,6 +33,12 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `api-key-issue` JSON) is counted against that instead of the route's quota, on
   every bearer route; allowed responses carry the `credential` RateLimit fields
   too, always `Cache-Control: no-store` (urlcode#703).
+- A key issued with `userId` (`issueApiKey({name, scopes, userId})`, or `userId`
+  in the `api-key-issue` JSON; must be an active account) acts for that user:
+  the request principal is the user id, so owned store records belong to the
+  user and survive key rotation. It still acts only within its own scopes.
+  Locking or deleting the user disables it (urlcode#732). Keys without `userId`
+  keep the `apikey:<key id>` principal.
 - The operator lists `auth()` (senders, providers and other options go in `auth({...})`) in the
   site's `host.mjs` `composeHost` list; the scaffold writes that line, `operator-service.mjs`
   and `data/encryption.key`/`data/csrf.key`. Serve with `--host-file host.mjs --origin https://...`

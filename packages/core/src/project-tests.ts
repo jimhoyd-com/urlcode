@@ -9,7 +9,7 @@ import type { RestartableApp } from './readiness.ts';
 import type { LogFn } from './types.ts';
 import { ConfigError } from './errors.ts';
 
-export interface ProjectTestOptions { extensions?: ServerOptions['extensions']; plugins?: ServerOptions['plugins']; log?: LogFn | undefined; permissions?: ServerOptions['permissions']; origin?: string | undefined; aliasOrigins?: ServerOptions['aliasOrigins'] }
+export interface ProjectTestOptions { extensions?: ServerOptions['extensions']; plugins?: ServerOptions['plugins']; log?: LogFn | undefined; permissions?: ServerOptions['permissions']; origin?: string | undefined; aliasOrigins?: ServerOptions['aliasOrigins']; passkeyRpId?: ServerOptions['passkeyRpId'] }
 export interface ProjectTestResult { total: number; failed: number }
 
 /**
@@ -32,11 +32,11 @@ export async function startRestartable(options: ServerOptions): Promise<Restarta
   };
 }
 
-export async function runProjectTests(project: string, { log = () => {}, permissions, origin, aliasOrigins, extensions, plugins }: ProjectTestOptions = {}): Promise<ProjectTestResult> {
+export async function runProjectTests(project: string, { log = () => {}, permissions, origin, aliasOrigins, passkeyRpId, extensions, plugins }: ProjectTestOptions = {}): Promise<ProjectTestResult> {
   // A newly initialized project has no behavior yet, so it intentionally has no
   // fixture file. Once an application has routes, its author adds this file.
   const root = await realpath(project), fixtures = await readFixtures(root, true);
-  const app = await startRestartable({ project, port: 0, local: true, log, permissions, origin, aliasOrigins, extensions, plugins });
+  const app = await startRestartable({ project, port: 0, local: true, log, permissions, origin, aliasOrigins, passkeyRpId, extensions, plugins });
   const agent = new Agent({keepAlive:true,maxSockets:1}); let failed = 0, total = 0;
   try {
     if (!fixtures.length) {

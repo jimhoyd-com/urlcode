@@ -46,6 +46,32 @@ or aliases without `--origin`. The same list goes to `validate`, `test`,
 `aliasOrigins` option or `URLCODE_ALIAS_ORIGINS` (comma-separated). See
 [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
 
+Passkeys stay on `--origin` by default: its host is the WebAuthn relying-party
+ID and alias origins get no passkey ceremonies. When every origin shares a
+registrable domain, `--passkey-rp-id` opts in to one shared RP ID, so a passkey
+registered on one origin works on all of them:
+
+```sh
+node /opt/urlcode/dist/cli.js serve --project /srv/my-links --origin https://links.example.com \
+  --alias-origin https://www.example.com --passkey-rp-id example.com
+```
+
+Startup refuses an RP ID that is not a lowercase DNS name, is an IP address, a
+single label (`localhost` only when `--origin` is on localhost) or a listed
+public suffix (`co.uk`, `github.io`, ...), or is not the host, or a parent
+domain, of `--origin` and of every `--alias-origin` (`go.example.net` above
+would be refused). The same flag goes to `dev`, `validate`, `test`, `routes`,
+`audit` and `benchmark`; the AWS and Vercel handlers take a `passkeyRpId`
+option or `URLCODE_PASSKEY_RP_ID`. It is never project YAML. See
+[shared passkey relying-party domain](EXTENSIONS.md#shared-passkey-relying-party-domain).
+
+> **Warning: changing the RP ID makes existing passkeys stop working.** Setting
+> `--passkey-rp-id` for the first time, changing it, or removing it strands
+> every passkey registered under the previous RP ID; those users must sign in
+> another way and register a new passkey, and a passkey-only account needs
+> recovery. The runtime cannot detect the change for you (auth does not record
+> a credential's RP ID), so treat the value as fixed once users enrol.
+
 Use a process supervisor that restarts on
 failure and sends SIGTERM for shutdown. On SIGTERM, `/_urlcode/ready` starts
 reporting unhealthy for `--drain-delay-ms` (default `0`, disabled) before the

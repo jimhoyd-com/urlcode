@@ -31,7 +31,7 @@ try {
     const { values, positionals } = parseArgs({ allowPositionals: true, options: { 'operator-file': { type: 'string' }, help: { type: 'boolean' } } });
     const command = positionals[0];
     if (values.help || !command)
-        process.stdout.write('urlcode-auth bootstrap|users|sessions|revoke|audit|import|rotate-key|purge|cleanup|configuration|doctor|validate --operator-file /absolute/operator/auth.mjs\nurlcode-auth api-key-issue|api-key-list|api-key-revoke --operator-file /absolute/operator/auth.mjs (JSON name/scopes/expiresInMs/quota, or id, on stdin)\nurlcode-auth auth-baseline (offline synthetic checks)\nurlcode-auth verify-deployment (JSON origin/authMount on stdin)\nurlcode-auth backup|restore (JSON paths on stdin)\nSecrets and operation data use bounded JSON stdin, never argv. Operator module default-exports an AuthService.\n');
+        process.stdout.write('urlcode-auth bootstrap|users|sessions|revoke|audit|import|rotate-key|purge|cleanup|configuration|doctor|validate --operator-file /absolute/operator/auth.mjs\nurlcode-auth api-key-issue|api-key-list|api-key-revoke --operator-file /absolute/operator/auth.mjs (JSON name/scopes/expiresInMs/quota/userId, or id, on stdin)\nurlcode-auth auth-baseline (offline synthetic checks)\nurlcode-auth verify-deployment (JSON origin/authMount on stdin)\nurlcode-auth backup|restore (JSON paths on stdin)\nSecrets and operation data use bounded JSON stdin, never argv. Operator module default-exports an AuthService.\n');
     else {
         if (positionals.length !== 1)
             throw new Error('Invalid command');
@@ -105,8 +105,11 @@ try {
                     throw new Error('Scopes array required');
                 if (data.quota !== undefined && (!data.quota || typeof data.quota !== 'object' || Array.isArray(data.quota)))
                     throw new Error('Quota object required');
-                // The service validates the quota's bounds and fields (invalid_api_key_quota).
-                output = await service.issueApiKey({ name: string(data.name), scopes: data.scopes, ...(typeof data.expiresInMs === 'number' ? { expiresInMs: data.expiresInMs } : {}), ...(data.quota !== undefined ? { quota: data.quota as { requests: number; window: number } } : {}) });
+                if (data.userId !== undefined && typeof data.userId !== 'string')
+                    throw new Error('userId must be a string');
+                // The service validates the quota's bounds and fields (invalid_api_key_quota) and that userId names an
+                // active user (invalid_api_key_user).
+                output = await service.issueApiKey({ name: string(data.name), scopes: data.scopes, ...(typeof data.expiresInMs === 'number' ? { expiresInMs: data.expiresInMs } : {}), ...(data.quota !== undefined ? { quota: data.quota as { requests: number; window: number } } : {}), ...(typeof data.userId === 'string' ? { userId: data.userId } : {}) });
             }
             else if (command === 'api-key-list')
                 output = await service.listApiKeys();

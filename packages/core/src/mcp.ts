@@ -13,9 +13,10 @@ import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 // Only the public @jimhoyd/urlcode/agent-context surface is used here; scripts/package-smoke.ts proves that
 // subpath sufficient from the packed package (docs/TOOLING.md). A relative import keeps the source from loading
 // the built dist/, which tests rebuild concurrently.
-import {listSkills,getSkill,listAgentCatalog,readAddonCatalog,searchDocs,getExample,validateYaml,explainError,suggestFixtures,summarizeYamlChange} from './agent-context.ts';
-import {safeFile} from './config.ts';
-import {readFile,realpath} from 'node:fs/promises';
+import {listSkills,getSkill,listAgentCatalog,readAddonCatalog,searchDocs,getExample,validateYaml,explainError,suggestFixtures} from './agent-context.ts';
+import {suggestProjectFixtures} from './fixture-suggestions.ts';
+import {summarizeChange} from './yaml-change.ts';
+import {realpath} from 'node:fs/promises';
 import {isRecord as object} from './object-guards.ts';
 import {describeInstalledAgentTooling,describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 // Newest first. The tool surface used here (initialize, tools/list, tools/call,
@@ -59,8 +60,8 @@ const definitions=[
  {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'validate_yaml',description:'Validate supplied URLCode YAML syntax and schema only. It never reads includes, source files, bindings or a project directory.',properties:{yaml:{type:'string',maxLength:524288}},required:['yaml']},
  {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
- {name:'suggest_fixtures',description:'Suggest tests/requests.json cases for the project\'s urlcode.yaml, or for supplied `yaml`, only where the YAML alone determines the answer (redirect, respond, page/download, 405, 404, simple input refusals). Function, middleware, proxy, extension, include, pattern-constrained and binding routes are returned under `gaps`, never as fixtures; `review` names routes needing hand-written cases. Reads urlcode.yaml only (never includes, sources or bindings); writes and executes nothing.',properties:{yaml:{type:'string',maxLength:524288},maxFixtures:{type:'integer',minimum:1,maximum:1000}}},
- {name:'summarize_yaml_change',description:'Summarize what changes from `before` YAML to `after` YAML (default: the project\'s urlcode.yaml): routes added/removed/changed with the changed keys, capability names, trusted and sandboxed function/middleware seams and sandbox flips, and operator grants (env, secret, egress, extension) newly requested or released. Names and keys only, never values; both documents must validate. Reads and executes nothing else.',properties:{before:{type:'string',maxLength:524288},after:{type:'string',maxLength:524288}},required:['before']},
+ {name:'suggest_fixtures',description:'Suggest tests/requests.json cases for the project\'s YAML (urlcode.yaml and its includes, each entry naming its file), or for supplied `yaml`, only where the YAML alone determines the answer (redirect, respond, page/download, 405, 404, simple input refusals). Function, middleware, proxy, extension, pattern-constrained and binding routes, and the includes of supplied `yaml`, are returned under `gaps`, never as fixtures; `review` names routes needing hand-written cases. Reads YAML only (never sources, assets or bindings); writes and executes nothing.',properties:{yaml:{type:'string',maxLength:524288},maxFixtures:{type:'integer',minimum:1,maximum:1000}}},
+ {name:'summarize_yaml_change',description:'Summarize what changes from `before` YAML to `after` YAML (default: the project\'s urlcode.yaml read with its includes, each route naming its file): routes added/removed/changed with the changed keys, capability names, trusted and sandboxed function/middleware seams and sandbox flips, and operator grants (env, secret, egress, extension) newly requested or released. Names and keys only, never values; both documents must validate. Reads and executes nothing else.',properties:{before:{type:'string',maxLength:524288},after:{type:'string',maxLength:524288}},required:['before']},
  {name:'get_extension_artifacts',description:'List the artifacts installed in this site (inert data add-ons such as schemas), whether each matches the runtime\'s pin, and their files. Artifacts never execute and activate nothing.',properties:{}},
  {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from an installed, pinned artifact. The name and path must be listed by get_extension_artifacts.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
  {name:'get_addon_agent_tooling',description:'List agent references declared by installed, core-pinned extensions and inert artifacts. Metadata only: it never imports an extension or reads a reference file.',properties:{}},
@@ -120,8 +121,6 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  const error=(id:unknown,code:number,message:string)=>send({jsonrpc:'2.0',id,error:{code,message}});
  // `deployTarget` is canonical; `target` still works on these tools (deprecated) for one release.
  const deployTargetOf=(value:Record<string,unknown>):string|undefined=> {const picked=value.deployTarget??value.target;return typeof picked==='string'?picked:undefined;};
- // The project's entry urlcode.yaml as text, through the same root-confined file check the loader uses; nothing else is read.
- const projectYaml=async():Promise<string>=>readFile(await safeFile(project,'urlcode.yaml'),'utf8');
  const call=async(name:string,args:Record<string,unknown>):Promise<unknown>=> {
   const base=options.origin?{origin:options.origin}:{};
   // Legacy tool names route to the same handler as their canonical name (see aliasOf/legacyNames).
@@ -151,8 +150,10 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_example':return getExample(args.name as string);
    case 'validate_yaml':return validateYaml(args.yaml as string);
    case 'explain_error':return explainError(args.error as string);
-   case 'suggest_fixtures':return suggestFixtures(typeof args.yaml==='string'?args.yaml:await projectYaml(),{...(typeof args.maxFixtures==='number'?{maxFixtures:args.maxFixtures}:{})});
-   case 'summarize_yaml_change':return summarizeYamlChange(args.before as string,typeof args.after==='string'?args.after:await projectYaml());
+   // Supplied `yaml`/`after` is text only (its includes are gaps); without it the project's YAML is read through the
+   // configuration loader with its root-confined includes (#733). Neither reads a source file or executes anything.
+   case 'suggest_fixtures':{const bound=typeof args.maxFixtures==='number'?{maxFixtures:args.maxFixtures}:{};return typeof args.yaml==='string'?suggestFixtures(args.yaml,bound):suggestProjectFixtures(project,bound);}
+   case 'summarize_yaml_change':return summarizeChange({yaml:args.before as string},typeof args.after==='string'?{yaml:args.after}:{project});
    case 'get_extension_artifacts':return describeInstalledArtifacts(project);
    case 'get_extension_artifact':return readArtifactMember(project,args.name as string,args.path as string);
    case 'get_addon_agent_tooling':return describeInstalledAgentTooling(project);

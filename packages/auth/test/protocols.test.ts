@@ -105,3 +105,77 @@ test('passkeys register a valid attestation and authenticate with the returned c
     const signature = sign('sha256', Buffer.concat([loginAuth, createHash('sha256').update(loginClient).digest()]), privateKey);
     assert.deepEqual(await provider.verifyAuthentication({ id, rawId: id, type: 'public-key', clientExtensionResults: {}, response: { clientDataJSON: loginClient.toString('base64url'), authenticatorData: loginAuth.toString('base64url'), signature: signature.toString('base64url') } }, login.challenge, stored), { counter: 1 });
 });
+// A synthetic ES256 authenticator: registers under `rpId` from `origin`, then signs assertions.
+function authenticator() {
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }), jwk = publicKey.export({ format: 'jwk' });
+    const cose = Buffer.concat([Buffer.from('a5010203262001215820', 'hex'), Buffer.from(jwk.x!, 'base64url'), Buffer.from('225820', 'hex'), Buffer.from(jwk.y!, 'base64url')]);
+    const credential = randomBytes(32), id = credential.toString('base64url'), length = Buffer.alloc(2);
+    length.writeUInt16BE(credential.length);
+    let signCount = 0;
+    return {
+        id,
+        attest(challenge: string, origin: string, rpId: string) {
+            const client = Buffer.from(JSON.stringify({ type: 'webauthn.create', challenge, origin, crossOrigin: false }));
+            const auth = Buffer.concat([createHash('sha256').update(rpId).digest(), Buffer.from([0x45]), Buffer.alloc(4), Buffer.alloc(16), length, credential, cose]);
+            const attestation = isoCBOR.encode(new Map<string, string | Map<string, never> | Uint8Array<ArrayBuffer>>([['fmt', 'none'], ['attStmt', new Map<string, never>()], ['authData', new Uint8Array(auth)]]));
+            return { id, rawId: id, type: 'public-key' as const, clientExtensionResults: {}, response: { clientDataJSON: client.toString('base64url'), attestationObject: Buffer.from(attestation).toString('base64url'), transports: ['internal' as const] } };
+        },
+        assert(challenge: string, origin: string, rpId: string) {
+            const client = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge, origin, crossOrigin: false })), counter = Buffer.alloc(4);
+            counter.writeUInt32BE(++signCount);
+            const auth = Buffer.concat([createHash('sha256').update(rpId).digest(), Buffer.from([5]), counter]);
+            const signature = sign('sha256', Buffer.concat([auth, createHash('sha256').update(client).digest()]), privateKey);
+            return { id, rawId: id, type: 'public-key' as const, clientExtensionResults: {}, response: { clientDataJSON: client.toString('base64url'), authenticatorData: auth.toString('base64url'), signature: signature.toString('base64url') } };
+        },
+    };
+}
+test('by default passkeys stay on the canonical host and origin; an alias origin is refused', async () => {
+    const provider = createPasskeyProvider({ origin: 'https://app.site.example', rpId: 'app.site.example', rpName: 'Site' }), key = authenticator();
+    assert.equal(provider.rpId, 'app.site.example');
+    assert.deepEqual(provider.origins, ['https://app.site.example']);
+    const options = await provider.beginRegistration({ id: 'account', email: 'user@example.com' });
+    assert.equal(options.rp.id, 'app.site.example');
+    await assert.rejects(provider.verifyRegistration(key.attest(options.challenge, 'https://www.site.example', 'app.site.example'), options.challenge));
+    const stored = await provider.verifyRegistration(key.attest(options.challenge, 'https://app.site.example', 'app.site.example'), options.challenge);
+    const login = await provider.beginAuthentication();
+    assert.equal(login.rpId, 'app.site.example');
+    await assert.rejects(provider.verifyAuthentication(key.assert(login.challenge, 'https://www.site.example', 'app.site.example'), login.challenge, stored));
+});
+test('a provider bound to the operator RP ID accepts ceremonies from every site origin and nothing else', async () => {
+    const site = { rpId: 'site.example', origins: ['https://app.site.example', 'https://www.site.example'] };
+    const provider = createPasskeyProvider({ origin: 'https://app.site.example', rpId: 'app.site.example', rpName: 'Site' }).withSite(site), key = authenticator();
+    assert.equal(provider.rpId, 'site.example');
+    assert.deepEqual(provider.origins, site.origins);
+    const options = await provider.beginRegistration({ id: 'account', email: 'user@example.com' });
+    assert.equal(options.rp.id, 'site.example');
+    // Registered on the alias origin under the shared RP ID.
+    const stored = await provider.verifyRegistration(key.attest(options.challenge, 'https://www.site.example', 'site.example'), options.challenge);
+    assert.equal(stored.id, key.id);
+    // Used on the canonical origin, then on the alias origin.
+    const first = await provider.beginAuthentication();
+    assert.equal(first.rpId, 'site.example');
+    assert.deepEqual(await provider.verifyAuthentication(key.assert(first.challenge, 'https://app.site.example', 'site.example'), first.challenge, stored), { counter: 1 });
+    const second = await provider.beginAuthentication();
+    assert.deepEqual(await provider.verifyAuthentication(key.assert(second.challenge, 'https://www.site.example', 'site.example'), second.challenge, { ...stored, counter: 1 }), { counter: 2 });
+    // A non-site origin, a sibling subdomain the operator did not list, a look-alike host and the old per-host RP ID all fail.
+    for (const [origin, rpId] of [['https://evil.example', 'site.example'], ['https://other.site.example', 'site.example'], ['https://site.example.evil.example', 'site.example'], ['https://www.site.example', 'app.site.example']] as const) {
+        const attempt = await provider.beginAuthentication();
+        await assert.rejects(provider.verifyAuthentication(key.assert(attempt.challenge, origin, rpId), attempt.challenge, { ...stored, counter: 2 }), `${origin} ${rpId}`);
+    }
+    const again = await provider.beginRegistration({ id: 'account', email: 'user@example.com' });
+    await assert.rejects(provider.verifyRegistration(authenticator().attest(again.challenge, 'https://evil.example', 'site.example'), again.challenge));
+});
+test('binding a provider to a site refuses an RP ID that is not a parent of every origin', () => {
+    const provider = createPasskeyProvider({ origin: 'https://app.site.example', rpId: 'app.site.example', rpName: 'Site' });
+    const refused: [string, string[], RegExp][] = [
+        ['other.example', ['https://app.site.example'], /neither the host/],
+        ['site.example', ['https://app.site.example', 'https://evil.example'], /neither the host of https:\/\/evil\.example/],
+        ['ite.example', ['https://app.site.example'], /neither the host/],
+        ['site.example', ['https://www.site.example', 'https://app.site.example'], /canonical origin/],
+        ['site.example', ['https://app.site.example', 'http://www.site.example'], /https: origin/],
+        ['Site.Example', ['https://app.site.example'], /lowercase RP ID/],
+        ['site.example', [], /lowercase RP ID/],
+    ];
+    for (const [rpId, origins, message] of refused)
+        assert.throws(() => provider.withSite({ rpId, origins }), message, `${rpId} ${origins.join(',')}`);
+});

@@ -64,7 +64,12 @@ project-aware `urlcode mcp` server. Its machine-readable entry point is
   with a repeatable `--alias-origin` (at most 16 `https:` origins; hosted
   adapters read `URLCODE_ALIAS_ORIGINS`). It is operator configuration, never
   project YAML; extensions' same-origin checks admit those origins
-  (`docs/OPERATIONS.md`, process deployment).
+  (`docs/OPERATIONS.md`, process deployment). Passkeys stay on the canonical
+  host unless the operator sets `--passkey-rp-id <registrable domain>`
+  (`URLCODE_PASSKEY_RP_ID` on hosted adapters), which must be the host or a
+  parent domain of every site origin. Warn before changing it: setting,
+  changing or removing the RP ID makes existing passkeys stop working and users
+  must re-register.
 - Distinguish local checks (`validate`, `test`, `audit`, `benchmark` — all
   activate a local snapshot only) from `verify-deployment` (probes a live
   target over HTTP, read-only, no credential, no redirect following). Do not

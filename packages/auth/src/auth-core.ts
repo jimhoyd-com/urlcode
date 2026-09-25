@@ -17,6 +17,7 @@ import { TOTP, Secret } from 'otpauth';
 import { createRegistrationPolicy } from './registration.ts';
 import type { RegistrationPolicy, RegistrationInput, RegistrationProfile, RegistrationOptions } from './registration.ts';
 import { AuthError, openAuthStore } from './auth-store.ts';
+import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
 import type { AuthRecord, SessionRecord } from './auth-store.ts';
 export { AuthError };
 export interface AuthUser {
@@ -696,6 +697,14 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         scopes: string[];
         expiresInMs?: number;
         quota?: { requests: number; window: number };
+        /**
+         * The user the key acts for (urlcode#732): an existing, active account's id, or refused with
+         * `invalid_api_key_user`. The key's request principal is then that user id, so records it creates in an
+         * owned store collection belong to the user and survive rotating the key; it still acts only within its own
+         * `scopes`, never the user's roles. Locking the user or deleting the account disables the key. Omitted, the
+         * key is a service key whose principal is `apikey:<key id>`.
+         */
+        userId?: string;
     }): Promise<{
         id: string;
         key: string;
@@ -703,7 +712,9 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         scopes: string[];
         expires: number | null;
         quota: { requests: number; window: number } | null;
+        userId: string | null;
     }>;
+    /** `userDisabled` is true for a user-linked key whose user is locked, pending deletion or purged: it fails authentication. */
     listApiKeys(): Promise<{
         id: string;
         name: string;
@@ -713,6 +724,8 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         revoked: boolean;
         lastUsed: number | null;
         quota: { requests: number; window: number } | null;
+        userId: string | null;
+        userDisabled: boolean;
     }[]>;
     revokeApiKey(id: string): Promise<void>;
     /**
@@ -722,12 +735,15 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
      * scopes do not cover the route's `auth: {bearer: {scopes}}` requirement is a 403 the
      * extension computes from the returned `scopes`, not from this method. `quota` is
      * the key's own budget (urlcode#703), or `null` when it was issued without one.
+     * `userId` is the user the key acts for (urlcode#732), or `null` for a service key; a
+     * user-linked key whose user is not active returns `null` like a revoked key.
      */
     authenticateApiKey(key: string): Promise<{
         id: string;
         name: string;
         scopes: string[];
         quota: { requests: number; window: number } | null;
+        userId: string | null;
     } | null>;
     /**
      * Counts one request against a bearer/API-key credential's quota (a route's
@@ -1941,7 +1957,10 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 fail(400, 'invalid_api_key_expiry');
             if (input.quota !== undefined && (!validApiKeyQuota(input.quota) || Object.keys(input.quota).some(name => name !== 'requests' && name !== 'window')))
                 fail(400, 'invalid_api_key_quota');
-            const quota = input.quota === undefined ? null : { requests: input.quota.requests, window: input.quota.window };
+            // Shape only here; the store refuses an unknown or inactive user in the insert's own transaction.
+            if (input.userId !== undefined && (typeof input.userId !== 'string' || !principalIdPattern.test(input.userId)))
+                fail(400, 'invalid_api_key_user');
+            const quota = input.quota === undefined ? null : { requests: input.quota.requests, window: input.quota.window }, userId = input.userId ?? null;
             const scopes = [...new Set(input.scopes)], keyId = randomUUID(), secret = token();
             // Same derivation `newPassword`/`hashPassword` use for account passwords
             // (scrypt-v1, bounded by the shared hash-slot budget); `validate: false`
@@ -1949,8 +1968,8 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             // generated 256-bit secret.
             const secretHash = await hashPassword(secret, false);
             const created = now(), expires = input.expiresInMs === undefined ? null : created + input.expiresInMs;
-            await store.call('apiKeyIssue', { id: keyId, name: input.name, scopes, secretHash, expires, quota, now: created });
-            return { id: keyId, key: `uak_${keyId}.${secret}`, name: input.name, scopes, expires, quota };
+            await store.call('apiKeyIssue', { id: keyId, name: input.name, scopes, secretHash, expires, quota, userId, now: created });
+            return { id: keyId, key: `uak_${keyId}.${secret}`, name: input.name, scopes, expires, quota, userId };
         },
         async listApiKeys() {
             check();
@@ -1976,12 +1995,13 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 scopes: string[];
                 secretHash: string;
                 quota: { requests: number; window: number } | null;
+                userId: string | null;
             } | null>('apiKeyLookup', { id: keyId, now: now() });
             if (!record || !await verifyPassword(secret, record.secretHash))
                 return null;
             // Best-effort: a failed last-used update must not fail authentication.
             store.call('apiKeyTouch', { id: keyId, now: now() }).catch(() => undefined);
-            return { id: record.id, name: record.name, scopes: record.scopes, quota: record.quota };
+            return { id: record.id, name: record.name, scopes: record.scopes, quota: record.quota, userId: record.userId };
         },
         async consumeApiKeyQuota(keyId, quota) {
             check();

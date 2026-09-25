@@ -16,7 +16,7 @@ import { createAuthFlows } from './auth-flows.ts';
 import type { OidcProvider } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
 import { extensionContextHeaderPrefix, extensionHookContext } from '@jimhoyd/urlcode/extensions';
-import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
+import type { RuntimeExtension, ExtensionRequest, ExtensionActivation } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
 import type { AuthHttpResponse, Screen, UiHost } from './auth-ui.ts';
@@ -114,10 +114,11 @@ const bearerSchema = { type: 'object', additionalProperties: false, required: ['
  */
 const authPrincipalHeader = `${extensionContextHeaderPrefix}auth-principal`;
 /**
- * The opaque principal id auth hands core for a request a bearer (API) key authenticated (urlcode#331). Operator-issued
- * keys have no owning user, so the key itself is the principal, prefixed `apikey:` so it can never equal a user id (a
- * session's principal is the user's own stable id, unprefixed). Records a key creates in an owned store collection
- * therefore belong to that key, not to any user, and stop being reachable when it is revoked or expires.
+ * The opaque principal id auth hands core for a request a service (API) key authenticated (urlcode#331): a key issued
+ * without a `userId` has no owning user, so the key itself is the principal, prefixed `apikey:` so it can never equal
+ * a user id (a session's principal is the user's own stable id, unprefixed). Records such a key creates in an owned
+ * store collection therefore belong to that key, not to any user, and stop being reachable when it is revoked or
+ * expires. A key issued with a `userId` (urlcode#732) uses that user id instead; see `authorize`.
  */
 export function apiKeyPrincipalId(keyId: string): string { return `apikey:${keyId}`; }
 /** The `policies.extensions.auth` schema. */
@@ -134,13 +135,24 @@ export const authAuthoring = Object.freeze({
     fastChecks: Object.freeze(['urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth --copy ui/copy --templates ui/templates --stylesheet ui/extra.css', 'urlcode validate --local', 'urlcode test']),
 });
 const hidden = hiddenField;
+/** Binds the operator's passkey provider to the activation's `passkeyRpId` and site origins, when the operator set one. */
+function sitePasskeys(options: AuthExtensionOptions, context: ExtensionActivation): AuthExtensionOptions {
+    if (context.passkeyRpId === undefined || !options.passkeys)
+        return options;
+    if (typeof options.passkeys.withSite !== 'function')
+        throw new Error('Auth cannot apply the operator passkey RP ID: the passkeys provider has no withSite(); use createPasskeyProvider()');
+    return { ...options, passkeys: options.passkeys.withSite({ rpId: context.passkeyRpId, origins: context.origins ?? [context.origin] }) };
+}
 const m = (html: string) => new Markup(html);
-export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
-    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema: authConfigSchema, policySchema: authPolicySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+export function authExtension(configured: AuthExtensionOptions): RuntimeExtension {
+    return { name: 'auth', version: '1', projectSha256: configured.projectSha256, targets: ['node'], schema: authConfigSchema, policySchema: authPolicySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         // Sets core's opaque request principal (RIM-EXT-PRINCIPAL-001, urlcode#331) from authorize() on every
-        // allowed request: the user id for a session, `apikey:<key id>` for a bearer key. See `principalIdFor`.
+        // allowed request: the user id for a session or a user-linked bearer key, `apikey:<key id>` for a service key.
         providesPrincipal: true,
         async activate(config, context) {
+            // The operator's shared relying-party domain (issue #729) rebinds passkey ceremonies for this
+            // activation only; without it the configured provider (canonical host, canonical origin) is used as is.
+            const options = sitePasskeys(configured, context);
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');
             // Account screens render only through the kit, so a missing or unactivated `ui`
@@ -308,8 +320,10 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 return jsonResponse(429, { error: 'credential_quota_exceeded' }, [['retry-after', String(budget.reset)], ['ratelimit-policy', `"credential";q=${quota.requests};w=${quota.window}`], ['ratelimit', `"credential";r=0;t=${budget.reset}`]]);
                             counted.set(request, { quota, remaining: budget.remaining, reset: budget.reset });
                         }
-                        request.headers.set(authPrincipalHeader, Buffer.from(JSON.stringify({ id: principal.id, name: principal.name, scopes: principal.scopes })).toString('base64'));
-                        request.setPrincipal?.({ id: apiKeyPrincipalId(principal.id) });
+                        request.headers.set(authPrincipalHeader, Buffer.from(JSON.stringify({ id: principal.id, name: principal.name, scopes: principal.scopes, ...(principal.userId === null ? {} : { userId: principal.userId }) })).toString('base64'));
+                        // A user-linked key (urlcode#732) acts for its user, so owned records survive rotating the key;
+                        // its authority is still the key's scopes checked above, never the user's session roles.
+                        request.setPrincipal?.({ id: principal.userId ?? apiKeyPrincipalId(principal.id) });
                         return undefined;
                     }
                     let presentation = source().resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });

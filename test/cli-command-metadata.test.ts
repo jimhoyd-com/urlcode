@@ -15,6 +15,9 @@ test('CLI command metadata keeps external-code and policy commands explicit', ()
   assert(!('default' in commandOptions.project));
   // Operator alias origins are a repeatable operator flag, accepted only where the project activates locally.
   assert.equal(commandOptions['alias-origin'].multiple, true);
+  // The shared passkey RP ID is a single operator value on the same commands (#729).
+  assert.equal(commandOptions['passkey-rp-id'].type, 'string');
+  assert(!('multiple' in commandOptions['passkey-rp-id']));
   for (const command of ['serve', 'dev', 'validate', 'test']) assert((aliasOriginCommands as readonly string[]).includes(command), command);
   assert(!(aliasOriginCommands as readonly string[]).includes('add'), 'add keeps its unrelated --alias short-code flag');
 });
