@@ -150,7 +150,7 @@ const helpEntries: HelpEntry[] = [
     # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
     # add installs the capability only (no sample endpoints); --example also writes each added extension's example, for example store's /api/todos collection or forms' /contact flow
     # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
-    # list --strict exits 1 on a pin mismatch, a nested copy or drift between package.json, app/urlcode.yaml and host.mjs
+    # list --strict exits 1 on a pin mismatch, a nested copy or drift between package.json, app/urlcode.yaml and host.mjs; an extension neither declared nor imported is a library install, still pin-checked, not drift
 ` },
   { name:'upgrade', group:'Extensions', text:
 `  urlcode upgrade [--check] [--to X.Y.Z] [--site directory] [--json]

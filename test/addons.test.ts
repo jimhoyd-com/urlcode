@@ -273,6 +273,35 @@ test('the minimal YAML edits handle block and flow collections and keep CRLF', (
   assert.equal(yamlInsertEntry('version: "1"\nroutes: {}', ['extensions'], 'a', { version: '1' }), 'version: "1"\nroutes: {}\nextensions:\n  a:\n    version: "1"\n', 'a file without a final newline gets one before the insert');
 });
 
+test('list --strict accepts an extension installed only as a library, but not drift or a pin mismatch (#718)', async t => {
+  const m = manifest(), dir = await site(t);
+  await addAddons(dir, 'extension', ['alpha'], { manifest: m });
+  const yaml = join(dir, 'app', 'urlcode.yaml'), hostFile = join(dir, 'host.mjs'), lockFile = join(dir, 'package-lock.json');
+  const wired = { yaml: await readFile(yaml, 'utf8'), host: await readFile(hostFile, 'utf8') };
+  // Unwire alpha as remove would, keeping the package installed: a library dependency, not an extension.
+  const library = { yaml: yamlDelete(yamlDelete(wired.yaml, ['includes', 0]), ['extensions', 'alpha']), host: hostWithoutExtension(wired.host, 'alpha') };
+  await rm(join(dir, 'app', 'routes', 'alpha.yaml'));
+  const state = async (files: { yaml: string; host: string }): Promise<{ mode: string; problems: string[] }> => {
+    await writeFile(yaml, files.yaml); await writeFile(hostFile, files.host);
+    const report = await listAddons(dir, 'extension', { manifest: m });
+    return { mode: report.addons.find(item => item.name === 'alpha')!.mode, problems: report.problems };
+  };
+
+  assert.deepEqual(await state(library), { mode: 'library', problems: [] }, 'installed, pinned and neither declared nor imported: clean');
+  const declaredOnly = yamlInsertEntry(library.yaml, ['extensions'], 'alpha', { version: '1', config: {} });
+  assert.deepEqual(await state({ yaml: declaredOnly, host: library.host }), { mode: 'extension', problems: ['alpha: host.mjs does not import @jimhoyd/urlcode-alpha/extension'] });
+  assert.deepEqual(await state({ yaml: library.yaml, host: wired.host }), { mode: 'extension', problems: ['alpha: app/urlcode.yaml does not declare extensions.alpha'] });
+  const handWired = library.host.replace("import { composeHost }", "import a from \"@jimhoyd/urlcode-alpha/extension\";\nimport { composeHost }");
+  assert.deepEqual((await state({ yaml: library.yaml, host: handWired })).problems, ['alpha: app/urlcode.yaml does not declare extensions.alpha', 'alpha: host.mjs does not import @jimhoyd/urlcode-alpha/extension'], 'an import in another form still wires it as an extension');
+
+  const lock = JSON.parse(await readFile(lockFile, 'utf8')) as { packages: Record<string, Record<string, unknown>> };
+  lock.packages['node_modules/@jimhoyd/urlcode-alpha'] = { version: '9.9.9', resolved: 'https://example.test/alpha.tgz', integrity: 'sha512-other' };
+  await writeFile(lockFile, JSON.stringify(lock));
+  const mismatch = await state(library);
+  assert.equal(mismatch.mode, 'library');
+  assert.deepEqual(mismatch.problems, [`alpha: @jimhoyd/urlcode-alpha should link the development source file:${join(fixtures, 'alpha')}`], 'a library install is still checked against the pin');
+});
+
 test('a failed npm install rolls every file back, and node_modules with them', async t => {
   const dir = await site(t);
   process.env.FAKE_NPM_FAIL = 'install';

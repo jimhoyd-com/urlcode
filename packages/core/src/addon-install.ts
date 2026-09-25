@@ -582,9 +582,18 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
 }
 
-export interface ListedAddon { name: string; kind: AddonKind; package: string; version: string | null; pinned: boolean; declared: boolean; hosted: boolean; description: string; requires: string[]; descriptor?: AddonDescriptor | undefined; problems: string[] }
+/**
+ * How an installed add-on is used. `extension`: declared in app/urlcode.yaml or imported as `<package>/extension` in
+ * host.mjs, so the other must agree. `library`: an installed extension package that neither names, used only as a
+ * dependency (#718); its pin and nested copies are still checked, but it has no declaration to drift. `artifact`: inert data.
+ */
+export type AddonMode = 'extension' | 'library' | 'artifact';
+export interface ListedAddon { name: string; kind: AddonKind; mode: AddonMode; package: string; version: string | null; pinned: boolean; declared: boolean; hosted: boolean; description: string; requires: string[]; descriptor?: AddonDescriptor | undefined; problems: string[] }
 export interface AddonReport { site: string; core: string; development: boolean; addons: ListedAddon[]; unmanaged: string[]; problems: string[] }
-/** `urlcode extensions list` / `urlcode artifacts list`: what is installed, whether each matches core's pin, and any drift. */
+/**
+ * `urlcode extensions list` / `urlcode artifacts list`: what is installed, whether each matches core's pin, and any
+ * drift. An extension installed only as a library (see `AddonMode`) is not drift.
+ */
 export async function listAddons(directory: string, kind: AddonKind, { manifest: given }: { manifest?: AddonManifest } = {}): Promise<AddonReport> {
   const site = await openSite(directory), manifest = given ?? await readAddonManifest();
   const pkg = await readJson<PackageJson>(site.packageFile), lock = await lockPackages(site.site);
@@ -601,16 +610,19 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
     const descriptor = await readInstalledDescriptor(site.site, name).catch(error => { problems.push(error instanceof Error ? error.message : String(error)); return undefined; });
     if (!descriptor) problems.push(`${pin.package} is not installed; run npm ci`);
     const isDeclared = Object.hasOwn(declared, name), hosted = host.split('\n').includes(importLine(name));
-    if (kind === 'extension') {
+    // Any mention of the extension entry, even one hand-written in another form, wires it as an extension.
+    const wired = isDeclared || hosted || host.includes(`${addonPackage(name)}/extension`);
+    const mode: AddonMode = kind === 'artifact' ? 'artifact' : wired ? 'extension' : 'library';
+    if (mode === 'extension') {
       if (!isDeclared) problems.push(`${PROJECT_DIRECTORY}/urlcode.yaml does not declare extensions.${name}`);
       if (!hosted) problems.push(`${HOST_FILE} does not import ${addonPackage(name)}/extension`);
-    } else if (descriptor) {
+    } else if (mode === 'artifact' && descriptor) {
       const lockProblem = artifactLockProblem(lock, pin);
       if (lockProblem) problems.push(lockProblem);
       await assertInertArtifact(join(site.site, 'node_modules', pin.package), name).catch(error => problems.push(error instanceof Error ? error.message : String(error)));
     }
     for (const requirement of pin.requires) if (!Object.hasOwn(pkg.dependencies ?? {}, manifest.addons[requirement]!.package)) problems.push(`requires ${requirement}, which is not installed`);
-    report.addons.push({ name, kind, package: pin.package, version: lock[`node_modules/${pin.package}`]?.version ?? null, pinned: pinned === undefined, declared: isDeclared, hosted, description: pin.description, requires: pin.requires, descriptor, problems });
+    report.addons.push({ name, kind, mode, package: pin.package, version: lock[`node_modules/${pin.package}`]?.version ?? null, pinned: pinned === undefined, declared: isDeclared, hosted, description: pin.description, requires: pin.requires, descriptor, problems });
     report.problems.push(...problems.map(problem => `${name}: ${problem}`));
   }
   if (kind === 'extension') {

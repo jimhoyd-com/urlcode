@@ -3898,9 +3898,18 @@ yourself.
 
 `list --strict` exits non-zero on a pin mismatch, a nested copy of any
 `@jimhoyd/urlcode*` package, drift between `package.json`, `app/urlcode.yaml`
-and `host.mjs` (an extension installed but not declared or not hosted, or
-declared without an installed package), a missing requirement, or an artifact
-that is not inert.
+and `host.mjs` (an extension declared but not imported by `host.mjs`, imported
+but not declared, or declared without an installed package), a missing
+requirement, or an artifact that is not inert.
+
+An installed extension package that neither `app/urlcode.yaml` declares nor
+`host.mjs` imports as `<package>/extension` is a library install: another
+package or your own code depends on it, and it is not wired as an extension.
+`list` shows it as `(library)` (`"mode": "library"` with `--json`; wired
+extensions are `"extension"`, artifacts `"artifact"`). Its package.json URL,
+lock integrity and resolved URL are still checked against core's pin, and
+nested copies still fail, but the missing declaration and import are not drift.
+As soon as either file names it, the other must agree.
 
 `urlcode init <directory> --with ui,auth [--example] [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.

@@ -125,7 +125,7 @@ runtime version in `package.json` when you upgrade.
 | Step | Command | Fails the job when |
 |---|---|---|
 | Install | `npm ci --ignore-scripts` in the site | `package-lock.json` is missing, dependencies do not install, or the site does not depend on `@jimhoyd/urlcode` |
-| Add-ons | `urlcode extensions list --strict` and `urlcode artifacts list --strict` | An add-on does not match the runtime's pin, is installed as a nested copy, has drifted between `package.json`, `app/urlcode.yaml` and `host.mjs`, or an artifact is not inert |
+| Add-ons | `urlcode extensions list --strict` and `urlcode artifacts list --strict` | An add-on does not match the runtime's pin, is installed as a nested copy, has drifted between `package.json`, `app/urlcode.yaml` and `host.mjs` (an extension installed only as a library, neither declared nor imported, is not drift), or an artifact is not inert |
 | Validate | `urlcode validate --project app` (plus `--host-file` when set) | The YAML, includes, functions, bindings or extension configuration do not load |
 | Test | `urlcode test --project app` (plus `--host-file`) | A `tests/requests.json` fixture fails |
 | Audit | `urlcode audit --project app --expect-routes N --compliance <profile>` (plus `--host-file`) | Count mismatch, failed generated check, uncovered active route/method, or a `high` compliance finding without `compliance-warn` |
