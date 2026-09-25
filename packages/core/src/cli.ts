@@ -20,14 +20,14 @@ import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
-import { loadDocument } from './config.ts';
+import { loadDocument, safeFile } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
 import { ConfigError, HttpError, errorFields } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, realpath } from 'node:fs/promises';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
@@ -195,6 +195,14 @@ const helpEntries: HelpEntry[] = [
 `  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
 ` },
+  { name:'fixtures', group:'Agent tooling', text:
+`  urlcode fixtures suggest [--project directory] [--json]
+    # tests/requests.json candidates only for routes urlcode.yaml alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, include, pattern and binding routes are listed as gaps, never as covered. Reads urlcode.yaml only; writes nothing
+` },
+  { name:'diff', group:'Agent tooling', text:
+`  urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]  # after defaults to the project's urlcode.yaml
+    # route, capability, trusted/sandboxed code seam and newly requested operator grant changes between two YAML documents, by name only (no values); always exits 0
+` },
   { name:'review', group:'Agent tooling', text:
 `  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # opt-in read-only static review for avoidable plumbing; host file registrations sharpen extension-alternative findings (registered/revision-pinned), never required
@@ -317,7 +325,7 @@ try {
     if ((values.to !== undefined || values.check) && command !== 'upgrade') throw new ConfigError('--to and --check are only supported by upgrade');
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
       if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list');
@@ -345,6 +353,20 @@ try {
       if(arg===undefined)throw new ConfigError('Use urlcode plan-feature <goal>');
       const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
+    }else if(command==='fixtures'||command==='diff'){
+      // Both read YAML text only: no include, source file, binding or operator policy is read, and nothing executes.
+      const projectYaml=async()=>readFile(await safeFile(await realpath(values.project),'urlcode.yaml'),'utf8');
+      let result: unknown;
+      if(command==='fixtures'){
+        if(arg!=='suggest')throw new ConfigError('Use urlcode fixtures suggest [--project directory] [--json]');
+        const {suggestFixtures}=await import('./fixture-suggestions.ts');
+        result=suggestFixtures(await projectYaml());
+      }else{
+        if(arg===undefined||extra.length>1)throw new ConfigError('Use urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]');
+        const {summarizeYamlChange}=await import('./yaml-change.ts');
+        result=summarizeYamlChange(await readFile(arg,'utf8'),extra[0]===undefined?await projectYaml():await readFile(extra[0],'utf8'));
+      }
+      print(values.json?result:stringifyYaml(result,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='review'){
       const review=await reviewProject(values.project,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
       print(values.json?review:stringifyYaml(review,{lineWidth:0,aliasDuplicateObjects:false}));

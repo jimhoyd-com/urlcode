@@ -85,10 +85,13 @@ release cannot ship a declaration that does not resolve.
   await pool.close();
   ```
 - `@jimhoyd/urlcode/agent-context`: `listSkills`, `getSkill`, `listAgentCatalog`, `readAddonCatalog`, `searchDocs`,
-  `getExample`, `validateYaml`, `explainError`. Deterministic, package-owned
+  `getExample`, `validateYaml`, `explainError`, `suggestFixtures`, `summarizeYamlChange`. Deterministic, package-owned
   agent tooling: bundled-skill metadata, lexical search over the fixed docs
-  corpus, supplied-YAML syntax/schema validation and short remediation
-  guidance for validator output. Every function reads only fixed, package-owned
+  corpus, supplied-YAML syntax/schema validation, short remediation
+  guidance for validator output, request-fixture suggestions for supplied YAML
+  and a names-only summary of what changed between two YAML documents (result
+  types `FixtureSuggestions` and `YamlChangeSummary`; shapes in
+  [tooling](TOOLING.md#fixture-suggestions)). Every function reads only fixed, package-owned
   files (never an arbitrary local path or a remote URL) and takes plain
   strings in, plain data out. This is the same module URLCode's own `serveMcp`
   (`mcp`/`search_docs`/`validate_yaml`/`explain_error`, see

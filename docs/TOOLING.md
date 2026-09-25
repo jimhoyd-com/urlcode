@@ -281,6 +281,113 @@ configuration, so a bounded source-text signal for it would be prone to
 false positives against legitimate business logic — an uncertain observation
 is preferable to an incorrect automatic refactor.
 
+## Fixture suggestions
+
+`urlcode fixtures suggest [--project DIR] [--json]` (MCP
+`suggest_fixtures {yaml?, maxFixtures?}`, SDK `suggestFixtures(yaml,
+{maxFixtures?})` from `@jimhoyd/urlcode/agent-context`) proposes
+[`tests/requests.json`](AI-AUTHORING.md#request-fixtures-testsrequestsjson)
+cases from one URLCode YAML document: the project's entry `urlcode.yaml`, or
+YAML the caller supplies. It reads that text only. Includes, function and
+middleware sources, asset files, bindings and operator policy are never read,
+nothing is executed or fetched, and nothing is written; review the result and
+save the `fixtures` you accept yourself.
+
+A case is generated only when the YAML alone determines the answer:
+
+| Kind | Request | Expected |
+|---|---|---|
+| `redirect` | the route's path (sample values for inputs, `sample` for `/**`) | status and exact `location`, assembled by the runtime's own redirect code |
+| `respond` | the first of `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` the route accepts | status, `content-type` and, up to 1 KiB, the exact body |
+| `page`, `download` | `GET` | `200` (the file must exist for the project to activate) |
+| `disabled` | the path of an `enabled: false` route | `404` |
+| `method-refusal` | the first of `POST`, `PUT`, `PATCH`, `DELETE`, `GET` the route does not accept | `405` and the exact `allow` |
+| `missing-parameter` | the first required query or header input without a default, omitted | `400` |
+| `invalid-parameter` | a non-numeric value for an integer, number or boolean input, or an unlisted value for a string `enum` | `400` |
+| `body-required` | no body for a route with `request.body.required` | `400` |
+| `unknown-path` | a path no route matches | `404` |
+
+Every other route is reported instead of tested. `gaps` lists a route (or an
+include file) whose answer depends on something the YAML cannot know, with
+`codes`: `function`, `middleware`, `proxy`, `signals`, `extension`,
+`extension-policy` (including `auth:`), `external-binding` (an `env` read from
+the host or a `secret`), `pattern-constrained` (an input with `pattern` or
+`format`) and `include`. `review` lists a route the helper could not write a
+certain case for, with one `code`: `conditional` (`match`/`conditional`),
+`expires`, `static-directory`, `policy` (an `agents` or `throttle` policy that
+can answer first), `parameter-schema`, `shadowed`, `include-shadowing` (a
+parameterized or wildcard route in a document with includes), `request-body`,
+`site`, `unknown-path` and `size`. A route in `gaps` or `review` never appears
+in `cases`, so a suggestion never reads as coverage it is not.
+
+```json
+{"format":1,"scope":"supplied-yaml-only","routeCount":3,
+ "fixtures":[{"path":"/go","status":301,"expectHeaders":{"location":"https://example.com/"}},
+             {"path":"/go","method":"POST","status":405,"expectHeaders":{"allow":"GET, HEAD"}},
+             {"path":"/__urlcode-fixture-unmatched","status":404}],
+ "cases":[{"route":"/go","kind":"redirect"},{"route":"/go","kind":"method-refusal"},{"route":null,"kind":"unknown-path"}],
+ "review":[{"route":"/cond","code":"conditional","reason":"..."}],
+ "gaps":[{"route":"/api","codes":["function"],"reason":"..."}],
+ "limits":{"maxFixtures":200,"maxEntries":200,"maxBodyBytes":1024,"maxFixtureBytes":393216},
+ "truncated":{"fixtures":0,"review":0,"gaps":0}}
+```
+
+`cases` is parallel to `fixtures`. Routes are visited in code-point order, so
+the same text always gives the same bytes. `maxFixtures` defaults to 200
+(at most 1,000); fixtures also stop at 384 KiB of JSON, `review` and `gaps` at
+200 entries each, and `truncated` counts what a limit dropped. Invalid YAML is
+refused with the validator's message. The cases assume the local
+`urlcode test` runner: an operator host's plugins or extensions registered for
+routes the YAML does not name are outside what the YAML says.
+
+## YAML change summaries
+
+`urlcode diff BEFORE.yaml [AFTER.yaml] [--project DIR] [--json]` (MCP
+`summarize_yaml_change {before, after?}`, SDK `summarizeYamlChange(before,
+after)` from `@jimhoyd/urlcode/agent-context`) compares two URLCode YAML
+documents; `AFTER` defaults to the project's `urlcode.yaml`. Both must
+validate. It reports names and keys, never values: no redirect destination,
+literal, `env` default or secret appears in the result. Like fixture
+suggestions it reads the supplied text only and always exits 0.
+
+- `routes`: `added` and `removed` (pattern, handler, execution `mode`) and
+  `changed`, each with the top-level route `keys` that differ (after `use:` and
+  `auth:` expansion), the handler before and after and the route's capability
+  names added and removed. A project-level policy or profile change that alters
+  a route's effective capabilities lists that route with empty `keys`.
+- `capabilities`: the project-wide union of [capability](CAPABILITIES.md) names
+  added and removed.
+- `code`: the project code seams, each `{route, kind: function|middleware,
+  source, export, mode: trusted|sandboxed}`: `added`, `removed`, `argsChanged`
+  (same function, different `args`), `modeChanged` (a `sandbox:` flip on a route
+  with code in both versions) and the new version's `trusted` and `sandboxed`
+  counts. See [function security](FUNCTION-SECURITY.md) for what each mode
+  means.
+- `grants`: what the new version `requested` that the old did not, and what it
+  `released`: `env` and `secrets` names and `egress` origins per route (the same
+  projection `urlcode permissions` prints), and `extensions` the operator must
+  register (`via` a `declaration`, a `mount` or a route `policy`). The helper
+  never grants anything; `note` restates that grants are revision-pinned
+  operator policy that any change must re-review.
+- `project`: the other top-level keys that changed and the includes added and
+  removed (their routes are not read).
+
+```json
+{"format":1,"scope":"supplied-yaml-only","changed":true,
+ "routes":{"before":1,"after":2,"added":[{"route":"/p","handler":"proxy","mode":"trusted"}],"removed":[],
+           "changed":[{"route":"/f","keys":["sandbox"],"handler":{"before":"function","after":"function"},"capabilities":{"added":[],"removed":[]}}]},
+ "capabilities":{"added":["proxy"],"removed":[]},
+ "code":{"added":[],"removed":[],"argsChanged":[],"modeChanged":[{"route":"/f","before":"trusted","after":"sandboxed"}],"trusted":0,"sandboxed":1},
+ "grants":{"requested":{"env":[],"secrets":[],"egress":[{"route":"/p","purpose":"proxy","origin":"https://upstream.example"}],"extensions":[]},
+           "released":{"env":[],"secrets":[],"egress":[],"extensions":[]},"note":"..."},
+ "project":{"changed":[],"includes":{"added":[],"removed":[]}},
+ "limits":{"maxEntries":200},"truncated":{}}
+```
+
+Every list is sorted and holds at most 200 entries; `truncated` names each
+list a limit cut and how many entries it dropped. To compare two compiled
+route reports (`urlcode routes` output) instead, use `urlcode routes --compare`.
+
 ## Explain and manifest
 
 `urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--json]`
@@ -321,7 +428,9 @@ call), are `get_context`, `inspect`, `validate`, `run_tests`,
 `get_release_addon_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
 `get_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
-`urlcode review`). `run_tests` runs `tests/requests.json` the way `urlcode
+`urlcode review`), with `suggest_fixtures` and `summarize_yaml_change` listed
+after `explain_error` (see [fixture suggestions](#fixture-suggestions) and
+[YAML change summaries](#yaml-change-summaries)). `run_tests` runs `tests/requests.json` the way `urlcode
 test` does, against a disposable local server instance; it is read-only in
 that it never writes a project file. `tools/list` additionally lists the
 pre-#590 name of every renamed tool (`capabilities`, `import_preview`,
@@ -339,10 +448,10 @@ documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
 `urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
-The `list_skills`, `get_skill`, `list_agent_catalog`, `get_release_addon_catalog`, `search_docs`, `get_example`, `validate_yaml` and
-`explain_error` tools are thin wrappers over `@jimhoyd/urlcode/agent-context`
+The `list_skills`, `get_skill`, `list_agent_catalog`, `get_release_addon_catalog`, `search_docs`, `get_example`, `validate_yaml`,
+`explain_error`, `suggest_fixtures` and `summarize_yaml_change` tools are thin wrappers over `@jimhoyd/urlcode/agent-context`
 (`listSkills`, `getSkill`, `listAgentCatalog`, `readAddonCatalog`, `searchDocs`, `getExample`, `validateYaml`,
-`explainError`), a public package export — not an internal detail of this
+`explainError`, `suggestFixtures`, `summarizeYamlChange`), a public package export — not an internal detail of this
 server. A host building its own MCP server, or any other agent-tooling
 integration, can import that module directly instead of reimplementing this
 behavior or reaching into `dist/agent-context.js`; see
@@ -508,8 +617,8 @@ shared skill catalog or LLM tools are useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-four read
-tools above (thirty-five with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-six read
+tools above (thirty-seven with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 
