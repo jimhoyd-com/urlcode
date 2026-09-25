@@ -167,13 +167,20 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
   };
 }
 
+/** Drops trailing slashes in one linear pass; a regex like `/\/+$/` backtracks quadratically on long runs of slashes in a request path. */
+function trimTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+  return path.slice(0, end);
+}
+
 async function handle(byMount: ReadonlyMap<string, Binding>, request: ExtensionRequest): Promise<HandlerResult> {
   const binding = request.mount === null ? undefined : byMount.get(request.mount);
   if (!binding) return text(404, 'Not found');
   // A record flow never answers without a principal: never a fallback to a shared view.
   const principal = request.principal ?? null;
   if (principal === null) return text(401, 'Sign in to use this form');
-  const suffix = request.path.slice(binding.mount.length).replace(/\/+$/, '');
+  const suffix = trimTrailingSlashes(request.path.slice(binding.mount.length));
   const method = request.method.toUpperCase();
   try {
     if (suffix === '') return await create(binding, request, method);

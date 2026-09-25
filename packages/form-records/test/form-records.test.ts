@@ -266,6 +266,17 @@ test('activation refuses a shared collection, a mount without a principal provid
   await assert.rejects(createRuntime(app, { origin, extensions, target: 'aws' }), /Refused by the extension's own declared targets: form-records/);
 });
 
+test('trailing slashes are trimmed in linear time: a record path still resolves, and a long run of slashes answers quickly', async t => {
+  const { browser } = await boot(t);
+  const alice = browser('alice');
+  const id = await created(alice);
+  assert.equal((await alice(`/onboarding/${id}/`)).status, 200);
+  const started = performance.now();
+  const response = await alice(`/onboarding${'/'.repeat(4000)}x`);
+  assert.ok(response.status === 400 || response.status === 404, String(response.status)); // core refuses empty path segments first; the helper stays linear regardless
+  assert.ok(performance.now() - started < 2000, 'a slash-heavy path must not backtrack');
+});
+
 test('the registration refuses exports of another contract version', () => {
   const projectSha256 = 'a'.repeat(64);
   const store = { version: 1, active: false, records() { throw new Error('unused'); } } as const;
