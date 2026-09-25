@@ -252,6 +252,9 @@ if (!isMainThread && workerData?.authStore) {
     let dispatchTransaction = false;
     let configurationRevision = '';
     const roles = options.roles, permissions = (names: string[]): string[] => [...new Set(names.flatMap(name => roles[name] || []))];
+    // A support session may only reach what every plain member holds: a target granted anything beyond the default
+    // role (auth's, admin's, audit's or any other extension's permission) is privileged, whatever its name.
+    const member = new Set(roles[options.defaultRole] ?? []), privileged = (names: string[]): boolean => permissions(names).some(permission => !member.has(permission));
     const admin = (names: string[]) => permissions(names).includes('*');
     const error = (status: number, code: string): never => { throw new AuthError(status, code); };
     const num = (value: SQLOutputValue | undefined): number => Number(value);
@@ -314,7 +317,7 @@ if (!isMainThread && workerData?.authStore) {
         const user = account(String(found.accountId));
         if (found.impersonatorId) {
             const actor = account(String(found.impersonatorId)), p = actor ? permissions(actor.roles) : [];
-            if (!actor || actor.status !== 'active' || actor.version !== found.actorVersion || !p.includes('*') && !p.includes('auth.users.impersonate') || !user || permissions(user.roles).some(permission => permission === '*' || permission.startsWith('auth.') || permission.startsWith('admin.')))
+            if (!actor || actor.status !== 'active' || actor.version !== found.actorVersion || !p.includes('*') && !p.includes('auth.users.impersonate') || !user || privileged(user.roles))
                 return null;
         }
         return user?.status === 'active' ? { user, session: found as unknown as SessionRecord } : null;
@@ -1245,7 +1248,7 @@ if (!isMainThread && workerData?.authStore) {
                 case 'impersonate':
                     value = transaction(() => {
                         const actor = fresh(String(args.hash), now).user, target = active(String(args.accountId)), p = permissions(actor.roles);
-                        if (!options.registration.allowImpersonation || actor.id === target.id || !p.includes('*') && !p.includes('auth.users.impersonate') || permissions(target.roles).some(permission => permission === '*' || permission.startsWith('auth.') || permission.startsWith('admin.')))
+                        if (!options.registration.allowImpersonation || actor.id === target.id || !p.includes('*') && !p.includes('auth.users.impersonate') || privileged(target.roles))
                             error(403, 'impersonation_denied');
                         const issued = { ...args.session as unknown as SessionRecord, impersonatorId: actor.id, actorVersion: actor.version };
                         addSession(issued);

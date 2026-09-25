@@ -296,6 +296,21 @@ test('impersonation is opt-in, marked, expiring, denied privileged targets and i
     await service.adminSetRoles({ actorToken: fresh.token, accountId: target.user.id, roles: ['admin'] });
     assert.equal(await service.authenticate(again.token), null);
 });
+test('impersonation refuses any target granted more than the default role, whatever the permission is named', async (t) => {
+    const { service } = await setup(t, { allowImpersonation: true, roles: { ...roles, auditor: ['content.read', 'audit.read', 'audit.export'], storekeeper: ['content.read', 'store.notes.write'] } });
+    const admin = await service.bootstrapAdmin({ email: 'impersonator@example.com', password });
+    for (const role of ['auditor', 'storekeeper', 'editor']) {
+        const target = await service.register({ email: `${role}@example.com`, password });
+        await service.adminSetRoles({ actorToken: admin.token, accountId: target.user.id, roles: [role] });
+        await assert.rejects(service.createImpersonation({ actorToken: admin.token, accountId: target.user.id, reason: 'support' }), { code: 'impersonation_denied' }, role);
+    }
+    const member = await service.register({ email: 'member@example.com', password });
+    const support = await service.createImpersonation({ actorToken: admin.token, accountId: member.user.id, reason: 'support' });
+    assert.deepEqual(support.principal.permissions, ['content.read']);
+    // Granting the target an extension permission mid-session ends the support session rather than widening it.
+    await service.adminSetRoles({ actorToken: admin.token, accountId: member.user.id, roles: ['auditor'] });
+    assert.equal(await service.authenticate(support.token), null);
+});
 test('profile and terms validation persist registration data without allowing private metadata or authority injection', async (t) => {
     const { createRegistrationPolicy } = await import('../src/registration.ts');
     const registrationPolicy = createRegistrationPolicy({ termsVersion: '2026-09', metadata: { nickname: { type: 'string', scope: 'public' }, internalNote: { type: 'string', scope: 'private', default: 'operator-only' } } });

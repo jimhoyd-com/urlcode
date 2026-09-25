@@ -947,6 +947,8 @@ async function createService(options: AuthOptions): Promise<AuthServiceInternal>
     const defaultRole = options.defaultRole ?? 'user';
     if (!Object.hasOwn(roles, defaultRole) || roles[defaultRole]!.some(p => p === '*' || p.startsWith('auth.')))
         fail(400, 'unsafe_default_role');
+    // A support session keeps only these: the permissions every plain member holds.
+    const memberPermissions: ReadonlySet<string> = new Set(roles[defaultRole]);
     const mode = options.registrationMode ?? 'open';
     if (!['open', 'invite-only', 'waitlist', 'off'].includes(mode))
         fail(400, 'invalid_registration_mode');
@@ -1040,7 +1042,7 @@ async function createService(options: AuthOptions): Promise<AuthServiceInternal>
     };
     const perms = (names: string[]) => [...new Set(names.flatMap(name => roles[name] || []))];
     const restrictions = (user: AuthRecord): AuthRestriction[] => [...(securityPolicy.requireEmailVerification && !user.emailVerified ? ['verify-email' as const] : []), ...((user.mfaRecoveryRequired || securityPolicy.requireMfa && !user.totpSecret && !(securityPolicy.allowPasskeySecondFactor && user.mfaPasskeys?.length)) ? ['enroll-mfa' as const] : [])];
-    const principal = (user: AuthRecord, session: SessionRecord): AuthPrincipal => { const pending = restrictions(user); return { id: user.id, email: user.email, emailVerified: user.emailVerified, roles: pending.length ? [] : [...user.roles], permissions: pending.length ? [] : session.impersonatorId ? perms(user.roles).filter(p => p !== '*' && !p.startsWith('auth.') && !p.startsWith('admin.')) : perms(user.roles), ...(pending.length ? { restrictions: pending } : {}), ...(session.impersonatorId ? { impersonatorId: session.impersonatorId } : {}), sessionId: session.id, authenticatedAt: session.authenticatedAt }; };
+    const principal = (user: AuthRecord, session: SessionRecord): AuthPrincipal => { const pending = restrictions(user); return { id: user.id, email: user.email, emailVerified: user.emailVerified, roles: pending.length ? [] : [...user.roles], permissions: pending.length ? [] : session.impersonatorId ? perms(user.roles).filter(p => memberPermissions.has(p)) : perms(user.roles), ...(pending.length ? { restrictions: pending } : {}), ...(session.impersonatorId ? { impersonatorId: session.impersonatorId } : {}), sessionId: session.id, authenticatedAt: session.authenticatedAt }; };
     const sessionFor = (accountId: string, device?: AuthDevice): {
         raw: string;
         value: SessionRecord;

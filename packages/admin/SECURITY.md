@@ -10,7 +10,7 @@ Every delegated mutation goes through auth's administration API with the opaque 
 
 Case approval requires distinct authorized actors and a current target. A two-person approval transaction is not identity proof: establish a documented human evidence procedure for account recovery. Keep meaningful reasons and protect the audit trail. Review permissions before assigning support roles.
 
-Impersonation is explicit and bounded, excludes privileged targets, and cannot perform security/admin step-up actions. Auth notifies the account through mail before returning a usable impersonation session, and refuses the impersonation when it cannot. Auth's middleware shows a support banner on every route an auth policy guards; public pages without one show nothing. Do not claim universal banners or use impersonation as a substitute for least-privilege diagnostic tooling.
+Impersonation is explicit and bounded, excludes privileged targets (any account granted more than the default role's permissions), and cannot perform security/admin step-up actions. Auth notifies the account through mail before returning a usable impersonation session, and refuses the impersonation when it cannot. Auth's middleware shows a support banner on every route an auth policy guards; public pages without one show nothing. Do not claim universal banners or use impersonation as a substitute for least-privilege diagnostic tooling.
 
 Protect database backups, audit exports, operator stdin and notification records as sensitive data. Never post passwords, tokens, keys or live customer database files in public issues. Report vulnerabilities using the repository's private security reporting channel; if none is configured, request a private contact before sharing sensitive evidence.
 

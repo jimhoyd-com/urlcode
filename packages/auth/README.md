@@ -247,6 +247,12 @@ uncacheable and shows a banner ("support.banner" in the catalogue) with a link
 that ends the session, so the impersonation is visible on application pages
 too, not only on auth's own.
 
+Only an account whose roles grant nothing beyond the default role can be
+impersonated, and the support session carries only the default role's
+permissions. A permission is privileged by that rule, not by its name, so
+`audit.read` or another extension's permission excludes a target exactly as
+`auth.*` does, and granting one to the target mid-session ends the session.
+
 ## Bearer/API-key authentication
 
 `AuthService` also owns an optional, separate credential kind for
