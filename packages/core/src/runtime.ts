@@ -120,7 +120,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
-  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',origins,...(rpId===undefined?{}:{passkeyRpId:rpId}),target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root},loaded.routeAuth,warning=>sink({event:'warning',code:'extension-warning',extension:warning.extension,message:warning.message}));
+  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',origins,...(rpId===undefined?{}:{passkeyRpId:rpId}),target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root},loaded.routeAuth,sink);
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const notFoundPage = loaded.document.site?.notFound !== undefined && loaded.document.site.notFound !== null;
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.grantDataDir ? withDataDirGrant(loaded, snapshot.projectSha256, options.permissions) : options.permissions, snapshot.projectSha256, options.extensions);

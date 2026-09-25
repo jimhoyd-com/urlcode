@@ -131,9 +131,16 @@ export const budgets: Record<string, Budget> = {
     // with store reassign (#732) measure 703205 packed and 2863298 unpacked
     // bytes on Node 26, under 4 KiB from the previous budgets and inside the
     // ~2 KiB cross-Node gzip variance.
-    packed: 720 * 1024,
-    unpacked: 2900 * 1024,
-    entries: 460,
+    //
+    // Raised to 740 KiB packed, 2950 KiB unpacked and 470 entries when main's
+    // review report and studio (#749, #751: dist/project-report.js and
+    // dist/studio.js with declarations) met this branch's extension request
+    // helpers: together they measure 733793 packed and 2966469 unpacked bytes
+    // in 462 entries on Node 26, each within about 3 KiB of the old budget
+    // and two entries over its count.
+    packed: 740 * 1024,
+    unpacked: 2950 * 1024,
+    entries: 470,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
@@ -166,7 +173,8 @@ export const budgets: Record<string, Budget> = {
     // actor-bound administration API (dist/exports.js, dist/administration.js,
     // dist/delivery.js), the contributed mail templates and the audit outbox,
     // with their declarations and README/SECURITY contract, measure 237400
-    // packed and 967920 unpacked bytes in 83 files.
+    // packed and 967920 unpacked bytes in 83 files. Main's #736 passkey RP ID
+    // recording and startup warning (240/910 KiB there) fit inside these.
     packed: 250 * 1024,
     unpacked: 1000 * 1024,
     entries: 90,

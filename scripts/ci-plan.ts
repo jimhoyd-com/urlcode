@@ -58,6 +58,63 @@ export function classify(event: string, base: string | undefined, head: string |
 const nodes = ['22', '24', '26'];
 const operatingSystems = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
 
+/**
+ * High-impact pull request paths (#744). A change here has previously passed
+ * the Linux feedback lane and then failed on Windows or at the packed add-on
+ * boundary during release coverage (#668, #669, #673), so a pull request that
+ * touches one also gets a Windows Node 24 test leg and the packed add-on
+ * integration before merge. Each rule is deliberately broad within its area.
+ */
+const HIGH_IMPACT: readonly RegExp[] = [
+  // Installer, upgrade and scaffolding: code that writes a user's files,
+  // spawns npm, links packages or copies a starter onto disk.
+  /^packages\/core\/src\/(?:addon-install|extensions-cli|init-with|scaffold|recipes)\.ts$/,
+  /^packages\/core\/src\/upgrade[^/]*$/,
+  /^scripts\/create-extension[^/]*$/,
+  /^starters\//,
+  // Package manifests and dependency wiring: every package.json and lockfile
+  // (root, workspace, starter and example), add-on descriptors, and the
+  // scripts that link, order and describe the workspaces.
+  /(?:^|\/)package(?:-lock)?\.json$/,
+  /^packages\/[^/]+\/urlcode\.json$/,
+  /^scripts\/(?:workspaces|build-addon-manifest|check-workspace-links)\.ts$/,
+  // Release tooling: bump, pack, publish, the add-on packer, package
+  // smoke/audit, the Windows-aware npm launcher they share, and the release
+  // workflow.
+  /^scripts\/(?:release-[^/]+|pack-addons|package-[^/]+|npm-command)\.ts$/,
+  /^\.github\/workflows\/publish\.yml$/,
+  // Integration and cleanup: the packed add-on suite and the per-package
+  // fixture cleanup whose Windows SQLite ordering delayed a release (#673).
+  /^test\/addons\.integration\.ts$/,
+  /^scripts\/test-addons[^/]*$/,
+  /^packages\/[^/]+\/test\/cleanup\.ts$/,
+  // Shared inputs fail closed: any workflow, action or repository automation
+  // under .github/. Root-level files are handled by ROOT_FILE below.
+  /^\.github\//,
+];
+// Shared root configuration fails closed: any root-level file that is not
+// admitted prose (tsconfig*, eslint config, .node-version, .npmrc,
+// .gitattributes, install.sh, Makefile, and whatever is added there later).
+const ROOT_FILE = /^[^/]+$/;
+/**
+ * Whether a change touches a high-impact area. Fails closed: an unclassifiable
+ * (null) or empty diff is high-impact. Prose never is, so a docs-only change
+ * keeps the compact lane.
+ */
+export function highImpact(paths: string[] | null): boolean {
+  if (!paths?.length) return true;
+  return paths.some(path => !PROSE.test(path) && (ROOT_FILE.test(path) || HIGH_IMPACT.some(rule => rule.test(path))));
+}
+/**
+ * The legs a high-impact pull request adds to its tests: Windows on the default
+ * Node, where process spawning, path separators, file locking and cleanup
+ * ordering differ from Linux. Only pull requests: main pushes keep the feedback
+ * lane, and exact-commit runs already cover every OS and Node.
+ */
+export function platformLegs(event: string, paths: string[] | null): { os: string; node: string }[] {
+  return event === 'pull_request' && highImpact(paths) ? [{ os: 'windows-latest', node: '24' }] : [];
+}
+
 export function testMatrix(event: string, _paths: string[] | null): { include: { os: string; node: string }[] } {
   // PRs and main pushes are the feedback lane. The queue and an explicit
   // dispatch are exact-commit coverage, while the scheduled run detects
@@ -70,8 +127,10 @@ export function testMatrix(event: string, _paths: string[] | null): { include: {
 // `npm test` is split into this many `node --test --test-shard=N/M` jobs per
 // leg, so the suite's wall time is a third of the serial run plus setup.
 export const SHARDS = 3;
+// `node --test-shard` splits by file, not by subject, so a Windows leg runs all
+// three shards: the process- and filesystem-sensitive tests are spread across them.
 export function shardMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; shard: number }[] } {
-  return { include: testMatrix(event, paths).include.flatMap(leg => Array.from({ length: SHARDS }, (_, index) => ({ ...leg, shard: index + 1 }))) };
+  return { include: [...testMatrix(event, paths).include, ...platformLegs(event, paths)].flatMap(leg => Array.from({ length: SHARDS }, (_, index) => ({ ...leg, shard: index + 1 }))) };
 }
 /**
  * A core archive smoke is unnecessary for an extension-only edit: extensions
@@ -190,17 +249,25 @@ export function workspacePackages(paths: string[] | null): readonly string[] {
   return WORKSPACE_PACKAGES.filter(pkg => selected.has(pkg));
 }
 
+/**
+ * A high-impact extension-only change (an add-on's manifest, descriptor or
+ * fixture cleanup) skips the core `verify` shards, so its Windows leg runs the
+ * selected packages' own suites instead. Any other high-impact change puts the
+ * Windows leg on the core shards and leaves extension suites on Linux.
+ */
 export function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string; deps: string }[] } {
-  return { include: testMatrix(event, paths).include.flatMap(leg => workspacePackages(paths).map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
+  const legs = [...testMatrix(event, paths).include, ...(coreChecksRelevant(paths) ? [] : platformLegs(event, paths))];
+  return { include: legs.flatMap(leg => workspacePackages(paths).map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
 }
 
 /**
- * The cross-workspace scaffold and package-boundary test is release-only: a
- * release run (publish.yml calling ci.yml with `release: true`, planned as a
- * dispatch) and an explicit dispatch cover every supported OS on the default
- * Node runtime before anything is published.
+ * The cross-workspace scaffold and package-boundary test. A release run
+ * (publish.yml calling ci.yml with `release: true`, planned as a dispatch) and
+ * an explicit dispatch cover every supported OS on the default Node runtime
+ * before anything is published. A high-impact pull request (#744) runs it on
+ * Linux Node 24 before merge; every other routine run skips it.
  */
-export function workspaceIntegrationMatrix(event: string): { include: { os: string; node: string }[] } {
+export function workspaceIntegrationMatrix(event: string, paths: string[] | null): { include: { os: string; node: string }[] } {
   if (event === 'workflow_dispatch') {
     return { include: [
       { os: 'ubuntu-latest', node: '24' },
@@ -208,6 +275,7 @@ export function workspaceIntegrationMatrix(event: string): { include: { os: stri
       { os: 'windows-latest', node: '24' },
     ] };
   }
+  if (event === 'pull_request' && highImpact(paths)) return { include: [{ os: 'ubuntu-latest', node: '24' }] };
   return { include: [] };
 }
 export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false, coreChecks = false, action = false, buildFidelity = false, container = false, packageFloorSmoke = false): void {
@@ -248,14 +316,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!paths) console.log(`No classifiable diff for ${event || 'this event'}; selecting full verification`);
     else console.log(JSON.stringify({ lane, paths }));
     const matrix = testMatrix(event, paths);
-    const integration = event === 'workflow_dispatch';
+    const impact = highImpact(paths);
+    const legs = platformLegs(event, paths);
+    const integrationMatrix = workspaceIntegrationMatrix(event, paths);
+    const integration = integrationMatrix.include.length > 0;
     const coreChecks = coreChecksRelevant(paths);
     const action = actionRelevant(paths);
     const buildFidelity = buildFidelityRelevant(paths);
     const container = containerRelevant(paths);
     const packageFloorSmoke = packageFloorSmokeRelevant(paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(workspaceIntegrationMatrix(event))}\ncoreChecks=${coreChecks}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\npackageFloorSmoke=${packageFloorSmoke}\n`);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(integrationMatrix)}\nhighImpact=${impact}\nplatformLegs=${JSON.stringify(legs)}\ncoreChecks=${coreChecks}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\npackageFloorSmoke=${packageFloorSmoke}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
-    console.log(`CI plan: ${lane}`);
+    console.log(`CI plan: ${lane}; high-impact: ${impact}; extra platform legs: ${JSON.stringify(legs)}; packed integration: ${integration}`);
   }
 }

@@ -268,6 +268,10 @@ if (!isMainThread && workerData?.authStore) {
         db.prepare('DELETE FROM auth_daily_metrics WHERE day<?').run(day - 29);
         db.prepare('INSERT INTO auth_daily_metrics(day,method,event,count) VALUES(?,?,?,?) ON CONFLICT(day,method,event) DO UPDATE SET count=count+excluded.count').run(day, method, event, count);
     };
+    // Every insert records the credential's RP ID (#736) in `rp_id` beside the JSON; NULL when it carries none.
+    const insertPasskey = (credential: Record<string, unknown>, accountId: string) => {
+        db.prepare('INSERT INTO auth_passkeys(id,account_id,data,counter,rp_id) VALUES(?,?,?,?,?)').run(String(credential.id), accountId, JSON.stringify(credential), Number(credential.counter), typeof credential.rpId === 'string' ? credential.rpId : null);
+    };
     const methodActivity = (kind:string, methodId:string, accountId:string, time:number, added=false) => {
         db.prepare('INSERT INTO auth_method_activity(kind,method_id,account_id,added,last_used) VALUES(?,?,?,?,?) ON CONFLICT(kind,method_id) DO UPDATE SET last_used=excluded.last_used').run(kind,methodId,accountId,added?time:null,added?null:time);
     };
@@ -517,6 +521,10 @@ if (!isMainThread && workerData?.authStore) {
         if (!db.prepare('PRAGMA table_info(auth_api_keys)').all().some(row => row.name === 'user_id'))
             db.exec('ALTER TABLE auth_api_keys ADD COLUMN user_id TEXT;');
         db.exec('CREATE INDEX IF NOT EXISTS auth_api_keys_user ON auth_api_keys(user_id);');
+        // The RP ID each passkey was registered under (urlcode#736). Added in place like the columns above: a passkey
+        // stored before it existed keeps NULL, meaning unrecorded.
+        if (!db.prepare('PRAGMA table_info(auth_passkeys)').all().some(row => row.name === 'rp_id'))
+            db.exec('ALTER TABLE auth_passkeys ADD COLUMN rp_id TEXT;');
         if (!db.prepare('PRAGMA table_info(auth_sessions)').all().some(row => row.name === 'recovery_enrollment'))
             db.exec('ALTER TABLE auth_sessions ADD COLUMN recovery_enrollment INTEGER NOT NULL DEFAULT 0');
         const configuration = createHash('sha256').update(JSON.stringify({ roles: Object.fromEntries(Object.keys(roles).sort().map(name => [name, [...roles[name]!].sort()])), defaultRole: options.defaultRole, registration: options.registration, ...(options.configurationTag !== undefined ? { configurationTag: options.configurationTag } : {}), ...(options.sessionTtlMs !== 86400000 || options.sessionIdleMs !== 1800000 ? { sessionLimits: { absoluteMs: options.sessionTtlMs, idleMs: options.sessionIdleMs } } : {}), ...(options.securityPolicy.allowManualRecovery || options.securityPolicy.allowPasskeySecondFactor || options.securityPolicy.trustedDeviceTtlMs || options.securityPolicy.allowEmailFactorRecovery || options.securityPolicy.requireEmailVerification || options.securityPolicy.requireMfa || options.securityPolicy.deletionGraceMs !== 604800000 ? { securityPolicy: options.securityPolicy } : {}) })).digest('hex');
@@ -882,7 +890,7 @@ if (!isMainThread && workerData?.authStore) {
                         const passkey = credential.passkey;
                         if (db.prepare('SELECT id FROM auth_passkeys WHERE id=?').get(passkey.id))
                             error(409, 'credential_already_registered');
-                        db.prepare('INSERT INTO auth_passkeys VALUES(?,?,?,?)').run(passkey.id, user.id, JSON.stringify(passkey), passkey.counter);
+                        insertPasskey(passkey, user.id);
                         methodActivity('passkey', String(passkey.id), user.id, now, true);
                     }
                     if (credential.passkey)
@@ -1220,7 +1228,7 @@ if (!isMainThread && workerData?.authStore) {
                             error(409, 'credential_limit');
                         if (db.prepare('SELECT id FROM auth_passkeys WHERE id=?').get(String(credential.id)))
                             error(409, 'credential_already_registered');
-                        db.prepare('INSERT INTO auth_passkeys VALUES(?,?,?,?)').run(String(credential.id), user.id, JSON.stringify(credential), Number(credential.counter));
+                        insertPasskey(credential, user.id);
                         methodActivity('passkey', String(credential.id), user.id, now, true);
                         user.version++;
                         save(user);
@@ -1232,6 +1240,12 @@ if (!isMainThread && workerData?.authStore) {
                     const row = db.prepare('SELECT * FROM auth_passkeys WHERE id=?').get(String(args.id));
                     const owner = row ? account(String(row.account_id)) : null;
                     value = row && owner ? { accountId: String(row.account_id), credential: { ...JSON.parse(String(row.data)), counter: Number(row.counter) }, proof: { kind: 'passkey', version: owner.version, credentialId: String(row.id), publicKeyHash: createHash('sha256').update(String(JSON.parse(String(row.data)).publicKey)).digest('hex'), expectedCounter: Number(row.counter) } } : null;
+                    break;
+                }
+                case 'countPasskeysByRelyingParty': {
+                    // One aggregate over the table; no account or credential id leaves the store.
+                    const row = db.prepare('SELECT count(CASE WHEN rp_id IS NOT NULL AND rp_id<>? THEN 1 END) AS mismatched,count(CASE WHEN rp_id IS NULL THEN 1 END) AS unrecorded FROM auth_passkeys').get(String(args.rpId));
+                    value = { mismatched: num(row?.mismatched), unrecorded: num(row?.unrecorded) };
                     break;
                 }
                 case 'listPasskeys':
@@ -1413,7 +1427,7 @@ if (!isMainThread && workerData?.authStore) {
                             const passkey = JSON.parse(String(request!.passkey));
                             if (db.prepare('SELECT id FROM auth_passkeys WHERE id=?').get(passkey.id))
                                 error(409, 'credential_already_registered');
-                            db.prepare('INSERT INTO auth_passkeys VALUES(?,?,?,?)').run(passkey.id, user.id, JSON.stringify(passkey), passkey.counter);
+                            insertPasskey(passkey, user.id);
                         methodActivity('passkey', String(passkey.id), user.id, now, true);
                         }
                         db.prepare('DELETE FROM auth_waitlist WHERE id=?').run(user.id);
@@ -1894,9 +1908,6 @@ if (!isMainThread && workerData?.authStore) {
                     value = num(db.prepare('SELECT count(*) AS n FROM auth_audit_outbox').get()?.n);
                     break;
                 // Stored passkeys by the RP ID they were registered for ('' when none was recorded).
-                case 'passkeyRpIds':
-                    value = Object.fromEntries(db.prepare("SELECT coalesce(json_extract(data,'$.rpId'),'') AS rp,count(*) AS n FROM auth_passkeys GROUP BY rp").all().map(row => [String(row.rp), num(row.n)]));
-                    break;
                 default: error(400, 'unsupported_auth_operation');
             }
             db.exec('COMMIT');

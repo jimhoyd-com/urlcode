@@ -69,8 +69,12 @@ option or `URLCODE_PASSKEY_RP_ID`. It is never project YAML. See
 > `--passkey-rp-id` for the first time, changing it, or removing it strands
 > every passkey registered under the previous RP ID; those users must sign in
 > another way and register a new passkey, and a passkey-only account needs
-> recovery. The runtime cannot detect the change for you (auth does not record
-> a credential's RP ID), so treat the value as fixed once users enrol.
+> recovery. Treat the value as fixed once users enrol. Auth records the RP ID of
+> each passkey registered since #736 and, at startup, prints an
+> `extension_warning` with the number of stored passkeys that cannot work under
+> the current RP ID (and, when `--passkey-rp-id` is set, how many older
+> passkeys predate that record); see
+> [auth's passkey notes](../packages/auth/README.md#passkeys-and-the-relying-party-domain).
 
 Use a process supervisor that restarts on
 failure and sends SIGTERM for shutdown. On SIGTERM, `/_urlcode/ready` starts

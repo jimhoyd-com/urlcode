@@ -5,7 +5,10 @@ export interface StoredPasskey {
     publicKey: string;
     counter: number;
     transports?: string[];
-    /** The relying-party ID the credential was registered for; auth records it so a later RP ID change is noticed (#736). */
+    /**
+     * The relying-party ID the credential was registered under (issue #736). Absent on credentials stored before auth
+     * recorded it. Informational: verification always uses the provider's current RP ID.
+     */
     rpId?: string;
 }
 export interface PasskeyProviderOptions {

@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   SHARDS, actionRelevant, buildFidelityRelevant, checksMatrix, classify,
-  containerRelevant, coreChecksRelevant, diffRange, docsOnly, gate,
-  packageSmokeRelevant, planEvent, shardMatrix, testMatrix, workspaceIntegrationMatrix,
+  containerRelevant, coreChecksRelevant, diffRange, docsOnly, gate, highImpact,
+  packageSmokeRelevant, planEvent, platformLegs, shardMatrix, testMatrix, workspaceIntegrationMatrix,
   workspacePackageMatrix, workspacePackages,
 } from '../scripts/ci-plan.ts';
 
@@ -100,7 +100,8 @@ test('a release run is planned as exact-commit coverage whatever event triggered
   const release = planEvent({ CI_RELEASE: 'true', GITHUB_EVENT_NAME: 'push' });
   assert.deepEqual(classify(release, 'a'.repeat(40), 'b'.repeat(40), () => ['docs/CI.md']), { lane: 'full', paths: null });
   assert.equal(testMatrix(release, null).include.length, 9);
-  assert.equal(workspaceIntegrationMatrix(release).include.length, 3);
+  assert.equal(workspaceIntegrationMatrix(release, null).include.length, 3);
+  assert.deepEqual(platformLegs(release, null), []);
 });
 
 test('workspace selection includes reverse dependencies and reserves integration for release dispatch', () => {
@@ -119,8 +120,9 @@ test('workspace selection includes reverse dependencies and reserves integration
   assert.equal(workspacePackageMatrix('pull_request', ['packages/form-records/README.md']).include[0]!.deps, 'ui audit abuse mail forms store');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/README.md']).include[0]!.deps, 'ui audit mail abuse auth');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/store/src/screens.ts']).include[0]!.deps, 'ui audit');
-  for (const event of ['pull_request', 'push', 'schedule']) assert.deepEqual(workspaceIntegrationMatrix(event).include, []);
-  assert.deepEqual(workspaceIntegrationMatrix('workflow_dispatch').include, [
+  for (const event of ['pull_request', 'push', 'schedule']) assert.deepEqual(workspaceIntegrationMatrix(event, ['packages/core/src/runtime.ts']).include, []);
+  for (const event of ['push', 'schedule', 'merge_group']) assert.deepEqual(workspaceIntegrationMatrix(event, null).include, []);
+  assert.deepEqual(workspaceIntegrationMatrix('workflow_dispatch', ['docs/CI.md']).include, [
     { os: 'ubuntu-latest', node: '24' }, { os: 'macos-latest', node: '24' }, { os: 'windows-latest', node: '24' },
   ]);
 });
@@ -129,10 +131,98 @@ test('every test leg has every shard and routine checks stay on the fast leg', (
   assert.equal(SHARDS, 3);
   for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch', 'merge_group']) {
     const legs = testMatrix(event, null).include;
-    assert.equal(shardMatrix(event, null).include.length, legs.length * SHARDS);
+    // An unclassifiable pull request fails closed and adds its high-impact platform leg to the shards only.
+    assert.equal(shardMatrix(event, null).include.length, (legs.length + platformLegs(event, null).length) * SHARDS);
     const checks = checksMatrix(event, null).include;
     assert.deepEqual(checks.map(({ os, node }) => ({ os, node })), legs);
     if (['pull_request', 'push'].includes(event)) assert.deepEqual(checks.filter(check => check.full).map(check => `${check.os}/${check.node}`), ['ubuntu-latest/24']);
     else assert.equal(checks.filter(check => check.full).length, 9);
   }
+});
+
+// #744: one representative path per high-impact area.
+const HIGH_IMPACT_PATHS = {
+  installer: ['packages/core/src/addon-install.ts', 'packages/core/src/extensions-cli.ts', 'packages/core/src/upgrade.ts', 'packages/core/src/scaffold.ts', 'packages/core/src/init-with.ts', 'scripts/create-extension.ts', 'starters/default/app/urlcode.yaml'],
+  manifests: ['package.json', 'package-lock.json', 'packages/core/package.json', 'packages/auth/package.json', 'packages/store/urlcode.json', 'examples/hello/package.json', 'scripts/workspaces.ts', 'scripts/build-addon-manifest.ts'],
+  release: ['scripts/npm-command.ts', 'scripts/release-bump.ts', 'scripts/release-pack.ts', 'scripts/release-publish.ts', 'scripts/pack-addons.ts', 'scripts/package-smoke.ts', 'scripts/package-audit.ts', '.github/workflows/publish.yml'],
+  integration: ['test/addons.integration.ts', 'scripts/test-addons.ts', 'packages/auth/test/cleanup.ts', 'packages/admin/test/cleanup.ts'],
+  shared: ['.github/workflows/ci.yml', '.github/dependabot.yml', 'tsconfig.json', 'eslint.config.js', '.node-version', '.gitattributes', 'install.sh', 'Makefile'],
+};
+const ORDINARY = ['packages/core/src/runtime.ts', 'packages/core/src/server.ts', 'test/runtime.test.ts', 'examples/hello/urlcode.yaml', 'packages/auth/src/auth.ts', 'packages/ui/src/kit.ts', 'schemas/urlcode.schema.json', 'packages/auth/README.md', 'scripts/ci-build-fidelity.ts'];
+
+test('each high-impact area adds a Windows test leg and the packed integration to a pull request', () => {
+  for (const [area, paths] of Object.entries(HIGH_IMPACT_PATHS)) {
+    for (const path of paths) {
+      const changed = ['packages/core/src/runtime.ts', 'docs/CI.md', path];
+      assert(highImpact([path]), `${area}: ${path}`);
+      assert.deepEqual(platformLegs('pull_request', changed), [{ os: 'windows-latest', node: '24' }], path);
+      assert.deepEqual(workspaceIntegrationMatrix('pull_request', changed).include, [{ os: 'ubuntu-latest', node: '24' }], path);
+      const shards = shardMatrix('pull_request', changed).include;
+      assert.deepEqual(shards.map(({ os, node, shard }) => `${os}/${node}/${shard}`), [
+        'ubuntu-latest/24/1', 'ubuntu-latest/24/2', 'ubuntu-latest/24/3', 'windows-latest/24/1', 'windows-latest/24/2', 'windows-latest/24/3',
+      ], path);
+      // The rest of the routine lane is unchanged: checks and core-affecting workspace suites stay on Linux.
+      assert.deepEqual(checksMatrix('pull_request', changed).include.map(({ os }) => os), ['ubuntu-latest'], path);
+      assert(workspacePackageMatrix('pull_request', changed).include.every(({ os }) => os === 'ubuntu-latest'), path);
+    }
+  }
+});
+
+test('an extension-only high-impact change puts its Windows leg on the selected package suites', () => {
+  for (const path of ['packages/auth/package.json', 'packages/auth/test/cleanup.ts', 'packages/store/urlcode.json']) {
+    assert(!coreChecksRelevant([path]));
+    const matrix = workspacePackageMatrix('pull_request', [path]).include;
+    const packages = workspacePackages([path]);
+    assert.deepEqual(matrix.map(({ os, package: pkg }) => `${os}/${pkg}`), [...packages.map(pkg => `ubuntu-latest/${pkg}`), ...packages.map(pkg => `windows-latest/${pkg}`)], path);
+    assert.deepEqual(workspaceIntegrationMatrix('pull_request', [path]).include, [{ os: 'ubuntu-latest', node: '24' }]);
+  }
+  // An ordinary extension-only change keeps its Linux-only suites and no integration.
+  assert(workspacePackageMatrix('pull_request', ['packages/auth/src/auth.ts']).include.every(({ os }) => os === 'ubuntu-latest'));
+  assert.deepEqual(workspaceIntegrationMatrix('pull_request', ['packages/auth/src/auth.ts']).include, []);
+});
+
+test('docs-only and ordinary source pull requests keep the compact lane', () => {
+  for (const paths of [['docs/CI.md'], ['README.md', 'docs/INSTALL.md', 'llms.txt', 'packages/ui/CONTRIBUTING.md'], ORDINARY, ...ORDINARY.map(path => [path])]) {
+    assert(!highImpact(paths), paths.join());
+    assert.deepEqual(platformLegs('pull_request', paths), []);
+    assert.deepEqual(workspaceIntegrationMatrix('pull_request', paths).include, []);
+    assert(shardMatrix('pull_request', paths).include.every(({ os }) => os === 'ubuntu-latest'));
+    assert(workspacePackageMatrix('pull_request', paths).include.every(({ os }) => os === 'ubuntu-latest'));
+  }
+});
+
+test('unknown and shared pull request inputs fail closed to the broader selection', () => {
+  for (const paths of [null, [], ['.github/workflows/ci.yml'], ['tsconfig.base.json'], ['.npmrc'], ['unknown-root-file']]) {
+    assert(highImpact(paths), JSON.stringify(paths));
+    assert.deepEqual(platformLegs('pull_request', paths), [{ os: 'windows-latest', node: '24' }]);
+    assert.deepEqual(workspaceIntegrationMatrix('pull_request', paths).include, [{ os: 'ubuntu-latest', node: '24' }]);
+    assert.equal(shardMatrix('pull_request', paths).include.length, 2 * SHARDS);
+  }
+  // Unreadable history is planned with null paths, and so is broad.
+  const plan = classify('pull_request', 'a'.repeat(40), 'b'.repeat(40), () => { throw new Error('shallow'); });
+  assert.deepEqual(platformLegs('pull_request', plan.paths), [{ os: 'windows-latest', node: '24' }]);
+});
+
+test('main pushes and exact-commit coverage are unchanged by high-impact selection', () => {
+  const path = ['package-lock.json'];
+  assert.deepEqual(platformLegs('push', path), []);
+  assert.deepEqual(shardMatrix('push', path).include.map(({ os }) => os), Array(SHARDS).fill('ubuntu-latest'));
+  assert.deepEqual(workspaceIntegrationMatrix('push', path).include, []);
+  for (const event of ['schedule', 'workflow_dispatch', 'merge_group']) {
+    assert.deepEqual(platformLegs(event, null), []);
+    assert.equal(shardMatrix(event, null).include.length, 9 * SHARDS);
+    assert.equal(workspacePackageMatrix(event, null).include.length, 9 * 10);
+  }
+  assert.equal(workspaceIntegrationMatrix('workflow_dispatch', null).include.length, 3);
+  assert.deepEqual(workspaceIntegrationMatrix('merge_group', null).include, []);
+  assert.deepEqual(workspaceIntegrationMatrix('schedule', null).include, []);
+});
+
+test('the gate requires the packed integration exactly when the plan selected it', () => {
+  const names = ['plan', 'docs', 'static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
+  const all = Object.fromEntries(names.map(name => [name, { result: 'success' }]));
+  gate('full', all, true, true, true, true, true, true);
+  assert.throws(() => gate('full', { ...all, 'workspace-integration': { result: 'skipped' } }, true, true, true, true, true, true), /workspace-integration/);
+  gate('full', { ...all, 'workspace-integration': { result: 'skipped' } }, false, true, true, true, true, true);
+  assert.throws(() => gate('full', all, false, true, true, true, true, true), /workspace-integration/);
 });

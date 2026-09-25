@@ -429,6 +429,72 @@ Every list is sorted and holds at most 200 entries; `truncated` names each
 list a limit cut and how many entries it dropped. To compare two compiled
 route reports (`urlcode routes` output) instead, use `urlcode routes --compare`.
 
+## Review report
+
+`urlcode report [BEFORE] [--project DIR] [--policy F] [--host-file F] [--json]` prints one
+self-contained HTML page for a person reviewing a project or a change:
+`urlcode report main-checkout/ > report.html`. It is a view over three
+existing outputs and adds no analysis of its own: the routes are exactly what
+[`explain`](#explain-and-manifest) returns, the findings are
+[`review`](#project-review)'s, and with `BEFORE` (read like `urlcode diff`
+reads it: a YAML file, or a project directory with its includes) the changes
+are [`diff`](#yaml-change-summaries)'s. So it shows no value those outputs
+omit: no binding value, secret or redirect destination from the change
+summary, and no project code runs.
+
+The page has three parts:
+
+- **Needs attention**, the only thing the report derives. `Fix` items need
+  the operator's files, which stay outside the project. With `--policy` (the
+  binding policy `dev` and `serve` take): a policy pinned to a different
+  project revision, and each env, secret or outbound origin a route requests
+  that the policy does not grant, compared by name with what `urlcode
+  permissions` prints. With `--host-file`: an add-on a route uses that the
+  host file does not register, a registration pinned to a different
+  revision, or a route requirement that fails the add-on's policy schema.
+  When the project needs one of these and the file is not passed, the page
+  says that part is unchecked. Passing both loads the host the way `dev`
+  does, so a host file whose pin disagrees with the policy stops with that
+  same error instead of producing a page. `Check` items: a disabled or
+  expired route, each review finding, and, with `BEFORE`, new function or
+  middleware code, a `sandbox:` flip, a newly requested operator grant and a
+  removed route.
+- **Changes since `BEFORE`**, in plain sentences, and the grant note.
+- **Routes**: handler, methods, whether code runs trusted or sandboxed,
+  policies and what the route needs from the host. Opening a route shows what
+  happens to a request: match, policies, add-on requirements, middleware,
+  handler, response caching and the targets that refuse it.
+
+Handler details are printed generically from `explain`, so a new handler or
+field appears without a change to the report. `--json` prints the same data
+(`format`, `projectSha256`, `routeCount`, `host`, `policy`, `attention`, `routes`,
+`review` and, with `BEFORE`, `change`), and `buildProjectReport` /
+`renderProjectReport` in `project-report.ts` produce it and the page. The page
+is deterministic, carries a Content-Security-Policy that allows no script and
+escapes all project text, so it is safe to publish as a pull request artifact.
+It is read-only: it grants nothing and does not replace `validate` or `test`.
+
+### Studio
+
+`urlcode studio [BEFORE] [--project DIR] [--port 4100] [--host 127.0.0.1]
+[--policy F] [--host-file F]` serves the same page while you work: it prints
+a URL, and every page load rebuilds the report from disk, so reloading shows
+the project as it is now. It takes `BEFORE`, `--policy` and `--host-file`
+exactly as `report` does. The policy file and `BEFORE` are re-read on each
+load, so a re-pin shows on reload. The host file is trusted operator code: it
+is loaded once at start, and a change to it needs a restart. When the project
+does not load (for example while `urlcode.yaml` is mid-edit), the page shows
+the error and the studio keeps running.
+
+It adds nothing to the report and changes nothing: one read-only page, no
+editing, no project code run. It listens on this machine only (`--host` must
+be `127.0.0.1`, `::1` or `localhost`) and answers only requests whose `Host`
+is one of those names, so another web page cannot read it through DNS
+rebinding. It reads only an explicit `--port`, never `PORT`, which stays the
+container setting for `serve` and `dev`. Page loads that arrive while a page
+is being built share that build, so extra tabs and quick reloads do not start
+more project loads.
+
 ## Explain and manifest
 
 `urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--json]`

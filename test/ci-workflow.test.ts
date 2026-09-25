@@ -52,6 +52,26 @@ test('CI gate covers every producer and all conditional jobs depend on the plan'
   assert(Object.hasOwn(workflow.on, 'merge_group'));
 });
 
+test('high-impact selection reaches jobs only through planned matrices (#744)', async () => {
+  const workflow = await ci();
+  const outputs = (workflow.jobs.plan as Job & { outputs: Record<string, string> }).outputs;
+  const planner = await readFile('scripts/ci-plan.ts', 'utf8');
+  // Every declared plan output is written by the planner, including the new diagnostics.
+  for (const [name, value] of Object.entries(outputs)) {
+    assert.equal(value, `\${{ steps.plan.outputs.${name} }}`);
+    // Each `name=${...}` line of the GITHUB_OUTPUT template starts the template or follows a literal `\n`.
+    assert.match(planner, new RegExp(`(?:\`|\\\\n)${name}=\\$\\{`), name);
+  }
+  for (const name of ['highImpact', 'platformLegs']) assert(Object.hasOwn(outputs, name), name);
+  // The added Windows shards and packed-integration leg arrive as matrix entries of existing jobs,
+  // so no job is renamed and `verify-complete` still aggregates each job's overall result.
+  assert.equal(workflowJob(workflow, 'verify').strategy!.matrix, '${{ fromJSON(needs.plan.outputs.shards) }}');
+  assert.equal(workflowJob(workflow, 'workspace-verify').strategy!.matrix, '${{ fromJSON(needs.plan.outputs.workspacePackages) }}');
+  assert.equal(workflowJob(workflow, 'workspace-integration').strategy!.matrix, '${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}');
+  const gate = workflowJob(workflow, 'verify-complete').steps.at(-1)!;
+  assert.equal(gate.env!.CI_WORKSPACE_INTEGRATION, '${{ needs.plan.outputs.workspaceIntegration }}');
+});
+
 test('workflow command bodies call the tested CI scripts', async () => {
   const workflow = await ci();
   assert(runs(workflow, 'build-fidelity').includes('npm run ci:build-fidelity'));

@@ -83,7 +83,7 @@ test('verified signup registers a real WebAuthn attestation before atomic accoun
  assert.equal((await request('/signup/passkeys/verify',{response},csrf)).status>=400,true);
  assert.equal((await service.listUsers()).users.length,0);
  assert.equal((await request('/signup/complete',{termsAccepted:'true'},csrf)).status,200);
- const user=(await service.listUsers()).users[0]!;assert.equal(user.id,Buffer.from(started.options.user.id,'base64url').toString());assert.equal((await service.getPasskey(id))?.accountId,user.id);assert.ok(cookies.has('__Host-urlcode-session'));
+ const user=(await service.listUsers()).users[0]!;assert.equal(user.id,Buffer.from(started.options.user.id,'base64url').toString());assert.equal((await service.getPasskey(id))?.accountId,user.id);assert.equal((await service.getPasskey(id))?.credential.rpId,'site.example');assert.ok(cookies.has('__Host-urlcode-session'));
  cookies.delete('__Host-urlcode-session');
  const loginCsrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
  const loginStart=await body<PasskeyLoginOptionsBody>(await request('/passkeys/login/options',{},loginCsrf));

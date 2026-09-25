@@ -11,6 +11,7 @@
 // agent-context API) or a project directory read through the configuration
 // loader with its includes (#733, CLI and local MCP only); project sides name
 // the file each route lives in.
+import {readFile,stat} from 'node:fs/promises';
 import {readProjectDirectory,readProjectYaml} from './fixture-suggestions.ts';
 import type {YamlProject} from './fixture-suggestions.ts';
 import {routeCapabilities} from './capabilities.ts';
@@ -162,6 +163,10 @@ export function summarizeYamlChange(beforeYaml:string, afterYaml:string):YamlCha
 /** One side of a CLI or local MCP comparison: supplied YAML text, or a project directory read with its includes. */
 export type YamlChangeInput = {yaml:string}|{project:string};
 /** CLI and local MCP entry point: each side is YAML text (includes unread) or a project directory (includes read). */
+/** A side named on the command line: a directory is a project read with its includes, a file is YAML text (its includes unread). */
+export async function readChangeInput(path:string):Promise<YamlChangeInput> {
+  return (await stat(path)).isDirectory()?{project:path}:{yaml:await readFile(path,'utf8')};
+}
 export async function summarizeChange(before:YamlChangeInput, after:YamlChangeInput):Promise<YamlChangeSummary> {
   const read=async(input:YamlChangeInput,label:string)=>'yaml' in input?readProjectYaml(input.yaml,label):readProjectDirectory(input.project);
   return summarizeProjects(await read(before,'before YAML'),await read(after,'after YAML'));

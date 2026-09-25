@@ -237,6 +237,10 @@ origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
 When the operator sets `--passkey-rp-id`, activation also carries
 `passkeyRpId`, and auth runs passkey ceremonies under that shared domain for
 every site origin ([shared passkey RP ID](EXTENSIONS.md#shared-passkey-relying-party-domain)).
+An extension reports a startup condition the operator should act on through
+the activation's generic `warn()`, which reaches the operator's startup log as
+an `extension_warning` event and never a response
+([activation warnings](EXTENSIONS.md#activation-warnings)).
 Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store

@@ -64,7 +64,8 @@ export function createSignup(options: SignupOptions, http: AuthHttp, mount: stri
    if(!binding||!options.passkeys||request.body.byteLength>16384||request.headers.get('content-type')?.split(';')[0]!=='application/json')throw new AuthHttpError(400,'Invalid passkey request');
    let payload;try{payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(request.body));}catch{throw new AuthHttpError(400,'Invalid passkey request');}
    if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>!['response','flowId'].includes(key)))throw new AuthHttpError(400,'Invalid passkey request');
-   const pending=await service.getSignupPasskeyChallenge(binding),credential=await options.passkeys.verifyRegistration(payload.response,pending.challenge);
+   // Recorded with the RP ID this ceremony was verified under (#736), whatever the provider returned.
+   const pending=await service.getSignupPasskeyChallenge(binding),credential={...await options.passkeys.verifyRegistration(payload.response,pending.challenge),rpId:options.passkeys.rpId};
    await service.setSignupPasskey({...binding,challenge:pending.challenge,credential});
    return jsonResponse(200,{step:'profile'},headers);
   }

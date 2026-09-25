@@ -223,6 +223,13 @@ pointer into the YAML) and `extension` (the operator extension that failed; see
 with `file:line:column:` where the location is known. Act on `code` and the
 location; the message says what to write instead.
 
+A command that succeeds can still print
+`{"event":"extension_warning","extension":"<name>","message":...}` lines
+before its result: an operator extension reporting, at activation, something
+the operator should act on. It is not a failure and not something to fix in
+YAML; report it to the operator (see
+[activation warnings](EXTENSIONS.md#activation-warnings)).
+
 ## Feedback from real authoring work
 
 The authoring loop is also a source of roadmap evidence. After completing a
@@ -416,7 +423,11 @@ routes added, removed and changed with the changed keys, capability names,
 trusted and sandboxed code seams including `sandbox:` flips, and the env,
 secret, egress and extension grants the new version asks the operator for.
 Report those grants to the user; never approve them yourself. See
-[YAML change summaries](TOOLING.md#yaml-change-summaries).
+[YAML change summaries](TOOLING.md#yaml-change-summaries). For the person
+reviewing the change, `urlcode report BEFORE > report.html` renders the same
+summary with the review findings and each route's request path as one
+read-only page, and `urlcode studio BEFORE` serves it on localhost, rebuilt
+on every reload ([review report](TOOLING.md#review-report)).
 
 ## Deciding when a route needs `sandbox: true`
 

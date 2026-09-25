@@ -4,8 +4,8 @@ import { parseArgs } from 'node:util';
 // extensions/plugins), and commands that read an operator binding policy
 // outside the project. `cli.ts` shares these lists with its help footnotes so
 // a command cannot accidentally advertise a privilege it rejects (or vice versa).
-export const hostFileCommands = ['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','extensions','mcp'] as const;
-export const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment'] as const;
+export const hostFileCommands = ['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','report','studio','extensions','mcp'] as const;
+export const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment','report','studio'] as const;
 // Commands that activate the project locally and so accept the operator's `--alias-origin` list and `--passkey-rp-id`.
 export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit','benchmark'] as const;
 

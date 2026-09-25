@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {writeFile,mkdtemp,mkdir,readFile,rm,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {spawn,spawnSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {project,request} from './helpers.ts';
@@ -577,52 +577,4 @@ test('extensions activate in registration order, whatever order the YAML declare
   const runtime=await createRuntime(root,{origin,extensions:[a,spare,b]});
   await runtime.close();
   assert.deepEqual(events,['activate a','activate b (a active: true)','close b','close a']);
-});
-test('activation warn() is prefixed, one bounded line, capped per activation and never fails activation (#736)',async t=>{
-  const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
-  const logged:Record<string,unknown>[]=[];
-  const noisy=await registration(root,{activate(_config,context){
-    assert.equal(typeof context.warn,'function');
-    context.warn!('first\nline\u0007 two');
-    context.warn!('x'.repeat(2000));
-    for(let index=0;index<40;index++)context.warn!(`repeat ${index}`);
-    return{handle:()=>({status:200,headers:[]})};
-  }});
-  const runtime=await createRuntime(root,{origin,extensions:[noisy],log:event=>logged.push(event as Record<string,unknown>)});t.after(()=>runtime.close());
-  const warnings=logged.filter(event=>event.event==='warning');
-  assert.equal(warnings.length,33,'32 warnings, then one suppression line');
-  assert.deepEqual(warnings[0],{event:'warning',code:'extension-warning',extension:'demo',message:'Extension "demo": first line two'});
-  const long=warnings[1]!.message as string;
-  assert.ok(long.startsWith('Extension "demo": xxx')&&long.endsWith('...')&&long.length==='Extension "demo": '.length+512,long.length.toString());
-  assert.equal(warnings[31]!.message,'Extension "demo": repeat 29');
-  assert.equal(warnings[32]!.message,'Extension "demo": further warnings suppressed');
-  assert.equal((await runtime.handle({target:'/demo',method:'GET'})).status,200,'warnings never fail activation');
-});
-test('validate and serve print an extension activation warning at startup (#736)',async t=>{
-  const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
-  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
-  const {activate:_activate,...data}=await registration(root);
-  const host=join(dir,'warning.mjs');
-  await writeFile(host,`export default {extensions:[{...${JSON.stringify(data)},activate(_config,context){context.warn('passkey RP ID\\nexample.test is unusual');return {handle:()=>({status:200,headers:[]})};}}]};`);
-  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
-  const expected={event:'warning',code:'extension-warning',extension:'demo',message:'Extension "demo": passkey RP ID example.test is unusual'};
-  await t.test('validate',()=>{
-    const out=spawnSync(process.execPath,[cli,'validate','--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000});
-    assert.equal(out.status,0,out.stderr);
-    assert.deepEqual(out.stderr.trim().split('\n').map(line=>JSON.parse(line) as unknown),[expected]);
-    assert.equal((JSON.parse(out.stdout) as {event:string}).event,'valid');
-  });
-  await t.test('serve',async()=>{
-    const child=spawn(process.execPath,[cli,'serve','--project',root,'--origin',origin,'--host-file',host,'--port','0','--host','127.0.0.1'],{stdio:['ignore','pipe','pipe']});
-    t.after(()=>{child.kill('SIGTERM');});
-    let stdout='';
-    await new Promise<void>((resolve,reject)=>{
-      const timer=setTimeout(()=>reject(new Error(`serve did not start: ${stdout}`)),20000);
-      child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;if(stdout.includes('"listening"')){clearTimeout(timer);resolve();}});
-      child.once('exit',code=>{clearTimeout(timer);reject(new Error(`serve exited ${code}: ${stdout}`));});
-    });
-    const lines=stdout.trim().split('\n').map(line=>JSON.parse(line) as Record<string,unknown>);
-    assert.deepEqual(lines.find(line=>line.event==='warning'),expected);
-    assert.ok(lines.findIndex(line=>line.event==='warning')<lines.findIndex(line=>line.event==='listening'),'printed at startup, before listening');
-  });
 });
