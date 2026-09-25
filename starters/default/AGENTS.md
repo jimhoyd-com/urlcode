@@ -15,7 +15,7 @@ validation, middleware wiring, policies, static serving and authentication. Read
    (limits; `--target NAME` before promising a provider), `get_schema`,
    `recipes search TEXT`/`search_recipes` then `recipes add NAME --out DIR`,
    `explain` and, with an operator host file, `get_extensions`. Bare
-   `capabilities` and `recipes list` are complete catalogs: fallback, not step one. Do not read or grep `llms-full.txt` or the packaged docs for a routine task.
+   `capabilities` and `recipes list` are complete catalogs: fallback, not step one. Do not read or grep `llms-full.txt` or whole packaged docs for a routine task; when those tools leave a question open, use the bounded fallback `search_docs` (`urlcode docs search TEXT --project app`): it also searches installed add-on guides and `urlcode.json` schemas, lists what it did not search and names one section or config path. Read only that section; no match there is not evidence a feature is unsupported.
 4. Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement. Check supported extensions and recipes first; explain any capability gap.
 
 ## MCP

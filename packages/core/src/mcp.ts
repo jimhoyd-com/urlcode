@@ -55,7 +55,7 @@ const definitions=[
  {name:'get_skill',description:'Load one bundled agent SKILL.md by name.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'list_agent_catalog',description:'List the revision-pinned agent discovery index: core skills/references and signed add-ons. Use get_extensions or get_extension_artifacts for project-installed component details.',properties:{}},
  {name:'get_release_addon_catalog',description:'Return the release-wide add-on catalog pinned to this core: every signed extension and artifact with its package, version, description, requirements and descriptor agent references (paths relative to that add-on\'s package). Discovery metadata only: it is not evidence that this project installed or activated an add-on, and it never imports, fetches or installs one. Use get_addon_agent_tooling, get_extensions or get_extension_artifacts for what this project has installed.',properties:{}},
- {name:'search_docs',description:'Deterministically search the small packaged agent documentation corpus and return at most three short excerpts.',properties:{text:{type:'string',maxLength:256}},required:['text']},
+ {name:'search_docs',description:'Deterministic, bounded documentation fallback: searches the fixed core agent docs plus the guides (README and descriptor agent references) and urlcode.json schemas of add-ons installed and pin-verified in this site, read as data only (nothing is imported or activated). Returns at most three excerpts with the section or config path to read next, release-catalog matches kept apart from installed add-ons, and coverage of which sources were and were not searched; an empty result means no match in the searched sources, not that a feature is unsupported.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'validate_yaml',description:'Validate supplied URLCode YAML syntax and schema only. It never reads includes, source files, bindings or a project directory.',properties:{yaml:{type:'string',maxLength:524288}},required:['yaml']},
  {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
@@ -153,7 +153,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_skill':return getSkill(args.name as string);
    case 'list_agent_catalog':return listAgentCatalog();
    case 'get_release_addon_catalog':return readAddonCatalog();
-   case 'search_docs':return searchDocs(args.text as string);
+   case 'search_docs':return searchDocs(args.text as string,{project});
    case 'get_example':return getExample(args.name as string);
    case 'validate_yaml':return validateYaml(args.yaml as string);
    case 'explain_error':return explainError(args.error as string);

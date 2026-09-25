@@ -144,8 +144,18 @@ export const budgets: Record<string, Budget> = {
     // Description column of docs/YAML-REFERENCE.md and its llms-full.txt copy
     // (+20 KiB each), measuring 3028789 unpacked bytes on Node 26. Packed
     // size and entry count stay inside their budgets.
-    packed: 740 * 1024,
-    unpacked: 2970 * 1024,
+    //
+    // Packed raised from 740 to 746 KiB for the bounded documentation
+    // search (#759: dist/docs-search.js with its declarations, the CLI/MCP
+    // wiring and the "Bounded documentation search" section of
+    // docs/TOOLING.md). Extension guides are read from installed add-on
+    // packages, not copied into core. It measures 761737 packed bytes on
+    // Node 26, 3977 over the old budget; 746 KiB keeps the ~2 KiB cross-Node
+    // gzip variance noted above. The same change adds about 29 KiB unpacked
+    // (dist/docs-search.js is 25 KiB with its source comments), measuring
+    // 3070525 unpacked bytes, so unpacked is raised from 2970 to 3000 KiB.
+    packed: 746 * 1024,
+    unpacked: 3000 * 1024,
     entries: 470,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

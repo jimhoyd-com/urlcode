@@ -183,7 +183,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
 ` },
   { name:'docs', group:'Agent tooling', text:
-`  urlcode docs search <text> [--json]  # same as MCP search_docs: at most three bounded excerpts from the packaged agent docs, instead of grepping llms-full.txt
+`  urlcode docs search <text> [--project DIR] [--json]  # same as MCP search_docs: at most three bounded excerpts from the core agent docs and the site's installed, pin-verified add-on guides and urlcode.json schemas, with what was and was not searched; instead of grepping llms-full.txt
 ` },
   { name:'mcp', group:'Agent tooling', text:
 `  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools and runners that execute project code, host file adds get_extensions

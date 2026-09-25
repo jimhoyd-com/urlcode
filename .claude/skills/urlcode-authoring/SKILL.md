@@ -52,6 +52,12 @@ supplies a host file, `get_extensions`. Bare `urlcode capabilities`, `recipes
 list`, the compact `llms.txt` index and `llms-full.txt` remain deliberate
 fallback/reference: in a source checkout read the matching task guide from
 `docs/`; in an npm installation search the heading in `llms-full.txt`.
+Before reading a whole page, use the bounded fallback `search_docs` (`urlcode
+docs search TEXT --project app`): it searches the core agent docs and the
+guides and `urlcode.json` schemas of add-ons installed and pin-verified in the
+site, lists the sources it did not search, and names one section or config
+path to read next. Read only that section. An empty result means no match in
+the searched sources, not an unsupported feature.
 [URLCode AI](https://urlcode.ai/) is an optional, separate hosted service for
 version-pinned reference and shared skills. Its anonymous remote MCP runs no
 model of its own and supplements the local project-aware `urlcode` server;

@@ -553,9 +553,11 @@ an already-configured client is not broken by the rename. `inspect`,
 `explain`'s unrelated `target` (the path it explains). Every successful
 `tools/call` reply also carries `structuredContent` mirroring the JSON already
 in its text content, for a client that reads structured results directly. The skill,
-documentation and example tools read only a fixed package-owned manifest; no
+documentation and example tools read only a fixed package-owned manifest, plus, for `search_docs`, the
+static guides and descriptors of add-ons installed in the operator-selected project's site (see
+[bounded documentation search](#bounded-documentation-search)); no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
-`urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
+`urlcode docs search TEXT [--project DIR] [--json]`, which returns the same bounded answer. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
 The `list_skills`, `get_skill`, `list_agent_catalog`, `get_release_addon_catalog`, `search_docs`, `get_example`, `validate_yaml`,
 `explain_error`, `suggest_fixtures` and `summarize_yaml_change` tools are thin wrappers over `@jimhoyd/urlcode/agent-context`
@@ -624,6 +626,49 @@ paths and conflicts) and returns `matched` (the family, or `null`), `guidance`,
 `location`. `plan_feature` lists `get_extensions` in
 `next` only when a host file is loaded. Tools named in `nextTools` and `next`
 are always canonical names, never a deprecated alias.
+
+## Bounded documentation search
+
+`search_docs` (CLI `urlcode docs search TEXT --project DIR`, SDK
+`searchDocs(text, {project})` from `@jimhoyd/urlcode/agent-context`) is the
+bounded documentation fallback for a question `get_context`, `get_capability`,
+`get_schema`, `search_recipes` and `get_extensions` leave open (#759). It is
+deterministic, local text matching; it reads these sources and nothing else:
+
+- **core**: `llms.txt`, `docs/AI-AUTHORING.md`, `docs/YAML-REFERENCE.md`,
+  `docs/TOOLING.md` and `docs/FUNCTION-SECURITY.md`, packaged with the runtime;
+- **installed**: for each add-on core's own manifest pins, that the site
+  around the project (the project's parent directory) depends on, and whose
+  `package-lock.json` entry matches core's pin: its `urlcode.json` descriptor,
+  its `README.md` and the `.md`/`.json` agent references its descriptor
+  declares, at most six files of at most 256 KiB each, read from
+  `node_modules/@jimhoyd/urlcode-<name>/` as text or JSON data. No add-on
+  module is imported, no host file is loaded and no binding or secret is read.
+  An installed add-on that is not pin-verified is not read and is listed as not
+  searched, with the reason;
+- **catalog**: this release's add-on catalog (`dist/addon-catalog.json`). A
+  catalog match says the add-on exists in the release, never that the project
+  has it: catalog matches are returned apart from results, each with
+  `installedInProject` (`null` when no project was given).
+
+The answer has at most three `results` (each with at most 1800 characters of
+`excerpt`), at most five `catalog` matches, `coverage` and at most four `next`
+steps. Each result names its `source` (`core` or `installed`), `path`, the
+Markdown `section` (or JSON pointer) the excerpt comes from, for an extension
+descriptor the YAML `configPath` the matched schema validates (shaped
+`extensions.<name>.config.<field>`, with `*` for a map entry), and a `next` step
+that names that one section or path to read. A query that is an add-on's name
+ranks that add-on's own guide first. When a query word is a
+core schema path, `next` also suggests `get_schema` for it.
+`coverage.searched` lists the core files, every installed add-on package and
+file that was read, and the catalog; `coverage.notSearched` lists what was
+not: release-catalog add-ons not installed in the site, installed add-ons that
+failed pin verification or a size limit, `llms-full.txt` and other `docs/`
+pages, project files and add-on source, and operator host registrations
+(registered state needs the host file and `get_extensions`). Without a project
+(the SDK default) no site is inspected, and coverage says so. An empty
+`results` carries a `note`: no match in the searched sources, which is not
+evidence that a feature is unsupported.
 
 ## Registering the server
 
