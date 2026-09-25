@@ -157,10 +157,10 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   const byName = (): Collection[] => [...drained?.collections ?? []].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   const attachment: AuditAttachment | undefined = audit?.attach({
     source: 'store',
+    // The oldest pending events across every collection, not the first collections by name: audit's flush settles
+    // once a peek holds only newer events, so an older event left behind in a later collection would be missed.
     async peek(limit) {
-      const events: AuditEvent[] = [];
-      for (const collection of byName()) { if (events.length >= limit) break; events.push(...collection.auditPeek(limit - events.length)); }
-      return events;
+      return byName().flatMap(collection => collection.auditPeek(limit)).sort((a, b) => a.at - b.at).slice(0, limit);
     },
     async ack(ids) { const gone = new Set(ids); for (const collection of byName()) if (collection.auditPeek(Infinity).some(event => gone.has(event.id))) await collection.auditAck(gone); },
   });

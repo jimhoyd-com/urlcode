@@ -14,7 +14,7 @@ import type { ExtensionActivation, ExtensionRequest, RuntimeExtension } from '@j
 import { composeHost } from '@jimhoyd/urlcode/host';
 import audit from '@jimhoyd/urlcode-audit/extension';
 import { createAudit } from '@jimhoyd/urlcode-audit';
-import type { AuditEvent, AuditExports, AuditStoredEvent } from '@jimhoyd/urlcode-audit';
+import type { AuditEvent, AuditExports, AuditProducer, AuditStoredEvent } from '@jimhoyd/urlcode-audit';
 import store from '../src/extension.ts';
 import { AUDIT_BACKLOG, StoreError, createStore } from '../src/index.ts';
 
@@ -197,6 +197,27 @@ test('a write between capture and drain survives a kill: a new store and attachm
     assert.equal(JSON.parse(await readFile(join(directory, 'notes.json'), 'utf8')).audit, undefined);
     await again.close?.(); await next.close();
   }
+});
+
+test('the producer peeks the oldest events across collections, so a flush never settles past an older one', async t => {
+  const root = await tempRoot(t), directory = join(root, 'data');
+  await mkdir(join(root, 'app')); await mkdir(directory);
+  const { exports } = await stalled(t, root);
+  let producer: AuditProducer | undefined;
+  const capturing: AuditExports = { ...exports, get active() { return exports.active; }, attach: attached => { producer = attached; return { notify() {}, async close() {} }; } };
+  const at = Date.now();
+  const pending = (name: string, count: number, from: number) => Array.from({ length: count }, (_, index) => exports.validate({ id: randomUUID(), source: 'store', action: 'store.record.created', actor: 'alice', subject: `${name}/${randomUUID()}`, at: from + index, metadata: { collection: name, fields: ['title'] } }));
+  await writeFile(join(directory, 'alpha.json'), JSON.stringify({ version: 2, records: [], idempotency: [], audit: pending('alpha', 120, at + 1000) }));
+  await writeFile(join(directory, 'beta.json'), JSON.stringify({ version: 2, records: [], idempotency: [], audit: pending('beta', 5, at) }));
+  const instance = createStore({ directory, projectSha256: pin, audit: capturing });
+  t.after(() => instance.close());
+  const collections = { alpha: { ...plain, mount: '/api/alpha', audit: true }, beta: { ...plain, mount: '/api/beta', audit: true } };
+  const served = await instance.registration.activate({ collections }, activation(root, ['/api/alpha', '/api/beta']));
+  t.after(() => served.close?.());
+  const batch = await producer!.peek(100);
+  assert.equal(batch.length, 100);
+  assert.deepEqual(batch.slice(0, 5).map(event => event.subject.split('/')[0]), ['beta', 'beta', 'beta', 'beta', 'beta'], 'the older collection comes first');
+  assert.ok(batch.every((event, index) => index === 0 || batch[index - 1]!.at <= event.at));
 });
 
 test('audit: true refuses activation without an active audit; the store runs without audit when nothing opts in', async t => {
