@@ -91,9 +91,14 @@ export const budgets: Record<string, Budget> = {
     // packed archive at about 646 KiB (661714 bytes on Node 26), under 4 KiB
     // from the 650 KiB budget and inside the ~2 KiB npm gzip variance noted
     // above, so packed is raised to 660 KiB as well.
+    //
+    // Entries raised from 450 to 460: the operator alias-origin list (#717)
+    // adds one runtime module (dist/site-origins.js), taking the archive to
+    // 451 files; the other ten keep headroom for the next small module
+    // without loosening the allowlist or size checks.
     packed: 660 * 1024,
     unpacked: 2700 * 1024,
-    entries: 450,
+    entries: 460,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
