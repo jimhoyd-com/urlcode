@@ -280,6 +280,8 @@ test('recovery cases require distinct current administrators and pin the target 
 test('impersonation is opt-in, marked, expiring, denied privileged targets and incapable of credential or admin mutation', async (t) => {
     const { service, advance } = await setup(t, { allowImpersonation: true }), admin = await service.bootstrapAdmin({ email: 'impersonator@example.com', password }), target = await service.register({ email: 'subject@example.com', password });
     await assert.rejects(service.createImpersonation({ actorToken: admin.token, accountId: admin.user.id, reason: 'self' }), { code: 'impersonation_denied' });
+    // A C1 control character would make the mandatory notice undeliverable, so the reason itself is refused.
+    await assert.rejects(service.createImpersonation({ actorToken: admin.token, accountId: target.user.id, reason: 'next\u0085line' }), { code: 'invalid_reason' });
     const issued = await service.createImpersonation({ actorToken: admin.token, accountId: target.user.id, reason: 'support request' });
     assert.equal(issued.principal.impersonatorId, admin.user.id);
     assert.equal(issued.principal.authenticatedAt, 0);

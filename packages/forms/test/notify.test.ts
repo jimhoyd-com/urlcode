@@ -36,6 +36,16 @@ test('an accepted submission sends one forms.submission message to the recipient
   assert.ok(!envelope!.text.includes('\r'));
 });
 
+test('C0 and C1 control characters in an included value become U+FFFD, so the notice still delivers', async t => {
+  const transport = recordingTransport();
+  const where = await site(t, { contact: contact({ notify: { recipient: 'office', include: ['message'] } }) }, { declare: ['mail'] });
+  const { submit } = await serve(t, where, [ui(), forms({ csrfSecret }), mail({ transport, recipients })]);
+  const answer = await submit({ ...valid, message: 'Next\u0085line\u009fand\u0007bell' });
+  assert.equal(answer.status, 303);
+  assert.equal(transport.sent.length, 1);
+  assert.match(transport.sent[0]!.text, /^Message: Next�line�and�bell$/m);
+});
+
 test('without include the message carries no values; a flow without notify sends nothing', async t => {
   const transport = recordingTransport();
   const where = await site(t, { contact: contact({ notify: { recipient: 'office' } }), quiet: { ...contact(), mount: '/quiet' } }, { declare: ['mail'] });

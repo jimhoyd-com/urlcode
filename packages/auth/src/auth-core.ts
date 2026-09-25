@@ -1206,7 +1206,7 @@ async function createService(options: AuthOptions): Promise<AuthServiceInternal>
         return { limit, after: options.after ?? '' };
     };
     const reason = (value: string | undefined) => {
-        if (value !== undefined && (typeof value !== 'string' || value.length > 256 || /[\x00-\x1f\x7f]/.test(value)))
+        if (value !== undefined && (typeof value !== 'string' || value.length > 256 || /[\x00-\x1f\x7f-\x9f]/.test(value)))
             fail(400, 'invalid_reason');
         return value ?? '';
     };

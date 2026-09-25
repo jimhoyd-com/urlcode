@@ -277,8 +277,8 @@ function guardOf(name:string,flow:FormFlowSpec,context:ExtensionActivation,optio
 }
 /** The fixed 429 page: it names no budget, count or client. */
 function tooMany(ui:UiExtension,retryAfterSeconds:number):HandlerResult {const page=ui.kit.wrap(markup('<section class="ui-stack"><h1>Too many submissions</h1><p>This form has received too many submissions from your network. Try again later.</p></section>'),{title:'Too many submissions'});return {status:429,headers:[...page.headers,['retry-after',String(Math.max(1,retryAfterSeconds))]],body:page.body};}
-/** Mail `text` slots refuse control characters other than newline and tab: line breaks become `\n`, anything else U+FFFD. */
-function mailText(value:string):string {return value.replace(/\r\n?/g,'\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g,'\uFFFD');}
+/** Mail `text` slots refuse C0 and C1 control characters other than newline and tab: line breaks become `\n`, anything else U+FFFD. */
+function mailText(value:string):string {return value.replace(/\r\n?/g,'\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g,'\uFFFD');}
 function cut(value:string,max:number):string {return value.length>max?`${value.slice(0,max-1)}…`:value;}
 /** One `Label: value` line per included field in declaration order, values shown as on the confirmation page, each and the whole bounded. */
 function summaryOf(flow:FormFlowSpec,values:Readonly<Record<string,string>>,include:readonly string[]):string {
