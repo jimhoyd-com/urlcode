@@ -22,7 +22,8 @@ import type { CollectionSpec } from './collection.ts';
 import { lockStoreDirectory } from './store.ts';
 
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
-type StoredFile = { version: number; records: Record<string, unknown>[]; idempotency?: unknown };
+/** `audit` is the undelivered audit outbox: these operator commands keep it as written and add no event of their own. */
+type StoredFile = { version: number; records: Record<string, unknown>[]; idempotency?: unknown; audit?: unknown };
 
 export interface OwnerlessReport { collection: string; records: number; ownerless: number; ids: string[] }
 
@@ -40,7 +41,7 @@ async function readStored(file: string): Promise<StoredFile> {
 }
 async function writeStored(file: string, value: StoredFile): Promise<void> {
   const temporary = `${file}.${randomUUID()}.tmp`, handle = await open(temporary, 'wx', 0o600);
-  try { await handle.writeFile(JSON.stringify({ version: 2, records: value.records, idempotency: value.version === 2 ? value.idempotency : [] })); await handle.sync(); }
+  try { await handle.writeFile(JSON.stringify({ version: 2, records: value.records, idempotency: value.version === 2 ? value.idempotency : [], ...(value.version === 2 && value.audit !== undefined ? { audit: value.audit } : {}) })); await handle.sync(); }
   catch (error) { await handle.close().catch(() => undefined); await rm(temporary, { force: true }); throw error; }
   await handle.close();
   try { await rename(temporary, file); } catch (error) { await rm(temporary, { force: true }); throw error; }

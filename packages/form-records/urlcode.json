@@ -342,7 +342,7 @@
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true`. It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records). Declare forms and store before form-records under `extensions`.",
+        "description": "Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records).",
         "path": "urlcode.yaml"
       }
     ],

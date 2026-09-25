@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
+import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
 
 /** Reserved names the store owns on every record. */
@@ -17,6 +18,15 @@ export const OWNER_FIELD = '_owner';
 export type Ownership = 'shared' | 'owner';
 export const LIMITS = { fields: 64, records: 10_000, recordBytes: 65_536, pageSize: 200, stringLength: 65_536 } as const;
 const IDEMPOTENCY_LIMITS = { keys: 1_000, keyLength: 128 } as const;
+/**
+ * Undelivered audit events one collection's data file may hold (audit's `auditOutboxLimits.perCollection`). At the cap
+ * a write on an audited collection is refused with 503 `audit_backlog` and nothing is written.
+ */
+export const AUDIT_BACKLOG = 1_000;
+/** A pending audit event's share of the data-file size bound: audit caps metadata at 4096 bytes, plus the other fields. */
+const AUDIT_EVENT_BYTES = 6_144;
+/** Audit metadata stays under audit's 4096-byte bound: the field list is cut here and marked truncated. */
+const AUDIT_FIELDS_BYTES = 3_584;
 
 export type FieldType = 'string' | 'integer' | 'number' | 'boolean';
 export type Scalar = string | number | boolean;
@@ -45,6 +55,11 @@ export interface CollectionSpec {
    * stays the ceiling for the whole collection. Legacy records with no owner count toward no principal.
    */
   maxRecordsPerOwner?: number;
+  /**
+   * Record every write in the audit log (the audit extension): the event is written into the collection's data file
+   * with the record, in one atomic replace, and audit drains it from there. Field names only, never values.
+   */
+  audit?: boolean;
 }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
@@ -81,6 +96,7 @@ export const collectionSchema = {
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
     ownership: { enum: ['shared', 'owner'] },
     maxRecordsPerOwner: { type: 'integer', minimum: 1, maximum: LIMITS.records },
+    audit: { type: 'boolean' },
   },
 } as const;
 
@@ -117,7 +133,7 @@ function checkValue(spec: FieldSpec, value: unknown): string | undefined {
 export interface NormalizedSpec {
   mount: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
-  maxRecordsPerOwner?: number;
+  maxRecordsPerOwner?: number; audit: boolean;
 }
 /** Validates a declaration beyond JSON Schema; throws plain Errors for the operator. */
 export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
@@ -168,7 +184,7 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if (!field) throw new Error(`Collection ${name}: increment field ${fieldName} is not declared`);
     if (!['integer', 'number'].includes(field.type) || typeof field.default !== 'number') throw new Error(`Collection ${name}: increment field ${fieldName} must be numeric with a numeric default`);
   }
-  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
+  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false };
 }
 
 /** How many records each owner holds; a record with no owner (written before the collection became owned) counts toward nobody. */
@@ -177,6 +193,10 @@ function countOwners(records: StoredRecord[]): Map<string, number> {
   for (const record of records) { const owner = record[OWNER_FIELD]; if (typeof owner === 'string') counts.set(owner, (counts.get(owner) ?? 0) + 1); }
   return counts;
 }
+
+/** What an audited collection needs from the audit extension: its pure event validator, and a wake-up for the drain after a commit that wrote an event. */
+export interface CollectionAuditor { validate(value: unknown): AuditEvent; notify(): void }
+type AuditAction = 'created' | 'replaced' | 'updated' | 'deleted' | 'incremented';
 
 /**
  * One collection: an in-memory array mirrored to one JSON file. Every mutation is applied to a copy, written
@@ -189,16 +209,22 @@ export class Collection {
   private records: StoredRecord[] = []; private byId = new Map<string, StoredRecord>(); private byKey = new Map<string, StoredRecord>(); private idempotency: string[] = [];
   /** Records per owner on an owned collection, rebuilt from the records on load and on every commit (never persisted). */
   private owners = new Map<string, number>();
+  /**
+   * The audit outbox: events written with their records in the same file replace, oldest first, until audit acks
+   * them. Kept (and written back) on an unaudited collection too, so turning `audit` off never drops undelivered events.
+   */
+  private pending: AuditEvent[] = [];
   private readonly file: string; private tail: Promise<unknown> = Promise.resolve();
+  private readonly auditor: CollectionAuditor | undefined;
   private get owned(): boolean { return this.spec.ownership === 'owner'; }
-  constructor(name: string, spec: CollectionSpec, directory: string) { this.name = name; this.spec = normalize(name, spec); this.file = join(directory, `${name}.json`); }
+  constructor(name: string, spec: CollectionSpec, directory: string, auditor?: CollectionAuditor) { this.name = name; this.spec = normalize(name, spec); this.file = join(directory, `${name}.json`); this.auditor = auditor; }
 
   /** Loads and re-validates the file; a file that violates the declaration refuses activation instead of being served. */
   async load(): Promise<void> {
     let text: string | undefined, missing = false;
     try {
       const info = await stat(this.file);
-      if (info.size <= this.spec.maxRecords * this.spec.maxRecordBytes + IDEMPOTENCY_LIMITS.keys * (IDEMPOTENCY_LIMITS.keyLength + 4) + 4096) text = await readFile(this.file, 'utf8');
+      if (info.size <= this.spec.maxRecords * this.spec.maxRecordBytes + IDEMPOTENCY_LIMITS.keys * (IDEMPOTENCY_LIMITS.keyLength + 4) + AUDIT_BACKLOG * AUDIT_EVENT_BYTES + 4096) text = await readFile(this.file, 'utf8');
     } catch (error) { missing = error instanceof Error && 'code' in error && error.code === 'ENOENT'; }
     if (missing) return;
     if (text === undefined) throw new Error(`Collection ${this.name}: data file is unreadable or exceeds the declared limits`);
@@ -207,6 +233,13 @@ export class Collection {
     if (!isRecord(parsed) || ![1, 2].includes(parsed.version as number) || !Array.isArray(parsed.records) || parsed.records.length > this.spec.maxRecords) throw new Error(`Collection ${this.name}: data file has an unsupported shape or exceeds maxRecords`);
     const retained = parsed.version === 2 ? parsed.idempotency : [];
     if (!Array.isArray(retained) || retained.length > IDEMPOTENCY_LIMITS.keys || retained.some(key => typeof key !== 'string' || key.length < 1 || key.length > IDEMPOTENCY_LIMITS.keyLength) || new Set(retained).size !== retained.length) throw new Error(`Collection ${this.name}: data file has invalid idempotency keys`);
+    // Undelivered audit events. With audit installed each is validated again; without it they are kept as written,
+    // so they drain once audit is back rather than being lost.
+    const outbox = parsed.version === 2 && parsed.audit !== undefined ? parsed.audit : [];
+    if (!Array.isArray(outbox) || outbox.length > AUDIT_BACKLOG || outbox.some(event => !isRecord(event) || typeof event.id !== 'string' || event.source !== 'store') || new Set(outbox.map(event => (event as { id: string }).id)).size !== outbox.length) throw new Error(`Collection ${this.name}: data file holds invalid audit events`);
+    let pending: AuditEvent[];
+    try { pending = this.auditor ? outbox.map(event => this.auditor!.validate(event)) : outbox as AuditEvent[]; }
+    catch { throw new Error(`Collection ${this.name}: data file holds invalid audit events`); }
     for (const item of parsed.records as unknown[]) {
       if (!isRecord(item) || typeof item.id !== 'string' || this.byId.has(item.id) || typeof item.createdAt !== 'string' || typeof item.updatedAt !== 'string') throw new Error(`Collection ${this.name}: data file holds an invalid record`);
       const { [OWNER_FIELD]: owner, ...fields } = item;
@@ -221,7 +254,7 @@ export class Collection {
       if (owner !== undefined) this.owners.set(owner as string, (this.owners.get(owner as string) ?? 0) + 1);
       if (this.spec.key) this.byKey.set(record[this.spec.key] as string, record);
     }
-    this.idempotency = retained as string[];
+    this.idempotency = retained as string[]; this.pending = pending;
   }
 
   /**
@@ -258,23 +291,43 @@ export class Collection {
     this.tail = run.catch(() => undefined);
     return run;
   }
-  private async persist(records: StoredRecord[], idempotency: string[]): Promise<void> {
+  private async persist(records: StoredRecord[], idempotency: string[], pending: AuditEvent[]): Promise<void> {
     const directory = dirname(this.file), temporary = `${this.file}.${randomUUID()}.tmp`;
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const handle = await open(temporary, 'wx', 0o600);
-    try { await handle.writeFile(JSON.stringify({ version: 2, records, idempotency })); await handle.sync(); }
+    try { await handle.writeFile(JSON.stringify({ version: 2, records, idempotency, ...(pending.length ? { audit: pending } : {}) })); await handle.sync(); }
     catch (error) { await handle.close().catch(() => undefined); await rm(temporary, { force: true }); throw error; }
     await handle.close();
     try { await rename(temporary, this.file); } catch (error) { await rm(temporary, { force: true }); throw error; }
     const dir = await open(directory, 'r').catch(() => undefined);
     if (dir) { await dir.sync().catch(() => undefined); await dir.close(); } // best effort: not every platform can fsync a directory
   }
-  private async commit(next: StoredRecord[], idempotency = this.idempotency): Promise<void> {
-    try { await this.persist(next, idempotency); }
+  /** Writes and swaps in the next state. A `pending` longer than now means this write appended an audit event, so the drain is woken after the commit. */
+  private async commit(next: StoredRecord[], idempotency = this.idempotency, pending = this.pending): Promise<void> {
+    try { await this.persist(next, idempotency, pending); }
     catch { throw new StoreError(503, 'storage_unavailable', 'The store could not save this change'); } // no path or system detail
-    this.records = next; this.byId = new Map(next.map(record => [record.id as string, record])); this.byKey = this.spec.key ? new Map(next.map(record => [record[this.spec.key!] as string, record])) : new Map(); this.idempotency = idempotency;
+    const appended = pending.length > this.pending.length;
+    this.records = next; this.byId = new Map(next.map(record => [record.id as string, record])); this.byKey = this.spec.key ? new Map(next.map(record => [record[this.spec.key!] as string, record])) : new Map(); this.idempotency = idempotency; this.pending = pending;
     if (this.owned) this.owners = countOwners(next);
+    if (appended) this.auditor?.notify();
   }
+  /**
+   * The outbox after one write: unchanged on an unaudited collection. At the backlog cap the write is refused before
+   * anything is written. The event names the changed fields, never their values; a list too long for audit's
+   * metadata bound is cut and marked `truncated`.
+   */
+  private audited(action: AuditAction, id: string, fields: readonly string[], actor: string | undefined): AuditEvent[] {
+    if (!this.spec.audit) return this.pending;
+    // Activation refuses an audited collection without an active audit, so this is a wiring error, never a request's.
+    if (!this.auditor) throw new StoreError(503, 'audit_unavailable', 'The audit log is unavailable');
+    if (this.pending.length >= AUDIT_BACKLOG) throw new StoreError(503, 'audit_backlog', 'The audit log is behind; try again later');
+    const names = [...fields]; let truncated = false;
+    while (Buffer.byteLength(JSON.stringify(names)) > AUDIT_FIELDS_BYTES) { names.pop(); truncated = true; }
+    const event = this.auditor.validate({ id: randomUUID(), source: 'store', action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, at: Date.now(), metadata: { collection: this.name, fields: names, ...(truncated ? { truncated: true } : {}) } });
+    return [...this.pending, event];
+  }
+  /** Declared fields whose value differs between two versions of a record (a removed field counts), in declaration order. */
+  private changed(before: StoredRecord | undefined, after: StoredRecord | undefined): string[] { return Object.keys(this.spec.fields).filter(field => before?.[field] !== after?.[field]); }
   private claimed(key: string | undefined): string[] {
     const config = this.validateIdempotency(key);
     return key && config ? [...this.idempotency, key].slice(-config.maxKeys) : this.idempotency;
@@ -319,7 +372,8 @@ export class Collection {
     return config;
   }
 
-  create(input: unknown, idempotencyKey?: string, owner?: string): Promise<StoredRecord> {
+  /** Every write takes `actor`: the request principal's id, or `anonymous`. On an audited collection it is the event's actor. */
+  create(input: unknown, idempotencyKey?: string, owner?: string, actor?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
       const scope = this.scope(owner);
       this.writable();
@@ -333,7 +387,7 @@ export class Collection {
       if (this.records.length >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
       const now = new Date().toISOString(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
       this.sized(record);
-      await this.commit([...this.records, record], idempotency);
+      await this.commit([...this.records, record], idempotency, this.audited('created', record.id as string, this.changed(undefined, record), actor));
       return record;
     });
   }
@@ -342,7 +396,7 @@ export class Collection {
    * `expectedEtag`, when given, must match the record's current ETag (checked inside the same
    * serialized step as the read, so it is race-free against a concurrent writer) or the update is
    * refused with 412 instead of silently overwriting a change the caller never saw. */
-  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string, expectedEtag?: string, owner?: string): Promise<StoredRecord> {
+  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string, expectedEtag?: string, owner?: string, actor?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
       const scope = this.scope(owner);
       this.writable();
@@ -359,27 +413,27 @@ export class Collection {
       const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: new Date().toISOString(), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...kept, ...clean };
       if (this.spec.key && record[this.spec.key] !== current[this.spec.key] && this.byKey.has(record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
       this.sized(record);
-      await this.commit(this.records.map(item => item === current ? record : item), idempotency);
+      await this.commit(this.records.map(item => item === current ? record : item), idempotency, this.audited(replace ? 'replaced' : 'updated', id, this.changed(current, record), actor));
       return record;
     });
   }
-  remove(id: string, idempotencyKey?: string, expectedEtag?: string, owner?: string): Promise<void> {
+  remove(id: string, idempotencyKey?: string, expectedEtag?: string, owner?: string, actor?: string): Promise<void> {
     return this.serialize(async () => {
       const scope = this.scope(owner);
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
       const current = this.get(id, scope);
       if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
-      await this.commit(this.records.filter(item => item !== current), idempotency);
+      await this.commit(this.records.filter(item => item !== current), idempotency, this.audited('deleted', id, this.changed(current, undefined), actor));
     });
   }
   /** Public increment API (`POST .../increment/<field>`): refused on a `readOnly` collection like every other write. */
-  increment(id: string, field: string, idempotencyKey?: string, owner?: string): Promise<StoredRecord> {
+  increment(id: string, field: string, idempotencyKey?: string, owner?: string, actor?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
       const scope = this.scope(owner);
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
-      return this.doIncrement(id, field, idempotency, scope);
+      return this.doIncrement(id, field, idempotency, scope, actor);
     });
   }
   /**
@@ -388,21 +442,33 @@ export class Collection {
    * the one write a `readOnly` collection still accepts: `readOnly` is documented as closing the
    * public create/update/delete/increment surface, not as disabling the redirect's own click
    * count. It intentionally skips `writable()` and takes no Idempotency-Key — the short-link GET
-   * that drives it isn't itself idempotency-scoped.
+   * that drives it isn't itself idempotency-scoped. It is audited as `anonymous`: the redirect has no principal.
    */
   recordClick(id: string, field: string): Promise<StoredRecord> {
     // Short links need a key, which an owned collection refuses; this stays unreachable for owned records.
     if (this.owned) return Promise.reject(new StoreError(404, 'not_found', 'No such record'));
-    return this.serialize(async () => this.doIncrement(id, field, this.idempotency));
+    return this.serialize(async () => this.doIncrement(id, field, this.idempotency, undefined, 'anonymous'));
   }
-  private async doIncrement(id: string, field: string, idempotency: string[], owner?: string): Promise<StoredRecord> {
+  private async doIncrement(id: string, field: string, idempotency: string[], owner: string | undefined, actor: string | undefined): Promise<StoredRecord> {
     if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');
     const current = this.get(id, owner), spec = this.spec.fields[field]!;
     const value = (current[field] as number) + 1, problem = checkValue(spec, value);
     if (problem) throw new StoreError(409, 'increment_limit', 'The increment would violate the declared field limits', { [field]: problem });
     const record: StoredRecord = { ...current, updatedAt: new Date().toISOString(), [field]: value };
     this.sized(record);
-    await this.commit(this.records.map(item => item === current ? record : item), idempotency);
+    await this.commit(this.records.map(item => item === current ? record : item), idempotency, this.audited('incremented', id, [field], actor));
     return record;
+  }
+
+  /** Undelivered audit events held in this collection's file. */
+  get auditBacklog(): number { return this.pending.length; }
+  /** The oldest undelivered audit events, at most `limit` (the producer's `peek`). */
+  auditPeek(limit: number): AuditEvent[] { return this.pending.slice(0, limit); }
+  /** Removes delivered events through the same serialized write path records use, so an ack never loses a concurrent write. Unknown ids are ignored. */
+  auditAck(ids: ReadonlySet<string>): Promise<void> {
+    return this.serialize(async () => {
+      const next = this.pending.filter(event => !ids.has(event.id));
+      if (next.length !== this.pending.length) await this.commit(this.records, this.idempotency, next);
+    });
   }
 }

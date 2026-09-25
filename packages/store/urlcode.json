@@ -3,6 +3,9 @@
   "name": "store",
   "description": "File-backed JSON collections served as a bounded CRUD API, declared in YAML with no handler code",
   "requires": [],
+  "uses": [
+    "audit"
+  ],
   "contributes": [
     "ui"
   ],
@@ -184,6 +187,9 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 10000
+            },
+            "audit": {
+              "type": "boolean"
             }
           }
         }
@@ -289,7 +295,7 @@
       {
         "kind": "configuration",
         "name": "collections",
-        "description": "Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` field lists, and `ownership: owner` (per-record ownership: each signed-in principal sees and changes only its own records; the mount must be guarded by a principal-providing policy such as `auth: true`) with an optional `maxRecordsPerOwner` (at most maxRecords; a principal at it gets `409 owner_quota_exceeded`).",
+        "description": "Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` field lists, and `ownership: owner` (per-record ownership: each signed-in principal sees and changes only its own records; the mount must be guarded by a principal-providing policy such as `auth: true`) with an optional `maxRecordsPerOwner` (at most maxRecords; a principal at it gets `409 owner_quota_exceeded`), and `audit: true` (every write recorded in the audit log with field names and the principal, never values; needs the audit extension, and writes answer `503 audit_backlog` while 1000 events wait to drain).",
         "path": "urlcode.yaml"
       },
       {
