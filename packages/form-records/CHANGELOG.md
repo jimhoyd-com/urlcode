@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Clearing an optional field on the edit page, and an optional per-user list
+  page (#738). An editable field emptied on the edit page is now removed from
+  the record (the store's partial update with `null`) rather than saved as
+  empty text or, for a number, refused; a required collection field refuses
+  the clear with a 422 field error. A record flow may declare `list: {title?,
+  columns}`: `<mount>/` then lists the signed-in user's own records (the
+  store scopes them), 20 per page at most with the store's cursors, each with
+  View and, when `editable` is set, Edit links, and the confirmation links back
+  to it. Columns must be form fields (checked at activation). Without `list`,
+  nothing changes. form-records now also requires `ui`, which renders the list
+  page; `createFormRecordsExtension` accepts `ui` and needs it only for a
+  `list`.
+
 - First release (#529). A separate, operator-installed extension that requires
   `forms` and `store` and owns their composition: a declared form's validated
   submission creates a record in an `ownership: owner` store collection, a

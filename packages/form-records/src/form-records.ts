@@ -11,7 +11,11 @@ import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, H
 import { formFlowBodySchema } from '@jimhoyd/urlcode-forms';
 import type { FormFieldSpec, FormFlowBody, FormsExports, FormsFlow } from '@jimhoyd/urlcode-forms';
 import type { FieldSpec, Scalar, StoreExports, StoreRecords, StoredRecord } from '@jimhoyd/urlcode-store';
+import { emptyState, escapeHtml, markup, pagination } from '@jimhoyd/urlcode-ui';
+import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
 
+/** Records per list page; the collection's own `pageSize` caps it further. */
+const LIST_PAGE = 20;
 const NAME = /^[a-z][a-z0-9-]{0,63}$/, FIELD = /^[a-z][A-Za-z0-9_]{0,63}$/, UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** One declared record flow: `extensions.form-records.config.records.<name>`. */
@@ -28,6 +32,15 @@ export interface FormRecordSpec {
   editable?: string[];
   /** The edit page's title. Default: the form's title. */
   editTitle?: string;
+  /** A page at `<mount>/` listing the signed-in user's own records. Default: none (no list page). */
+  list?: FormRecordListSpec;
+}
+/** The per-user list page (#738): which form fields to show as columns, in order, and its title. */
+export interface FormRecordListSpec {
+  /** The page title. Default: `Your records`. */
+  title?: string;
+  /** Form fields shown as columns, in this order. */
+  columns: string[];
 }
 interface FormRecordsConfig { records: Record<string, FormRecordSpec> }
 export interface FormRecordsExtensionOptions {
@@ -37,6 +50,8 @@ export interface FormRecordsExtensionOptions {
   forms: FormsExports;
   /** What `ctx.get('store')` returned: the store's export contract, version 1. */
   store: StoreExports;
+  /** What `ctx.get('ui')` returned. Needed only by a record flow that declares a `list` page, which it renders. */
+  ui?: UiExtension;
 }
 
 const stringSchema = { type: 'string', minLength: 1, maxLength: 512 };
@@ -54,6 +69,13 @@ export const formRecordsConfigSchema = {
           fields: { type: 'object', maxProperties: 32, propertyNames: { pattern: FIELD.source }, additionalProperties: { type: 'string', pattern: FIELD.source } },
           editable: { type: 'array', maxItems: 32, uniqueItems: true, items: { type: 'string', pattern: FIELD.source } },
           editTitle: stringSchema,
+          list: {
+            type: 'object', additionalProperties: false, required: ['columns'],
+            properties: {
+              title: stringSchema,
+              columns: { type: 'array', minItems: 1, maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: FIELD.source } },
+            },
+          },
         },
       },
     },
@@ -63,8 +85,8 @@ export const formRecordsConfigSchema = {
 export const formRecordsAuthoring: ExtensionAuthoringContract = {
   description: 'Save a declared form into an owned store collection: a submission creates a record private to its signed-in creator, the confirmation page reads the saved record back, and an edit page changes only the fields listed in `editable`. forms keeps rendering, CSRF and validation; the store keeps ownership, limits and ETags. No handler code.',
   surfaces: [
-    { kind: 'configuration', name: 'records', description: 'Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields and `editTitle`.', path: 'urlcode.yaml#extensions.form-records.config.records' },
-    { kind: 'extension', name: 'mount', description: 'Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true`. It serves `<mount>` (new record), `<mount>/<id>` (confirmation) and `<mount>/<id>/edit`. Declare forms and store before form-records under `extensions`.', path: 'urlcode.yaml' },
+    { kind: 'configuration', name: 'records', description: 'Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).', path: 'urlcode.yaml#extensions.form-records.config.records' },
+    { kind: 'extension', name: 'mount', description: 'Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true`. It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller\'s own records). Declare forms and store before form-records under `extensions`.', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
 };
@@ -90,10 +112,14 @@ function compatible(form: Readonly<FormFieldSpec>, stored: Readonly<FieldSpec>):
   const kind = storedType(form);
   return kind === 'boolean' ? stored.type === 'boolean' : kind === 'number' ? stored.type === 'integer' || stored.type === 'number' : stored.type === 'string';
 }
-/** A form string as the collection's value. `undefined` leaves the field out; `{error}` is a field error. */
-function toStored(stored: Readonly<FieldSpec>, value: string, editing: boolean): Scalar | undefined | { error: string } {
+/**
+ * A form string as the collection's value. `undefined` leaves the field out (an empty input on create); `null` clears
+ * it (an empty input on edit, which the store refuses with a field error when the collection field is required);
+ * `{error}` is a field error.
+ */
+function toStored(stored: Readonly<FieldSpec>, value: string, editing: boolean): Scalar | null | undefined | { error: string } {
   if (stored.type === 'boolean') return value === 'true';
-  if (value === '') return stored.type === 'string' && editing ? '' : editing ? { error: 'cannot be cleared once saved' } : undefined;
+  if (value === '') return editing ? null : undefined;
   if (stored.type === 'string') return value;
   const number = Number(value);
   if (!Number.isFinite(number)) return { error: 'must be a number' };
@@ -109,6 +135,8 @@ function toForm(value: Scalar | undefined): string {
 interface Binding {
   name: string; mount: string; flow: FormsFlow; edit: FormsFlow | undefined; editTitle: string | undefined;
   records: StoreRecords; map: Readonly<Record<string, string>>; formFields: string[];
+  /** `newLabel` links the list to the new-record form: the form's title. */
+  list: { title: string; columns: readonly string[]; newLabel: string; ui: UiExtension } | undefined;
 }
 /** Checks one record flow against the exported forms and store contracts. Every problem refuses activation. */
 function bind(name: string, spec: FormRecordSpec, options: FormRecordsExtensionOptions): Binding {
@@ -136,7 +164,16 @@ function bind(name: string, spec: FormRecordSpec, options: FormRecordsExtensionO
   for (const field of editable) if (!Object.hasOwn(flow.declared, field)) throw new Error(`Record ${name}: editable lists ${field}, which the form does not declare`);
   let edit: FormsFlow | undefined;
   try { edit = editable.length ? flow.only(editable) : undefined; } catch (error) { throw new Error(`Record ${name}: editable: ${(error as Error).message}`, { cause: error }); }
-  return { name, mount: spec.mount, flow, edit, editTitle: spec.editTitle, records, map: Object.freeze({ ...map }), formFields };
+  let list: Binding['list'];
+  if (spec.list) {
+    const columns = spec.list.columns;
+    if (!Array.isArray(columns) || !columns.length) throw new Error(`Record ${name}: list needs at least one column`);
+    if (new Set(columns).size !== columns.length) throw new Error(`Record ${name}: list lists a column twice`);
+    for (const column of columns) if (!Object.hasOwn(flow.declared, column)) throw new Error(`Record ${name}: list column ${String(column).slice(0, 64)} is not a form field; columns name form fields, each shown from the collection field it is mapped to`);
+    if (!options.ui) throw new Error(`Record ${name}: a list page needs the ui export; pass ui to createFormRecordsExtension`);
+    list = { title: spec.list.title ?? 'Your records', columns: Object.freeze([...columns]), newLabel: spec.form.title, ui: options.ui };
+  }
+  return { name, mount: spec.mount, flow, edit, editTitle: spec.editTitle, records, map: Object.freeze({ ...map }), formFields, list };
 }
 
 /** Creates the form-records registration from the forms and store exports `host()` received. */
@@ -151,6 +188,7 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
     schema: formRecordsConfigSchema, authoring: formRecordsAuthoring,
     activate(raw, context): ExtensionInstance {
       if (!options.forms.active || !options.store.active) throw new Error('form-records needs forms and store active first: declare both before form-records under extensions in urlcode.yaml');
+      if (options.ui && !options.ui.active) throw new Error('form-records needs ui active first: declare ui before form-records under extensions in urlcode.yaml');
       const config = raw as unknown as FormRecordsConfig;
       const byMount = new Map<string, Binding>();
       for (const [name, spec] of Object.entries(config.records)) {
@@ -183,6 +221,8 @@ async function handle(byMount: ReadonlyMap<string, Binding>, request: ExtensionR
   const suffix = trimTrailingSlashes(request.path.slice(binding.mount.length));
   const method = request.method.toUpperCase();
   try {
+    // With a list page, exactly `<mount>/` lists the caller's records; `<mount>` stays the new-record form.
+    if (binding.list && request.path === `${binding.mount}/` && (method === 'GET' || method === 'HEAD')) return listPage(binding, request, method);
     if (suffix === '') return await create(binding, request, method);
     const match = /^\/([0-9a-f-]{36})(\/edit)?$/.exec(suffix);
     if (!match || !UUID.test(match[1]!)) return text(404, 'Not found');
@@ -199,9 +239,9 @@ async function handle(byMount: ReadonlyMap<string, Binding>, request: ExtensionR
 function formValues(binding: Binding, record: Readonly<StoredRecord>, names: readonly string[]): Record<string, string> {
   return Object.fromEntries(names.map(field => [field, toForm(record[binding.map[field]!])]));
 }
-/** Converts admitted form values for the collection; errors are keyed by form field. */
-function convert(binding: Binding, values: Readonly<Record<string, string>>, editing: boolean): { values: Record<string, Scalar>; errors: Record<string, string> } {
-  const out: Record<string, Scalar> = {}, errors: Record<string, string> = {};
+/** Converts admitted form values for the collection; errors are keyed by form field. A `null` value (edit only) clears the field. */
+function convert(binding: Binding, values: Readonly<Record<string, string>>, editing: boolean): { values: Record<string, Scalar | null>; errors: Record<string, string> } {
+  const out: Record<string, Scalar | null> = {}, errors: Record<string, string> = {};
   for (const [field, value] of Object.entries(values)) {
     const target = binding.map[field]!, converted = toStored(binding.records.fields[target]!, value, editing);
     if (converted !== null && typeof converted === 'object') errors[field] = converted.error;
@@ -229,7 +269,8 @@ async function create(binding: Binding, request: ExtensionRequest, method: strin
   const { values, errors } = convert(binding, submitted.values, false);
   if (Object.keys(errors).length) return binding.flow.render(request, { ...page, values: submitted.values, errors, status: 422 });
   try {
-    const saved = await binding.records.create(request.principal, values);
+    // On create an empty input is left out (never null), so every value here is a scalar.
+    const saved = await binding.records.create(request.principal, Object.fromEntries(Object.entries(values).filter((entry): entry is [string, Scalar] => entry[1] !== null)));
     return { status: 303, headers: [['location', `${binding.mount}/${saved.record.id as string}`]] };
   } catch (error) {
     const answer = feedback(binding, error);
@@ -242,7 +283,44 @@ function show(binding: Binding, request: ExtensionRequest, method: string, id: s
   if (method !== 'GET' && method !== 'HEAD') return text(405, 'Method not allowed', [['allow', 'GET, HEAD']]);
   const { record } = binding.records.get(request.principal, id);
   const shown = formValues(binding, record, binding.flow.confirmation.show);
-  return headOnly(method, binding.flow.confirmationPage(shown, binding.edit ? { links: [{ href: `${binding.mount}/${id}/edit`, label: 'Edit' }] } : {}));
+  const links = [...(binding.edit ? [{ href: `${binding.mount}/${id}/edit`, label: 'Edit' }] : []), ...(binding.list ? [{ href: `${binding.mount}/`, label: binding.list.title }] : [])];
+  return headOnly(method, binding.flow.confirmationPage(shown, links.length ? { links } : {}));
+}
+
+/** A stored value as the list shows it: a checkbox as Yes/No, a select as its option label, anything else as text. */
+function display(spec: Readonly<FormFieldSpec>, value: Scalar | undefined): string {
+  if (value === undefined) return '';
+  if (spec.control === 'checkbox') return value === true ? 'Yes' : 'No';
+  const text = toForm(value);
+  return spec.control === 'select' ? spec.options?.find(option => option.value === text)?.label ?? text : text;
+}
+/**
+ * `<mount>/`: one page of the caller's own records (the store scopes an owned collection to the principal), in
+ * creation order, with the store's offset cursor in `?cursor=`. Every value is escaped; nothing is cached.
+ */
+function listPage(binding: Binding, request: ExtensionRequest, method: string): HandlerResult {
+  const list = binding.list!, base = `${binding.mount}/`;
+  const cursors = request.query.getAll('cursor');
+  const invalid = () => text(400, 'This page link is not valid; open the list again');
+  if (cursors.length > 1 || (cursors.length === 1 && !/^\d{1,9}$/.test(cursors[0]!))) return invalid();
+  let page: ReturnType<StoreRecords['list']>;
+  try { page = binding.records.list(request.principal, { limit: LIST_PAGE, ...(cursors.length ? { cursor: cursors[0]! } : {}) }); }
+  catch (error) { if (storeFailure(error)?.status === 400) return invalid(); throw error; }
+  const labels = binding.flow.declared;
+  const head = `${list.columns.map(column => `<th scope="col">${escapeHtml(labels[column]!.label)}</th>`).join('')}<th scope="col">Links</th>`;
+  const rows = page.items.map(record => {
+    const id = escapeHtml(`${binding.mount}/${String(record.id)}`);
+    const cells = list.columns.map(column => `<td>${escapeHtml(display(labels[column]!, record[binding.map[column]!]))}</td>`).join('');
+    return `<tr>${cells}<td><a href="${id}">View</a>${binding.edit ? ` <a href="${id}/edit">Edit</a>` : ''}</td></tr>`;
+  }).join('');
+  const table = rows ? `<div class="ui-table"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>` : emptyState(page.total ? 'No records on this page.' : 'You have no records yet.');
+  const pager = page.previous !== undefined || page.next !== undefined ? pagination({
+    ...(page.previous === undefined ? {} : { previous: page.previous === '0' ? base : `${base}?cursor=${page.previous}` }),
+    ...(page.next === undefined ? {} : { next: `${base}?cursor=${page.next}` }),
+  }) : '';
+  const body = `<section class="ui-stack"><h1>${escapeHtml(list.title)}</h1><p><a href="${escapeHtml(binding.mount)}">${escapeHtml(list.newLabel)}</a></p>${table}${pager}</section>`;
+  const result = list.ui.kit.wrap(markup(body), { title: list.title });
+  return headOnly(method, { status: 200, headers: [...result.headers.filter(([header]) => header.toLowerCase() !== 'cache-control'), ['cache-control', 'no-store']], body: result.body });
 }
 
 async function edit(binding: Binding, request: ExtensionRequest, method: string, id: string): Promise<HandlerResult> {

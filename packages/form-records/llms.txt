@@ -12,7 +12,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.forms` and `extensions.store` declared before `form-records`.
 - A store collection with `ownership: owner` (and its own `auth: true` route).
-- `extensions.form-records: { version: "1", config: { records: { <name>: { mount, collection, form, fields?, editable?, editTitle? } } } }`;
+- `extensions.form-records: { version: "1", config: { records: { <name>: { mount, collection, form, fields?, editable?, editTitle?, list?: { title?, columns } } } } }`;
   `form` is a forms flow body without `mount`.
 - A route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and `auth: true`.
 
@@ -24,8 +24,11 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - No handler code, in-process map or HTML for "save a form, show it, edit it":
   declare a record flow.
 - Records are private to their creator: shared collections and mounts without
-  a principal-providing policy are refused at startup. There is no list page;
-  the store's JSON API lists the caller's own records.
+  a principal-providing policy are refused at startup. For a per-user list,
+  declare `list: { columns: [<form fields>] }` (served at `<mount>/`); do not
+  write a list handler.
+- An editable field emptied on the edit page is removed from the record; a
+  required collection field refuses that with a 422.
 - Only `editable` fields change after create; a stale edit is a 412 page and
   saves nothing. forms' `onSubmit` hook does not run for these forms.
 - Node only, like the store.

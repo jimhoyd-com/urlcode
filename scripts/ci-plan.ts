@@ -146,8 +146,8 @@ const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms', 'form-recor
 // and `auth` itself imports `ui`, so `ui` must be built before `auth` here.
 // The serial script used to get this for free from running packages in order;
 // a package's own job now has to build its declared dependencies first.
-// `mcp` only peers on core. `form-records` imports `forms` and `store` (and its
-// tests compose them with `ui`), so all three are built before it.
+// `mcp` only peers on core. `form-records` imports `forms`, `store` and `ui`
+// (which renders its list page), so all three are built before it.
 const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: ['ui'], forms: ['ui'], 'form-records': ['ui', 'forms', 'store'], mcp: [] };
 const WORKSPACE_DEPENDENTS: Record<string, readonly string[]> = {
   ui: ['auth', 'admin', 'store', 'forms', 'form-records'], auth: ['admin'], admin: [], store: ['form-records'], forms: ['form-records'], 'form-records': [], mcp: [],

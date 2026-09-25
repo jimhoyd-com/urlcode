@@ -50,6 +50,33 @@ test('creates, lists, reads, replaces, patches and deletes records with server-o
   assert.equal((await call(`/api/todos/${record.id as string}`)).status, 404);
 });
 
+test('PATCH with null removes an optional field, refuses a required one with a field error, and PUT keeps refusing null (#738)', async t => {
+  const { call, data } = await boot(t, { ...todos, increments: ['count'], fields: { ...todos.fields, count: { type: 'integer', default: 0 } } });
+  const record = await (await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'one', priority: 3, kind: 'a' }) })).json() as Record<string, unknown>;
+  const path = `/api/todos/${record.id as string}`;
+  const etag = (await call(path)).headers.get('etag')!;
+  const cleared = await call(path, { method: 'PATCH', headers: { ...json, 'if-match': etag }, body: JSON.stringify({ priority: null, done: true }) });
+  assert.equal(cleared.status, 200);
+  const body = await cleared.json() as Record<string, unknown>;
+  assert.equal(Object.hasOwn(body, 'priority'), false, 'the field is removed, not stored as null'); assert.equal(body.done, true); assert.equal(body.kind, 'a');
+  const stored = (JSON.parse(await readFile(join(data, 'todos.json'), 'utf8')) as { records: Record<string, unknown>[] }).records[0]!;
+  assert.equal(Object.hasOwn(stored, 'priority'), false);
+  // Only a null, even for a field that is already absent, is a change; If-Match still applies to it.
+  assert.equal((await call(path, { method: 'PATCH', headers: json, body: JSON.stringify({ priority: null }) })).status, 200);
+  assert.equal((await call(path, { method: 'PATCH', headers: { ...json, 'if-match': etag }, body: JSON.stringify({ kind: null }) })).status, 412);
+  const required = await call(path, { method: 'PATCH', headers: json, body: JSON.stringify({ title: null, kind: null }) });
+  assert.equal(required.status, 400);
+  const refused = (await required.json() as { error: { code: string; fields: Record<string, string> } }).error;
+  assert.equal(refused.code, 'invalid_record'); assert.deepEqual(refused.fields, { title: 'is required and cannot be cleared' });
+  assert.equal((await (await call(path)).json() as Record<string, unknown>).kind, 'a', 'a refused patch clears nothing');
+  const counter = await call(path, { method: 'PATCH', headers: json, body: JSON.stringify({ count: null }) });
+  assert.equal(counter.status, 400); assert.equal((await counter.json() as { error: { fields: Record<string, string> } }).error.fields.count, 'is an increment field and cannot be cleared');
+  const undeclared = await call(path, { method: 'PATCH', headers: json, body: JSON.stringify({ extra: null }) });
+  assert.equal(undeclared.status, 400); assert.equal((await undeclared.json() as { error: { fields: Record<string, string> } }).error.fields.extra, 'is not a declared field');
+  const put = await call(path, { method: 'PUT', headers: json, body: JSON.stringify({ title: 'two', priority: null }) });
+  assert.equal(put.status, 400, 'PUT is unchanged: null is not a value'); assert.equal((await put.json() as { error: { fields: Record<string, string> } }).error.fields.priority, 'must be a number');
+});
+
 test('rejects invalid records with field names and never echoes submitted values', async t => {
   const { call } = await boot(t);
   const secret = 'sk-live-SECRET-VALUE-0123456789';

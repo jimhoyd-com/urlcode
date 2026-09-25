@@ -50,8 +50,10 @@ form-records adds no parsing, token or storage code of its own. It delegates:
 
 ## Limits
 
-- Records are private to the principal that created them. There is no sharing,
-  no administrator view and no list page in this extension.
+- Records are private to the principal that created them. There is no sharing
+  and no administrator view. The optional `list` page shows only the caller's
+  own records: the store scopes the page, its total and its cursors to the
+  principal, and every value is escaped and served `no-store`.
 - The store is a single-writer file directory on Node; so is this composition.
 - Passing tests does not establish independent security assessment, hostile
   multi-tenant readiness, production abuse resistance, or delivery guarantees.

@@ -6,6 +6,7 @@ import { defineExtension } from '@jimhoyd/urlcode/extensions';
 import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 import type { FormsExports } from '@jimhoyd/urlcode-forms';
 import type { StoreExports } from '@jimhoyd/urlcode-store';
+import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
 import { createFormRecordsExtension, formRecordsAuthoring, formRecordsConfigSchema } from './form-records.ts';
 
 /** form-records takes no operator options: forms and store supply everything it uses. */
@@ -54,14 +55,14 @@ function example(request: ScaffoldRequest): ScaffoldResult {
 export default defineExtension<FormRecordsHostOptions>({
   name: 'form-records',
   description: 'Saves a declared form into an owned store collection, with a confirmation page and an edit page limited to declared fields.',
-  requires: ['forms', 'store'],
+  requires: ['forms', 'store', 'ui'],
   schema: formRecordsConfigSchema,
   authoring: formRecordsAuthoring,
   agent: { description: 'Local, revision-pinned references for agents configuring the form-records extension.', references: [{ name: 'form-records extension guide', description: 'Configuration and composition guidance for saving a form into an owned store collection.', path: 'README.md' }] },
   scaffold,
   example,
   host(context) {
-    // The typed, versioned exports of what this extension requires; never their configuration.
-    return { registration: createFormRecordsExtension({ projectSha256: context.projectSha256, forms: context.get<FormsExports>('forms'), store: context.get<StoreExports>('store') }) };
+    // The typed, versioned exports of what this extension requires; never their configuration. ui renders the optional list page.
+    return { registration: createFormRecordsExtension({ projectSha256: context.projectSha256, forms: context.get<FormsExports>('forms'), store: context.get<StoreExports>('store'), ui: context.get<UiExtension>('ui') }) };
   },
 });

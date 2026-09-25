@@ -63,7 +63,7 @@ function badge(projectSha256: string): RuntimeExtension {
   };
 }
 
-interface Boot { record?: object; collection?: object; guard?: boolean; order?: string[]; target?: 'aws' }
+interface Boot { record?: object; collection?: object; guard?: boolean; order?: string[]; target?: 'aws'; noUi?: boolean }
 async function project(t: TestContext, options: Boot = {}) {
   const root = await mkdtemp(join(tmpdir(), 'form-records-')); t.after(() => rm(root, { recursive: true, force: true }));
   const app = join(root, 'app'), data = join(root, 'data');
@@ -84,7 +84,7 @@ async function project(t: TestContext, options: Boot = {}) {
   const ui = createUiExtension({ projectRoot: app, projectSha256 });
   const forms = createForms({ ui, projectSha256, csrfSecret: 'f'.repeat(32) });
   const store = createStore({ directory: data, projectSha256 });
-  const records = createFormRecordsExtension({ projectSha256, forms: forms.exports, store: store.exports });
+  const records = createFormRecordsExtension({ projectSha256, forms: forms.exports, store: store.exports, ...(options.noUi ? {} : { ui }) });
   const extensions = [badge(projectSha256), ui.registration, forms.registration, store.registration, records];
   return { app, data, extensions };
 }
@@ -271,6 +271,10 @@ test('activation refuses a shared collection, a mount without a principal provid
   await refuses({ record: { ...onboarding, form: { ...onboarding.form, fields: { ...onboarding.form.fields, age: { label: 'Age', type: 'number', required: false, requiredWhen: { field: 'team', in: ['red'] } } } } } }, /declares both required and requiredWhen/);
   await refuses({ record: { ...onboarding, editable: ['age'], form: { ...onboarding.form, fields: { ...onboarding.form.fields, age: { label: 'Age', type: 'number', requiredWhen: { field: 'team', in: ['red'] } } } } } }, /team must be included with it/);
   await refuses({ order: ['badge', 'ui', 'form-records', 'forms', 'store'] }, /declare both before form-records/);
+  await refuses({ record: { ...onboarding, list: { columns: ['name', 'nickname'] } } }, /list column nickname is not a form field/);
+  await refuses({ record: { ...onboarding, list: { columns: ['name', 'name'] } } }, /columns|twice/);
+  await refuses({ record: { ...onboarding, list: { columns: [] } } }, /columns|at least one column/);
+  await refuses({ record: { ...onboarding, list: { columns: ['name'] } }, noUi: true }, /a list page needs the ui export/);
   const { app, extensions } = await project(t, { order: ['form-records', 'badge', 'ui', 'forms', 'store'] });
   assert.deepEqual(extensions.at(-1)!.targets, ['node'], 'the store is Node-only, so the composition is too');
   await assert.rejects(createRuntime(app, { origin, extensions, target: 'aws' }), /Refused by the extension's own declared targets: form-records/);
@@ -292,4 +296,71 @@ test('the registration refuses exports of another contract version', () => {
   const store = { version: 1, active: false, records() { throw new Error('unused'); } } as const;
   assert.throws(() => createFormRecordsExtension({ projectSha256, forms: { version: 2 } as never, store }), /forms export contract version 1/);
   assert.throws(() => createFormRecordsExtension({ projectSha256: 'short', forms: { version: 1 } as never, store }), /revision pin/);
+});
+
+test('an empty optional input on the edit page clears the saved value; a required collection field refuses it with a 422 (#738)', async t => {
+  const fields = { ...onboarding.form.fields, name: { label: 'Name', maxLength: 80, required: false } };
+  const { browser, stored } = await boot(t, { record: { ...onboarding, form: { ...onboarding.form, fields }, editable: ['name', 'team', 'age', 'bio'] } });
+  const alice = browser('alice');
+  const id = await created(alice);
+  const edit = await page(alice, `/onboarding/${id}/edit`);
+  assert.match(edit.html, /name="age"[^>]*value="36"/);
+  const saved = await post(alice, edit.action, { csrf: edit.csrf, name: 'Ada', team: 'blue', age: '', bio: '' });
+  assert.equal(saved.status, 303);
+  const record = (await stored()).records[0]!;
+  assert.equal(Object.hasOwn(record, 'age'), false, 'the optional number field is removed, not stored as 0 or null');
+  assert.equal(Object.hasOwn(record, 'notes'), false, 'an emptied optional text field is removed too');
+  assert.equal(record.team, 'blue'); assert.equal(record.name, 'Ada');
+  assert.doesNotMatch((await page(alice, `/onboarding/${id}/edit`)).html, /name="age"[^>]*value="36"/);
+  // name is optional on the form but required in the collection: the store refuses the clear and the page says why.
+  const again = await page(alice, `/onboarding/${id}/edit`);
+  const refused = await post(alice, again.action, { csrf: again.csrf, name: '', team: 'red', age: '40', bio: '' });
+  const html = await refused.text();
+  assert.equal(refused.status, 422); assert.match(html, /is required and cannot be cleared/);
+  const after = (await stored()).records[0]!;
+  assert.equal(after.name, 'Ada'); assert.equal(after.team, 'blue'); assert.equal(Object.hasOwn(after, 'age'), false, 'a refused edit changes nothing');
+});
+
+test('the optional list page shows only the caller\'s own records, escaped, paginated with store cursors (#738)', async t => {
+  const { browser } = await boot(t, { collection: { ...profiles, pageSize: 2 }, record: { ...onboarding, list: { title: 'My <profiles>', columns: ['name', 'team', 'subscribed'] } } });
+  const alice = browser('alice'), bob = browser('bob');
+  const first = await created(alice, { name: '<b>Ada</b>', team: 'red', subscribed: 'true' });
+  const second = await created(alice, { name: 'Grace', team: 'blue' });
+  await created(bob, { name: 'Bobby-Z9', team: 'red' });
+  const third = await created(alice, { name: 'Linus', team: 'red' });
+  const one = await alice('/onboarding/');
+  const html = await one.text();
+  assert.equal(one.status, 200); assert.equal(one.headers.get('cache-control'), 'no-store');
+  assert.match(html, /<h1>My &lt;profiles&gt;<\/h1>/); assert.ok(!html.includes('<profiles>'));
+  assert.match(html, /<td>&lt;b&gt;Ada&lt;\/b&gt;<\/td><td>Red team<\/td><td>Yes<\/td>/); assert.ok(!html.includes('<b>Ada</b>'), 'record values are escaped');
+  assert.match(html, /<td>Grace<\/td><td>Blue team<\/td><td>No<\/td>/);
+  assert.ok(!html.includes('Linus'), 'the page holds at most pageSize records');
+  assert.ok(!html.includes('Bobby-Z9'), 'another user\'s record is never listed');
+  assert.match(html, new RegExp(`<a href="/onboarding/${first}">View</a> <a href="/onboarding/${first}/edit">Edit</a>`));
+  assert.match(html, new RegExp(`href="/onboarding/${second}"`));
+  assert.match(html, /<a href="\/onboarding">Join &lt;us&gt;<\/a>/, 'a link to the new-record form');
+  assert.match(html, /href="\/onboarding\/\?cursor=2"/); assert.ok(!/Previous page/.test(html));
+  const two = await (await alice('/onboarding/?cursor=2')).text();
+  assert.match(two, /<td>Linus<\/td>/); assert.ok(!two.includes('Grace') && !two.includes('Bobby-Z9'));
+  assert.match(two, new RegExp(`href="/onboarding/${third}"`));
+  assert.match(two, /<a href="\/onboarding\/">Previous page<\/a>/); assert.ok(!/Next page/.test(two));
+  const bobs = await (await bob('/onboarding/')).text();
+  assert.match(bobs, /Bobby-Z9/); assert.ok(!bobs.includes('Grace') && !bobs.includes('Linus'));
+  assert.match(await (await browser('carol')('/onboarding/')).text(), /You have no records yet/);
+  assert.equal((await alice('/onboarding/?cursor=x2')).status, 400);
+  assert.equal((await alice('/onboarding/?cursor=1&cursor=2')).status, 400);
+  assert.equal((await browser('anon')('/onboarding/')).status, 401);
+  const head = await alice('/onboarding/', { method: 'HEAD' });
+  assert.equal(head.status, 200); assert.equal(await head.text(), '');
+  // `<mount>` stays the new-record form, and the confirmation links back to the list.
+  assert.match(await (await alice('/onboarding')).text(), /name="csrf"/);
+  assert.match(await (await alice(`/onboarding/${first}`)).text(), /<a href="\/onboarding\/">My &lt;profiles&gt;<\/a>/);
+});
+
+test('without a list declaration <mount>/ keeps serving the new-record form (#738)', async t => {
+  const { browser } = await boot(t);
+  const alice = browser('alice');
+  await created(alice, { name: 'Listless-Q', team: 'red' });
+  const html = await (await alice('/onboarding/')).text();
+  assert.match(html, /name="csrf"/); assert.ok(!html.includes('Listless-Q'));
 });

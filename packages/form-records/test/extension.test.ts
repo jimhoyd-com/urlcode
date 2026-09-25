@@ -42,9 +42,9 @@ function badgeAuth(projectSha256: string): RuntimeExtension {
   };
 }
 
-test('the definition requires forms and store and carries the runtime schema', () => {
+test('the definition requires forms, store and ui and carries the runtime schema', () => {
   assert.equal(formRecords.definition.name, 'form-records');
-  assert.deepEqual(formRecords.definition.requires, ['forms', 'store']);
+  assert.deepEqual(formRecords.definition.requires, ['forms', 'store', 'ui']);
   assert.equal(formRecords.definition.schema, formRecordsConfigSchema);
   assert.equal(formRecords.definition.contributes, undefined);
 });

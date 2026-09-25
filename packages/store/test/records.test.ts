@@ -14,7 +14,7 @@ import type { StoreExports } from '../src/index.ts';
 // extension that requires store would, alongside a synthetic principal provider ("badge"), so the seam is proven
 // without form-records or auth.
 const origin = 'https://records.example.test';
-const notes = { mount: '/api/notes', ownership: 'owner', maxRecords: 3, fields: { title: { type: 'string', required: true, maxLength: 20 }, pinned: { type: 'boolean', default: false } } };
+const notes = { mount: '/api/notes', ownership: 'owner', maxRecords: 3, pageSize: 2, fields: { title: { type: 'string', required: true, maxLength: 20 }, pinned: { type: 'boolean', default: false }, rank: { type: 'integer', minimum: 1 } } };
 const board = { mount: '/api/board', maxRecords: 5, fields: { title: { type: 'string', required: true, maxLength: 20 } } };
 
 function badge(projectSha256: string): RuntimeExtension {
@@ -93,7 +93,7 @@ test('the export applies ownership, validation, limits and If-Match exactly as t
   const { store, close } = await boot(t);
   const notesApi = store.records('notes'), boardApi = store.records('board');
   assert.equal(notesApi.ownership, 'owner'); assert.equal(boardApi.ownership, 'shared'); assert.equal(notesApi.readOnly, false);
-  assert.deepEqual(Object.keys(notesApi.fields), ['title', 'pinned']);
+  assert.deepEqual(Object.keys(notesApi.fields), ['title', 'pinned', 'rank']);
   assert.throws(() => { (notesApi.fields.title as { maxLength?: number }).maxLength = 1; }, TypeError, 'the declared fields are a frozen copy');
   assert.throws(() => store.records('missing'), /store declares no collection missing/);
   const alice = { id: 'alice', provider: 'badge' }, bob = { id: 'bob', provider: 'badge' };
@@ -120,4 +120,37 @@ test('the export applies ownership, validation, limits and If-Match exactly as t
   await close();
   assert.equal(store.active, false, 'closing the activation withdraws the export');
   assert.throws(() => store.records('notes'), /not active/);
+});
+
+test('update with null removes an optional field and refuses a required one; ETag and ownership still apply (#738)', async t => {
+  const { store } = await boot(t);
+  const notesApi = store.records('notes'), alice = { id: 'alice', provider: 'badge' }, bob = { id: 'bob', provider: 'badge' };
+  const first = await notesApi.create(alice, { title: 'first', rank: 2 });
+  const id = first.record.id as string;
+  await assert.rejects(notesApi.update(bob, id, { rank: null }, { ifMatch: first.etag }), (error: StoreError) => error.status === 404, 'another owner cannot clear a field');
+  const cleared = await notesApi.update(alice, id, { rank: null }, { ifMatch: first.etag });
+  assert.equal(Object.hasOwn(cleared.record, 'rank'), false); assert.equal(cleared.record.title, 'first'); assert.notEqual(cleared.etag, first.etag);
+  await assert.rejects(notesApi.update(alice, id, { rank: null }, { ifMatch: first.etag }), (error: StoreError) => error.status === 412, 'a stale ETag refuses a clear too');
+  await assert.rejects(notesApi.update(alice, id, { title: null }), (error: StoreError) => error.status === 400 && error.code === 'invalid_record' && error.fields?.title === 'is required and cannot be cleared');
+  await assert.rejects(notesApi.update(alice, id, { rank: 0 }), (error: StoreError) => error.status === 400 && error.fields?.rank === 'must be at least 1', 'a set value is still validated');
+  assert.equal(notesApi.get(alice, id).record.title, 'first');
+});
+
+test('list pages through only the principal\'s own records, with next and previous cursors (#738)', async t => {
+  const { store } = await boot(t);
+  const notesApi = store.records('notes'), alice = { id: 'alice', provider: 'badge' }, bob = { id: 'bob', provider: 'badge' };
+  const a1 = await notesApi.create(alice, { title: 'a1' }); await notesApi.create(bob, { title: 'b1' }); const a2 = await notesApi.create(alice, { title: 'a2' });
+  const first = notesApi.list(alice, { limit: 1 });
+  assert.equal(first.total, 2, 'total counts only the caller\'s records'); assert.deepEqual(first.items.map(item => item.title), ['a1']);
+  assert.equal(first.next, '1'); assert.equal(first.previous, undefined);
+  assert.equal(Object.hasOwn(first.items[0]!, '_owner'), false, 'items never carry their owner');
+  const second = notesApi.list(alice, { limit: 1, cursor: first.next! });
+  assert.deepEqual(second.items.map(item => item.id), [a2.record.id]); assert.equal(second.next, undefined); assert.equal(second.previous, '0');
+  assert.deepEqual(notesApi.list(alice, { limit: 1, cursor: second.previous! }).items.map(item => item.id), [a1.record.id]);
+  assert.deepEqual(notesApi.list(bob).items.map(item => item.title), ['b1']);
+  assert.equal(notesApi.list(alice, { limit: 50 }).items.length, 2, 'limit is capped at pageSize (2)');
+  assert.throws(() => notesApi.list(null), (error: StoreError) => error.status === 401);
+  assert.throws(() => notesApi.list(alice, { cursor: 'abc' }), (error: StoreError) => error.status === 400 && error.code === 'invalid_query');
+  assert.throws(() => notesApi.list(alice, { limit: 0 }), (error: StoreError) => error.status === 400 && error.fields?.limit !== undefined);
+  assert.throws(() => { (first.items as unknown[]).push({}); }, TypeError, 'the page is frozen');
 });

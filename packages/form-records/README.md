@@ -3,10 +3,12 @@
 An operator-installed URLCode extension that saves a declared form into an
 owned [store](../store/README.md) collection. A signed-in user submits the form,
 the record is created as theirs, a confirmation page reads the saved record back,
-and an edit page lets its owner change only the fields you list. Nothing else is
-written by hand: no handler, no in-process map, no HTML.
+an edit page lets its owner change only the fields you list, and an optional
+list page shows each user their own records. Nothing else is written by hand:
+no handler, no in-process map, no HTML.
 
-It composes two other add-ons and owns only the composition:
+It composes two other add-ons (and renders its optional list page through
+[ui](../ui/README.md)) and owns only the composition:
 
 - [forms](../forms/README.md) renders the form and keeps escaping, same-origin
   admission, body bounds, CSRF and field validation (403, 413, 415, and a 422
@@ -16,7 +18,7 @@ It composes two other add-ons and owns only the composition:
 
 form-records never reads `extensions.forms.config` or `extensions.store.config`.
 It reaches both through their typed exports, contract version 1 (`FormsExports`
-and `StoreExports`, read with `ctx.get`), as the
+and `StoreExports`, read with `ctx.get`, beside ui's kit), as the
 [generic add-on authoring rules](../../docs/EXTENSIONS.md#generic-add-on-authoring-rules)
 require. It is released with core, at core's version, and installed with
 `urlcode extensions add form-records`, which also adds `forms`, `store` and `ui`
@@ -60,6 +62,7 @@ extensions:
           fields: { name: name, team: team, subscribed: subscribed, bio: notes }
           editable: [team, subscribed]
           editTitle: Edit your profile
+          list: { title: Your profiles, columns: [name, team] }   # optional
 routes:
   /api/profiles/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true }
   /onboarding/*: { extension: form-records, methods: [GET, HEAD, POST], auth: true }
@@ -74,6 +77,7 @@ routes:
 | `fields` | Form field to collection field. Optional: each form field defaults to the collection field of the same name. Every form field must be mapped, two form fields cannot fill one collection field, and every required collection field without a default must be filled. |
 | `editable` | Form fields the edit page may change. Every other field is read-only after create. Empty or absent: no edit page. |
 | `editTitle` | The edit page title. Default: the form's title. |
+| `list` | Optional. A page at `<mount>/` listing the signed-in user's own records: `columns` (1 to 8 distinct form fields, shown in that order from the collection fields they fill) and `title` (default `Your records`). Absent: no list page. |
 
 A form field fills a collection field of a matching type: a `checkbox` fills a
 `boolean`, an input with `type: number` fills an `integer` or `number` (a
@@ -86,7 +90,8 @@ every other problem above, with a message naming the record flow.
 | Path | GET / HEAD | POST |
 | --- | --- | --- |
 | `<mount>` | The empty form | Create: 303 to `<mount>/<id>`, or the form again with errors |
-| `<mount>/<id>` | The confirmation: the form's `confirmation` with its `show` fields read from the saved record, and an Edit link when `editable` is set | 405 |
+| `<mount>/` (with `list`) | The caller's own records, 20 per page at most (fewer when the collection's `pageSize` is smaller), in creation order, with a View link to each confirmation, an Edit link when `editable` is set, and Previous/Next page links (`?cursor=<offset>`, the store's cursor) | As `<mount>` |
+| `<mount>/<id>` | The confirmation: the form's `confirmation` with its `show` fields read from the saved record, an Edit link when `editable` is set, and a link to the list when `list` is set | 405 |
 | `<mount>/<id>/edit` | The editable fields pre-filled, the other fields as a read-only list | Partial update: 303 to `<mount>/<id>`, or the form again with errors |
 
 - **Ownership.** Every request needs a principal; without one the answer is
@@ -97,10 +102,19 @@ every other problem above, with a message naming the record flow.
 - **Constrained updates.** The edit page renders and admits only the
   `editable` fields (through forms' `only()`); a submission that carries any
   other field is a 422 and changes nothing. The update sends only those fields
-  (the store's partial update), so the rest of the record is unchanged. On the
-  edit page an emptied optional text field is saved as empty text; an emptied
-  optional number field is refused ("cannot be cleared once saved"), because
-  the store cannot remove a field in a partial update.
+  (the store's partial update), so the rest of the record is unchanged. An
+  editable field emptied on the edit page is removed from the record (the
+  update sends `null`, which the store's partial update treats as "clear this
+  field"; #738). When the collection field it fills is required, the store
+  refuses that and the page is shown again with a 422 and "is required and
+  cannot be cleared" on the field.
+- **List page.** With `list`, `<mount>/` (exactly, with the trailing slash;
+  `<mount>` stays the new-record form) lists the caller's records only: the
+  collection is owned, so the store scopes the page, its `total` and its
+  cursors to the principal. Values are escaped, a checkbox reads Yes/No and a
+  select its option label, and the page is `Cache-Control: no-store`. A
+  malformed `cursor` is a 400. Activation refuses a column that is not a form
+  field.
 - **Concurrency.** The edit page's form action carries the record version it
   was rendered from (`?v=<etag>`), and the update sends it to the store as
   `If-Match`. When the record changed since, from another tab or the store's
@@ -117,8 +131,9 @@ every other problem above, with a message naming the record flow.
   kept, and a page-level message. Other failures are a generic 500.
 
 forms' `onSubmit` hook does not run for a form-records form: a valid
-submission creates or updates the record. There is no list page; the store's
-JSON API (`GET <collection mount>`) lists the caller's own records.
+submission creates or updates the record. Without `list` there is no list
+page, and `<mount>/` is the new-record form as before; the store's JSON API
+(`GET <collection mount>`) also lists the caller's own records.
 
 ## Install
 
@@ -137,10 +152,12 @@ read-only. form-records writes only its own configuration block, so the
 `store` is added with `--example` in the same command. If `store` was already
 installed, declare that collection yourself (see [STORE.md](../../docs/STORE.md)).
 
-In `host.mjs`, `composeHost` passes forms' and the store's exports to
+In `host.mjs`, `composeHost` passes forms' and the store's exports and ui to
 `formRecords()`; it takes no operator options. Declare `forms` and `store`
 before `form-records` under `extensions` (as `extensions add` does), so they
-are active first; activation refuses otherwise.
+are active first; activation refuses otherwise. Called directly,
+`createFormRecordsExtension` takes `ui` only for a record flow that declares
+`list`, and refuses such a flow without it.
 
 ## Targets
 

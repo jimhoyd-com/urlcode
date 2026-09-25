@@ -6,4 +6,4 @@ export { Collection, StoreError, collectionSchema, normalize, LIMITS, OWNER_FIEL
 export type { CollectionSpec, FieldSpec, FieldType, Ownership, Scalar, StoredRecord } from './collection.ts';
 export { assignOwnerless, deleteOwnerless, reassignOwner, reportOwnerless } from './ownership.ts';
 export type { OwnerlessReport, ReassignCollectionReport, ReassignOptions, ReassignReport } from './ownership.ts';
-export type { StoreExports, StorePrincipal, StoreRecordResult, StoreRecords } from './records.ts';
+export type { StoreExports, StoreListResult, StorePrincipal, StoreRecordResult, StoreRecords } from './records.ts';
