@@ -1084,7 +1084,7 @@ See [organization](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/or
 | `shared.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | — |
 | `shared.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.format` | string | no | enum: ["text","json"] | — |
-| `shared.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `shared.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
 | `shared.*.response` | object | no | unknown keys rejected | — |
 | `shared.*.response.headers` | object | no | maxProperties: 64 | — |
 | `shared.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -1146,7 +1146,7 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | — |
 | `routes.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.format` | string | no | enum: ["text","json"] | — |
-| `routes.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength, pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems. Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `routes.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
 | `routes.*.response` | object | no | unknown keys rejected | — |
 | `routes.*.response.headers` | object | no | maxProperties: 64 | — |
 | `routes.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -1788,7 +1788,8 @@ validated by `request.body.schema`, not by a parameter (a failure answers 422 as
 JSON listing every issue; see [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
 OpenAPI `style`/`explode` fields are not implemented. This uses a documented
 OpenAPI-like input subset; it is not an OpenAPI document or full JSON Schema
-input vocabulary. String limits are at most 8,192 characters.
+input vocabulary. Parameter string limits are at most 8,192 characters; a
+body schema string may be as long as the request body limit ([HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)).
 
 Integers use `-?(0|[1-9][0-9]*)` and must be safe JavaScript integers. Numbers
 allow the same grammar plus a fractional suffix; no exponent, plus sign, leading
@@ -2268,6 +2269,16 @@ including `$ref`, `oneOf` and `default`, fails activation. A schema is limited t
 6 levels, 128 nodes and 64 properties per object. It is checked by the runtime
 itself, so it behaves the same on every host and is not compiled from author
 code.
+
+A string `minLength`/`maxLength` may be as large as 1,048,576, the largest
+request body any route admits (`request.body.maxBytes` defaults to it and
+cannot exceed it), so a long text field such as a document or a pasted log
+needs no workaround. A string with a `pattern` keeps the 128-character
+`maxLength` described below, because that bound limits regex cost rather than
+size. `minItems`/`maxItems` go up to 10,000. The route's own `maxBytes` is not
+compared with the schema: it is checked first and answers 413, so a
+`maxLength` larger than `maxBytes` allows is accepted but never reached.
+Earlier releases capped string lengths at 8,192.
 
 A failing body answers **422** as `application/json`, whatever the client's
 `Accept` header: a route that declares a JSON body schema is a JSON endpoint,

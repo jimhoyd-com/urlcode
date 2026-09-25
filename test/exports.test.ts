@@ -20,7 +20,7 @@ const expected: Record<string, string[]> = {
   './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension'],
   './host': ['composeHost'],
   './sandbox': ['SandboxPool','functionFile'],
-  './body-schema': ['assertBodySchema','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaSubset','uuidFormat'],
+  './body-schema': ['assertBodySchema','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaSubset','maxRequestBodyBytes','uuidFormat'],
   './skills': ['listShippedSkills'],
 };
 

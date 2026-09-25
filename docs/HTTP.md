@@ -123,6 +123,16 @@ including `$ref`, `oneOf` and `default`, fails activation. A schema is limited t
 itself, so it behaves the same on every host and is not compiled from author
 code.
 
+A string `minLength`/`maxLength` may be as large as 1,048,576, the largest
+request body any route admits (`request.body.maxBytes` defaults to it and
+cannot exceed it), so a long text field such as a document or a pasted log
+needs no workaround. A string with a `pattern` keeps the 128-character
+`maxLength` described below, because that bound limits regex cost rather than
+size. `minItems`/`maxItems` go up to 10,000. The route's own `maxBytes` is not
+compared with the schema: it is checked first and answers 413, so a
+`maxLength` larger than `maxBytes` allows is accepted but never reached.
+Earlier releases capped string lengths at 8,192.
+
 A failing body answers **422** as `application/json`, whatever the client's
 `Accept` header: a route that declares a JSON body schema is a JSON endpoint,
 so its validation errors are JSON too (the server and the Cloudflare Worker

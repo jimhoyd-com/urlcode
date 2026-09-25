@@ -3,7 +3,7 @@ import { assert, HttpError } from './errors.ts';
 import { byteLength } from './http-response.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
-import { assertBodySchema, bodySchemaIssues, bodySchemaLine, bodySchemaJson } from './body-schema.ts';
+import { assertBodySchema, bodySchemaIssues, bodySchemaLine, bodySchemaJson, maxRequestBodyBytes } from './body-schema.ts';
 import type { BodySchema } from './body-schema.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
@@ -55,7 +55,7 @@ export function compileHttp(route: HttpRoute): void {
 export function checkRequest(route: HttpRoute, body: Uint8Array, headers: HeadersLike, counts: Record<string, number> = {}): void {
   const policy = route.request?.body;
   if (!policy) return;
-  if (body.length > (policy.maxBytes ?? 1048576)) throw new HttpError(413,'Request body too large');
+  if (body.length > (policy.maxBytes ?? maxRequestBodyBytes)) throw new HttpError(413,'Request body too large');
   if (!body.length) { if (policy.required) throw new HttpError(400,'Request body required'); return; }
   if ((counts['content-type'] ?? 0) > 1) throw new HttpError(400,'Duplicate Content-Type');
   if (headers.has('content-encoding') && headers.get('content-encoding')!.toLowerCase() !== 'identity') throw new HttpError(415,'Unsupported content encoding');

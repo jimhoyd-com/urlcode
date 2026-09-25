@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '../packages/core/src/server.ts';
-import { assertBodySchema, checkBodySchema } from '../packages/core/src/body-schema.ts';
+import { assertBodySchema, bodySchemaSubset, checkBodySchema, maxRequestBodyBytes } from '../packages/core/src/body-schema.ts';
 import { assertSafePattern } from '../packages/core/src/pattern-guard.ts';
 import type { BodySchema } from '../packages/core/src/body-schema.ts';
 import { project, request, param } from './helpers.ts';
@@ -62,7 +62,8 @@ test('body schema limits: bytes, depth, node count, property count, string, item
   for (let i = 0; i < 64; i++) many[`p${i}`] = { type: 'string' };
   assert.throws(() => assertBodySchema({ type: 'object', properties: wide }), /at most 64/);
   assert.throws(() => assertBodySchema({ type: 'object', properties: { a: { type: 'object', properties: many }, b: { type: 'object', properties: many } } }), /too large/);
-  assert.throws(() => assertBodySchema({ type: 'string', maxLength: 8193 }), /maxLength/);
+  assert.throws(() => assertBodySchema({ type: 'string', maxLength: maxRequestBodyBytes + 1 }), /maxLength must be an integer from 0 to 1048576/);
+  assert.throws(() => assertBodySchema({ type: 'string', minLength: maxRequestBodyBytes + 1 }), /minLength/);
   assert.throws(() => assertBodySchema({ type: 'array', maxItems: 10001 }), /maxItems/);
   assert.throws(() => assertBodySchema({ type: 'string', enum: Array.from({ length: 65 }, (_, i) => `v${i}`) }), /1 to 64/);
   const app = await serve(t, { '/todos': { methods: ['POST'], request: { body: { ...bodyPolicy, maxBytes: 64 } }, respond: { status: 201, json: { ok: true } } } });
@@ -84,4 +85,27 @@ test('sandboxed routes get the same body and parameter validation before any gue
     assert.equal((await post(`${base}/nope`, '{"title":"a"}')).status, 400, base);
     assert.equal((await post(`${base}/${uuid}`, '{bad')).status, 400, base);
   }
+});
+
+test('a string without a pattern may be as long as the request body limit; a pattern keeps its regex cap (#713)', async t => {
+  assert.equal(maxRequestBodyBytes, 1048576);
+  assert.equal(bodySchemaSubset.limits.length, maxRequestBodyBytes, 'the published subset states the new string cap');
+  for (const maxLength of [8193, 100000, maxRequestBodyBytes]) {
+    assert.doesNotThrow(() => assertBodySchema({ type: 'string', maxLength }), String(maxLength));
+    assert.doesNotThrow(() => assertBodySchema({ type: 'string', minLength: maxLength, maxLength }), String(maxLength));
+  }
+  assert.throws(() => assertBodySchema({ type: 'string', pattern: '^[a-z]+$', maxLength: 129 }), /pattern requires maxLength of at most 128/);
+  assert.throws(() => assertBodySchema({ type: 'string', pattern: '^[a-z]+$', maxLength: 8193 }), /pattern requires maxLength of at most 128/);
+  assert.throws(() => assertBodySchema({ type: 'array', maxItems: 10001 }), /maxItems must be an integer from 0 to 10000/, 'item bounds are unchanged');
+
+  const note = { type: 'object', required: ['text'], additionalProperties: false, properties: { text: { type: 'string', minLength: 9000, maxLength: 100000 } } } satisfies BodySchema;
+  const app = await serve(t, { '/notes': { methods: ['POST'], request: { body: { format: 'json', contentTypes: ['application/json'], schema: note } }, respond: { status: 201, json: { ok: true } } } });
+  const post = (text: string) => request(app, '/notes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+  assert.equal((await post('x'.repeat(50000))).status, 201, 'a 50,000-character string within the bounds is accepted');
+  const long = await post('x'.repeat(100001));
+  assert.equal(long.status, 422);
+  assert.deepEqual(JSON.parse(long.body).issues, [{ pointer: '/text', keyword: 'maxLength', message: 'must be at most 100000 characters', expected: 100000 }]);
+  const short = await post('x'.repeat(8193));
+  assert.equal(short.status, 422);
+  assert.equal(JSON.parse(short.body).issues[0].keyword, 'minLength');
 });

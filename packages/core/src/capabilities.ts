@@ -266,6 +266,7 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
     constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return a JSON 422 listing every issue',
       `\`schema\` keywords: ${bodySchemaSubset.keywords.join(', ')}; anything else (such as $ref, oneOf, default) fails activation`,
       `\`schema\` types: ${bodySchemaSubset.types.join(', ')}; \`format\` only ${bodySchemaSubset.formats.join(', ')}; \`additionalProperties\` true or false; \`enum\` scalar values`,
+      `\`schema\` string \`minLength\`/\`maxLength\` up to ${bodySchemaSubset.limits.length} (the request body limit; the route's \`maxBytes\` still answers 413 first), \`minItems\`/\`maxItems\` up to ${bodySchemaSubset.limits.items}`,
       `\`schema\` \`pattern\` needs \`maxLength\` of at most ${bodySchemaSubset.patternMaxLength} on the same node; at most ${bodySchemaSubset.limits.depth} levels, ${bodySchemaSubset.limits.nodes} nodes and ${bodySchemaSubset.limits.properties} properties per object`], grants: [] },
   'response.headers': { kind: 'request', summary: 'Static response headers added to the reply.', schema: ['response.headers'],
     constraints: ['At most 64 headers; values up to 4096 characters or lists of at most 16', 'Cloudflare coalesces duplicate headers'], grants: [] },
