@@ -50,6 +50,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Import thousands of redirects | [Bulk import and scale evidence](BULK.md) |
 | Reuse local project recipes | [Recipe catalog](RECIPES.md) |
 | Check declared configuration against standards-referenced rules | [Compliance](COMPLIANCE.md) |
+| Review a project or an agent's change in a browser | [Review report and studio](TOOLING.md#review-report) |
 
 ## Extend the runtime
 
