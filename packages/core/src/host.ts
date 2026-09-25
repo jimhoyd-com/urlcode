@@ -1,8 +1,8 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigError, assert } from './errors.ts';
+import { ConfigError, assert, extensionError } from './errors.ts';
 import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
-import type { OperatorHost } from './operator-host.ts';
+import { hostRevisionPin, type OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
 /**
@@ -33,7 +33,9 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
  *
  *   export default await composeHost(import.meta.url, [ui(), auth(), admin()]);
  *
- * It reads the reviewed `PROJECT_SHA256` once, orders the extensions by `requires`, activates each `host()` once
+ * It reads the reviewed project revision once (the verified `--policy` revision when a CLI command was given both
+ * `--policy` and `--host-file`, otherwise `PROJECT_SHA256`; both present and different refuses), passes it to every
+ * `host()` as `context.projectSha256`, orders the extensions by `requires`, activates each `host()` once
  * (dependants receive the shared instance through `get`, and contributions through `contributions`), and returns
  * the `{extensions, plugins, close}` object `--host-file` loads. `close` releases in reverse order. Core never
  * imports an extension: host.mjs does, and passes the definitions in.
@@ -43,8 +45,8 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   assert(Array.isArray(entries) && entries.every(entry => entry && typeof entry === 'object' && typeof entry.definition?.host === 'function'), 'composeHost takes the extension list from host.mjs, for example [ui(), auth()]');
   // A site with no extensions has nothing to pin.
   if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
-  const projectSha256 = process.env.PROJECT_SHA256 ?? '';
-  if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError('Set PROJECT_SHA256 to the reviewed project revision (urlcode extensions add prints it; urlcode explain shows it)');
+  const projectSha256 = hostRevisionPin();
+  if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError('Pass the reviewed operator policy with --policy, or set PROJECT_SHA256 to the reviewed project revision (urlcode extensions add prints it; urlcode explain shows it)');
   const definitions = entries.map(entry => entry.definition);
   const ordered = orderByRequires(definitions.map((definition, index) => ({ name: definition.name, requires: definition.requires, index })),
     (item, requirement) => `${item.name} requires ${requirement}; add it with \`urlcode extensions add ${requirement}\``);
@@ -73,9 +75,11 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
         },
         contributions: <T>(target: string): T[] => [...(contributions.get(target) ?? [])] as T[],
       };
-      const result = await definition.host(context, entries[index]!.options);
+      let result: HostedExtension;
+      try { result = await definition.host(context, entries[index]!.options); }
+      catch (error) { throw extensionError(error, name, 'host'); }
       assert(result && typeof result === 'object' && result.registration?.name === name, `${name} host() must return {registration} for extension ${name}`);
-      assert(result.registration.projectSha256 === projectSha256, `${name} host() must register the reviewed PROJECT_SHA256`);
+      assert(result.registration.projectSha256 === projectSha256, `${name} host() must register the reviewed project revision it was given as context.projectSha256`);
       assert(JSON.stringify(result.registration.schema) === JSON.stringify(definition.schema), `${name} registers a configuration schema that differs from its definition`);
       hosted.push({ name, result });
       exported.set(name, result.exports);

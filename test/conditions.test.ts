@@ -51,7 +51,7 @@ test('ambiguous cases and unsafe cache policies fail activation', async t => {
   ] } } });
   await assert.rejects(createRuntime(ambiguous), /overlap/);
   const cached = await project(t,{ '/x': { match: { headers: { 'x-a': 'a' } }, respond: { text: 'a' }, policies: { cache: { strategy: 'micro' } } } });
-  await assert.rejects(createRuntime(cached), /cache disabled/);
+  await assert.rejects(createRuntime(cached), { message: '/x: conditional routing requires cache disabled or no-store' });
 });
 test('normalizer defends its public boundary and disjointness uses normalized header names',()=>{
   for(const query of [null,false,'value',[],17])assert.throws(()=>normalizeMatch({query} as never),/object/);
@@ -106,6 +106,6 @@ test('the published conditions example has executable branch and guard coverage'
 test('conditional route responses cannot opt into provider-specific downstream caches',async t=>{
   for(const name of ['CDN-Cache-Control','Vercel-CDN-Cache-Control','Surrogate-Control']){
     const root=await project(t,{'/x':{match:{query:{q:'yes'}},respond:{text:'private branch'},response:{headers:{[name]:'public, max-age=3600'}}}});
-    await assert.rejects(createRuntime(root),/no-store/);
+    await assert.rejects(createRuntime(root),{message:'/x: conditional responses require no-store'});
   }
 });

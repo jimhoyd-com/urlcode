@@ -50,7 +50,9 @@ above it cannot express the requirement.
   add-on tarballs, with their integrity.
 
 The command prints the environment variables the host reads, next steps and
-the project revision to review and set as `PROJECT_SHA256`.
+the project revision to review and pin: the `projectSha256` of the operator
+policy passed with `--policy` (core then pins the host from it), or
+`PROJECT_SHA256` ([the revision pin](EXTENSIONS.md#the-revision-pin)).
 
 ### Supported combinations
 
@@ -168,7 +170,7 @@ npx urlcode-ui copy --missing fr --project . --copy ui/copy --languages en,fr
 `eject` copies the shipped source so an override starts from what ships and
 never overwrites an existing file. `ui/` lives outside `app/`, so editing copy
 or templates does **not** change the project revision and does not require
-re-pinning `PROJECT_SHA256`.
+re-pinning the reviewed revision.
 
 `urlcode-ui` is the kit alone until `--extensions PKG,PKG` names the packages
 that ship `auth/*` and `admin/*`; each is resolved with Node package resolution

@@ -184,7 +184,8 @@ routes:
 ## Host file
 
 \`urlcode extensions add ${name}\` also adds it to the site's \`host.mjs\`, which
-reads the reviewed \`PROJECT_SHA256\` and calls \`host()\` in
+pins the reviewed project revision (the \`--policy\` file's \`projectSha256\`, or
+\`PROJECT_SHA256\`) and calls \`host()\` in
 \`src/extension.ts\`:
 
 \`\`\`js
@@ -220,8 +221,9 @@ a sandbox or a multi-tenant boundary. Project configuration cannot select a
 module, a secret, a storage directory, or a provider that this package does
 not itself declare and validate.
 
-An operator-reviewed \`PROJECT_SHA256\` (which \`composeHost\` in the site's
-\`host.mjs\` reads and passes to \`host()\`) is required; the extension refuses
+An operator-reviewed project revision (which \`composeHost\` in the site's
+\`host.mjs\` takes from the \`--policy\` file or \`PROJECT_SHA256\` and passes
+to \`host()\` as \`context.projectSha256\`) is required; the extension refuses
 to register without it, the same as every other package under \`packages/\`.
 
 TODO: document request admission (body size bounds, content-type checks),
@@ -289,7 +291,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## What a project declares (YAML only; never packages, code or credentials)
 - TODO: describe \`extensions.${name}.config\` once it is real.
 - \`urlcode extensions add ${name}\` adds it to the site's host.mjs, which
-  \`composeHost\` builds with the reviewed \`PROJECT_SHA256\`.
+  \`composeHost\` builds with the reviewed revision pin.
 
 ## Read in this order
 - [README](README.md): what this extension declares and how to wire it in.

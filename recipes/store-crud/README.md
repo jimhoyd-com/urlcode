@@ -31,8 +31,9 @@ export default await composeHost(import.meta.url, [
 ]);
 ```
 
-`composeHost` reads the reviewed revision from `PROJECT_SHA256`; set it to the
-`revision` that `urlcode manifest --project .` prints for this project.
+`composeHost` pins the host to the reviewed revision: the `projectSha256` of
+the operator policy you pass with `--policy`, or `PROJECT_SHA256`. Set it to
+the `revision` that `urlcode manifest --project .` prints for this project.
 
 ```sh
 urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com

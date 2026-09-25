@@ -35,7 +35,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
         ...result.keptFiles.map(file => `Kept existing ${file}.`),
         ...Object.entries(result.env).map(([key, text]) => `Environment: ${key}: ${text}`),
         ...result.notes.map(note => `Next: ${note}`),
-        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Review the project, then set PROJECT_SHA256 to exactly this value where the host runs.`] : []),
+        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Review the project, then pin the host to exactly this value: the projectSha256 of the reviewed policy passed with --policy, or PROJECT_SHA256 where the host runs.`] : []),
       ].join('\n') + '\n');
       return undefined;
     }
@@ -45,7 +45,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       print(values.json ? { event: `${kind}-removed`, ...result } : [
         `Removed ${result.removed}.`,
         ...(result.kept.length ? [`Left in place (delete them yourself if you no longer need them): ${result.kept.join(', ')}; data/ is never touched.`] : []),
-        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Update PROJECT_SHA256 after reviewing.`] : []),
+        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Update the reviewed policy's projectSha256 (or PROJECT_SHA256) after reviewing.`] : []),
       ].join('\n') + '\n');
       return undefined;
     }

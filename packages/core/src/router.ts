@@ -101,10 +101,19 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       if (config.match) route.match = normalizeMatch(config.match);
       if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or secrets');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
       const extensionPolicyNames = Object.keys(effectiveExtensionPolicies(loaded.document,config));
-      if (config.match || config.conditional || config.extension || isSensitiveExtensionPolicy(extensionPolicyNames,extensions)) {
+      // Name the condition that actually made the route confidential, so an author knows which declaration to change (#725).
+      const sensitivePolicies = extensionPolicyNames.filter(name => isSensitiveExtensionPolicy([name],extensions));
+      const confidential = config.match || config.conditional ? 'conditional routing'
+        : config.extension ? `routes served by extension "${config.extension}"`
+        : sensitivePolicies.length ? `routes protected by ${sensitivePolicies.length === 1 ? 'extension' : 'extensions'} ${sensitivePolicies.map(name => `"${name}"`).join(', ')}` : undefined;
+      if (confidential) {
         const cache = effectivePolicies(loaded.document,config).cache;
-        assert(!cache || cache.strategy === 'no-store', `${pattern}: conditional routing requires cache disabled or no-store`);
-        assert(!route.responseHeaders.some(([name,value]) => ['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase()) && value !== 'no-store'), 'Conditional responses require no-store');
+        assert(!cache || cache.strategy === 'no-store', config.match || config.conditional
+          ? `${pattern}: conditional routing requires cache disabled or no-store`
+          : `${pattern}: ${confidential} cannot be cached; use cache: {strategy: no-store} or remove cache`);
+        assert(!route.responseHeaders.some(([name,value]) => ['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase()) && value !== 'no-store'), config.match || config.conditional
+          ? `${pattern}: conditional responses require no-store`
+          : `${pattern}: ${confidential} cannot send a cacheable response header; set it to no-store or remove it`);
       }
       if (config.conditional) {
         const matches = config.conditional.cases.map(item => normalizeMatch(item.match));

@@ -19,15 +19,15 @@ import { planUpgrade, upgradeSite } from './upgrade.ts';
 import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
-import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
-import { loadDocument } from './config.ts';
+import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions, type OperatorPolicy } from './policy.ts';
+import { loadDocument, safeFile } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
-import { ConfigError, HttpError, errorFields } from './errors.ts';
+import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, realpath } from 'node:fs/promises';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
@@ -195,6 +195,14 @@ const helpEntries: HelpEntry[] = [
 `  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
 ` },
+  { name:'fixtures', group:'Agent tooling', text:
+`  urlcode fixtures suggest [--project directory] [--json]
+    # tests/requests.json candidates only for routes urlcode.yaml alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, include, pattern and binding routes are listed as gaps, never as covered. Reads urlcode.yaml only; writes nothing
+` },
+  { name:'diff', group:'Agent tooling', text:
+`  urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]  # after defaults to the project's urlcode.yaml
+    # route, capability, trusted/sandboxed code seam and newly requested operator grant changes between two YAML documents, by name only (no values); always exits 0
+` },
   { name:'review', group:'Agent tooling', text:
 `  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # opt-in read-only static review for avoidable plumbing; host file registrations sharpen extension-alternative findings (registered/revision-pinned), never required
@@ -285,6 +293,7 @@ process.on('unhandledRejection', reason => {
   process.exit(1);
 });
 let operatorHost: OperatorHost = {};
+let verifiedPolicy: OperatorPolicy | undefined;
 let serving = false;
 try {
   const { values: parsed, positionals } = parseArgs({ allowPositionals:true, options });
@@ -305,7 +314,16 @@ try {
     if (values['host-file'] !== undefined) {
       if (!(hostFileCommands as readonly string[]).includes(command)) throw new ConfigError(`--host-file is only supported by ${hostFileCommands.join('/')}`);
       // The MCP server and context command load and release the host themselves.
-      if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
+      if (command !== 'mcp' && command !== 'context') {
+        // A verified --policy pins the host to its reviewed revision, so no PROJECT_SHA256 bridge is needed (#723).
+        // Only the revision reaches the host; the grants stay with core.
+        if (values.policy !== undefined && (policyCommands as readonly string[]).includes(command)) verifiedPolicy = await loadOperatorPolicy(values.policy, values.project);
+        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 });
+        if (verifiedPolicy && operatorHost.extensions?.length) {
+          const actual = (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256;
+          if (verifiedPolicy.projectSha256 !== actual) throw new ConfigError(`The extension host is pinned by --policy${revisionPinHint(verifiedPolicy.projectSha256, actual)}`, { code: 'revision-pin-mismatch' });
+        }
+      }
     }
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
     if (values.ack !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--ack is only supported by init --with and extensions add');
@@ -317,7 +335,7 @@ try {
     if ((values.to !== undefined || values.check) && command !== 'upgrade') throw new ConfigError('--to and --check are only supported by upgrade');
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
       if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list');
@@ -345,6 +363,20 @@ try {
       if(arg===undefined)throw new ConfigError('Use urlcode plan-feature <goal>');
       const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
+    }else if(command==='fixtures'||command==='diff'){
+      // Both read YAML text only: no include, source file, binding or operator policy is read, and nothing executes.
+      const projectYaml=async()=>readFile(await safeFile(await realpath(values.project),'urlcode.yaml'),'utf8');
+      let result: unknown;
+      if(command==='fixtures'){
+        if(arg!=='suggest')throw new ConfigError('Use urlcode fixtures suggest [--project directory] [--json]');
+        const {suggestFixtures}=await import('./fixture-suggestions.ts');
+        result=suggestFixtures(await projectYaml());
+      }else{
+        if(arg===undefined||extra.length>1)throw new ConfigError('Use urlcode diff <before.yaml> [after.yaml] [--project directory] [--json]');
+        const {summarizeYamlChange}=await import('./yaml-change.ts');
+        result=summarizeYamlChange(await readFile(arg,'utf8'),extra[0]===undefined?await projectYaml():await readFile(extra[0],'utf8'));
+      }
+      print(values.json?result:stringifyYaml(result,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='review'){
       const review=await reviewProject(values.project,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
       print(values.json?review:stringifyYaml(review,{lineWidth:0,aliasDuplicateObjects:false}));
@@ -365,7 +397,7 @@ try {
       // Estimates only (characters / 4); a tokenizer is not a dependency. Stats go to stderr so stdout stays parseable.
       if (values.stats) process.stderr.write(JSON.stringify({ event:'stats', estimate:'characters/4', documentationTokens:await documentationTokens(), contextTokens:estimateTokens(text) }) + '\n');
     }else{
-      const permissions = await loadOperatorPolicy(values.policy,values.project);
+      const permissions = verifiedPolicy ?? await loadOperatorPolicy(values.policy,values.project);
       switch (command) {
         case 'routes': case 'audit': case 'benchmark': {
           const number = (key: 'expect-routes' | 'requests' | 'concurrency' | 'seconds' | 'max-p95-ms' | 'warmup',fallback?: number): number | undefined => {
@@ -463,7 +495,7 @@ try {
             break;
           }
           const created = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [], example: values.example ?? false });
-          const review = `Review ${created.site}/app and pin its revision explicitly: PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
+          const review = `Review ${created.site}/app and pin its revision explicitly: projectSha256 ${created.projectSha256} in the reviewed --policy file, or PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
           if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
           else print({ event:'created', ...created, review });
           break;
@@ -477,7 +509,7 @@ try {
           }
           const result = await upgradeSite(site, { to: values.to });
           print(values.json || !human ? { event: 'upgraded', ...result } : result.upgraded
-            ? [`Upgraded ${result.current} -> ${result.target} (core${result.addons.length ? `, ${result.addons.join(', ')}` : ''}).`, ...result.workflows.map(file => `Moved ${file} to action v${result.target}.`), `Project revision: ${result.projectSha256}. Update PROJECT_SHA256 if it changed, and restart.`].join('\n') + '\n'
+            ? [`Upgraded ${result.current} -> ${result.target} (core${result.addons.length ? `, ${result.addons.join(', ')}` : ''}).`, ...result.workflows.map(file => `Moved ${file} to action v${result.target}.`), `Project revision: ${result.projectSha256}. Update the reviewed policy's projectSha256 (or PROJECT_SHA256) if it changed, and restart.`].join('\n') + '\n'
             : `Up to date: ${result.current}\n`);
           break;
         }

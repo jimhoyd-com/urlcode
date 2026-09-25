@@ -109,8 +109,23 @@ export const budgets: Record<string, Budget> = {
     // and its request-principal contract take the archive to about 659 KiB
     // (674409 bytes on Node 26), within the ~2 KiB cross-Node gzip variance
     // of the old budget.
-    packed: 680 * 1024,
-    unpacked: 2720 * 1024,
+    //
+    // Packed raised from 660 to 675 KiB for the public authoring tools of
+    // #722 (dist/fixture-suggestions.js and dist/yaml-change.js with their
+    // declarations, the CLI/MCP wiring and their TOOLING.md/llms-full.txt
+    // documentation): about 11 KiB of new compressed content took the archive
+    // to about 671 KiB (686681 bytes on Node 26), over the previous budget.
+    // 675 KiB keeps the ~2 KiB npm gzip variance noted above. The same
+    // change adds about 50 KiB unpacked (about 39 KiB of JavaScript and
+    // declarations, the rest documentation), taking the content to about
+    // 2739 KiB, so unpacked is raised from 2700 to 2750 KiB; entry-count and
+    // allowlist checks are unchanged (four new files, 456 of 460).
+    //
+    // Together, #331 and #722 measure 691356 packed bytes (about 675 KiB)
+    // and 2821737 unpacked bytes (about 2756 KiB) on Node 26, so the
+    // combined budgets are 690 KiB packed and 2800 KiB unpacked.
+    packed: 690 * 1024,
+    unpacked: 2800 * 1024,
     entries: 460,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

@@ -12,7 +12,7 @@ import {startServer} from '../packages/core/src/server.ts';
 import {createLambdaHandler} from '../packages/core/src/aws.ts';
 import {buildCloudflare} from '../packages/core/src/build-cloudflare.ts';
 import {inspectExtensionRevision,effectiveExtensionPolicies} from '../packages/core/src/extensions.ts';
-import {ConfigError,describeError} from '../packages/core/src/errors.ts';
+import {ConfigError,asConfigError,describeError} from '../packages/core/src/errors.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import type {ProjectDocument} from '../packages/core/src/types.ts';
 import {inspectExtensions,describeExtensions,validateProject} from '../packages/core/src/tooling.ts';
@@ -100,7 +100,7 @@ test('authorization inherits per extension, rejects cache sharing and precedes t
   const admitted=await request(app,'/private',{headers:{cookie:'session=yes'}});assert.equal(admitted.status,200);assert.equal(admitted.headers['cache-control'],'no-store');assert.equal(admitted.headers['cdn-cache-control'],undefined);
   assert.ok(app.testPlan().inventory.find(item=>item.path==='/private')?.policies.includes('extensions.demo'));assert.ok(!app.testPlan().cases.some(item=>item.path==='/private'));
   const cached=await project(t,{'/demo/*':mount,'/private':{respond:{text:'private'},policies:{extensions:{demo:{role:'member'}},cache:{strategy:'micro'}}}},{},{extensions:declarations});
-  await assert.rejects(createRuntime(cached,{origin,extensions:[await registration(cached)]}),/no-store/);
+  await assert.rejects(createRuntime(cached,{origin,extensions:[await registration(cached)]}),{message:'/private: routes protected by extension "demo" cannot be cached; use cache: {strategy: no-store} or remove cache'});
 });
 test('extension credentials never reach guests, including recreated header defaults',async t=>{
   const root=await project(t,{'/demo/*':mount,'/guest':{parameters:[{name:'cookie',in:'header',schema:{type:'string',default:'default-cookie'}}],function:{source:'guest.mjs'}}},{'guest.mjs':'export default (request, context) => Response.json({cookie:request.headers.get("cookie"),authorization:request.headers.get("authorization"),input:context.inputs.header.cookie??null});'},{extensions:declarations});
@@ -212,7 +212,7 @@ test('an extension explicitly declared cacheSensitive: false preserves the wrapp
 test('a route compiling a static permissive Cache-Control still requires no-store unless its extension is declared cache-transparent',async t=>{
   const routes={'/static':{respond:{text:'ok'},response:{headers:{'cache-control':'public, max-age=60'}},policies:{extensions:{mw:{}}}}};
   const sensitive=await project(t,routes,{},{extensions:{mw:{version:'1',config:{}}}});
-  await assert.rejects(createRuntime(sensitive,{origin,extensions:[await passThroughExtension(sensitive,'mw')]}),/no-store/);
+  await assert.rejects(createRuntime(sensitive,{origin,extensions:[await passThroughExtension(sensitive,'mw')]}),{message:'/static: routes protected by extension "mw" cannot send a cacheable response header; set it to no-store or remove it'});
   const transparent=await project(t,routes,{},{extensions:{mw:{version:'1',config:{}}}});
   const runtime=await createRuntime(transparent,{origin,extensions:[await passThroughExtension(transparent,'mw',false)]});t.after(()=>runtime.close());
   const result=await runtime.handle({target:'/static',method:'GET'});
@@ -336,13 +336,13 @@ test('activation errors name the extension, keep the message bounded and stay ou
   assert.equal(result.statusCode,500);const body=Buffer.from(result.body,'base64').toString();assert.equal(body,'Internal server error\n');assert.ok(!body.includes('maxLength'));
   assert.ok(logged.some(entry=>entry instanceof ConfigError&&entry.details.extension==='demo'));
 });
-test('validate, test and dev print an extension activation error with its name; other failures stay generic (#714)',async t=>{
+test('validate, test and dev print an extension activation error with its name (#714)',async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,...data}=await registration(root);
   const failing=join(dir,'failing.mjs'),broken=join(dir,'broken.mjs');
   await writeFile(failing,`export default {extensions:[{...${JSON.stringify(data)},activate(){throw new Error('MCP server hosted: tool urlcode_yaml_validate inputSchema: maxLength must be an integer from 0 to 8192');}}]};`);
-  // Loading the host module itself is not extension activation: its failure keeps the generic next step.
+  // Loading the host module itself is not extension activation: it reports as the host file's own failure (#724).
   await writeFile(broken,`throw new Error('internal detail /secret/path');\n`);
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
   const run=(command:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,...args],{encoding:'utf8',timeout:20000});
@@ -356,12 +356,106 @@ test('validate, test and dev print an extension activation error with its name; 
     const out=run('dev','--port','0','--host-file',failing);assert.equal(out.status,1,out.stderr);
     assert.match(lastError(out.stderr).message,/^Extension "demo" failed to activate: MCP server hosted/);
   });
-  await t.test('non-activation failure',()=>{
+  await t.test('host file failure',()=>{
     const out=run('validate','--host-file',broken);assert.equal(out.status,1);
-    assert.deepEqual(lastError(out.stderr),{event:'error',message:'Operation failed; check project files, module dependencies and command options'});
-    assert.ok(!out.stderr.includes('secret'));
+    assert.deepEqual(lastError(out.stderr),{event:'error',message:'Host file failed to load: internal detail /secret/path',code:'host-load'});
   });
   assert.equal(describeError(new Error('internal detail')),'Operation failed; check project files, module dependencies and command options');
+});
+test('validate, test and dev print a host file load failure and an extension host() failure; requests never see them (#724)',async t=>{
+  const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const hostModule=new URL('../packages/core/src/host.ts',import.meta.url).href;
+  const files={
+    topLevel:[`throw new Error('host.mjs setup failed:\\n  line two');\n`],
+    missing:[`import '@jimhoyd/urlcode-not-installed/extension';\nexport default {};\n`],
+    hook:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',host(){throw new Error('CSRF key data/csrf.key must be 32 bytes\\n'+'x'.repeat(2000));}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+    refusal:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',host(){return {registration:{name:'other'}};}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+  };
+  const paths=Object.fromEntries(await Promise.all(Object.entries(files).map(async([name,[text]])=>{const file=join(dir,`${name}.mjs`);await writeFile(file,text!);return [name,file] as const;})));
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const env={...process.env,PROJECT_SHA256:await inspectExtensionRevision(root)};
+  const run=(command:string,host:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env});
+  const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string;extension?:string};
+  for(const command of ['validate','test','dev'])await t.test(command,()=>{
+    const extra=command==='dev'?['--port','0']:[];
+    const top=run(command,paths.topLevel!,...extra);assert.equal(top.status,1,top.stderr);
+    assert.deepEqual(lastError(top.stderr),{event:'error',message:'Host file failed to load: host.mjs setup failed: line two',code:'host-load'});
+    const hook=run(command,paths.hook!,...extra);assert.equal(hook.status,1,hook.stderr);
+    const error=lastError(hook.stderr);
+    assert.match(error.message,/^Extension "demo" host\(\) failed: CSRF key data\/csrf\.key must be 32 bytes x+\.\.\.$/);assert.ok(error.message.length<600);
+    assert.deepEqual({...error,message:undefined},{event:'error',message:undefined,code:'extension-host',extension:'demo'});
+    for(const out of [top,hook])assert.ok(!out.stderr.includes('    at '));
+  });
+  await t.test('module resolution names the missing specifier',()=>{
+    const out=run('validate',paths.missing!);assert.equal(out.status,1);
+    const error=lastError(out.stderr);assert.equal(error.code,'host-load');
+    assert.match(error.message,/^Host file failed to load: Cannot find package '@jimhoyd\/urlcode-not-installed'/);
+  });
+  await t.test('core refusals inside composeHost keep their own message',()=>{
+    const out=run('validate',paths.refusal!);assert.equal(out.status,1);
+    assert.equal(lastError(out.stderr).message,'demo host() must return {registration} for extension demo');
+  });
+  // A second copy of core (the published package imported by host.mjs while the CLI runs from a checkout) is recognized by its brand only.
+  const foreign=Object.assign(new Error('Set PROJECT_SHA256'),{details:{code:'x',extension:'demo',line:'1'},[Symbol.for('urlcode.ConfigError')]:true});
+  const rebuilt=asConfigError(foreign);assert.ok(rebuilt instanceof ConfigError);assert.equal(rebuilt.message,'Set PROJECT_SHA256');assert.deepEqual(rebuilt.details,{code:'x',extension:'demo'});
+  assert.equal(asConfigError(Object.assign(new Error('look-alike'),{details:{code:'x'}})),undefined);
+});
+
+test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and a stale or missing policy still refuses (#723)',async t=>{
+  const root=await project(t,{'/demo/*':mount},{'tests/requests.json':JSON.stringify([{path:'/demo/x',status:200}])},{extensions:declarations});
+  const revision=await inspectExtensionRevision(root);
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const {activate:_activate,projectSha256:_pin,...data}=await registration(root);
+  const host=join(dir,'host.mjs'),policy=join(dir,'policy.json'),stale=join(dir,'stale.json');
+  // host() sees only the revision in its context: no policy grants, no file path.
+  await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
+const data=${JSON.stringify(data)};
+const demo={definition:{name:'demo',schema:data.schema,host(context){
+  if(Object.keys(context).sort().join()!=='contributions,get,projectSha256,site')throw new Error('unexpected host context '+Object.keys(context));
+  return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned '+context.projectSha256};}};}}};
+}},options:{}};
+export default await composeHost(import.meta.url,[demo]);
+`);
+  await writeFile(policy,JSON.stringify({version:1,projectSha256:revision,routes:{}}));
+  await writeFile(stale,JSON.stringify({version:1,projectSha256:'c'.repeat(64),routes:{}}));
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const {PROJECT_SHA256:_unset,...base}=process.env;
+  const run=(command:string,env:Record<string,string>,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env:{...base,...env}});
+  const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string};
+  for(const command of ['validate','test'])await t.test(`${command} takes the pin from --policy`,()=>{
+    const out=run(command,{},'--policy',policy);assert.equal(out.status,0,out.stderr);
+    const agreeing=run(command,{PROJECT_SHA256:revision},'--policy',policy);assert.equal(agreeing.status,0,agreeing.stderr);
+  });
+  await t.test('a different PROJECT_SHA256 refuses',()=>{
+    const out=run('validate',{PROJECT_SHA256:'b'.repeat(64)},'--policy',policy);assert.equal(out.status,1);
+    assert.deepEqual(lastError(out.stderr),{event:'error',code:'revision-pin-mismatch',message:`PROJECT_SHA256 (${'b'.repeat(64)}) differs from the --policy revision (${revision}); with --policy the host is pinned to the policy's projectSha256, so unset PROJECT_SHA256 or set it to the same reviewed revision`});
+  });
+  await t.test('no policy and no PROJECT_SHA256 still refuses; PROJECT_SHA256 alone still works',()=>{
+    const out=run('validate',{});assert.equal(out.status,1);
+    assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+    assert.equal(run('validate',{PROJECT_SHA256:revision}).status,0);
+  });
+  await t.test('a policy for another revision refuses',()=>{
+    const out=run('validate',{},'--policy',stale);assert.equal(out.status,1);
+    const error=lastError(out.stderr);assert.equal(error.code,'revision-pin-mismatch');
+    assert.match(error.message,new RegExp(`^The extension host is pinned by --policy: the policy is pinned to project revision ${'c'.repeat(64)}, but the project is now revision ${revision}`));
+  });
+  await t.test('commands without --policy support do not derive a pin',()=>{
+    const out=spawnSync(process.execPath,[cli,'explain','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
+    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+  });
+  await t.test('the project YAML cannot supply the pin',async()=>{
+    const pinned=await project(t,{'/demo/*':mount},{},{extensions:declarations,projectSha256:revision} as Parameters<typeof project>[3]);
+    const out=spawnSync(process.execPath,[cli,'validate','--project',pinned,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
+    // The host is composed before the YAML is read, and nothing in the project is consulted for the pin.
+    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+  });
+  // The slot is set only while the host file is imported.
+  const {loadOperatorHost,operatorRevisionKey}=await import('../packages/core/src/operator-host.ts');
+  const loaded=await loadOperatorHost(host,root,{revision});
+  assert.equal(loaded.extensions?.[0]?.projectSha256,revision);assert.equal((globalThis as Record<symbol,unknown>)[operatorRevisionKey],undefined);
+  await loaded.close?.();
 });
 
 /** A demo registry written as a host file outside the project, matching the in-process registration above. */
@@ -445,7 +539,7 @@ test('immutable assets stay no-store without a declaration and never widen cache
   const hooked=await startServer({project:root,origin,port:0,extensions:[await assetRegistration(root)],plugins:[{name:'late',version:'1',targets:['node'],onResponse:(_request,result)=>({...result,headers:[...result.headers,['set-cookie','late=1']]})}],log:()=>{}});t.after(()=>hooked.close());
   assert.equal((await request(hooked,'/demo/static/app.abc123.css')).headers['cache-control'],'no-store');
   const cached=await project(t,{'/demo/*':{...mount,policies:{cache:{strategy:'immutable'}}}},{},{extensions:declarations});
-  await assert.rejects(createRuntime(cached,{origin,extensions:[await assetRegistration(cached)]}),/no-store/);
+  await assert.rejects(createRuntime(cached,{origin,extensions:[await assetRegistration(cached)]}),{message:'/demo/*: routes served by extension "demo" cannot be cached; use cache: {strategy: no-store} or remove cache'});
 });
 test('immutable asset prefixes are validated and belong to the operator registration, not the pinned revision',async t=>{
   const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});

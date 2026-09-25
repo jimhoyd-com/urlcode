@@ -245,8 +245,9 @@ its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is
 documented under [add-ons](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 `npx urlcode-auth bootstrap` creates the first administrator from JSON on
-stdin. The command prints the project revision that `PROJECT_SHA256` must
-carry; changing extension YAML, policies or mounts changes the revision and
+stdin. The command prints the project revision the host must be pinned to
+(the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
+[the revision pin](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval.
 
 The presentation tooling composes the same way. `npx urlcode-ui` with
@@ -600,6 +601,14 @@ There is no `json` or `expectJson` key: send JSON as `body` with a
 ]
 ```
 
+`urlcode fixtures suggest --json` (MCP `suggest_fixtures`) proposes cases for
+the routes whose answer `urlcode.yaml` alone determines (redirects, `respond`,
+pages and downloads, method refusals, simple input refusals, an unmatched
+path) and lists every function, middleware, proxy, extension, include,
+pattern-constrained and binding route under `gaps` instead of covering it.
+Start from its `fixtures`, then write the cases it names under `gaps` and
+`review` yourself; see [fixture suggestions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#fixture-suggestions).
+
 A failing case prints its method, path and each failed assertion with the
 expected and actual value, shortened to about 200 characters around the first
 difference. `urlcode test` exits nonzero when the project has an active route
@@ -614,7 +623,8 @@ structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
 `invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
 `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
-`unknown-option`, `extension-activation`, `extension-registration`), `file`,
+`unknown-option`, `extension-activation`, `extension-registration`,
+`extension-host`, `host-load`), `file`,
 `line` and `column`, `route` (the pattern as written), `pointer` (an RFC 6901
 pointer into the YAML) and `extension` (the operator extension that failed; see
 [local development](https://github.com/jimhoyd-com/urlcode/blob/main/docs/LOCAL-DEVELOPMENT.md)). Configuration messages start
@@ -803,6 +813,14 @@ source fingerprints. Both support `--dry-run`. See [recipes](https://github.com/
 [bulk import and measured limits](https://github.com/jimhoyd-com/urlcode/blob/main/docs/BULK.md), and [interchange](https://github.com/jimhoyd-com/urlcode/blob/main/docs/INTERCHANGE.md).
 Provider conversion requires explicit acknowledgment of semantic differences;
 do not describe an acknowledged migration candidate as lossless.
+
+Before handing a change back, `urlcode diff BEFORE.yaml --json` (MCP
+`summarize_yaml_change`) summarizes it against the earlier `urlcode.yaml`:
+routes added, removed and changed with the changed keys, capability names,
+trusted and sandboxed code seams including `sandbox:` flips, and the env,
+secret, egress and extension grants the new version asks the operator for.
+Report those grants to the user; never approve them yourself. See
+[YAML change summaries](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#yaml-change-summaries).
 
 ### Deciding when a route needs `sandbox: true`
 
@@ -3477,6 +3495,15 @@ it has no effect on `authorize()`, which runs the same way regardless, and
 `auth`/`admin`-style extensions gating real access must leave it at the
 default.
 
+The refusal names the reason, so the declaration to change is obvious: a
+cached `policies.extensions` route fails with, for example, `/api/items:
+routes protected by extension "auth" cannot be cached; use cache: {strategy:
+no-store} or remove cache`, and a cached mount with `routes served by
+extension "<name>"`. A permissive `Cache-Control`-family header in
+`response.headers` on such a route is refused the same way. Only `match` and
+`conditional` routes report `conditional routing requires cache disabled or
+no-store`.
+
 ### Wrapping a route: extension middleware
 
 `authorize` is a gate: it runs once, before the route's handler, and can only
@@ -4080,7 +4107,9 @@ byte as you wrote it. A layout they cannot edit that way (for example an
 it is never reformatted.
 
 It prints the environment variables the host reads, next steps, and the new
-project revision to review and set as `PROJECT_SHA256` where the host runs.
+project revision to review and pin: as the `projectSha256` of the operator
+policy passed with `--policy` (see [the revision pin](#the-revision-pin)), or
+as `PROJECT_SHA256` where the host runs.
 Any failure or refusal, by `add` or `remove`, rolls every change back:
 `package.json`, the lock, `app/urlcode.yaml`, `host.mjs`, the files it
 created, and `node_modules`. npm has already run by the time most checks
@@ -4216,14 +4245,35 @@ contents; core zeroes it after writing or on failure.
 revision pin, the site directory, the exports of a required extension and the
 values other extensions contribute to this one. It returns `{registration,
 exports?, close?}`; `registration` is the `RuntimeExtension` described above,
-and `close` runs in reverse activation order. `composeHost` reads
-`PROJECT_SHA256` once and refuses a host whose registration pins a different
+and `close` runs in reverse activation order. `composeHost` reads the
+revision pin once and refuses a host whose registration pins a different
 revision or registers a schema that differs from the definition.
+
+##### The revision pin
+
+`composeHost` takes the pin from the operator, never from the project:
+
+- When a CLI command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`,
+  `benchmark`) receives both `--policy` and `--host-file`, core validates the
+  policy and passes its `projectSha256` to `composeHost` while it imports the
+  host file. Nothing else in the policy reaches the host.
+- Otherwise `composeHost` reads `PROJECT_SHA256`, as before.
+- Both present and different refuses (`code` `revision-pin-mismatch`), and so
+  does a policy whose revision is not the project's current one once the host
+  registers an extension. Neither present refuses, naming both options.
+
+A `host()` hook reads the pin as `context.projectSha256` and registers it
+unchanged, so the generated `host.mjs` needs no edit and existing host files
+keep working. A hand-written host file that builds registrations without
+`composeHost` still reads `PROJECT_SHA256` itself. The pin travels through a
+process-global `Symbol.for('urlcode.host.operatorRevision')` slot that is set
+only while the host file is imported, so a host file that imports another copy
+of core still sees it.
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
 `composeHost` from `@jimhoyd/urlcode/host`. The runtime contract, the
-host-file trust boundary and the `PROJECT_SHA256` pin are the same whether an
+host-file trust boundary and the revision pin are the same whether an
 extension came from `extensions add` or was wired by hand; YAML never chooses
 code.
 
@@ -4319,7 +4369,9 @@ above it cannot express the requirement.
   add-on tarballs, with their integrity.
 
 The command prints the environment variables the host reads, next steps and
-the project revision to review and set as `PROJECT_SHA256`.
+the project revision to review and pin: the `projectSha256` of the operator
+policy passed with `--policy` (core then pins the host from it), or
+`PROJECT_SHA256` ([the revision pin](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#the-revision-pin)).
 
 #### Supported combinations
 
@@ -4437,7 +4489,7 @@ npx urlcode-ui copy --missing fr --project . --copy ui/copy --languages en,fr
 `eject` copies the shipped source so an override starts from what ships and
 never overwrites an existing file. `ui/` lives outside `app/`, so editing copy
 or templates does **not** change the project revision and does not require
-re-pinning `PROJECT_SHA256`.
+re-pinning the reviewed revision.
 
 `urlcode-ui` is the kit alone until `--extensions PKG,PKG` names the packages
 that ship `auth/*` and `admin/*`; each is resolved with Node package resolution

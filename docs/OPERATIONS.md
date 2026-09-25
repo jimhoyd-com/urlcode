@@ -63,6 +63,31 @@ mid-drain, before observers and stores flush. `--headers-timeout-ms` (default
 `--keep-alive-timeout-ms` (default `5000`) bound how long a connection may sit
 idle at each stage; keep them ahead of any reverse proxy's own timeouts.
 
+A site with extensions also passes its operator host, and the host must be
+pinned to the reviewed project revision. Give the command the reviewed
+operator policy as well and the pin comes from it:
+
+```sh
+node /opt/urlcode/dist/cli.js serve --project /srv/site/app --origin https://links.example.com \
+  --host-file /srv/site/host.mjs --policy /etc/urlcode/policy.json
+```
+
+When a command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`,
+`benchmark`) receives both `--policy` and `--host-file`, core validates the
+policy and hands its `projectSha256` to `composeHost()` as the host revision
+pin; no `PROJECT_SHA256` export and no script that parses the policy is
+needed. Only that revision reaches the host (as each `host()` hook's
+`context.projectSha256`); the grants stay with core, and project YAML can
+never supply the pin. `PROJECT_SHA256` still works on its own; if it is set
+alongside `--policy` it must equal the policy's revision or the command
+refuses with `code` `revision-pin-mismatch`. A policy for a different project
+revision refuses once the host registers an extension, and without either
+source `composeHost()` refuses as before. A policy holding no grants yet is
+`{"version": 1, "projectSha256": "<revision>", "routes": {}}`. The AWS and
+Vercel handlers do not load a host file; operator code that builds their
+`extensions` with `composeHost()` still sets `PROJECT_SHA256`, and their
+`URLCODE_POLICY` pin is checked against the project as before.
+
 Serve a read-only application tree where practical. The operator-owned runtime
 account must be able to read application files/dependencies. Authoring happens
 in development/CI, not by modifying a running replica's filesystem.

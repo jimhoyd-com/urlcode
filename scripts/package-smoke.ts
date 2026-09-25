@@ -171,13 +171,19 @@ process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fix
     // building its own MCP server would (this package's own serveMcp does
     // the same import, see packages/core/src/mcp.ts).
     const consumer = join(install,'agent-context-consumer.mjs');
-    await writeFile(consumer,`import {searchDocs, validateYaml, explainError, readAddonCatalog} from '@jimhoyd/urlcode/agent-context';
+    await writeFile(consumer,`import {searchDocs, validateYaml, explainError, readAddonCatalog, suggestFixtures, summarizeYamlChange} from '@jimhoyd/urlcode/agent-context';
 const found = await searchDocs('sandbox');
 const valid = validateYaml('version: "1"\\nroutes: {}\\n');
 const guidance = explainError('Invalid configuration at /routes');
 const catalog = await readAddonCatalog();
-process.stdout.write(JSON.stringify({resultCount:found.results.length, valid:valid.valid, nextTools:guidance.nextTools, catalog:{scope:catalog.scope, version:catalog.version, addons:catalog.addons.map(addon => addon.name)}}));`);
-    const report = JSON.parse(command(process.execPath,[consumer],install)) as {resultCount:number;valid:boolean;nextTools:string[];catalog:{scope:string;version:string;addons:string[]}};
+const routed = 'version: "1"\\nroutes:\\n  /go: {redirect: {url: https://example.com/}}\\n';
+const kinds = suggestFixtures(routed).cases.map(item => item.kind);
+const added = summarizeYamlChange('version: "1"\\nroutes: {}\\n', routed).routes.added.map(entry => entry.route);
+process.stdout.write(JSON.stringify({resultCount:found.results.length, valid:valid.valid, nextTools:guidance.nextTools, kinds, added, catalog:{scope:catalog.scope, version:catalog.version, addons:catalog.addons.map(addon => addon.name)}}));`);
+    const report = JSON.parse(command(process.execPath,[consumer],install)) as {resultCount:number;valid:boolean;nextTools:string[];kinds:string[];added:string[];catalog:{scope:string;version:string;addons:string[]}};
+    // Fixture suggestions and YAML change summaries (#722) run from the installed package.
+    assert.deepEqual(report.kinds,['redirect','method-refusal','unknown-path']);
+    assert.deepEqual(report.added,['/go']);
     assert.ok(report.resultCount>0,'searchDocs found no results against the installed package');
     assert.equal(report.valid,true);
     assert.deepEqual(report.nextTools,['get_schema','get_capability','validate']);
@@ -231,7 +237,7 @@ import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput
 import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from '@jimhoyd/urlcode/observability';
 import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from '@jimhoyd/urlcode/compliance';
 import { SandboxPool, functionFile, type SandboxPoolOptions, type SandboxInvocation } from '@jimhoyd/urlcode/sandbox';
-import { listSkills, getSkill, searchDocs, getExample, validateYaml, explainError, readAddonCatalog } from '@jimhoyd/urlcode/agent-context';
+import { listSkills, getSkill, searchDocs, getExample, validateYaml, explainError, readAddonCatalog, suggestFixtures, summarizeYamlChange, type FixtureSuggestions, type YamlChangeSummary } from '@jimhoyd/urlcode/agent-context';
 import type { AddonCatalog } from '@jimhoyd/urlcode';
 import { listShippedSkills, type ShippedSkill } from '@jimhoyd/urlcode/skills';
 declare const runtime: Runtime; declare const options: RuntimeOptions; declare const server: Server;
@@ -255,6 +261,7 @@ void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydr
   validatePlugins, activatePlugins, registry, compilePolicies, createObserverSink, createMetrics, runCompliance, loadComplianceRules, runtimeOf,
   SandboxPool, functionFile, sandboxPoolOptions, sandboxInvocation,
   listSkills, getSkill, searchDocs, getExample, validateYaml, explainError,
+  suggestFixtures as (yaml: string) => FixtureSuggestions, summarizeYamlChange as (before: string, after: string) => YamlChangeSummary,
   readAddonCatalog as () => Promise<AddonCatalog>,
   listShippedSkills, shippedSkill,
   runtime, options, server, event, lambda, artifact, route, prerender, page, vercel, plugin, host, policies, input, observer, observerEvent, standard, report];

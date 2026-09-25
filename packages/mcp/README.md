@@ -231,12 +231,12 @@ its handler runs (unknown name, arguments failing the schema) is not reported.
 Both callbacks are best-effort: one that throws is swallowed and never changes
 the response.
 
-`composeHost` supplies the reviewed `PROJECT_SHA256`; the options are
-optional.
+`composeHost` supplies the reviewed revision pin (from `--policy`, or
+`PROJECT_SHA256`); the options are optional.
 
 ```sh
-PROJECT_SHA256=<reviewed revision> urlcode serve --project app \
-  --host-file host.mjs --origin https://site.example
+urlcode serve --project app --host-file host.mjs \
+  --policy /etc/urlcode/policy.json --origin https://site.example
 ```
 
 ## Protecting a mount
