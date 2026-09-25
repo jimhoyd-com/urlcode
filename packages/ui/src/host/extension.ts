@@ -45,8 +45,11 @@ export interface UiExtensionOptions {
     extensions?: readonly ExtensionTemplates[] | undefined;
     /** Theme values the host sets that the project may not, none by default. */
     theme?: Theme | undefined;
-    /** Screen sources other extensions contribute; each screen is served at an exact `extension: ui` mount. */
-    screens?: readonly UiScreenSource[] | undefined;
+    /**
+     * Screen sources other extensions contribute, each with its contributor's name (`from`, stamped by composeHost);
+     * each screen is served at an exact `extension: ui` mount, and errors name the contributor.
+     */
+    screens?: readonly UiScreenContribution[] | undefined;
 }
 export interface UiExtension {
     readonly registration: RuntimeExtension;
@@ -119,18 +122,24 @@ export interface UiScreen {
  * ui activation with the route project root; the contributor reads its own declaration there.
  */
 export type UiScreenSource = (context: { readonly root: string }) => Readonly<Record<string, UiScreen>> | Promise<Readonly<Record<string, UiScreen>>>;
+/** One contributed screen source and the name of the extension that contributed it. */
+export interface UiScreenContribution { readonly from: string; readonly source: UiScreenSource }
 const screenPath = /^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
-/** Collects every contributed screen once, refusing a malformed one or a path two sources both claim. */
-async function contributedScreens(sources: readonly UiScreenSource[], root: string): Promise<Map<string, UiScreen>> {
-    const screens = new Map<string, UiScreen>();
-    for (const source of sources) {
-        if (typeof source !== 'function') throw new Error('ui screens contributions must be functions');
+/** Collects every contributed screen once, refusing a malformed one or a path two sources both claim, naming the contributors. */
+async function contributedScreens(contributions: readonly UiScreenContribution[], root: string): Promise<Map<string, UiScreen>> {
+    const screens = new Map<string, UiScreen>(), owners = new Map<string, string>();
+    for (const contribution of contributions) {
+        const from = isRecord(contribution) && typeof contribution.from === 'string' ? contribution.from : undefined;
+        if (!from || typeof contribution.source !== 'function') throw new Error('ui screens contributions must be {from, source} with a source function');
+        const source = contribution.source;
         const resolved: unknown = await source(Object.freeze({ root }));
-        if (!isRecord(resolved)) throw new Error('ui screens contribution must resolve to an object keyed by path');
+        if (!isRecord(resolved)) throw new Error(`ui screens contributed by extension "${from}" must resolve to an object keyed by path`);
         for (const [path, screen] of Object.entries(resolved)) {
-            if (path.length > 256 || !screenPath.test(path)) throw new Error(`ui screen path ${path} must be an absolute literal path such as /todos`);
-            if (screens.has(path)) throw new Error(`ui screen ${path} is contributed more than once`);
+            if (path.length > 256 || !screenPath.test(path)) throw new Error(`ui screen path ${path} contributed by extension "${from}" must be an absolute literal path such as /todos`);
+            const owner = owners.get(path);
+            if (owner !== undefined) throw new Error(`ui screen ${path} is contributed by extension "${owner}" and by extension "${from}"`);
+            owners.set(path, from);
             if (!isRecord(screen) || typeof screen.title !== 'string' || !screen.title.trim() || screen.title.length > 80 || /[\u0000-\u001f\u007f]/.test(screen.title)) throw new Error(`ui screen ${path} needs a plain title of 1 to 80 characters`);
             const value = screen as unknown as UiScreen;
             // Validate the collection and columns at activation so a bad key fails the start, not the first request.

@@ -232,7 +232,10 @@ the message templates auth and forms contribute to `mail`. The store contributes
 without requiring it: the CRUD screens declared under
 `extensions.store.config.screens` reach ui as generic screen descriptions
 through `contributes.ui.screens`, so ui never reads another extension's
-configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)). Operator options go inside a call, for
+configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)). Core stamps each contribution with
+the name of the extension that made it, so ui and mail accept a template
+namespace only from the extension of that name
+([contributions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#contributions)). Operator options go inside a call, for
 example `mail({transport: sesTransport({region}), from})`.
 
 The whole graph, as each extension declares it:
@@ -4151,7 +4154,8 @@ internals. An add-on **must** follow them:
 2. **Make every cross-extension dependency explicit.** Use `requires`, or a
    `uses` entry for an optional one, a typed, versioned export read with `ctx.get`, or a typed, versioned
    contribution (`contributes` on the giver, `ctx.contributions` on the
-   receiver); see [the extension definition](#the-extension-definition). Core
+   receiver, which checks any name-keyed claim against the core-stamped
+   `from`; see [contributions](#contributions)); see [the extension definition](#the-extension-definition). Core
    stays unaware of first-party extension names and policy vocabulary: for the
    `auth:` shorthand core only maps the key, and auth's `policySchema` owns its
    shape (#710; see [the `auth` short form](#protecting-a-route-the-auth-short-form)).
@@ -4654,6 +4658,31 @@ receive generic descriptions of the CRUD screens declared under
 configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
 `package.json` declares `ui` an optional peer.
 
+##### Contributions
+
+`ctx.contributions('<name>')` returns every installed extension's
+`contributes['<name>']` value, in host.mjs order, as `{from, value}`:
+
+- `from` is the contributing definition's registered `name`, **stamped by
+  core**. The contributor supplies only `value`, so a value that carries its
+  own `from` (or any other field) cannot change it: no contribution can claim
+  to come from another extension. This is the contribution analogue of the
+  principal's core-stamped `provider` ([request principal](#request-principal)).
+- Each entry is frozen, and each call returns a new frozen list. Core never
+  inspects, copies or freezes `value`; its shape and version belong to the
+  receiver.
+- A receiver that keys anything by extension name (a namespace, an owned
+  prefix) checks it against `from` and refuses a mismatch in `host()`, which
+  `composeHost` reports as a `ConfigError` for the receiving extension. `ui`
+  accepts a `templates` entry only when its `name` is `from` and every
+  template or view-model key is `<from>/…`; `mail` accepts a contribution only
+  when its `namespace` is `from`. Both errors name the claimed namespace and
+  the contributing extension, for example `Mail namespace "auth" is
+  contributed by extension "notifier": an extension contributes mail templates
+  only under its own name`. ui's contributed screens are keyed by route path,
+  not by extension name, so ui uses `from` only to name both contributors when
+  two claim one path.
+
 Exports are typed and versioned (`version: 1`, plus `active`):
 
 | Export | From | Read by |
@@ -4744,7 +4773,8 @@ contents; core zeroes it after writing or on failure.
 `host.mjs`. `ctx` is `{projectSha256, site, get, contributions}`: the reviewed
 revision pin, the site directory, the exports of a required or used extension
 (`undefined` for a used one that is not installed) and the values other
-extensions contribute to this one. It returns `{registration,
+extensions contribute to this one, each as a frozen `{from, value}` whose
+`from` core stamps ([contributions](#contributions)). It returns `{registration,
 exports?, close?}`; `registration` is the `RuntimeExtension` described above,
 and `close` runs in reverse activation order. `composeHost` reads the
 revision pin once and refuses a host whose registration pins a different

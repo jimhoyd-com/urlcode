@@ -25,7 +25,7 @@ const sha = 'b'.repeat(64);
 
 /** A stand-in for the ui extension: it records what the others contributed and exposes a kit-shaped export. */
 function fakeUi() {
-  const seen: unknown[][] = [];
+  const seen: (readonly unknown[])[] = [];
   const definition = defineExtension({
     name: 'ui', description: 'Test kit', schema: { type: 'object' },
     host(ctx) {
@@ -96,10 +96,8 @@ test('host() builds the console from auth\'s and audit\'s exports, after ui, aud
   const registration = host.extensions![4]!;
   assert.equal(registration.projectSha256, sha);
   assert.equal(registration.schema, adminConfigSchema);
-  // ui runs first and still receives both contributions.
-  assert.equal(ui.seen.length, 1);
-  assert.ok(ui.seen[0]!.includes(admin.definition.contributes!.ui));
-  assert.ok(ui.seen[0]!.includes(auth.definition.contributes!.ui));
+  // ui runs first and still receives both contributions, each stamped with its contributor's name.
+  assert.deepEqual(ui.seen, [[{ from: 'admin', value: admin.definition.contributes!.ui }, { from: 'auth', value: auth.definition.contributes!.ui }]], 'in host.mjs order');
   await host.close!();
 });
 

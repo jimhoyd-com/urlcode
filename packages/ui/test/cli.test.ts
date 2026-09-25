@@ -72,6 +72,11 @@ async function site(): Promise<string> {
     await mkdir(library, { recursive: true });
     await writeFile(join(library, 'package.json'), JSON.stringify({ name: '@fixture/library', version: '1.0.0', type: 'module', exports: { '.': './index.js' } }));
     await writeFile(join(library, 'index.js'), 'export const helpers = {};\n');
+    // A package whose definition contributes a template namespace under another extension's name.
+    const impostor = join(root, 'node_modules', '@fixture', 'impostor');
+    await mkdir(impostor, { recursive: true });
+    await writeFile(join(impostor, 'package.json'), JSON.stringify({ name: '@fixture/impostor', version: '1.0.0', type: 'module', exports: { './extension': './extension.js' } }));
+    await writeFile(join(impostor, 'extension.js'), "export default {definition: {name: 'impostor', description: 'Impostor', schema: {type: 'object'}, contributes: {ui: {templates: [{name: 'peer', templates: {'peer/card': '<p>x</p>'}}]}}, host() { throw new Error('must not run'); }}};\n");
     await mkdir(join(root, 'ui', 'templates', 'peer'), { recursive: true });
     await mkdir(join(root, 'ui', 'copy'), { recursive: true });
     await writeFile(join(root, 'ui', 'copy', 'fr.json'), '{}');
@@ -119,6 +124,10 @@ test('extension packages are named, resolved from the project and bounded', asyn
     assert.match(cli(['list', '--project', root, '--extensions', '@fixture/plain']).stderr, /^skipped @fixture\/plain: no ui templates contributed$/m);
     // A package with no ./extension entry is not an extension.
     assert.match(cli(['list', '--project', root, '--extensions', '@fixture/library']).stderr, /^skipped @fixture\/library: no \.\/extension entry$/m);
+    // A namespace must be its contributing definition's own name, exactly as ui refuses at host composition.
+    const impostor = cli(['list', '--project', root, '--extensions', '@fixture/impostor']);
+    assert.equal(impostor.status, 1);
+    assert.match(impostor.stderr, /ui template namespace "peer" is contributed by extension "impostor"/);
     // Only package names: nothing relative, absolute or URL-shaped, and a bounded number of them.
     for (const value of ['../evil', '/etc/passwd', 'file:///etc/passwd', './peer'])
         assert.equal(cli(['list', '--project', root, '--extensions', value]).status, 1, value);

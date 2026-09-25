@@ -78,9 +78,13 @@ export default defineExtension({
 });
 ```
 
-- `namespace` is the contributing extension's own name. Two contributions with the same namespace are refused in
-  `host()`, naming it. A consumer sends only templates in its own namespace (a documented rule; core does not tell
-  mail who contributed what).
+- `namespace` must be the contributing extension's own name. `composeHost` stamps each contribution with the name of
+  the extension that contributed it (`{from, value}`, which the value cannot override), and mail's `host()` refuses a
+  namespace that differs from it: `Mail namespace "auth" is contributed by extension "notifier": an extension
+  contributes mail templates only under its own name`. `composeHost` reports that as a `ConfigError` for extension
+  `mail`. A consumer sends only templates in its own namespace (a documented rule: `send()` does not know its caller).
+- Calling `createMail()` directly (outside `composeHost`), pass `contributions` in the same stamped shape:
+  `[{ from: 'notifier', value: notifierMail }]`.
 - At most 128 templates per namespace; keys match `^[a-z][a-z0-9-]{0,63}$`. The full name is `<namespace>.<key>`.
 - `subject`: 1 to 160 characters, no control characters and no `{slots}`, so a value can never reach a header.
 - `text`: plain text, 1 to 16384 characters, no control characters except newline and tab. Every `{slot}` in the

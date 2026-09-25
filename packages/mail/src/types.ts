@@ -26,7 +26,10 @@ export interface MailTemplate {
 
 /** What an extension contributes through `contributes: { mail: ... }`: English source copy. */
 export interface MailContribution {
-  /** The contributing extension's own name, /^[a-z][a-z0-9-]{0,63}$/. mail refuses two contributions with the same namespace. */
+  /**
+   * The contributing extension's own name, /^[a-z][a-z0-9-]{0,63}$/. mail refuses, at host composition, a namespace
+   * that differs from the contributor's name core stamps (`from`), so an extension cannot contribute under another's.
+   */
   readonly namespace: string;
   /** Keys /^[a-z][a-z0-9-]{0,63}$/, at most 128 per namespace. */
   readonly templates: Readonly<Record<string, MailTemplate>>;

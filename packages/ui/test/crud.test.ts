@@ -9,7 +9,7 @@ import { crudScript } from '../src/crud-script.ts';
 import { createKit } from '../src/kit.ts';
 import { createPresentation } from '../src/presentation.ts';
 import { createUiExtension, uiConfigSchema } from '../src/host/extension.ts';
-import type { ExtensionRequest, UiScreen, UiScreenSource } from '../src/host/extension.ts';
+import type { ExtensionRequest, UiScreen, UiScreenContribution, UiScreenSource } from '../src/host/extension.ts';
 import { FakeDocument, fakeFetch, json, settle } from './support/fake-dom.ts';
 import type { FakeElement } from './support/fake-dom.ts';
 
@@ -252,7 +252,8 @@ async function projectWithForeignScreens(): Promise<string> {
     return root;
 }
 const sha = 'a'.repeat(64);
-const activate = async (root: string, mounts: string[], screens: UiScreenSource[] = []) => createUiExtension({ projectSha256: sha, projectRoot: root, screens }).registration.activate({}, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root });
+// A bare source is contributed by `store`, as composeHost would stamp it; a {from, source} names its own contributor.
+const activate = async (root: string, mounts: string[], screens: (UiScreenSource | UiScreenContribution)[] = []) => createUiExtension({ projectSha256: sha, projectRoot: root, screens: screens.map(screen => typeof screen === 'function' ? { from: 'store', source: screen } : screen) }).registration.activate({}, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root });
 const source = (screens: Record<string, unknown>): UiScreenSource => () => screens as Record<string, UiScreen>;
 const screenRequest = (path: string, mount: string, method = 'GET'): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: `${mount}/*`, mount, client: null, requestId: 'test-request', env: {} });
 
@@ -296,7 +297,7 @@ test('the ui extension refuses a contributed screen with no route, a duplicate p
     const good = source({ '/todos': { title: 'Todos', collection: todos } });
     await assert.rejects(activate(root, ['/assets/ui'], [good]), /needs a route \/todos\/\*/);
     await assert.rejects(activate(root, ['/todos'], [good]), /exactly one route mount/);
-    await assert.rejects(activate(root, ['/assets/ui', '/todos'], [good, good]), /contributed more than once/);
+    await assert.rejects(activate(root, ['/assets/ui', '/todos'], [good, { from: 'notes', source: good }]), /ui screen \/todos is contributed by extension "store" and by extension "notes"/);
     await assert.rejects(activate(root, ['/assets/ui', '/todos'], [source({ '/todos': { title: '', collection: todos } })]), /plain title/);
     await assert.rejects(activate(root, ['/assets/ui', '/todos'], [source({ '/todos': { title: 'a\nb', collection: todos } })]), /plain title/);
     await assert.rejects(activate(root, ['/assets/ui', '/x'], [source({ 'x': { title: 'X', collection: todos } })]), /absolute literal path/);

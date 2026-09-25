@@ -9,13 +9,16 @@ import type { ExtensionTemplates } from '../kit.ts';
 import type { Theme } from '../theme.ts';
 import { createUiExtension, uiAuthoring, uiConfigSchema, uiHookContracts } from './extension.ts';
 import type { UiExtension, UiScreenSource } from './extension.ts';
+import { assertTemplateProvenance } from './provenance.ts';
 import { scaffold } from './scaffold.ts';
 
 /**
  * What another extension contributes to ui through its definition's `contributes: {ui: ...}`: English copy
- * registered in the presentation defaults, templates shipped under its own namespace, and optionally the data
- * screens it wants ui to serve. ui never reads another extension's configuration: a contributor that owns
- * collections resolves its own declaration in `screens` and hands ui a generic description of each screen.
+ * registered in the presentation defaults, templates shipped under its own namespace (each `templates` entry's
+ * `name` must be the contributing extension's name and every template `<name>/...`; ui refuses anything else at
+ * host composition), and optionally the data screens it wants ui to serve. ui never reads another extension's
+ * configuration: a contributor that owns collections resolves its own declaration in `screens` and hands ui a
+ * generic description of each screen.
  */
 export interface UiContribution {
     sources?: readonly Catalogue[] | undefined;
@@ -43,13 +46,15 @@ export default defineExtension<UiHostOptions>({
     scaffold,
     host(context, options) {
         const contributions = context.contributions<UiContribution>('ui');
+        // A template namespace must be its contributor's own name (core stamps `from`); refused here, at host composition.
+        const templates = contributions.flatMap(({ from, value }) => (value.templates ?? []).map(namespace => assertTemplateProvenance(namespace, from)));
         const ui: UiExtension = createUiExtension({
             projectSha256: context.projectSha256,
             // The block's copy, templates and stylesheet paths resolve against the site: ui/ lives beside host.mjs.
             projectRoot: context.site,
-            sources: [...contributions.flatMap(contribution => contribution.sources ?? []), ...(options.sources ?? [])],
-            extensions: [...contributions.flatMap(contribution => contribution.templates ?? []), ...(options.extensions ?? [])],
-            screens: contributions.flatMap(contribution => contribution.screens ? [contribution.screens] : []),
+            sources: [...contributions.flatMap(({ value }) => value.sources ?? []), ...(options.sources ?? [])],
+            extensions: [...templates, ...(options.extensions ?? [])],
+            screens: contributions.flatMap(({ from, value }) => value.screens ? [{ from, source: value.screens }] : []),
             ...(options.theme ? { theme: options.theme } : {}),
         });
         return { registration: ui.registration, exports: ui };

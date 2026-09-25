@@ -42,7 +42,7 @@ export async function siteCompanions(t: TestContext, root: string, projectSha256
     const audit = await createAudit({ projectSha256, database: join(root, `audit-${randomBytes(6).toString('hex')}.sqlite`) });
     cleanup(t, () => audit.close());
     const recording = options.transport === undefined ? recordingTransport() : undefined;
-    const mail = createMail({ projectSha256, site: root, contributions: [authMail], transport: options.transport === false ? null : options.transport ?? recording! });
+    const mail = createMail({ projectSha256, site: root, contributions: [{ from: 'auth', value: authMail }], transport: options.transport === false ? null : options.transport ?? recording! });
     cleanup(t, () => mail.close());
     const registrations = [audit.registration, mail.registration];
     let abuse: AbuseExports | undefined;

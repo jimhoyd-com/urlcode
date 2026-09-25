@@ -1,7 +1,7 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, assert, extensionError } from './errors.ts';
-import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
+import type { Contribution, ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
 import { hostRevisionPin, type OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
@@ -36,7 +36,8 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
  * It reads the reviewed project revision once (the verified `--policy` revision when a CLI command was given both
  * `--policy` and `--host-file`, otherwise `PROJECT_SHA256`; both present and different refuses), passes it to every
  * `host()` as `context.projectSha256`, orders the extensions by `requires` and installed `uses`, activates each `host()` once
- * (dependants receive the shared instance through `get`, and contributions through `contributions`), and returns
+ * (dependants receive the shared instance through `get`, and contributions through `contributions`, each stamped
+ * `{from, value}` with its contributor's name), and returns
  * the `{extensions, plugins, close}` object `--host-file` loads, with `extensions` in that order (the runtime activates
  * them in it). `close` releases in reverse order. Core never
  * imports an extension: host.mjs does, and passes the definitions in.
@@ -53,10 +54,12 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   const present = new Set(definitions.map(definition => definition.name));
   const ordered = orderByRequires(definitions.map((definition, index) => ({ name: definition.name, requires: [...(definition.requires ?? []), ...(definition.uses ?? []).filter((other: string) => present.has(other))], index })),
     (item, requirement) => `${item.name} requires ${requirement}; add it with \`urlcode extensions add ${requirement}\``);
-  const contributions = new Map<string, unknown[]>();
+  // Core stamps each value with its contributor's registered name: the contributor supplies only the value, so no
+  // contribution can claim another extension's name. Core never interprets the value.
+  const contributions = new Map<string, Contribution[]>();
   for (const definition of definitions) for (const [target, value] of Object.entries(definition.contributes ?? {})) {
     if (!contributions.has(target)) contributions.set(target, []);
-    contributions.get(target)!.push(value);
+    contributions.get(target)!.push(Object.freeze({ from: definition.name, value }));
   }
   const hosted: { name: string; result: HostedExtension }[] = [];
   const exported = new Map<string, unknown>();
@@ -77,7 +80,7 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
           // An absent `uses` extension was never hosted: its exports are undefined.
           return exported.get(other) as T;
         },
-        contributions: <T>(target: string): T[] => [...(contributions.get(target) ?? [])] as T[],
+        contributions: <T>(target: string): readonly Contribution<T>[] => Object.freeze([...(contributions.get(target) ?? [])] as Contribution<T>[]),
       };
       let result: HostedExtension;
       try { result = await definition.host(context, entries[index]!.options); }

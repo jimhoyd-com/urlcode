@@ -124,7 +124,7 @@ definition's `contributes.ui.screens` (see `UiContribution` in the
 [contract](CONTRACT.md)). At activation `ui` calls each source once with the
 route project root and receives `{<path>: {title, collection, columns?}}`; each
 path must have a route `<path>/*` with `extension: ui`, a path claimed twice
-refuses, and a bad collection, column or title fails activation naming the
+refuses naming both contributing extensions, and a bad collection, column or title fails activation naming the
 screen. The store extension is one such contributor: its screens are declared
 under `extensions.store.config.screens`, next to the collections they show
 (see [store screens](../../docs/STORE.md#a-screen-for-the-collection)).
@@ -227,7 +227,15 @@ available once it has.
 `urlcode extensions add ui` composes all of this: `host.mjs` lists `ui()`, whose
 `host()` calls `createUiExtension` with `projectRoot` set to the site directory
 and registers the copy and templates every installed extension contributes
-through its definition's `contributes.ui` (`{sources, templates}`). The scaffold
+through its definition's `contributes.ui` (`{sources, templates}`). A template
+namespace belongs to the extension that contributes it: core stamps every
+contribution with its contributor's name, and ui refuses at host composition a
+namespace whose `name` is another extension's (`ui template namespace "auth" is
+contributed by extension "demo": an extension contributes ui templates only
+under its own name`) or a template outside `<name>/` (`ui template "layout" is
+contributed by extension "demo" outside its namespace: name it demo/<template>`).
+Templates passed in `ui({extensions})` are the operator's own and are not
+checked. The scaffold
 writes the `extensions.ui` block with a starter theme named after the site, the
 `/assets/ui/*` route and `ui/copy/`, `ui/templates/` and `ui/extra.css`
 placeholders beside the host; core orders `ui` before the extensions that

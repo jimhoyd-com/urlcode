@@ -2,7 +2,7 @@
 // deadline, and templates checked at host time. mail logs nothing and serves no routes.
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ExtensionActivation, ExtensionAuthoringContract, ExtensionInstance, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { Contribution, ExtensionActivation, ExtensionAuthoringContract, ExtensionInstance, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { mailbox } from './address.ts';
 import { canonicalLocale, loadCopy, render, validateContributions } from './templates.ts';
 import type { Copy } from './templates.ts';
@@ -37,7 +37,8 @@ export interface MailOptions {
   projectSha256: string;
   /** Absolute site directory: copy files and the default outbox resolve against it. */
   site: string;
-  contributions: readonly MailContribution[];
+  /** `HostContext.contributions('mail')`: each `{from, value}`, where `value.namespace` must equal `from`. */
+  contributions: readonly Contribution<MailContribution>[];
   /**
    * Delivery. Omitted: an outbox in `<site>/data/outbox` when the activation origin is loopback on the node target,
    * otherwise none (available false). null: none.

@@ -423,9 +423,19 @@ export interface ScaffoldResult {
   notes?:string[];
 }
 /**
+ * One value another extension contributes, as `HostContext.contributions` returns it. Core stamps `from`, the
+ * contributing definition's registered `name`; the contributor supplies only `value`, so a contribution can never
+ * claim another extension's name. The entry is frozen; core never inspects, copies or freezes `value` itself.
+ */
+export interface Contribution<T=unknown> {
+  readonly from:string;
+  readonly value:T;
+}
+/**
  * What `composeHost` gives an extension's `host()`. `get(name)` returns what an extension this one `requires` (or
  * `uses`) exported from its own `host()`; `contributions(name)` collects every installed extension's
- * `contributes[name]` value, so an extension activated first (ui) still receives what later ones add to it.
+ * `contributes[name]` value as `{from, value}` in host.mjs order, so an extension activated first (ui) still
+ * receives what later ones add to it, and a receiver that keys by namespace can check it against `from`.
  */
 export interface HostContext {
   projectSha256:string;
@@ -436,7 +446,8 @@ export interface HostContext {
    * that is not installed. Throws for any name outside `requires` and `uses`.
    */
   get<T=unknown>(name:string):T;
-  contributions<T=unknown>(name:string):T[];
+  /** A new frozen list per call; each entry is frozen `{from, value}`, `from` stamped by core. */
+  contributions<T=unknown>(name:string):readonly Contribution<T>[];
 }
 export interface HostedExtension {
   registration:RuntimeExtension;

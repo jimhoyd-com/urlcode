@@ -98,10 +98,39 @@ test('composeHost orders by requires, shares exports and contributions, and clos
   const host = await composeHost(hostUrl, [beta(), alpha({ suffix: '!' })]);
   assert.deepEqual(host.extensions!.map(item => item.name), ['alpha', 'beta'], 'the list order does not matter');
   const seen = (globalThis as { betaSaw?: unknown }).betaSaw;
-  assert.deepEqual(seen, { alpha: { keyLength: 32 }, contributions: [{ from: 'alpha' }] });
+  assert.deepEqual(seen, { alpha: { keyLength: 32 }, contributions: [{ from: 'alpha', value: { from: 'beta', greeting: 'hi' } }] });
   (globalThis as { alphaClosed?: number }).alphaClosed = 0;
   await host.close!();
   assert.equal((globalThis as { alphaClosed?: number }).alphaClosed, 1);
+});
+
+test('composeHost stamps every contribution with its contributor\'s name, frozen, and never interprets the value', async t => {
+  const previous = process.env.PROJECT_SHA256;
+  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  process.env.PROJECT_SHA256 = pin;
+  const schema = { type: 'object' };
+  const registration = (name: string, projectSha256: string) => ({ name, version: '1' as const, projectSha256, targets: ['node' as const], schema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) });
+  let received: { first: readonly unknown[]; second: readonly unknown[]; other: readonly unknown[]; none: readonly unknown[] } | undefined;
+  const shared = { from: 'receiver', namespace: 'receiver' };
+  // Two providers (and one contributing elsewhere) to one receiver: a second provider, not just a first-party pair.
+  const provider = (name: string, contributes: Record<string, unknown>): ExtensionEntry => ({ options: {}, definition: { name, description: name, schema, contributes, host: context => ({ registration: registration(name, context.projectSha256) }) } });
+  const receiver: ExtensionEntry = { options: {}, definition: { name: 'receiver', description: 'receiver', schema, host(context) {
+    const first = context.contributions('receiver'), second = context.contributions('receiver');
+    received = { first, second, other: context.contributions('other'), none: context.contributions('nobody') };
+    return { registration: registration('receiver', context.projectSha256) };
+  } } };
+  await composeHost(pathToFileURL(join(tmpdir(), 'host.mjs')), [receiver, provider('one', { receiver: shared }), provider('two', { receiver: 'plain', other: 42 })]);
+  assert.ok(received);
+  assert.deepEqual(received.first, [{ from: 'one', value: shared }, { from: 'two', value: 'plain' }], 'host.mjs order; a value naming another extension does not change from');
+  assert.deepEqual(received.other, [{ from: 'two', value: 42 }]);
+  assert.deepEqual(received.none, []);
+  assert.equal((received.first[0] as { value: unknown }).value, shared, 'the value is passed as is, never copied');
+  assert.equal(Object.isFrozen(shared), false, 'core never freezes the value');
+  assert.ok(Object.isFrozen(received.first) && received.first.every(entry => Object.isFrozen(entry)), 'the list and every entry are frozen');
+  assert.throws(() => { (received!.first[0] as { from: string }).from = 'two'; }, TypeError);
+  assert.throws(() => { (received!.first as unknown[]).push({ from: 'x', value: 1 }); }, TypeError);
+  assert.notEqual(received.first, received.second, 'each call returns its own list');
+  assert.deepEqual(received.second, received.first);
 });
 
 test('host.mjs lines are added and removed one line each, and hand edits refuse', () => {
