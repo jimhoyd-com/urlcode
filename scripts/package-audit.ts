@@ -22,6 +22,7 @@ export interface Budget {
   entries: number;
   roots: readonly string[];
   optionalPeers?: readonly string[];
+  requiredPeers?: readonly string[];
 }
 
 // These are release budgets, not targets, keyed by package name. The allowlists
@@ -171,9 +172,11 @@ export const budgets: Record<string, Budget> = {
     unpacked: 1000 * 1024,
     entries: 90,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json'],
-    // Every sibling peer is optional so npm never installs a second copy;
+    // Sibling peers are optional so npm never installs a second copy, except
+    // audit: auth's worker imports it at runtime, so it is a required peer.
     // `extensions add auth` installs the required audit, mail and ui itself.
-    optionalPeers: ['@jimhoyd/urlcode-abuse', '@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-mail', '@jimhoyd/urlcode-ui'],
+    optionalPeers: ['@jimhoyd/urlcode-abuse', '@jimhoyd/urlcode-mail', '@jimhoyd/urlcode-ui'],
+    requiredPeers: ['@jimhoyd/urlcode-audit'],
   },
   '@jimhoyd/urlcode-admin': {
     packed: 75 * 1024,
@@ -365,6 +368,11 @@ async function auditOne(target: string): Promise<void> {
       assert(!manifest.dependencies?.[peer], `${peer} must not be a default dependency`);
       assert(manifest.peerDependencies?.[peer], `${peer} needs a declared compatibility range`);
       assert.equal(manifest.peerDependenciesMeta?.[peer]?.optional, true, `${peer} must be an optional peer`);
+    }
+    for (const peer of budget.requiredPeers ?? []) {
+      assert(!manifest.dependencies?.[peer], `${peer} must not be a default dependency`);
+      assert(manifest.peerDependencies?.[peer], `${peer} needs a declared compatibility range`);
+      assert.notEqual(manifest.peerDependenciesMeta?.[peer]?.optional, true, `${peer} must be a required peer`);
     }
 
     if (pack.size > budget.packed) {
