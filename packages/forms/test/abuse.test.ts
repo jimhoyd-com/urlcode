@@ -50,7 +50,7 @@ test('above challengeAfter the form re-renders 403 with the widget and the value
   assert.equal((await submit(valid)).status, 303);
   const challenged = await submit({ ...valid, message: 'Keep <this> text', challengeToken: 'bad-token' });
   assert.equal(challenged.status, 403);
-  assert.ok((challenged.headers.get('content-security-policy') ?? '').split(';').some(directive => directive.trim().split(/\s+/).slice(1).includes(challengeOrigin)), 'the widget origin is a source in the page CSP');
+  assert.match(challenged.headers.get('content-security-policy') ?? '', /(?:^|;)\s*script-src\s(?:[^;]*\s)?https:\/\/challenge\.example\.test(?=\s|;|$)/, 'the widget origin is a script-src source in the page CSP');
   const html = await challenged.text();
   assert.match(html, /Complete the verification and submit again/);
   assert.match(html, /Keep &lt;this&gt; text/, 'the entered values are kept, escaped');
