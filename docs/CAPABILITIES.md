@@ -84,7 +84,9 @@ followed by nested property names (`policies.cache`, `request.body`,
 `site.sitemap`). Resolution is bounded and cycle-safe; where a nested object is
 its own path (`route` inside `routes`, `policies` inside `route`) it is
 summarized with a `$comment` naming that path so every fragment stays under
-16 KiB. Fragments describe shape only: they carry no defaults, validation
+16 KiB. `route` itself is an index: each route property keeps its description,
+and one with nested fields (`redirect`, `conditional`, `request`, ...) is
+summarized the same way. Fragments describe shape only: they carry no defaults, validation
 result or operator authority, and the full schema remains the contract.
 
 Both commands read bundled package data and need no project, credentials or

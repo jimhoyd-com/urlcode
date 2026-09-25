@@ -69,10 +69,10 @@ The root [llms.txt](../llms.txt) is a compact discovery index; the generated
 reading order for agents that want complete context in one fetch. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
-[URLCode AI](https://urlcode.ai/) is the optional hosted companion for shared
-skills and LLM tooling. It complements the project-local MCP server; see
-[hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp) for its authenticated
-remote connection details. Its machine-readable entry point is
+[URLCode AI](https://urlcode.ai/) is the optional hosted companion for
+version-pinned reference and shared skills. It complements the project-local MCP
+server; see [hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp) for its
+anonymous remote endpoint. Its machine-readable entry point is
 [`https://urlcode.ai/llms.txt`](https://urlcode.ai/llms.txt).
 Every add-on's agent references for a release are in core's
 [release-wide add-on catalog](EXTENSIONS.md#the-release-wide-agent-catalog)
@@ -570,9 +570,9 @@ that session to register the server ahead of `init`
 ([pre-session bootstrap](TOOLING.md#registering-before-init-runs-pre-session-bootstrap-542));
 otherwise run the first turn's `init` as a plain CLI call and rely on MCP from
 the next session or turn.
-The optional hosted URLCode AI MCP is a separate authenticated connection for
-shared skills and LLM tools; it does not replace the local project server. Its
-endpoint and credential-handling requirements are in
+The optional hosted URLCode AI MCP is a separate, anonymous connection for
+version-pinned reference and shared skills, used by your agent's own model; it
+does not replace the local project server. Its endpoint is in
 [hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp).
 Inspection is not activation/deployment readiness: real grants, asset snapshots
 and service availability still need normal runtime checks. Provider conformance replay is local evidence; only

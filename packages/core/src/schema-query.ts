@@ -34,6 +34,13 @@ function inline(root:Json,node:unknown,stack:readonly string[]):unknown {
   }
   return Object.fromEntries(Object.entries(node).map(([key,value])=>[key,inline(root,value,stack)]));
 }
+/** A property with nested fields, as opposed to a scalar or a list of scalars. */
+const structured=(node:unknown):boolean=>object(node)&&(typeof node.$ref==='string'||object(node.properties)||Array.isArray(node.oneOf)||object(node.additionalProperties)||(object(node.items)&&structured(node.items)));
+/** Every route property is its own path (`redirect`, `conditional`, ...), so the `route` fragment keeps each one's description and summarizes those with nested fields, naming that path; `route` stays an index of its keys under the fragment bound. */
+function routeIndex(route:Json):Json {
+  const summary=(name:string,node:Json):Json=>({...(node.type===undefined?{}:{type:node.type}),...(typeof node.description==='string'?{description:node.description}:{}),$comment:`${name} has nested fields; see urlcode schema ${name}`});
+  return {...route,properties:Object.fromEntries(Object.entries(properties(route)).map(([name,node])=>[name,object(node)&&structured(node)?summary(name,node):node]))};
+}
 const resolved=(root:Json,node:Json):Json=>typeof node.$ref==='string'?{...definition(root,node.$ref),...Object.fromEntries(Object.entries(node).filter(([key])=>key!=='$ref'))}:node;
 /** Top-level document keys first, then `route` itself and every route property (`redirect`, `function`, `middleware`, ...). */
 export function schemaPathNames():string[] {
@@ -48,7 +55,7 @@ export function getSchemaFragment(path:string):SchemaFragment {
   const [first,...rest]=path.split('.');
   let node:Json,pointer:string;
   if(first!==undefined&&object(properties(root)[first])){node=properties(root)[first] as Json;pointer='#/properties/'+first;}
-  else if(first==='route'){node=route;pointer='#/$defs/route';}
+  else if(first==='route'){node=rest.length?route:routeIndex(route);pointer='#/$defs/route';}
   else if(first!==undefined&&object(properties(route)[first])){node=properties(route)[first] as Json;pointer='#/$defs/route/properties/'+first;}
   else throw new ConfigError(`Unknown schema path; top-level names: ${schemaPathNames().join(', ')}`);
   for(const segment of rest) {

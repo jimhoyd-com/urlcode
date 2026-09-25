@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
-import type { ExtensionActivation, ExtensionInstance } from '@jimhoyd/urlcode/extensions';
+import type { Contribution, ExtensionActivation, ExtensionInstance } from '@jimhoyd/urlcode/extensions';
 import { createMail } from '../src/index.ts';
 import type { MailContribution, MailOptions } from '../src/index.ts';
 
@@ -20,6 +20,9 @@ export const demo: MailContribution = {
     plain: { subject: 'Plain', text: 'Nothing to fill in.', slots: {} },
   },
 };
+
+/** `demo` as `HostContext.contributions('mail')` hands it to mail: stamped with its contributor's name. */
+export const demoContribution: Contribution<MailContribution> = Object.freeze({ from: 'demo', value: demo });
 
 export async function tempSite(t: TestContext): Promise<{ site: string; project: string }> {
   const site = await mkdtemp(join(tmpdir(), 'urlcode-mail-'));
@@ -39,7 +42,7 @@ type Setup = Partial<Omit<MailOptions, 'projectSha256' | 'site'>> & { config?: R
 export async function activated(t: TestContext, setup: Setup = {}, activate = true): Promise<ReturnType<typeof createMail> & { site: string; project: string; instance: ExtensionInstance | undefined }> {
   const { site, project } = await tempSite(t);
   const { config, context, ...options } = setup;
-  const mail = createMail({ contributions: [demo], ...options, projectSha256: sha, site });
+  const mail = createMail({ contributions: [demoContribution], ...options, projectSha256: sha, site });
   t.after(() => mail.close());
   const instance = activate ? await mail.registration.activate(config ?? {}, activation(project, context)) : undefined;
   return { ...mail, site, project, instance };

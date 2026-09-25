@@ -24,13 +24,22 @@ function copyText(subject: unknown, text: unknown, where: string): { subject: st
   return { subject, text };
 }
 
-/** Validates every contribution and returns the templates by '<namespace>.<key>'. Throws naming the namespace or key. */
+/**
+ * Validates every contribution and returns the templates by '<namespace>.<key>'. Throws naming the namespace or key.
+ * Each entry is `{from, value}` as `HostContext.contributions` returns it: `from` is the contributing extension's name,
+ * stamped by core, and the value's `namespace` must equal it, so no extension can contribute under another's name.
+ */
 export function validateContributions(contributions: readonly unknown[]): ReadonlyMap<string, MailTemplate> {
   const templates = new Map<string, MailTemplate>(), namespaces = new Set<string>();
-  for (const contribution of contributions) {
+  for (const entry of contributions) {
+    if (!isRecord(entry) || typeof entry.from !== 'string' || !NAME.test(entry.from))
+      throw new Error('A mail contribution must be {from, value} with the contributing extension\'s name in from');
+    const from = entry.from, contribution = entry.value;
     if (!isRecord(contribution) || typeof contribution.namespace !== 'string' || !NAME.test(contribution.namespace))
-      throw new Error('A mail contribution needs a namespace matching ' + NAME.source);
+      throw new Error(`The mail contribution from extension "${from}" needs a namespace matching ${NAME.source}`);
     const namespace = contribution.namespace;
+    if (namespace !== from)
+      throw new Error(`Mail namespace "${namespace}" is contributed by extension "${from}": an extension contributes mail templates only under its own name`);
     if (namespaces.has(namespace)) throw new Error(`Two extensions contribute mail namespace ${namespace}`);
     namespaces.add(namespace);
     const entries = isRecord(contribution.templates) ? Object.entries(contribution.templates) : undefined;

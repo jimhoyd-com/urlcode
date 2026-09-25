@@ -27,7 +27,7 @@ const sha = 'a'.repeat(64);
 
 /** A stand-in for the ui extension: it records what the others contributed and exposes a kit-shaped export. */
 function fakeUi() {
-  const seen: unknown[][] = [];
+  const seen: (readonly unknown[])[] = [];
   const definition = defineExtension({
     name: 'ui', description: 'Test kit', schema: { type: 'object' },
     host(ctx) {
@@ -152,7 +152,7 @@ test('host() loads the scaffolded operator service and CSRF key, and shares Auth
   assert.equal(registration.projectSha256, sha);
   assert.equal(registration.schema, authConfigSchema);
   // ui ran first and still received auth's contribution.
-  assert.deepEqual(ui.seen, [[auth.definition.contributes!.ui]]);
+  assert.deepEqual(ui.seen, [[{ from: 'auth', value: auth.definition.contributes!.ui }]]);
   assert.equal(csrfBytes.length, 32);
   // Dependants get the versioned contract, never the service or the CSRF key; it is inactive until the runtime runs.
   assert.ok(shared);

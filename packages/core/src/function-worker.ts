@@ -71,10 +71,14 @@ async function evaluate(entry: string | undefined, name: string | undefined, pay
     return payload === undefined ? undefined : string('__output');
   } finally { vm.dispose(); runtime.dispose(); }
 }
+// Startup runs under top-level await. Its outcome is posted from a later macrotask, after this module's evaluation
+// has settled, because the pool may terminate the worker as soon as either message arrives (a deadline, a startup
+// error, close()); terminating mid module evaluation is what #708 avoids.
+const postAfterEvaluation = (message: FunctionWorkerMessage): void => { setImmediate(post, message); };
 try {
   for (const [source,name] of data.entries) await evaluate(source,name);
-  post({ready:true});
-} catch { post({startupError:true}); }
+  postAfterEvaluation({ready:true});
+} catch { postAfterEvaluation({startupError:true}); }
 const isPair = (pair: unknown): pair is [string, string] => Array.isArray(pair) && pair.length === 2 && pair.every(v => typeof v === 'string');
 port.on('message', async ({id,source,name,request,context,maxBytes,timeoutMs,chain=[],native}: FunctionWorkerRequest) => { // trust boundary: posted by FunctionPool.execute
   try {

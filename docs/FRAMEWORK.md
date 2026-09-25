@@ -188,7 +188,10 @@ the message templates auth and forms contribute to `mail`. The store contributes
 without requiring it: the CRUD screens declared under
 `extensions.store.config.screens` reach ui as generic screen descriptions
 through `contributes.ui.screens`, so ui never reads another extension's
-configuration ([nesting](EXTENSIONS.md#nesting)). Operator options go inside a call, for
+configuration ([nesting](EXTENSIONS.md#nesting)). Core stamps each contribution with
+the name of the extension that made it, so ui and mail accept a template
+namespace only from the extension of that name
+([contributions](EXTENSIONS.md#contributions)). Operator options go inside a call, for
 example `mail({transport: sesTransport({region}), from})`.
 
 The whole graph, as each extension declares it:

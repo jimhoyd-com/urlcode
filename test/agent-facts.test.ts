@@ -5,6 +5,7 @@ import {getCapability} from '../packages/core/src/capability-query.ts';
 import {getSchemaFragment} from '../packages/core/src/schema-query.ts';
 import {mcpToolInventory} from '../packages/core/src/mcp.ts';
 import {storeAuthoring} from '../packages/store/src/authoring.ts';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 const script=fileURLToPath(new URL('../scripts/check-agent-facts.ts',import.meta.url));
 const starter=fileURLToPath(new URL('../starters/default/app/',import.meta.url));
 
@@ -17,6 +18,26 @@ test('the agent-facts inventory is derived from the implementation and the prose
  assert.equal(facts.storeShortLinks,storeAuthoring.surfaces.some(surface=>surface.name==='shortLinks'));
  const check=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:30000});
  assert.equal(check.status,0,check.stderr);
+});
+
+test('the retired hosted AI token and hosted LLM-tool claims cannot reappear in agent-visible prose (#756)',async t=>{
+ const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
+ assert.equal(inventory.status,0,inventory.stderr);
+ assert.deepEqual(JSON.parse(inventory.stdout).hostedAi,{endpoint:'https://urlcode.ai/mcp',authentication:'none',hostedModelTools:false,retiredCredentials:['URLCODE_AI_TOKEN']});
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const scan=async(text:string)=>{const file=join(dir,'SKILL.md');await writeFile(file,text);return spawnSync(process.execPath,[script,'--files',file],{encoding:'utf8',timeout:30000});};
+ for(const [text,fact] of [
+  ['Send `Authorization: Bearer <URLCODE_AI_TOKEN>` to the server.\n','hostedAi.retiredCredentials'],
+  ['[URLCode AI](https://urlcode.ai/) is a hosted service for shared skills and LLM tooling.\n','hostedAi.hostedModelTools'],
+  ['Keep the URLCode AI bearer token in the client secret facility.\n','hostedAi.authentication'],
+ ] as const){
+  const result=await scan(text);
+  assert.equal(result.status,1,`${fact} should reject: ${text}`);
+  assert.ok(result.stderr.includes(`[${fact}`),result.stderr);
+ }
+ // The shipped wording, and bearer tokens that belong to the auth extension, stay clean.
+ const clean=await scan('[URLCode AI](https://urlcode.ai/) is an optional hosted service for version-pinned reference and shared skills; its anonymous remote MCP runs no model of its own.\n\nThe auth extension checks a bearer token on `/api/*`.\n');
+ assert.equal(clean.status,0,clean.stderr);
 });
 
 test('get_context, capabilities and the schema state the real wildcard rule (#585)',async()=>{

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { startServer } from '@jimhoyd/urlcode';
 import { defineExtension, inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
-import type { HostContext } from '@jimhoyd/urlcode/extensions';
+import type { Contribution, HostContext } from '@jimhoyd/urlcode/extensions';
 import { composeHost } from '@jimhoyd/urlcode/host';
 import mail from '../src/extension.ts';
 import { mailConfigSchema, outboxTransport, recordingTransport, sesTransport } from '../src/index.ts';
@@ -15,7 +15,8 @@ import notifier, { notifierMail } from './fixtures/notifier.ts';
 import { activation, demo, refusal, sha, tempSite } from './support.ts';
 
 const hostContext = (site: string, contributions: readonly MailContribution[] = [demo]): HostContext => ({
-  projectSha256: sha, site, get: () => { throw new Error('mail requires nothing'); }, contributions: <T>() => [...contributions] as T[],
+  projectSha256: sha, site, get: () => { throw new Error('mail requires nothing'); },
+  contributions: <T>() => contributions.map(value => Object.freeze({ from: value.namespace, value })) as unknown as Contribution<T>[],
 });
 async function hosted(t: TestContext, options: MailHostOptions = {}) {
   const { site, project } = await tempSite(t);
@@ -143,7 +144,7 @@ test('a consumer contributes a template through contributes.mail and sends it ov
   assert.equal(transport.sent.length, 1);
 });
 
-test('composeHost refuses two extensions contributing the same mail namespace, naming it', async t => {
+test('composeHost refuses a mail namespace that is not its contributor\'s own name, naming both', async t => {
   const { site, project } = await tempSite(t);
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: {}, routes: {} }));
   withSha(t, await inspectExtensionRevision(project));
@@ -151,5 +152,9 @@ test('composeHost refuses two extensions contributing the same mail namespace, n
     name: 'copycat', description: 'Contributes a namespace that is already taken.', contributes: { mail: notifierMail },
     schema: { type: 'object' }, host: context => ({ registration: { name: 'copycat', version: '1', projectSha256: context.projectSha256, targets: ['node'], schema: { type: 'object' }, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } }),
   });
-  await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [notifier(), copycat(), mail({ recipients: { ops: 'ops@example.test' } })]), /mail namespace notifier/);
+  // copycat reuses notifier's contribution, namespace and all: core stamps it `from: 'copycat'`, so mail refuses it
+  // whether or not notifier is installed.
+  for (const entries of [[notifier(), copycat()], [copycat()]])
+    await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [...entries, mail({ recipients: { ops: 'ops@example.test' } })]), (error: Error & { details?: { extension?: string } }) =>
+      error.constructor.name === 'ConfigError' && error.details?.extension === 'mail' && /Mail namespace "notifier" is contributed by extension "copycat"/.test(error.message));
 });

@@ -75,9 +75,10 @@ The tooling API consolidates authoring operations without starting a runtime:
   afterwards; without one it lists declarations only. `describeExtensions(project,
   registrations?)` produces the same report from registrations already in hand.
   Neither activates an extension. See [EXTENSIONS.md](EXTENSIONS.md).
-- `buildContext(project, {target?, hostFile?, budget?})` returns the compact
+- `buildContext(project, {target?, hostFile?, host?, budget?})` returns the compact
   project context an authoring agent needs before it writes anything (see
-  below); `renderContext` produces the YAML rendering and `estimateTokens`
+  below); `host` is an operator host the caller already loaded, used in place
+  of `hostFile` and left for the caller to close; `renderContext` produces the YAML rendering and `estimateTokens`
   the characters-per-token estimate the budget uses.
 
 ## Project context
@@ -582,7 +583,10 @@ When the operator starts
 the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
 `inspectExtensions` report; without the option the tool is absent and calls to
-it are rejected. Tools accept no project/file/output path argument; recipe names
+it are rejected. The same registrations reach `get_context` (its `project.host`
+counts), `inspect`, `validate`, `explain`, `get_manifest`, `run_tests`,
+`plan_feature` and `review`, so each answers as the host-aware CLI command or
+SDK call (`extensions` option) does for that host file. Tools accept no project/file/output path argument; recipe names
 come from the fixed catalog, `get_capability` names from the capability catalog,
 `get_schema` paths from the bundled schema, and the two searches match bundled
 metadata locally (see [recipes](RECIPES.md)).
@@ -703,24 +707,23 @@ it reads the selected checkout, validates its configuration and never needs a
 network credential. Do not replace its generated `.mcp.json` entry with a
 hosted service.
 
-[URLCode AI](https://urlcode.ai/) is a separate, opt-in hosted service for
-shared skills and LLM-assisted work. A client that supports authenticated HTTP
-MCP can add it as a second server with these connection details:
+[URLCode AI](https://urlcode.ai/) is a separate, opt-in hosted MCP server for
+version-pinned URLCode reference material and shared skills. It is anonymous:
+there is no account, key or request header to configure. It runs no model of
+its own either; your agent's model reads what its tools return. A client that
+supports remote HTTP MCP can add it as a second server at this URL:
 
 - URL: `https://urlcode.ai/mcp`
-- request header: `Authorization: Bearer <URLCODE_AI_TOKEN>`
 
-Store `URLCODE_AI_TOKEN` in the MCP client's secret or environment-variable
-facility. Do not put a literal bearer token in `.mcp.json`, `urlcode.yaml`, a
-checked-in client configuration, or a shell history. Each client has its own
-remote-server configuration syntax, so configure that endpoint explicitly in
-the client rather than asking `urlcode init` to generate it.
+Each client has its own remote-server configuration syntax, so configure that
+endpoint explicitly in the client rather than asking `urlcode init` to generate
+it.
 
 The hosted tools are not a proxy for this local server: they do not receive the
 project root and do not replace local `get_context`, validation, manifest,
 extension-artifact or authoring tools. Keep the local server registered for
 framework- and project-specific work; add the hosted server only where its
-shared skill catalog or LLM tools are useful.
+shared reference and skill catalog is useful.
 
 ## Authoring mode
 

@@ -91,7 +91,7 @@ async function probe(root: string): Promise<AuthBaselineResult> {
         const ui = createUiExtension({ projectSha256: revision, projectRoot: project, sources: [englishCatalogue], extensions: [authUiTemplates] });
         const audit = await createAudit({ projectSha256: revision, database: join(operator, 'audit.sqlite') });
         companions.push(audit);
-        const mail = createMail({ projectSha256: revision, site: operator, contributions: [authMail], transport: recordingTransport() });
+        const mail = createMail({ projectSha256: revision, site: operator, contributions: [{ from: 'auth', value: authMail }], transport: recordingTransport() });
         companions.push(mail);
         const startRuntime = () => createRuntime(project, { origin, environment: {}, workers: 1, timeoutMs: 1000, extensions: [ui.registration, audit.registration, mail.registration, createAuth({ service: service!, csrfKey, projectSha256: revision, ui, audit: audit.exports, mail: mail.exports }).registration], log: () => {} });
         runtime = await startRuntime();

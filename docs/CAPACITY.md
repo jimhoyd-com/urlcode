@@ -265,7 +265,8 @@ production exercise. The readiness endpoint can stay 200 while all worker slots
 are busy. Use error/latency signals too. No universal safe RPS can be derived
 from the route count or these defaults alone. See [resilience](RESILIENCE.md).
 
-Configuration parsing/schema validation now run in a terminated-on-deadline worker;
+Configuration parsing/schema validation now run in a terminated-on-deadline worker
+(a worker that finishes in time exits by itself before its result is used);
 route compilation still runs cooperatively on the host (10 seconds, yields every
 64 routes). Source, AST, structured-clone output, compiled routes, assets, module
 snapshots and overlapping runtimes all consume memory. Worker V8 limits do not cap

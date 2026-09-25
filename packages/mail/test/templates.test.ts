@@ -4,9 +4,12 @@ import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createMail, recordingTransport } from '../src/index.ts';
 import type { MailContribution, MailTemplate } from '../src/index.ts';
-import { activated, activation, demo, origin, refusal, sha, tempSite } from './support.ts';
+import type { Contribution } from '@jimhoyd/urlcode/extensions';
+import { activated, activation, demo, demoContribution, origin, refusal, sha, tempSite } from './support.ts';
 
-const build = (...contributions: unknown[]) => createMail({ projectSha256: sha, site: '/srv/site', contributions: contributions as MailContribution[], transport: null });
+// Each value is stamped as composeHost would: `from` is its own namespace when that is a valid name.
+const stamp = (value: unknown) => ({ from: typeof (value as MailContribution)?.namespace === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test((value as MailContribution).namespace) ? (value as MailContribution).namespace : 'x', value });
+const build = (...contributions: unknown[]) => createMail({ projectSha256: sha, site: '/srv/site', contributions: contributions.map(stamp) as Contribution<MailContribution>[], transport: null });
 const one = (template: Partial<MailTemplate> & Record<string, unknown>) => ({ namespace: 'x', templates: { t: { subject: 'S', text: 'Hi {name}', slots: { name: 'text' }, ...template } } });
 
 test('contributions are validated at host time, naming the namespace or key', () => {
@@ -29,6 +32,15 @@ test('contributions are validated at host time, naming the namespace or key', ()
   assert.equal(mail.exports.has('demo.notice'), true);
   assert.equal(mail.exports.has('demo.missing'), false);
   assert.equal(mail.exports.has('notice'), false);
+});
+
+test('a mail namespace must be its contributor\'s own name, which core stamps as from', () => {
+  const direct = (contributions: unknown[]) => () => createMail({ projectSha256: sha, site: '/srv/site', contributions: contributions as Contribution<MailContribution>[], transport: null });
+  assert.throws(direct([{ from: 'forms', value: demo }]), /Mail namespace "demo" is contributed by extension "forms": an extension contributes mail templates only under its own name/);
+  // A bare contribution, without the stamp, is not accepted.
+  assert.throws(direct([demo]), /must be \{from, value\}/);
+  assert.throws(direct([{ from: 'Bad', value: demo }]), /must be \{from, value\}/);
+  assert.equal(createMail({ projectSha256: sha, site: '/srv/site', contributions: [demoContribution], transport: null }).exports.has('demo.notice'), true);
 });
 
 test('every slot kind is enforced at send time', async t => {
@@ -74,7 +86,7 @@ test('copy files override and translate with a locale fallback chain', async t =
   await writeFile(join(site, 'mail', 'copy', 'fr.json'), JSON.stringify({ 'demo.notice': { subject: 'Avis', text: 'Consultez {link}.' } }));
   await writeFile(join(site, 'mail', 'copy', 'de.json'), JSON.stringify({ 'demo.notice': { subject: 'Hinweis', text: 'Siehe {link}.' } }));
   const transport = recordingTransport();
-  const mail = createMail({ projectSha256: sha, site, contributions: [demo], transport });
+  const mail = createMail({ projectSha256: sha, site, contributions: [demoContribution], transport });
   t.after(() => mail.close());
   await mail.registration.activate({ defaultLocale: 'de', copy: { en: 'mail/copy/en.json', fr: 'mail/copy/fr.json', de: 'mail/copy/de.json' } }, activation(project));
   const send = (template: string, values: Record<string, string>, locale?: string) => mail.exports.send({ template: `demo.${template}`, to: 'u@example.test', values, ...(locale ? { locale } : {}) });
@@ -98,7 +110,7 @@ test('copy files override and translate with a locale fallback chain', async t =
 test('copy files are refused for unknown keys, changed slots, size, escapes and bad JSON', async t => {
   const { site, project } = await tempSite(t);
   await mkdir(join(site, 'mail', 'copy'), { recursive: true });
-  const mail = createMail({ projectSha256: sha, site, contributions: [demo], transport: recordingTransport() });
+  const mail = createMail({ projectSha256: sha, site, contributions: [demoContribution], transport: recordingTransport() });
   t.after(() => mail.close());
   const attempt = async (content: string | object, pattern: RegExp) => {
     await writeFile(join(site, 'mail', 'copy', 'fr.json'), typeof content === 'string' ? content : JSON.stringify(content));

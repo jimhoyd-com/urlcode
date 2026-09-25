@@ -84,7 +84,10 @@ time to notice and stop routing here; `/_urlcode/health` (liveness) stays
 healthy throughout so a supervisor does not restart a process that is
 deliberately draining. Once the listener stops accepting connections, HTTP
 connections get up to `--close-timeout-ms` (default `10000`) to finish before
-being forced closed, and bounded in-flight functions drain. Set
+being forced closed, and bounded in-flight functions drain. A `sandbox: true`
+worker still starting at shutdown (for example a replacement after a guest
+deadline) is allowed to finish starting, for at most its 5-second
+initialization timeout, before it is stopped. Set
 `--close-timeout-ms` (plus `--drain-delay-ms`) below your process
 supervisor's stop grace period — Docker's `--stop-timeout`/`stop_grace_period`,
 Kubernetes' `terminationGracePeriodSeconds` — or the process can be SIGKILLed

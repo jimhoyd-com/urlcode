@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMail, recordingTransport } from '../src/index.ts';
 import type { MailEnvelope, MailTransport } from '../src/index.ts';
-import { activated, activation, demo, origin, refusal, sha, tempSite } from './support.ts';
+import { activated, activation, demoContribution, origin, refusal, sha, tempSite } from './support.ts';
 
 const notice = { template: 'demo.notice', to: 'user@example.test', values: { link: `${origin}/account` } };
 /** A transport that never finishes on its own; it rejects only when its signal aborts. */
@@ -169,7 +169,7 @@ test('no address or value ever appears in a MailError message', async t => {
 
 test('host options are validated', async t => {
   const { site } = await tempSite(t);
-  const make = (options: Record<string, unknown>) => () => createMail({ projectSha256: sha, site, contributions: [demo], ...options });
+  const make = (options: Record<string, unknown>) => () => createMail({ projectSha256: sha, site, contributions: [demoContribution], ...options });
   assert.throws(make({ maxConcurrent: 0 }), /maxConcurrent/);
   assert.throws(make({ maxConcurrent: 65 }), /maxConcurrent/);
   assert.throws(make({ deadlineMs: 999 }), /deadlineMs/);

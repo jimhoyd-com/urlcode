@@ -73,12 +73,13 @@ async function drill() {
   try {await recovered?.close();} finally {try {await live?.close();} finally {await rm(root,{recursive:true,force:true});}}
  }
 }
-try {
- if(process.argv.length!==2)throw new Error('No arguments accepted');
- process.stdout.write(JSON.stringify(await drill(),null,2)+'\n');
-} catch {
+// No top-level await: the drill opens and closes store worker threads, and this module's evaluation must not
+// still be settling while they are torn down (#708).
+function failed() {
  // Never print exception objects: assertions/service errors could contain fixture
  // state. A failing drill has no legitimate need to emit keys or capabilities.
  process.stderr.write('Synthetic recovery drill failed. It accepts no arguments; inspect the reviewed script and run the regression suite.\n');
  process.exitCode=1;
 }
+if(process.argv.length!==2)failed();
+else drill().then(result=>{process.stdout.write(JSON.stringify(result,null,2)+'\n');}).catch(failed);

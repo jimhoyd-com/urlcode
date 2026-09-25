@@ -19,14 +19,15 @@ without it, the same as every other package under `packages/`.
 | Development output stays private | The outbox and console transports are refused off the node target. The outbox directory must be private (no group or other bits except on Windows), outside the route project after symlinks are resolved, and capped by count; each file is created exclusively with mode 0600 and synced. |
 | The default is not a production sender | With no transport, mail writes to `<site>/data/outbox` only on a loopback origin on node. On any other origin delivery is off until host.mjs names a transport. |
 | Secrets are never logged | mail logs nothing. A `MailError` message is a fixed string per code plus the template key, never an address or a value; a transport's own error is attached as `cause`, which the caller must not echo. |
+| A namespace belongs to its contributor | core stamps every contribution with the contributing extension's registered name (`from`), which the contributed value cannot set. `host()` refuses a mail namespace that differs from its contributor's name, naming both, so one extension cannot contribute, replace or shadow another's templates. |
 | Copy stays inside the site | Copy files resolve against the site directory and must stay inside it after symlinks are resolved; they are size-bounded and keep every slot of the source template. |
 
 ## What mail does not do
 
 - It does not decide who may receive what. Consumers (auth, forms) own account enumeration defenses, rate limits
   and whether a failed delivery is visible to the requester.
-- A contributed namespace is self-declared: core does not tell mail which extension contributed it. mail refuses a
-  duplicate namespace, but a trusted extension could contribute under another's name. Extensions are operator code.
+- It does not know which extension calls `send()`. `MailExports` is one shared object, so a consumer sending only
+  templates in its own namespace is a documented rule, not an enforced one. Extensions are operator code.
 - An outbox left in place on a loopback deployment holds messages, including account links, in plain files.
 
 Passing tests does not establish independent security assessment, hostile multi-tenant readiness, production abuse

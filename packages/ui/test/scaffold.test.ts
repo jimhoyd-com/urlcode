@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateDocument } from '@jimhoyd/urlcode';
 import { defineExtension } from '@jimhoyd/urlcode/extensions';
-import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
+import type { Contribution, ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 import { composeHost } from '@jimhoyd/urlcode/host';
 import ui from '../src/extension.ts';
 import type { UiContribution } from '../src/extension.ts';
@@ -142,8 +142,30 @@ test('host() through composeHost registers ui with the definition schema, resolv
 test('host options add sources and templates after the contributions', async t => {
     const site = await mkdtemp(join(tmpdir(), 'urlcode-ui-host-'));
     t.after(() => rm(site, { recursive: true, force: true }));
-    const { registration, exports } = await ui.definition.host({ projectSha256: sha, site, get: () => { throw new Error('ui requires nothing'); }, contributions: <T>() => [{ sources: [{ 'a.one': 'One' }] }] as T[] }, { sources: [{ 'b.two': 'Two' }] });
+    const { registration, exports } = await ui.definition.host({ projectSha256: sha, site, get: () => { throw new Error('ui requires nothing'); }, contributions: <T>() => [{ from: 'peer', value: { sources: [{ 'a.one': 'One' }] } }] as Contribution<T>[] }, { sources: [{ 'b.two': 'Two' }] });
     const kit = exports as UiExtension;
     await registration.activate({}, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts: ['/assets/ui'], root: site } as never);
     assert.equal(kit.kit.presentation.english['a.one'], 'One'); assert.equal(kit.kit.presentation.english['b.two'], 'Two');
+});
+
+test('composeHost refuses a ui template namespace that is not its contributor\'s own name, naming both', async t => {
+    const site = await mkdtemp(join(tmpdir(), 'urlcode-ui-provenance-'));
+    t.after(() => rm(site, { recursive: true, force: true }));
+    const previous = process.env.PROJECT_SHA256;
+    process.env.PROJECT_SHA256 = sha;
+    t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+    const schema = { type: 'object', additionalProperties: false };
+    // A second, synthetic contributor: it may only ship templates as `demo`, named `demo/...`.
+    const peer = (templates: UiContribution['templates']) => defineExtension({
+        name: 'demo', description: 'Test peer', schema, contributes: { ui: { templates } },
+        host: context => ({ registration: { name: 'demo', version: '1', projectSha256: context.projectSha256, targets: ['node'], schema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } }),
+    })();
+    const compose = (templates: UiContribution['templates']) => composeHost(pathToFileURL(join(site, 'host.mjs')), [peer(templates), ui()]);
+    await assert.rejects(compose([{ name: 'auth', templates: { 'auth/sign-in': '<p>Not auth</p>' } }]), (error: Error & { details?: { extension?: string } }) =>
+        error.constructor.name === 'ConfigError' && error.details?.extension === 'ui' && /ui template namespace "auth" is contributed by extension "demo"/.test(error.message));
+    await assert.rejects(compose([{ name: 'demo', templates: { 'auth/sign-in': '<p>Not auth</p>' } }]), /ui template "auth\/sign-in" is contributed by extension "demo" outside its namespace/);
+    await assert.rejects(compose([{ name: 'demo', templates: { layout: '<html>' } }]), /ui template "layout" is contributed by extension "demo" outside its namespace/);
+    await assert.rejects(compose([{ name: 'demo', templates: { 'demo/page': '<p>x</p>' }, viewModels: { 'auth/sign-in': '9' } }]), /ui template "auth\/sign-in" is contributed by extension "demo" outside its namespace/);
+    const composed = await compose([{ name: 'demo', templates: { 'demo/page': '<p>Mine</p>' } }]);
+    await composed.close?.();
 });

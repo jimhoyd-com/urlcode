@@ -135,11 +135,19 @@ beside it and without changing the exports above:
   to the site and registers the catalogues and templates every other installed
   extension contributes through `contributes.ui` (`UiContribution`:
   `{sources, templates, screens}`), then the operator's `ui({sources, extensions,
-  theme})`. `screens` is an optional `UiScreenSource`, a function ui calls once
+  theme})`. core hands each contribution as `{from, value}`, `from` being the
+  contributing extension's name, which the value cannot set; `host()` refuses
+  (a `ConfigError` for extension `ui`, naming both) a `templates` entry whose
+  `name` is not `from`, and any template or `viewModels` key not named
+  `<from>/...`, so one extension can never ship, replace or pin another's
+  templates. The operator's own `ui({extensions})` is not checked. `urlcode-ui
+  --extensions` applies the same rule against each package definition's name.
+  `screens` is an optional `UiScreenSource`, a function ui calls once
   at activation with `{root}` (the route project) that returns `{<path>:
   {title, collection: {mount, fields, readOnly?, sortable?, filterable?},
-  columns?}}`; ui serves each at its exact `extension: ui` mount. ui does not
-  know which extension contributed a screen or how that extension declares it:
+  columns?}}`; ui serves each at its exact `extension: ui` mount, and a path
+  two extensions claim refuses naming both contributors. Beyond that name, ui
+  does not know how the contributing extension declares a screen:
   it never loads the project document or reads another extension's block. The
   scaffold never adds another extension's screen; the owner scaffolds its own
   (the store adds `/todos` when ui is installed). `requires` on auth, admin and forms makes `composeHost` activate

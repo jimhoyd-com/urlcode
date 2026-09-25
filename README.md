@@ -107,8 +107,8 @@ Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled agent skills
 ([authoring](.claude/skills/urlcode-authoring/SKILL.md),
 [operations](.claude/skills/urlcode-operations/SKILL.md)) and [llms.txt](llms.txt).
-For optional shared skills and hosted LLM tooling, use [URLCode AI](https://urlcode.ai/);
-its remote MCP augments, rather than replaces, the local project server.
+For optional hosted reference and shared skills, use [URLCode AI](https://urlcode.ai/);
+its anonymous remote MCP augments, rather than replaces, the local project server.
 Agents can also read installed artifacts (inert extension schemas and examples)
 through the read-only MCP tools described in [artifacts](docs/EXTENSIONS.md#artifacts).
 Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
@@ -303,9 +303,9 @@ capability matrix and a copyable task prompt. `urlcode mcp` exposes read-only
 inspection, validation and conversion previews over stdio, and
 `--allow-authoring` adds project-confined authoring tools
 ([tooling](docs/TOOLING.md)).
-[URLCode AI](https://urlcode.ai/) is the optional hosted companion for shared
-skills and LLM tooling; its authenticated remote MCP setup is documented in
-[tooling](docs/TOOLING.md#optional-hosted-ai-mcp).
+[URLCode AI](https://urlcode.ai/) is the optional hosted companion for
+version-pinned reference and shared skills; its anonymous remote MCP endpoint is
+documented in [tooling](docs/TOOLING.md#optional-hosted-ai-mcp).
 
 ## Built with URLCode
 

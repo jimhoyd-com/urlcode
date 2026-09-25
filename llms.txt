@@ -26,11 +26,10 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
    `capabilities`/`get_capability`, `search_docs` and `search_recipes` answer it. It is the deliberate
    fallback when those do not: only then, locate the one matching heading (never the whole file) — a
    source checkout also has the matching page directly under `docs/`.
-4. Hosted skills and LLM assistance are optional: connect a compatible HTTP MCP
-   client to `https://urlcode.ai/mcp` with
-   `Authorization: Bearer <URLCODE_AI_TOKEN>`. Keep `urlcode mcp` registered
-   for project-aware inspection and validation, and store the hosted token in
-   the client's secret facility rather than in project files. Start with the
+4. Hosted reference and skills are optional: connect a compatible HTTP MCP
+   client to `https://urlcode.ai/mcp`, which needs no key and runs no model of
+   its own. Keep `urlcode mcp` registered for project-aware inspection and
+   validation. Start with the
    hosted [agent guide](https://urlcode.ai/llms.txt), then see
    [hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp).
 

@@ -386,6 +386,8 @@ async function located<T>(name: string, path: string, budget: { remaining: numbe
 // Resource limits contain parser/AST/schema expansion, not just source bytes.
 // The parent can terminate a blocked parser without blocking serving requests.
 let activeLoads = 0;
+/** How long a configuration worker that has posted its result may take to exit by itself before it is terminated. */
+const CONFIG_EXIT_GRACE_MS = 1000;
 /**
  * Loads the project's YAML (the entry `urlcode.yaml` and its root-confined includes) in a bounded worker. Only YAML is
  * read: no source, asset, binding or policy file. With `sources`, the result also names the file each route and
@@ -396,6 +398,7 @@ export async function loadDocument(project: string, {timeoutMs=10000, sources=fa
   assert(activeLoads < 2, 'Configuration compilation capacity unavailable');
   activeLoads++;
   let worker: Worker | undefined;
+  let exited = false;
   try {
     const data: ConfigWorkerData = sources ? {project, sources} : {project};
     worker = new Worker(new URL('./config-worker.ts', import.meta.url), {
@@ -405,14 +408,27 @@ export async function loadDocument(project: string, {timeoutMs=10000, sources=fa
     worker.stdout.resume(); worker.stderr.resume();
     const started = worker;
     return await new Promise<LoadedDocument>((resolve,reject)=>{
-      const timer=setTimeout(()=>reject(new ConfigError('Configuration compilation deadline exceeded')),timeoutMs);
-      const done=(error: Error | null,value?: LoadedDocument)=>{clearTimeout(timer); if(error)reject(error);else resolve(value!);};
+      // A posted result (document or ConfigError) is only delivered once the worker has exited by itself, so a
+      // thread is never terminated while its module evaluation may still be settling (#708). Terminating stays for
+      // the deadline, a worker failure and a worker that has not exited CONFIG_EXIT_GRACE_MS after posting.
+      let result: { value: LoadedDocument } | { error: Error } | undefined;
+      let grace: NodeJS.Timeout | undefined;
+      const finish=(outcome: { value: LoadedDocument } | { error: Error })=>{
+        clearTimeout(timer); clearTimeout(grace);
+        if('error' in outcome)reject(outcome.error);else resolve(outcome.value);
+      };
+      const timer=setTimeout(()=>finish({error:new ConfigError('Configuration compilation deadline exceeded')}),timeoutMs);
       // The worker only ever posts a ConfigWorkerResult (config-worker.ts).
-      started.once('message',(message: ConfigWorkerResult)=>'error' in message ? done(new ConfigError(message.error, message.details)) : done(null,message.value));
-      started.once('error',()=>done(new ConfigError('Configuration worker resource limit or failure')));
-      started.once('exit',()=>done(new ConfigError('Configuration worker exited')));
+      started.once('message',(message: ConfigWorkerResult)=>{
+        clearTimeout(timer);
+        result='error' in message ? {error:new ConfigError(message.error, message.details)} : {value:message.value};
+        const posted=result;
+        grace=setTimeout(()=>finish(posted),CONFIG_EXIT_GRACE_MS);
+      });
+      started.once('error',()=>finish(result ?? {error:new ConfigError('Configuration worker resource limit or failure')}));
+      started.once('exit',()=>{ exited=true; finish(result ?? {error:new ConfigError('Configuration worker exited')}); });
     });
-  } finally { try { await worker?.terminate(); } finally { activeLoads--; } }
+  } finally { try { if (!exited) await worker?.terminate(); } finally { activeLoads--; } }
 }
 /**
  * Expands the route-level `auth` short form into the canonical `policies.extensions.auth` requirement so every

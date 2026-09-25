@@ -24,6 +24,8 @@
 // why the sentence is right despite reading like a contradiction. Changelogs
 // are skipped: they describe past releases by design.
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { mcpToolInventory } from '../packages/core/src/mcp.ts';
 import { addons } from './workspaces.ts';
 import { storeAuthoring } from '../packages/store/src/authoring.ts';
@@ -57,12 +59,28 @@ if (!withIsUnordered) sourceProblems.push('packages/core/src/addon-install.ts: r
 // Store short links: the store's machine-readable authoring contract.
 const storeShortLinks = storeAuthoring.surfaces.some(surface => surface.name === 'shortLinks');
 
+// The optional hosted URLCode AI MCP (#756). It lives in the separate urlcode-ai
+// service repository, so this checkout cannot derive its contract from source;
+// these are the connection facts that service publishes, pinned here as the one
+// fixture the prose is checked against instead of another prose copy. The
+// service removed bearer authentication (urlcode-ai#82) and hosted model
+// execution (urlcode-ai#84): it serves anonymous, version-pinned reference and
+// skill tooling that the caller's own model uses. Change this only when the
+// service's contract changes.
+const hostedAi = {
+  endpoint: 'https://urlcode.ai/mcp',
+  authentication: 'none',
+  hostedModelTools: false,
+  retiredCredentials: ['URLCODE_AI_TOKEN'],
+} as const;
+
 const inventory = {
   extensionBundles: builtBundles,
   kitAdopters,
   scaffoldWithUnordered: withIsUnordered,
   mcpTools: { read: mcpToolInventory.read.length, hostFile: mcpToolInventory.hostFile.length, authoring: mcpToolInventory.authoring.length },
   storeShortLinks,
+  hostedAi,
 };
 
 if (process.argv.includes('--inventory')) {
@@ -147,6 +165,25 @@ if (storeShortLinks) {
   });
 }
 
+// A sentence is about the hosted service when it names it; unrelated bearer
+// tokens (the auth extension's API keys, a recipe's protocol fixture) are not.
+const HOSTED = /\burlcode\.ai\b|\bURLCode AI\b|\bhosted\s+(?:AI\s+)?MCP\b|\bhosted\s+(?:server|service|companion|token)\b/i;
+claims.push({
+  fact: `hostedAi.retiredCredentials = ${hostedAi.retiredCredentials.join(', ')}`,
+  test: sentence => hostedAi.retiredCredentials.find(name => new RegExp(String.raw`\b${name}\b`).test(sentence))
+    ? 'names a hosted URLCode AI credential that the service retired; the hosted MCP takes no credential' : undefined,
+});
+claims.push({
+  fact: `hostedAi.authentication = ${hostedAi.authentication}`,
+  test: sentence => HOSTED.test(sentence) && /\b(?:bearer|authorization|authenticated|credentials?|tokens?|api[- ]keys?)\b/i.test(sentence)
+    ? 'describes authentication for the hosted URLCode AI MCP, which is anonymous' : undefined,
+});
+claims.push({
+  fact: `hostedAi.hostedModelTools = ${hostedAi.hostedModelTools}`,
+  test: sentence => HOSTED.test(sentence) && /\bLLM[- ](?:tool(?:s|ing)?|assist(?:ance|ed)|work)\b|\bhosted\s+LLM\b|\bmodel\s+tools?\b/i.test(sentence)
+    ? 'says the hosted URLCode AI MCP provides LLM tooling, but it runs no model: the caller\'s own model uses its reference and skill tools' : undefined,
+});
+
 // ---------------------------------------------------------------------------
 // Surfaces: every authored Markdown file, the skill copies, and every llms.txt.
 // ---------------------------------------------------------------------------
@@ -166,7 +203,12 @@ async function walk(prefix = ''): Promise<string[]> {
   return found;
 }
 const skillDirs = await readdir(new URL('.claude/skills/', root)).catch(() => []);
-const surfaces = [...new Set([...(await walk()), ...skillDirs.map(name => `.claude/skills/${name}/SKILL.md`)])].sort();
+// `--files PATH...` scans only the named files (relative to the working
+// directory), so a test can plant a contradiction without touching the checkout.
+const only = process.argv.indexOf('--files');
+const surfaces = only !== -1
+  ? process.argv.slice(only + 1).map(path => pathToFileURL(resolve(path)).href)
+  : [...new Set([...(await walk()), ...skillDirs.map(name => `.claude/skills/${name}/SKILL.md`)])].sort();
 
 const MARKER = /<!--\s*agent-facts:\s*exempt\b([^>]*?)-->/;
 function paragraphs(text: string): { text: string; line: number }[] {

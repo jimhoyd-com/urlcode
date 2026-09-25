@@ -19,6 +19,7 @@ import type { ExtensionTemplates } from '../kit.ts';
 import type { Catalogue } from '../presentation.ts';
 import type { ViewModel } from '../template.ts';
 import type { UiContribution } from './definition.ts';
+import { assertTemplateProvenance } from './provenance.ts';
 /** Bounds on what one invocation may name; the composed site registers two packages. */
 const namespaceLimits = Object.freeze({ specifiers: 16, specifierLength: 214 });
 /** An npm package name with an optional subpath; nothing relative, absolute or URL-shaped. */
@@ -40,21 +41,24 @@ interface NamespaceLoad {
 }
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const stringRecord = (value: unknown): value is Record<string, string> => isRecord(value) && Object.values(value).every(entry => typeof entry === 'string');
-/** One `contributes.ui.templates` entry, checked: the object `createUiExtension({ extensions })` takes. */
-function asNamespace(value: unknown, specifier: string): ExtensionTemplates {
+/**
+ * One `contributes.ui.templates` entry, checked: the object `createUiExtension({ extensions })` takes. It must
+ * belong to the definition that contributes it (`assertTemplateProvenance`), exactly as ui refuses at host composition.
+ */
+function asNamespace(value: unknown, specifier: string, from: string): ExtensionTemplates {
     if (!isRecord(value) || typeof value.name !== 'string' || !namePattern.test(value.name) || !stringRecord(value.templates) || (value.viewModels !== undefined && !stringRecord(value.viewModels)))
         throw new Error(`${specifier}/extension contributes an invalid ui template namespace`);
-    return value as unknown as ExtensionTemplates;
+    return assertTemplateProvenance(value, from);
 }
-/** The `contributes.ui` value of a package's `./extension` default export, when it has one. */
-function uiContribution(module: Record<string, unknown>, specifier: string): UiContribution | undefined {
+/** The definition's name and its `contributes.ui` value, when it has one. */
+function uiContribution(module: Record<string, unknown>, specifier: string): { from: string; value: UiContribution } | undefined {
     const definition = (module.default as { definition?: unknown } | undefined)?.definition;
-    if (!isRecord(definition)) throw new Error(`${specifier}/extension does not default-export an extension definition`);
+    if (!isRecord(definition) || typeof definition.name !== 'string' || !namePattern.test(definition.name)) throw new Error(`${specifier}/extension does not default-export an extension definition`);
     const ui = isRecord(definition.contributes) ? definition.contributes.ui : undefined;
     if (ui === undefined) return undefined;
     if (!isRecord(ui) || (ui.templates !== undefined && !Array.isArray(ui.templates)) || (ui.sources !== undefined && !Array.isArray(ui.sources)))
         throw new Error(`${specifier}/extension contributes an invalid ui value`);
-    return ui as UiContribution;
+    return { from: definition.name, value: ui as UiContribution };
 }
 /** Splits `--extensions` into validated package specifiers. */
 export function parseSpecifiers(value: string): string[] {
@@ -90,13 +94,13 @@ export async function loadExtensionNamespaces(specifiers: readonly string[], dir
         catch (error) { throw new Error(`Could not load ${specifier}/extension: ${error instanceof Error ? error.message : 'import failed'}`, { cause: error }); }
         const contribution = uiContribution(module, specifier);
         // The contribution's copy, as composeHost hands it to ui (`sources`), each catalogue once.
-        const sourceCatalogues = contribution?.sources ?? [];
+        const sourceCatalogues = contribution?.value.sources ?? [];
         for (const catalogue of sourceCatalogues) {
             if (!isRecord(catalogue)) throw new Error(`${specifier}/extension contributes an invalid ui catalogue`);
             if (!seen.has(catalogue)) { seen.add(catalogue); load.catalogues.push(catalogue as Catalogue); }
         }
         let found = 0;
-        for (const namespace of (contribution?.templates ?? []).map(value => asNamespace(value, specifier))) {
+        for (const namespace of (contribution?.value.templates ?? []).map(value => asNamespace(value, specifier, contribution!.from))) {
             if (seen.has(namespace)) continue;
             seen.add(namespace); found++;
             load.namespaces.push(namespace);

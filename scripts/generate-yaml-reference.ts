@@ -9,9 +9,38 @@ interface SchemaNode {
 interface Row { path: string; kind: string; required: boolean; rules: string; description: string }
 // JSON boundary: the bundled schema is trusted and validated in test/.
 const schema=JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json',import.meta.url),'utf8')) as SchemaNode;
+
+// Every property the schema declares must say what it does for a request or a
+// project (#750): editors show the description on hover, schema-query and the
+// generated table below print it, and a key without one leaves authors to guess.
+// Walk every subschema keyword, so properties inside $defs, patternProperties
+// values, array items and oneOf branches are covered too. Pointers are RFC 6901.
+const MAP_KEYWORDS=['properties','patternProperties','$defs'],ONE_KEYWORDS=['items','additionalProperties','not','if','then','else','contains','propertyNames','unevaluatedProperties','unevaluatedItems'],LIST_KEYWORDS=['oneOf','anyOf','allOf','prefixItems'];
+function undescribed(node: unknown,pointer: string,missing: string[]): string[] {
+  if(!node || typeof node!=='object' || Array.isArray(node))return missing;
+  const record=node as Record<string,unknown>;
+  for(const keyword of MAP_KEYWORDS){
+    const map=record[keyword];
+    if(!map || typeof map!=='object')continue;
+    for(const [name,child] of Object.entries(map as Record<string,unknown>)){
+      const at=`${pointer}/${keyword}/${name.replaceAll('~','~0').replaceAll('/','~1')}`;
+      const description=(child as SchemaNode | undefined)?.description;
+      if(keyword!=='$defs' && (typeof description!=='string' || !description.trim()))missing.push(at);
+      undescribed(child,at,missing);
+    }
+  }
+  for(const keyword of ONE_KEYWORDS)undescribed(record[keyword],`${pointer}/${keyword}`,missing);
+  for(const keyword of LIST_KEYWORDS){
+    const list=record[keyword];
+    if(Array.isArray(list))for(const [index,child] of list.entries())undescribed(child,`${pointer}/${keyword}/${index}`,missing);
+  }
+  return missing;
+}
+const missingDescriptions=undescribed(schema,'',[]);
+if(missingDescriptions.length)throw new Error(`${missingDescriptions.length} schema propert${missingDescriptions.length===1?'y has':'ies have'} no description in schemas/urlcode.schema.json; give each one a sentence saying what it does:\n${missingDescriptions.map(pointer=>`  ${pointer}`).join('\n')}`);
 const rows: Row[]=[];
 function visit(node: SchemaNode,path: string,required=false): void {
-  if(node.$ref){const resolved=schema.$defs?.[node.$ref.split('/').at(-1) ?? ''];if(!resolved)throw new Error(`unresolved $ref ${node.$ref}`);node=resolved;}
+  if(node.$ref){const resolved=schema.$defs?.[node.$ref.split('/').at(-1) ?? ''];if(!resolved)throw new Error(`unresolved $ref ${node.$ref}`);const description=node.description ?? resolved.description;node=description===undefined?resolved:{...resolved,description};}
   const kinds=node.type || (node.const!==undefined?'constant':node.enum?[...new Set(node.enum.map(v=>typeof v))].join(' / '):node.oneOf?'one of the shapes below':'any JSON value');
   const rules: string[]=[];
   for(const key of ['const','enum','default','minimum','maximum','minLength','maxLength','minItems','maxItems','minProperties','maxProperties','pattern','uniqueItems'])if(node[key]!==undefined)rules.push(`${key}: ${JSON.stringify(node[key])}`);
@@ -71,8 +100,10 @@ Generated from the bundled JSON Schema by \`npm run docs:reference\`. Required
 means required within its containing object, not that the object itself must be
 present. \`routes.*\` means a route path; other \`*\` markers mean user-selected
 keys. \`[]\` means an array item. Option rows describe union alternatives.
-Fields with no schema-level description show \u2014 in that column; read the
-linked guide section for behavior JSON Schema does not express.
+Every property carries a schema-level description, and the reference check
+fails when one is missing; array items, map values and union options without
+one show \u2014 in that column. Read the linked guide section for behavior JSON
+Schema does not express.
 
 Read the [YAML guide](YAML-GUIDE.md) for examples and [specification](SPECIFICATION.md)
 for semantic validation beyond JSON Schema. Exactly one handler is required per
