@@ -146,7 +146,8 @@ export function createAdministration({ service, delivery, site, now = Date.now }
     const failed = (error: unknown): never => { throw new AuthError(502, 'delivery_failed', error); };
     const capabilities = Object.freeze({
         get delivery() { return delivery.available; },
-        get invitations() { return delivery.available && ['invite-only', 'waitlist', 'open'].includes(service.getRegistrationMode()); },
+        // Only invite-only registration redeems an invitation token, so only there can an invitation be sent.
+        get invitations() { return delivery.available && service.getRegistrationMode() === 'invite-only'; },
         get impersonation() { return service.getImpersonationEnabled() && delivery.available; },
         get manualRecovery() { return service.getManualRecoveryEnabled() && delivery.available; },
         get accountOperations() { return delivery.available; },

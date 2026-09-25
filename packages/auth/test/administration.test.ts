@@ -65,6 +65,10 @@ test('capabilities follow mail delivery and the operator switches', async (t) =>
     assert.equal((await without.service.listUsers()).users.length, 1, 'nothing is created without delivery');
     const withMail = await setup(t, { registrationMode: 'invite-only', allowImpersonation: true, allowManualRecovery: true });
     assert.deepEqual({ ...withMail.administration.capabilities }, { delivery: true, invitations: true, impersonation: true, manualRecovery: true, accountOperations: true });
+    // Only invite-only registration redeems an invitation, so an open site offers none (the store refuses it).
+    const open = await setup(t, { registrationMode: 'open' });
+    assert.equal(open.administration.capabilities.invitations, false);
+    await assert.rejects(open.administration.registrations.invite((await open.accountOf(open.admin.token)).actor, { email: 'invited@example.test' }), { status: 403, code: 'registration_unavailable' });
     const plain = await setup(t, { registrationMode: 'off' });
     assert.deepEqual({ ...plain.administration.capabilities }, { delivery: true, invitations: false, impersonation: false, manualRecovery: false, accountOperations: true });
 });
@@ -181,4 +185,39 @@ test('administrator deliveries run at most four at once and time out after five 
     assert.deepEqual(results.map(result => (result as { code?: string }).code), Array(4).fill('delivery_failed'));
     for (const release of hung)
         release();
+});
+
+test('direct administration calls need a fresh actor, and nobody can demote, lock or case away the last administrator', async (t) => {
+    const manager = ['auth.users.read', 'auth.users.manage', 'auth.roles.read', 'auth.sessions.manage', 'auth.cases.read', 'auth.cases.manage'];
+    const { service, administration, accountOf, admin, advance } = await setup(t, { roles: { member: ['site.read'], manager, admin: ['*'] } });
+    const ids: string[] = [];
+    for (const email of ['manager-1@example.test', 'manager-2@example.test']) {
+        ids.push((await service.register({ email, password })).user.id);
+        await service.adminSetRoles({ actorToken: admin.token, accountId: ids.at(-1)!, roles: ['manager'] });
+    }
+    const owner = await accountOf(admin.token), maker = await accountOf((await service.login({ email: 'manager-1@example.test', password })).token), approver = await accountOf((await service.login({ email: 'manager-2@example.test', password })).token);
+    // The store's guard (409 last_administrator_required) sits behind two earlier refusals: only an account holding
+    // every permission can change an administrator, and nobody administers their own account.
+    const ceiling = { status: 403, code: 'delegation_ceiling_exceeded' }, self = { status: 403, code: 'self_administration_denied' };
+    await assert.rejects(administration.users.setRoles(maker.actor, { accountId: admin.user.id, roles: ['member'], reason: 'Demote' }), ceiling);
+    await assert.rejects(administration.users.setStatus(maker.actor, { accountId: admin.user.id, status: 'locked', reason: 'Lock' }), ceiling);
+    await assert.rejects(administration.users.bulk(maker.actor, { accountIds: [admin.user.id], action: 'lock', reason: 'Bulk lock' }), ceiling);
+    await assert.rejects(administration.cases.create(maker.actor, { accountId: admin.user.id, action: 'roles', roles: ['member'], reason: 'Demote by case' }), ceiling);
+    await assert.rejects(administration.users.setRoles(owner.actor, { accountId: admin.user.id, roles: ['member'], reason: 'Step down' }), self);
+    await assert.rejects(administration.users.setStatus(owner.actor, { accountId: admin.user.id, status: 'locked', reason: 'Step down' }), self);
+    await assert.rejects(administration.users.bulk(owner.actor, { accountIds: [ids[0]!, admin.user.id], action: 'lock', reason: 'Step down' }), self);
+    const unchanged = (await service.getUser(admin.user.id))!;
+    assert.deepEqual([unchanged.roles, unchanged.status], [['admin'], 'active']);
+    assert.equal((await service.getUser(ids[0]!))!.status, 'active', 'a refused bulk operation changes nobody');
+    // A manager's case on another manager still needs a distinct, fresh approver.
+    const lock = await administration.cases.create(maker.actor, { accountId: ids[1]!, action: 'lock', reason: 'Review' });
+    await assert.rejects(administration.cases.approve(maker.actor, { caseId: lock.id, reason: 'Self approval' }), { status: 403 });
+    // Past the freshness window a direct call is refused before anything changes, whoever the caller.
+    advance(FRESHNESS_WINDOW_MS + 1000);
+    const stale = { status: 401, code: 'fresh_authentication_required' };
+    await assert.rejects(administration.users.setStatus(owner.actor, { accountId: ids[1]!, status: 'locked', reason: 'Stale' }), stale);
+    await assert.rejects(administration.users.setRoles(owner.actor, { accountId: ids[1]!, roles: ['member'], reason: 'Stale' }), stale);
+    await assert.rejects(administration.users.bulk(owner.actor, { accountIds: [ids[1]!], action: 'lock', reason: 'Stale' }), stale);
+    await assert.rejects(administration.cases.approve(approver.actor, { caseId: lock.id, reason: 'Stale' }), stale);
+    assert.deepEqual([(await service.getUser(ids[1]!))!.status, (await service.getUser(ids[1]!))!.roles], ['active', ['manager']]);
 });
