@@ -53,6 +53,24 @@ test('maxConcurrent bounds deliveries across consumers with an immediate busy', 
   await refusal(again, 'aborted');
 });
 
+test('a transport that ignores the abort keeps its slot until it settles', async t => {
+  let finish: () => void = () => {};
+  const transport: MailTransport = { kind: 'deaf', development: true, deliver: () => new Promise<void>(resolve => { finish = resolve; }) };
+  const { exports } = await activated(t, { transport, maxConcurrent: 1 });
+  const controller = new AbortController();
+  const first = exports.send({ ...notice, signal: controller.signal });
+  controller.abort();
+  await refusal(first, 'aborted');
+  await refusal(exports.send(notice), 'busy');
+  finish();
+  await new Promise(resolve => setImmediate(resolve));
+  const second = new AbortController();
+  const again = exports.send({ ...notice, signal: second.signal });
+  second.abort();
+  await refusal(again, 'aborted');
+  finish();
+});
+
 test('inactive before activation, closed after close, and close ends deliveries in flight', async t => {
   const transport = hanging();
   const mail = await activated(t, { transport }, false);

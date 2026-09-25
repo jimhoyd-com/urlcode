@@ -49,7 +49,7 @@ export default await composeHost(import.meta.url, [
 | `transport` | Omitted: on a loopback origin (`localhost`, `127.0.0.0/8`, `[::1]`) on the node target, messages are written to `<site>/data/outbox`. On any other origin delivery is off (`available: false`) until host.mjs names a transport. `null` turns delivery off everywhere. |
 | `from` | The mailbox messages are sent from. Required for a non-development transport (`host()` throws `mail needs from`). Default for development transports: `no-reply@localhost`. |
 | `recipients` | Operator-named addresses, for example `{support: 'support@your.site'}`. Consumers ask for a recipient by name (`mail.recipient('support')`), so a project YAML change alone can never redirect mail to an arbitrary address. At most 32; names match `^[a-z][a-z0-9-]{0,63}$`; each address is validated in `host()`. |
-| `maxConcurrent` | Deliveries in flight across every consumer, 1 to 64, default 8. When it is full, `send()` rejects `busy` (503) at once. There is no queue. |
+| `maxConcurrent` | Deliveries in flight across every consumer, 1 to 64, default 8. A delivery holds its slot until the transport settles, even after the caller has had `timeout` or `aborted`. When it is full, `send()` rejects `busy` (503) at once. There is no queue. |
 | `deadlineMs` | Per-message deadline, 1000 to 30000 ms, default 5000. When it passes, `send()` rejects `timeout` (503) and the transport's signal is aborted. |
 
 ### Transports

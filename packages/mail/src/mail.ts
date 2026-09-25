@@ -133,9 +133,14 @@ export function createMail(options: MailOptions): { registration: RuntimeExtensi
     const onAbort = (): void => stop('aborted'), timer = setTimeout(() => stop('timeout'), deadlineMs);
     signal?.addEventListener('abort', onAbort, { once: true });
     stoppers.add(stop);
+    const delivering = Promise.resolve().then(() => transport.deliver(envelope, controller.signal));
+    // The slot is held until the transport settles, not until the caller is answered: a transport that ignores the
+    // abort signal keeps its delivery counted, so maxConcurrent bounds the work actually running.
+    const release = (): void => { inFlight--; };
+    void delivering.then(release, release);
     try {
       await Promise.race([
-        Promise.resolve().then(() => transport.deliver(envelope, controller.signal)).catch((cause: unknown) => {
+        delivering.catch((cause: unknown) => {
           throw reason ? new MailError(reason, template) : new MailError('delivery-failed', template, { cause });
         }),
         stopped,
@@ -145,7 +150,6 @@ export function createMail(options: MailOptions): { registration: RuntimeExtensi
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
       stoppers.delete(stop);
-      inFlight--;
     }
   }
 
