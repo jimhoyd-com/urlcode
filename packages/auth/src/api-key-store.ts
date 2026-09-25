@@ -8,6 +8,10 @@ import type {DatabaseSync} from 'node:sqlite';
  * hash. Mirrors abuse-store.ts/manual-recovery-store.ts's delegate pattern: returns
  * `{value}` for an operation this module owns, `undefined` for one it does not.
  */
+/** A key's own quota (urlcode#703), or `null` for a key issued without one (including every key issued before the column existed). */
+function storedQuota(row: Record<string, unknown>): { requests: number; window: number } | null {
+    return row.quotaRequests === null || row.quotaWindow === null ? null : { requests: Number(row.quotaRequests), window: Number(row.quotaWindow) };
+}
 export function apiKeyOperation(operation: string, args: Record<string, unknown>, db: DatabaseSync, fail: (status: number, code: string) => never): { value: unknown } | undefined {
     if (!operation.startsWith('apiKey'))
         return;
@@ -16,12 +20,13 @@ export function apiKeyOperation(operation: string, args: Record<string, unknown>
         db.prepare('DELETE FROM auth_api_keys WHERE revoked=1 AND expires IS NOT NULL AND expires<=?').run(now - 2592000000);
         if (Number(db.prepare('SELECT count(*) AS n FROM auth_api_keys').get()?.n) >= 10000)
             fail(503, 'auth_capacity_reached');
-        db.prepare('INSERT INTO auth_api_keys(id,name,scopes,secret_hash,created,expires,revoked,last_used) VALUES(?,?,?,?,?,?,0,NULL)').run(String(args.id), String(args.name), JSON.stringify(args.scopes), String(args.secretHash), now, args.expires === null ? null : Number(args.expires));
+        const quota = args.quota as { requests: number; window: number } | null;
+        db.prepare('INSERT INTO auth_api_keys(id,name,scopes,secret_hash,created,expires,revoked,last_used,quota_requests,quota_window) VALUES(?,?,?,?,?,?,0,NULL,?,?)').run(String(args.id), String(args.name), JSON.stringify(args.scopes), String(args.secretHash), now, args.expires === null ? null : Number(args.expires), quota ? Number(quota.requests) : null, quota ? Number(quota.window) : null);
         return { value: undefined };
     }
     if (operation === 'apiKeyLookup') {
-        const row = db.prepare('SELECT id,name,scopes,secret_hash AS secretHash,expires,revoked FROM auth_api_keys WHERE id=? AND revoked=0 AND (expires IS NULL OR expires>?)').get(String(args.id), now);
-        return { value: row ? { id: String(row.id), name: String(row.name), scopes: JSON.parse(String(row.scopes)) as string[], secretHash: String(row.secretHash), expires: row.expires === null ? null : Number(row.expires) } : null };
+        const row = db.prepare('SELECT id,name,scopes,secret_hash AS secretHash,expires,revoked,quota_requests AS quotaRequests,quota_window AS quotaWindow FROM auth_api_keys WHERE id=? AND revoked=0 AND (expires IS NULL OR expires>?)').get(String(args.id), now);
+        return { value: row ? { id: String(row.id), name: String(row.name), scopes: JSON.parse(String(row.scopes)) as string[], secretHash: String(row.secretHash), expires: row.expires === null ? null : Number(row.expires), quota: storedQuota(row) } : null };
     }
     if (operation === 'apiKeyTouch') {
         db.prepare('UPDATE auth_api_keys SET last_used=? WHERE id=? AND revoked=0').run(now, String(args.id));
@@ -51,8 +56,8 @@ export function apiKeyOperation(operation: string, args: Record<string, unknown>
         return { value: { allowed: true, remaining: requests - count, reset: seconds(expires) } };
     }
     if (operation === 'apiKeyList') {
-        const rows = db.prepare('SELECT id,name,scopes,created,expires,revoked,last_used AS lastUsed FROM auth_api_keys ORDER BY created DESC LIMIT 1000').all();
-        return { value: rows.map(row => ({ id: String(row.id), name: String(row.name), scopes: JSON.parse(String(row.scopes)) as string[], created: Number(row.created), expires: row.expires === null ? null : Number(row.expires), revoked: Boolean(row.revoked), lastUsed: row.lastUsed === null ? null : Number(row.lastUsed) })) };
+        const rows = db.prepare('SELECT id,name,scopes,created,expires,revoked,last_used AS lastUsed,quota_requests AS quotaRequests,quota_window AS quotaWindow FROM auth_api_keys ORDER BY created DESC LIMIT 1000').all();
+        return { value: rows.map(row => ({ id: String(row.id), name: String(row.name), scopes: JSON.parse(String(row.scopes)) as string[], created: Number(row.created), expires: row.expires === null ? null : Number(row.expires), revoked: Boolean(row.revoked), lastUsed: row.lastUsed === null ? null : Number(row.lastUsed), quota: storedQuota(row) })) };
     }
     return;
 }

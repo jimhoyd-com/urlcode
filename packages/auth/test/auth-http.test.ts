@@ -72,9 +72,11 @@ test('a credential-quota 429 on a throttled route carries both the credential an
         const allowed = await call();
         assert.equal(allowed.status, 200);
         await allowed.arrayBuffer();
-        // Only core throttle speaks on an allowed response (urlcode#703 tracks the credential's).
-        assert.equal(allowed.headers.get('ratelimit-policy'), '"default";q=60;w=60');
-        assert.match(allowed.headers.get('ratelimit') ?? '', /^"default";r=\d+;t=\d+$/);
+        // An allowed response carries both budgets too (urlcode#703): the credential's, from
+        // auth's middleware(), and core throttle's "default" in the same list fields.
+        assert.equal(allowed.headers.get('ratelimit-policy'), '"credential";q=2;w=60, "default";q=60;w=60');
+        assert.match(allowed.headers.get('ratelimit') ?? '', new RegExp(`^"credential";r=${1 - i};t=\\d+, "default";r=\\d+;t=\\d+$`));
+        assert.equal(allowed.headers.get('cache-control'), 'no-store');
     }
     const refused = await call();
     assert.equal(refused.status, 429);
@@ -85,6 +87,69 @@ test('a credential-quota 429 on a throttled route carries both the credential an
     assert.match(refused.headers.get('ratelimit') ?? '', /^"credential";r=0;t=(\d+), "default";r=\d+;t=\d+$/);
     const reset = /^"credential";r=0;t=(\d+)/.exec(refused.headers.get('ratelimit') ?? '')![1];
     assert.equal(refused.headers.get('retry-after'), reset);
+});
+test('allowed bearer responses carry the credential RateLimit fields, a key quota replaces the route quota, and nothing is cached (#703)', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-key-quota-http-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const project = join(root, 'project');
+    await mkdir(project);
+    const kit = kitYaml();
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
+    const write = (cache?: object) => writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: 'open' } } }, routes: {
+            '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
+            '/api/items': { respond: { json: { items: [] } }, auth: { bearer: { scopes: ['items.read'], quota: { requests: 2, window: 60 } } }, ...(cache ? { cache } : {}) },
+            '/api/open': { respond: { json: { open: true } }, auth: { bearer: { scopes: ['items.read'] } } },
+            ...kit.routes,
+        } }));
+    const start = async () => {
+        const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
+        return startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, authExtension({ ui, service, csrfKey: randomBytes(32), projectSha256 })], log: () => { } });
+    };
+    // A shared-cache strategy on a route auth protects is refused before serving: core treats
+    // it as confidential (auth declares no `cacheSensitive: false`), so per-credential fields
+    // can never be stored in or served from its cache.
+    await write({ strategy: 'public', maxAge: 300 });
+    await assert.rejects(start(), /requires cache disabled or no-store/);
+    await write();
+    const server = await start().catch(async (error) => { await service.close(); throw error; });
+    cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
+    const plain = await service.issueApiKey({ name: 'plain', scopes: ['items.read'] });
+    const gold = await service.issueApiKey({ name: 'gold', scopes: ['items.read'], quota: { requests: 3, window: 120 } });
+    const call = (key: string, path = '/api/items') => fetch(`http://127.0.0.1:${server.address.port}${path}`, { headers: { authorization: `Bearer ${key}` } });
+    // A key without its own quota: the route's budget, reported on every allowed response.
+    for (let i = 0; i < 2; i++) {
+        const allowed = await call(plain.key);
+        assert.equal(allowed.status, 200);
+        assert.deepEqual(await allowed.json(), { items: [] });
+        assert.equal(allowed.headers.get('ratelimit-policy'), '"credential";q=2;w=60');
+        assert.match(allowed.headers.get('ratelimit') ?? '', new RegExp(`^"credential";r=${1 - i};t=([1-9]\\d*)$`));
+        // Per-credential values: never storable by any cache, and never served from one.
+        assert.equal(allowed.headers.get('cache-control'), 'no-store');
+        assert.equal(allowed.headers.get('age'), null);
+    }
+    assert.equal((await call(plain.key)).status, 429);
+    // A key with its own quota: its budget replaces the route's, on this route and every other.
+    for (let i = 0; i < 3; i++) {
+        const allowed = await call(gold.key, i === 2 ? '/api/open' : '/api/items');
+        assert.equal(allowed.status, 200);
+        await allowed.arrayBuffer();
+        assert.equal(allowed.headers.get('ratelimit-policy'), '"credential";q=3;w=120');
+        assert.match(allowed.headers.get('ratelimit') ?? '', new RegExp(`^"credential";r=${2 - i};t=\\d+$`));
+        assert.equal(allowed.headers.get('cache-control'), 'no-store');
+    }
+    const refused = await call(gold.key);
+    assert.equal(refused.status, 429);
+    assert.equal(refused.headers.get('ratelimit-policy'), '"credential";q=3;w=120');
+    // A key with no quota on a route with none: no credential fields at all.
+    const open = await call(plain.key, '/api/open');
+    assert.equal(open.status, 200);
+    await open.arrayBuffer();
+    assert.equal(open.headers.get('ratelimit-policy'), null);
+    assert.equal(open.headers.get('ratelimit'), null);
+    // An unauthenticated request is still refused: no cached copy was ever stored to serve it.
+    const anonymous = await fetch(`http://127.0.0.1:${server.address.port}/api/items`);
+    assert.equal(anonymous.status, 401);
+    await anonymous.arrayBuffer();
 });
 test('real runtime enforces session policy, CSRF and cookie privacy end to end', async (t) => {
     const { request, cookies } = await app(t);

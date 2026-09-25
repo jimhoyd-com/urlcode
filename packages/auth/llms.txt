@@ -26,7 +26,11 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   durable, shared by processes on one host, not across hosts); over budget is 429
   with `Retry-After` and `RateLimit-Policy`/`RateLimit` (policy `credential`)
   before the handler; a store failure is 503. Keep core `policies.throttle` for
-  per-client limits and unauthenticated floods (urlcode#572).
+  per-client limits and unauthenticated floods (urlcode#572). A key issued with
+  its own `quota` (`issueApiKey({name, scopes, quota})`, or `quota` in the
+  `api-key-issue` JSON) is counted against that instead of the route's quota, on
+  every bearer route; allowed responses carry the `credential` RateLimit fields
+  too, always `Cache-Control: no-store` (urlcode#703).
 - The operator lists `auth()` (senders, providers and other options go in `auth({...})`) in the
   site's `host.mjs` `composeHost` list; the scaffold writes that line, `operator-service.mjs`
   and `data/encryption.key`/`data/csrf.key`. Serve with `--host-file host.mjs --origin https://...`

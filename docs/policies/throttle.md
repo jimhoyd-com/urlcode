@@ -43,8 +43,9 @@ other route on the same budget. `throttle: false` on a route turns it off there.
   `RateLimit: "default";r=<remaining>;t=<seconds until reset>`.
   Both fields are lists of named policies, so throttle adds its `default`
   member rather than taking the field over: when a response already carries
-  another producer's policy (the auth extension's `credential` quota on its
-  429), the result is one field holding both, for example
+  another producer's policy (the auth extension's `credential` quota, on its
+  429 and on allowed bearer responses), the result is one field holding both,
+  for example
   `RateLimit-Policy: "credential";q=2;w=60, "default";q=60;w=60`. A member
   already named `default` is replaced, never repeated; throttle alone emits
   exactly one `RateLimit-Policy` and one `RateLimit` field.
@@ -110,14 +111,16 @@ In enforce mode only `exceeded` is logged.
 - No per-user or per-token keys. The partition is address or route, because
   throttle runs before authentication and never sees who is calling. A budget
   per API key is the auth extension's `auth: {bearer: {scopes, quota:
-  {requests, window}}}`, counted by key id in the auth SQLite store (durable,
-  shared by processes on one host) — see
+  {requests, window}}}`, or a quota issued on the key itself, counted by key id
+  in the auth SQLite store (durable, shared by processes on one host) — see
   [per-credential quota](../../packages/auth/README.md#per-credential-quota).
   Keep throttle on the same route for unauthenticated and invalid-key floods:
   it refuses them per client before any key is verified. On a 429 from the
   credential quota, throttle's response phase appends its `default` policy to
   the `credential` one in the same `RateLimit` and `RateLimit-Policy` fields,
-  and `Retry-After` stays the credential's.
+  and `Retry-After` stays the credential's. An allowed response carries both
+  members the same way: the auth extension's `middleware()` hook adds the
+  `credential` member ahead of throttle's `default`.
 - Counters do not survive a reload: a new snapshot starts empty.
 - `maxKeys` bounds memory with least-recently-used eviction; an evicted key
   starts fresh, so a table sized below the number of concurrent clients

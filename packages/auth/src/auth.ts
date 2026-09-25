@@ -57,6 +57,35 @@ export interface AuthExtensionOptions {
 }
 function enrollmentRequired(principal: AuthPrincipal): boolean { return Boolean(principal.restrictions?.length); }
 export function hasPermission(principal: AuthPrincipal, permission: string): boolean { return !enrollmentRequired(principal) && (principal.permissions.includes('*') || principal.permissions.includes(permission)); }
+/** Splits a structured-field list value into its members, respecting quoted strings. */
+function listMembers(value: string): string[] {
+    const out: string[] = [];
+    let start = 0, quoted = false;
+    for (let i = 0; i < value.length; i++) {
+        const c = value[i];
+        if (quoted) { if (c === '\\') i++; else if (c === '"') quoted = false; }
+        else if (c === '"') quoted = true;
+        else if (c === ',') { out.push(value.slice(start, i)); start = i + 1; }
+    }
+    out.push(value.slice(start));
+    return out.map(member => member.trim()).filter(Boolean);
+}
+/**
+ * Puts one `credential` member first in each RateLimit list field of `result`, keeping every
+ * other producer's member (core throttle's `default`, which its response phase has already
+ * added by the time an extension middleware sees the result) and folding repeated field lines
+ * into one list. A stale `credential` member is replaced, never duplicated.
+ */
+function withRateLimitMembers<T extends { headers: [string, string][] }>(result: T, added: [string, string][]): T {
+    const names = new Set(added.map(([name]) => name));
+    const kept = new Map<string, string[]>();
+    for (const [name, value] of result.headers) {
+        const lower = name.toLowerCase();
+        if (names.has(lower))
+            kept.set(lower, [...kept.get(lower) ?? [], ...listMembers(value).filter(member => !/^"credential"(?:;|$)/.test(member))]);
+    }
+    return { ...result, headers: [...result.headers.filter(([name]) => !names.has(name.toLowerCase())), ...added.map(([name, value]): [string, string] => [name, [value, ...kept.get(name) ?? []].join(', ')])] };
+}
 /** The `extensions.auth.config` schema: one object, shared by the runtime registration and the extension definition. */
 export const authConfigSchema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
 // `bearer` is a distinct, exclusive requirement shape: a route is either session-protected
@@ -66,6 +95,9 @@ export const authConfigSchema = { type: 'object', additionalProperties: false, p
 // `quota` (urlcode#572) budgets each credential separately: `requests` per `window`
 // seconds, the same units as core's `policies.throttle` (quota/window), counted by
 // key id in the auth SQLite store. Bounds match auth-core.ts `validApiKeyQuota`.
+// A key issued with its own `quota` (urlcode#703) is counted against that budget
+// instead, on every bearer route it authenticates on; the route's applies to keys
+// without one.
 const apiKeyQuotaSchema = { type: 'object', additionalProperties: false, required: ['requests', 'window'], properties: { requests: { type: 'integer', minimum: 1, maximum: 1000000 }, window: { type: 'integer', minimum: 1, maximum: 2592000 } } };
 const bearerSchema = { type: 'object', additionalProperties: false, required: ['scopes'], properties: { scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' } }, quota: apiKeyQuotaSchema } };
 /**
@@ -224,6 +256,10 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         clearTimeout(timer);
                 }
             }
+            // The budget an allowed bearer request was counted against, keyed by the request
+            // object core hands both authorize() and middleware(), so middleware() can report
+            // it on the response (urlcode#703). A WeakMap: nothing outlives the request.
+            const counted = new WeakMap<ExtensionRequest, { quota: { requests: number; window: number }; remaining: number; reset: number }>();
             return {
                 async authorize(requirement, request) {
                     // Bearer/API-key requirement: exclusive of the session-cookie checks below
@@ -253,12 +289,14 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         // client). A refusal mirrors core throttle's 429: Retry-After plus the
                         // IETF RateLimit-Policy/RateLimit fields, under the policy name
                         // "credential". A store failure throws (fails closed), as the key
-                        // lookup above does.
-                        const quota = (requirement.bearer as { quota?: { requests: number; window: number } }).quota;
+                        // lookup above does. A key's own quota replaces the route's
+                        // (urlcode#703): such a key is counted only against its own budget.
+                        const quota = principal.quota ?? (requirement.bearer as { quota?: { requests: number; window: number } }).quota;
                         if (quota) {
                             const budget = await service.consumeApiKeyQuota(principal.id, quota);
                             if (!budget.allowed)
                                 return jsonResponse(429, { error: 'credential_quota_exceeded' }, [['retry-after', String(budget.reset)], ['ratelimit-policy', `"credential";q=${quota.requests};w=${quota.window}`], ['ratelimit', `"credential";r=0;t=${budget.reset}`]]);
+                            counted.set(request, { quota, remaining: budget.remaining, reset: budget.reset });
                         }
                         request.headers.set(authPrincipalHeader, Buffer.from(JSON.stringify({ id: principal.id, name: principal.name, scopes: principal.scopes })).toString('base64'));
                         return undefined;
@@ -282,6 +320,19 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                     catch (error) {
                         return httpFailure(error, request, presentation, undefined, options.ui);
                     }
+                },
+                // Wraps an authorized bearer request whose credential was counted above, so the
+                // allowed response carries the same `credential` RateLimit-Policy/RateLimit
+                // members the 429 does (urlcode#703). Every other route passes straight through.
+                // The values are per credential; core already forces `Cache-Control: no-store`
+                // on every response of a route naming auth (auth declares no `cacheSensitive`),
+                // so they are never stored in or served from a cache.
+                async middleware(_config, request, next) {
+                    const result = await next(), budget = counted.get(request);
+                    if (!budget)
+                        return result;
+                    counted.delete(request);
+                    return withRateLimitMembers(result, [['ratelimit-policy', `"credential";q=${budget.quota.requests};w=${budget.quota.window}`], ['ratelimit', `"credential";r=${budget.remaining};t=${budget.reset}`]]);
                 },
                 async handle(request) {
                     let accountLocale: string | undefined;

@@ -686,17 +686,23 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
      * is stored (auth-core.ts's existing password-hashing derivation). Operator-only; not
      * reachable from any route the project declares (issue outside route YAML, e.g. the
      * `urlcode-auth` CLI or an operator script against the same `AuthService`).
+     * `quota` (urlcode#703) gives this key its own budget, `requests` per `window`
+     * seconds with the same bounds as a route's `auth.bearer.quota`: on every bearer
+     * route the key authenticates on, it is counted against this budget only, in
+     * place of the route's. Fixed at issuance; `null` when omitted.
      */
     issueApiKey(input: {
         name: string;
         scopes: string[];
         expiresInMs?: number;
+        quota?: { requests: number; window: number };
     }): Promise<{
         id: string;
         key: string;
         name: string;
         scopes: string[];
         expires: number | null;
+        quota: { requests: number; window: number } | null;
     }>;
     listApiKeys(): Promise<{
         id: string;
@@ -706,6 +712,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         expires: number | null;
         revoked: boolean;
         lastUsed: number | null;
+        quota: { requests: number; window: number } | null;
     }[]>;
     revokeApiKey(id: string): Promise<void>;
     /**
@@ -713,16 +720,19 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
      * Never throws for a missing, malformed, unknown, expired or revoked key — it returns
      * `null`, which the auth extension's `authorize()` turns into a 401; a valid key whose
      * scopes do not cover the route's `auth: {bearer: {scopes}}` requirement is a 403 the
-     * extension computes from the returned `scopes`, not from this method.
+     * extension computes from the returned `scopes`, not from this method. `quota` is
+     * the key's own budget (urlcode#703), or `null` when it was issued without one.
      */
     authenticateApiKey(key: string): Promise<{
         id: string;
         name: string;
         scopes: string[];
+        quota: { requests: number; window: number } | null;
     } | null>;
     /**
      * Counts one request against a bearer/API-key credential's quota (a route's
-     * `auth: {bearer: {quota: {requests, window}}}`, urlcode#572). `id` is the
+     * `auth: {bearer: {quota: {requests, window}}}`, urlcode#572, or the key's own
+     * quota from `issueApiKey`, which the extension passes instead, urlcode#703). `id` is the
      * key's public id from `authenticateApiKey`, never its secret. Fixed window,
      * like the sign-in attempt counter: the window opens at the credential's
      * first counted request and `requests` are allowed until it closes. A
@@ -744,7 +754,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     close(): Promise<void>;
 }
 const fail = (status: number, code: string): never => { throw new AuthError(status, code); };
-/** Same bounds as the `bearer.quota` policy schema (auth.ts `apiKeyQuotaSchema`): 1..1,000,000 requests per 1..2,592,000 seconds (30 days). */
+/** Same bounds as the `bearer.quota` policy schema (auth.ts `apiKeyQuotaSchema`): 1..1,000,000 requests per 1..2,592,000 seconds (30 days). Also bounds a key's own `quota` at issuance (urlcode#703). */
 function validApiKeyQuota(quota: unknown): quota is { requests: number; window: number } {
     if (!quota || typeof quota !== 'object')
         return false;
@@ -1929,6 +1939,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 fail(400, 'invalid_api_key_scopes');
             if (input.expiresInMs !== undefined && (!Number.isSafeInteger(input.expiresInMs) || input.expiresInMs < 60000 || input.expiresInMs > 157680000000))
                 fail(400, 'invalid_api_key_expiry');
+            if (input.quota !== undefined && (!validApiKeyQuota(input.quota) || Object.keys(input.quota).some(name => name !== 'requests' && name !== 'window')))
+                fail(400, 'invalid_api_key_quota');
+            const quota = input.quota === undefined ? null : { requests: input.quota.requests, window: input.quota.window };
             const scopes = [...new Set(input.scopes)], keyId = randomUUID(), secret = token();
             // Same derivation `newPassword`/`hashPassword` use for account passwords
             // (scrypt-v1, bounded by the shared hash-slot budget); `validate: false`
@@ -1936,8 +1949,8 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             // generated 256-bit secret.
             const secretHash = await hashPassword(secret, false);
             const created = now(), expires = input.expiresInMs === undefined ? null : created + input.expiresInMs;
-            await store.call('apiKeyIssue', { id: keyId, name: input.name, scopes, secretHash, expires, now: created });
-            return { id: keyId, key: `uak_${keyId}.${secret}`, name: input.name, scopes, expires };
+            await store.call('apiKeyIssue', { id: keyId, name: input.name, scopes, secretHash, expires, quota, now: created });
+            return { id: keyId, key: `uak_${keyId}.${secret}`, name: input.name, scopes, expires, quota };
         },
         async listApiKeys() {
             check();
@@ -1962,12 +1975,13 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 name: string;
                 scopes: string[];
                 secretHash: string;
+                quota: { requests: number; window: number } | null;
             } | null>('apiKeyLookup', { id: keyId, now: now() });
             if (!record || !await verifyPassword(secret, record.secretHash))
                 return null;
             // Best-effort: a failed last-used update must not fail authentication.
             store.call('apiKeyTouch', { id: keyId, now: now() }).catch(() => undefined);
-            return { id: record.id, name: record.name, scopes: record.scopes };
+            return { id: record.id, name: record.name, scopes: record.scopes, quota: record.quota };
         },
         async consumeApiKeyQuota(keyId, quota) {
             check();

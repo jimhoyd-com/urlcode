@@ -3345,9 +3345,13 @@ per `window` seconds for each key, counted by key id in the auth store once
 the key has authenticated and covers the route's scopes. The request that
 would exceed it is a 429 with `Retry-After` and
 `RateLimit-Policy`/`RateLimit` fields under the policy name `credential`,
-before the handler runs; on a route that also declares core throttle, that 429
-carries both the `credential` and throttle's `default` policy in the same
-fields. Counting is a fixed window, durable across restarts
+before the handler runs. A key issued with its own `quota` is counted against
+that budget instead of the route's, on every bearer route. An allowed response
+reports the counted budget in the same `credential` fields, added by the
+extension's `middleware()` hook; like every response of an auth-protected
+route it is `Cache-Control: no-store`. On a route that also declares core
+throttle, both the allowed response and the 429 carry the `credential` and
+throttle's `default` policy in the same fields. Counting is a fixed window, durable across restarts
 and shared by processes on one host (not across hosts); a store failure is a
 503, never an uncounted pass. Core [throttle](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/throttle.md), which runs
 before auth and partitions by client, remains the guard against

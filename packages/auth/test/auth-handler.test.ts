@@ -101,6 +101,74 @@ test('authorize() enforces a bearer quota per credential: 429 with Retry-After a
     now += 45000;
     assert.equal(await instance.authorize!(requirement, request('Bearer ' + first.key)), undefined);
 });
+test('a key issued with its own quota is counted against it instead of the route quota; a key without one uses the route quota (urlcode#703)', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-key-quota-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    let now = Date.now();
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member', now: () => now });
+    cleanup(t, () => service.close());
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
+    const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const request = (authorization: string, route = '/api/items') => ({ method: 'GET', target: route, path: route, query: new URLSearchParams(), headers: new Headers({ authorization }), headerCounts: {}, body: new Uint8Array(), origin, route, mount: null, client: '203.0.113.9', requestId: 'test-request', env: {} });
+    const routeQuota = { bearer: { scopes: ['items.read'], quota: { requests: 2, window: 60 } } };
+    const gold = await service.issueApiKey({ name: 'gold', scopes: ['items.read'], quota: { requests: 4, window: 120 } });
+    const tiny = await service.issueApiKey({ name: 'tiny', scopes: ['items.read'], quota: { requests: 1, window: 30 } });
+    const plain = await service.issueApiKey({ name: 'plain', scopes: ['items.read'] });
+    // The route's budget (2) applies to a key without its own.
+    for (let i = 0; i < 2; i++) assert.equal(await instance.authorize!(routeQuota, request('Bearer ' + plain.key)), undefined);
+    const plainRefused = await instance.authorize!(routeQuota, request('Bearer ' + plain.key));
+    assert.equal(plainRefused?.status, 429);
+    assert.equal(Object.fromEntries(plainRefused!.headers)['ratelimit-policy'], '"credential";q=2;w=60');
+    // The key's own, larger budget replaces the route's: four requests pass where the route allows two.
+    for (let i = 0; i < 4; i++) assert.equal(await instance.authorize!(routeQuota, request('Bearer ' + gold.key)), undefined);
+    const goldRefused = await instance.authorize!(routeQuota, request('Bearer ' + gold.key));
+    assert.equal(goldRefused?.status, 429);
+    const goldHeaders = Object.fromEntries(goldRefused!.headers);
+    assert.equal(goldHeaders['ratelimit-policy'], '"credential";q=4;w=120');
+    assert.equal(goldHeaders['ratelimit'], '"credential";r=0;t=120');
+    assert.equal(goldHeaders['retry-after'], '120');
+    // A smaller own budget also replaces the route's, rather than adding to it.
+    assert.equal(await instance.authorize!(routeQuota, request('Bearer ' + tiny.key)), undefined);
+    assert.equal((await instance.authorize!(routeQuota, request('Bearer ' + tiny.key)))?.status, 429);
+    // The key's budget is one per key: it applies, and is shared, on another bearer route,
+    // including one that declares no quota of its own.
+    assert.equal((await instance.authorize!({ bearer: { scopes: ['items.read'] } }, request('Bearer ' + gold.key, '/api/other')))?.status, 429);
+    // A key without its own quota stays unlimited on a route without one.
+    assert.equal(await instance.authorize!({ bearer: { scopes: ['items.read'] } }, request('Bearer ' + plain.key, '/api/other')), undefined);
+    now += 120000;
+    assert.equal(await instance.authorize!(routeQuota, request('Bearer ' + gold.key)), undefined);
+});
+test('middleware() adds the credential RateLimit fields to an allowed bearer response, ahead of other producers\' members', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-quota-middleware-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const now = Date.now();
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member', now: () => now });
+    cleanup(t, () => service.close());
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
+    const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const request = (authorization?: string) => ({ method: 'GET', target: '/api/items', path: '/api/items', query: new URLSearchParams(), headers: new Headers(authorization ? { authorization } : {}), headerCounts: {}, body: new Uint8Array(), origin, route: '/api/items', mount: null, client: '203.0.113.9', requestId: 'test-request', env: {} });
+    const requirement = { bearer: { scopes: ['items.read'], quota: { requests: 3, window: 60 } } };
+    const { key } = await service.issueApiKey({ name: 'items', scopes: ['items.read'] });
+    const downstream = (headers: [string, string][]) => async () => ({ status: 200, headers, body: Buffer.from('ok') });
+    // Allowed and counted: the response carries this credential's remaining budget.
+    const first = request('Bearer ' + key);
+    assert.equal(await instance.authorize!(requirement, first), undefined);
+    const wrapped = await instance.middleware!(requirement, first, downstream([['content-type', 'text/plain']]));
+    assert.deepEqual(wrapped.headers, [['content-type', 'text/plain'], ['ratelimit-policy', '"credential";q=3;w=60'], ['ratelimit', '"credential";r=2;t=60']]);
+    // Another producer's members (core throttle's "default") are kept, split field lines are
+    // folded, and a stale "credential" member is replaced rather than repeated.
+    const second = request('Bearer ' + key);
+    assert.equal(await instance.authorize!(requirement, second), undefined);
+    const merged = await instance.middleware!(requirement, second, downstream([['ratelimit-policy', '"default";q=60;w=60'], ['RateLimit', '"credential";r=9;t=9, "default";r=58;t=31'], ['ratelimit', '"other";r=1;t=2']]));
+    assert.deepEqual(merged.headers, [['ratelimit-policy', '"credential";q=3;w=60, "default";q=60;w=60'], ['ratelimit', '"credential";r=1;t=60, "default";r=58;t=31, "other";r=1;t=2']]);
+    // A request that authorize() did not count (no quota, or not a bearer route) passes through untouched.
+    const unmetered = request('Bearer ' + key);
+    assert.equal(await instance.authorize!({ bearer: { scopes: ['items.read'] } }, unmetered), undefined);
+    assert.deepEqual((await instance.middleware!({ bearer: { scopes: ['items.read'] } }, unmetered, downstream([['x-a', 'b']]))).headers, [['x-a', 'b']]);
+    assert.deepEqual((await instance.middleware!({ role: 'member' }, request(), downstream([['x-a', 'b']]))).headers, [['x-a', 'b']]);
+});
 test('bearer quota configuration is validated with path-named errors', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-quota-schema-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
