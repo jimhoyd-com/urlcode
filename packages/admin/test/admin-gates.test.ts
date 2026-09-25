@@ -1,90 +1,90 @@
-import { cleanup } from './cleanup.ts';
 import test from 'node:test';
-import {createUiExtension} from '@jimhoyd/urlcode-ui/host';
-import {activatedUi,uiExtensions,uiSources} from './support/render.ts';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {randomBytes} from 'node:crypto';
-import {AuthHttp,createAuthService} from '@jimhoyd/urlcode-auth';
-import type {AuthService} from '@jimhoyd/urlcode-auth';
-import {adminExtension} from '../src/admin.ts';
-import type {AdminExtensionOptions} from '../src/admin.ts';
-const origin='https://example.test',projectSha256='a'.repeat(64),csrfKey=randomBytes(32),http=new AuthHttp({origin,csrfKey}),password='synthetic gate review passphrase';
-function client(service:AuthService,ui:AdminExtensionOptions['ui'],extra:Partial<AdminExtensionOptions>={}){
- const instance=adminExtension({service,csrfKey,projectSha256,ui,...extra}).activate({},{origin,target:'node',projectSha256,mounts:['/admin'], root: import.meta.dirname});
- return async(method:string,path:string,token:string,fields?:Record<string,string>,html=false)=>{const url=new URL('/admin'+path,origin);return (await instance).handle({method,target:url.pathname+url.search,path:url.pathname,query:url.searchParams,headers:new Headers({cookie:'__Host-urlcode-session='+token,origin,'content-type':html?'application/x-www-form-urlencoded':'application/json',accept:html?'text/html':'application/json'}),headerCounts:{cookie:1,origin:1},body:fields?new TextEncoder().encode(html?new URLSearchParams({...fields,csrf:http.token(token)}).toString():JSON.stringify({...fields,csrf:http.token(token)})):new Uint8Array(),origin,route:'/admin/*',mount:'/admin',client:null, requestId: 'test-request', env: {}});};
-}
-const header=(response:{headers:[string,string][]},name:string)=>response.headers.find(([key])=>key===name)?.[1];
+import { adminSite, header, json, password, text } from './support/site.ts';
 
-test('admin gates: role assignment, invitations, audit export, methods and CSV export headers',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-gates-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
- const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],reader:['auth.users.read'],auditor:['auth.audit.read'],exporter:['auth.audit.read','auth.audit.export'],admin:['*']},defaultRole:'member'});cleanup(t, ()=>service.close());
- const owner=await service.bootstrapAdmin({email:'owner@example.test',password}),target=await service.register({email:'target@example.test',password});
- const as=async(role:string)=>{await service.adminSetRoles({actorToken:owner.token,accountId:target.user.id,roles:[role],reason:'gate fixture'});return (await service.login({email:target.user.email,password})).token;};
- const ui=await activatedUi(t,root,projectSha256);
- const call=client(service,ui);
- assert.equal((await call('POST','/users/roles',await as('reader'),{accountId:target.user.id,roles:'admin',reason:'self escalation attempt'})).status,403);
- assert.deepEqual((await service.getUser(target.user.id))!.roles,['reader']);
- assert.equal((await call('POST','/users/roles',owner.token,{accountId:target.user.id,roles:'reader, auditor',reason:'grant audit access'})).status,200);
- assert.deepEqual((await service.getUser(target.user.id))!.roles,['reader','auditor']);
- const inviteService=await createAuthService({database:join(root,'invite.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',registrationMode:'invite-only'});cleanup(t, ()=>inviteService.close());
- const inviter=await inviteService.bootstrapAdmin({email:'inviter@example.test',password}),invitation={email:'invited@example.test',reason:'delivery configured'};
- assert.equal((await client(inviteService,ui)('POST','/invitations',inviter.token,invitation)).status,503);
- const invitations:{email:string;token:string}[]=[],inviting=client(inviteService,ui,{sendInvitation:async message=>{invitations.push(message);}});
- const invited=await inviting('POST','/invitations',inviter.token,invitation);
- assert.equal(invited.status,200);assert.equal(invitations.length,1);assert.equal(invitations[0]!.email,'invited@example.test');assert.ok(invitations[0]!.token);
- assert.doesNotMatch(Buffer.from(invited.body!).toString(),new RegExp(invitations[0]!.token));
- const range='?from=2024-01-01T00:00Z&to=2024-01-02T00:00Z&reason=Compliance%20review';
- assert.equal((await call('GET','/audit/export'+range,await as('auditor'))).status,403);
- assert.equal((await call('GET','/audit/export?from=2024-01-01T00:00Z&to=2024-01-02T00:00Z',await as('exporter'))).status,400);
- const exported=await call('GET','/audit/export'+range,await as('exporter'));
- assert.equal(exported.status,200);assert.equal(header(exported,'content-disposition'),'attachment; filename="audit-range.json"');
- // The export itself is audited (#467): actor, range and count, with the operator's reason.
- const exportEvent=(await service.listAudit({limit:50,action:'admin.audit_exported'})).events.at(-1)!;
- assert.equal(exportEvent.action,'admin.audit_exported');
- assert.equal(exportEvent.reason,'Compliance review');
- assert.match(exportEvent.subject,/^range:\d+:\d+:\d+$/);
- for(const method of ['PUT','DELETE','PATCH']){const denied=await call(method,'/users',owner.token);assert.equal(denied.status,405);assert.equal(header(denied,'allow'),'GET, HEAD, POST');}
- const rangeCsv=await call('POST','/users/export-range',owner.token,{reason:'complete filtered export'});
- assert.equal(rangeCsv.status,200);assert.equal(header(rangeCsv,'content-type'),'text/csv; charset=utf-8');assert.equal(header(rangeCsv,'content-disposition'),'attachment; filename="accounts-filtered.csv"');
- const pageCsv=await call('POST','/users/export-page',owner.token,{reason:'one page export'});
- assert.equal(pageCsv.status,200);assert.equal(header(pageCsv,'content-type'),'text/csv; charset=utf-8');assert.equal(header(pageCsv,'content-disposition'),'attachment; filename="accounts-page.csv"');
- assert.match(Buffer.from(pageCsv.body!).toString(),/^"id","email_masked"/);
+test('admin gates: role assignment, invitations, audit export, methods and CSV export headers', async t => {
+    const roles = { member: [], reader: ['auth.users.read'], auditor: ['audit.read'], exporter: ['audit.read', 'audit.export'], admin: ['*'] };
+    const site = await adminSite(t, { roles });
+    const { service, call } = site;
+    const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password }), target = await service.register({ email: 'target@example.test', password });
+    const as = async (role: string) => { await service.adminSetRoles({ actorToken: owner.token, accountId: target.user.id, roles: [role], reason: 'gate fixture' }); return site.signIn(target.user.email); };
+    // A reader cannot assign roles; the store never sees the escalation.
+    assert.equal((await call('/admin/users/roles', await as('reader'), { fields: { accountId: target.user.id, roles: 'admin', reason: 'self escalation attempt' } })).status, 403);
+    assert.deepEqual((await service.getUser(target.user.id))!.roles, ['reader']);
+    assert.equal((await call('/admin/users/roles', owner.token, { fields: { accountId: target.user.id, roles: 'reader, auditor', reason: 'grant audit access' } })).status, 200);
+    assert.deepEqual((await service.getUser(target.user.id))!.roles, ['reader', 'auditor']);
+    // Audit range export: audit.read alone is not enough; a reason is required; the export is itself audited.
+    const range = '?from=2024-01-01T00:00Z&to=2024-01-02T00:00Z&reason=Compliance%20review';
+    assert.equal((await call('/admin/audit/export' + range, await as('auditor'))).status, 403);
+    const exporter = await as('exporter');
+    assert.equal((await call('/admin/audit/export?from=2024-01-01T00:00Z&to=2024-01-02T00:00Z', exporter)).status, 400);
+    const exported = await call('/admin/audit/export' + range, exporter);
+    assert.equal(exported.status, 200);
+    assert.equal(header(exported, 'content-disposition'), 'attachment; filename="audit-range.json"');
+    const exportEvent = (await site.audit.query({ action: 'admin.audit_exported', order: 'desc', limit: 1 })).events[0]!;
+    assert.equal(exportEvent.source, 'admin');
+    assert.equal(exportEvent.actor, target.user.id);
+    assert.equal(exportEvent.reason, 'Compliance review');
+    assert.match(exportEvent.subject, /^range:\d+:\d+:\d+$/);
+    // Only GET, HEAD and POST reach the console: another method is refused before it (auth's write check or the route's 405).
+    for (const method of ['PUT', 'DELETE', 'PATCH']) assert.ok([403, 405].includes((await call('/admin/users', owner.token, { method })).status), method);
+    const rangeCsv = await call('/admin/users/export-range', owner.token, { fields: { reason: 'complete filtered export' } });
+    assert.equal(rangeCsv.status, 200);
+    assert.equal(header(rangeCsv, 'content-type'), 'text/csv; charset=utf-8');
+    assert.equal(header(rangeCsv, 'content-disposition'), 'attachment; filename="accounts-filtered.csv"');
+    assert.match(text(rangeCsv), /^"id","email_masked"/);
+    assert.equal(text(rangeCsv).trim().split('\r\n').length, 3);
+    const pageCsv = await call('/admin/users/export-page', owner.token, { fields: { reason: 'one page export' } });
+    assert.equal(pageCsv.status, 200);
+    assert.equal(header(pageCsv, 'content-disposition'), 'attachment; filename="accounts-page.csv"');
+    assert.match(text(pageCsv), /^"id","email_masked"/);
 });
 
-test('admin mutations require a recent sign-in and a bounded reason; auth mounts are validated',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-fresh-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
- const now=Date.now()-6*60*1000;
- const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',now:()=>now});cleanup(t, ()=>service.close());
- const ui=await activatedUi(t,root,projectSha256),owner=await service.bootstrapAdmin({email:'owner@example.test',password}),call=client(service,ui);
- assert.equal((await service.authenticate(owner.token))!.authenticatedAt,now);
- const stale=await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'signed in six minutes ago'});
- assert.equal(stale.status,403);assert.match(Buffer.from(stale.body!).toString(),/Confirm your identity/);
- const stalePage=await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'signed in six minutes ago'},true);
- assert.equal(stalePage.status,403);assert.match(Buffer.from(stalePage.body!).toString(),/<p role="alert" class="error">Confirm your identity before this action<\/p>/);
- assert.equal((await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'x'.repeat(257)})).status,400);
- assert.equal((await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'   '})).status,400);
- assert.equal((await service.listAudit({action:'admin.note'})).events.length,0);
- for(const authMount of ['account','/account//x','/acc ount','/account?x'])assert.throws(()=>adminExtension({service,csrfKey,projectSha256,ui,authMount}),/Invalid auth mount/);
- assert.doesNotThrow(()=>adminExtension({service,csrfKey,projectSha256,ui,authMount:'/my-account_v2'}));
+test('auth delivers an invitation the console asks for; its token never reaches the console', async t => {
+    const site = await adminSite(t, { auth: { registrationMode: 'invite-only' } });
+    const { call } = site;
+    const owner = await site.service.bootstrapAdmin({ email: 'owner@example.test', password });
+    // Auth sends the invitation through mail; its token reaches the recipient only.
+    const invited = await call('/admin/invitations', owner.token, { fields: { email: 'invited@example.test', reason: 'delivery configured' } });
+    assert.equal(invited.status, 200);
+    const message = site.sent.at(-1)!;
+    assert.equal(message.template, 'auth.invitation');
+    assert.equal(message.to, 'invited@example.test');
+    const token = new URL(message.text.match(/https?:\/\/\S+/)![0]).searchParams.get('token')!;
+    assert.ok(token);
+    assert.ok(!text(invited).includes(token));
 });
 
-test('the console refuses to activate without an active kit that carries the admin templates',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-kit-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
- const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member'});cleanup(t, ()=>service.close());
- const activation=async(ui:AdminExtensionOptions['ui']):Promise<void>=>{await adminExtension({service,csrfKey,projectSha256,ui}).activate({},{origin,target:'node',projectSha256,mounts:['/admin'], root: import.meta.dirname});};
- // No `ui` at all: the host never built the extension.
- await assert.rejects(activation(undefined as unknown as AdminExtensionOptions['ui']),/renders only through the urlcode-ui kit/);
- // Supplied but not activated yet: the project declares `admin` before `ui`, or omits the ui block entirely.
- await assert.rejects(activation(createUiExtension({projectSha256,projectRoot:root,sources:uiSources,extensions:uiExtensions})),/ui extension is not active yet/);
- // Activated, but built without admin's template namespace: every screen would fail at render time instead.
- const bare=createUiExtension({projectSha256,projectRoot:root,sources:uiSources});
- const instance=await bare.registration.activate({},{origin,target:'node',projectSha256,mounts:['/assets/ui'],root});cleanup(t, ()=>instance.close?.());
- await assert.rejects(activation(bare),/without the admin templates/);
- // The same host with the templates registered activates and serves.
- const ui=await activatedUi(t,root,projectSha256);
- const owner=await service.bootstrapAdmin({email:'owner@example.test',password});
- assert.equal((await client(service,ui)('GET','/',owner.token,undefined,true)).status,200);
+test('without mail delivery the console hides and refuses every delivering operation', async t => {
+    const site = await adminSite(t, { transport: false, auth: { allowImpersonation: true } });
+    const owner = await site.service.bootstrapAdmin({ email: 'owner@example.test', password }), member = await site.service.register({ email: 'member@example.test', password });
+    assert.equal((await site.call('/admin/invitations', owner.token, { fields: { email: 'invited@example.test', reason: 'no delivery' } })).status, 503);
+    assert.equal((await site.call('/admin/users/create', owner.token, { fields: { email: 'new@example.test', reason: 'no delivery' } })).status, 503);
+    assert.equal((await site.call('/admin/impersonate', owner.token, { fields: { accountId: member.user.id, reason: 'no notice possible' } })).status, 503);
+    assert.equal((await site.call('/admin/account-operations', owner.token)).status, 404);
+    const users = text(await site.call('/admin/users', owner.token, { html: true }));
+    assert.doesNotMatch(users, /Send setup link/);
+    assert.doesNotMatch(text(await site.call('/admin', owner.token, { html: true })), /support impersonation/);
+    assert.equal((await site.service.listUsers()).users.length, 2);
+});
+
+test('admin mutations require a recent sign-in and a bounded reason, and a stale proof is sent to auth\'s step-up', async t => {
+    const now = Date.now() - 6 * 60 * 1000;
+    const site = await adminSite(t, { now: () => now });
+    const owner = await site.service.bootstrapAdmin({ email: 'owner@example.test', password });
+    assert.equal((await site.service.authenticate(owner.token))!.authenticatedAt, now);
+    const stale = await site.call('/admin/users/note', owner.token, { fields: { accountId: owner.user.id, reason: 'signed in six minutes ago' } });
+    assert.equal(stale.status, 403);
+    assert.deepEqual(json(stale), { error: 'Confirm your identity before this action', stepUp: '/account/step-up?returnTo=%2Fadmin%2Fusers%2Fnote' });
+    const page = await site.call('/admin/users/note', owner.token, { fields: { accountId: owner.user.id, reason: 'signed in six minutes ago' }, html: true });
+    assert.equal(page.status, 403);
+    assert.match(text(page), /<p role="alert" class="error">Confirm your identity before this action<\/p>/);
+    assert.match(text(page), /href="\/account\/step-up\?returnTo=%2Fadmin%2Fusers%2Fnote"/);
+    assert.equal((await site.call('/admin/users/note', owner.token, { fields: { accountId: owner.user.id, reason: 'x'.repeat(257) } })).status, 400);
+    assert.equal((await site.call('/admin/users/note', owner.token, { fields: { accountId: owner.user.id, reason: '   ' } })).status, 400);
+    assert.equal((await site.audit.query({ action: 'admin.note' })).events.length, 0);
+});
+
+test('the console refuses to activate on a mount without an auth policy', async t => {
+    await assert.rejects(adminSite(t, { adminRoute: { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } }), /\/admin\/\* must carry an auth policy \(auth: \{onDeny: 404\}\)/);
 });

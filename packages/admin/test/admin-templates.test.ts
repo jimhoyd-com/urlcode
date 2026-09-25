@@ -2,21 +2,13 @@ import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {randomBytes} from 'node:crypto';
 import {createKit,createPresentation as createUiPresentation,kitCatalogue,mergeCatalogues,isMarkup} from '@jimhoyd/urlcode-ui';
 import type {ViewModel,ViewValue} from '@jimhoyd/urlcode-ui';
-import {startServer} from '@jimhoyd/urlcode';
-import {inspectExtensionRevision} from '@jimhoyd/urlcode/extensions';
-import {authExtension,createAuthService} from '@jimhoyd/urlcode-auth';
-import {adminExtension} from '../src/admin.ts';
-import {adminCatalogue} from '../src/admin-copy.ts';
+import {adminCatalogue,copyObserver} from '../src/admin-copy.ts';
 import {screenObserver} from '../src/admin-ui.ts';
 import type {Screen} from '../src/admin-ui.ts';
 import {adminTemplates,adminTemplateNames,adminUiTemplates} from '../src/admin-templates.ts';
-import {kitSetup} from './support/render.ts';
+import {adminSite,password,text as bodyText} from './support/site.ts';
 /** Compares a real view with a sample the way `urlcode-ui doctor` would: same keys at every level, list items against the sample item, Markup and scalars as leaves. A null where the sample has an object is an optional section the flow left out. */
 function mismatch(real:ViewValue,sample:ViewValue,path=''):string|undefined {
  if(Array.isArray(sample)){
@@ -53,11 +45,12 @@ test('every admin template declares its view model, renders its sample through t
  assert.deepEqual(kit.report().behind,[]);
  assert.equal(Object.keys(adminUiTemplates.templates).length,13);
 });
-test('the views the extension computes match the sample view models key for key',async t=>{
- const observed=new Map<string,ViewModel>();
+test('the views the extension computes match the sample view models key for key, and every string they show is admin copy',async t=>{
+ const observed=new Map<string,ViewModel>(),missing=new Set<string>();
  screenObserver.current=(screen:Screen)=>{if(!observed.has(screen.name))observed.set(screen.name,screen.view);};
- cleanup(t, ()=>{screenObserver.current=undefined;});
- const {request,service,owner,member}=await app(t);
+ copyObserver.missing=source=>{missing.add(source);};
+ cleanup(t, ()=>{screenObserver.current=undefined;copyObserver.missing=undefined;});
+ const {request,owner,member}=await app(t);
  const {csrf}=await (await request('/admin',owner.token)).json() as {csrf:string};
  for(const page of ['/admin','/admin/users','/admin/users/detail?id='+member.user.id,'/admin/sessions','/admin/roles','/admin/audit','/admin/registrations','/admin/cases','/admin/health','/admin/recovery-cases','/admin/account-operations','/admin/account-operations?accountId='+member.user.id])
   assert.equal((await request(page,owner.token,{html:true})).status,200,page);
@@ -65,7 +58,8 @@ test('the views the extension computes match the sample view models key for key'
  assert.equal((await request('/admin/users/reveal',owner.token,{html:true,data:{accountId:member.user.id,reason:'walkthrough reveal',csrf}})).status,200);
  assert.equal((await request('/admin/users/status',owner.token,{html:true,data:{accountId:member.user.id,status:'locked',reason:'walkthrough lock',csrf}})).status,200);
  assert.equal((await request('/admin/nowhere',owner.token,{html:true})).status,404,'the failure screen renders through the kit');
- await service.close();
+ assert.equal((await request('/admin/users/status',owner.token,{html:true,data:{accountId:member.user.id,status:'locked',reason:'x'.repeat(300),csrf}})).status,400,'a refusal renders admin copy too');
+ assert.deepEqual([...missing],[],'every English source the console resolved is in the admin catalogue');
  assert.deepEqual(adminTemplateNames.filter(name=>!observed.has(name)),[],'the walkthrough reaches every template');
  for(const [name,view] of observed)
   assert.equal(mismatch(view,adminTemplates[name]!.sample,name),undefined,`${name}: real view matches its sample shape`);
@@ -118,22 +112,15 @@ test('kit-rendered admin pages escape user-controlled values and keep the strict
  assert.equal((await request('/admin',member.token,{html:true})).status,404);
 });
 async function app(t:TestContext) {
- const root=await mkdtemp(join(tmpdir(),'urlcode-admin-templates-'));
- cleanup(t, ()=>rm(root,{recursive:true,force:true}));
- const project=join(root,'project');
- await mkdir(project);
- const kit=kitSetup(project,'');
- await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{...kit.extensions,auth:{version:'1',config:{registration:'open'}},admin:{version:'1',config:{}}},routes:{...kit.routes,'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},'/admin/*':{extension:'admin',methods:['GET','HEAD','POST']}}}));
- const projectSha256=await inspectExtensionRevision(project),{ui,registrations}=kitSetup(project,projectSha256);
- const service=await createAuthService({database:join(root,'accounts.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read'],admin:['*']},defaultRole:'member',allowImpersonation:true,allowManualRecovery:true});
- const owner=await service.bootstrapAdmin({email:'owner@example.test',password:'correct horse battery staple'});
- const member=await service.register({email:'member@example.test',password:'correct horse battery staple'});
- const csrfKey=randomBytes(32),withUi={ui:ui!};
  const health=async()=>({checkedAt:new Date().toISOString(),runtime:{status:'healthy' as const,readiness:'healthy' as const,version:'test',routes:4},sender:'unknown' as const,providers:[],alerts:['sender-failed' as const]});
- const server=await startServer({project,origin:'https://example.test',port:0,extensions:[...registrations,authExtension({service,csrfKey,projectSha256,...withUi}),adminExtension({service,csrfKey,projectSha256,...withUi,health,notifyImpersonation:async()=>{},sendSetup:async()=>{},sendInvitation:async()=>{},sendAccountAdministration:async()=>{},sendRecovery:async()=>{}})],log:()=>{}}).catch(async error=>{await service.close();throw error;});
- cleanup(t, async()=>{await server.close();await service.close().catch(()=>{});});
+ const site=await adminSite(t,{health,auth:{allowImpersonation:true,allowManualRecovery:true}});
+ const service=site.service;
+ const owner=await service.bootstrapAdmin({email:'owner@example.test',password});
+ const member=await service.register({email:'member@example.test',password});
  async function request(path:string,token:string,{data,html=false}:{data?:Record<string,string>;html?:boolean}={}) {
-  return fetch(`http://127.0.0.1:${server.address.port}${path}`,{method:data?'POST':'GET',redirect:'manual',headers:{accept:html?'text/html':'application/json',cookie:`__Host-urlcode-session=${token}`,...(data?{'content-type':html?'application/x-www-form-urlencoded':'application/json',origin:'https://example.test'}:{})},...(data?{body:html?new URLSearchParams(data).toString():JSON.stringify(data)}:{})});
+  const {csrf,...fields}=data??{};
+  const response=await site.call(path,token,{html,...(data?{fields,csrf:csrf??false,form:html}:{})});
+  return {status:response.status,headers:new Headers(response.headers),text:async()=>bodyText(response),json:async()=>JSON.parse(bodyText(response)) as unknown};
  }
  return {request,service,owner,member};
 }

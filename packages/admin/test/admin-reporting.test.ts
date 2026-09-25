@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auditFilters, csvCell, nextPage, selectedAccounts, selectedNames, usersCsv } from '../src/admin-reporting.ts';
+import { auditFilters, csvCell, nextPage, selectedAccounts, selectedField, usersCsv } from '../src/admin-reporting.ts';
 test('CSV cells quote delimiters and neutralize spreadsheet formulas including leading whitespace', () => {
     for (const value of ['=SUM(1,2)', ' +1', '-1', '@name', '\tcommand', '\rcommand', '\ncommand', '\uFEFF=1'])
         assert.ok(csvCell(value).startsWith('"\''));
@@ -8,14 +8,16 @@ test('CSV cells quote delimiters and neutralize spreadsheet formulas including l
     assert.throws(() => usersCsv(Array.from({ length: 51 }, () => ({ id: 'id', email: 'x@example.test', status: 'active' as const, roles: [], created: 0, emailVerified: false, totpEnabled: false }))));
 });
 test('audit filters reject ambiguous or invalid dates and pagination preserves active filters', () => {
-    assert.deepEqual(auditFilters(new URLSearchParams('action=session.login&from=2026-09-01T00%3A00Z&to=2026-09-02T00%3A00Z')), { limit: 50, action: 'session.login', from: Date.parse('2026-09-01T00:00Z'), to: Date.parse('2026-09-02T00:00Z') });
-    for (const query of ['from=2026-02-30T00%3A00Z', 'from=bad', 'action=a&action=b', 'from=2026-09-02T00%3A00Z&to=2026-09-01T00%3A00Z'])
+    assert.deepEqual(auditFilters(new URLSearchParams('action=session.login&from=2026-09-01T00%3A00Z&to=2026-09-02T00%3A00Z')), { limit: 50, order: 'desc', action: 'session.login', from: Date.parse('2026-09-01T00:00Z'), to: Date.parse('2026-09-02T00:00Z') });
+    assert.deepEqual(auditFilters(new URLSearchParams('source=store&order=asc')), { limit: 50, order: 'asc', source: 'store' });
+    for (const query of ['from=2026-02-30T00%3A00Z', 'from=bad', 'action=a&action=b', 'from=2026-09-02T00%3A00Z&to=2026-09-01T00%3A00Z', 'order=newest', 'unknown=x'])
         assert.throws(() => auditFilters(new URLSearchParams(query)));
     assert.equal(nextPage('/admin/users', new URLSearchParams('query=a%40b&role=member&ignored=bad'), 'cursor', ['query', 'role']), '/admin/users?query=a%40b&role=member&after=cursor');
 });
 test('native checkbox selection is bounded, unambiguous and rejects duplicate bulk IDs', () => {
     const id = '12345678-1234-1234-1234-123456789abc';
-    assert.deepEqual(selectedNames(Buffer.from('selected.' + id + '=yes'), 'application/x-www-form-urlencoded'), ['selected.' + id]);
+    assert.ok(selectedField.test('selected.' + id));
+    assert.ok(!selectedField.test('selected.' + id + 'x'));
     assert.deepEqual(selectedAccounts({ ['selected.' + id]: 'yes' }), [id]);
     assert.throws(() => selectedAccounts({ accountIds: id + ',' + id }));
     assert.throws(() => selectedAccounts({ accountIds: id, ['selected.' + id]: 'yes' }));
@@ -43,7 +45,8 @@ test('expanded user filters validate booleans and UTC ranges while preserving ev
     assert.match(fields, /value="false" selected/);
     assert.match(fields, /value="desc" selected/);
     assert.match(fields, /name="locale" value="fr"/);
-    for (const invalid of ['verified=yes', 'verified=true&verified=false', 'createdFrom=2026-02-30T00%3A00Z', 'createdFrom=2026-09-01T00%3A00Z&createdTo=2026-01-01T00%3A00Z', 'lastSeenFrom=-1', 'sort=random', 'method=unknown', 'locale=../../file', 'unexpected=field'])
+    // Syntax is admin's; the values themselves (sort, method, locale, range order) are validated by auth (admin-user-filters.test.ts).
+    for (const invalid of ['verified=yes', 'verified=true&verified=false', 'createdFrom=2026-02-30T00%3A00Z', 'lastSeenFrom=-1', 'unexpected=field'])
         assert.throws(() => userFilters(new URLSearchParams(invalid)));
     assert.match(userFilterFields(new URLSearchParams({ query: '"><script>alert(1)</script>' }), x => x), /&lt;script&gt;/);
 });
