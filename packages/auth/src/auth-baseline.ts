@@ -69,13 +69,16 @@ export async function validateAuthService(service: AuthService): Promise<{ passe
 async function probe(root: string): Promise<AuthBaselineResult> {
     const checks: BaselineCheck[] = [], add = (name: string, passed: boolean) => checks.push({ name, passed });
     let runtime: Awaited<ReturnType<typeof import('@jimhoyd/urlcode')['createRuntime']>> | undefined, service: AuthService | undefined;
+    const companions: { close(): Promise<void> }[] = [];
     try {
-        const { createRuntime } = await import('@jimhoyd/urlcode'), { inspectExtensionRevision } = await import('@jimhoyd/urlcode/extensions'), { createAuthService } = await import('./auth-core.ts'), { authExtension } = await import('./auth.ts');
+        const { createRuntime } = await import('@jimhoyd/urlcode'), { inspectExtensionRevision } = await import('@jimhoyd/urlcode/extensions'), { createAuthService } = await import('./auth-core.ts'), { createAuth } = await import('./auth.ts');
+        // Auth requires audit and mail: the synthetic site hosts both, mail recording instead of sending.
+        const { createAudit } = await import('@jimhoyd/urlcode-audit'), { createMail, recordingTransport } = await import('@jimhoyd/urlcode-mail'), { authMail } = await import('./mail-templates.ts');
         // Account screens render only through the kit, so the synthetic project declares and registers `ui` exactly as a real host must.
         const { createUiExtension } = await import('@jimhoyd/urlcode-ui/host'), { authUiTemplates } = await import('./auth-templates.ts'), { englishCatalogue } = await import('./presentation.ts');
         const project = join(root, 'project'), operator = join(root, 'operator'), origin = 'https://baseline.invalid';
         await mkdir(project, { mode: 0o700 }); await mkdir(operator, { mode: 0o700 });
-        await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ui: { version: '1', config: {} }, auth: { version: '1', config: { registration: 'open' } } }, routes: {
+        await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ui: { version: '1', config: {} }, audit: { version: '1', config: {} }, mail: { version: '1', config: {} }, auth: { version: '1', config: { registration: 'open' } } }, routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
             '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] },
             '/protected': { respond: { json: { authorized: true } }, methods: ['GET', 'POST'], policies: { extensions: { auth: { permission: 'baseline.read' } } } },
@@ -86,7 +89,11 @@ async function probe(root: string): Promise<AuthBaselineResult> {
         service = await createAuthService({ database: join(operator, 'ordinary.sqlite'), encryptionKey, roles: { member: ['baseline.read'], admin: ['*'] }, defaultRole: 'member' });
         const account = await service.register({ email: 'synthetic-baseline@example.test', password });
         const ui = createUiExtension({ projectSha256: revision, projectRoot: project, sources: [englishCatalogue], extensions: [authUiTemplates] });
-        const startRuntime = () => createRuntime(project, { origin, environment: {}, workers: 1, timeoutMs: 1000, extensions: [ui.registration, authExtension({ service: service!, csrfKey, projectSha256: revision, ui })], log: () => {} });
+        const audit = await createAudit({ projectSha256: revision, database: join(operator, 'audit.sqlite') });
+        companions.push(audit);
+        const mail = createMail({ projectSha256: revision, site: operator, contributions: [authMail], transport: recordingTransport() });
+        companions.push(mail);
+        const startRuntime = () => createRuntime(project, { origin, environment: {}, workers: 1, timeoutMs: 1000, extensions: [ui.registration, audit.registration, mail.registration, createAuth({ service: service!, csrfKey, projectSha256: revision, ui, audit: audit.exports, mail: mail.exports }).registration], log: () => {} });
         runtime = await startRuntime();
         type Response = Awaited<ReturnType<typeof runtime.handle>>;
         const text = (response: Response) => typeof response.body === 'string' ? response.body : response.body ? Buffer.from(response.body).toString('utf8') : '';
@@ -130,6 +137,8 @@ async function probe(root: string): Promise<AuthBaselineResult> {
     finally {
         try { await runtime?.close(); } catch { add('cleanup.runtime-closed', false); }
         try { await service?.close(); } catch { add('cleanup.service-closed', false); }
+        for (const companion of companions.reverse())
+            try { await companion.close(); } catch { add('cleanup.companions-closed', false); }
     }
     return result(checks);
 }

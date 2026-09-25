@@ -42,27 +42,36 @@ test('preview renders a complete page for a template, and doctor reports as JSON
 });
 /**
  * A peer extension package, stood up on disk so this package can exercise the namespace loader without
- * depending on one: the CLI resolves whatever `--extensions` names with Node package resolution from
- * `--project`, and reads the contribution off the package's own export.
+ * depending on one: the CLI resolves `<name>/extension` for whatever `--extensions` names, with Node package
+ * resolution from `--project`, and reads `definition.contributes.ui` off its default export. The package root
+ * exports nothing: discovery never scans exports by shape.
  */
 async function site(): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-site-'));
     const pkg = join(root, 'node_modules', '@fixture', 'peer');
     await mkdir(join(pkg), { recursive: true });
-    await writeFile(join(pkg, 'package.json'), JSON.stringify({ name: '@fixture/peer', version: '1.0.0', type: 'module', main: 'index.js' }));
-    await writeFile(join(pkg, 'index.js'), `export const peerUiTemplates = Object.freeze({
+    await writeFile(join(pkg, 'package.json'), JSON.stringify({ name: '@fixture/peer', version: '1.0.0', type: 'module', exports: { '.': './index.js', './extension': './extension.js' } }));
+    await writeFile(join(pkg, 'index.js'), 'export {};\n');
+    await writeFile(join(pkg, 'extension.js'), `const catalogue = {'peer.greeting': 'Hello from the peer'};
+    const peerUiTemplates = Object.freeze({
         name: 'peer',
         templates: {'peer/card': '{{!-- viewModel: peer/card@2 --}}<p>{{t "peer.greeting"}}</p><p>{{message}}</p>'},
-        catalogue: {'peer.greeting': 'Hello from the peer'},
         samples: {'peer/card': {message: 'Sample message'}},
     });
-    export const peerAlias = peerUiTemplates;
-    export const notANamespace = {name: 'peer', helpers: {}};
+    const definition = {name: 'peer', description: 'Peer', schema: {type: 'object'}, contributes: {ui: {sources: [catalogue], templates: [peerUiTemplates, peerUiTemplates]}}, host() { throw new Error('must not run'); }};
+    const entry = options => ({definition, options: options ?? {}});
+    entry.definition = definition;
+    export default entry;
     `);
     const plain = join(root, 'node_modules', '@fixture', 'plain');
     await mkdir(plain, { recursive: true });
-    await writeFile(join(plain, 'package.json'), JSON.stringify({ name: '@fixture/plain', version: '1.0.0', type: 'module', main: 'index.js' }));
+    await writeFile(join(plain, 'package.json'), JSON.stringify({ name: '@fixture/plain', version: '1.0.0', type: 'module', exports: { '.': './index.js', './extension': './extension.js' } }));
     await writeFile(join(plain, 'index.js'), 'export const helpers = {};\n');
+    await writeFile(join(plain, 'extension.js'), "export default {definition: {name: 'plain', description: 'Plain', schema: {type: 'object'}, host() { throw new Error('must not run'); }}};\n");
+    const library = join(root, 'node_modules', '@fixture', 'library');
+    await mkdir(library, { recursive: true });
+    await writeFile(join(library, 'package.json'), JSON.stringify({ name: '@fixture/library', version: '1.0.0', type: 'module', exports: { '.': './index.js' } }));
+    await writeFile(join(library, 'index.js'), 'export const helpers = {};\n');
     await mkdir(join(root, 'ui', 'templates', 'peer'), { recursive: true });
     await mkdir(join(root, 'ui', 'copy'), { recursive: true });
     await writeFile(join(root, 'ui', 'copy', 'fr.json'), '{}');
@@ -75,7 +84,7 @@ test('a named package contributes its templates, copy and samples to every comma
     assert.equal(listed.status, 0, listed.stderr);
     assert.match(listed.stdout, /^peer\/card\textension:peer\tpeer\/card@2$/m);
     assert.equal(listed.stdout.trim().split('\n').length, Object.keys(kitTemplates).length + 1);
-    // The alias export is the same object and must not register the namespace, or its copy, twice.
+    // A namespace contributed twice registers once, its copy with it.
     assert.equal(listed.stderr, '');
     // preview renders the extension's own sample through the kit, and its copy resolves.
     const preview = cli(['preview', 'peer/card', ...peer]);
@@ -107,7 +116,9 @@ test('extension packages are named, resolved from the project and bounded', asyn
     assert.equal(absent.status, 0, absent.stderr);
     assert.match(absent.stderr, /^skipped @fixture\/absent: not installed$/m);
     // Installed, but contributing no namespace, is worth saying too.
-    assert.match(cli(['list', '--project', root, '--extensions', '@fixture/plain']).stderr, /^skipped @fixture\/plain: no kit templates exported$/m);
+    assert.match(cli(['list', '--project', root, '--extensions', '@fixture/plain']).stderr, /^skipped @fixture\/plain: no ui templates contributed$/m);
+    // A package with no ./extension entry is not an extension.
+    assert.match(cli(['list', '--project', root, '--extensions', '@fixture/library']).stderr, /^skipped @fixture\/library: no \.\/extension entry$/m);
     // Only package names: nothing relative, absolute or URL-shaped, and a bounded number of them.
     for (const value of ['../evil', '/etc/passwd', 'file:///etc/passwd', './peer'])
         assert.equal(cli(['list', '--project', root, '--extensions', value]).status, 1, value);

@@ -1,8 +1,8 @@
 # Operator-installed extensions
 
 Extensions are trusted operator modules, separate from a project's own
-`function`/`middleware` code. The first-party extensions (`ui`, `auth`,
-`admin`, `store`, `forms`, `form-records`, `mcp`) are workspace packages in this repository
+`function`/`middleware` code. The first-party extensions (`ui`, `audit`,
+`abuse`, `mail`, `auth`, `admin`, `store`, `forms`, `form-records`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
 a package: the operator's `host.mjs` does that (see
@@ -18,11 +18,27 @@ The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See
 [data store](STORE.md).
 
+Three extensions serve no route and exist for other extensions to use through
+their typed exports:
+
+- `audit` is the durable audit log. A producer (auth, and every store
+  collection with `audit: true`) writes each event into its own outbox in the
+  same transaction as the change it records, and audit drains the outboxes
+  into one bounded SQLite log ([audit log](#audit-log)).
+- `abuse` holds keyed budgets, password-style backoff, an optional challenge
+  provider and a honeypot helper over pseudonymous keys
+  ([abuse protection](#abuse-protection)).
+- `mail` sends plain-text transactional email from templates other
+  extensions contribute, through one transport the operator chooses in
+  `host.mjs` ([mail package](../packages/mail/README.md)).
+
 The `forms` extension is the browser-flow counterpart: it renders bounded
 declared fields through the `ui` kit, validates URL-encoded submissions with
 its host-supplied CSRF secret, and redirects a successful submission to a
 confirmation page that shows only the submitted fields the flow opts in to. It is a trusted operator extension, needs `ui`, and
-may be mounted with `auth: true`; its optional `onSubmit` hook is trusted
+may be mounted with `auth: {csrf: origin}`, never `auth: true`: it verifies its own token, and auth's default
+token mode would refuse every form POST with 403 because a plain HTML form sends no `x-csrf-token` header. A flow may declare a
+submission budget (`abuse`, when the abuse extension is installed) and a notification (`notify`, through mail). Its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
 
 The `form-records` extension composes the two: it requires `forms` and
@@ -89,8 +105,8 @@ hash covers it.
 Core owns only that mapping and `required`. Every other key belongs to the auth
 extension: the core schema accepts `true` or any object here, and the installed
 extension's own `policySchema` decides which keys and values are valid (today
-`role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny` and `bearer`;
-`urlcode extensions --json` prints the authoritative shape). A new auth policy
+`role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny`, `csrf` and
+`bearer`; `urlcode extensions --json` prints the authoritative shape). A new auth policy
 key therefore ships with the auth package, not with core. Loading fails, naming
 the route, when `auth` is neither `true` nor an object, when `required` is not a
 boolean, when `auth` appears without an `extensions.auth` declaration, next to
@@ -113,6 +129,39 @@ The error details carry the matching pointer
 (`/routes/~1api~1items/auth/bearer/quota/requests`). Keys written beside
 `required: false` emit no requirement but are still checked, so a typo there
 does not wait until the route is switched back on.
+
+### CSRF on protected routes: `csrf: token | origin`
+
+On a session-protected route auth verifies CSRF for every write (any method
+other than `GET` and `HEAD`). The default, `csrf: token`, asks for auth's
+session-bound token: the `x-csrf-token` header, or a `csrf` body field when
+the header is absent, so a plain HTML form auth renders can post it.
+`auth.csrf.token(request)` in `AuthExports` gives another extension the value to
+embed.
+
+`csrf: origin` drops the token and admits a write on same-origin provenance
+alone: core's [same-origin rule](#site-origins-and-same-origin-checks) with
+`whenAbsent: 'refuse'` (a repeated `Origin`, `Sec-Fetch-Site` or `Referer`,
+or `Sec-Fetch-Site: cross-site`, refuses; then a site `Origin`; with no
+`Origin`, `Sec-Fetch-Site: same-origin` or `none`; with neither, a `Referer`
+whose origin is a site origin; no provenance at all refuses) plus the
+`SameSite=Strict` `__Host-` session cookie.
+Use it only on a mount that verifies its own token (forms, form-records) or
+that accepts JSON only (a store collection):
+
+```yaml
+routes:
+  /api/todos/*:
+    extension: store
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: {csrf: origin}
+  /todo-form/*:
+    extension: form-records
+    methods: [GET, HEAD, POST]
+    auth: {csrf: origin}
+```
+
+`csrf` is a session key: it cannot sit beside `bearer`.
 
 ### Bearer/API-key routes
 
@@ -399,7 +448,10 @@ for.
 
 `auth` is the first-party provider (the signed-in user's id for a session or
 for a bearer key issued to act for a user, `apikey:<key id>` for any other
-bearer key) and `store` the first consumer; the core
+bearer key) and `store` the first consumer. An extension that needs more than
+the id (roles, permissions, freshness, the verified email) asks auth itself:
+`ctx.get<AuthExports>('auth').account(request)` returns the signed-in
+account, with `has(permission)`, or `null`; admin reads it this way. The core
 fixture `test/extension-principal.test.ts` proves the seam with a synthetic,
 non-auth provider. Extensions are trusted in-process code, so this contract
 fails closed on mistakes and misconfiguration; it is not a sandbox between
@@ -476,14 +528,18 @@ extensions:
         beforeRegister:
           source: ./hooks/registration-rule.mjs
           export: default
-        onSignUp:
-          source: ./hooks/on-signup.mjs
+        onAccountCreated:
+          source: ./hooks/on-account-created.mjs
 ```
 
-with `beforeRegister` called before an account is created, given a typed
-`{email, profile?}` input and returning a typed verdict (`{allow: true}`
-or `{allow: false, reason}`), and `onSignUp` called after, for side effects
-such as provisioning a workspace. Hook names and lifecycle timing remain the
+with `beforeRegister` called before any path creates an account, given a
+typed `{email, method, profile?}` input and returning a typed verdict
+(`{allow: true}` or `{allow: false, reason}`), and `onAccountCreated` called
+after, for side effects such as provisioning a workspace. Auth's full set
+(`beforeRegister`, `beforeRoleChange`, `onAccountCreated`,
+`onAccountStatusChanged`, `onDeletionScheduled`, `onAccountDeleted`) is fired
+by the auth service for every caller, including the administration console
+and the operator CLI; see [composing a site](COMPOSING-A-SITE.md#project-functions-lifecycle-hooks). Hook names and lifecycle timing remain the
 extension's domain, while their declaration, loading and discovery are shared.
 
 Hooks are first-party project code and run trusted in-process by default, with
@@ -512,8 +568,9 @@ every extension package follows: `package.json` (released with core at core's
 version, exporting `.` and `./extension`), `README.md`/`SECURITY.md`/
 `CHANGELOG.md`/`AGENTS.md`, a `RuntimeExtension` source module,
 `src/extension.ts` (the `defineExtension` definition with `scaffold` and
-`host`), a `urlcode.json` stub and a real integration test, all as placeholders
-to replace. `--from <existing-package>` forks an existing package's file
+`host`), its `urlcode.json` descriptor (exactly what `build:addons` writes from
+that definition, so the root install's prepare step accepts the new package)
+and a real integration test, all as placeholders to replace. `--from <existing-package>` forks an existing package's file
 *shape* (which optional docs it carries, which siblings it requires) as a
 starting point -- never its source code. The tool only creates files; run
 `npm install` and `npm run build:addons` afterwards so the workspace and its
@@ -552,10 +609,31 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    cookie, header or tables.
 6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
-7. Decides whether a request is same-origin with `isSiteOrigin(context, value)`
-   from `@jimhoyd/urlcode/extensions`, never by comparing against
-   `context.origin` itself, so an operator's alias origins are honoured the same
-   way everywhere ([site origins](#site-origins-and-same-origin-checks)).
+7. Decides whether a request is same-origin with `isSameOriginRequest`
+   (or, for a single origin value, `isSiteOrigin(context, value)`) from
+   `@jimhoyd/urlcode/extensions`, never by comparing against `context.origin`
+   itself, so an operator's alias origins are honoured the same way everywhere
+   ([site origins](#site-origins-and-same-origin-checks)).
+8. Reads bodies, fields and cookies and writes JSON answers with core's
+   [request helpers](#request-helpers), never with its own parser.
+
+### Request helpers
+
+`@jimhoyd/urlcode/extensions` exports one bounded implementation of the request
+chores every extension has (`RIM-EXT-HTTP-001` in
+[runtime implementation](RUNTIME-IMPLEMENTATION.md)). Do not hand-roll body
+parsing, JSON responses, cookie parsing or origin checks; use these:
+
+| Helper | What it does |
+|---|---|
+| `readBody(request, {accept, maxBytes, maxDepth?})` | Reads a JSON or `application/x-www-form-urlencoded` body. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), another media type (415), invalid UTF-8 (400) and, for JSON, nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
+| `readFields(request, {fields, patterns?, accept?, maxBytes?, maxFields?, maxValueLength?, limits?})` | A flat set of string fields through `readBody`: only names in `fields` or matching an anchored `patterns` entry, each once, each a string within its length limit. List `csrf` and any challenge token field yourself. The result is frozen. |
+| `jsonResponse(status, value, headers?)` | A JSON answer with `no-store`, `nosniff`, a deny-all CSP and a `strict-origin` referrer policy; a header you pass replaces the default of the same name. |
+| `wantsJson(request)` | Whether `Accept` lists `application/json` or the body is JSON. |
+| `readCookie(request, name, shape)` | One cookie value. Refuses (400) a repeated `Cookie` header, one over 8192 bytes, or the name twice; a value that does not match `shape` reads as absent. |
+| `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
+| `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
+| `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
 
 ### Activation warnings
 
@@ -622,16 +700,32 @@ An extension's activation context carries both:
   [shared passkey relying-party domain](#shared-passkey-relying-party-domain).
 - `warn`: the [activation warning](#activation-warnings) channel.
 
-`isSiteOrigin(context, value)` is the one match every extension uses for an
-`Origin` header, or for the origin of a `Referer`: the value must be a bare
-origin and matches when its serialized form is one of `context.origins`, so
-case and an explicit default port do not matter. `null`, a missing value, a
-different scheme or port, and a sibling subdomain never match. What an extension
-does when a request has no `Origin` stays its own documented rule. The
-first-party checks that use it are `mcp` (a present foreign `Origin` is 403),
-`forms` (`Origin`, then `Sec-Fetch-Site`, then `Referer`), `store` (JSON writes
-with a foreign `Origin` are 403) and the `auth` and `admin` CSRF check (which
-also still requires `Origin`). On a loopback bind the server's
+`isSiteOrigin(context, value)` is the one match for a single origin value: the
+value must be a bare origin and matches when its serialized form is one of
+`context.origins`, so case and an explicit default port do not matter. `null`,
+a missing value, a different scheme or port, and a sibling subdomain never
+match.
+
+Every extension decides whether a request is same-origin with one rule,
+`isSameOriginRequest(request, context, {whenAbsent})`. The first step that
+applies decides:
+
+1. more than one `Origin`, `Sec-Fetch-Site` or `Referer` header: refuse;
+2. `Sec-Fetch-Site: cross-site`: refuse;
+3. an `Origin` header: admit only a site origin;
+4. a `Sec-Fetch-Site` header: admit only `same-origin` or `none`;
+5. a `Referer` header: admit only when its origin is a site origin;
+6. none of them: `whenAbsent`.
+
+`whenAbsent: 'refuse'` is for an endpoint that takes a form post or relies on
+cookies: `auth`, `admin` and `forms` use it. `whenAbsent: 'admit'` is only for
+an endpoint that accepts JSON exclusively, which a cross-site browser cannot
+send without a preflight the runtime never grants, while non-browser clients
+(curl, MCP clients, API keys) send no provenance header: `store` and `mcp` use
+it. The rule is admission only: a cookie-bound write still needs its CSRF
+token, unless the route opts into [`csrf: origin`](#csrf-on-protected-routes-csrf-token--origin).
+Auth's CSRF check additionally requires a single `x-csrf-token` (or a body
+`csrf` field) bound to the session. On a loopback bind the server's
 [host admission](OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
 alias authority too.
 
@@ -709,8 +803,8 @@ internals. An add-on **must** follow them:
    private YAML or configuration layout. Pattern: `store` contributes generic
    descriptions of its CRUD screens to `ui`, and `ui` never reads
    `extensions.store.config` (#709; see [nesting](#nesting)).
-2. **Make every cross-extension dependency explicit.** Use `requires`, a
-   typed, versioned export read with `ctx.get`, or a typed, versioned
+2. **Make every cross-extension dependency explicit.** Use `requires`, or a
+   `uses` entry for an optional one, a typed, versioned export read with `ctx.get`, or a typed, versioned
    contribution (`contributes` on the giver, `ctx.contributions` on the
    receiver); see [the extension definition](#the-extension-definition). Core
    stays unaware of first-party extension names and policy vocabulary: for the
@@ -736,8 +830,10 @@ internals. An add-on **must** follow them:
 
 - [ ] Configuration, mounts, policies and exports are declared in the
       definition; nothing reads another extension's configuration.
-- [ ] Every dependency is a `requires` entry, a `ctx.get` export or a
+- [ ] Every dependency is a `requires` or `uses` entry, a `ctx.get` export or a
       `contributes`/`ctx.contributions` value, with a versioned shape.
+- [ ] Bodies, fields, cookies, JSON answers and origin checks go through core's
+      [request helpers](#request-helpers).
 - [ ] Core needs no change naming this extension or its policy keys.
 - [ ] `scaffold` writes only prerequisites; any demo is in `example()`.
 - [ ] Artifacts pass `urlcode artifacts list --strict` and hold no code,
@@ -1034,16 +1130,22 @@ one entry:
 
 ```js
 import { composeHost } from '@jimhoyd/urlcode/host';
+import audit from '@jimhoyd/urlcode-audit/extension';
+import mail from '@jimhoyd/urlcode-mail/extension';
 import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
 
 export default await composeHost(import.meta.url, [
+  audit(),
+  mail(),
   ui(),
   auth(),
 ]);
 ```
 
-Operator options go inside the call, for example `auth({sendEmailCode})`. The
+That is the host after `urlcode extensions add ui auth`, which also installs
+`audit` and `mail` because auth requires them. Operator options go inside the
+call, for example `mail({transport: sesTransport({region}), from})`. The
 generated npm scripts run from the site directory (`urlcode dev --project app
 --host-file host.mjs`, and the same for `serve`, `validate`, `test`, `routes`
 and `audit`). Run from a site root, CLI commands default `--project` to `app`,
@@ -1169,28 +1271,90 @@ or `npx urlcode-ui doctor --project app`.
 
 ### Nesting
 
-`admin` requires `auth` and `ui`; `auth` and `forms` require `ui`;
-`form-records` requires `forms`, `store` and `ui`. A sibling
-add-on is an optional exact peer dependency, never a nested dependency, so
-every add-on is installed once at the top level of the site. `composeHost`
-orders the listed extensions by `requires` and activates each once. A dependant
-receives the shared services of what it requires through `ctx.get('<name>')`,
-and passes templates and copy catalogues to `ui` through `contributes.ui`,
-which `ui` collects with `ctx.contributions('ui')`. A contribution is an
-optional edge: an extension may contribute to one it does not require, and the
-value is simply unused when the target is not installed. The store does this:
-it does not require `ui`, but contributes `screens`, a source ui calls at
-activation to receive generic descriptions of the CRUD screens declared under
+Each extension declares what it needs:
+
+| Extension | `requires` | `uses` (optional) | Contributes to |
+|---|---|---|---|
+| `ui`, `audit`, `abuse`, `mail`, `mcp` | none | none | |
+| `auth` | `ui`, `audit`, `mail` | `abuse` | `ui`, `mail` |
+| `admin` | `auth`, `ui`, `audit` | | `ui` |
+| `store` | none | `audit` | `ui` |
+| `forms` | `ui` | `abuse`, `mail` | `mail` |
+| `form-records` | `forms`, `store`, `ui` | | |
+
+A sibling add-on is an optional exact peer dependency, never a nested
+dependency, so every add-on is installed once at the top level of the site;
+`urlcode extensions add` installs every `requires` entry with the extension
+that names it. `composeHost` orders the listed extensions by `requires` and by
+each installed `uses` entry (ties keep a stable lexical order) and runs each
+`host()` once. A dependant receives the exports of what it requires or uses
+through `ctx.get('<name>')`: a `requires` entry is always there, a `uses`
+entry is `undefined` when that extension is not installed, and any other name
+throws.
+
+The runtime then activates the declared extensions in that registration order,
+so an extension's activation always runs after the activation of everything it
+requires or uses, and can read `active` (or mail's `available`) on their
+exports. The order the extensions are declared in under `extensions` in YAML
+does not matter. They close in reverse order.
+
+A contribution is an optional edge too: an extension may contribute to one it
+does not require, and the value is simply unused when the target is not
+installed. Auth and admin pass templates and copy catalogues to `ui` through
+`contributes.ui`, which `ui` collects with `ctx.contributions('ui')`; auth and
+forms pass message templates to `mail` the same way. The store does not
+require `ui`, but contributes `screens`, a source ui calls at activation to
+receive generic descriptions of the CRUD screens declared under
 `extensions.store.config.screens`, so ui never reads the store's
 configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
-`package.json` declares `ui` an optional peer. `forms` and `store` export
-typed, versioned contracts (`FormsExports` and `StoreExports`, version 1:
-a flow renderer and validator, and an ownership-honouring records API), which
-`form-records` reads with `ctx.get`; an export is usable once its extension
-is active, so a dependant is declared after what it requires under
-`extensions`. Two copies of one extension
-cannot exist in a site, so duplicate-instance bugs (such as a second `ui` kit
-that never received another extension's templates) cannot happen.
+`package.json` declares `ui` an optional peer.
+
+Exports are typed and versioned (`version: 1`, plus `active`):
+
+| Export | From | Read by |
+|---|---|---|
+| `AuthExports` | `auth` | `admin`: the signed-in account and its permissions (`account(request)`), a CSRF token, account URLs and the administration API. Never a key, a database handle or a raw token. |
+| `AuditExports` | `audit` | producers (`attach` an outbox, `validate` an event) and readers (`query`, `record`); admin's audit screens |
+| `AbuseExports` | `abuse` | auth and forms: `namespace(name)` for budgets, backoff, the challenge and the honeypot |
+| `MailExports` | `mail` | auth and forms: `send()` a contributed template; `available` says whether a transport is set |
+| `FormsExports`, `StoreExports` | `forms`, `store` | `form-records`: a flow renderer and validator, and an ownership-honouring records API |
+
+Two copies of one extension cannot exist in a site, so duplicate-instance bugs
+(such as a second `ui` kit that never received another extension's templates)
+cannot happen.
+
+### Audit log
+
+The `audit` extension keeps the one durable log of privileged actions. Its
+guarantee: an event is written into the producer's own outbox in the same
+transaction as the change it records (auth's SQLite `auth_audit_outbox`, the
+`audit` array of an audited store collection's data file), so a change and its
+event are stored together or not at all. Audit drains every attached outbox
+into `data/audit.sqlite` while the host runs, at least once and deduplicated by
+event id, so nothing is lost across a crash. A producer fails closed: when its
+outbox reaches its cap (10000 for auth, 1000 per store collection) the write
+answers 503 until audit catches up. The log keeps the newest `retention`
+events (default 100000). Events carry names, ids and field names, never
+submitted values or secrets. See the [audit package](../packages/audit/README.md)
+and its [security notes](../packages/audit/SECURITY.md).
+
+### Abuse protection
+
+Two different tools limit request rates, and they are not interchangeable:
+
+- The core [`throttle` policy](policies/throttle.md) is YAML on any route: a
+  fixed per-client budget on a bounded in-memory table, the same on every
+  target, reset on restart.
+- The `abuse` extension is for other extensions' own flows: sign-in and
+  sign-up budgets and password backoff in auth
+  (`extensions.auth.config.abuse`), submission budgets in forms
+  (`flows.<name>.abuse`). Its counters are keyed by an HMAC of the client
+  address or account (`data/abuse.key`), persist in `data/abuse.sqlite`, are
+  bounded by `maxKeys` (503 when full) and can escalate to a challenge
+  provider. It is Node-only.
+
+Losing `data/abuse.key` only resets the counters. See the
+[abuse package](../packages/abuse/README.md).
 
 ### The extension definition
 
@@ -1202,7 +1366,8 @@ import { defineExtension } from '@jimhoyd/urlcode/extensions';
 export default defineExtension<MyHostOptions>({
   name: 'store',
   description: 'One line shown by `urlcode extensions available`',
-  requires: [],               // other extension names
+  requires: [],               // extension names that must be installed and declared
+  uses: [],                   // optional: extension names read only when installed
   schema,                     // JSON Schema of extensions.<name>.config
   policySchema,               // optional: per-route policies.extensions.<name>
   hooks, authoring,           // optional project customization contracts
@@ -1232,8 +1397,9 @@ contents; core zeroes it after writing or on failure.
 
 `host(ctx, options)` builds the runtime registration from the operator's
 `host.mjs`. `ctx` is `{projectSha256, site, get, contributions}`: the reviewed
-revision pin, the site directory, the exports of a required extension and the
-values other extensions contribute to this one. It returns `{registration,
+revision pin, the site directory, the exports of a required or used extension
+(`undefined` for a used one that is not installed) and the values other
+extensions contribute to this one. It returns `{registration,
 exports?, close?}`; `registration` is the `RuntimeExtension` described above,
 and `close` runs in reverse activation order. `composeHost` reads the
 revision pin once and refuses a host whose registration pins a different

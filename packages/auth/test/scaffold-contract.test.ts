@@ -11,7 +11,11 @@ import { defineExtension } from '@jimhoyd/urlcode/extensions';
 import type { ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 import { composeHost } from '@jimhoyd/urlcode/host';
 import auth from '../src/extension.ts';
-import type { AuthExports } from '../src/extension.ts';
+import type { AuthExports } from '../src/exports.ts';
+import audit from '@jimhoyd/urlcode-audit/extension';
+import mail from '@jimhoyd/urlcode-mail/extension';
+import { recordingTransport } from '@jimhoyd/urlcode-mail';
+import { authMail } from '../src/mail-templates.ts';
 import { authConfigSchema } from '../src/auth.ts';
 import { authUiTemplates } from '../src/auth-templates.ts';
 import { englishCatalogue } from '../src/presentation.ts';
@@ -54,17 +58,19 @@ function withSha<T>(t: { after(fn: () => void): void }, value: string | undefine
   return run();
 }
 
-test('the definition declares ui as a requirement, its runtime schema and its ui contributions', async () => {
+test('the definition requires ui, audit and mail, uses abuse, and contributes its screens and its mail', async () => {
   const definition = auth.definition;
   assert.equal(definition.name, 'auth');
-  assert.deepEqual(definition.requires, ['ui']);
+  assert.deepEqual(definition.requires, ['ui', 'audit', 'mail']);
+  assert.deepEqual(definition.uses, ['abuse']);
   assert.equal(definition.schema, authConfigSchema);
   const manifest = JSON.parse(await readFile(join(packageRoot, 'urlcode.json'), 'utf8')) as Record<string, unknown>;
   // urlcode.json is generated from this definition (npm run build:addons); CI fails if it drifts.
-  assert.deepEqual({ kind: manifest.kind, name: manifest.name, description: manifest.description, requires: manifest.requires, schema: manifest.schema }, { kind: 'extension', name: 'auth', description: definition.description, requires: ['ui'], schema: JSON.parse(JSON.stringify(authConfigSchema)) });
+  assert.deepEqual({ kind: manifest.kind, name: manifest.name, description: manifest.description, requires: manifest.requires, uses: manifest.uses, schema: manifest.schema }, { kind: 'extension', name: 'auth', description: definition.description, requires: ['ui', 'audit', 'mail'], uses: ['abuse'], schema: JSON.parse(JSON.stringify(authConfigSchema)) });
   const ui = definition.contributes?.ui as { sources: unknown[]; templates: unknown[] };
   assert.deepEqual(ui.sources, [englishCatalogue]);
   assert.deepEqual(ui.templates, [authUiTemplates]);
+  assert.equal(definition.contributes?.mail, authMail);
 });
 
 test('scaffold returns config, routes, private operator files, env and notes', async () => {
@@ -124,7 +130,7 @@ test('each scaffold creates fresh 32-byte keys that never appear in config, note
       assert.ok(!text.includes(Buffer.from(key).toString(encoding)));
 });
 
-test('host() loads the scaffolded operator service and CSRF key, and shares them with dependants', async (t) => {
+test('host() loads the scaffolded operator service and CSRF key, and shares AuthExports v1 with dependants', async (t) => {
   // Inside the package, so the operator module's `@jimhoyd/urlcode-auth` import resolves (to this package's dist).
   const site = await mkdtemp(join(packageRoot, '.test-site-'));
   cleanup(t, () => rm(site, { recursive: true, force: true }));
@@ -140,18 +146,21 @@ test('host() loads the scaffolded operator service and CSRF key, and shares them
       return { registration: { name: 'reader', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema: { type: 'object' }, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } };
     },
   });
-  const host = await withSha(t, sha, () => composeHost(pathToFileURL(join(site, 'host.mjs')), [reader(), auth(), ui.definition()]));
-  assert.deepEqual(host.extensions!.map(extension => extension.name), ['ui', 'auth', 'reader']);
-  const registration = host.extensions![1]!;
+  const host = await withSha(t, sha, () => composeHost(pathToFileURL(join(site, 'host.mjs')), [reader(), auth(), ui.definition(), mail({ transport: recordingTransport() }), audit()]));
+  assert.deepEqual(host.extensions!.map(extension => extension.name), ['audit', 'mail', 'ui', 'auth', 'reader']);
+  const registration = host.extensions![3]!;
   assert.equal(registration.projectSha256, sha);
   assert.equal(registration.schema, authConfigSchema);
   // ui ran first and still received auth's contribution.
   assert.deepEqual(ui.seen, [[auth.definition.contributes!.ui]]);
+  assert.equal(csrfBytes.length, 32);
+  // Dependants get the versioned contract, never the service or the CSRF key; it is inactive until the runtime runs.
   assert.ok(shared);
-  assert.deepEqual(Buffer.from(shared.csrfKey), csrfBytes);
-  assert.deepEqual((await shared.service.listUsers({ limit: 10 })).users, []);
+  assert.equal(shared.version, 1);
+  assert.equal(shared.active, false);
+  assert.deepEqual(Object.keys(shared).sort(), ['account', 'active', 'administration', 'csrf', 'permissions', 'urls', 'version']);
+  assert.throws(() => shared!.urls.mount, { code: 'auth_inactive' });
   await host.close!();
-  assert.ok(shared.csrfKey.every(byte => byte === 0), 'close zeroes the CSRF key it read');
 });
 
 test('host() uses an operator-supplied service and key, and leaves them open on close', async (t) => {
@@ -160,14 +169,14 @@ test('host() uses an operator-supplied service and key, and leaves them open on 
   const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'] }, defaultRole: 'member' });
   cleanup(t, () => service.close());
   const csrfKey = randomBytes(32), copy = Buffer.from(csrfKey);
-  const host = await withSha(t, sha, () => composeHost(pathToFileURL(join(root, 'host.mjs')), [fakeUi().definition(), auth({ service, csrfKey })]));
-  assert.deepEqual(host.extensions!.map(extension => extension.name), ['ui', 'auth']);
+  const host = await withSha(t, sha, () => composeHost(pathToFileURL(join(root, 'host.mjs')), [fakeUi().definition(), audit(), mail({ transport: null }), auth({ service, csrfKey })]));
+  assert.deepEqual(host.extensions!.map(extension => extension.name), ['audit', 'mail', 'ui', 'auth']);
   await host.close!();
   assert.deepEqual(csrfKey, copy);
   assert.deepEqual((await service.listUsers({ limit: 10 })).users, []);
 });
 
-test('host() refuses a CSRF key that is not 32 bytes, a missing ui and a missing PROJECT_SHA256', async (t) => {
+test('host() refuses a CSRF key that is not 32 bytes, a missing ui, audit or mail and a missing PROJECT_SHA256', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-host-'));
   cleanup(t, () => rm(root, { recursive: true, force: true }));
   const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'] }, defaultRole: 'member' });
@@ -176,8 +185,10 @@ test('host() refuses a CSRF key that is not 32 bytes, a missing ui and a missing
   await mkdir(join(root, 'data'));
   await writeFile(join(root, 'data/csrf.key'), randomBytes(16));
   await withSha(t, sha, async () => {
-    await assert.rejects(composeHost(hostUrl, [fakeUi().definition(), auth({ service })]), /32 bytes/);
-    await assert.rejects(composeHost(hostUrl, [auth({ service, csrfKey: randomBytes(32) })]), /auth requires ui/);
+    await assert.rejects(composeHost(hostUrl, [fakeUi().definition(), audit(), mail({ transport: null }), auth({ service })]), /32 bytes/);
+    await assert.rejects(composeHost(hostUrl, [audit(), mail({ transport: null }), auth({ service, csrfKey: randomBytes(32) })]), /auth requires ui/);
+    await assert.rejects(composeHost(hostUrl, [fakeUi().definition(), mail({ transport: null }), auth({ service, csrfKey: randomBytes(32) })]), /auth requires audit/);
+    await assert.rejects(composeHost(hostUrl, [fakeUi().definition(), audit(), auth({ service, csrfKey: randomBytes(32) })]), /auth requires mail/);
   });
-  await withSha(t, undefined, () => assert.rejects(composeHost(hostUrl, [fakeUi().definition(), auth({ service, csrfKey: randomBytes(32) })]), /PROJECT_SHA256/));
+  await withSha(t, undefined, () => assert.rejects(composeHost(hostUrl, [fakeUi().definition(), audit(), mail({ transport: null }), auth({ service, csrfKey: randomBytes(32) })]), /PROJECT_SHA256/));
 });

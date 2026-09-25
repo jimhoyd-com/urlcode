@@ -32,7 +32,9 @@ npx urlcode upgrade --check
 ```
 
 `extensions add` installs only the capability (for example auth's `/account/*`
-pages, with no page of yours protected yet); `--example` also writes each added
+pages, with no page of yours protected yet), plus every extension it requires:
+auth brings `audit` (its log of privileged actions) and `mail` (the messages
+it sends; set a transport in `host.mjs` before going live). `--example` also writes each added
 extension's demo, such as store's `/api/todos` collection and `/todos` screen (per-user when auth
 is installed) or
 forms' `/contact` flow.

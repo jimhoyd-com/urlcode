@@ -1,116 +1,80 @@
-import {field,escapeHtml,Markup} from '@jimhoyd/urlcode-ui';
-import type {ViewModel,Kit} from '@jimhoyd/urlcode-ui';
+import {escapeHtml,Markup} from '@jimhoyd/urlcode-ui';
+import type {ViewModel} from '@jimhoyd/urlcode-ui';
+import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
 import { signHmac, verifyHmac } from '@jimhoyd/urlcode-ui/host';
-export {escapeHtml} from '@jimhoyd/urlcode-ui';
+import type { AbuseChallengeWidget } from '@jimhoyd/urlcode-abuse';
 import { authTemplates } from './auth-templates.ts';
-import { addTurnstileWidgets, turnstileOrigin, turnstileScript } from './challenge-ui.ts';
-import type { TurnstileWidget } from './challenge-ui.ts';
-import { englishCatalogue } from './presentation.ts';
+import { AuthError } from './auth-store.ts';
 import type { PresentationContext } from './presentation.ts';
 import { randomBytes } from 'node:crypto';
-import { isSiteOrigin } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
-export interface AuthHttpResponse {
-    status: number;
-    headers: [
-        string,
-        string
-    ][];
-    body: Uint8Array;
-}
+import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody, readCookie, readFields, wantsJson } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionRequest, HandlerResult } from '@jimhoyd/urlcode/extensions';
+export type AuthHttpResponse = HandlerResult;
+/** A refusal whose message is shown to the client; `headers` (a Retry-After) go on the response. */
 export class AuthHttpError extends Error {
     readonly status: number;
-    constructor(status: number, message: string) { super(message); this.status = status; }
+    readonly headers: readonly [string, string][];
+    constructor(status: number, message: string, headers: readonly [string, string][] = []) { super(message); this.status = status; this.headers = headers; }
 }
-const encoder = new TextEncoder();
-const securityHeaders: [
-    string,
-    string
-][] = [['cache-control', 'no-store'], ['content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"], ['referrer-policy', 'strict-origin'], ['x-content-type-options', 'nosniff']];
-export function jsonResponse(status: number, value: unknown, headers: [
-    string,
-    string
-][] = []): AuthHttpResponse { return { status, headers: [...securityHeaders, ['content-type', 'application/json; charset=utf-8'], ...headers], body: encoder.encode(JSON.stringify(value)) }; }
-/** The object `createUiExtension` returns, structurally: the kit once the runtime has activated the `ui` extension. */
-export interface UiHost { readonly kit: Kit; readonly active: boolean }
 /** One account screen: an `auth/*` template name and the view model the extension computed for it. */
 export interface Screen { name: string; view: ViewModel }
 export interface ScreenOptions {
     status?: number | undefined;
     headers?: [string, string][] | undefined;
-    /** A same-origin script the screen needs (the passkey glue); it is nonce-bound to the kit's page nonce. */
+    /** A same-origin script the screen needs (the passkey glue); the kit binds it to the page nonce. */
     scriptPath?: string | undefined;
     presentation?: PresentationContext | undefined;
-    turnstile?: TurnstileWidget | undefined;
+    /** The abuse extension's challenge widget, placed in every POST form of the screen. */
+    challenge?: AbuseChallengeWidget | undefined;
+    /** A notice shown above the screen (a support session). */
+    flash?: { kind: 'error' | 'warning' | 'success' | 'info'; message: string } | undefined;
     layout?: 'default' | 'compact' | 'application' | undefined;
     /** The kit every account screen renders through; `authExtension` refuses activation without it. */
-    ui: UiHost;
+    ui: UiExtension;
 }
 /** Test hook: sees every screen before it renders. */
 export const screenObserver: { current?: ((screen: Screen) => void) | undefined } = {};
-function pageTitle(title: string, presentation?: PresentationContext): string {
-    const titleKey = Object.entries(englishCatalogue).find(([key, value]) => key.startsWith('page.') && value === title)?.[0];
-    return presentation ? (titleKey ? presentation.text(titleKey) : presentation.textSource(title)) : title;
+/** Places the challenge widget's trusted markup at the start of each POST form (at most 16). */
+function insertChallenge(markup: string, widget: AbuseChallengeWidget | undefined): { markup: string; enabled: boolean } {
+    if (!widget)
+        return { markup, enabled: false };
+    let count = 0;
+    const result = markup.replace(/<form\b([^>]*)>/gi, (tag, attributes: string) => {
+        if (!/(?:^|\s)method=(?:"post"|'post')(?=\s|$)/i.test(attributes))
+            return tag;
+        if (++count > 16)
+            throw new Error('Too many challenge forms');
+        return tag + widget.markup;
+    });
+    return { markup: result, enabled: count > 0 };
 }
-/** Renders a screen through `ui.kit`, the only render path; activation already refused a missing or inactive `ui`. */
+/** Renders a screen through `ui.kit`, the only render path; activation already refused a missing or inactive `ui`. `title` is already resolved in the request's locale. */
 export function screenResponse(title: string, screen: Screen, options: ScreenOptions): AuthHttpResponse {
     if (!Object.hasOwn(authTemplates, screen.name)) throw new Error(`Unknown auth screen: ${screen.name.slice(0, 64)}`);
     const kit = options.ui.kit;
     screenObserver.current?.(screen);
     const context = options.presentation ?? kit.resolveContext();
-    const challenge = addTurnstileWidgets(kit.render(screen.name, screen.view, context).html, options.turnstile);
-    const page = kit.wrap(new Markup(challenge.markup), { title: pageTitle(title, context), context, ...(options.layout ? {layout: options.layout} : {}), ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(challenge.enabled ? { csp: { script: [turnstileOrigin], frame: [turnstileOrigin], connect: [turnstileOrigin] } } : {}) });
-    const scripts = [...(options.scriptPath ? [{ src: options.scriptPath, async: false }] : []), ...(challenge.enabled ? [{ src: turnstileScript, async: true }] : [])];
-    if (!scripts.length) return page;
-    // The kit binds one nonce per page (its style tag carries it); the extension's own scripts share it, so the page CSP admits them.
-    let html = new TextDecoder().decode(page.body);
-    const nonce = /<style nonce="([A-Za-z0-9+/=]+)">/.exec(html)?.[1];
-    if (!nonce || !html.endsWith('</body></html>')) throw new Error('Kit layout lacks the nonce-bound style tag or body end the auth scripts need');
-    html = html.slice(0, -'</body></html>'.length) + scripts.map(script => `<script nonce="${nonce}" src="${escapeHtml(script.src)}"${script.async ? ' async' : ' defer'}></script>`).join('') + '</body></html>';
-    return { status: page.status, headers: page.headers, body: encoder.encode(html) };
+    const challenge = insertChallenge(kit.render(screen.name, screen.view, context).html, options.challenge);
+    const scripts = [...(options.scriptPath ? [{ src: options.scriptPath }] : []), ...(challenge.enabled ? options.challenge!.scripts.map(script => ({ src: script.src, async: script.async })) : [])];
+    return kit.wrap(new Markup(challenge.markup), { title, context, ...(options.layout ? {layout: options.layout} : {}), ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(scripts.length ? { scripts } : {}), ...(challenge.enabled ? { csp: { script: [...options.challenge!.csp.script], frame: [...options.challenge!.csp.frame], connect: [...options.challenge!.csp.connect] } } : {}), ...(options.flash ? { flash: options.flash } : {}) });
 }
-export function formField(name: string, label: string, type = 'text', autocomplete = 'off', required = true): string { return field({name,label,type,autocomplete,required}); }
-export function csrfField(token: string): string { return `<input type="hidden" name="csrf" value="${escapeHtml(token)}">`; }
-export function wantsJson(request: ExtensionRequest): boolean { return (request.headers.get('accept') || '').split(',').some(value => value.trim().split(';')[0] === 'application/json') || request.headers.get('content-type')?.split(';')[0]?.trim() === 'application/json'; }
-export function readFields(request: ExtensionRequest, allowed: string[]): Record<string, string> {
-    if (request.body.byteLength > 16384)
-        throw new AuthHttpError(413, 'Request body too large');
-    let source: string;
-    try {
-        source = new TextDecoder('utf-8', { fatal: true }).decode(request.body);
+/** Auth's form fields: the listed names plus `csrf` and a challenge token, each at most 4096 (the token 2048) characters. */
+export function readAuthFields(request: ExtensionRequest, allowed: readonly string[]): Record<string, string> {
+    return { ...readFields(request, { fields: [...allowed, 'csrf', 'challengeToken'], limits: { challengeToken: 2048 } }) };
+}
+/** The body's `csrf` field for a route write that sent no header; anything unreadable asks for the header instead. */
+function bodyToken(request: ExtensionRequest): string | undefined {
+    let body: ReturnType<typeof readBody>;
+    try { body = readBody(request, { accept: ['form', 'json'], maxBytes: 16384 }); }
+    catch { throw new AuthHttpError(403, 'Send the CSRF token in the x-csrf-token header'); }
+    if (body.kind === 'form') {
+        const values = body.entries.filter(([name]) => name === 'csrf');
+        if (values.length > 1)
+            throw new AuthHttpError(403, 'Invalid CSRF token');
+        return values[0]?.[1];
     }
-    catch {
-        throw new AuthHttpError(400, 'Invalid request encoding');
-    }
-    const type = request.headers.get('content-type')?.split(';')[0]?.trim(), result: Record<string, string> = Object.create(null);
-    let entries: [
-        string,
-        unknown
-    ][];
-    if (type === 'application/json') {
-        let data: unknown;
-        try {
-            data = JSON.parse(source);
-        }
-        catch {
-            throw new AuthHttpError(400, 'Invalid JSON body');
-        }
-        if (!data || typeof data !== 'object' || Array.isArray(data))
-            throw new AuthHttpError(400, 'Expected an object');
-        entries = Object.entries(data);
-    }
-    else if (type === 'application/x-www-form-urlencoded')
-        entries = [...new URLSearchParams(source)];
-    else
-        throw new AuthHttpError(415, 'Use JSON or form data');
-    if (entries.length > 64)
-        throw new AuthHttpError(400, 'Too many fields');
-    for (const [key, value] of entries) {
-        if (![...allowed, 'csrf', 'challengeToken'].includes(key) || Object.hasOwn(result, key) || typeof value !== 'string' || value.length > (key === 'challengeToken' ? 2048 : 4096))
-            throw new AuthHttpError(400, 'Invalid request field');
-        result[key] = value;
-    }
-    return result;
+    const value = body.value as Record<string, unknown> | null;
+    return value && typeof value === 'object' && !Array.isArray(value) && typeof value.csrf === 'string' ? value.csrf : undefined;
 }
 export interface AuthHttpOptions {
     csrfKey: Uint8Array;
@@ -145,17 +109,9 @@ export class AuthHttp {
             throw new Error('Auth site origins must start with the canonical origin');
         this.#key = Buffer.from(options.csrfKey);
     }
+    /** One of auth's cookies; a malformed value reads as absent (signed out), an ambiguous Cookie header is 400. */
     cookie(request: ExtensionRequest, name: string): string | undefined {
-        const raw = request.headers.get('cookie') || '';
-        if (raw.length > 8192 || (request.headerCounts['cookie'] || 0) > 1)
-            throw new AuthHttpError(400, 'Invalid cookies');
-        const values = raw.split(';').map(value => value.trim()).filter(value => value.startsWith(name + '='));
-        if (values.length > 1)
-            throw new AuthHttpError(400, 'Duplicate session cookie');
-        const value = values[0]?.slice(name.length + 1);
-        if (value !== undefined && !/^[A-Za-z0-9_-]{20,256}$/.test(value))
-            throw new AuthHttpError(400, 'Invalid session cookie');
-        return value;
+        return readCookie(request, name, /^[A-Za-z0-9_-]{20,256}$/);
     }
     device(request: ExtensionRequest): {
         id: string;
@@ -193,12 +149,34 @@ export class AuthHttp {
                         string
                     ]]), ...this.device(request).headers] };
     }
-    verify(request: ExtensionRequest, fields: Record<string, string>): void {
-        if (request.origin !== this.origin || !isSiteOrigin(this, request.headers.get('origin')) || request.headers.get('sec-fetch-site') === 'cross-site')
+    /** Same-origin admission for every write: the canonical origin, then core's one rule with no provenance refused. */
+    admit(request: ExtensionRequest): void {
+        if (request.origin !== this.origin || !isSameOriginRequest(request, this, { whenAbsent: 'refuse' }))
             throw new AuthHttpError(403, 'Same-origin request required');
-        if ((request.headerCounts['origin'] || 0) > 1 || (request.headerCounts['x-csrf-token'] || 0) > 1)
+    }
+    /** A write to auth's own mount: admission, then the session- or flow-bound token from the header or the read `csrf` field. */
+    verify(request: ExtensionRequest, fields: Record<string, string>): void {
+        this.admit(request);
+        if ((request.headerCounts['x-csrf-token'] || 0) > 1)
             throw new AuthHttpError(403, 'Invalid CSRF token');
-        const binding = this.session(request) || this.cookie(request, this.flowCookie), provided = request.headers.get('x-csrf-token') || fields.csrf;
+        this.#check(request, request.headers.get('x-csrf-token') || fields.csrf);
+    }
+    /**
+     * A write to a route an auth session policy protects (jimhoyd-com/urlcode#745). `origin` is admission alone, for a
+     * mount that verifies its own token or accepts JSON only. `token` also needs the session-bound token: the single
+     * `x-csrf-token` header, or only when that is absent the body's `csrf` field (one form entry, or a top-level JSON
+     * string), read from at most 16384 bytes of form or JSON without consuming the body the route reads next.
+     */
+    verifyWrite(request: ExtensionRequest, csrf: 'token' | 'origin'): void {
+        this.admit(request);
+        if (csrf === 'origin')
+            return;
+        if ((request.headerCounts['x-csrf-token'] || 0) > 1)
+            throw new AuthHttpError(403, 'Invalid CSRF token');
+        this.#check(request, request.headers.get('x-csrf-token') ?? bodyToken(request));
+    }
+    #check(request: ExtensionRequest, provided: string | undefined): void {
+        const binding = this.session(request) || this.cookie(request, this.flowCookie);
         if (!binding || !provided || !/^[a-f0-9]{64}$/.test(provided) || !verifyHmac(this.#key, 'urlcode-csrf\0' + this.origin + '\0' + binding, provided, 'hex'))
             throw new AuthHttpError(403, 'Invalid CSRF token');
     }
@@ -212,14 +190,17 @@ export class AuthHttp {
         string
     ][] { return [['set-cookie', this.setCookie(this.sessionCookie, '', 0)]]; }
 }
-export function httpFailure(error: unknown, request: ExtensionRequest, presentation: PresentationContext | undefined, recovery: {href:string;label:string} | undefined, ui: UiHost): AuthHttpResponse {
-    const known = error instanceof AuthHttpError || (error instanceof Error && 'status' in error && typeof error.status === 'number' && error.status >= 400 && error.status < 500);
-    const status = known ? (error as Error & {
-        status: number;
-    }).status : 500;
-    const source = error instanceof AuthHttpError ? error.message : status >= 500 ? 'Service unavailable' : 'Request could not be completed';
-    const message = presentation?.textSource(source) ?? source;
-    return wantsJson(request) ? jsonResponse(status, { error: message }) : screenResponse('Request could not be completed', { name: 'auth/status', view: { alert: true, message: presentation?.textSource(message) ?? message, href: recovery?.href ?? null, label: recovery?.label ?? null } }, { status, presentation, layout: 'compact', ui });
+/**
+ * The answer for a failed request. Only auth's own refusals, core's request-helper refusals and a project hook's denial
+ * reason are shown as they are; any other 4xx reads 'Request could not be completed' and anything else is a 500.
+ */
+export function httpFailure(error: unknown, request: ExtensionRequest, presentation: PresentationContext | undefined, recovery: {href:string;label:string} | undefined, ui: UiExtension): AuthHttpResponse {
+    const statusOf = error instanceof Error && 'status' in error && typeof error.status === 'number' ? error.status : 500;
+    const known = error instanceof AuthHttpError || statusOf >= 400 && statusOf < 500 || error instanceof AuthError && statusOf === 503;
+    const status = known ? statusOf : 500;
+    const source = error instanceof AuthHttpError || error instanceof ExtensionHttpError ? error.message : error instanceof AuthError && error.reason ? error.reason : status >= 500 ? 'Service unavailable' : 'Request could not be completed';
+    const message = presentation?.textSource(source) ?? source, headers = error instanceof AuthHttpError ? [...error.headers] : [];
+    return wantsJson(request) ? jsonResponse(status, { error: message }, headers) : screenResponse((presentation ?? ui.kit.resolveContext()).text('page.error'), { name: 'auth/status', view: { alert: true, message, href: recovery?.href ?? null, label: recovery?.label ?? null } }, { status, headers, presentation, layout: 'compact', ui });
 }
 /** Proof token stays in the submitting form and is consumed once with the primary proof. */
 export function secondFactorButton(base: string, text: (source: string) => string = value => value): string {

@@ -59,12 +59,14 @@ export interface KitReport {
     assets: { name: string; bytes: number }[];
 }
 /**
- * A script an extension serves itself, under its own mount: a same-site path
- * (no scheme, no host, passes `safeHref` unchanged) and an optional
- * Subresource Integrity value. It is rendered with the page nonce, like a kit
- * script, so the page CSP admits it without post-processing the document.
+ * A script an extension adds to a page: a same-site path it serves under its
+ * own mount (no scheme, no host, passes `safeHref` unchanged), or an absolute
+ * `https:` URL whose origin the same page lists in `csp.script` (a challenge
+ * widget, for example). An optional Subresource Integrity value; `async` loads
+ * it with `async` instead of `defer`. It is rendered with the page nonce, like
+ * a kit script, so the page CSP admits it without post-processing the document.
  */
-export interface ExtensionScript { src: string; integrity?: string | undefined }
+export interface ExtensionScript { src: string; integrity?: string | undefined; async?: boolean | undefined }
 export interface NavigationItem { href: string; label: string; current?: boolean | undefined; icon?: IconName | undefined }
 export type PageLayout = 'default' | 'compact' | 'application';
 export interface PageOptions {
@@ -118,9 +120,14 @@ function nonce(): string {
     return btoa(binary);
 }
 /** An extension script's path: same-site, absolute, no scheme or host, and unchanged by `safeHref`. */
-function extensionScriptSource(value: unknown): string {
-    if (typeof value !== 'string' || value.length > pageLimits.scriptSource || !value.startsWith('/') || value.startsWith('//') || safeHref(value) !== value)
-        throw new Error(`Extension script must be a same-site path: ${String(value).slice(0, 64)}`);
+function extensionScriptSource(value: unknown, scriptSources: readonly string[]): string {
+    const refuse = (): never => { throw new Error(`Extension script must be same-site or listed in csp.script: ${String(value).slice(0, 64)}`); };
+    if (typeof value !== 'string' || value.length > pageLimits.scriptSource || safeHref(value) !== value) return refuse();
+    if (value.startsWith('/') && !value.startsWith('//')) return value;
+    let url: URL;
+    try { url = new URL(value); } catch { return refuse(); }
+    // A cross-origin script only from an origin the page's own CSP already admits.
+    if (url.protocol !== 'https:' || url.username || url.password || !scriptSources.includes(url.origin)) return refuse();
     return value;
 }
 function integrityValue(value: unknown): string | null {
@@ -220,10 +227,11 @@ export function createKit(options: KitOptions): Kit {
             if (typeof script === 'string') {
                 const asset = assets.find(candidate => candidate.name.startsWith(script + '.'));
                 if (!asset) throw new Error(`Unknown kit script: ${script.slice(0, 32)}`);
-                return { src: `${assetsBase}/${asset.name}`, integrity: null };
+                return { src: `${assetsBase}/${asset.name}`, integrity: null, async: false };
             }
             if (!script || typeof script !== 'object') throw new Error('Page script must be a kit script name or an extension script');
-            return { src: extensionScriptSource(script.src), integrity: integrityValue(script.integrity) };
+            if (script.async !== undefined && typeof script.async !== 'boolean') throw new Error('Extension script async must be a boolean');
+            return { src: extensionScriptSource(script.src, page.csp?.script ?? []), integrity: integrityValue(script.integrity), async: script.async === true };
         });
         const nav = page.nav ?? null;
         if (nav && (!Array.isArray(nav) || nav.length > pageLimits.navigation)) throw new Error('Too many navigation items');

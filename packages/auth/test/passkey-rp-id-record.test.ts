@@ -9,9 +9,9 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createAuthService } from '../src/auth-core.ts';
 import type { AuthService } from '../src/auth-core.ts';
-import { authExtension } from '../src/auth.ts';
 import { createPasskeyProvider } from '../src/passkeys.ts';
 import { activatedUi } from './support/render.ts';
+import { companions, withCompanions } from './support/companions.ts';
 
 // Issue #736: auth records each passkey's RP ID and warns the operator at activation, with counts only.
 const origin = 'https://app.site.example', alias = 'https://www.site.example', projectSha256 = 'c'.repeat(64);
@@ -36,6 +36,9 @@ async function enrol(service: AuthService, email: string, credentials: { id: str
 }
 async function activationWarnings(t: TestContext, service: AuthService, passkeyRpId?: string): Promise<string[]> {
     const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin), warned: string[] = [];
+    const site = await mkdtemp(join(tmpdir(), 'auth-passkey-rp-site-'));
+    cleanup(t, () => rm(site, { recursive: true, force: true }));
+    const authExtension = withCompanions(await companions(t, site, projectSha256, origin));
     const passkeys = createPasskeyProvider({ origin, rpId: 'app.site.example', rpName: 'Site' });
     const instance = await authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui, passkeys }).activate({ registration: 'open' }, { origin, origins: passkeyRpId === 'app.site.example' ? [origin] : [origin, alias], ...(passkeyRpId ? { passkeyRpId } : {}), target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname, warn: message => { warned.push(message); } });
     await instance.close?.();

@@ -22,8 +22,9 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
     case 'available': {
       if (names.length) throw new ConfigError(`Use urlcode ${command} available`);
       const manifest = await readAddonManifest();
-      const items = Object.entries(manifest.addons).filter(([, pin]) => pin.kind === kind).map(([name, pin]) => ({ name, version: manifest.version, description: pin.description, requires: pin.requires }));
-      print(values.json ? { core: manifest.version, [command]: items } : `${command === 'extensions' ? 'Extensions' : 'Artifacts'} released with core ${manifest.version}:\n${items.map(item => `  ${item.name}${item.requires.length ? ` (requires ${item.requires.join(', ')})` : ''}: ${item.description}`).join('\n') || '  none'}\n\nAdd with: urlcode ${command} add <name>\n`);
+      const items = Object.entries(manifest.addons).filter(([, pin]) => pin.kind === kind).map(([name, pin]) => ({ name, version: manifest.version, description: pin.description, requires: pin.requires, uses: pin.uses ?? [] }));
+      const edges = (item: { requires: string[]; uses: string[] }): string => { const parts = [...(item.requires.length ? [`requires ${item.requires.join(', ')}`] : []), ...(item.uses.length ? [`uses ${item.uses.join(', ')}`] : [])]; return parts.length ? ` (${parts.join('; ')})` : ''; };
+      print(values.json ? { core: manifest.version, [command]: items } : `${command === 'extensions' ? 'Extensions' : 'Artifacts'} released with core ${manifest.version}:\n${items.map(item => `  ${item.name}${edges(item)}: ${item.description}`).join('\n') || '  none'}\n\nAdd with: urlcode ${command} add <name>\n`);
       return undefined;
     }
     case 'add': {
@@ -44,6 +45,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       const result = await removeAddon(site, kind, names[0]!);
       print(values.json ? { event: `${kind}-removed`, ...result } : [
         `Removed ${result.removed}.`,
+        ...result.notes.map(note => `Note: ${note}`),
         ...(result.kept.length ? [`Left in place (delete them yourself if you no longer need them): ${result.kept.join(', ')}; data/ is never touched.`] : []),
         ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Update the reviewed policy's projectSha256 (or PROJECT_SHA256) after reviewing.`] : []),
       ].join('\n') + '\n');

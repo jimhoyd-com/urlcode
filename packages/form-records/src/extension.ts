@@ -21,7 +21,7 @@ function scaffold(): ScaffoldResult {
     config: { records: {} },
     routes: {},
     notes: [
-      'form-records is installed with no record flows: declare one under extensions.form-records.config.records (a form, an ownership: owner store collection, editable fields) and mount it with a route <mount>/* using extension: form-records, methods GET, HEAD and POST, and auth: true. See the @jimhoyd/urlcode-form-records README.',
+      'form-records is installed with no record flows: declare one under extensions.form-records.config.records (a form, an ownership: owner store collection, editable fields) and mount it with a route <mount>/* using extension: form-records, methods GET, HEAD and POST, and auth: {csrf: origin} (forms checks its own CSRF token). See the @jimhoyd/urlcode-form-records README.',
     ],
   };
 }
@@ -44,10 +44,12 @@ function example(request: ScaffoldRequest): ScaffoldResult {
       },
       editable: ['done'], editTitle: 'Update todo',
     } } },
-    routes: { [`${exampleMount}/*`]: { extension: 'form-records', methods: ['GET', 'HEAD', 'POST'], auth: true } },
+    // forms verifies its own CSRF token on every POST, so auth admits on same-origin provenance and the session
+    // cookie rather than asking for its session-bound token header, which a plain HTML form cannot send.
+    routes: { [`${exampleMount}/*`]: { extension: 'form-records', methods: ['GET', 'HEAD', 'POST'], auth: { csrf: 'origin' } } },
     notes: [
       `Open ${exampleMount} signed in: the form saves a todo into the store's todos collection, ${exampleMount}/<id> shows it and ${exampleMount}/<id>/edit changes only done. Each user sees only their own todos.`,
-      'The example uses the todos collection (ownership: owner) that the store example declares when store is added with --example and auth installed. If store was already installed, declare that collection under extensions.store.config.collections yourself, with its /api/todos/* route and auth: true (see docs/STORE.md).',
+      'The example uses the todos collection (ownership: owner) that the store example declares when store is added with --example and auth installed. If store was already installed, declare that collection under extensions.store.config.collections yourself, with its /api/todos/* route and auth: {csrf: origin} (see docs/STORE.md).',
     ],
   };
 }

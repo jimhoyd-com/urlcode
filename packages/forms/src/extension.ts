@@ -6,8 +6,11 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { defineExtension } from '@jimhoyd/urlcode/extensions';
+import type { ScaffoldRequest } from '@jimhoyd/urlcode/extensions';
 import type { UiExtension } from '@jimhoyd/urlcode-ui/host';
-import { createForms, formHookContracts, formsAuthoring, formsConfigSchema } from './forms.ts';
+import type { AbuseExports } from '@jimhoyd/urlcode-abuse';
+import type { MailExports } from '@jimhoyd/urlcode-mail';
+import { createForms, formHookContracts, formsAuthoring, formsConfigSchema, formsMail } from './forms.ts';
 
 /** The CSRF secret file, relative to the site; `data/` is outside app/ and ignored by the starter's .gitignore. */
 export const formsCsrfKeyFile = 'data/forms-csrf.key';
@@ -23,7 +26,12 @@ export default defineExtension<FormsHostOptions>({
   name: 'forms',
   description: 'Declarative server-rendered form flows with CSRF, field validation and a confirmation page, rendered through ui.',
   requires: ['ui'],
+  // Both optional: a flow that declares `abuse` needs abuse, and one that declares `notify` needs mail; each refuses
+  // to activate without it. Flows that declare neither never touch them.
+  uses: ['abuse', 'mail'],
   schema: formsConfigSchema,
+  // The `forms.submission` message a flow's `notify` sends; mail reads it whether or not a flow uses it.
+  contributes: { mail: formsMail },
   hooks: formHookContracts,
   authoring: formsAuthoring,
   agent: {description: 'Local, revision-pinned references for agents configuring the forms extension.', references: [{name: 'forms extension guide', description: 'Configuration and integration guidance for declarative form flows.', path: 'README.md'}]},
@@ -40,8 +48,9 @@ export default defineExtension<FormsHostOptions>({
       ],
     };
   },
-  // `--example`: a public contact form on /contact.
-  example() {
+  // `--example`: a public contact form on /contact, rate limited with a honeypot when abuse is installed.
+  example(request: ScaffoldRequest) {
+    const withAbuse = request.installed.includes('abuse');
     return {
       config: {
         flows: {
@@ -53,6 +62,7 @@ export default defineExtension<FormsHostOptions>({
               email: { label: 'Email', type: 'email', maxLength: 320 },
               message: { label: 'Message', control: 'textarea', minLength: 10, maxLength: 2000 },
             },
+            ...(withAbuse ? { abuse: { client: { limit: 5, windowMs: 3600000 }, honeypot: 'website' } } : {}),
           },
         },
       },
@@ -60,6 +70,7 @@ export default defineExtension<FormsHostOptions>({
       notes: [
         'Open /contact: a sample form declared in app/urlcode.yaml under extensions.forms.config.flows; edit its fields or add flows there.',
         'Handle submissions with a trusted onSubmit hook (extensions.forms.config.hooks.onSubmit); without one a valid submission only shows the confirmation.',
+        ...(withAbuse ? ['The contact form accepts at most 5 submissions per client network an hour (abuse.client) and silently drops a submission that fills its hidden website field (abuse.honeypot).'] : []),
       ],
     };
   },
@@ -73,6 +84,6 @@ export default defineExtension<FormsHostOptions>({
       }
     }
     // `exports` is the FormsExports contract (version 1) an extension that requires forms reads with ctx.get('forms').
-    return createForms({ projectSha256: context.projectSha256, csrfSecret, ui: context.get<UiExtension>('ui') });
+    return createForms({ projectSha256: context.projectSha256, csrfSecret, ui: context.get<UiExtension>('ui'), abuse: context.get<AbuseExports | undefined>('abuse'), mail: context.get<MailExports | undefined>('mail') });
   },
 });

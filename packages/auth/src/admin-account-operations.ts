@@ -1,21 +1,23 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import type {ExtensionHookContext} from '@jimhoyd/urlcode/extensions';
 import {AuthError} from './auth-store.ts';
 import type {AuthStore} from './auth-store.ts';
+import type {HookRunner} from './lifecycle-hooks.ts';
 export type AdminAccountAction='verify-email'|'force-password-reset'|'schedule-deletion'|'cancel-deletion'|'remove-passkey'|'remove-external'|'request-email-change'|'assign-roles'|'resend-verification';
 export type AdminAccountDelivery={kind:'token';accountId:string;email:string;locale?:string;purpose:'verify-email'|'reset-password'|'cancel-deletion'|'verify-email-change'|'cancel-email-change';token:string}|{kind:'notice';accountId:string;email:string;locale?:string;action:AdminAccountAction};
-export type AdminAccountRequest={actorToken:string;accountIds:string[];reason:string}&(
+export type AdminAccountRequest={actorToken:string;accountIds:string[];reason:string;context?:ExtensionHookContext}&(
  {action:'assign-roles';roles:string[]}|{action:'request-email-change';email:string}|{action:'remove-passkey';credentialId:string}|{action:'remove-external';externalId:string}|{action:'verify-email'|'force-password-reset'|'schedule-deletion'|'cancel-deletion'|'resend-verification'});
 export interface AdminAuthenticationMethods {accountId:string;password:boolean;totp:boolean;passkeys:{id:string;secondFactor:boolean;added?:number;lastUsed?:number}[];external:{id:string;provider:string;added?:number;lastUsed?:number}[]}
 export interface AdminAccountService {
  inspectAccountAuthentication(input:{actorToken:string;accountId:string;reason:string}):Promise<AdminAuthenticationMethods>;
  stageAccountAdministration(input:AdminAccountRequest):Promise<{operationId:string;deliveries:AdminAccountDelivery[]}>;
- completeAccountAdministration(input:{actorToken:string;operationId:string}):Promise<{affected:number}>;
+ completeAccountAdministration(input:{actorToken:string;operationId:string;context?:ExtensionHookContext}):Promise<{affected:number}>;
  cancelAccountAdministration(input:{actorToken:string;operationId:string}):Promise<void>;
 }
-interface Dependencies {store:AuthStore;check():void;now():number;roles:Record<string,string[]>;permittedEmail(value:string):string}
+interface Dependencies {store:AuthStore;check():void;now():number;roles:Record<string,string[]>;permittedEmail(value:string):string;hooks:HookRunner;roleChange(actorToken:string,accountId:string,requested:string[],reason:string,context?:ExtensionHookContext):Promise<void>}
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const valid=(value:unknown,max:number)=>typeof value==='string'&&value.length>0&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
-/** Operator-side service. Only declared delivery callbacks receive staged tokens. */
+/** Staged account operations: auth delivers each staged token itself, then completes or cancels (administration.ts). */
 export function createAdminAccountOperations(deps:Dependencies):AdminAccountService {
  const fail=()=>{throw new AuthError(400,'invalid_administration');};
  const actor=(value:string)=>{deps.check();if(!/^[A-Za-z0-9_-]{43}$/.test(value))fail();return hash(value);};
@@ -27,7 +29,9 @@ export function createAdminAccountOperations(deps:Dependencies):AdminAccountServ
    if(!['verify-email','force-password-reset','schedule-deletion','cancel-deletion','remove-passkey','remove-external','request-email-change','assign-roles','resend-verification'].includes(input.action))fail();
    if(input.accountIds.length>1&&!['assign-roles','resend-verification'].includes(input.action))fail();
    const parameters:Record<string,unknown>={};
-   if(input.action==='assign-roles'){if(!Array.isArray(input.roles)||input.roles.length<1||input.roles.length>32||new Set(input.roles).size!==input.roles.length||input.roles.some(value=>!Object.hasOwn(deps.roles,value)))fail();parameters.roles=[...input.roles];}
+   if(input.action==='assign-roles'){if(!Array.isArray(input.roles)||input.roles.length<1||input.roles.length>32||new Set(input.roles).size!==input.roles.length||input.roles.some(value=>!Object.hasOwn(deps.roles,value)))fail();parameters.roles=[...input.roles];
+    // Every affected account passes the veto hook before anything is staged.
+    for(const accountId of input.accountIds)await deps.roleChange(input.actorToken,accountId,[...input.roles],why,input.context);}
    if(input.action==='request-email-change')parameters.email=deps.permittedEmail(input.email);
    if(input.action==='remove-passkey'){if(!valid(input.credentialId,1024))fail();parameters.credentialId=input.credentialId;}
    if(input.action==='remove-external'){if(!/^[a-f0-9]{64}$/.test(input.externalId))fail();parameters.externalId=input.externalId;}
@@ -36,7 +40,12 @@ export function createAdminAccountOperations(deps:Dependencies):AdminAccountServ
    const result=await deps.store.call<{operationId:string;deliveries:PlannedDelivery[]}>('adminAccountStage',{hash:actorHash,operationId:randomUUID(),accountIds:input.accountIds,action:input.action,reason:why,parameters,tokens:input.accountIds.map(accountId=>({accountId,primaryHash:hash(raw.get(accountId)!.primary),secondaryHash:hash(raw.get(accountId)!.secondary)})),now:deps.now()});
    return {operationId:result.operationId,deliveries:result.deliveries.map(delivery=>delivery.kind==='notice'?delivery:{kind:'token',accountId:delivery.accountId,email:delivery.email,...(delivery.locale?{locale:delivery.locale}:{}),purpose:delivery.purpose,token:raw.get(delivery.accountId)![delivery.tokenSlot]})};
   },
-  async completeAccountAdministration(input){const actorHash=actor(input.actorToken);if(!valid(input.operationId,256))fail();return deps.store.call('adminAccountComplete',{hash:actorHash,operationId:input.operationId,now:deps.now()});},
+  async completeAccountAdministration(input){
+   const actorHash=actor(input.actorToken);if(!valid(input.operationId,256))fail();
+   const result=await deps.store.call<{affected:number;actorId:string;scheduled?:{accountId:string;email:string;deleteAfter:number}[]}>('adminAccountComplete',{hash:actorHash,operationId:input.operationId,now:deps.now()});
+   for(const scheduled of result.scheduled??[])await deps.hooks.action('onDeletionScheduled',{...scheduled,actorId:result.actorId},input.context);
+   return {affected:result.affected};
+  },
   async cancelAccountAdministration(input){const actorHash=actor(input.actorToken);if(!valid(input.operationId,256))fail();await deps.store.call('adminAccountCancel',{hash:actorHash,operationId:input.operationId,now:deps.now()});},
  };
 }

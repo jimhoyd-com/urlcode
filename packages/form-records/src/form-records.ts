@@ -86,7 +86,7 @@ export const formRecordsAuthoring: ExtensionAuthoringContract = {
   description: 'Save a declared form into an owned store collection: a submission creates a record private to its signed-in creator, the confirmation page reads the saved record back, and an edit page changes only the fields listed in `editable`. forms keeps rendering, CSRF and validation; the store keeps ownership, limits and ETags. No handler code.',
   surfaces: [
     { kind: 'configuration', name: 'records', description: 'Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).', path: 'urlcode.yaml#extensions.form-records.config.records' },
-    { kind: 'extension', name: 'mount', description: 'Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true`. It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller\'s own records). Declare forms and store before form-records under `extensions`.', path: 'urlcode.yaml' },
+    { kind: 'extension', name: 'mount', description: 'Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller\'s own records).', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
 };
@@ -187,8 +187,8 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
     targets: ['node'],
     schema: formRecordsConfigSchema, authoring: formRecordsAuthoring,
     activate(raw, context): ExtensionInstance {
-      if (!options.forms.active || !options.store.active) throw new Error('form-records needs forms and store active first: declare both before form-records under extensions in urlcode.yaml');
-      if (options.ui && !options.ui.active) throw new Error('form-records needs ui active first: declare ui before form-records under extensions in urlcode.yaml');
+      if (!options.forms.active || !options.store.active) throw new Error('form-records needs forms and store active first: the host must register both before form-records (composeHost does)');
+      if (options.ui && !options.ui.active) throw new Error('form-records needs ui active first: the host must register ui before form-records (composeHost does)');
       const config = raw as unknown as FormRecordsConfig;
       const byMount = new Map<string, Binding>();
       for (const [name, spec] of Object.entries(config.records)) {
@@ -196,7 +196,7 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
         if (byMount.has(spec.mount)) throw new Error(`Records ${byMount.get(spec.mount)!.name} and ${name} share mount ${spec.mount}`);
         if (!context.mounts.includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* with extension: form-records is not declared`);
         // Fail closed at startup: a record is private to its creator, so the mount must be able to carry a principal.
-        if (!(context.principalMounts ?? []).includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* needs a principal-providing policy (for example auth: true), because each record belongs to the signed-in user who created it`);
+        if (!(context.principalMounts ?? []).includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* needs a principal-providing policy (for example auth: {csrf: origin}), because each record belongs to the signed-in user who created it`);
         byMount.set(spec.mount, binding);
       }
       for (const mount of context.mounts) if (!byMount.has(mount)) throw new Error(`form-records mount ${mount} has no declared record flow`);

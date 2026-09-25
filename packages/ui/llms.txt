@@ -14,7 +14,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `createKit`, `resolveTheme`, `kitTemplates`, `kitCss`, `stylesheet`. Web/Intl APIs only.
 - `@jimhoyd/urlcode-ui/host` (Node): `createUiExtension`, `loadProjectUi`, the `urlcode-ui` CLI
   (`list`, `eject`, `preview`, `doctor`, `copy --missing`), run in a site as `npx urlcode-ui …`;
-  `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` resolves those namespaces from the site.
+  `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` resolves those namespaces from the site
+  (each package's `./extension` definition, `contributes.ui`).
 - `@jimhoyd/urlcode-ui/extension`: the `ui` extension definition host.mjs lists as `ui()` in
   `composeHost`; other extensions contribute copy, templates and data screens (`screens`, a source
   resolved once at activation) to it through `contributes.ui`. ui never reads another extension's YAML.

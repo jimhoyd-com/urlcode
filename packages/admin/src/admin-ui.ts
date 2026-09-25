@@ -1,72 +1,61 @@
 /**
- * Renders one admin screen through the urlcode-ui kit. The kit is the only
- * render path: the host supplies the `ui` extension and the admin extension
- * refuses to activate without an active one. Flows, permissions, freshness
- * gates, escaping, CSRF and headers stay in the extension code that computes
- * the view; the kit owns the document and the console shell around it.
+ * Renders one admin screen through the urlcode-ui kit. The kit is the only render path: admin requires the `ui`
+ * extension and refuses to activate while it is inactive. Flows, permissions, freshness gates, escaping and headers
+ * stay in the extension code that computes the view; the kit owns the document and the console shell around it.
  */
-import {Markup} from '@jimhoyd/urlcode-ui';
-import type {IconName,Kit,Presentation,PresentationContext,ViewModel} from '@jimhoyd/urlcode-ui';
-import {AuthHttpError,httpFailure,wantsJson} from '@jimhoyd/urlcode-auth';
-import type {AuthHttpResponse} from '@jimhoyd/urlcode-auth';
-import type {ExtensionRequest} from '@jimhoyd/urlcode/extensions';
-import {adminTemplateNames,adminTemplates} from './admin-templates.ts';
-import {createAdminPresentation} from './admin-copy.ts';
-/** The object `createUiExtension` returns, structurally: the kit once the runtime has activated the `ui` extension. */
-export interface UiHost {readonly kit:Kit;readonly active:boolean}
+import {Markup,field} from '@jimhoyd/urlcode-ui';
+import type {IconName,ViewModel} from '@jimhoyd/urlcode-ui';
+import type {UiExtension} from '@jimhoyd/urlcode-ui/host';
+import {ExtensionHttpError,jsonResponse,wantsJson} from '@jimhoyd/urlcode/extensions';
+import type {ExtensionRequest,HandlerResult} from '@jimhoyd/urlcode/extensions';
+import {adminTemplates} from './admin-templates.ts';
+import type {AdminCopy} from './admin-copy.ts';
+/** A refusal admin itself decides. The message is English source text from the admin catalogue, never request data. */
+export class AdminHttpError extends Error {
+ readonly status:number;
+ constructor(status:number,message:string){super(message);this.name='AdminHttpError';this.status=status;}
+}
 /** One admin screen: an `admin/*` template name and the view the extension computed for it. */
 export interface Screen {name:string;view:ViewModel}
 export interface ScreenOptions {
  status?:number|undefined;
  headers?:[string,string][]|undefined;
- /** The console copy the extension resolved for this request. The kit layout renders through it too, so the document's language matches the body's. */
- presentation:PresentationContext;
- /** The console shell's links: `kit.wrap` builds the sidebar, the page header and the skip target from these and the title. Absent on the failure page, which carries no console navigation. */
+ /** The console copy resolved for this request. The kit layout renders through the same context, so the document's language matches the body's. */
+ copy:AdminCopy;
+ /** The console shell's links: `kit.wrap` builds the sidebar, the page header and the skip target from these and the title. Absent on the failure page when the caller is not let in. */
  shell?:{nav:{href:string;label:string;current:boolean;icon:IconName}[];menu:{label:string;items:{href:string;label:string}[]}}|undefined;
- ui:UiHost;
+ ui:UiExtension;
+ /** Where a stale proof confirms the caller's identity: auth's step-up page, returning to this screen. */
+ stepUp?:{href:string;label:string}|undefined;
 }
 /** Test hook: sees every screen before it renders. */
 export const screenObserver:{current?:((screen:Screen)=>void)|undefined}={};
-/**
- * Activation gate: the console has one render path, so a host without an active kit that carries the `admin/*`
- * templates is refused up front, naming what is missing and how to supply it, rather than failing per request.
- */
-export function requireKit(ui:UiHost|undefined):Kit {
- if(!ui||typeof ui!=='object'||typeof ui.active!=='boolean')throw new Error("The admin console renders only through the urlcode-ui kit: pass the ui extension as `ui` to adminExtension({service, csrfKey, projectSha256, ui}), built with createUiExtension({projectSha256, projectRoot, sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates]}).");
- if(!ui.active)throw new Error("The ui extension is not active yet: declare `ui` before `admin` under `extensions` in urlcode.yaml and mount its assets route (for example `/assets/ui/*`), so the runtime activates it before the admin console.");
- const kit=ui.kit,missing=adminTemplateNames.filter(name=>!kit.info(name));
- if(missing.length)throw new Error(`The ui extension was built without the admin templates (${missing.length} of ${adminTemplateNames.length} missing, first ${missing[0]}): pass adminUiTemplates in createUiExtension({extensions: [authUiTemplates, adminUiTemplates]}).`);
- return kit;
-}
-const composed=new WeakMap<Presentation,Presentation>();
-/**
- * The copy source: the host's presentation; else the kit's, composed with the admin catalogue, when the host registered
- * the auth catalogue with the ui extension (the kit's own catalogue limit leaves no room for the admin catalogue too);
- * else the bundled English.
- */
-export function presentationSource(presentation:Presentation|undefined,ui:UiHost,fallback:Presentation):Presentation {
- if(presentation)return presentation;
- const kit=ui.kit;
- if(!Object.hasOwn(kit.presentation.english,'page.admin'))return fallback;
- let source=composed.get(kit.presentation);
- if(!source){source=createAdminPresentation({base:kit.presentation});composed.set(kit.presentation,source);}
- return source;
-}
-/** Renders a screen through `ui.kit`, the console's only render path. */
-export function screenResponse(title:string,screen:Screen,options:ScreenOptions):AuthHttpResponse {
+/** Renders a screen through `ui.kit`; `title` is English source text from the admin catalogue. */
+export function screenResponse(title:string,screen:Screen,options:ScreenOptions):HandlerResult {
  if(!Object.hasOwn(adminTemplates,screen.name))throw new Error(`Unknown admin screen: ${screen.name.slice(0,64)}`);
  screenObserver.current?.(screen);
- const kit=options.ui.kit,context=options.presentation;
+ const kit=options.ui.kit,context=options.copy.context;
  const rendered=kit.render(screen.name,screen.view,context);
  // The kit owns the console shell: it builds the sidebar, the page header and the skip target from `nav`, `menu` and the title.
- return kit.wrap(rendered,{title:options.presentation.textSource(title),context,layout:options.shell?'application':'default',...(options.status!==undefined?{status:options.status}:{}),...(options.headers?{headers:options.headers}:{}),...(options.shell?{nav:options.shell.nav,menu:options.shell.menu}:{})});
+ return kit.wrap(rendered,{title:options.copy.s(title),context,layout:options.shell?'application':'default',...(options.status!==undefined?{status:options.status}:{}),...(options.headers?{headers:options.headers}:{}),...(options.shell?{nav:options.shell.nav,menu:options.shell.menu}:{})});
 }
-/** The failure page: JSON for API clients, otherwise the `admin/status` screen with the same status and message auth's `httpFailure` derives. */
-export function failureResponse(error:unknown,request:ExtensionRequest,options:ScreenOptions):AuthHttpResponse {
- if(wantsJson(request))return httpFailure(error,request,options.presentation,undefined,options.ui);
- const known=error instanceof AuthHttpError||(error instanceof Error&&'status' in error&&typeof error.status==='number'&&error.status>=400&&error.status<500);
- const status=known?(error as Error&{status:number}).status:500;
- const source=error instanceof AuthHttpError?error.message:status>=500?'Service unavailable':'Request could not be completed';
- return screenResponse('Request could not be completed',{name:'admin/status',view:{alert:true,message:options.presentation.textSource(source),href:null,label:null}},{...options,status});
+/** A store refusal of a stale proof: the same answer as admin's own freshness pre-check. */
+const stale=(error:unknown):boolean=>error instanceof Error&&'code' in error&&error.code==='fresh_authentication_required';
+/**
+ * The failure answer: JSON for API clients, otherwise the `admin/status` screen. Any error with a numeric `status` from
+ * 400 to 499 keeps it, and so does a 502 or 503 (duck-typed: admin imports no auth value); anything else is 500. The
+ * message is admin's own text, a project hook's `reason`, core's fixed request-refusal text, or a generic sentence.
+ */
+export function failureResponse(error:unknown,request:ExtensionRequest,options:ScreenOptions):HandlerResult {
+ const given=error instanceof Error&&'status' in error&&typeof error.status==='number'?error.status:500;
+ const refreshed=stale(error),status=refreshed?403:given>=400&&given<500||given===502||given===503?given:500;
+ const reason=error instanceof Error&&'reason' in error&&typeof error.reason==='string'&&error.reason?error.reason:undefined;
+ const message=refreshed?options.copy.s('Confirm your identity before this action'):error instanceof AdminHttpError?options.copy.s(error.message):error instanceof ExtensionHttpError?error.message:reason&&status<500?reason:options.copy.s(status>=500?'Service unavailable':'Request could not be completed');
+ const code=error instanceof Error&&'code' in error&&typeof error.code==='string'&&/^[a-z][a-z_]{0,63}$/.test(error.code)?error.code:undefined;
+ const confirm=(refreshed||error instanceof AdminHttpError&&error.message==='Confirm your identity before this action')?options.stepUp:undefined;
+ if(wantsJson(request))return jsonResponse(status,{error:message,...(code?{code}:{}),...(confirm?{stepUp:confirm.href}:{})});
+ return screenResponse('Request could not be completed',{name:'admin/status',view:{alert:true,message,href:confirm?.href??null,label:confirm?.label??null}},{...options,status});
 }
 export const markup=(html:string):Markup=>new Markup(html);
+/** A labelled text input through the kit's `field`; `label` is already resolved copy. */
+export function formField(name:string,label:string,type='text',autocomplete='off',required=true):string {return field({name,label,type,autocomplete,required});}

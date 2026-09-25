@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Submission budgets: `flows.<name>.abuse = {client: {limit, windowMs}, challengeAfter?, honeypot?}` limits submissions per client through the abuse extension (forms `uses` it), escalating to its challenge provider. Over the limit answers the fixed 429 `Too many submissions` page with `Retry-After`; an abuse failure answers 503; a failed challenge re-renders with 403; a filled honeypot is a silent 303 to the confirmation. Invalid submissions count. A flow with `abuse` is node-only and refuses activation without an active abuse extension.
+- Notifications: `flows.<name>.notify = {recipient, include?}` sends the `forms.submission` message through the mail extension (forms `uses` it and contributes the template) to a recipient the operator names in `mail({recipients})`, after `onSubmit` and before the redirect; a delivery failure answers 503 with no confirmation. `formsMail`, `FormAbuseSpec` and `FormNotifySpec` are exported, and `FormsExtensionOptions` gains `abuse` and `mail`.
+- Requests use core's helpers: `Sec-Fetch-Site: cross-site` is refused even when `Origin` matches, duplicated `Origin`/`Sec-Fetch-Site`/`Referer` headers are refused, invalid UTF-8 is 400 `Invalid request encoding`, and a repeated cookie name is 400 `Invalid cookies`.
 - A 422 whose errors include a field the page does not render no longer shows
   only "Correct the highlighted fields." (#739). The alert names a declared
   field the page does not render (an `only()` handle's other fields, now

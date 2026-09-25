@@ -8,8 +8,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { TOTP } from 'otpauth';
-import { createAuthService, normalizeEmail, sessionReference, hashWaitBudgetMs } from '../src/auth-core.ts';
-import type { AuthOptions, AuthService } from '../src/auth-core.ts';
+import { createAuthService as createPublicService, internal, normalizeEmail, sessionReference, hashWaitBudgetMs } from '../src/auth-core.ts';
+import type { AuthOptions, AuthServiceInternal as AuthService } from '../src/auth-core.ts';
+import { outbox } from './support/outbox.ts';
+/** These suites exercise the administrative operations directly, so they hold the full service. */
+const createAuthService = async (options: AuthOptions) => internal(await createPublicService(options));
 const key = Buffer.alloc(32, 7), roles = { user: ['content.read'], editor: ['content.read', 'content.write'], manager: ['content.read', 'auth.users.manage', 'auth.sessions.manage'], admin: ['*'] }, password = 'synthetic password phrase 123';
 async function setup(t: TestContext, extra: Partial<AuthOptions> = {}) { const directory = await mkdtemp(join(tmpdir(), 'urlcode-auth-')), database = join(directory, 'auth.sqlite'); let timestamp = 1800000000000; const options = { database, encryptionKey: key, roles, defaultRole: 'user', now: () => timestamp, ...extra }; const service = await createAuthService(options); cleanup(t, async () => { await service.close(); await rm(directory, { recursive: true, force: true }); }); return { service, options, database, advance: (ms: number) => { timestamp += ms; }, now: () => timestamp }; }
 /** The registrant verifies in its own signed-in browser, so its methods are kept. */
@@ -94,7 +97,7 @@ test('administrative mutations are fresh, audited, forbid self escalation and en
     await assert.rejects(service.adminSetRoles({ actorToken: manager.token, accountId: other.user.id, roles: ['admin'] }), { code: 'delegation_ceiling_exceeded' });
     await service.adminRevokeSessions({ actorToken: admin.token, accountId: other.user.id, reason: 'security event' });
     assert.equal(await service.authenticate(other.token), null);
-    assert.ok((await service.listAudit()).events.some(event => event.reason === 'security event'));
+    assert.ok((await outbox(service)).some(event => event.reason === 'security event'));
     advance(300001);
     await assert.rejects(service.adminSetStatus({ actorToken: admin.token, accountId: other.user.id, status: 'locked' }), { code: 'fresh_authentication_required' });
     const refreshed = await service.stepUp({ token: admin.token, password });
@@ -162,7 +165,7 @@ test('account lifecycle exports no credentials, changes passwords with revocatio
     assert.deepEqual(await service.purgeDeleted(), { purged: 1 });
     assert.equal(await service.getUser(user.user.id), null);
     assert.equal(await service.authenticate(changed.token), null);
-    assert.ok((await service.listAudit()).events.some(e => e.action === 'account.deleted'));
+    assert.ok((await outbox(service)).some(e => e.action === 'account.deleted'));
 });
 test('email-code authentication is atomic single use and cannot bypass enabled TOTP', async (t) => {
     const { service, now } = await setup(t), user = await service.register({ email: 'emailcode@example.com', password });
@@ -277,6 +280,8 @@ test('recovery cases require distinct current administrators and pin the target 
 test('impersonation is opt-in, marked, expiring, denied privileged targets and incapable of credential or admin mutation', async (t) => {
     const { service, advance } = await setup(t, { allowImpersonation: true }), admin = await service.bootstrapAdmin({ email: 'impersonator@example.com', password }), target = await service.register({ email: 'subject@example.com', password });
     await assert.rejects(service.createImpersonation({ actorToken: admin.token, accountId: admin.user.id, reason: 'self' }), { code: 'impersonation_denied' });
+    // A C1 control character would make the mandatory notice undeliverable, so the reason itself is refused.
+    await assert.rejects(service.createImpersonation({ actorToken: admin.token, accountId: target.user.id, reason: 'next\u0085line' }), { code: 'invalid_reason' });
     const issued = await service.createImpersonation({ actorToken: admin.token, accountId: target.user.id, reason: 'support request' });
     assert.equal(issued.principal.impersonatorId, admin.user.id);
     assert.equal(issued.principal.authenticatedAt, 0);
@@ -290,6 +295,21 @@ test('impersonation is opt-in, marked, expiring, denied privileged targets and i
     const fresh = await service.stepUp({ token: admin.token, password }), again = await service.createImpersonation({ actorToken: fresh.token, accountId: target.user.id, reason: 'followup' });
     await service.adminSetRoles({ actorToken: fresh.token, accountId: target.user.id, roles: ['admin'] });
     assert.equal(await service.authenticate(again.token), null);
+});
+test('impersonation refuses any target granted more than the default role, whatever the permission is named', async (t) => {
+    const { service } = await setup(t, { allowImpersonation: true, roles: { ...roles, auditor: ['content.read', 'audit.read', 'audit.export'], storekeeper: ['content.read', 'store.notes.write'] } });
+    const admin = await service.bootstrapAdmin({ email: 'impersonator@example.com', password });
+    for (const role of ['auditor', 'storekeeper', 'editor']) {
+        const target = await service.register({ email: `${role}@example.com`, password });
+        await service.adminSetRoles({ actorToken: admin.token, accountId: target.user.id, roles: [role] });
+        await assert.rejects(service.createImpersonation({ actorToken: admin.token, accountId: target.user.id, reason: 'support' }), { code: 'impersonation_denied' }, role);
+    }
+    const member = await service.register({ email: 'member@example.com', password });
+    const support = await service.createImpersonation({ actorToken: admin.token, accountId: member.user.id, reason: 'support' });
+    assert.deepEqual(support.principal.permissions, ['content.read']);
+    // Granting the target an extension permission mid-session ends the support session rather than widening it.
+    await service.adminSetRoles({ actorToken: admin.token, accountId: member.user.id, roles: ['auditor'] });
+    assert.equal(await service.authenticate(support.token), null);
 });
 test('profile and terms validation persist registration data without allowing private metadata or authority injection', async (t) => {
     const { createRegistrationPolicy } = await import('../src/registration.ts');
@@ -423,7 +443,7 @@ test('administrative account setup, credential-free export and single-session re
     assert.equal(JSON.stringify(exported).includes('passwordHash'), false);
     await service.adminRevokeSession({ actorToken: admin.token, sessionId: user.principal.sessionId, reason: 'security request' });
     assert.equal(await service.authenticate(user.token), null);
-    assert.ok((await service.listAudit()).events.some(e => e.action === 'admin.account_exported'));
+    assert.ok((await outbox(service)).some(e => e.action === 'admin.account_exported'));
 });
 test('idle sessions expire despite absolute lifetime and real activity refreshes bounded last-seen metadata', async (t) => {
     const { service, advance } = await setup(t, { sessionIdleMs: 60000 }), user = await service.register({ email: 'idle@example.com', password, device: { id: Buffer.alloc(32, 1).toString('base64url'), label: 'Synthetic browser' } });
@@ -450,21 +470,6 @@ test('trusted proof step-up rotates passwordless sessions and sign-in removal pr
     await service.unlinkExternal({ token: stepped.token, provider: 'oidc', subject: 'subject' });
     await assert.rejects(service.removePasskey({ token: stepped.token, credentialId: 'only-passkey' }), { code: 'last_sign_in_method' });
     await assert.rejects(service.completeStepUp({ token: stepped.token, accountId: 'other', method: 'passkey', proof: { ...(await service.getPasskey('only-passkey'))!.proof, newCounter: 0 } }), { code: 'step_up_denied' });
-});
-test('audit retention is configurable and pruning is observable, not silent (#467)', async (t) => {
-    const pruned: number[] = [];
-    const { service } = await setup(t, { auditRetention: 5, onAuditPruned: removed => { pruned.push(removed); } });
-    const admin = await service.bootstrapAdmin({ email: 'retention-owner@example.com', password });
-    for (let index = 0; index < 8; index++)
-        await service.register({ email: `retention-${index}@example.com`, password });
-    // The worker thread posts a plain-data message for each prune (a function cannot cross
-    // workerData's structured clone), so give it a turn to arrive before asserting.
-    await new Promise(resolve => setTimeout(resolve, 50));
-    assert.ok(pruned.length > 0, 'onAuditPruned fired at least once once the 5-row cap was exceeded');
-    assert.ok(pruned.every(count => count > 0));
-    const remaining = await service.listAudit({ limit: 50 });
-    assert.ok(remaining.events.length <= 5, 'only the newest rows are retained past the configured cap');
-    assert.equal(admin.user.email, 'retention-owner@example.com');
 });
 test('case notes and closure are fresh, bounded, audited and cleanup has a global row budget', async (t) => {
     const { service, advance, now } = await setup(t), admin = await service.bootstrapAdmin({ email: 'case-owner@example.com', password }), user = await service.register({ email: 'case-user@example.com', password });
@@ -523,25 +528,24 @@ test('password hashing queues briefly under contention instead of refusing every
     assert.deepEqual(results.map(r => r.status), Array(6).fill('fulfilled'));
 });
 test('post-commit lifecycle hooks are bounded, credential-free and cannot roll back accounts', async (t) => {
-    const release: (() => void)[] = [], events: {
-        type: string;
-        accountId: string;
-    }[] = [];
-    const { service } = await setup(t, { onLifecycle: async (event) => { events.push(event); await new Promise<void>(resolve => release.push(resolve)); } });
-    try {
-        for (let index = 0; index < 6; index++)
-            await service.createExternalAccount({ email: 'hook' + index + '@example.com', provider: 'oidc', subject: String(index), emailVerified: true });
-        assert.equal((await service.listUsers()).users.length, 6);
-        assert.equal(service.getHookStats().accepted, 4);
-        assert.equal(service.getHookStats().dropped, 2);
-        assert.equal(events.length, 4);
-        assert.deepEqual(Object.keys(events[0]!).sort(), ['accountId', 'type']);
-    }
-    finally {
-        for (const finish of release)
-            finish();
+    const release: (() => void)[] = [], events: Record<string, unknown>[] = [];
+    const { service } = await setup(t);
+    service.attachLifecycleHooks({ onAccountCreated: async (input: unknown) => { events.push(input as Record<string, unknown>); await new Promise<void>(resolve => release.push(resolve)); } });
+    // Six accounts at once: four hooks run, the two past the in-flight bound are dropped, and every account exists.
+    let settled = 0;
+    const created = Promise.all(Array.from({ length: 6 }, (_, index) => service.createExternalAccount({ email: 'hook' + index + '@example.com', provider: 'oidc', subject: String(index), emailVerified: true }).finally(() => { settled++; })));
+    // The two dropped hooks return at once; the four running ones hold their callers until released.
+    while (events.length < 4 || settled < 2)
         await new Promise<void>(resolve => setImmediate(resolve));
-    }
+    for (const finish of release)
+        finish();
+    await created;
+    assert.equal((await service.listUsers()).users.length, 6);
+    assert.equal(service.getHookStats().accepted, 4);
+    assert.equal(service.getHookStats().dropped, 2);
+    assert.equal(events.length, 4);
+    assert.deepEqual(Object.keys(events[0]!).sort(), ['accountId', 'email', 'method']);
+    assert.equal(events[0]!.method, 'external');
 });
 test('pending external proofs cannot survive factor reset, identity unlink or credential-version changes', async (t) => {
     const { service, now, advance } = await setup(t), user = await service.register({ email: 'stale-oidc@example.com', password });
@@ -604,13 +608,6 @@ test('addresses in one IPv6 /64 share a per-client password budget (#547)', asyn
     await assert.rejects(service.login({ email: user.user.email, password: 'wrong guess more', client: '2001:db8:0:1:ffff::1' }), { code: 'authentication_rate_limited' });
     // Another /64 is a different client.
     await assert.rejects(service.login({ email: user.user.email, password: 'still wrong', client: '2001:db8:0:2::1' }), { code: 'invalid_credentials' });
-});
-test('abuse-policy client limits key an IPv6 /64 and an IPv4-mapped address as one client (#547)', async (t) => {
-    const { service } = await setup(t, { abuse: { client: { limit: 1, windowMs: 60000 } } });
-    await service.admitAuthRequest({ client: '2001:db8:0:1::1' });
-    await assert.rejects(service.admitAuthRequest({ client: '2001:db8:0:1::2' }), { code: 'auth_rate_limited' });
-    await service.admitAuthRequest({ client: '203.0.113.5' });
-    await assert.rejects(service.admitAuthRequest({ client: '::ffff:203.0.113.5' }), { code: 'auth_rate_limited' });
 });
 test('a password reset clears the exhausted account-wide password budget (#546)', async (t) => {
     const { service } = await setup(t), user = await service.register({ email: 'locked-owner@example.com', password });
@@ -683,7 +680,7 @@ test('bulk administration validates every subject before mutation and audits eac
     assert.deepEqual(await service.adminBulk({ actorToken: actor.token, accountIds: [one.user.id, two.user.id], action: 'lock', reason: 'confirmed security action' }), { affected: 2 });
     assert.equal((await service.getUser(one.user.id))?.status, 'locked');
     assert.equal(await service.authenticate(two.token), null);
-    assert.equal((await service.listAudit({ action: 'admin.bulk.lock' })).events.length, 2);
+    assert.equal((await outbox(service, { action: 'admin.bulk.lock' })).length, 2);
     await service.adminBulk({ actorToken: actor.token, accountIds: [one.user.id, two.user.id], action: 'unlock', reason: 'review complete' });
     const signed = await service.login({ email: one.user.email, password });
     await service.adminBulk({ actorToken: actor.token, accountIds: [one.user.id, two.user.id], action: 'revoke-sessions', reason: 'rotate access' });
@@ -697,7 +694,7 @@ test('bulk administration rejects empty, duplicate, oversized and missing target
         await assert.rejects(service.adminBulk({ actorToken: admin.token, accountIds, action: 'lock', reason: 'bounds' }), { code: 'invalid_bulk_action' });
     await assert.rejects(service.adminBulk({ actorToken: admin.token, accountIds: [user.user.id, 'missing'], action: 'lock', reason: 'missing user' }), { code: 'account_not_found' });
     assert.equal((await service.getUser(user.user.id))?.status, 'active');
-    assert.equal((await service.listAudit({ action: 'admin.bulk.lock' })).events.length, 0);
+    assert.equal((await outbox(service, { action: 'admin.bulk.lock' })).length, 0);
 });
 test('mandatory enrollment restricts bootstrap and application authority until mailbox and TOTP requirements are met', async (t) => {
     const { service, now } = await setup(t, { requireEmailVerification: true, requireMfa: true }), admin = await service.bootstrapAdmin({ email: 'restricted-owner@example.com', password }), user = await service.register({ email: 'restricted-user@example.com', password });
@@ -807,7 +804,7 @@ test('configuration migration needs an exact pin, preserves accounts and invalid
         }
         await assert.rejects(createAuthService({ ...migrationOptions, approveConfigurationChangeFrom: 'f'.repeat(64) }), { code: 'configuration_approval_mismatch' });
         await migrated.register({ email: 'now-open@example.com', password });
-        assert.equal((await migrated.listAudit({ action: 'configuration.changed' })).events.length, 1);
+        assert.equal((await outbox(migrated, { action: 'configuration.changed' })).length, 1);
     }
     finally {
         await migrated.close();
@@ -830,7 +827,7 @@ test('configuration migration refuses missing assigned roles and loss of active 
     assert.equal(await service.getConfigurationRevision(), revision);
     assert.ok(await service.authenticate(admin.token));
     assert.deepEqual((await service.getUser(user.user.id))?.roles, ['editor']);
-    assert.equal((await service.listAudit({ action: 'configuration.changed' })).events.length, 0);
+    assert.equal((await outbox(service, { action: 'configuration.changed' })).length, 0);
 });
 test('migration clears pending waitlist approvals but retains deletion cancellation without extending its lifetime', async (t) => {
     const { service, options, advance } = await setup(t, { registrationMode: 'waitlist', deletionGraceMs: 86400000 }), admin = await service.bootstrapAdmin({ email: 'migration-pending@example.com', password });
@@ -849,8 +846,8 @@ test('migration clears pending waitlist approvals but retains deletion cancellat
         assert.equal((await migrated.getUser(first.user.id))?.status, 'active');
         assert.equal(await migrated.authenticate(firstLogin.token), null);
         assert.deepEqual((await migrated.login({ email: first.user.email, password })).principal.restrictions, ['enroll-mfa']);
-        const event = (await migrated.listAudit({ action: 'configuration.changed' })).events[0]!;
-        const summary = JSON.parse(event.reason);
+        const event = (await outbox(migrated, { action: 'configuration.changed' }))[0]!;
+        const summary = event.metadata as { from: string; revoked: Record<string, number>; preservedCancellationTokens: number };
         assert.equal(summary.revoked.auth_waitlist, 1);
         assert.equal(summary.preservedCancellationTokens, 2);
         advance(86399001);
@@ -889,7 +886,7 @@ test('competing configuration migrations cannot both spend the same prior revisi
         assert.equal(winners.length, 1);
         assert.equal(outcomes.filter(result => result.status === 'rejected').length, 1);
         assert.equal((await winners[0]!.value.getUser(user.user.id))?.email, user.user.email);
-        assert.equal((await winners[0]!.value.listAudit({ action: 'configuration.changed' })).events.length, 1);
+        assert.equal((await outbox(winners[0]!.value, { action: 'configuration.changed' })).length, 1);
     }
     finally {
         await Promise.all(winners.map(result => result.value.close()));
@@ -1067,8 +1064,8 @@ test('signup flows are bounded-cleaned and revoked by explicit configuration mig
     const revised = await createAuthService({ ...options, requireEmailVerification: true, approveConfigurationChangeFrom: await service.getConfigurationRevision() });
     try {
         assert.equal(await revised.getSignup({ flowId: active.flowId, browserHash }), null);
-        const event = (await revised.listAudit({ action: 'configuration.changed' })).events[0]!;
-        assert.equal(JSON.parse(event.reason).revoked.auth_signups, 1);
+        const event = (await outbox(revised, { action: 'configuration.changed' }))[0]!;
+        assert.equal((event.metadata as { revoked: Record<string, number> }).revoked.auth_signups, 1);
     }
     finally {
         await revised.close();

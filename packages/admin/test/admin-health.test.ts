@@ -1,8 +1,8 @@
-import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHealthReader, validateHealthSnapshot } from '../src/admin-health.ts';
 import type { AdminHealthSnapshot } from '../src/admin-health.ts';
+import { adminSite, json, password, text } from './support/site.ts';
 const snapshot = (): AdminHealthSnapshot => ({ checkedAt: '2026-09-17T00:00:00.000Z', runtime: { status: 'healthy', readiness: 'degraded', version: '0.3.0', routes: 12 }, sender: 'unknown', providers: [{ id: 'google', status: 'healthy' }], alerts: ['sender-failed'] });
 test('health accepts bounded observations and drops arbitrary operator metadata', () => {
     const input = { ...snapshot(), password: 'do-not-expose', runtime: { ...snapshot().runtime, credentials: 'secret' } };
@@ -30,33 +30,17 @@ test('health failure redacts provider errors and cancellation bounds uncooperati
 });
 
 test('admin health requires its own permission and never exposes raw callback errors', async t => {
-    const { mkdtemp, rm } = await import('node:fs/promises');
-    const { tmpdir } = await import('node:os');
-    const { join } = await import('node:path');
-    const { randomBytes } = await import('node:crypto');
-    const { createAuthService } = await import('@jimhoyd/urlcode-auth');
-    const { adminExtension } = await import('../src/admin.ts');
-    const root = await mkdtemp(join(tmpdir(), 'urlcode-health-'));
-    cleanup(t, () => rm(root, { recursive: true, force: true }));
-    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'], support: ['auth.users.read'] }, defaultRole: 'member' });
-    cleanup(t, () => service.close());
-    const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
-    const support = await service.register({ email: 'support@example.test', password: 'correct horse battery staple' });
-    assert.ok(support);
-    await service.adminSetRoles({ actorToken: owner.token, accountId: support.user.id, roles: ['support'], reason: 'Health permission regression' });
-    const supportSession = await service.login({ email: 'support@example.test', password: 'correct horse battery staple' });
-    assert.ok(supportSession);
     let calls = 0;
-    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
-    const { activatedUi } = await import('./support/render.ts');
-    const instance = await adminExtension({ service, csrfKey: randomBytes(32), projectSha256, ui: await activatedUi(t, root, projectSha256), health: async () => { calls++; return snapshot(); } }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
-    const request = (token: string, accept = 'application/json') => ({ method: 'GET', target: '/admin/health', path: '/admin/health', query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + token, accept }), headerCounts: { cookie: 1 }, body: new Uint8Array(), origin, route: '/admin/*', mount: '/admin', client: null, requestId: 'test-request', env: {} });
-    assert.equal((await instance.handle(request(supportSession.token))).status, 403);
+    const site = await adminSite(t, { roles: { member: [], admin: ['*'], support: ['auth.users.read'] }, health: async () => { calls++; return snapshot(); } });
+    const owner = await site.service.bootstrapAdmin({ email: 'owner@example.test', password });
+    const support = await site.service.register({ email: 'support@example.test', password });
+    await site.service.adminSetRoles({ actorToken: owner.token, accountId: support.user.id, roles: ['support'], reason: 'Health permission regression' });
+    assert.equal((await site.call('/admin/health', await site.signIn('support@example.test'))).status, 403);
     assert.equal(calls, 0);
-    const result = await instance.handle(request(owner.token));
+    const result = await site.call('/admin/health', owner.token);
     assert.equal(result.status, 200);
-    assert.deepEqual(JSON.parse(Buffer.from(result.body!).toString()).health, snapshot());
-    const html = await instance.handle(request(owner.token, 'text/html'));
-    assert.match(Buffer.from(html.body!).toString(), /Service health/);
-    assert.match(Buffer.from(html.body!).toString(), /Runtime version/);
+    assert.deepEqual(json<{ health: unknown }>(result).health, snapshot());
+    const html = text(await site.call('/admin/health', owner.token, { html: true }));
+    assert.match(html, /Service health/);
+    assert.match(html, /Runtime version/);
 });

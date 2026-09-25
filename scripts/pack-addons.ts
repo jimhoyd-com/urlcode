@@ -31,7 +31,7 @@ export async function packAddons(out: string, { urlBase, pinCore = false }: { ur
     if (addon.version !== version) throw new Error(`${addon.packageName} is ${addon.version}; every add-on must share core's version ${version}`);
     const file = tarballs[addon.name] = pack(addon.directory);
     const name = file.slice(out.length + 1);
-    entries[addon.name] = { kind: addon.kind, package: addon.packageName, description: addon.description, requires: addon.requires, url: urlBase ? `${urlBase}/${name}` : `file:${file}`, integrity: integrity(await readFile(file)) };
+    entries[addon.name] = { kind: addon.kind, package: addon.packageName, description: addon.description, requires: addon.requires, ...(addon.uses.length ? { uses: addon.uses } : {}), url: urlBase ? `${urlBase}/${name}` : `file:${file}`, integrity: integrity(await readFile(file)) };
   }
   const manifest = join(out, 'addons.json');
   const text = JSON.stringify({ format: 1, version, addons: entries }, null, 2) + '\n';

@@ -40,13 +40,16 @@
   ],
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
-    "@jimhoyd/urlcode-ui": "file:../ui",
+    "@jimhoyd/urlcode-audit": "file:../audit",
     "@jimhoyd/urlcode-auth": "file:../auth",
+    "@jimhoyd/urlcode-mail": "file:../mail",
+    "@jimhoyd/urlcode-ui": "file:../ui",
     "@types/node": "26.6.2",
     "typescript": "6.0.3"
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": "0.6.1",
+    "@jimhoyd/urlcode-audit": "0.6.1",
     "@jimhoyd/urlcode-auth": "0.6.1",
     "@jimhoyd/urlcode-ui": "0.6.1"
   },
@@ -55,6 +58,9 @@
     "url": "https://github.com/jimhoyd-com/urlcode/issues"
   },
   "peerDependenciesMeta": {
+    "@jimhoyd/urlcode-audit": {
+      "optional": true
+    },
     "@jimhoyd/urlcode-auth": {
       "optional": true
     },

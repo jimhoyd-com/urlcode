@@ -252,7 +252,7 @@ test('a full collection or per-owner limit surfaces as a page error, not a lost 
   assert.equal(answer.status, 409); assert.match(html, /could not be saved/); assert.match(html, /Second/);
 });
 
-test('activation refuses a shared collection, a mount without a principal provider, a bad mapping and a wrong order', async t => {
+test('activation refuses a shared collection, a mount without a principal provider and a bad mapping, whatever the YAML order', async t => {
   const refuses = async (options: Boot, pattern: RegExp) => {
     const { app, extensions } = await project(t, options);
     await assert.rejects(createRuntime(app, { origin, extensions }), pattern);
@@ -270,7 +270,9 @@ test('activation refuses a shared collection, a mount without a principal provid
   await refuses({ record: { ...onboarding, form: { ...onboarding.form, confirmation: { title: 'x', message: '{bio}', show: ['name'] } } } }, /placeholder \{bio\} is not listed in show/);
   await refuses({ record: { ...onboarding, form: { ...onboarding.form, fields: { ...onboarding.form.fields, age: { label: 'Age', type: 'number', required: false, requiredWhen: { field: 'team', in: ['red'] } } } } } }, /declares both required and requiredWhen/);
   await refuses({ record: { ...onboarding, editable: ['age'], form: { ...onboarding.form, fields: { ...onboarding.form.fields, age: { label: 'Age', type: 'number', requiredWhen: { field: 'team', in: ['red'] } } } } } }, /team must be included with it/);
-  await refuses({ order: ['badge', 'ui', 'form-records', 'forms', 'store'] }, /declare both before form-records/);
+  // Activation follows the host's registration order, so the YAML declaration order does not matter.
+  const reordered = await project(t, { order: ['badge', 'ui', 'form-records', 'forms', 'store'] });
+  await (await createRuntime(reordered.app, { origin, extensions: reordered.extensions })).close();
   await refuses({ record: { ...onboarding, list: { columns: ['name', 'nickname'] } } }, /list column nickname is not a form field/);
   await refuses({ record: { ...onboarding, list: { columns: ['name', 'name'] } } }, /columns|twice/);
   await refuses({ record: { ...onboarding, list: { columns: [] } } }, /columns|at least one column/);

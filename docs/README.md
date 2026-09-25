@@ -58,6 +58,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 |---|---|
 | Add accounts, sign-in and protected routes | [urlcode-auth](../packages/auth#readme), [auth security](../packages/auth/SECURITY.md) |
 | Manage users, sessions, roles and audit | [urlcode-admin](../packages/admin#readme) |
+| Keep an audit log, rate-limit sign-in and forms, send email | [urlcode-audit](../packages/audit#readme), [urlcode-abuse](../packages/abuse#readme), [urlcode-mail](../packages/mail#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
 | Serve a declared collection as a CRUD API (`store` extension) | [Data store](STORE.md) |
 | Add, remove or write an extension | [Extensions](EXTENSIONS.md), [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts), [example fixture](../examples/extensions/README.md) |

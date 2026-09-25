@@ -1,7 +1,6 @@
 import { cleanup } from './cleanup.ts';
 import { TOTP } from 'otpauth';
 import { createRegistrationPolicy } from '../src/registration.ts';
-import { createPresentation } from '../src/presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -11,24 +10,30 @@ import { randomBytes } from 'node:crypto';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createAuthService } from '../src/auth-core.ts';
-import { authExtension } from '../src/auth.ts';
+import { createAuth } from '../src/auth.ts';
+import type { AuthExtensionOptions } from '../src/auth.ts';
+import { siteCompanions, lastSent, linkIn } from './support/companions.ts';
 import type { TestContext } from 'node:test';
-import { kitSetup, kitYaml } from './support/render.ts';
-async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[0]['sendToken'], providers?: Parameters<typeof authExtension>[0]['providers'], presentation?: Parameters<typeof authExtension>[0]['presentation'], sendEmailCode?: Parameters<typeof authExtension>[0]['sendEmailCode'], serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>, aliasOrigins?: string[]) {
+import { kitSetup, kitYaml, writeCopy } from './support/render.ts';
+/** `delivery`: mail records what auth sends (`sent`); without it mail has no transport and auth serves password sign-in only. */
+async function app(t: TestContext, { delivery = false, providers, uiConfig = {}, copy = {}, serviceOptions, aliasOrigins }: { delivery?: boolean; providers?: AuthExtensionOptions['providers']; /** `extensions.ui.config`, and project catalogues written to `ui/copy/<locale>.json`. */ uiConfig?: Record<string, unknown>; copy?: Record<string, Record<string, string>>; serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>; aliasOrigins?: string[] } = {}) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-http-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
-    const kit = kitYaml();
+    if (Object.keys(copy).length)
+        uiConfig = { ...uiConfig, ...await writeCopy(project, copy) };
+    const kit = kitYaml(uiConfig);
     await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: serviceOptions?.registrationMode ?? 'open' } } }, routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
             '/private': { respond: { json: { protected: true } }, methods: ['GET', 'POST'], policies: { extensions: { auth: { permission: 'site.read' } } } },
             ...kit.routes,
         } }));
-    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
+    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256, uiConfig);
+    const hosted = await siteCompanions(t, root, projectSha256, delivery ? {} : { transport: false });
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member', ...serviceOptions });
-    const extension = authExtension({ ...(sendToken ? { sendToken } : {}), ...(providers ? { providers } : {}), ...(presentation ? { presentation } : {}), ...(sendEmailCode ? { sendEmailCode } : {}), ui, service, csrfKey: randomBytes(32), projectSha256 });
-    const server = await startServer({ project, origin: 'https://example.test', ...(aliasOrigins ? { aliasOrigins } : {}), port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    const extension = createAuth({ ...(providers ? { providers } : {}), ui, service, csrfKey: randomBytes(32), projectSha256, audit: hosted.audit, mail: hosted.mail }).registration;
+    const server = await startServer({ project, origin: 'https://example.test', ...(aliasOrigins ? { aliasOrigins } : {}), port: 0, extensions: [...registrations, ...hosted.registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const cookies = new Map<string, string>();
     async function request(path: string, { method = 'GET', data, origin = 'https://example.test', csrf, html = false }: {
@@ -48,7 +53,7 @@ async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[
         }
         return response;
     }
-    return { request, service, cookies };
+    return { request, service, cookies, sent: hosted.sent };
 }
 test('a credential-quota 429 on a throttled route carries both the credential and the core throttle RateLimit policies (#701)', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-quota-throttle-'));
@@ -62,9 +67,10 @@ test('a credential-quota 429 on a throttled route carries both the credential an
             ...kit.routes,
         } }));
     const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
+    const hosted = await siteCompanions(t, root, projectSha256);
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    const extension = authExtension({ ui, service, csrfKey: randomBytes(32), projectSha256 });
-    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    const extension = createAuth({ ui, service, csrfKey: randomBytes(32), projectSha256, audit: hosted.audit, mail: hosted.mail }).registration;
+    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, ...hosted.registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const { key } = await service.issueApiKey({ name: 'items', scopes: ['items.read'] });
     const call = () => fetch(`http://127.0.0.1:${server.address.port}/api/items`, { headers: { authorization: `Bearer ${key}` } });
@@ -103,7 +109,8 @@ test('allowed bearer responses carry the credential RateLimit fields, a key quot
         } }));
     const start = async () => {
         const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
-        return startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, authExtension({ ui, service, csrfKey: randomBytes(32), projectSha256 })], log: () => { } });
+        const hosted = await siteCompanions(t, root, projectSha256);
+        return startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, ...hosted.registrations, createAuth({ ui, service, csrfKey: randomBytes(32), projectSha256, audit: hosted.audit, mail: hosted.mail }).registration], log: () => { } });
     };
     // A shared-cache strategy on a route auth protects is refused before serving: core treats
     // it as confidential (auth declares no `cacheSensitive: false`), so per-credential fields
@@ -219,7 +226,7 @@ test('trusted UI is no-store with restrictive CSP and never exposes a session to
     assert.equal((await request('/account/logout')).status, 401);
 });
 test('an operator alias origin passes the same-origin mutation check; an unlisted origin is still refused', async (t) => {
-    const { request } = await app(t, undefined, undefined, undefined, undefined, undefined, ['https://www.example.test']);
+    const { request } = await app(t, { aliasOrigins: ['https://www.example.test'] });
     const { csrf } = await (await request('/account/csrf')).json() as {
         csrf: string;
     };
@@ -237,13 +244,8 @@ test('same-origin still requires unambiguous CSRF and no token-bearing query mut
     assert.equal((await request('/account/reset')).status, 400);
 });
 test('email links, private export, password change and deletion grace work end to end', async (t) => {
-    const delivered: {
-        token: string;
-    }[] = [], codes: {
-        flowId: string;
-        code: string;
-    }[] = [];
-    const { request, cookies } = await app(t, async (message) => { delivered.push(message); }, undefined, undefined, async (message) => { codes.push(message); });
+    const { request, cookies, sent } = await app(t, { delivery: true });
+    const codes = () => sent.filter(envelope => envelope.template === 'auth.sign-in-code').map(envelope => ({ flowId: linkIn(envelope).searchParams.get('flowId')!, code: /code is: (\d{6})/.exec(envelope.text)![1]! }));
     let { csrf } = await (await request('/account/csrf')).json() as {
         csrf: string;
     };
@@ -263,24 +265,24 @@ test('email links, private export, password change and deletion grace work end t
         csrf: string;
     });
     assert.equal((await request('/account/send-email-code', { method: 'POST', data: { csrf, email: 'lifecycle@example.test' } })).status, 200);
-    assert.equal(codes.length, 1);
-    const logged = await request('/account/email-code', { method: 'POST', data: { csrf, flowId: codes[0]!.flowId, code: codes[0]!.code } });
+    assert.equal(codes().length, 1);
+    const logged = await request('/account/email-code', { method: 'POST', data: { csrf, flowId: codes()[0]!.flowId, code: codes()[0]!.code } });
     assert.equal(logged.status, 200);
     ({ csrf } = await logged.json() as {
         csrf: string;
     });
     assert.equal((await request('/account/delete', { method: 'POST', data: { csrf, confirmation: 'DELETE', password: 'a different long password phrase' } })).status, 200);
     assert.equal((await request('/private')).status, 401);
-    assert.equal(delivered.length, 1);
+    assert.equal(sent.filter(envelope => envelope.template === 'auth.cancel-deletion').length, 1);
     ({ csrf } = await (await request('/account/csrf')).json() as {
         csrf: string;
     });
-    assert.equal((await request('/account/cancel-deletion', { method: 'POST', data: { csrf, token: delivered[0]!.token } })).status, 200);
+    assert.equal((await request('/account/cancel-deletion', { method: 'POST', data: { csrf, token: linkIn(lastSent(sent, 'auth.cancel-deletion')).searchParams.get('token')! } })).status, 200);
 });
 test('OIDC subjects are scoped to verified issuer across operator provider replacement', async (t) => {
     let issuer = 'https://issuer-one.test', email = 'one@example.test';
     const provider = { async start() { const state = randomBytes(32).toString('base64url'); return { url: 'https://provider.test/authorize?state=' + state, flow: { state, nonce: state, verifier: state } }; }, async complete() { return { issuer, subject: 'same-subject', email, emailVerified: true }; } };
-    const { request, cookies } = await app(t, undefined, { example: provider });
+    const { request, cookies } = await app(t, { providers: { example: provider } });
     async function signIn() {
         const { csrf } = await (await request('/account/csrf')).json() as {
             csrf: string;
@@ -306,20 +308,19 @@ test('OIDC subjects are scoped to verified issuer across operator provider repla
     assert.equal(second.user.email, email);
 });
 test('locale and safe theme apply to trusted HTML while translated text remains escaped', async (t) => {
-    const presentation = createPresentation({ catalogues: { fr: { 'page.signIn': 'Connexion <test>', 'field.email': 'Adresse électronique', 'nav.skip': 'Aller au contenu' } }, theme: { '--auth-accent': '#123456' } });
-    const { request } = await app(t, undefined, undefined, presentation);
+    const { request } = await app(t, { uiConfig: { theme: { colors: { accent: '#123456' } } }, copy: { fr: { 'page.signIn': 'Connexion <test>', 'field.email': 'Adresse électronique', 'nav.skip': 'Aller au contenu' } } });
     const page = await request('/account/login?lang=fr');
     const html = await page.text();
     assert.match(html, /lang="fr"/);
     assert.match(html, /Connexion &lt;test&gt;/);
     assert.match(html, /Adresse électronique/);
     assert.match(html, /Aller au contenu/);
-    assert.match(html, /--ui-accent:#123456/);
+    assert.match(html, /--accent:#123456/);
     assert.doesNotMatch(html, /<test>/);
 });
 test('registration HTTP enforces consent, schema boundaries, honeypot and invitation mode', async (t) => {
     const policy = createRegistrationPolicy({ termsVersion: '2026-09', metadata: { team: { type: 'string', scope: 'public', required: true }, internal: { type: 'string', scope: 'private', default: 'operator-only' } } });
-    const { request, service } = await app(t, undefined, undefined, undefined, undefined, { registrationPolicy: policy });
+    const { request, service } = await app(t, { serviceOptions: { registrationPolicy: policy } });
     let { csrf } = await (await request('/account/csrf')).json() as {
         csrf: string;
     };
@@ -349,7 +350,7 @@ test('registration HTTP enforces consent, schema boundaries, honeypot and invita
 test('OIDC new-account enrollment collects required consent and metadata before issuing a session', async (t) => {
     const provider = { async start() { const state = randomBytes(32).toString('base64url'); return { url: 'https://provider.test/authorize?state=' + state, flow: { state, nonce: state, verifier: state } }; }, async complete() { return { issuer: 'https://provider.test', subject: 'enrollment-user', email: 'enrollment@example.test', emailVerified: true }; } };
     const policy = createRegistrationPolicy({ termsVersion: 'current', metadata: { team: { type: 'string', scope: 'public', required: true } } });
-    const { request, service } = await app(t, undefined, { example: provider }, undefined, undefined, { registrationPolicy: policy });
+    const { request, service } = await app(t, { providers: { example: provider }, serviceOptions: { registrationPolicy: policy } });
     async function enroll() {
         const { csrf } = await (await request('/account/csrf')).json() as {
             csrf: string;
@@ -373,7 +374,7 @@ test('OIDC new-account enrollment collects required consent and metadata before 
 });
 
 test('browser sign-in failures retain only the identifier and offer safe recovery routes', async t => {
-    const {request} = await app(t, async () => {});
+    const {request} = await app(t, { delivery: true });
     const {csrf} = await (await request('/account/csrf')).json() as {csrf:string};
     const response = await request('/account/login', {method:'POST', html:true, data:{email:'missing@example.test',password:'synthetic incorrect password',csrf}});
     assert.equal(response.status,401);
@@ -428,8 +429,7 @@ test('registering an already-used email is indistinguishable from a genuine regi
 });
 
 test('forgot-password and send-email-code always attempt delivery, existing account or not', async t => {
-    const sent: string[] = [];
-    const { request, service } = await app(t, async ({ email }) => { sent.push(email); }, undefined, undefined, async ({ email }) => { sent.push(email); });
+    const { request, service, sent } = await app(t, { delivery: true });
     await service.register({ email: 'known@example.test', password: 'existing account passphrase 2' });
     const { csrf } = await (await request('/account/csrf')).json() as { csrf: string };
     const known = await request('/account/forgot-password', { method: 'POST', data: { email: 'known@example.test', csrf } });
@@ -437,7 +437,7 @@ test('forgot-password and send-email-code always attempt delivery, existing acco
     const unknown = await request('/account/forgot-password', { method: 'POST', data: { email: 'nobody@example.test', csrf: csrf2 } });
     assert.equal(known.status, unknown.status);
     assert.deepEqual(await known.json(), await unknown.json());
-    assert.deepEqual(sent, ['known@example.test', 'nobody@example.test'], 'delivery attempted for both the existing and the unknown address');
+    assert.deepEqual(sent.map(envelope => envelope.to), ['known@example.test', 'nobody@example.test'], 'delivery attempted for both the existing and the unknown address');
 });
 
 test('account authenticator controls reflect the current enrollment state', async t => {

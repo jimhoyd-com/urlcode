@@ -31,24 +31,27 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
 /**
  * Builds the operator host from host.mjs's list of extensions:
  *
- *   export default await composeHost(import.meta.url, [ui(), auth(), admin()]);
+ *   export default await composeHost(import.meta.url, [audit(), mail(), ui(), auth(), admin()]);
  *
  * It reads the reviewed project revision once (the verified `--policy` revision when a CLI command was given both
  * `--policy` and `--host-file`, otherwise `PROJECT_SHA256`; both present and different refuses), passes it to every
- * `host()` as `context.projectSha256`, orders the extensions by `requires`, activates each `host()` once
+ * `host()` as `context.projectSha256`, orders the extensions by `requires` and installed `uses`, activates each `host()` once
  * (dependants receive the shared instance through `get`, and contributions through `contributions`), and returns
- * the `{extensions, plugins, close}` object `--host-file` loads. `close` releases in reverse order. Core never
+ * the `{extensions, plugins, close}` object `--host-file` loads, with `extensions` in that order (the runtime activates
+ * them in it). `close` releases in reverse order. Core never
  * imports an extension: host.mjs does, and passes the definitions in.
  */
 export async function composeHost(hostUrl: string | URL, entries: readonly ExtensionEntry[], { plugins }: ComposeOptions = {}): Promise<OperatorHost> {
   const site = dirname(fileURLToPath(hostUrl));
-  assert(Array.isArray(entries) && entries.every(entry => entry && typeof entry === 'object' && typeof entry.definition?.host === 'function'), 'composeHost takes the extension list from host.mjs, for example [ui(), auth()]');
+  assert(Array.isArray(entries) && entries.every(entry => entry && typeof entry === 'object' && typeof entry.definition?.host === 'function'), 'composeHost takes the extension list from host.mjs, for example [audit(), mail(), ui(), auth()]');
   // A site with no extensions has nothing to pin.
   if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
   const projectSha256 = hostRevisionPin();
   if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError('Pass the reviewed operator policy with --policy, or set PROJECT_SHA256 to the reviewed project revision (urlcode extensions add prints it; urlcode explain shows it)');
   const definitions = entries.map(entry => entry.definition);
-  const ordered = orderByRequires(definitions.map((definition, index) => ({ name: definition.name, requires: definition.requires, index })),
+  // An installed `uses` extension orders like a requirement; an absent one is no edge at all.
+  const present = new Set(definitions.map(definition => definition.name));
+  const ordered = orderByRequires(definitions.map((definition, index) => ({ name: definition.name, requires: [...(definition.requires ?? []), ...(definition.uses ?? []).filter((other: string) => present.has(other))], index })),
     (item, requirement) => `${item.name} requires ${requirement}; add it with \`urlcode extensions add ${requirement}\``);
   const contributions = new Map<string, unknown[]>();
   for (const definition of definitions) for (const [target, value] of Object.entries(definition.contributes ?? {})) {
@@ -66,11 +69,12 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   try {
     for (const { name, index } of ordered) {
       const definition = definitions[index]!;
-      const allowed = new Set(definition.requires ?? []);
+      const allowed = new Set([...(definition.requires ?? []), ...(definition.uses ?? [])]);
       const context: HostContext = {
         projectSha256, site,
         get: <T>(other: string): T => {
-          assert(allowed.has(other), `${name} reads ${other} from the host but does not declare it in requires`);
+          assert(allowed.has(other), `${name} reads ${other} from the host but does not declare it in requires or uses`);
+          // An absent `uses` extension was never hosted: its exports are undefined.
           return exported.get(other) as T;
         },
         contributions: <T>(target: string): T[] => [...(contributions.get(target) ?? [])] as T[],

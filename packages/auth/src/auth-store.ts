@@ -1,14 +1,15 @@
 import {adminAccountOperation} from './admin-account-store.ts';
 import {apiKeyOperation} from './api-key-store.ts';
-import {abuseOperation} from './abuse-store.ts';
-import {abuseKey} from './abuse.ts';
-import type {AuthAbusePolicy} from './abuse.ts';
 import { queryUsers } from './user-query.ts';
 import type { UserQuery } from './user-query.ts';
 import {manualRecoveryOperation} from './manual-recovery-store.ts';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { DatabaseSync, type SQLOutputValue } from 'node:sqlite';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+// The worker loads only the producer subset of audit, not its store, drain or backup modules.
+import { AuditError, auditOutboxLimits, validateAuditEvent } from '@jimhoyd/urlcode-audit/outbox';
+import type { AuditEvent, AuditValue } from '@jimhoyd/urlcode-audit/outbox';
+import { FRESHNESS_WINDOW_MS } from './freshness.ts';
 import { open, lstat, realpath } from 'node:fs/promises';
 import type { RegistrationProfile } from './registration.ts';
 import type { EventEmitter } from 'node:events';
@@ -16,9 +17,11 @@ import { resolve, dirname, basename, join } from 'node:path';
 export class AuthError extends Error {
     readonly status: number;
     readonly code: string;
-    // `cause` carries operator diagnostics only. Responses are built from `status`
-    // and `code`, so nothing recorded here reaches a client.
-    constructor(status: number, code: string, cause?: unknown) { super(code, cause === undefined ? undefined : { cause }); this.status = status; this.code = code; }
+    /** Operator-authored text a client may be shown (a project hook's denial reason); never request data. */
+    readonly reason: string | undefined;
+    // `cause` carries operator diagnostics only. Responses are built from `status`, `code` and `reason`, so nothing
+    // recorded in `cause` reaches a client.
+    constructor(status: number, code: string, cause?: unknown, reason?: string) { super(code, cause === undefined ? undefined : { cause }); this.status = status; this.code = code; this.reason = reason; }
 }
 export interface AuthRecord {
     mfaPasskeys?: string[];
@@ -69,7 +72,6 @@ interface StoreOptions {
     sessionIdleMs: number;
     sessionTtlMs: number;
     securityPolicy: {
-        abuse?:AuthAbusePolicy;
         allowPasskeySecondFactor?: true;
         trustedDeviceTtlMs?: number;
         allowEmailFactorRecovery?: true;
@@ -89,19 +91,17 @@ interface StoreOptions {
     };
     activeKey: string;
     keyFingerprints: Record<string, string>;
-    /** Newest rows kept in `auth_audit`; older rows are pruned on every write. Defaults to
-     * 100000 (packages/auth/SECURITY.md documents the default and how to change it). */
-    auditRetention?: number;
-    /** Best-effort: called whenever a write prunes rows past `auditRetention`, so an operator can
-     * observe/alert on it rather than the cap being silent. Never throws into the caller. */
-    onAuditPruned?: (removed: number) => void;
 }
 export interface AuthStore {
     call<T = unknown>(operation: string, args?: Record<string, unknown>): Promise<T>;
+    /** Called after every committed operation that wrote audit outbox rows (the audit drain's cue). */
+    onAuditPending(listener: () => void): () => void;
     close(): Promise<void>;
 }
 /** Startup codes the worker reports for itself; anything else is an unavailable store. */
-const startupCodes = ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required'];
+// audit_backlog: a reviewed configuration change records configuration.changed at startup, and a full outbox refuses
+// it. Only a running host drains the outbox, so the operator starts once on the previous configuration first.
+const startupCodes = ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required', 'audit_backlog'];
 /**
  * Describes the phase a worker was still in when its startup bound elapsed.
  * Thread scheduling and database initialization fail for unrelated reasons, and a
@@ -174,14 +174,11 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     const info = await lstat(database);
     if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (process.platform !== 'win32' && (info.mode & 0o077) !== 0))
         throw new AuthError(400, 'invalid_auth_database');
-    // `onAuditPruned` is a function: it cannot survive workerData's structured clone, so it stays
-    // in this (main-thread) closure and is invoked from the plain-data `auditPruned` message the
-    // worker posts instead (see the `worker.on('message', ...)` handler below).
-    const { onAuditPruned, ...cloneableOptions } = options;
-    const worker = new Worker(new URL(import.meta.url), { workerData: { ...cloneableOptions, database, authStore: true }, env: {}, execArgv: [], stdout: true, stderr: true, resourceLimits: { maxOldGenerationSizeMb: 64 } });
+    const worker = new Worker(new URL(import.meta.url), { workerData: { ...options, database, authStore: true }, env: {}, execArgv: [], stdout: true, stderr: true, resourceLimits: { maxOldGenerationSizeMb: 64 } });
     worker.stdout.resume();
     worker.stderr.resume();
     let sequence = 0, closed = false;
+    const pendingListeners = new Set<() => void>();
     const pending = new Map<number, {
         resolve: (v: unknown) => void;
         reject: (e: Error) => void;
@@ -212,11 +209,11 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
             status: number;
             code: string;
         };
-        auditPruned?: number;
+        auditPending?: boolean;
     }) => {
-        if (typeof message.auditPruned === 'number') {
-            if (onAuditPruned) {
-                try { onAuditPruned(message.auditPruned); } catch { /* best-effort observability must not affect the store */ }
+        if (message.auditPending === true) {
+            for (const listener of [...pendingListeners]) {
+                try { listener(); } catch { /* A cue only: the drain also polls. */ }
             }
             return;
         }
@@ -236,10 +233,14 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
             if (pending.size >= 32)
                 return Promise.reject(new AuthError(503, 'auth_store_busy'));
             return new Promise<T>((accept, reject) => { const id = ++sequence, timer = setTimeout(() => { fail(); void worker.terminate(); }, 10000); pending.set(id, { resolve: value => accept(value as T), reject, timer }); worker.postMessage({ id, operation, args }); });
+        }, onAuditPending(listener: () => void) {
+            pendingListeners.add(listener);
+            return () => { pendingListeners.delete(listener); };
         }, async close() {
             if (closed)
                 return;
             closed = true;
+            pendingListeners.clear();
             fail();
             await worker.terminate();
         } };
@@ -252,6 +253,9 @@ if (!isMainThread && workerData?.authStore) {
     let dispatchTransaction = false;
     let configurationRevision = '';
     const roles = options.roles, permissions = (names: string[]): string[] => [...new Set(names.flatMap(name => roles[name] || []))];
+    // A support session may only reach what every plain member holds: a target granted anything beyond the default
+    // role (auth's, admin's, audit's or any other extension's permission) is privileged, whatever its name.
+    const member = new Set(roles[options.defaultRole] ?? []), privileged = (names: string[]): boolean => permissions(names).some(permission => !member.has(permission));
     const admin = (names: string[]) => permissions(names).includes('*');
     const error = (status: number, code: string): never => { throw new AuthError(status, code); };
     const num = (value: SQLOutputValue | undefined): number => Number(value);
@@ -272,16 +276,18 @@ if (!isMainThread && workerData?.authStore) {
     const methodActivity = (kind:string, methodId:string, accountId:string, time:number, added=false) => {
         db.prepare('INSERT INTO auth_method_activity(kind,method_id,account_id,added,last_used) VALUES(?,?,?,?,?) ON CONFLICT(kind,method_id) DO UPDATE SET last_used=excluded.last_used').run(kind,methodId,accountId,added?time:null,added?null:time);
     };
-    const auditRetention = Number.isSafeInteger(options.auditRetention) && options.auditRetention! > 0 ? options.auditRetention! : 100000;
-    const audit = (actor: string, action: string, subject: string, now: number, reason = '') => {
-        db.prepare('INSERT INTO auth_audit(actor,action,subject,created,reason) VALUES(?,?,?,?,?)').run(actor, action, subject, now, reason);
-        // The cap is documented (packages/auth/SECURITY.md), configurable (`auditRetention`),
-        // and observable (`onAuditPruned`) rather than a silent, fixed limit.
-        const pruned = db.prepare('DELETE FROM auth_audit WHERE id <= (SELECT max(id)-? FROM auth_audit)').run(auditRetention);
-        // `onAuditPruned` itself never reaches this worker (functions cannot survive workerData's
-        // structured clone); this plain-data message lets the main-thread side invoke it instead.
-        if (pruned.changes > 0)
-            port.postMessage({ auditPruned: Number(pruned.changes) });
+    // The transactional outbox (packages/audit SECURITY.md): every audit event is written in the transaction of the
+    // change it records, so a rolled-back change leaves no event and a committed one always has one. The audit
+    // extension drains the outbox; at its cap the change itself is refused, never applied unaudited.
+    let outboxWritten = false;
+    /** An invitation has no account yet: its audit subject is a one-way pseudonym of the stored token hash. */
+    const invitationSubject = (hash: string) => 'invitation:' + createHash('sha256').update('urlcode-auth-invitation\0' + hash).digest('hex').slice(0, 32);
+    const audit = (actor: string, action: string, subject: string, now: number, reason = '', metadata?: Readonly<Record<string, AuditValue>>) => {
+        const event = validateAuditEvent({ id: randomUUID(), source: 'auth', action, actor, subject, at: now, ...(reason ? { reason } : {}), ...(metadata ? { metadata } : {}) });
+        if (num(db.prepare('SELECT count(*) AS n FROM auth_audit_outbox').get()?.n) >= auditOutboxLimits.auth)
+            throw new AuditError(503, 'audit_backlog');
+        db.prepare('INSERT INTO auth_audit_outbox(id,event) VALUES(?,?)').run(event.id, JSON.stringify(event));
+        outboxWritten = true;
         if (['account.register', 'admin.bootstrap', 'registration.approved', 'admin.account_created', 'account.external_register', 'accounts.imported'].includes(action))
             metric('signup', action === 'account.external_register' ? 'oidc' : action === 'accounts.imported' ? 'unknown' : 'password', now, action === 'accounts.imported' ? Number(subject) : 1);
     };
@@ -318,7 +324,7 @@ if (!isMainThread && workerData?.authStore) {
         const user = account(String(found.accountId));
         if (found.impersonatorId) {
             const actor = account(String(found.impersonatorId)), p = actor ? permissions(actor.roles) : [];
-            if (!actor || actor.status !== 'active' || actor.version !== found.actorVersion || !p.includes('*') && !p.includes('auth.users.impersonate') || !user || permissions(user.roles).some(permission => permission === '*' || permission.startsWith('auth.') || permission.startsWith('admin.')))
+            if (!actor || actor.status !== 'active' || actor.version !== found.actorVersion || !p.includes('*') && !p.includes('auth.users.impersonate') || !user || privileged(user.roles))
                 return null;
         }
         return user?.status === 'active' ? { user, session: found as unknown as SessionRecord } : null;
@@ -329,7 +335,7 @@ if (!isMainThread && workerData?.authStore) {
         const found = session(hash, now);
         if (found?.session.impersonatorId)
             error(403, 'impersonation_restricted');
-        if (!found || now - found.session.authenticatedAt > 300000)
+        if (!found || now - found.session.authenticatedAt > FRESHNESS_WINDOW_MS)
             error(401, 'fresh_authentication_required');
         if (enrollment && found!.user.mfaRecoveryRequired && !found!.session.recoveryEnrollment)
             error(403, 'recovery_enrollment_proof_required');
@@ -413,7 +419,7 @@ if (!isMainThread && workerData?.authStore) {
     };
     const realMfa = (hash: string, now: number) => {
         const found = fresh(hash, now);
-        if (!found.session.mfaAuthenticatedAt || now - found.session.mfaAuthenticatedAt > 300000 || found.session.mfaVersion !== found.user.version)
+        if (!found.session.mfaAuthenticatedAt || now - found.session.mfaAuthenticatedAt > FRESHNESS_WINDOW_MS || found.session.mfaVersion !== found.user.version)
             error(403, 'fresh_second_factor_required');
         return found;
     };
@@ -455,7 +461,7 @@ if (!isMainThread && workerData?.authStore) {
         save(user);
         for (const table of ['auth_sessions', 'auth_tokens', 'auth_recovery', 'auth_method_activity', 'auth_passkeys', 'auth_external', 'auth_email_codes', 'auth_email_changes', 'auth_factor_recovery', 'auth_second_factor_proofs', 'auth_trusted_devices', 'auth_devices'])
             db.prepare('DELETE FROM ' + table + ' WHERE account_id=?').run(user.id);
-        audit(user.id, 'account.claimed', user.id, now, JSON.stringify({ proof, removed }));
+        audit(user.id, 'account.claimed', user.id, now, '', { proof, removed });
     };
     try {
         db = new DatabaseSync(options.database, { allowExtension: false });
@@ -479,7 +485,7 @@ if (!isMainThread && workerData?.authStore) {
    CREATE TABLE auth_recovery(hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE);
    CREATE INDEX auth_recovery_account ON auth_recovery(account_id);
    CREATE TABLE auth_attempts(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);CREATE INDEX auth_attempt_expiry ON auth_attempts(expires);
-   CREATE TABLE auth_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,action TEXT NOT NULL,subject TEXT NOT NULL,created INTEGER NOT NULL,reason TEXT NOT NULL);
+   CREATE TABLE auth_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,event TEXT NOT NULL);
    CREATE TABLE auth_flows(id TEXT PRIMARY KEY,kind TEXT NOT NULL,data TEXT NOT NULL,expires INTEGER NOT NULL);CREATE INDEX auth_flow_expiry ON auth_flows(expires);
    CREATE TABLE auth_external(provider TEXT NOT NULL,subject TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,PRIMARY KEY(provider,subject));CREATE INDEX auth_external_account ON auth_external(account_id);
    CREATE TABLE auth_passkeys(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,data TEXT NOT NULL,counter INTEGER NOT NULL);CREATE INDEX auth_passkey_account ON auth_passkeys(account_id);
@@ -501,7 +507,7 @@ if (!isMainThread && workerData?.authStore) {
         db.exec('CREATE TABLE IF NOT EXISTS auth_second_factor_proofs(hash TEXT PRIMARY KEY,browser TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,version INTEGER NOT NULL,proof TEXT NOT NULL,expires INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS auth_second_factor_expiry ON auth_second_factor_proofs(expires);CREATE TABLE IF NOT EXISTS auth_trusted_devices(hash TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,version INTEGER NOT NULL,label TEXT NOT NULL,created INTEGER NOT NULL,expires INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS auth_trusted_expiry ON auth_trusted_devices(expires);');
         db.exec('CREATE TABLE IF NOT EXISTS auth_admin_operations(id TEXT PRIMARY KEY,data TEXT NOT NULL,expires INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS auth_admin_operations_expiry ON auth_admin_operations(expires);');
         db.exec('CREATE TABLE IF NOT EXISTS auth_method_activity(kind TEXT NOT NULL,method_id TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,added INTEGER,last_used INTEGER,PRIMARY KEY(kind,method_id));CREATE INDEX IF NOT EXISTS auth_method_activity_account ON auth_method_activity(account_id);');
-        db.exec('CREATE TABLE IF NOT EXISTS auth_abuse(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL,blocked_until INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS auth_abuse_expiry ON auth_abuse(expires);');
+        db.exec('CREATE TABLE IF NOT EXISTS auth_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,event TEXT NOT NULL);');
         db.exec('CREATE TABLE IF NOT EXISTS auth_signups(hash TEXT PRIMARY KEY,browser TEXT NOT NULL,email TEXT NOT NULL,account_id TEXT NOT NULL,step TEXT NOT NULL,expires INTEGER NOT NULL,code_hash TEXT NOT NULL,code_expires INTEGER NOT NULL,attempts INTEGER NOT NULL,eligible INTEGER NOT NULL,invitation_hash TEXT NOT NULL,credential TEXT,challenge TEXT);CREATE INDEX IF NOT EXISTS auth_signups_expiry ON auth_signups(expires);');
         // Bearer/API-key credentials (packages/auth/README.md's "Bearer/API-key authentication"). `id` is the key's
         // public identifier (embedded in the issued token); `secret_hash` is the scrypt-based
@@ -551,7 +557,7 @@ if (!isMainThread && workerData?.authStore) {
                 if (priorAdministrators > 0 && nextAdministrators === 0)
                     error(503, 'configuration_admin_required');
                 const counts: Record<string, number> = {};
-                for (const table of ['auth_sessions', 'auth_tokens', 'auth_flows', 'auth_email_codes', 'auth_invites', 'auth_email_changes', 'auth_waitlist', 'auth_signups', 'auth_factor_recovery', 'auth_second_factor_proofs', 'auth_trusted_devices', 'auth_manual_recovery','auth_abuse','auth_admin_operations'])
+                for (const table of ['auth_sessions', 'auth_tokens', 'auth_flows', 'auth_email_codes', 'auth_invites', 'auth_email_changes', 'auth_waitlist', 'auth_signups', 'auth_factor_recovery', 'auth_second_factor_proofs', 'auth_trusted_devices', 'auth_manual_recovery','auth_admin_operations'])
                     counts[table] = num(db.prepare('SELECT count(*) AS n FROM ' + table).get()?.n);
                 const adminRoles = Object.keys(roles).filter(role => roles[role]!.includes('*'));
                 const adminSql = adminRoles.length ? "EXISTS(SELECT 1 FROM json_each(auth_accounts.data,'$.roles') WHERE value IN (" + adminRoles.map(() => '?').join(',') + '))' : '0';
@@ -560,13 +566,13 @@ if (!isMainThread && workerData?.authStore) {
                 db.prepare("UPDATE auth_tokens SET version=(SELECT json_extract(data,'$.version') FROM auth_accounts WHERE id=auth_tokens.account_id) WHERE purpose='cancel-deletion'").run();
                 const cancellationTokens = num(db.prepare('SELECT count(*) AS n FROM auth_tokens').get()?.n);
                 counts.auth_tokens = (counts.auth_tokens ?? 0) - cancellationTokens;
-                for (const table of ['auth_sessions', 'auth_flows', 'auth_email_codes', 'auth_invites', 'auth_email_changes', 'auth_waitlist', 'auth_signups', 'auth_factor_recovery', 'auth_second_factor_proofs', 'auth_trusted_devices', 'auth_manual_recovery','auth_abuse','auth_admin_operations'])
+                for (const table of ['auth_sessions', 'auth_flows', 'auth_email_codes', 'auth_invites', 'auth_email_changes', 'auth_waitlist', 'auth_signups', 'auth_factor_recovery', 'auth_second_factor_proofs', 'auth_trusted_devices', 'auth_manual_recovery','auth_admin_operations'])
                     db.prepare('DELETE FROM ' + table).run();
                 counts.auth_cases = Number(db.prepare("UPDATE auth_cases SET data=json_set(data,'$.status','closed') WHERE json_extract(data,'$.status')='pending'").run().changes);
                 counts.auth_cases += Number(db.prepare("UPDATE auth_cases SET data=json_set(data,'$.status','closed','$.recovery.state','cancelled') WHERE json_extract(data,'$.action')='restore-access' AND json_extract(data,'$.recovery.state') IN ('delivery','ready')").run().changes);
                 db.prepare("UPDATE auth_meta SET value=? WHERE key='configuration'").run(nextRevision);
                 db.prepare("INSERT INTO auth_meta VALUES('configurationMigration',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({ from: previous, to: nextRevision }));
-                audit('operator', 'configuration.changed', nextRevision, options.configurationChangeAt, JSON.stringify({ from: previous, revoked: counts, preservedCancellationTokens: cancellationTokens }));
+                audit('operator', 'configuration.changed', nextRevision, options.configurationChangeAt, '', { from: String(previous), revoked: counts, preservedCancellationTokens: cancellationTokens });
             }
             else if (!previous) {
                 if (approval || num(db.prepare('SELECT count(*) AS n FROM auth_accounts').get()?.n) > 0)
@@ -604,10 +610,12 @@ if (!isMainThread && workerData?.authStore) {
             return nextRevision;
         });
         initializing = false;
+        // A startup event (configuration.changed) is drained by the audit poll; startup messages carry readiness only.
+        outboxWritten = false;
         port.postMessage({ ready: true });
     }
     catch (e) {
-        port.postMessage({ error: e instanceof AuthError ? e.code : 'auth_store_unavailable' });
+        port.postMessage({ error: e instanceof AuthError || e instanceof AuditError ? e.code : 'auth_store_unavailable' });
         port.close();
     }
     port.on('message', ({ id, operation, args }: {
@@ -616,6 +624,7 @@ if (!isMainThread && workerData?.authStore) {
         args: Record<string, unknown>;
     }) => {
         try {
+            outboxWritten = false;
             db.exec('BEGIN IMMEDIATE');
             dispatchTransaction = true;
             if (db.prepare("SELECT value FROM auth_meta WHERE key='configuration'").get()?.value !== configurationRevision)
@@ -625,10 +634,9 @@ if (!isMainThread && workerData?.authStore) {
             const now = Number(args.now);
             let value: unknown;
             const manual=manualRecoveryOperation(operation,args,{db,now,enabled:options.securityPolicy.allowManualRecovery===true,account,active,fresh,authorizeCase,save,addSession,audit,isAdministrator:user=>admin(user.roles),isRestricted:restricted,fail:error});
-            const abuse=abuseOperation(operation,args,db,options.securityPolicy.abuse,error);
             const administration=adminAccountOperation(operation,args,{db,now,deletionGraceMs:options.securityPolicy.deletionGraceMs,roles:options.roles,account,fresh,isRestricted:restricted,save,audit,fail:error});
             const apiKey=apiKeyOperation(operation,args,db,error);
-            if(manual)value=manual.value;else if(abuse)value=abuse.value;else if(administration)value=administration.value;else if(apiKey)value=apiKey.value;else switch (operation) {
+            if(manual)value=manual.value;else if(administration)value=administration.value;else if(apiKey)value=apiKey.value;else switch (operation) {
                 case 'factorRecoveryBegin': {
                     if (!options.securityPolicy.allowEmailFactorRecovery)
                         error(403, 'factor_recovery_disabled');
@@ -907,12 +915,14 @@ if (!isMainThread && workerData?.authStore) {
                             if (invite.changes !== 1)
                                 error(403, 'registration_unavailable');
                         }
-                        if (db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(user.email)) {
+                        const taken = db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(user.email);
+                        if (taken) {
                             // Do not tell the caller the address is taken (JSON-API.md's
                             // no-enumeration guarantee): report the attempt without creating a
                             // second account, and let the caller build an identically shaped
                             // response backed by an unpersisted session (auth-core.ts `create`).
-                            audit('anonymous', 'registration.duplicate', user.email, now);
+                            // The event names the existing account, never the address.
+                            audit('anonymous', 'registration.duplicate', String(taken.id), now);
                             return null;
                         }
                         db.prepare('INSERT INTO auth_accounts VALUES(?,?,?,?,?)').run(user.id, user.email, user.status, Number(admin(user.roles)), JSON.stringify(user));
@@ -924,7 +934,6 @@ if (!isMainThread && workerData?.authStore) {
                 case 'login':
                     value = transaction(() => {
                         const user = active(String(args.accountId));
-                        if(args.abuseKey&&db.prepare('SELECT key FROM auth_abuse WHERE key=? AND blocked_until>? AND expires>?').get(String(args.abuseKey),now,now))error(429,'auth_backoff');
                         if (args.proof) {
                             const proof = args.proof as {
                                 kind: string;
@@ -975,7 +984,6 @@ if (!isMainThread && workerData?.authStore) {
                         const newDevice = addSession(args.session as unknown as SessionRecord);
                         for (const key of (args.attemptKeys as string[] | undefined) ?? (args.attemptKey ? [String(args.attemptKey)] : []))
                             db.prepare('DELETE FROM auth_attempts WHERE key=?').run(key);
-                        if(args.abuseKey)db.prepare('DELETE FROM auth_abuse WHERE key=?').run(String(args.abuseKey));
                         audit(user.id, args.oldHash ? 'session.step_up' : 'session.login', user.id, now);
                         if (!args.oldHash)
                             metric('success', args.proof ? String((args.proof as {
@@ -1044,7 +1052,6 @@ if (!isMainThread && workerData?.authStore) {
                             if (!user.emailVerified)
                                 claimMailbox(user, 'password-reset', now, true);
                             user.passwordHash = String(args.passwordHash);
-                            db.prepare('DELETE FROM auth_abuse WHERE key=?').run(abuseKey('password',user.email));
                             // Clear the account-wide password budget (auth-core guessableAttempt) so
                             // the owner can sign in with the new password at once. Client-scoped
                             // keys hold only that client's own failures and are left to expire.
@@ -1260,7 +1267,7 @@ if (!isMainThread && workerData?.authStore) {
                 case 'impersonate':
                     value = transaction(() => {
                         const actor = fresh(String(args.hash), now).user, target = active(String(args.accountId)), p = permissions(actor.roles);
-                        if (!options.registration.allowImpersonation || actor.id === target.id || !p.includes('*') && !p.includes('auth.users.impersonate') || permissions(target.roles).some(permission => permission === '*' || permission.startsWith('auth.') || permission.startsWith('admin.')))
+                        if (!options.registration.allowImpersonation || actor.id === target.id || !p.includes('*') && !p.includes('auth.users.impersonate') || privileged(target.roles))
                             error(403, 'impersonation_denied');
                         const issued = { ...args.session as unknown as SessionRecord, impersonatorId: actor.id, actorVersion: actor.version };
                         addSession(issued);
@@ -1374,7 +1381,8 @@ if (!isMainThread && workerData?.authStore) {
                             error(503, 'auth_capacity_reached');
                         db.prepare('DELETE FROM auth_invites WHERE email=?').run(String(args.email));
                         db.prepare('INSERT INTO auth_invites VALUES(?,?,?)').run(String(args.hash), String(args.email), now + 86400000);
-                        audit(actor.id, 'registration.invited', String(args.email), now);
+                        // The address stays out of the log: the subject is a pseudonym of the invitation.
+                        audit(actor.id, 'registration.invited', invitationSubject(String(args.hash)), now);
                         return true;
                     });
                     break;
@@ -1386,8 +1394,10 @@ if (!isMainThread && workerData?.authStore) {
                         // an address already on the list or already an account is reported as a
                         // duplicate to the caller who requested it here, but the HTTP response is
                         // identical for both outcomes (see auth.ts's `/register` waitlist branch).
-                        if (db.prepare('SELECT id FROM auth_waitlist WHERE email=?').get(String(args.email)) || db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(String(args.email))) {
-                            audit('anonymous', 'registration.duplicate', String(args.email), now);
+                        const existing = db.prepare('SELECT id FROM auth_waitlist WHERE email=?').get(String(args.email)) ?? db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(String(args.email));
+                        if (existing) {
+                            // The waitlist request's id (the account id it becomes) or the account's, never the address.
+                            audit('anonymous', 'registration.duplicate', String(existing.id), now);
                             return { id: args.id, duplicate: true };
                         }
                         db.prepare('INSERT INTO auth_waitlist(id,email,password_hash,created,profile) VALUES(?,?,?,?,?)').run(String(args.id), String(args.email), String(args.passwordHash), now, args.profile ? JSON.stringify(args.profile) : null);
@@ -1675,7 +1685,7 @@ if (!isMainThread && workerData?.authStore) {
                 case 'cleanup':
                     value = transaction(() => {
                         let remaining = Number(args.limit), removed = 0;
-                        for (const [table, predicate, params] of [['auth_sessions', 'expires<=? OR last_seen<=?', [now, now - options.sessionIdleMs]], ['auth_tokens', 'expires<=?', [now]], ['auth_flows', 'expires<=?', [now]], ['auth_signups', 'expires<=?', [now]], ['auth_second_factor_proofs', 'expires<=?', [now]], ['auth_trusted_devices', 'expires<=?', [now]], ['auth_factor_recovery', 'expires<=?', [now]], ['auth_manual_recovery', 'expires<=?', [now]], ['auth_email_codes', 'expires<=?', [now]], ['auth_email_changes', 'expires<=?', [now]], ['auth_invites', 'expires<=?', [now]], ['auth_attempts', 'expires<=?', [now]], ['auth_abuse','expires<=?',[now]], ['auth_admin_operations','expires<=?',[now]], ['auth_cases', "json_extract(data,'$.expires')<=?", [now - 2592000000]]] as [
+                        for (const [table, predicate, params] of [['auth_sessions', 'expires<=? OR last_seen<=?', [now, now - options.sessionIdleMs]], ['auth_tokens', 'expires<=?', [now]], ['auth_flows', 'expires<=?', [now]], ['auth_signups', 'expires<=?', [now]], ['auth_second_factor_proofs', 'expires<=?', [now]], ['auth_trusted_devices', 'expires<=?', [now]], ['auth_factor_recovery', 'expires<=?', [now]], ['auth_manual_recovery', 'expires<=?', [now]], ['auth_email_codes', 'expires<=?', [now]], ['auth_email_changes', 'expires<=?', [now]], ['auth_invites', 'expires<=?', [now]], ['auth_attempts', 'expires<=?', [now]], ['auth_admin_operations','expires<=?',[now]], ['auth_cases', "json_extract(data,'$.expires')<=?", [now - 2592000000]]] as [
                             string,
                             string,
                             number[]
@@ -1806,13 +1816,6 @@ if (!isMainThread && workerData?.authStore) {
                     value = { id: target!.id, email: target!.email };
                     break;
                 }
-                case 'adminAuditExport': {
-                    const actor = fresh(String(args.hash), now).user, granted = permissions(actor.roles);
-                    if (!granted.includes('*') && (!granted.includes('auth.audit.read') || !granted.includes('auth.audit.export'))) error(403, 'permission_denied');
-                    audit(actor.id, 'admin.audit_exported', `range:${String(args.from)}:${String(args.to)}:${String(args.count)}`, now, String(args.reason));
-                    value = true;
-                    break;
-                }
                 case 'adminExport':
                     value = transaction(() => {
                         const actor = fresh(String(args.hash), now).user, target = account(String(args.accountId));
@@ -1893,14 +1896,28 @@ if (!isMainThread && workerData?.authStore) {
                 case 'sessions':
                     value = db.prepare('SELECT id,created,authenticated_at AS authenticatedAt,expires,last_seen AS lastSeen,device_label AS deviceLabel FROM auth_sessions WHERE account_id=? AND expires>? AND last_seen>? ORDER BY created DESC LIMIT 20').all(String(args.accountId), now, now - options.sessionIdleMs);
                     break;
-                case 'audit':
-                    value = db.prepare("SELECT id,actor,action,subject,created,reason FROM auth_audit WHERE id>? AND (?='' OR actor=?) AND (?='' OR subject=?) AND (?='' OR action=?) AND created>=? AND created<=? ORDER BY id LIMIT ?").all(Number(args.after || 0), String(args.actor), String(args.actor), String(args.subject), String(args.subject), String(args.action), String(args.action), Number(args.from), Number(args.to), Number(args.limit));
+                // The outbox's side of the audit producer contract: oldest first, then removal of what audit stored.
+                case 'auditOutboxPeek':
+                    value = db.prepare('SELECT event FROM auth_audit_outbox ORDER BY seq LIMIT ?').all(Math.max(0, Math.min(100, Number(args.limit) || 0))).map(row => JSON.parse(String(row.event)) as AuditEvent);
                     break;
+                case 'auditOutboxAck':
+                    for (const eventId of (args.ids as unknown[]).slice(0, 100))
+                        db.prepare('DELETE FROM auth_audit_outbox WHERE id=?').run(String(eventId));
+                    value = true;
+                    break;
+                case 'auditOutboxBacklog':
+                    value = num(db.prepare('SELECT count(*) AS n FROM auth_audit_outbox').get()?.n);
+                    break;
+                // Stored passkeys by the RP ID they were registered for ('' when none was recorded).
                 default: error(400, 'unsupported_auth_operation');
             }
             db.exec('COMMIT');
             dispatchTransaction = false;
             port.postMessage({ id, value });
+            // Only after the commit: a rolled-back change wrote no event to wake the drain for.
+            if (outboxWritten)
+                port.postMessage({ auditPending: true });
+            outboxWritten = false;
         }
         catch (e) {
             if (dispatchTransaction) {
@@ -1910,7 +1927,8 @@ if (!isMainThread && workerData?.authStore) {
                 catch { /* Closed database remains unavailable. */ }
                 dispatchTransaction = false;
             }
-            port.postMessage({ id, error: { status: e instanceof AuthError ? e.status : 503, code: e instanceof AuthError ? e.code : 'auth_store_unavailable' } });
+            outboxWritten = false;
+            port.postMessage({ id, error: { status: e instanceof AuthError || e instanceof AuditError ? e.status : 503, code: e instanceof AuthError || e instanceof AuditError ? e.code : 'auth_store_unavailable' } });
         }
     });
 }

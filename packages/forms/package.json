@@ -43,15 +43,25 @@
   },
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
+    "@jimhoyd/urlcode-abuse": "file:../abuse",
+    "@jimhoyd/urlcode-mail": "file:../mail",
     "@jimhoyd/urlcode-ui": "file:../ui",
     "@types/node": "26.6.2",
     "typescript": "6.0.3"
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": "0.6.1",
+    "@jimhoyd/urlcode-abuse": "0.6.1",
+    "@jimhoyd/urlcode-mail": "0.6.1",
     "@jimhoyd/urlcode-ui": "0.6.1"
   },
   "peerDependenciesMeta": {
+    "@jimhoyd/urlcode-abuse": {
+      "optional": true
+    },
+    "@jimhoyd/urlcode-mail": {
+      "optional": true
+    },
     "@jimhoyd/urlcode-ui": {
       "optional": true
     }

@@ -16,7 +16,7 @@ import { randomBytes } from 'node:crypto';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createAuthService } from '../src/auth-core.ts';
-import { authExtension } from '../src/auth.ts';
+import { companions, withCompanions } from './support/companions.ts';
 import type { TestContext } from 'node:test';
 import { activatedUi } from './support/render.ts';
 async function app(t: TestContext) {
@@ -28,6 +28,7 @@ async function app(t: TestContext) {
     const projectSha256 = await inspectExtensionRevision(project);
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'] }, defaultRole: 'member' });
     const ui = await activatedUi(t, project, projectSha256);
+    const authExtension = withCompanions(await companions(t, root, projectSha256));
     const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui });
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });

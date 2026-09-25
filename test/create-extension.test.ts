@@ -11,9 +11,10 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import ts from 'typescript';
+import { buildAddonCatalog } from '../packages/core/src/addon-manifest.ts';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const scriptPath = join(repoRoot, 'scripts', 'create-extension.ts');
@@ -68,7 +69,14 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   assert.match(manifest.scripts.build!, /rmSync\('dist'.*&& tsc -p tsconfig\.build\.json$/);
   assert.equal(manifest.scripts.verify, 'npm run typecheck && npm run build && npm test');
 
-  assert.deepEqual(JSON.parse(await readFile(join(dir, 'urlcode.json'), 'utf8')), { kind: 'extension', name, description: 'A generated test extension.', requires: [] });
+  // The descriptor is the one build:addons would write from the generated definition, and the add-on catalog the
+  // root install's prepare step builds accepts it before the package is ever built.
+  const descriptor = JSON.parse(await readFile(join(dir, 'urlcode.json'), 'utf8')) as Record<string, unknown>;
+  const { definition } = (await import(pathToFileURL(join(dir, 'src', 'extension.ts')).href) as { default: { definition: Record<string, unknown> } }).default;
+  assert.deepEqual(descriptor, { kind: 'extension', name, description: 'A generated test extension.', requires: [], schema: definition.schema, authoring: definition.authoring });
+  assert.equal(JSON.stringify(descriptor.schema), JSON.stringify(definition.schema), 'key order matches, so build:addons --check sees no drift');
+  assert.equal(JSON.stringify(descriptor.authoring), JSON.stringify(definition.authoring));
+  assert.doesNotThrow(() => buildAddonCatalog(coreVersion, [{ descriptor, package: `@jimhoyd/urlcode-${name}`, version: coreVersion, source: 'urlcode.json' }]));
   for (const relative of ['README.md', 'SECURITY.md', 'CHANGELOG.md', 'AGENTS.md', 'llms.txt', 'NOTICE', 'LICENSE', 'tsconfig.json', 'tsconfig.build.json']) {
     assert.ok((await stat(join(dir, relative))).isFile(), `${relative} was not created`);
   }

@@ -49,9 +49,12 @@ so ui never reads the store's configuration. `ui` is an optional peer, not a
 requirement: without it `screens` is simply not served. See
 [a screen for the collection](../../docs/STORE.md#a-screen-for-the-collection).
 
-When `auth` is installed the example puts `auth: true` on the mount and
-declares the `todos` collection `ownership: owner`, so each signed-in user sees
-and changes only their own todos. Without
+When `auth` is installed the example puts `auth: {csrf: origin}` on the API
+mount (auth admits its JSON writes on same-origin provenance and the session
+cookie; the store accepts only JSON) and declares the `todos` collection
+`ownership: owner`, so each signed-in user sees and changes only their own
+todos. Auth installs `audit`, so the example collection also declares
+`audit: true`. Without
 `auth` the example refuses; the refusal prints the exact command, ending in
 `--ack store:public-write`, which acknowledges a public writable endpoint (not
 rate limiting, abuse protection or multi-tenant isolation).
@@ -76,6 +79,18 @@ collection, or on an owned collection to the caller's own records. A `PATCH`
 that sets a field to `null` removes it; a required field refuses that with a
 `400` field error, and `PUT` still takes only values (see
 [clearing a field](../../docs/STORE.md#clearing-a-field)).
+
+A collection that declares `audit: true` records every write in the audit
+log (the store `uses` the `audit` extension; activation refuses such a
+collection when audit is not installed, or when no principal-providing policy
+guards its mount). Each create, replace, update, delete and increment (never a
+short-link click) is an event (`store.record.created`, `.replaced`, `.updated`,
+`.deleted`, `.incremented`) with subject `<collection>/<id>`, the principal id
+or `anonymous` as actor, and the changed field names, never values. The event
+is written into the collection's data file (its `audit` array) in the same
+write as the record and drained by audit while the host runs; when 1000 events
+wait undelivered the next write answers `503 audit_backlog` and changes
+nothing. See [audited writes](../../docs/STORE.md#audited-writes).
 
 Another extension that requires the store reaches declared collections through
 its typed export, `StoreExports` (`ctx.get('store')`): `create`, `get`, a

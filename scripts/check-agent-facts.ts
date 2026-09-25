@@ -26,7 +26,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { mcpToolInventory } from '../packages/core/src/mcp.ts';
 import { addons } from './workspaces.ts';
-import { storeAuthoring } from '../packages/store/src/store.ts';
+import { storeAuthoring } from '../packages/store/src/authoring.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');

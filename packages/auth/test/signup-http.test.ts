@@ -9,7 +9,8 @@ import { isoCBOR } from '@simplewebauthn/server/helpers';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createAuthService } from '../src/auth-core.ts';
-import { authExtension } from '../src/auth.ts';
+import { siteCompanions, withCompanions } from './support/companions.ts';
+import { internal } from '../src/auth-core.ts';
 import { createPasskeyProvider } from '../src/passkeys.ts';
 import { createRegistrationPolicy } from '../src/registration.ts';
 import type { TestContext } from 'node:test';
@@ -21,9 +22,11 @@ async function app(t:TestContext,mode:'open'|'waitlist'='open') {
  const project=join(root,'project');await mkdir(project);const kit=kitYaml();await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{...kit.extensions,auth:{version:'1',config:{registration:mode}}},routes:{'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},...kit.routes}}));
  const projectSha256=await inspectExtensionRevision(project),{ui,registrations}=kitSetup(project,projectSha256);
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read'],admin:['*']},defaultRole:'member',registrationMode:mode,requireEmailVerification:true,registrationPolicy:createRegistrationPolicy({termsVersion:'v1'})});
- const origin='https://site.example',codes=new Map<string,string>();
- const extension=authExtension({service,csrfKey:randomBytes(32),projectSha256,ui,passkeys:createPasskeyProvider({origin,rpId:'site.example',rpName:'Site'}),sendSignupCode:async m=>{codes.set(m.email,m.code);}});
- const server=await startServer({project,origin,port:0,extensions:[...registrations,extension],log:()=>{}});cleanup(t, async()=>{try { await server.close(); } finally { await service.close(); }});
+ const origin='https://site.example',hosted=await siteCompanions(t,root,projectSha256),authExtension=withCompanions(hosted);
+ // The signup codes mail delivered, by address.
+ const codes={get:(email:string)=>[...hosted.sent].reverse().find(envelope=>envelope.template==='auth.signup-code'&&envelope.to===email)?.text.match(/code is: (\d{6})/)?.[1],has:(email:string)=>hosted.sent.some(envelope=>envelope.template==='auth.signup-code'&&envelope.to===email)};
+ const extension=authExtension({service,csrfKey:randomBytes(32),projectSha256,ui,passkeys:createPasskeyProvider({origin,rpId:'site.example',rpName:'Site'})});
+ const server=await startServer({project,origin,port:0,extensions:[...registrations,...hosted.registrations,extension],log:()=>{}});cleanup(t, async()=>{try { await server.close(); } finally { await service.close(); }});
  const cookies=new Map<string,string>();
  async function request(path:string,data?:Record<string,unknown>,csrf?:string,html=false){
   const response=await fetch(`http://127.0.0.1:${server.address.port}/account${path}`,{method:data?'POST':'GET',redirect:'manual',headers:{accept:html?'text/html':'application/json',cookie:[...cookies].map(([k,v])=>k+'='+v).join('; '),...(data?{'content-type':'application/json',origin}:{}),...(csrf?{'x-csrf-token':csrf}:{})},...(data?{body:JSON.stringify(data)}:{})});
@@ -111,6 +114,6 @@ test('waitlist signup verifies email before accepting credentials and queues an 
  assert.equal((await request('/signup/verify',{code:codes.get('waiting@example.test')},csrf)).status,200);
  assert.equal((await request('/signup/password',{password:'correct horse battery staple'},csrf)).status,200);
  const completed=await request('/signup/complete',{termsAccepted:'true'},csrf);assert.equal(completed.status,200);assert.equal((await body<SignupCompleteBody>(completed)).redirect,'/account/signup/pending');
- assert.equal((await service.listUsers()).users.length,0);assert.equal((await service.listRegistrationRequests()).requests.length,1);assert.equal(cookies.has('__Host-urlcode-session'),false);
+ assert.equal((await service.listUsers()).users.length,0);assert.equal((await internal(service).listRegistrationRequests()).requests.length,1);assert.equal(cookies.has('__Host-urlcode-session'),false);
  const pending=await request('/signup/pending',undefined,undefined,true);assert.ok((await pending.text()).includes('administrator will review'));
 });

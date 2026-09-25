@@ -10,11 +10,12 @@
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
-- `extensions.forms` and `extensions.store` declared before `form-records`.
-- A store collection with `ownership: owner` (and its own `auth: true` route).
+- `extensions.forms` and `extensions.store` declared too (in any order).
+- A store collection with `ownership: owner` (and its own `auth: {csrf: origin}` route).
 - `extensions.form-records: { version: "1", config: { records: { <name>: { mount, collection, form, fields?, editable?, editTitle?, list?: { title?, columns } } } } }`;
   `form` is a forms flow body without `mount`.
-- A route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and `auth: true`.
+- A route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and `auth: {csrf: origin}`
+  (forms verifies its own token; auth's default token header cannot come from a plain HTML form).
 
 ## Read in this order
 - [README](README.md): the record flow declaration, paths, ownership, concurrency and the example.

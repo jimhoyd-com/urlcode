@@ -17,6 +17,8 @@ const scaffold = (overrides: Partial<{ installed: readonly string[]; acknowledge
 test('the definition names the store, requires nothing and shares the runtime schema', () => {
   assert.equal(store.definition.name, 'store');
   assert.deepEqual(store.definition.requires, []);
+  // audit is optional: only a collection that declares `audit: true` needs it.
+  assert.deepEqual(store.definition.uses, ['audit']);
   assert.equal(store.definition.schema, storeConfigSchema);
   // The optional store -> ui edge is declared, not required: the store contributes its screens to ui.
   assert.deepEqual(Object.keys(store.definition.contributes ?? {}), ['ui']);
@@ -45,9 +47,10 @@ test('the example returns the todos collection and its route, and validates with
   assert.ok(result.notes?.length);
 });
 
-test('scaffold protects the mount with auth: true when auth is installed, and needs no acknowledgement', async () => {
+test('scaffold protects the JSON mount with auth: {csrf: origin} when auth is installed, and needs no acknowledgement', async () => {
   const result = await scaffold({ installed: ['auth', 'store', 'ui'], acknowledgements: [] });
-  assert.equal((result.routes['/api/todos/*'] as { auth?: boolean }).auth, true);
+  // The API takes JSON only, so auth admits its writes on same-origin provenance rather than a token header (decision 0.1).
+  assert.deepEqual((result.routes['/api/todos/*'] as { auth?: unknown }).auth, { csrf: 'origin' });
   // Behind auth the example collection is per-user (#331): the safer pattern to copy.
   assert.equal((result.config as { collections: { todos: { ownership?: string } } }).collections.todos.ownership, 'owner');
   assert.ok(result.notes!.some(note => note.includes('ownership: owner')));
@@ -98,4 +101,13 @@ test('host() registers the store through composeHost with the operator directory
   const defaulted = await composeHost(pathToFileURL(join(site, 'host.mjs')), [store()]);
   assert.equal(defaulted.extensions![0]!.name, 'store');
   await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ directory: 'relative/dir' })]), /absolute path/);
+});
+
+test('with audit installed the example collection records its writes, and says so', async () => {
+  const audited = await scaffold({ installed: ['audit', 'auth', 'store'], acknowledgements: [] });
+  assert.equal((audited.config as { collections: { todos: { audit?: boolean } } }).collections.todos.audit, true);
+  assert.ok(audited.notes!.some(note => note.includes('audit: true') && note.includes('503')));
+  const plain = await scaffold({ installed: ['auth', 'store'], acknowledgements: [] });
+  assert.equal('audit' in (plain.config as { collections: { todos: object } }).collections.todos, false);
+  assert.ok(plain.notes!.every(note => !note.includes('audit')));
 });

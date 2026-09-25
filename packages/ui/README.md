@@ -205,20 +205,25 @@ Hashed assets are served under `/assets/ui/static/` and declared as `immutableAs
 ```js
 // host.mjs (trusted operator code, outside app/)
 import { composeHost } from '@jimhoyd/urlcode/host';
+import audit from '@jimhoyd/urlcode-audit/extension';
+import mail from '@jimhoyd/urlcode-mail/extension';
 import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
 
 export default await composeHost(import.meta.url, [
+  audit(),
+  mail(),
   ui(),      // or ui({ theme, sources, extensions })
-  auth(),
+  auth(),    // requires ui, audit and mail
 ]);
 ```
 
 `ui({...})` takes extra English catalogues (`sources`), extra extension
 templates (`extensions`), both registered after what installed extensions
 contribute, and `theme` values the host sets that the project may not.
-Declare `ui` first under `extensions` in `app/urlcode.yaml`; `ui.kit` is
-available once the runtime has activated it.
+The order of `extensions` in `app/urlcode.yaml` does not matter: the runtime
+activates `ui` before every extension that requires it, and `ui.kit` is
+available once it has.
 `urlcode extensions add ui` composes all of this: `host.mjs` lists `ui()`, whose
 `host()` calls `createUiExtension` with `projectRoot` set to the site directory
 and registers the copy and templates every installed extension contributes
@@ -226,7 +231,8 @@ through its definition's `contributes.ui` (`{sources, templates}`). The scaffold
 writes the `extensions.ui` block with a starter theme named after the site, the
 `/assets/ui/*` route and `ui/copy/`, `ui/templates/` and `ui/extra.css`
 placeholders beside the host; core orders `ui` before the extensions that
-require it. Auth and admin render through this kit and receive it from the host.
+require it. Its `urlcode-ui doctor` and `eject` hints pass `--extensions` for
+every installed extension package whose definition contributes ui templates. Auth and admin render through this kit and receive it from the host.
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
 `options.layout: 'application'` makes the kit render the console shell itself
@@ -234,8 +240,12 @@ An extension that adopts the kit renders with `ui.kit.render(name, view, context
 `title`, `nav` and `menu`, so a console passes data rather than markup and the
 navigation appears exactly once,
 `nav` items may carry an `icon`, and `scripts` takes kit script names beside
-the extension's own `{ src: '/account/static/passkeys.js', integrity? }`
-served under its mount; every script carries the page nonce. A host that
+the extension's own `{ src: '/account/static/passkeys.js', integrity?, async? }`
+served under its mount; every script carries the page nonce and loads with
+`defer`, or `async` when the entry says so. An extension script may also be an
+absolute `https:` URL whose origin the same page lists in `csp.script` (a
+challenge widget, for example), and nothing else off-site: the kit refuses
+`Extension script must be same-site or listed in csp.script`. A host that
 builds its own `presentation` need not register `kitCatalogue`: the kit
 completes the `ui.*` copy itself, and the host's keys win.
 The package also ships `kitCatalogueFr`, a complete French translation of the
@@ -256,12 +266,12 @@ lacks with the English text as a skeleton; `urlcode-ui preview card` renders a
 sample page.
 The CLI is this kit alone until it is told which packages ship the other
 namespaces: `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` adds
-them, on every command. Each package is resolved from `--project` with Node
-package resolution and imported for the namespace it exports
-(`ExtensionTemplates`, which carries the templates, their view model versions,
-the English catalogue the host registers in `sources` and a sample per
-template); one that is not installed there is skipped with a note, so a command
-still runs. The site's `host.mjs` is never imported: it builds services and
+them, on every command. Each package's `./extension` entry is resolved from
+`--project` with Node package resolution, and the CLI reads the namespace from
+its definition's `contributes.ui` (the templates, their view model versions,
+the English catalogue and a sample per template); a package that is not
+installed there, has no `./extension` entry or contributes no ui templates is
+skipped with a note, so a command still runs. The site's `host.mjs` is never imported: it builds services and
 reads secrets at its top level, and a read-only `list` or `doctor` must not run
 it. With the packages named, `list` and `doctor` cover `auth/*` and `admin/*`
 too, a project override of an extension template is checked against the shipped

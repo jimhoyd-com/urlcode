@@ -84,6 +84,8 @@ test('urlcode studio prints its URL and stops on SIGINT',async t=>{
   assert.equal(event.mode,'studio');
   assert.equal((await get(event.url)).status,200);
   child.kill('SIGINT');
-  const [code]=await once(child,'exit') as [number|null];
-  assert.equal(code,0);
+  const [code,signal]=await once(child,'exit') as [number|null,NodeJS.Signals|null];
+  // Windows cannot deliver SIGINT to a child process: kill() terminates it, so only POSIX can observe the graceful stop.
+  if(process.platform==='win32')assert.equal(signal,'SIGINT');
+  else assert.equal(code,0);
 });

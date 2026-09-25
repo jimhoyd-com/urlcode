@@ -7,12 +7,12 @@ longer CSRF secret and a reviewed project revision pin; never put either in
 project YAML or an application repository.
 
 The extension issues a short-lived (10-minute) HMAC-protected CSRF token on
-each form page, checks the `Origin` header when present against the site's
-origins (the canonical `--origin` and any operator `--alias-origin`, matched
-by core's `isSiteOrigin`) — falling
-back to `Sec-Fetch-Site`, then `Referer`, and refusing the request when
-neither gives same-origin evidence, rather than admitting an absent `Origin`
-by default — accepts only bounded `application/x-www-form-urlencoded` bodies,
+each form page, admits a POST only through core's same-origin rule
+(`isSameOriginRequest` with `whenAbsent: 'refuse'`: a present `Origin` must be
+one of the site's origins, the canonical `--origin` or an operator
+`--alias-origin`; otherwise `Sec-Fetch-Site`, then `Referer`, must show
+same-origin; `Sec-Fetch-Site: cross-site`, duplicated provenance headers and a
+request with no provenance at all are refused) — accepts only bounded `application/x-www-form-urlencoded` bodies,
 rejects duplicate declared fields, and returns fixed field messages. A 422
 response deliberately re-renders only that request's submitted values so the
 caller can correct the form; those values are HTML-escaped and never appear in
@@ -67,9 +67,19 @@ An optional `onSubmit` lifecycle hook is trusted project code, exactly like a
 normal unsandboxed project function; `sandbox: true` is refused by the generic
 extension-hook contract. It should not expose submitted values, and any durable
 or remote side effect must be idempotent because a client can retry a valid
-POST. Put a mount behind `auth: true` where its submissions require an account;
-the form extension does not create identities, ownership rules, rate limits or
-storage.
+POST. Put a mount behind `auth: {csrf: origin}` (never `auth: true`, whose token mode refuses every form POST) where its
+submissions require an account; the form extension does not create identities,
+ownership rules or storage.
+
+A flow's `abuse` budget is enforced through the abuse extension before the
+submission is processed; counters are keyed by an HMAC of the client key, and
+any doubt (abuse unavailable, store full) refuses the submission (503) rather
+than admitting it. It limits volume; it is not identity or bot proof. A flow's
+`notify` sends only the fields listed in `include`, to an address the operator
+named in `host.mjs`, never one from YAML or the submission; submitted text is
+made safe for plain text (control characters replaced) before it reaches mail.
+A delivery failure refuses the submission (503), so an `onSubmit` side effect
+may run again on retry: keep it idempotent.
 
 A flow another extension defines through the forms export (`FormsExports`,
 #529) is admitted by the same code: the same same-origin rule, body bound,

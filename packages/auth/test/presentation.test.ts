@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPresentation } from '../src/presentation.ts';
-import type { Catalogue, ThemeVariables } from '../src/presentation.ts';
+import { createPresentation as createUiPresentation } from '@jimhoyd/urlcode-ui';
+import type { PresentationOptions } from '@jimhoyd/urlcode-ui';
+import { englishCatalogue } from '../src/presentation.ts';
+/** ui's presentation over auth's English catalogue, as the host registers it. */
+const createPresentation = (options: Omit<PresentationOptions, 'defaults'> = {}) => createUiPresentation({ ...options, defaults: englishCatalogue });
+import type { Catalogue, ThemeVariables } from '@jimhoyd/urlcode-ui';
 test('locale preferences only select configured catalogues with stable quality negotiation', () => {
     const presentation = createPresentation({ catalogues: { fr: { 'page.signIn': 'Connexion' }, ar: { 'page.signIn': 'دخول' }, 'pt-BR': { 'page.signIn': 'Entrar' } } });
     assert.equal(presentation.resolve({ acceptLanguage: 'de;q=1, fr-CA;q=0.8, ar;q=0.5' }).locale, 'fr');
@@ -22,10 +26,11 @@ test('plural categories use Intl rules and numbers, with explicit bounded values
     assert.throws(() => p.text('missing.key'), /Unknown/);
 });
 test('themes and assets reject executable CSS, remote URLs, traversal and malformed paths', () => {
-    const p = createPresentation({ theme: { '--auth-accent': '#123AbC', '--auth-radius': '8px' }, logo: '/assets/logo.svg', favicon: '/assets/icon.png' }).resolve();
+    const p = createPresentation({ theme: { '--ui-accent': '#123AbC', '--ui-radius': '8px' }, logo: '/assets/logo.svg', favicon: '/assets/icon.png' }).resolve();
     assert.equal(p.cssVariables, '--ui-accent:#123AbC;--ui-radius:8px');
     assert.equal(p.logo, '/assets/logo.svg');
-    for (const theme of [{ '--auth-accent': 'red; background:url(https://evil.test)' }, { '--unknown': '#ffffff' }, { '--auth-radius': '9999px' }])
+    // The retired --auth-* names are unknown variables now, refused like any other.
+    for (const theme of [{ '--ui-accent': 'red; background:url(https://evil.test)' }, { '--unknown': '#ffffff' }, { '--ui-radius': '9999px' }, { '--auth-accent': '#123456' }])
         assert.throws(() => createPresentation({ theme: theme as ThemeVariables }));
     for (const path of ['https://evil.test/a', '//evil.test', '/a/../b', '/a/%2e%2e', '/a?x=1', '/a"onload=alert(1)', '/a\\b'])
         assert.throws(() => createPresentation({ logo: path }));

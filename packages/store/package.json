@@ -39,15 +39,20 @@
   ],
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
+    "@jimhoyd/urlcode-audit": "file:../audit",
     "@jimhoyd/urlcode-ui": "file:../ui",
     "@types/node": "26.6.2",
     "typescript": "6.0.3"
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": "0.6.1",
+    "@jimhoyd/urlcode-audit": "0.6.1",
     "@jimhoyd/urlcode-ui": "0.6.1"
   },
   "peerDependenciesMeta": {
+    "@jimhoyd/urlcode-audit": {
+      "optional": true
+    },
     "@jimhoyd/urlcode-ui": {
       "optional": true
     }
@@ -55,7 +60,7 @@
   "bin": {
     "urlcode-store": "./dist/cli.js"
   },
-  "homepage":"https://github.com/jimhoyd-com/urlcode/tree/main/packages/store#readme",
+  "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/store#readme",
   "bugs": {
     "url": "https://github.com/jimhoyd-com/urlcode/issues"
   }

@@ -121,6 +121,13 @@ In enforce mode only `exceeded` is logged.
   and `Retry-After` stays the credential's. An allowed response carries both
   members the same way: the auth extension's `middleware()` hook adds the
   `credential` member ahead of throttle's `default`.
+- No flow-aware budgets. Sign-in and sign-up budgets, password backoff and
+  form-submission budgets are the `abuse` extension's, which auth
+  (`extensions.auth.config.abuse`) and forms (`flows.<name>.abuse`) use when it
+  is installed. Its counters are keyed by an HMAC of the client or account,
+  persist in SQLite on the node target and can escalate to a challenge; see
+  [abuse protection](../EXTENSIONS.md#abuse-protection). Keep throttle in front
+  of those routes as the per-client flood floor.
 - Counters do not survive a reload: a new snapshot starts empty.
 - `maxKeys` bounds memory with least-recently-used eviction; an evicted key
   starts fresh, so a table sized below the number of concurrent clients

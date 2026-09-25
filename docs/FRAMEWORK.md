@@ -1,25 +1,28 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the eight workspace packages are, how a
+One page for people and AI agents. It says what the eleven workspace packages are, how a
 project grows from a handful of redirects into an application with accounts
 and an administration console, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Eight workspace packages, one project shape
+## Eleven workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
 | `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, the extension contract | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-ui` | [`packages/ui`](../packages/ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
-| `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
-| `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
-| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
-| `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
-| `@jimhoyd/urlcode-form-records` | [`packages/form-records`](../packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back, an edit page limited to declared fields and an optional per-user list page, through the typed exports of `forms` and `store` (and `ui` for the list) | `extensions.form-records` (declared after `forms` and `store`) plus a `GET, HEAD, POST` mount with `auth: true`, over an `ownership: owner` collection |
+| `@jimhoyd/urlcode-audit` | [`packages/audit`](../packages/audit) | The durable audit log: producers (auth, audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
+| `@jimhoyd/urlcode-abuse` | [`packages/abuse`](../packages/abuse) | Abuse protection for other extensions: keyed budgets and backoff over pseudonymous (HMAC) keys, an optional challenge provider and a honeypot helper | `extensions.abuse`; no route. Consumers declare their budgets in their own configuration |
+| `@jimhoyd/urlcode-mail` | [`packages/mail`](../packages/mail) | Plain-text transactional email: templates contributed by other extensions, translatable copy, one operator transport (a loopback outbox by default, SES or your own) | `extensions.mail`; no route. The transport is chosen in `host.mjs` |
+| `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI. Requires `ui`, `audit` and `mail`; uses `abuse` when installed | `extensions.auth` plus an `/account/*` mount and `auth:` (`policies.extensions.auth`) on protected routes |
+| `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, the audit log, registration approval, two-person cases, support impersonation, health. Requires `auth`, `ui` and `audit` | `extensions.admin` plus an `/admin/*` mount carrying `auth: {onDeny: 404}` |
+| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
+| `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields; per-flow submission budgets through `abuse` and a notification through `mail` | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth`, `abuse` and `mail` |
+| `@jimhoyd/urlcode-form-records` | [`packages/form-records`](../packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back, an edit page limited to declared fields and an optional per-user list page, through the typed exports of `forms` and `store` (and `ui` for the list) | `extensions.form-records` plus a `GET, HEAD, POST` mount with `auth: {csrf: origin}`, over an `ownership: owner` collection |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All eight are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The seven extensions, and the inert `store-schema` artifact in
+All eleven are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The ten extensions, and the inert `store-schema` artifact in
 [`artifacts/store-schema`](../artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
@@ -66,17 +69,22 @@ Each rung's YAML is valid on every rung above it.
    ambient Node environment trusted in-process code can reach on its own.
 4. **Accounts.** The `auth` extension: sign-in, registration, MFA, account
    page and protected routes. The operator installs it in a host file outside
-   the project; YAML only declares the mount and configuration.
-5. **Administration.** The `admin` extension on the same service: manage the
-   people who signed up, their sessions and roles, review the audit trail.
+   the project; YAML only declares the mount and configuration. Adding auth
+   also adds the `audit` log every privileged action is recorded in and the
+   `mail` extension that sends its messages; `abuse` adds sign-in and sign-up
+   budgets when it is installed too.
+5. **Administration.** The `admin` extension over auth's typed exports:
+   manage the people who signed up, their sessions and roles, and review the
+   audit log.
 
-6. **Your own look.** A shared `presentation` (catalogue and theme variables)
-   restyles auth and admin together; the `ui` extension adds the template kit,
-   project copy, template and stylesheet overrides for kit-rendered pages.
+6. **Your own look.** The `ui` extension's kit renders every auth, admin,
+   forms and store screen; its theme, project copy, template and stylesheet
+   overrides restyle them together.
 7. **Bounded data and forms.** The `store` extension supplies declared durable
    collections; the `forms` extension supplies declared browser form flows over
    the shared UI kit. Both are trusted operator extensions, not core YAML
-   handlers. Add `auth: true` where a flow or collection is per-account.
+   handlers. Add `auth: {csrf: origin}` where a flow or collection is per-account
+   (a form mount must not use `auth: true`: auth's token mode refuses its POSTs).
    The `form-records` extension composes them when a form should become a
    record its creator can see again and edit: it saves the submission into
    an owned collection and serves the confirmation and a constrained edit
@@ -93,10 +101,13 @@ above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 8 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
-operator host. Auth and admin additionally need the Node/SQLite runtime
-their packages document; forms and mcp declare Node, AWS and Vercel targets,
-while store, and so form-records, are currently Node-only. See each package's README ([auth](../packages/auth/README.md),
+operator host. Auth, admin, audit and abuse additionally need the Node/SQLite
+runtime their packages document; forms (except a flow with `abuse`), mail and
+mcp declare Node, AWS and Vercel targets, while store, and so form-records, are
+currently Node-only. See each package's README ([auth](../packages/auth/README.md),
 [admin](../packages/admin/README.md), [ui](../packages/ui/README.md),
+[audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md),
+[mail](../packages/mail/README.md),
 [store](../packages/store/README.md), [forms](../packages/forms/README.md),
 [form-records](../packages/form-records/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
@@ -110,18 +121,19 @@ npx @jimhoyd/urlcode init my-site --with ui,auth,admin --example
 ```
 
 That is `urlcode init my-site` followed by `urlcode extensions add ui auth
-admin --example` in it. Without `--example` each extension installs only its
+admin --example` in it, which also adds `audit` and `mail`, because auth and
+admin require them. Without `--example` each extension installs only its
 capability (auth's `/account/*` pages, admin's console, ui's assets); with it,
 each also writes its demo, such as the `/private` page below. Nothing else is discovered by convention:
 
 ```
 my-site/
   app/                   the route project: urlcode.yaml, routes/, functions (Git-owned, untrusted content)
-  host.mjs               trusted operator code: composeHost(import.meta.url, [ui(), auth(), admin()])
-  operator-service.mjs   opens the auth store, keys and senders (written by auth's scaffold)
+  host.mjs               trusted operator code: composeHost(import.meta.url, [audit(), mail(), ui(), auth(), admin()])
+  operator-service.mjs   opens the auth store and keys (written by auth's scaffold)
   package.json           exact core pin and the add-on tarball URLs core pins
   package-lock.json      integrity of every installed package
-  data/                  private: auth.sqlite, encryption key, CSRF key (gitignored)
+  data/                  private: auth.sqlite, audit.sqlite, the mail outbox, encryption key, CSRF key (gitignored)
 ```
 
 The project declares logical extensions and exclusive mounts:
@@ -130,12 +142,14 @@ The project declares logical extensions and exclusive mounts:
 version: "1"
 extensions:
   ui:    { version: "1", config: { theme: { name: Acme, colors: { primary: "24 95% 53%" } } } }
+  audit: { version: "1", config: {} }
+  mail:  { version: "1", config: {} }
   auth:  { version: "1", config: { registration: "off" } }
   admin: { version: "1", config: {} }
 routes:
   /assets/ui/*: { extension: ui,    methods: [GET, HEAD] }
   /account/*:   { extension: auth,  methods: [GET, HEAD, POST] }
-  /admin/*:     { extension: admin, methods: [GET, HEAD, POST] }
+  /admin/*:     { extension: admin, methods: [GET, HEAD, POST], auth: { onDeny: 404 } }
   /private:
     respond: { text: Signed in }
     auth: true
@@ -146,30 +160,60 @@ boundary; it does not isolate trusted application code from the host:
 
 ```js
 import { composeHost } from '@jimhoyd/urlcode/host';
+import audit from '@jimhoyd/urlcode-audit/extension';
+import mail from '@jimhoyd/urlcode-mail/extension';
 import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
 import admin from '@jimhoyd/urlcode-admin/extension';
 
 export default await composeHost(import.meta.url, [
+  audit(),
+  mail(),
   ui(),
   auth(),
   admin(),
 ]);
 ```
 
-`composeHost` orders the list by each extension's `requires`, activates each
-once, hands admin the auth service through `ctx.get('auth')`, and collects the
-templates and catalogues auth and admin contribute to `ui`, so both render
-every screen through the one `ui.kit`. The store contributes to `ui` too,
+`composeHost` orders the list by each extension's `requires` and `uses`,
+and the runtime activates the declared ones in that order, so a dependency is
+always active before the extension that reads it. It hands admin auth's typed
+`AuthExports` (version 1) through `ctx.get('auth')`: the signed-in account, a
+CSRF token and the administration API, never auth's keys, database or raw
+tokens. Auth sends every message itself, admin-initiated ones included,
+through `MailExports`, and both record privileged actions in the audit log.
+`composeHost` also collects the templates and catalogues auth and admin
+contribute to `ui`, so both render every screen through the one `ui.kit`, and
+the message templates auth and forms contribute to `mail`. The store contributes to `ui` too,
 without requiring it: the CRUD screens declared under
 `extensions.store.config.screens` reach ui as generic screen descriptions
 through `contributes.ui.screens`, so ui never reads another extension's
 configuration ([nesting](EXTENSIONS.md#nesting)). Operator options go inside a call, for
-example `auth({sendEmailCode})`.
+example `mail({transport: sesTransport({region}), from})`.
+
+The whole graph, as each extension declares it:
+
+```
+ui       requires []
+audit    requires []
+abuse    requires []
+mail     requires []
+auth     requires [ui, audit, mail]   uses [abuse]
+admin    requires [auth, ui, audit]
+store    requires []                  uses [audit]
+forms    requires [ui]                uses [abuse, mail]
+form-records requires [forms, store, ui]
+mcp      requires []
+```
+
+A `requires` entry must be installed and declared; a `uses` entry is optional,
+and the extension works without it (store refuses only a collection that asks
+for `audit: true` when audit is absent).
 
 Treat that composition as one application with package ownership boundaries,
-not as three separate user interfaces. Keep identity, session and recovery
-behavior in auth and authorization, freshness, auditing and mutations in admin.
+not as separate user interfaces. Keep identity, sessions, recovery,
+authorization, freshness and every account mutation in auth, the console's
+screens in admin, the durable log in audit and delivery in mail.
 Apply product differences through the installed extensions' declared authoring
 surfaces, in this order: configuration and theme, copy, a component or screen
 template, stylesheet, then a supported hook. Create another extension only for
@@ -187,8 +231,9 @@ function route uses. Project hooks are called as `hook(input, context)` with
 tool names). See [request context](EXTENSIONS.md#request-context-route-env-and-request-id).
 Activation likewise carries the canonical `origin` and the operator's full
 `origins` list (`--alias-origin`); every same-origin check goes through core's
-`isSiteOrigin`, so mcp, forms, store, auth and admin admit the same origins
-([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
+`isSiteOrigin`, and every write goes through core's one same-origin rule,
+`isSameOriginRequest`, so mcp, forms, store, auth and admin admit the same
+origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
 When the operator sets `--passkey-rp-id`, activation also carries
 `passkeyRpId`, and auth runs passkey ceremonies under that shared domain for
 every site origin ([shared passkey RP ID](EXTENSIONS.md#shared-passkey-relying-party-domain)).
@@ -230,7 +275,8 @@ needs an explicit operator reapproval.
 
 The presentation tooling composes the same way. `npx urlcode-ui` with
 `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` adds the namespaces
-those installed packages ship, so `list`, `doctor`, `eject`, `preview` and
+those installed packages contribute (read from each package's `./extension`
+definition, `contributes.ui`), so `list`, `doctor`, `eject`, `preview` and
 `copy --missing` cover the `auth/*` and `admin/*` templates and copy the host
 registers, and a project override of an extension template is checked against
 the shipped view model.
@@ -287,6 +333,7 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Write or change routes | [YAML guide](YAML-GUIDE.md), [field reference](YAML-REFERENCE.md), [cookbook](../examples/cookbook/README.md) |
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
 | Add administration | [admin README](../packages/admin/README.md) |
+| Audit log, abuse budgets, email | [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md), [mail](../packages/mail/README.md) |
 | Save a form as an editable record | [form-records README](../packages/form-records/README.md), [data store](STORE.md) |
 | Restyle every page | [ui README](../packages/ui/README.md), [ui contract](../packages/ui/CONTRACT.md) |
 | Write an extension | [extensions](EXTENSIONS.md), [authoring rules](EXTENSIONS.md#generic-add-on-authoring-rules) |

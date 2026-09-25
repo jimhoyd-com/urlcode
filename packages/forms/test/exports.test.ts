@@ -73,9 +73,9 @@ async function boot(t: TestContext) {
   return { forms, call, csrf, post, flow: () => defined! };
 }
 
-test('the flow body schema is the flow schema without mount', () => {
+test('the flow body schema is the flow schema without mount, abuse and notify (mounted flows only)', () => {
   const flow = formsConfigSchema.properties.flows.additionalProperties;
-  const { mount: _mount, ...rest } = flow.properties;
+  const { mount: _mount, abuse: _abuse, notify: _notify, ...rest } = flow.properties;
   assert.deepEqual(formFlowBodySchema.properties, rest);
   assert.deepEqual(formFlowBodySchema.required, flow.required.filter(name => name !== 'mount'));
 });

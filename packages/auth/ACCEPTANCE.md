@@ -62,7 +62,7 @@ fixtures; the browser review stopped before entering a new credential.
   accessibility assessment; the browser walkthrough is not WCAG certification.
 - Deployment load/soak, operational backup/restore and incident recovery drills.
   Synthetic backup tests are not evidence of a production recovery-time target.
-- Operator sender monitoring and live health observations. Post-commit lifecycle
+- Operator mail delivery monitoring and live health observations. Post-commit lifecycle
   callbacks remain best-effort, without a durable retry queue.
 - Independent security assessment and native-language review of translations.
 

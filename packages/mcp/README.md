@@ -288,10 +288,11 @@ extension has no identity or authorization model of its own.
 - `Origin` validation against DNS rebinding, as the Streamable HTTP transport
   requires: a request whose `Origin` header is present and is not one of the
   site's origins, the canonical `--origin` or an operator `--alias-origin`
-  (matched by core's `isSiteOrigin`, see
+  (core's single same-origin rule, see
   [site origins](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks)),
-  answers HTTP `403` before its body is parsed. A request with no `Origin`
-  (non-browser MCP clients send none) is admitted. The alias list is
+  answers HTTP `403` before its body is parsed, as does `Sec-Fetch-Site:
+  cross-site` or a duplicated provenance header. A request with no provenance
+  header (non-browser MCP clients send none) is admitted. The alias list is
   site-wide and operator-set; there is no per-server or YAML allowlist.
 - Standard JSON-RPC error codes: `-32700` parse error, `-32600` invalid
   request (including a rejected batch array), `-32601` method not found,

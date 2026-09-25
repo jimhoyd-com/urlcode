@@ -106,11 +106,12 @@ jobs:
       - run: npm run typecheck
       # Phase one of JS type-checking (allowJs/checkJs): build/release tooling
       # only (tsconfig.checkjs.json), not the 61 recipe/example .mjs files.
-      # packages/auth/scripts pulls in packages/auth/src, which imports
-      # @jimhoyd/urlcode-ui's types through its built dist/ exports map (the
-      # same self-import resolution `npm run typecheck` above relies on for
-      # `@jimhoyd/urlcode/*`), so the script itself builds ui first — see
-      # `typecheck:tooling` in package.json.
+      # packages/auth/scripts pulls in packages/auth/src, which imports the
+      # types of ui, audit, abuse and mail through their built dist/ exports
+      # maps (the same self-import resolution `npm run typecheck` above relies
+      # on for `@jimhoyd/urlcode/*`), and packages/admin/scripts imports auth's,
+      # so the script itself builds those first — see `typecheck:tooling` in
+      # package.json.
       - run: npm run typecheck:tooling
       # `npm run check` stays complete for local use, but in CI the seven
       # documentation checks it contains already ran in the always-run `docs`
@@ -230,8 +231,8 @@ jobs:
       # confirmed-broken range, so the full check is safe to run here again.
       - run: npm run test:package:built
       - run: node scripts/workspaces.ts run build
-  # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
-  # packages, one package per job instead of the five run serially in one job.
+  # `verify --workspace <pkg>` (typecheck, build, test) for the extension
+  # packages, one package per job instead of all of them serially in one job.
   # `auth`'s own SQLite-backed suite alone was over half of the ~6-7 minute
   # serial windows-latest run; this puts it beside the others instead of after
   # them. Each job needs its own install and the root build, because a package
@@ -263,12 +264,14 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # `admin` imports `auth` and `ui`; `auth`, `forms` and `store` import `ui`
-      # (store contributes its CRUD screen to ui); `form-records` imports
-      # `forms` and `store`. The matrix carries each
-      # package's dependencies in build order (empty for `ui` and `mcp`, which
-      # have none) so this job's own typecheck/build
-      # can resolve them, the way the removed serial script did by ordering.
+      # `auth` imports `ui`, `audit`, `mail` and `abuse`; `admin` imports
+      # `auth` and so needs its dependencies too; `store` imports `ui` and
+      # `audit`; `forms` imports `ui`, `abuse` and `mail`; `form-records`
+      # imports `forms` and `store`. The matrix carries each package's
+      # transitive dependencies in build order (empty for `ui`, `audit`,
+      # `abuse`, `mail` and `mcp`, which have none) so this job's own
+      # typecheck/build can resolve them, the way the removed serial script
+      # did by ordering.
       - if: matrix.deps != ''
         shell: bash
         run: |

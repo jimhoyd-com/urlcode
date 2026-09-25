@@ -91,7 +91,9 @@ export function adminAccountOperation(operation:string,args:Record<string,unknow
    }
    context.save(user);context.audit(actor.id,'admin.'+plan.action,user.id,now,plan.reason);
   }
-  db.prepare('DELETE FROM auth_admin_operations WHERE id=?').run(String(args.operationId));return {value:{affected:users.length}};
+  db.prepare('DELETE FROM auth_admin_operations WHERE id=?').run(String(args.operationId));
+  // The service fires onDeletionScheduled for these after the commit.
+  return {value:{affected:users.length,actorId:actor.id,...(plan.action==='schedule-deletion'?{scheduled:users.map(user=>({accountId:user.id,email:user.email,deleteAfter:user.deleteAfter!}))}:{})}};
  }
  return;
 }

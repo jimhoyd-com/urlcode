@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -41,6 +41,27 @@ async function site(t: TestContext): Promise<{ root: string; dir: string }> {
   await writeFile(file, JSON.stringify(pkg, null, 2) + '\n');
   return { root, dir };
 }
+/** Runs an installed add-on's CLI with bounded JSON on stdin, as its operator would. */
+function operatorCli(t: TestContext, dir: string, pkg: string, args: string[], input: unknown): unknown {
+  const result = spawnSync(process.execPath, [join(dir, 'node_modules', '@jimhoyd', pkg, 'dist', 'cli.js'), ...args], { cwd: dir, encoding: 'utf8', input: JSON.stringify(input), timeout: 120000 });
+  t.diagnostic(`${pkg} ${args.join(' ')} -> ${result.status}`);
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+/** A cookie-keeping client that speaks to the served site as a same-origin browser on `origin` would. */
+function browser(base: string, origin: string) {
+  const jar = new Map<string, string>();
+  return async (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<Response> => {
+    const headers: Record<string, string> = { ...init.headers, cookie: [...jar].map(([name, value]) => `${name}=${value}`).join('; ') };
+    if (init.method === 'POST') headers.origin = origin;
+    const response = await fetch(base + path, { ...init, headers, redirect: 'manual' });
+    for (const cookie of response.headers.getSetCookie()) {
+      const [pair = ''] = cookie.split(';'), split = pair.indexOf('=');
+      if (/max-age=0/i.test(cookie)) jar.delete(pair.slice(0, split)); else jar.set(pair.slice(0, split), pair.slice(split + 1));
+    }
+    return response;
+  };
+}
 async function copies(dir: string, name: string): Promise<number> {
   let count = 0;
   const walk = async (path: string): Promise<void> => {
@@ -71,6 +92,14 @@ test('every extension installs once, composes, serves, and removes in dependency
   // must activate behind auth's principal below.
   const todos = (await loadDocument(join(dir, 'app'))).document.extensions?.store?.config as { collections: { todos: { ownership?: string } } };
   assert.equal(todos.collections.todos.ownership, 'owner');
+  // audit is installed in the same command too, so the example collection records its writes.
+  assert.equal((todos.collections.todos as { audit?: boolean }).audit, true);
+  // The console carries auth's policy, which hides it from anyone who is not signed in with a console permission.
+  // (core expands the `auth:` short form into policies.extensions.auth when it loads the document.)
+  const routes = (await loadDocument(join(dir, 'app'))).routes as Record<string, { policies?: { extensions?: Record<string, unknown> | false } }>;
+  assert.deepEqual((routes['/admin/*']?.policies?.extensions || {}).auth, { onDeny: 404 });
+  // abuse's HMAC key is scaffolded with the site; its counters database only appears once a host runs.
+  await access(join(dir, 'data', 'abuse.key'));
 
   // Static validation needs no host, and the full runtime activates every extension through composeHost.
   const staticCheck = await urlcode(t, dir, ['validate', '--project', 'app']);
@@ -100,6 +129,31 @@ test('every extension installs once, composes, serves, and removes in dependency
     const admin = await fetch(`http://127.0.0.1:${server.address.port}/admin/`, { redirect: 'manual' });
     assert.equal(admin.status, 404);
     assert.match(admin.headers.get('cache-control') ?? '', /no-store/);
+
+    // Real auth in front of the two `auth: {csrf: origin}` mounts: a signed-in HTML form POST (forms verifies its own
+    // token) and a JSON write, both with the session cookie and no x-csrf-token header.
+    const credentials = { email: 'owner@site.example', password: 'integration owner passphrase' };
+    operatorCli(t, dir, 'urlcode-auth', ['bootstrap', '--operator-file', join(dir, 'operator-service.mjs')], credentials);
+    const send = browser(`http://127.0.0.1:${server.address.port}`, 'https://site.example');
+    const csrf = (await (await send('/account/csrf', { headers: { accept: 'application/json' } })).json() as { csrf: string }).csrf;
+    const login = await send('/account/login', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'x-csrf-token': csrf }, body: JSON.stringify(credentials) });
+    assert.equal(login.status, 200, await login.text());
+    const created = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'first' }) });
+    assert.equal(created.status, 201, await created.text());
+    const form = await (await send('/todo-form', { headers: { accept: 'text/html' } })).text();
+    const token = /name="csrf" value="([^"]+)"/.exec(form)?.[1];
+    assert.ok(token, 'the form carries forms\' own token');
+    const posted = await send('/todo-form', { method: 'POST', headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf: token, title: 'second' }).toString() });
+    assert.equal(posted.status, 303, await posted.text());
+
+    // The store's audited write drains into the audit log while the host runs; the operator lists it offline.
+    const database = join(dir, 'data', 'audit.sqlite');
+    let listed: { events: { action: string }[] } = { events: [] };
+    for (let attempt = 0; attempt < 40 && !listed.events.length; attempt++) {
+      if (attempt) await new Promise(resolve => setTimeout(resolve, 250));
+      if (await access(database).then(() => true, () => false)) listed = operatorCli(t, dir, 'urlcode-audit', ['list'], { database, query: { action: 'store.record.created' } }) as typeof listed;
+    }
+    assert.ok(listed.events.length >= 1, 'a store.record.created event is queryable through urlcode-audit list');
   } finally { await server.close(); await host.close(); }
 
   const refused = await urlcode(t, dir, ['extensions', 'remove', 'auth']);

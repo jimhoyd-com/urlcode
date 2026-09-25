@@ -565,3 +565,16 @@ test('ExtensionActivation.root is the resolved project directory, independent of
   assert.equal(observedRoot,resolvedRoot);
   assert.notEqual(observedRoot,previousCwd);
 });
+test('extensions activate in registration order, whatever order the YAML declares them in, and close in reverse',async t=>{
+  // The YAML declares b before a; the host registered a first because b requires it.
+  const root=await project(t,{},{},{extensions:{b:{version:'1',config:{label:'b'}},a:{version:'1',config:{label:'a'}}}});
+  const events:string[]=[];const exports={active:false};
+  const base=await registration(root);
+  const a:RuntimeExtension={...base,name:'a',activate(){events.push('activate a');exports.active=true;return{handle:()=>({status:404,headers:[]}),close(){events.push('close a');}};}};
+  const b:RuntimeExtension={...base,name:'b',activate(){events.push(`activate b (a active: ${exports.active})`);return{handle:()=>({status:404,headers:[]}),close(){events.push('close b');}};}};
+  // An undeclared registration is skipped, not activated.
+  const spare:RuntimeExtension={...base,name:'spare',activate(){throw new Error('must not run');}};
+  const runtime=await createRuntime(root,{origin,extensions:[a,spare,b]});
+  await runtime.close();
+  assert.deepEqual(events,['activate a','activate b (a active: true)','close b','close a']);
+});

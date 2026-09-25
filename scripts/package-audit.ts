@@ -131,26 +131,57 @@ export const budgets: Record<string, Budget> = {
     // with store reassign (#732) measure 703205 packed and 2863298 unpacked
     // bytes on Node 26, under 4 KiB from the previous budgets and inside the
     // ~2 KiB cross-Node gzip variance.
-    packed: 720 * 1024,
-    unpacked: 2900 * 1024,
-    entries: 460,
+    //
+    // Raised to 740 KiB packed, 2950 KiB unpacked and 470 entries when main's
+    // review report and studio (#749, #751: dist/project-report.js and
+    // dist/studio.js with declarations) met this branch's extension request
+    // helpers: together they measure 733793 packed and 2966469 unpacked bytes
+    // in 462 entries on Node 26, each within about 3 KiB of the old budget
+    // and two entries over its count.
+    packed: 740 * 1024,
+    unpacked: 2950 * 1024,
+    entries: 470,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
+  // The generic audit log, abuse protection and mail add-ons split out of
+  // auth. Each has no runtime dependency beyond core and Node built-ins. First
+  // measured at 25347/82420/24 (audit), 20510/64820/26 (abuse) and
+  // 22236/72631/20 (mail) packed bytes, unpacked bytes and files.
+  '@jimhoyd/urlcode-audit': {
+    packed: 35 * 1024,
+    unpacked: 110 * 1024,
+    entries: 32,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
+  },
+  '@jimhoyd/urlcode-abuse': {
+    packed: 30 * 1024,
+    unpacked: 90 * 1024,
+    entries: 32,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
+  },
+  '@jimhoyd/urlcode-mail': {
+    packed: 32 * 1024,
+    unpacked: 100 * 1024,
+    entries: 28,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
+    // The SES transport loads the SDK lazily; it moved here from auth.
+    optionalPeers: ['@aws-sdk/client-sesv2'],
+  },
   '@jimhoyd/urlcode-auth': {
-    // Packed raised from 225 to 240 KiB: the same #736 change packs to 229986
-    // bytes, 414 bytes under the old 230400 limit and well inside the ~2 KiB
-    // cross-Node npm gzip variance noted for core.
-    packed: 240 * 1024,
-    // Unpacked raised from 900 to 910 KiB: recording each passkey's RP ID and
-    // the startup warning for mismatched passkeys (#736: dist/auth.js,
-    // dist/auth-core.js, dist/auth-store.js and their declarations, and the
-    // README/SECURITY contract) take the unpacked content to 924773 bytes
-    // (about 903 KiB), just over the old 900 KiB.
-    unpacked: 910 * 1024,
+    // Raised from 225/900 KiB for the extension split: AuthExports v1 and the
+    // actor-bound administration API (dist/exports.js, dist/administration.js,
+    // dist/delivery.js), the contributed mail templates and the audit outbox,
+    // with their declarations and README/SECURITY contract, measure 237400
+    // packed and 967920 unpacked bytes in 83 files. Main's #736 passkey RP ID
+    // recording and startup warning (240/910 KiB there) fit inside these.
+    packed: 250 * 1024,
+    unpacked: 1000 * 1024,
     entries: 90,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json'],
-    optionalPeers: ['@aws-sdk/client-sesv2'],
+    // Every sibling peer is optional so npm never installs a second copy;
+    // `extensions add auth` installs the required audit, mail and ui itself.
+    optionalPeers: ['@jimhoyd/urlcode-abuse', '@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-mail', '@jimhoyd/urlcode-ui'],
   },
   '@jimhoyd/urlcode-admin': {
     packed: 75 * 1024,
@@ -163,7 +194,7 @@ export const budgets: Record<string, Budget> = {
     // update and the records export's paginated list (#738: dist/collection.js,
     // dist/records.js and their declarations, and the README contract) take the
     // packed tarball from 40915 to 42040 bytes, just over the old 40 KiB.
-    packed: 42 * 1024,
+    packed: 50 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -181,13 +212,20 @@ export const budgets: Record<string, Budget> = {
     // bytes (about 142.9 KiB).
     // Together, #731/#732 and #529 measure 158673 unpacked bytes (about
     // 155 KiB), so the store budget is 170 KiB unpacked.
-    unpacked: 170 * 1024,
+    //
+    // Raised to 50 KiB packed and 190 KiB unpacked for audited writes (the
+    // collection outbox and its producer, with declarations and the
+    // README/SECURITY contract): 46693 packed and 177677 unpacked bytes.
+    unpacked: 190 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-forms': {
     packed: 45 * 1024,
-    unpacked: 140 * 1024,
+    // Raised from 140 KiB for per-flow abuse budgets and mail notifications
+    // (the contributed template, their declarations and README/SECURITY
+    // contract): 148862 unpacked bytes.
+    unpacked: 160 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

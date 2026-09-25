@@ -4,9 +4,13 @@
 declarative form flows. It renders escaped fields through `urlcode-ui`, admits
 only bounded URL-encoded POST bodies, validates declared fields, returns 422
 with field errors, and redirects a valid submission to a confirmation page that
-shows only the submitted fields the flow opts in to. It is not a database, email sender, or arbitrary template engine.
+shows only the submitted fields the flow opts in to. A flow may also declare a
+submission budget ([`abuse`](#submission-budgets-abuse)) and a notification
+email ([`notify`](#notifications-notify)). It is not a database or an
+arbitrary template engine.
 
-The extension requires the `ui` extension and an operator-provided CSRF secret.
+The extension requires the `ui` extension and an operator-provided CSRF secret,
+and uses the `abuse` and `mail` extensions when they are installed.
 Install it into a site with `urlcode extensions add forms` (which adds `ui` too
 when the site lacks it). The scaffold writes an empty `flows` block, a random
 CSRF secret at `data/forms-csrf.key`, and one line in `host.mjs`; add
@@ -32,9 +36,13 @@ bytes. `forms` receives the shared `ui` kit from the host. See
 [add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
 site layout and commands.
 
-Declare the UI and a form mount in the project. Add `auth: true` to compose
-the flow with the auth extension; policy authorization runs before the form
-handler. The supplied `onSubmit` hook is trusted project code, runs only after
+Declare the UI and a form mount in the project. Add `auth: {csrf: origin}` to
+compose the flow with the auth extension; policy authorization runs before the
+form handler. Do not use `auth: true` on a form mount: its token mode reads the
+form's `csrf` field, finds forms' own token rather than auth's, and answers 403
+to every POST. `csrf: origin` is the right auth key here: forms verifies its
+own token on every POST, which a plain HTML form can send, while auth's default
+token would need a header forms does not send. The supplied `onSubmit` hook is trusted project code, runs only after
 CSRF and field validation, and should make external effects idempotent.
 
 ```yaml
@@ -219,6 +227,55 @@ shown free-text fields a `maxLength` well under that. `HEAD` always answers
 with the fixed form and leaves the cookie in place.
 
 
+## Submission budgets (`abuse`)
+
+With the [abuse extension](../abuse/README.md) installed and declared, a flow
+may limit submissions per client and escalate to a challenge:
+
+```yaml
+flows:
+  contact:
+    mount: /contact
+    abuse:
+      client: {limit: 20, windowMs: 3600000}   # submissions per client (1..100000, 1 s..24 h)
+      challengeAfter: 5                          # optional, below client.limit; needs abuse({challenge}) in host.mjs
+      honeypot: website                          # optional hidden field name; must not be a declared field
+    fields: {...}
+```
+
+A flow with `abuse` runs on the node target only; activation refuses it on aws
+and vercel, and without an active abuse extension. Invalid submissions count
+toward the budget. Over the limit the answer is the fixed `Too many
+submissions` page (429) with `Retry-After`; when the abuse store cannot answer
+it is `503 The form could not be submitted`, never an admitted submission. A
+failed challenge re-renders the form (403) with `Complete the verification and
+submit again.`; a filled honeypot gets a silent `303` to
+`<mount>/confirmation` and nothing else happens. Budgets are keyed in abuse's
+namespace `forms` with the scope `flow-` plus 24 hex characters of the flow
+name's SHA-256, and the client key is core's `clientKey`. A flow defined by
+another extension through `FormsExports` gets no abuse or notify.
+
+## Notifications (`notify`)
+
+With the [mail extension](../mail/README.md) installed, a flow may send one
+plain-text notification per valid submission to an operator-named recipient:
+
+```yaml
+flows:
+  contact:
+    notify:
+      recipient: support          # a name from mail({recipients: {support: 'support@site.example'}}) in host.mjs
+      include: [email, topic]     # optional declared fields to list in the body
+```
+
+YAML names the recipient, never an address. Forms sends the `forms.submission`
+message after `onSubmit` and before the redirect; a delivery failure answers
+503 with no confirmation, so delivery is at least once and the submitter can
+retry. With no `include` the body says that no submitted values are included.
+Each included value is capped at 1000 characters and the summary at 8000;
+control characters are made safe for plain text. Change or translate the
+message in `mail/copy/<locale>.json`.
+
 ## Using a flow from another extension
 
 An extension that `requires: [forms]` can serve a form of its own through the
@@ -229,7 +286,7 @@ embedding `formFlowBodySchema` (a flow without `mount`) in its schema:
 
 ```ts
 const forms = context.get<FormsExports>('forms');   // in host()
-// once forms is active (declare forms first under extensions):
+// once forms is active (the runtime activates it before any extension that requires it):
 const flow = forms.define('signup', body);           // same cross-field rules as a declared flow
 flow.render(request, { action: '/signup', scope: 'my-extension:signup' });
 const sent = flow.submit(request, { action: '/signup', scope: 'my-extension:signup' });

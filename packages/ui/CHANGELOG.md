@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Extension scripts (`kit.wrap`/`kit.page` `scripts`) accept `async: true`, and an absolute `https:` URL whose origin the page lists in `csp.script`, so an extension passes a challenge widget to the kit instead of rewriting the page nonce. Any other off-site script is refused with `Extension script must be same-site or listed in csp.script`.
+- `urlcode-ui --extensions <pkg>` reads each package's `./extension` definition (`contributes.ui`) instead of root exports; a package without that entry or without ui templates is skipped with a note (`no ./extension entry`, `no ui templates contributed`).
+
 The `ui` extension no longer reads the store's configuration (#709). `extensions.ui.config.screens` is removed; a data screen now arrives through the owning extension's `contributes.ui.screens` (`UiContribution.screens`, a `UiScreenSource` that resolves `{<path>: {title, collection, columns?}}` once at activation), and `ui` renders it at its exact `extension: ui` mount. The scaffold no longer adds a `/todos` screen when `store` is installed; the store's scaffold does. To migrate, move each entry of `extensions.ui.config.screens` unchanged to `extensions.store.config.screens`; the `<path>/*` route with `extension: ui` stays as it is.
 
 `field()` accepts `min` and `max` for `number`, `date` and `datetime-local` inputs and renders them as the HTML attributes; any other control or type, or a value that is not number- or date-shaped, throws (#528).

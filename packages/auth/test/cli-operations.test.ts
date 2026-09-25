@@ -6,18 +6,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { createAuthService } from '../src/auth-core.ts';
+import { createAuthService, internal } from '../src/auth-core.ts';
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url)), core = JSON.stringify(new URL('../src/auth-core.ts', import.meta.url).href);
 const roles = { member: [], admin: ['*'] }, password = 'synthetic operations passphrase';
 // The operator module mirrors the in-process options so the pinned configuration matches; the clock offset lets purge observe an elapsed grace period.
 async function fixture(name: string, keys = 'encryptionKey:new Uint8Array(32).fill(7)') {
     const root = await mkdtemp(join(tmpdir(), name)), operator = join(root, 'operator.mjs'), database = join(root, 'accounts.sqlite');
+    // The project beside the operator file: bootstrap, import and purge fire its auth lifecycle hooks (none here).
     await mkdir(join(root, 'app'));
+    await writeFile(join(root, 'app', 'urlcode.yaml'), JSON.stringify({ version: '1', routes: {} }));
     await writeFile(operator, `import {createAuthService} from ${core}; export default await createAuthService({database:${JSON.stringify(database)},${keys},roles:{member:[],admin:['*']},defaultRole:'member',now:()=>Date.now()+Number(process.env.URLCODE_AUTH_TEST_CLOCK_OFFSET??0)});`);
     const run = (command: string, input?: string | object, env: Record<string, string> = {}) => spawnSync(process.execPath, [cli, command, ...(['backup', 'restore', 'verify-deployment'].includes(command) ? [] : ['--operator-file', operator])], { input: input === undefined ? undefined : typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8', timeout: 20000, env: { ...process.env, ...env } });
     return { root, database, run };
 }
-test('import accepts only the allow-listed fields and users/audit list without secrets', async (t) => {
+test('import accepts only the allow-listed fields, users lists without secrets and audit reads are gone from the CLI', async (t) => {
     const { root, database, run } = await fixture('urlcode-auth-cli-import-');
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const { hash } = await import('bcryptjs'), passwordHash = await hash(password, 10);
@@ -35,10 +37,12 @@ test('import accepts only the allow-listed fields and users/audit list without s
     assert.deepEqual(listed.users.map(user => user.email), ['legacy@example.com']);
     assert.deepEqual(listed.users[0]!.roles, ['member']);
     assert.ok(!users.stdout.includes('passwordHash') && !users.stdout.includes(passwordHash));
-    const audit = run('audit');
-    assert.equal(audit.status, 0, audit.stderr);
-    assert.ok(Array.isArray(JSON.parse(audit.stdout).events));
-    assert.ok(!audit.stdout.includes(passwordHash));
+    // Audit reads belong to the audit extension; auth's CLI only reports its undrained outbox.
+    assert.equal(run('audit').status, 1);
+    const doctor = run('doctor');
+    assert.equal(doctor.status, 0, doctor.stderr);
+    assert.equal(JSON.parse(doctor.stdout).auditBacklog, 1);
+    assert.match(JSON.parse(doctor.stdout).warnings[0], /1 audit event\(s\) wait in auth's outbox/);
     const service = await createAuthService({ database, encryptionKey: new Uint8Array(32).fill(7), roles, defaultRole: 'member' });
     cleanup(t, () => service.close());
     const login = await service.login({ email: 'legacy@example.com', password });
@@ -89,7 +93,7 @@ test('purge removes only accounts whose deletion grace has elapsed', async (t) =
     const reopened = await createAuthService(options);
     cleanup(t, () => reopened.close());
     assert.equal(await reopened.getUser(user.user.id), null);
-    assert.equal((await reopened.dashboard()).users, 1);
+    assert.equal((await internal(reopened).dashboard()).users, 1);
 });
 test('api-key-issue accepts a key quota on stdin, refuses an invalid one, and api-key-list reports it (urlcode#703)', async (t) => {
     const { root, database, run } = await fixture('urlcode-auth-cli-api-key-quota-');

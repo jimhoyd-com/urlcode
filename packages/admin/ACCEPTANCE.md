@@ -41,7 +41,7 @@ The reviewed shared primitives use compiled Tailwind and server-HTML adaptations
 of shadcn recipes. Auth/admin own their screens and domain copy. Every admin
 screen is an `admin/*` kit template rendered through `ui.kit`, which is now the
 console's only render path: the primitive fallback was retired and
-`adminExtension` refuses to activate without an active kit carrying the `admin/*`
+The admin extension refuses to activate without an active kit carrying the `admin/*`
 templates. The automated suites therefore cover that one path. The browser
 evidence below predates the retirement and was captured on the primitive path; it
 has not been re-run through the kit.
@@ -62,7 +62,7 @@ fixtures; the browser review stopped before entering a new credential.
   accessibility assessment; the browser walkthrough is not WCAG certification.
 - Deployment load/soak, operational backup/restore and incident recovery drills.
   Synthetic backup tests are not evidence of a production recovery-time target.
-- Operator sender monitoring and live health observations. Post-commit lifecycle
+- Operator mail delivery monitoring and live health observations. Post-commit lifecycle
   callbacks remain best-effort, without a durable retry queue.
 - Independent security assessment and native-language review of translations.
 

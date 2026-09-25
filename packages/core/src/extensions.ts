@@ -24,6 +24,14 @@ export { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
  * whether an `Origin` value names the canonical origin or one of the operator's alias origins.
  */
 export { isSiteOrigin, maxAliasOrigins } from './site-origins.ts';
+/**
+ * The address key a per-client limit counts under: an IPv4 address as is, an IPv6 address widened to its
+ * `clientKeyIpv6Prefix` (/64) network, `undefined` for a missing or malformed value. Pass `request.client`.
+ */
+export { clientKey, clientKeyIpv6Prefix } from './client-address.ts';
+/** Bounded request reading, JSON responses, cookie reading and same-origin admission (RIM-EXT-HTTP-001). */
+export { ExtensionHttpError, readBody, readFields, jsonResponse, wantsJson, readCookie, isSameOriginRequest } from './extension-http.ts';
+export type { ExtensionHttpErrorCode, BodyKind, ReadBodyOptions, RequestBody, ReadFieldsOptions, SameOriginOptions } from './extension-http.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**
@@ -415,14 +423,18 @@ export interface ScaffoldResult {
   notes?:string[];
 }
 /**
- * What `composeHost` gives an extension's `host()`. `get(name)` returns what an extension this one `requires`
- * exported from its own `host()`; `contributions(name)` collects every installed extension's
+ * What `composeHost` gives an extension's `host()`. `get(name)` returns what an extension this one `requires` (or
+ * `uses`) exported from its own `host()`; `contributions(name)` collects every installed extension's
  * `contributes[name]` value, so an extension activated first (ui) still receives what later ones add to it.
  */
 export interface HostContext {
   projectSha256:string;
   /** Absolute site directory: the directory of host.mjs. */
   site:string;
+  /**
+   * The exports of a `requires` extension, or of an installed `uses` extension; `undefined` for a `uses` extension
+   * that is not installed. Throws for any name outside `requires` and `uses`.
+   */
   get<T=unknown>(name:string):T;
   contributions<T=unknown>(name:string):T[];
 }
@@ -442,6 +454,12 @@ export interface ExtensionDefinition<Options=Record<string,never>> {
   name:string;
   description:string;
   requires?:readonly string[];
+  /**
+   * Extensions this one reads through `ctx.get` only when installed: an optional edge. An installed one is hosted
+   * (and activated) before this one, like a `requires` entry; an absent one makes `ctx.get(name)` return
+   * `undefined`. Must not name itself or repeat a `requires` entry.
+   */
+  uses?:readonly string[];
   schema:object;
   policySchema?:object;
   hooks?:readonly ExtensionHookContract[];
@@ -473,6 +491,9 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   assert(typeof definition.description==='string'&&definition.description.length>0&&definition.description.length<=300,`Extension ${definition.name} needs a one-line description`);
   assert(definition.schema&&typeof definition.schema==='object'&&typeof definition.host==='function',`Extension ${definition.name} needs a schema and a host function`);
   assert((definition.requires??[]).every(name=>namePattern.test(name)&&name!==definition.name),`Extension ${definition.name} requires must list other extension names`);
+  const uses=definition.uses??[];
+  assert(Array.isArray(uses)&&uses.every(name=>typeof name==='string'&&namePattern.test(name)&&name!==definition.name)&&new Set(uses).size===uses.length,`Extension ${definition.name} uses must list other extension names once each`);
+  assert(uses.every(name=>!(definition.requires??[]).includes(name)),`Extension ${definition.name} lists ${uses.filter(name=>(definition.requires??[]).includes(name)).join(', ')} in both requires and uses`);
   assert((definition.scaffold===undefined||typeof definition.scaffold==='function')&&(definition.example===undefined||typeof definition.example==='function'),`Extension ${definition.name} scaffold and example must be functions`);
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
@@ -548,6 +569,12 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
   }
   return admitted;
 }
+/**
+ * Validates the project's extension declarations against the operator's registrations and returns the activation
+ * step. Extensions activate in registration order (the order `composeHost` produced: every extension after those it
+ * requires or uses), filtered to the declared ones, and close in reverse; YAML declaration order does not matter.
+ * `log` receives every activation warning (RIM-EXT-WARN-001).
+ */
 export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn): {activate():Promise<ExtensionRegistry>} {
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
   const provided=new Map<string,RuntimeExtension>(),entries=new Map<string,ActiveExtension>(),credentialHeaders=new Set<string>();
@@ -590,8 +617,10 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
   }
   const principalProviders=new Set([...provided.values()].filter(registration=>registration.providesPrincipal===true).map(registration=>registration.name));
   const preparations:{name:string;registration:RuntimeExtension;config:Readonly<Record<string,unknown>>;policies:Map<string,Readonly<Record<string,unknown>>>;mounts:string[];principalMounts:string[];assetPrefixes:string[]}[]=[];
-  for(const [name,declaration]of Object.entries(declarations)){
-      const registration=provided.get(name);assert(registration,`Missing operator extension: ${name}`);
+  for(const name of Object.keys(declarations))assert(provided.has(name),`Missing operator extension: ${name}`);
+  for(const [name,registration]of provided){
+      if(!Object.hasOwn(declarations,name))continue;
+      const declaration=declarations[name]!;
       assert(registration.projectSha256===context.projectSha256,`Extension revision pin mismatch: ${name}`);
       assert(registration.targets.includes(context.target),`Extension ${name} refuses target ${context.target}`);
       assert(declaration.version===registration.version,`Extension contract version mismatch: ${name}`);

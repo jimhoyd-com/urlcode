@@ -71,11 +71,18 @@ curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://
 ```
 
 With `auth` installed (`--with ui,auth,store --example` in any order, or `urlcode
-extensions add auth` before `store --example`) the example adds `auth: true` to the
-mount, so only signed-in callers reach the API and the screen, and declares the
-`todos` collection `ownership: owner`, so each signed-in user sees and changes
-only their own todos ([per-record ownership](#per-record-ownership)); no
-acknowledgement is needed. Without `auth` the example collection stays shared,
+extensions add auth` before `store --example`) the example adds `auth: {csrf:
+origin}` to the API mount and `auth: true` to the screen, so only signed-in
+callers reach either, and declares the `todos` collection `ownership: owner`, so
+each signed-in user sees and changes only their own todos
+([per-record ownership](#per-record-ownership)); no acknowledgement is needed.
+`csrf: origin` admits the API's JSON writes on same-origin provenance and the
+session cookie instead of auth's session-bound token header, which the screen's
+script does not send; the store accepts only JSON, which a cross-site browser
+cannot send without a preflight ([CSRF on protected
+routes](EXTENSIONS.md#csrf-on-protected-routes-csrf-token--origin)). Auth
+installs `audit`, so the example collection also declares `audit: true`
+([audited writes](#audited-writes)). Without `auth` the example collection stays shared,
 because there is no principal to own a record.
 
 Without `auth` the mount would be a public writable endpoint, so adding `store`
@@ -318,7 +325,7 @@ routes:
   /api/notes/*:
     extension: store
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
-    auth: true                     # required: a principal-providing policy
+    auth: {csrf: origin}           # required: a principal-providing policy
 ```
 
 The owner is the request's **principal**: an opaque, stable id that a
@@ -481,6 +488,60 @@ collections, collection?, dryRun?})`, where `collections` is the declared
 across rotation can be issued for that user in the first place
 ([keys that act for a user](../packages/auth/README.md#keys-that-act-for-a-user));
 then no move is needed.
+
+## Audited writes
+
+A collection that declares `audit: true` records every write in the
+[audit log](EXTENSIONS.md#audit-log). It needs the `audit` extension installed
+and declared (the store `uses` it); without it, activation refuses:
+`collection <name> declares audit: true; install the audit extension (urlcode
+extensions add audit)`.
+
+Audit's retention is one count shared with auth's privileged events, so writes
+that need no credentials must not be able to fill it. An audited collection's
+mount must therefore be guarded by a principal-providing policy (for example
+`auth: {csrf: origin}`), or activation refuses: `Collection <name>: audit: true
+needs route <mount>/* guarded by a principal-providing policy`. A short-link
+click is never audited: it is anonymous and unthrottled, and the counter it
+bumps is not a privileged change.
+
+```yaml
+extensions:
+  audit: {version: "1", config: {}}
+  store:
+    version: "1"
+    config:
+      collections:
+        todos:
+          mount: /api/todos
+          ownership: owner
+          audit: true
+          fields:
+            title: {type: string, required: true, maxLength: 200}
+```
+
+| Write | Action |
+|---|---|
+| `POST` | `store.record.created` |
+| `PUT` | `store.record.replaced` |
+| `PATCH` | `store.record.updated` |
+| `DELETE` | `store.record.deleted` |
+| increment (a keyed transition; never a short-link click) | `store.record.incremented` |
+
+Each event's subject is `<collection>/<id>` and its actor the request
+principal's id, or `anonymous` when the guarding policy set none. Its
+metadata is `{collection, fields}`: the names of the declared fields the write
+stored or changed, never their values, cut with `truncated: true` when the list
+would exceed audit's metadata bound.
+
+The event is written into the collection's data file, in the `audit` array,
+in the same file write as the record, and audit drains it into its log while
+the host runs. So a record and its event are stored together or not at all,
+and an event survives a crash until it is delivered. When 1000 events wait
+undelivered in one collection, the next write answers
+`503 audit_backlog` and changes nothing until audit catches up. Turning
+`audit` off keeps any undelivered events in the file. The operator's
+`urlcode-store` ownership commands keep the outbox and add no event.
 
 ## Storage and concurrency: what it does and does not guarantee
 

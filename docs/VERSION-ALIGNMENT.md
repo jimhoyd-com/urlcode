@@ -10,7 +10,7 @@ version changes, and `node scripts/release-bump.ts --check` (part of
 | Package | Manifest | Where it is published |
 | --- | --- | --- |
 | `@jimhoyd/urlcode` (core) | `package.json` | npm, `v<version>` GitHub Release, Homebrew (stable), GHCR image |
-| Every extension (`@jimhoyd/urlcode-<name>`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
+| Every extension (`@jimhoyd/urlcode-<name>`: `ui`, `audit`, `abuse`, `mail`, `auth`, `admin`, `store`, `forms`, `form-records`, `mcp`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 | Every artifact (`@jimhoyd/urlcode-<name>`) | `artifacts/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 
 | Version | npm dist-tag | GitHub Release | Homebrew | GHCR tags | Template PR |
@@ -29,8 +29,8 @@ through the packages' `file:../..` links (`check-workspace-links.ts`), and
 extension package.
 
 Beside it, `dist/addon-catalog.json` is the same release's agent discovery
-catalog: every add-on's name, package, version, description, `requires` and
-descriptor agent references, built from the add-on descriptors and identical
+catalog: every add-on's name, package, version, description, `requires`,
+`uses` and descriptor agent references, built from the add-on descriptors and identical
 in a development build and the release. Every entry carries core's version.
 It pins nothing and installs nothing; see
 [the release-wide agent catalog](EXTENSIONS.md#the-release-wide-agent-catalog).

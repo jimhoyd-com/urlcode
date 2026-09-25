@@ -3,9 +3,15 @@
   "name": "auth",
   "description": "Accounts, sessions, passkeys, OIDC and TOTP sign-in with trusted account pages",
   "requires": [
-    "ui"
+    "ui",
+    "audit",
+    "mail"
+  ],
+  "uses": [
+    "abuse"
   ],
   "contributes": [
+    "mail",
     "ui"
   ],
   "schema": {
@@ -59,7 +65,7 @@
               }
             ]
           },
-          "onSignUp": {
+          "beforeRoleChange": {
             "oneOf": [
               {
                 "type": "string",
@@ -94,7 +100,112 @@
               }
             ]
           },
-          "onDelete": {
+          "onAccountCreated": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "export": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "sandbox": {
+                    "type": "boolean"
+                  },
+                  "sandboxReason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            ]
+          },
+          "onAccountStatusChanged": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "export": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "sandbox": {
+                    "type": "boolean"
+                  },
+                  "sandboxReason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            ]
+          },
+          "onDeletionScheduled": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "export": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "sandbox": {
+                    "type": "boolean"
+                  },
+                  "sandboxReason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            ]
+          },
+          "onAccountDeleted": {
             "oneOf": [
               {
                 "type": "string",
@@ -130,6 +241,109 @@
             ]
           }
         }
+      },
+      "abuse": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "dependentRequired": {
+          "challengeAfter": [
+            "client"
+          ]
+        },
+        "properties": {
+          "client": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "limit",
+              "windowMs"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "windowMs": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 86400000
+              }
+            }
+          },
+          "signupClient": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "limit",
+              "windowMs"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "windowMs": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 86400000
+              }
+            }
+          },
+          "signupDomain": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "limit",
+              "windowMs"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "windowMs": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 86400000
+              }
+            }
+          },
+          "challengeAfter": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99999
+          },
+          "passwordBackoff": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "threshold": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "initialDelayMs": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "maxDelayMs": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 86400000
+              },
+              "resetAfterMs": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 604800000
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -161,6 +375,12 @@
           403,
           404,
           "sign-in"
+        ]
+      },
+      "csrf": {
+        "enum": [
+          "token",
+          "origin"
         ]
       },
       "bearer": {
@@ -203,22 +423,44 @@
         }
       }
     },
+    "not": {
+      "properties": {
+        "csrf": true,
+        "bearer": true
+      },
+      "required": [
+        "csrf",
+        "bearer"
+      ]
+    },
     "minProperties": 0
   },
   "hooks": [
     {
       "name": "beforeRegister",
       "kind": "filter",
-      "description": "Runs before account creation and may return an allow/deny verdict.",
+      "description": "Runs before any path creates an account (self-service, provider sign-up, waitlist request, administrator creation, import) and may deny it.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "email"
+          "email",
+          "method"
         ],
         "properties": {
           "email": {
             "type": "string"
+          },
+          "method": {
+            "enum": [
+              "password",
+              "signup",
+              "external",
+              "waitlist",
+              "invitation",
+              "administrator",
+              "import"
+            ]
           },
           "profile": {
             "type": "object"
@@ -242,42 +484,168 @@
       }
     },
     {
-      "name": "onSignUp",
-      "kind": "action",
-      "description": "Runs after a new account is created.",
+      "name": "beforeRoleChange",
+      "kind": "filter",
+      "description": "Runs before an account's roles change (direct, case, case approval, bulk account operation) and may deny it.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": [
           "accountId",
-          "email"
+          "currentRoles",
+          "requestedRoles",
+          "actorId",
+          "reason"
         ],
         "properties": {
           "accountId": {
             "type": "string"
           },
-          "email": {
+          "currentRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requestedRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "allow"
+        ],
+        "properties": {
+          "allow": {
+            "type": "boolean"
+          },
+          "reason": {
             "type": "string"
           }
         }
       }
     },
     {
-      "name": "onDelete",
+      "name": "onAccountCreated",
       "kind": "action",
-      "description": "Runs after an account owner schedules deletion.",
+      "description": "Runs after an account is created, by any path.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": [
           "accountId",
-          "email"
+          "email",
+          "method"
         ],
         "properties": {
           "accountId": {
             "type": "string"
           },
           "email": {
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "password",
+              "signup",
+              "external",
+              "waitlist",
+              "invitation",
+              "administrator",
+              "import",
+              "bootstrap"
+            ]
+          },
+          "actorId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "onAccountStatusChanged",
+      "kind": "action",
+      "description": "Runs after an administrator locks or unlocks an account.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accountId",
+          "status",
+          "actorId",
+          "reason"
+        ],
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "locked"
+            ]
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "onDeletionScheduled",
+      "kind": "action",
+      "description": "Runs after an account's deletion is scheduled, by its owner (no actorId) or an administrator.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accountId",
+          "email",
+          "deleteAfter"
+        ],
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "deleteAfter": {
+            "type": "integer"
+          },
+          "actorId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "onAccountDeleted",
+      "kind": "action",
+      "description": "Runs after a scheduled deletion is purged.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accountId"
+        ],
+        "properties": {
+          "accountId": {
             "type": "string"
           }
         }
@@ -308,9 +676,15 @@
       },
       {
         "kind": "hook",
-        "name": "registration lifecycle",
-        "description": "Use the declared beforeRegister, onSignUp and onDelete hooks for application behavior at supported lifecycle points.",
+        "name": "account lifecycle",
+        "description": "Use the declared beforeRegister, beforeRoleChange, onAccountCreated, onAccountStatusChanged, onDeletionScheduled and onAccountDeleted hooks; auth fires them for every caller, its pages, administration and its CLI.",
         "path": "extensions.auth.config.hooks"
+      },
+      {
+        "kind": "configuration",
+        "name": "abuse budgets",
+        "description": "Rate-limit entry requests, escalate to a challenge and back off password failures through the abuse extension.",
+        "path": "urlcode.yaml#extensions.auth.config.abuse"
       }
     ],
     "fastChecks": [
