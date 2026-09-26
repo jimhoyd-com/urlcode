@@ -30,6 +30,8 @@ async function fixture(version = '1.0.0'): Promise<string> {
     'starters/default/.github/workflows/urlcode.yml': `steps:\n  - uses: jimhoyd-com/urlcode/action@v${version}\n`,
     'packaging/claude-plugin/.claude-plugin/plugin.json': json({ name: 'urlcode', version }),
     '.claude-plugin/marketplace.json': json({ name: 'urlcode', metadata: { version } }),
+    'examples/edge/package.json': json({ name: 'edge-example', private: true, type: 'module', dependencies: { [core]: version }, devDependencies: { wrangler: '^4' } }),
+    'examples/plain/package.json': json({ name: 'plain-example', private: true, type: 'module' }),
     'README.md': `Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: ${version}.\n<!-- urlcode-current-version:end -->\n`,
     'docs/GUIDE.md': 'No version here.\n',
     'packages/ui/CHANGELOG.md': `## ${version}\n`,
@@ -79,6 +81,10 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert.match(await read(root, 'starters/default/.github/workflows/urlcode.yml'), /action@v1\.1\.0-alpha\.1\n/);
   assert.equal((await readJson(root, 'packaging/claude-plugin/.claude-plugin/plugin.json')).version, '1.1.0-alpha.1');
   assert.deepEqual((await readJson(root, '.claude-plugin/marketplace.json')).metadata, { version: '1.1.0-alpha.1' });
+  // An example's core pin moves; its other dependencies stay, and an example that names no core is not rewritten.
+  assert.deepEqual((await readJson(root, 'examples/edge/package.json')).dependencies, { [core]: '1.1.0-alpha.1' });
+  assert.deepEqual((await readJson(root, 'examples/edge/package.json')).devDependencies, { wrangler: '^4' });
+  assert(!changed.includes('examples/plain/package.json'));
   // Only the marked block moves; history outside it and changelogs are left alone, and untouched files are not rewritten.
   assert.equal(await read(root, 'README.md'), 'Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: 1.1.0-alpha.1.\n<!-- urlcode-current-version:end -->\n');
   assert.equal(await read(root, 'packages/ui/CHANGELOG.md'), '## 1.0.0\n');
@@ -117,6 +123,7 @@ const drifts: [string, (root: string) => Promise<void>, RegExp][] = [
   ['a runtime literal', root => edit(root, 'packages/core/src/mcp.ts', text => text.replace('1.0.0', '0.9.0')), /mcp\.ts must declare 1\.0\.0 exactly once/],
   ['a duplicated runtime literal', root => edit(root, 'starters/default/.github/workflows/urlcode.yml', text => text + text.slice('steps:\n'.length)), /urlcode\.yml must declare 1\.0\.0 exactly once/],
   ['the plugin manifest', root => edit(root, '.claude-plugin/marketplace.json', text => text.replace('1.0.0', '0.9.0')), /marketplace\.json is not 1\.0\.0/],
+  ['an example pinning a stale range', root => edit(root, 'examples/edge/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^0.3.0"`)), /examples\/edge\/package\.json dependencies names @jimhoyd\/urlcode \^0\.3\.0; examples pin core's version 1\.0\.0 exactly/],
   ['a current version outside its markers', root => edit(root, 'docs/GUIDE.md', () => 'Install 1.0.0.\n'), /GUIDE\.md: 1\.0\.0 appears outside a current-version block/],
   ['a stale marker block', root => edit(root, 'README.md', text => text.replace('Current: 1.0.0', 'Current: 0.9.0')), /README\.md: a current-version block does not name 1\.0\.0/],
   ['unbalanced markers', root => edit(root, 'README.md', text => text.replace('<!-- urlcode-current-version:end -->', '')), /markers are unbalanced/],

@@ -13,6 +13,12 @@ version changes, and `node scripts/release-bump.ts --check` (part of
 | Every extension (`@jimhoyd/urlcode-<name>`: `ui`, `audit`, `abuse`, `mail`, `auth`, `admin`, `store`, `forms`, `form-records`, `mcp`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 | Every artifact (`@jimhoyd/urlcode-<name>`) | `artifacts/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 
+The example manifests (`examples/<name>/package.json`) are not published and
+are not workspaces, so the lockfile does not cover them. Their deploy steps
+install core from them, so each one that names `@jimhoyd/urlcode` pins it
+exactly at core's version; the bump rewrites that pin and the check fails when
+it drifts.
+
 | Version | npm dist-tag | GitHub Release | Homebrew | GHCR tags | Template PR |
 | --- | --- | --- | --- | --- | --- |
 | `X.Y.Z` | `latest` | latest release | updated | `:X.Y.Z`, `:latest` | opened |

@@ -26,10 +26,11 @@ channels. A published release is not a production-readiness claim; see
    workspace `package.json`, the exact core and sibling peers of each add-on
    (siblings optional), `package-lock.json`, the CLI `VERSION` and MCP
    `serverInfo` literals, the starter's schema URL and Action ref, the Claude
-   plugin and marketplace manifests, and every `urlcode-current-version`
-   block in the documentation. It refuses a malformed version, one that is not
-   newer than the current version, and a checkout whose declarations already
-   disagree.
+   plugin and marketplace manifests, the exact `@jimhoyd/urlcode` dependency
+   in each `examples/*/package.json` that names one (the deploy steps install
+   it), and every `urlcode-current-version` block in the documentation. It
+   refuses a malformed version, one that is not newer than the current
+   version, and a checkout whose declarations already disagree.
    `node scripts/release-bump.ts --check`, part of `npm run check`, fails CI
    whenever any declaration drifts.
 2. Open the pull request from `release/vX.Y.Z` (the link in the Create release run's

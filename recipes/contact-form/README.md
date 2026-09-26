@@ -28,8 +28,12 @@ Without the grant, activation refuses the project. Editing any file changes the
 project hash, so regenerate and re-review the policy afterwards.
 
 A signal carries a fixed payload (route, method, status), not the submitted
-message, and is best effort: drops are counted, never retried. Test and audit
-probes do not fire it. See [egress](../../docs/EGRESS.md).
+message, and is best effort: drops are counted, never retried. The recipe's
+fixtures are ordinary requests, so a fixture that reaches this route calls the
+granted hook during `urlcode test` and `urlcode audit`, exactly as a visitor's
+submission would. Before running them, point the hook at a test receiver you
+control, then regenerate and review the policy. See
+[egress](../../docs/EGRESS.md#signals-under-test-and-audit).
 
 This minimal recipe demonstrates declarative validation and a metadata-only
 notification; it does not deliver or keep the message. Nothing downstream can
