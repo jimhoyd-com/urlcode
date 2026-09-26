@@ -4211,6 +4211,74 @@ names no extension and interprets no message.
 built by hand in a test can leave it out; the runtime always sets it, so call
 it as `context.warn?.(message)` if you also support such tests.
 
+#### Reload hand-off
+
+An in-process reload (`app.reload()` on a `startServer` server, which the
+`urlcode dev` watcher calls) builds and activates the replacement runtime while
+the serving one keeps answering, then switches to it and closes the old one. If
+anything in the replacement fails, the serving runtime keeps serving, unchanged
+(issue #777). An extension that holds something exclusive per activation (a
+directory lock, an exclusive database handle, an open file it alone may write)
+would refuse the replacement's activation because the serving instance still
+holds it. The optional hand-off lets the two activations share it instead
+(`RIM-EXT-HANDOFF-001`):
+
+```ts
+interface ExtensionInstance {
+  // Called only during an in-process reload, on the serving instance, just before
+  // the same registration activates in the replacement runtime.
+  handoff?(): unknown | Promise<unknown>;
+  close?(): void | Promise<void>;
+  // handle, authorize, middleware as before
+}
+interface ExtensionActivation {
+  // Present only in that replacement activation, when handoff() returned a value.
+  handoff?: ExtensionHandoff;
+  // origin, mounts, root, warn ... as before
+}
+interface ExtensionHandoff { readonly value: unknown }
+```
+
+Core only carries the value: it passes exactly what `handoff()` returned, never
+inspects, copies or freezes it, and offers it only to the activation of the
+very same registration object under the same name. It never offers one on a
+first activation, from a runtime that is closing, or on `serve` startup,
+`validate`, `test` or the hosted adapters. A `handoff()` that throws rejects the
+reload as `Extension "<name>" failed to hand off for a reload: <message>` and
+the serving runtime keeps serving.
+
+Ownership is reference counted, and the extension keeps the count (for example
+a lease in its registration's closure, which lives as long as the host):
+
+| Step | What happens | References |
+|---|---|---|
+| Serving | the instance holds the resource | 1 |
+| Offer | `handoff()` returns a value naming it; nothing is released, the serving instance keeps using it | 1 |
+| Accept | the replacement's `activate()` recognizes the value and takes its own reference | 2 |
+| Replacement fails (its own activation, any extension after it, or anything later in the runtime's start) | core closes every instance it activated; each `close()` drops only its own reference; the serving instance is intact and usable | 1 |
+| Replacement installed | the retired runtime closes once idle; its `close()` drops only its reference, so the resource stays open for the replacement | 1 |
+| Last close | the resource is released | 0 |
+
+So write `close()` to release the reference its own activation holds, never
+the resource outright, and let only the last reference release it. While both
+runtimes are live (the retiring one finishing in-flight requests) both
+instances may use the resource: share one write path between them, never two
+independent writers. An activation that cannot use the value (it did not issue
+it, the lease is gone, an operator option such as a directory differs) ignores
+it and opens fresh, which an exclusive resource then refuses exactly as it did
+without a hand-off. The exclusion against other processes, other hosts and
+other registrations of the same extension is unchanged: only a reload shares.
+
+An extension that holds nothing exclusive leaves `handoff()` out and behaves as
+before. The same overlap applies to any per-registration "current activation"
+an extension keeps for its exports (the served kit, a records export, a
+delivery context): make the newest live activation current and, when it
+closes, fall back to the previous live one rather than to nothing, so a failed
+reload's close cannot switch off the runtime that is still serving. The store
+adopts the hand-off for its directory lock
+([single-writer lock and reload](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#single-writer-lock-and-reload)); ui,
+auth and mail keep their current activation that way.
+
 #### Site origins and same-origin checks
 
 A site can be served from more than one origin: an apex and a `www` host, or a

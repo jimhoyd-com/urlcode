@@ -199,6 +199,17 @@ export interface CollectionAuditor { validate(value: unknown): AuditEvent; notif
 type AuditAction = 'created' | 'replaced' | 'updated' | 'deleted' | 'incremented';
 
 /**
+ * One data file's single write path in this process: the promise chain every mutation of the file runs on, and the
+ * live views of it. A view is one activation's `Collection` over the file; a reload hand-off (RIM-EXT-HANDOFF-001)
+ * lets the replacement activation add its view while the serving one still has its own, so both write through this
+ * one chain and every commit is applied to every view. There is never a second, independent writer of the file.
+ */
+export class CollectionFile {
+  tail: Promise<unknown> = Promise.resolve();
+  readonly views = new Set<Collection>();
+}
+
+/**
  * One collection: an in-memory array mirrored to one JSON file. Every mutation is applied to a copy, written
  * (temporary file, fsync, rename, directory fsync) and only then swapped in, so a failed write changes nothing.
  * Mutations run one at a time through a promise chain; that ordering is the only concurrency control, which is why
@@ -214,10 +225,35 @@ export class Collection {
    * them. Kept (and written back) on an unaudited collection too, so turning `audit` off never drops undelivered events.
    */
   private pending: AuditEvent[] = [];
-  private readonly file: string; private tail: Promise<unknown> = Promise.resolve();
+  private readonly file: string;
+  /** The file's shared write path; this view's own until `open()` joins the activation's lease. */
+  private shared = new CollectionFile(); private files: Map<string, CollectionFile> | undefined;
+  /**
+   * Set when another view committed a state this view's declaration refuses (a reload changed the collection's
+   * fields and the retiring activation wrote a record the new declaration rejects, or the reverse): this view then
+   * answers 503 instead of serving or overwriting a state it cannot represent.
+   */
+  private diverged = false;
   private readonly auditor: CollectionAuditor | undefined;
   private get owned(): boolean { return this.spec.ownership === 'owner'; }
-  constructor(name: string, spec: CollectionSpec, directory: string, auditor?: CollectionAuditor) { this.name = name; this.spec = normalize(name, spec); this.file = join(directory, `${name}.json`); this.auditor = auditor; }
+  constructor(name: string, spec: CollectionSpec, directory: string, auditor?: CollectionAuditor) { this.name = name; this.spec = normalize(name, spec); this.file = join(directory, `${name}.json`); this.auditor = auditor; this.shared.views.add(this); }
+
+  /**
+   * Joins the file's write path in `files` (the directory lease's map, shared across a reload hand-off) and loads the
+   * file on that path, so no other view's commit can interleave with the read. `detach()` leaves it again.
+   */
+  async open(files: Map<string, CollectionFile>): Promise<void> {
+    this.shared.views.delete(this);
+    let shared = files.get(this.name);
+    if (!shared) { shared = new CollectionFile(); files.set(this.name, shared); }
+    this.shared = shared; this.files = files; shared.views.add(this);
+    await this.serialize(() => this.load());
+  }
+  /** Leaves the shared write path; the last view out removes it. Idempotent. */
+  detach(): void {
+    this.shared.views.delete(this);
+    if (!this.shared.views.size && this.files?.get(this.name) === this.shared) this.files.delete(this.name);
+  }
 
   /** Loads and re-validates the file; a file that violates the declaration refuses activation instead of being served. */
   async load(): Promise<void> {
@@ -230,6 +266,10 @@ export class Collection {
     if (text === undefined) throw new Error(`Collection ${this.name}: data file is unreadable or exceeds the declared limits`);
     let parsed: unknown;
     try { parsed = JSON.parse(text); } catch { throw new Error(`Collection ${this.name}: data file is not valid JSON`); }
+    this.install(parsed);
+  }
+  /** Validates a whole stored state against this view's declaration and only then swaps it in; throws and changes nothing otherwise. */
+  private install(parsed: unknown): void {
     if (!isRecord(parsed) || ![1, 2].includes(parsed.version as number) || !Array.isArray(parsed.records) || parsed.records.length > this.spec.maxRecords) throw new Error(`Collection ${this.name}: data file has an unsupported shape or exceeds maxRecords`);
     const retained = parsed.version === 2 ? parsed.idempotency : [];
     if (!Array.isArray(retained) || retained.length > IDEMPOTENCY_LIMITS.keys || retained.some(key => typeof key !== 'string' || key.length < 1 || key.length > IDEMPOTENCY_LIMITS.keyLength) || new Set(retained).size !== retained.length) throw new Error(`Collection ${this.name}: data file has invalid idempotency keys`);
@@ -240,8 +280,9 @@ export class Collection {
     let pending: AuditEvent[];
     try { pending = this.auditor ? outbox.map(event => this.auditor!.validate(event)) : outbox as AuditEvent[]; }
     catch { throw new Error(`Collection ${this.name}: data file holds invalid audit events`); }
+    const records: StoredRecord[] = [], byId = new Map<string, StoredRecord>(), byKey = new Map<string, StoredRecord>(), owners = new Map<string, number>();
     for (const item of parsed.records as unknown[]) {
-      if (!isRecord(item) || typeof item.id !== 'string' || this.byId.has(item.id) || typeof item.createdAt !== 'string' || typeof item.updatedAt !== 'string') throw new Error(`Collection ${this.name}: data file holds an invalid record`);
+      if (!isRecord(item) || typeof item.id !== 'string' || byId.has(item.id) || typeof item.createdAt !== 'string' || typeof item.updatedAt !== 'string') throw new Error(`Collection ${this.name}: data file holds an invalid record`);
       const { [OWNER_FIELD]: owner, ...fields } = item;
       if (owner !== undefined && (typeof owner !== 'string' || !principalIdPattern.test(owner))) throw new Error(`Collection ${this.name}: data file holds an invalid record owner`);
       // Serving owned records from a shared collection would hand every user's records to every caller.
@@ -249,13 +290,20 @@ export class Collection {
       let clean: StoredRecord;
       try { clean = this.check(fields, false); } catch { throw new Error(`Collection ${this.name}: a stored record no longer matches the declared fields`); }
       const record: StoredRecord = { id: item.id, createdAt: item.createdAt, updatedAt: item.updatedAt, ...(owner === undefined ? {} : { [OWNER_FIELD]: owner }), ...clean };
-      if (this.spec.key && (typeof record[this.spec.key] !== 'string' || this.byKey.has(record[this.spec.key] as string))) throw new Error(`Collection ${this.name}: data file holds an invalid record key`);
-      this.records.push(record); this.byId.set(item.id, record);
-      if (owner !== undefined) this.owners.set(owner as string, (this.owners.get(owner as string) ?? 0) + 1);
-      if (this.spec.key) this.byKey.set(record[this.spec.key] as string, record);
+      if (this.spec.key && (typeof record[this.spec.key] !== 'string' || byKey.has(record[this.spec.key] as string))) throw new Error(`Collection ${this.name}: data file holds an invalid record key`);
+      records.push(record); byId.set(item.id, record);
+      if (owner !== undefined) owners.set(owner as string, (owners.get(owner as string) ?? 0) + 1);
+      if (this.spec.key) byKey.set(record[this.spec.key] as string, record);
     }
-    this.idempotency = retained as string[]; this.pending = pending;
+    this.records = records; this.byId = byId; this.byKey = byKey; this.owners = owners;
+    this.idempotency = retained as string[]; this.pending = pending; this.diverged = false;
   }
+  /** Another view of the same file committed `state`: take it too, or stop serving if this declaration refuses it. */
+  private adopt(records: StoredRecord[], idempotency: string[], pending: AuditEvent[]): void {
+    try { this.install({ version: 2, records, idempotency, audit: pending }); }
+    catch { this.diverged = true; }
+  }
+  private usable(): void { if (this.diverged) throw new StoreError(503, 'storage_unavailable', 'This collection was redeclared by a reload; try again'); }
 
   /**
    * Validates caller input against the field schema. `full` applies defaults and required checks. With `unset` (a
@@ -287,8 +335,8 @@ export class Collection {
     if (Buffer.byteLength(JSON.stringify(record)) > this.spec.maxRecordBytes) throw new StoreError(413, 'record_too_large', `Record exceeds ${this.spec.maxRecordBytes} bytes`);
   }
   private serialize<T>(work: () => Promise<T>): Promise<T> {
-    const run = this.tail.then(work, work);
-    this.tail = run.catch(() => undefined);
+    const shared = this.shared, run = shared.tail.then(work, work);
+    shared.tail = run.catch(() => undefined);
     return run;
   }
   private async persist(records: StoredRecord[], idempotency: string[], pending: AuditEvent[]): Promise<void> {
@@ -304,11 +352,14 @@ export class Collection {
   }
   /** Writes and swaps in the next state. A `pending` longer than now means this write appended an audit event, so the drain is woken after the commit. */
   private async commit(next: StoredRecord[], idempotency = this.idempotency, pending = this.pending): Promise<void> {
+    this.usable();
     try { await this.persist(next, idempotency, pending); }
     catch { throw new StoreError(503, 'storage_unavailable', 'The store could not save this change'); } // no path or system detail
     const appended = pending.length > this.pending.length;
     this.records = next; this.byId = new Map(next.map(record => [record.id as string, record])); this.byKey = this.spec.key ? new Map(next.map(record => [record[this.spec.key!] as string, record])) : new Map(); this.idempotency = idempotency; this.pending = pending;
     if (this.owned) this.owners = countOwners(next);
+    // Every other live view of this file (a reload's overlap) sees the committed state at once.
+    for (const view of this.shared.views) if (view !== this) view.adopt(next, idempotency, pending);
     if (appended) this.auditor?.notify();
   }
   /**
@@ -354,16 +405,18 @@ export class Collection {
    * value or a cursor that does not belong to the sort.
    */
   list(params: URLSearchParams, owner?: string): { items: StoredRecord[]; total: number; next?: string | number } {
+    this.usable();
     const scope = this.scope(owner);
     return runList(this.owned ? this.records.filter(record => this.visible(record, scope)) : this.records, parseListQuery(this.spec, params));
   }
   /** A record in the caller's scope. A record that exists but belongs to someone else (or to nobody) is the same 404 as a missing id. */
   get(id: string, owner?: string): StoredRecord {
+    this.usable();
     const scope = this.scope(owner), record = this.byId.get(id);
     if (!record || !this.visible(record, scope)) throw new StoreError(404, 'not_found', 'No such record');
     return record;
   }
-  getByKey(key: string): StoredRecord { const record = this.byKey.get(key); if (!record) throw new StoreError(404, 'not_found', 'No such record'); return record; }
+  getByKey(key: string): StoredRecord { this.usable(); const record = this.byKey.get(key); if (!record) throw new StoreError(404, 'not_found', 'No such record'); return record; }
   validateIdempotency(key: string | undefined): IdempotencySpec | undefined {
     if (!key) return undefined;
     const config = this.spec.idempotency;

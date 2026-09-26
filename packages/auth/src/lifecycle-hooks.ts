@@ -67,6 +67,7 @@ export interface HookRunner {
 }
 export function createHookRunner(): HookRunner {
     let current: { hooks: LoadedAuthHooks } | undefined, active = 0, closed = false;
+    const attached: { hooks: LoadedAuthHooks }[] = [];
     const stats: AuthHookStats = { accepted: 0, dropped: 0, failed: 0, timedOut: 0 };
     async function filter(name: 'beforeRegister' | 'beforeRoleChange', input: object, context: ExtensionHookContext | undefined, code: string, fallback: string): Promise<void> {
         const hook = current?.hooks[name];
@@ -84,9 +85,12 @@ export function createHookRunner(): HookRunner {
     }
     return {
         attach(hooks) {
+            // The newest live attachment runs; detaching one restores the newest still attached, so a failed
+            // reload's detach leaves the serving activation's hooks in place (RIM-EXT-HANDOFF-001).
             const attachment = { hooks };
+            attached.push(attachment);
             current = attachment;
-            return () => { if (current === attachment) current = undefined; };
+            return () => { const index = attached.indexOf(attachment); if (index >= 0) attached.splice(index, 1); current = closed ? undefined : attached.at(-1); };
         },
         has: name => typeof current?.hooks[name] === 'function',
         beforeRegister: (input, context) => filter('beforeRegister', input, context, 'registration_rejected', 'Registration not permitted'),
@@ -111,6 +115,6 @@ export function createHookRunner(): HookRunner {
             catch { stats.failed++; }
         },
         stats: () => ({ ...stats }),
-        close() { closed = true; current = undefined; },
+        close() { closed = true; current = undefined; attached.length = 0; },
     };
 }

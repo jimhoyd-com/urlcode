@@ -67,7 +67,15 @@ export interface RuntimeOptions {
    * accepted for this edited revision and reported once as `extension_pin_followed`. Every other extension check
    * still runs. Never supplied by project YAML, an environment variable or a tool argument (RIM-EXT-PIN-001). */
   acceptedExtensionPin?: { readonly from: string } | undefined;
+  /** In-process reload only (set by `startServer`'s `reload()`): the serving runtime this one is built to replace.
+   * Each extension whose serving instance was activated from the same registration object and implements
+   * `handoff()` offers its hand-off to that registration's activation here (RIM-EXT-HANDOFF-001). The serving
+   * runtime is never closed or changed by this call: the caller installs the new runtime, then closes the old one,
+   * or keeps serving the old one when this call fails. Never supplied by project YAML or a tool argument. */
+  replacing?: Runtime | undefined;
 }
+/** The extension registry of each runtime `createRuntime` built, for a reload's hand-off (RIM-EXT-HANDOFF-001). */
+const extensionRegistries = new WeakMap<Runtime, ExtensionRegistry>();
 function withDataDirGrant(loaded: LoadedDocument, projectSha256: string, given: OperatorPolicy | undefined): OperatorPolicy | undefined {
   // An operator policy pinned to another revision stays as it is: it denies, exactly as it would without this option.
   if (given && given.projectSha256 !== projectSha256) return given;
@@ -170,7 +178,11 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
   const signalBroker=new SignalBroker(signalClient,8,stats=>{for(const outcome of ['accepted','delivered','failed','dropped'] as const){const count=stats[outcome]-lastSignals[outcome];if(count)sink({event:'signal',outcome,count});}lastSignals=stats;});
   let extensionRegistry:ExtensionRegistry;
-  try{extensionRegistry=await extensionPlan.activate();}
+  try{
+    const serving=options.replacing===undefined?undefined:extensionRegistries.get(options.replacing);
+    assert(options.replacing===undefined||serving!==undefined,'A reload replaces only a serving runtime that createRuntime built');
+    extensionRegistry=await extensionPlan.activate(serving);
+  }
   catch(error){await pool.close();await closePolicies(shared);await proxyClient.close();await signalClient.close();throw error;}
   for(const name of extensionRegistry.credentialHeaders)credentialHeaders.add(name);
   for(const route of routes)route.extensionPolicyNames=Object.keys(effectiveExtensionPolicies(loaded.document,route));
@@ -245,7 +257,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
   // Reported only once the edited revision fully activated, so a rejected reload never claims a followed pin.
   if(extensionPlan.followed.length)sink({event:'extension_pin_followed',extensions:[...extensionPlan.followed],from:options.acceptedExtensionPin!.from,to:snapshot.projectSha256});
-  return {
+  const runtime: Runtime = {
     get healthy() { return !closing && pool.healthy; },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root, revision: snapshot.projectSha256,
     testPlan,
@@ -271,6 +283,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     },
     async close() {
       closing = true;
+      // A closing runtime offers nothing: its instances are about to release their references.
+      extensionRegistries.delete(runtime);
       await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
       if (active || streamsOpen) await new Promise<void>(resolve => { finish = resolve; });
       await pool.close();
@@ -281,6 +295,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       await sink.close();
     },
   };
+  extensionRegistries.set(runtime, extensionRegistry);
+  return runtime;
   async function dispatch({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client, requestId = crypto.randomUUID(), signal = new AbortController().signal }: RuntimeRequest, state: DispatchState): Promise<HandlerResult> {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
       assert(typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128, 'Request id must be a non-empty string of at most 128 characters');

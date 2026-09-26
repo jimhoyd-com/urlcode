@@ -338,3 +338,24 @@ test('pending OIDC sign-in retains its original proof and fails after identity u
     assert.notEqual(completed.status, 200);
     assert.ok(!cookies.has('__Host-urlcode-session'));
 });
+test('the current activation follows the newest live one across a reload overlap (#777)', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-reload-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
+    cleanup(t, () => service.close());
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
+    const auth = await authFor(t, root, { service, csrfKey, projectSha256, ui }, origin);
+    const activate = () => auth.registration.activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const serving = await activate();
+    // A failed reload activates a replacement, then closes it: the serving activation stays current.
+    const failed = await activate();
+    await failed.close?.();
+    assert.equal(auth.exports.active, true, 'a failed reload does not switch auth off');
+    // A successful reload: the retired activation closing leaves the replacement current.
+    const replacement = await activate();
+    await serving.close?.();
+    assert.equal(auth.exports.active, true);
+    await replacement.close?.();
+    assert.equal(auth.exports.active, false);
+});

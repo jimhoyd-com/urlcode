@@ -173,6 +173,9 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
     const service: AuthServiceInternal = internal(configured.service);
     /** The active activation: auth's mount, canonical origin and CSRF signer. */
     let current: { mount: string; origin: string; http: AuthHttp } | undefined;
+    // The live activations, oldest first; the newest is `current`. Closing one restores the newest still live, so a
+    // failed reload's close leaves the serving activation current (RIM-EXT-HANDOFF-001).
+    const live: { mount: string; origin: string; http: AuthHttp }[] = [];
     const resolved = new WeakMap<ExtensionRequest, ResolvedSession>();
     const place = () => { if (!current) throw new Error('Auth is not active'); return current; };
     const delivery = createDelivery(configured.mail, place);
@@ -286,6 +289,7 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
             // Only once nothing else can refuse this activation: the hooks and the exports go live together.
             const detachHooks = service.attachLifecycleHooks(loadedHooks);
             const activation = { mount, origin: context.origin, http };
+            live.push(activation);
             current = activation;
             return {
                 async authorize(requirement, request) {
@@ -752,8 +756,10 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                 },
                 close() {
                     detachHooks();
-                    if (current === activation)
-                        current = undefined;
+                    const index = live.indexOf(activation);
+                    if (index >= 0)
+                        live.splice(index, 1);
+                    current = live.at(-1);
                 },
             };
         } };

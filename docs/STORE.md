@@ -558,7 +558,8 @@ undelivered in one collection, the next write answers
   that same sequence and the same replacement file as the changed record.
 - The directory is single-writer. Activation takes an exclusive lock file
   (`.store.lock`, holding the pid) and refuses a second server over the same
-  directory; a lock left by a dead process is reclaimed. This is a guard against
+  directory (a dev reload shares it with the replacement runtime instead; see
+  [below](#single-writer-lock-and-reload)); a lock left by a dead process is reclaimed. This is a guard against
   mistakes, not a distributed lock: it does not work across machines or on
   network filesystems, and the same host needs one process (no `workers`
   multi-process clustering over the same directory).
@@ -579,6 +580,38 @@ undelivered in one collection, the next write answers
   accept that a copy taken mid-write is the last complete file.
 
 Errors never contain record values, file contents or filesystem paths.
+
+### Single-writer lock and reload
+
+`urlcode dev` hot reloads by activating the edited project's runtime while the
+running one keeps serving, and a rejected edit keeps the running one serving.
+The store's lock therefore belongs to a lease, not to one activation (core's
+[reload hand-off](EXTENSIONS.md#reload-hand-off), issue #777):
+
+- The first activation takes `.store.lock` and opens the lease. On a reload the
+  serving activation offers the lease, and the replacement activation of the
+  same store registration joins it: one lock, one more reference. It does not
+  take the lock again and does not read around the serving activation.
+- Both activations write each collection file through the same one-at-a-time
+  write sequence, and every commit is applied to both at once, so there is
+  never a second, independent writer and no write is lost between them. The
+  replacement loads the file inside that sequence.
+- If the reload fails, even in another extension after the store joined, the
+  replacement's close drops only its reference: the serving store keeps its
+  lock, its data and its records export. If the reload succeeds, the retired
+  runtime's close drops only its reference and the lock stays held for the new
+  one. The lock file is removed when the last activation closes (shutdown).
+- A changed collection declaration reloads too: the replacement validates the
+  file against its new declaration (a record that no longer matches refuses
+  the reload, as it would refuse a restart). While the retiring runtime
+  finishes in-flight requests, a write it commits that the new declaration
+  cannot represent makes the new view answer `503 storage_unavailable` for that
+  collection instead of overwriting it; restart to recover.
+- Nothing else shares the lease: a second server, another store registration
+  over the same directory in the same process, and another process are refused
+  exactly as before (`Store directory is already locked by this process` or
+  `... in use by another process`). Changing the host's `directory` option needs
+  a restart.
 
 ## Trust and operation
 

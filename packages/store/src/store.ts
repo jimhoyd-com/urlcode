@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
-import type { CollectionAuditor, CollectionSpec, StoredRecord } from './collection.ts';
+import type { CollectionAuditor, CollectionFile, CollectionSpec, StoredRecord } from './collection.ts';
 import type { AuditAttachment, AuditExports } from '@jimhoyd/urlcode-audit';
 import { screensSchema, storeScreens } from './screens.ts';
 import { storeExports } from './records.ts';
@@ -143,9 +143,15 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
 export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; close(): Promise<void> } {
   if (!isAbsolute(options.directory)) throw new Error('Store directory must be an absolute path');
   const shared = storeExports(), audit = options.audit;
-  // The collections of the activation being served: the producer reads and acks those, never a closed activation's.
-  let drained: { token: symbol; collections: readonly Collection[] } | undefined;
-  const byName = (): Collection[] => [...drained?.collections ?? []].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  // The live activations, oldest first. The newest is the one being served: the producer reads and acks its
+  // collections, never a closed activation's; when a failed reload closes the newest, the serving one is newest again.
+  const live: { token: symbol; collections: readonly Collection[] }[] = [];
+  // The directory lease (RIM-EXT-HANDOFF-001): the one lock this registration holds and the write path of each data
+  // file, shared by every live activation that joined it through a reload hand-off, and released with the last one.
+  let lease: StoreLease | undefined;
+  // Hand-off values this registration's instances offered, each accepted at most once and only by this registration.
+  const offers = new WeakMap<object, StoreLease>();
+  const byName = (): Collection[] => [...live.at(-1)?.collections ?? []].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   const attachment: AuditAttachment | undefined = audit?.attach({
     source: 'store',
     // The oldest pending events across every collection, not the first collections by name: audit's flush settles
@@ -196,22 +202,47 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount)) throw new Error(`Mount ${mount} has no collection or short link declared`);
       await mkdir(directory, { recursive: true, mode: 0o700 });
       if (!(await stat(directory)).isDirectory()) throw new Error('Store directory is not a directory');
-      const unlock = await lockStoreDirectory(directory);
-      try { for (const collection of collections) await collection.load(); }
-      catch (error) { await unlock(); throw error; }
+      // A reload hand-off joins the serving activation's lease: one more reference to the same lock and write paths.
+      // Anything else (no hand-off, a value this registration did not offer, or a lease already released) locks
+      // afresh, which the serving activation's lock refuses exactly as before.
+      const offered = context.handoff?.value, joined = typeof offered === 'object' && offered !== null ? offers.get(offered) : undefined;
+      if (joined) offers.delete(offered as object);
+      let held: StoreLease;
+      if (joined && joined === lease && joined.refs > 0 && joined.directory === directory) { joined.refs++; held = joined; }
+      else { held = { directory, unlock: await lockStoreDirectory(directory), refs: 1, files: new Map() }; lease = held; }
+      let released = false;
+      const release = async (): Promise<void> => {
+        if (released) return;
+        released = true;
+        for (const collection of collections) collection.detach();
+        if (--held.refs > 0) return;
+        if (lease === held) lease = undefined;
+        await held.unlock();
+      };
+      try { for (const collection of collections) await collection.open(held.files); }
+      catch (error) { await release(); throw error; }
       const exported = shared.attach(collections);
-      drained = { token: exported, collections };
+      live.push({ token: exported, collections });
       // Events a previous run left in the files drain now rather than at the next write or poll.
       if (collections.some(collection => collection.auditBacklog > 0)) attachment?.notify();
       return {
         handle: request => dispatch(byMount, shortByMount, context, request),
-        async close() { shared.detach(exported); if (drained?.token === exported) drained = undefined; await unlock(); },
+        // Offers nothing once closed; otherwise a single-use value naming this lease, which only this registration accepts.
+        handoff() { if (released) return undefined; const token = Object.freeze(Object.create(null) as object); offers.set(token, held); return token; },
+        async close() {
+          shared.detach(exported);
+          const index = live.findIndex(entry => entry.token === exported);
+          if (index >= 0) live.splice(index, 1);
+          await release();
+        },
       };
     },
   };
   return { registration, exports: shared.exports, close: async () => { await attachment?.close(); } };
 }
 
+/** One directory lock and the data files' shared write paths, held while any activation that joined it is live. */
+interface StoreLease { readonly directory: string; readonly unlock: () => Promise<void>; refs: number; readonly files: Map<string, CollectionFile> }
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
 interface ShortLink { collection: Collection; destination: string; clicks: string }
 
