@@ -4,7 +4,9 @@ MCP is trusted operator code that runs in the host process. It is not a
 sandbox or a multi-tenant boundary. Project configuration declares tool
 names, descriptions, bounded input schemas and a project-relative handler
 reference; it cannot select a transport, a JSON-RPC extension, a session
-mechanism or an operator secret.
+mechanism or an operator secret. The optional streaming transport (sessions,
+SSE progress, the server stream) is enabled only by the operator's
+`mcp({ streaming })` option in `host.mjs`.
 
 **Request framing is host-owned, not project-owned.** JSON-RPC parsing,
 protocol version negotiation, method dispatch and error codes are all
@@ -13,8 +15,8 @@ extension: project YAML cannot add a method, change an error code, or affect
 how a request id is read. The extension reads only the standard JSON-RPC
 2.0 envelope (`jsonrpc`, `method`, optional `id`, optional `params`) from a
 bounded (256 KiB) `application/json` body; anything larger, any other content
-type, or any HTTP method other than `POST`/`HEAD` is refused before JSON
-parsing runs.
+type, or any HTTP method other than `POST`/`HEAD` (plus `GET`/`DELETE` when
+the operator enables streaming) is refused before JSON parsing runs.
 
 **Origin is validated before anything else is read.** The MCP Streamable
 HTTP transport requires a server to validate `Origin` to prevent DNS
@@ -96,17 +98,40 @@ once per failure.
 **No identity, authorization, rate limiting or idempotency model of its
 own.** Put a mount behind `auth: true` (or a specific role/permission
 requirement) where a tool call requires a signed-in caller; the extension
-does not create sessions, ownership rules or abuse protection, and every
+does not create sign-in sessions, ownership rules or abuse protection (a
+streaming `Mcp-Session-Id` is transport state, not an identity), and every
 caller who can reach an unprotected mount can invoke every declared tool on
 it. A tool handler whose external effects are not naturally idempotent needs
 its own idempotency mechanism (for example a nonce or dedupe key it checks
 itself), the same limitation the `forms` extension's `onSubmit` hook
 documents: a client can retry a POST.
 
+**Streaming sessions (operator opt-in).** With `streaming` on, `initialize`
+issues an `Mcp-Session-Id` of 32 bytes from the platform CSPRNG, and every
+later request must present it (`400` without, `404` for an unknown one). A
+session records the principal (`provider:id`) that created it when the mount
+runs behind a principal-providing extension, and the id presented under any
+other principal, or none, answers `404` exactly like an unknown id, so its
+existence is not revealed; `DELETE`, the GET stream and
+`notifications/cancelled` are held to the same binding, so one caller cannot
+end, read or cancel another's session. On a mount with no principal the id is
+the only thing that ties requests together: it is a bearer secret, is never
+logged by this extension, and is only as safe as the transport (use HTTPS).
+Origin validation applies to `GET` and `DELETE` as to `POST`. The session
+table is memory-bounded by operator options (`maxSessions`, least recently
+used eviction; `sessionIdleTimeoutMs`; per-session `replayMaxEvents` and
+`replayMaxBytes`), so a caller who can reach an unprotected mount can create
+sessions and push out others (who then re-initialize), but cannot grow memory
+without bound; open SSE streams are bounded by the server's own stream limits.
+Sessions are not persisted and do not survive a restart. Client disconnect,
+`notifications/cancelled` and session end abort the handler's
+`context.signal`; a handler that ignores it keeps running to completion.
+
 **Response caching.** Every response from an `extension: mcp` mount is
 forced to `Cache-Control: no-store` by the core extension privacy floor
 (`docs/EXTENSIONS.md`); this cannot be relaxed for a JSON-RPC endpoint, whose
-responses are call-specific and never safe to cache.
+responses are call-specific and never safe to cache. Core forces the same on
+an SSE stream and never compresses it.
 
 Passing tests does not establish independent security assessment, hostile
 multi-tenant readiness, production abuse resistance, or delivery guarantees.

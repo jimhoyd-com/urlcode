@@ -59,7 +59,13 @@ negotiation, exact request-id round-tripping and
 it refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks)) and an unsupported `MCP-Protocol-Version`
 (400) before dispatch; project YAML never carries JSON-RPC mechanics. Clients
 connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
-mounted with `auth: true`. See the [mcp package](../packages/mcp/README.md).
+mounted with `auth: true`. The optional Streamable HTTP transport parts
+(`Mcp-Session-Id` sessions, SSE progress for `tools/call`, cancellation and
+the GET stream with `Last-Event-ID` replay) are an operator opt-in,
+`mcp({ streaming: true })`, off by default; on, the registration declares
+[`streams: true`](#streamed-responses), so it serves on the self-hosted server
+only, and its sessions live in memory and do not survive a restart. See the
+[mcp package](../packages/mcp/README.md).
 
 A project declares versioned configuration and exclusive route mounts:
 

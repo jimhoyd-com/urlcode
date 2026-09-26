@@ -367,6 +367,13 @@ produces. Streams have their own limits, separate from the short-request ones:
   nginx `proxy_buffering off`, or the route sending `X-Accel-Buffering: no`),
   and keep its read timeout above `--stream-idle-timeout-ms`, or it will hold
   or cut the stream itself.
+- Long-lived streams, such as the MCP extension's opt-in GET stream
+  ([mcp streaming transport](../packages/mcp/README.md#streaming-transport-operator-opt-in)),
+  stay open while the client listens: each one holds a `--max-streams` slot,
+  its keep-alive interval must stay below `--stream-idle-timeout-ms`, it is
+  ended (and the client reconnects) at `--stream-max-duration-ms`, and at
+  shutdown it keeps the process up until `--close-timeout-ms`. Size
+  `--max-streams` for the listeners you expect.
 - On Vercel, `createVercelHandler({ streams: { maxStreams, idleTimeoutMs,
   maxDurationMs, maxBytes } })` sets the same limits per function instance; the
   platform's own function duration limit still applies. AWS, Cloudflare and

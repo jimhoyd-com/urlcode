@@ -19,7 +19,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields; per-flow submission budgets through `abuse` and a notification through `mail` | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth`, `abuse` and `mail` |
 | `@jimhoyd/urlcode-form-records` | [`packages/form-records`](../packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back, an edit page limited to declared fields and an optional per-user list page, through the typed exports of `forms` and `store` (and `ui` for the list) | `extensions.form-records` plus a `GET, HEAD, POST` mount with `auth: {csrf: origin}`, over an `ownership: owner` collection |
-| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
+| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount (`GET, POST, DELETE, HEAD` when the operator opts into `mcp({ streaming: true })`, self-hosted only); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
 All eleven are Apache-2.0. Core is published through npm, GitHub Releases and
 Homebrew. The ten extensions, and the inert `store-schema` artifact in
@@ -103,8 +103,8 @@ Rungs 1 to 3 need only the core package. Rungs 4 to 8 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
 operator host. Auth, admin, audit and abuse additionally need the Node/SQLite
 runtime their packages document; forms (except a flow with `abuse`), mail and
-mcp declare Node, AWS and Vercel targets, while store, and so form-records, are
-currently Node-only. See each package's README ([auth](../packages/auth/README.md),
+mcp declare Node, AWS and Vercel targets (mcp's opt-in streaming transport is
+self-hosted only), while store, and so form-records, are currently Node-only. See each package's README ([auth](../packages/auth/README.md),
 [admin](../packages/admin/README.md), [ui](../packages/ui/README.md),
 [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md),
 [mail](../packages/mail/README.md),

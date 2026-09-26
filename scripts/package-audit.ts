@@ -278,9 +278,11 @@ export const budgets: Record<string, Budget> = {
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
+  // Unpacked raised from 140 KiB for the opt-in streaming transport (#659):
+  // dist/sessions.{js,d.ts} and the README section took it to 151597 bytes.
   '@jimhoyd/urlcode-mcp': {
     packed: 45 * 1024,
-    unpacked: 140 * 1024,
+    unpacked: 160 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
