@@ -429,6 +429,22 @@ test('a stream from an extension that did not declare streams is the generic 502
   assert.equal(refused?.reason, 'undeclared');
   assert.equal(refused?.route, '/live/*');
   assert.equal(state.started, false, 'an undeclared stream is never pulled');
+  // The producer is stopped through request.signal too, not only its iterator (#802).
+  assert.equal(state.signal?.aborted, true);
+  assert.equal(state.signal?.reason, 'error');
+});
+
+test('a runtime refusing a stream aborts the handler signal it was given, even without a host signal (#802)', async t => {
+  const { root, pin } = await extensionProject(t);
+  const state = extensionState();
+  const runtime = await createRuntime(root, { origin, extensions: [extension(root, pin, state, { streams: false })] });
+  t.after(() => runtime.close());
+  const host = new AbortController();
+  await assert.rejects(runtime.handle({ target: '/live/events', signal: host.signal }), /Invalid function response/);
+  assert.deepEqual({ aborted: state.signal?.aborted, reason: state.signal?.reason, host: host.signal.aborted }, { aborted: true, reason: 'error', host: false },
+    'only the handler signal of this request is aborted; the host controller is untouched');
+  await assert.rejects(runtime.handle({ target: '/live/events' }), /Invalid function response/);
+  assert.equal(state.signal?.reason, 'error');
 });
 
 test('the Vercel adapter streams a declared extension response', async t => {

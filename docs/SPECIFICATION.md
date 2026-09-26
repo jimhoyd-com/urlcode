@@ -323,7 +323,8 @@ export default function progress(request, { signal }) {
   stream), and aborts the request's `AbortSignal`: `context.signal` in a
   trusted function, `request.signal` in an extension. `signal.reason` is the
   end reason (`client-closed`, `idle-timeout`, `max-duration`, `max-bytes`,
-  `error`, `shutdown`), `capacity` for a stream refused because too many are
+  `error`, `shutdown`; `error` also when the runtime refuses the stream with
+  the generic 502, or a later step fails after it was produced), `capacity` for a stream refused because too many are
   open, or `bodyless` when the response carries no body (HEAD, 204, 205, 304)
   and so the producer is never read; that response is still logged with
   reason `complete`. Do not start work in the handler that the signal cannot
