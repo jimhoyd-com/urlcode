@@ -213,7 +213,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     };
     return { [Symbol.asyncIterator]: () => iterator };
   };
-  interface DispatchState { route?: CompiledRoute; produced: ResponseStream[] }
+  // `abort` cancels the signal handed to this request's function or extension: a producer the host will never read
+  // is stopped through the signal as well as its iterator (#802).
+  interface DispatchState { route?: CompiledRoute; produced: ResponseStream[]; abort: (reason: 'error') => void }
   // Only a route that declares streaming may answer with a stream: a trusted `function` route with `stream: true`,
   // or the mount of an extension registered with `streams: true`. Anything else is the generic 502, logged.
   const admitStream = (result: HandlerResult, state: DispatchState, requestId: string): HandlerResult => {
@@ -221,6 +223,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     const declared = route !== undefined && route.sandbox !== true
       && ((route.stream === true && route.function !== undefined) || (route.extension !== undefined && extensionRegistry.entries.get(route.extension)?.streams === true));
     if (!declared || !isResponseStream(result.stream) || (result.body !== undefined && result.body !== null)) {
+      state.abort('error');
       cancelStream(isResponseStream(result.stream) ? result.stream : undefined);
       for (const produced of state.produced) cancelStream(produced);
       sink({ event: 'stream_refused', requestId, route: route?.pattern ?? null, reason: declared ? 'invalid' : 'undeclared' });
@@ -277,8 +280,11 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     },
     async handle(request) {
       const requestId = request.requestId ?? crypto.randomUUID();
-      const state: DispatchState = { produced: [] };
-      const result = await dispatch({ ...request, requestId }, state);
+      // The handler sees the host's signal joined with the runtime's own, so the runtime can cancel a producer it refuses.
+      const local = new AbortController();
+      const signal = request.signal ? AbortSignal.any([request.signal, local.signal]) : local.signal;
+      const state: DispatchState = { produced: [], abort: reason => { if (!local.signal.aborted) local.abort(reason); } };
+      const result = await dispatch({ ...request, requestId, signal }, state);
       return result.stream === undefined ? result : admitStream(result, state, requestId);
     },
     async close() {
@@ -308,7 +314,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         if (!match) {
           // site.notFound: answer an unmatched GET/HEAD with the configured page and status 404.
           if (notFoundPage && (method === 'GET' || method === 'HEAD')) {
-            const page = await dispatch({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, requestId, signal, ...(client ? { client } : {}) }, { produced: [] });
+            const page = await dispatch({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, requestId, signal, ...(client ? { client } : {}) }, { produced: [], abort: state.abort });
             return { ...page, status: 404 };
           }
           throw new HttpError(404, 'Not found');
@@ -456,6 +462,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         return await pipeline();
       } catch (error) {
         // A stream produced before a later step failed is never pulled; stop its producer.
+        if (state.produced.length) state.abort('error');
         for (const produced of state.produced) cancelStream(produced);
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
