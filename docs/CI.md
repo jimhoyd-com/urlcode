@@ -118,9 +118,9 @@ stack: Node runs separate `t.after()` hooks in registration order, so an earlier
 directory-removal hook would run while those later resources are still open.
 Filesystem retries cannot repair that ordering.
 
-Auth/admin suites use a five-minute test-file timeout. Keep large suites split
-into focused files so a file can finish within that budget on Windows, with
-fixtures isolated between files. Platform-sensitive Windows coverage is Node 24
+Auth/admin suites use a five-minute test-file timeout; store uses two minutes.
+Keep large suites split into focused files so a file can finish within its budget
+on supported CI runners, with fixtures isolated between files. Platform-sensitive Windows coverage is Node 24
 in the cross-workspace integration and in the Windows leg of a
 [high-impact pull request](#high-impact-pull-requests), while sweep/exact-commit
 runs cover all supported Node versions.
