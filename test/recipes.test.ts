@@ -138,7 +138,8 @@ test('the middleware recipe serves every pattern and mirrors the cookbook module
   for(const file of recipe.files.filter(f=>f.startsWith('middleware/')||f.startsWith('functions/')))assert.equal(recipe.content[file],await readFile(join(cookbook,file),'utf8'),file);
 });
 
-// The protocol fixture from the authenticated-json-api README: one bearer token, no real authentication.
+// The registration the authenticated-json-api README host builds: one bearer token, no real authentication. The test
+// stands in for the operator and pins the revision it just copied; the README host takes it from PROJECT_SHA256 or --policy.
 async function authRegistry(root: string,realm: string): Promise<RuntimeExtension> {return {
   name:'auth',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
   schema:{type:'object',properties:{realm:{type:'string'}},required:['realm'],additionalProperties:false},
@@ -198,6 +199,33 @@ test('the authenticated recipes use the auth short form and never let credential
   // The revision pin covers the requirement: editing it invalidates the registration.
   await writeFile(join(out,'urlcode.yaml'),(await readFile(join(out,'urlcode.yaml'),'utf8')).replace('auth: true','auth: {role: admin}'));
   await assert.rejects(startServer({project:out,port:0,log:()=>{},origin:'https://recipe.example.test',extensions:[{...await authRegistry(out,'api'),projectSha256:'0'.repeat(64)}]}),/pin mismatch/);
+});
+
+test('the README host example takes the reviewed revision pin, so an edit fails validate until the operator re-pins (#784)',async t=>{
+  const root=await project(t,{}),out=join(root,'api'),operator=join(root,'operator');await addRecipe('authenticated-json-api',out);
+  // The host file exactly as the README teaches it, with the package specifiers pointed at this checkout.
+  const readme=await readFile(fileURLToPath(new URL('../recipes/authenticated-json-api/README.md',import.meta.url)),'utf8');
+  const example=/## The host file[\s\S]*?```js\n([\s\S]*?)```/.exec(readme)![1]!;
+  assert.doesNotMatch(example,/inspectExtensionRevision/,'the example must not recompute the revision it registers');
+  const host=join(operator,'host.mjs');await mkdir(operator);
+  await writeFile(host,example.replace(`'@jimhoyd/urlcode/host'`,JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)).replace(`'@jimhoyd/urlcode/extensions'`,JSON.stringify(new URL('../packages/core/src/extensions.ts',import.meta.url).href)));
+  const {PROJECT_SHA256:_ignored,...inherited}=process.env;
+  const run=(pin: string|undefined,...args: string[])=>spawnSync(process.execPath,[cli,...args,'--project',out,'--host-file',host,'--origin','https://api.example.com'],{encoding:'utf8',timeout:30000,env:{...inherited,API_DEMO_TOKEN:'demo-token',...(pin===undefined?{}:{PROJECT_SHA256:pin})}});
+  // The operator prints the revision once, reviews it and supplies it.
+  const printed=spawnSync(process.execPath,[cli,'extensions','--project',out],{encoding:'utf8',timeout:20000});
+  const reviewed=/Project revision: ([a-f0-9]{64})/.exec(printed.stdout)![1]!;assert.equal(reviewed,await inspectExtensionRevision(out));
+  assert.match(run(undefined,'validate','--local').stderr,/PROJECT_SHA256/,'no pin refuses');
+  const valid=run(reviewed,'validate','--local');assert.equal(valid.status,0,valid.stderr);assert.match(valid.stdout,/"event":"valid"/);
+  const tested=run(reviewed,'test');assert.equal(tested.status,0,tested.stdout+tested.stderr);
+  const policy=join(operator,'api-policy.json'),permissions=spawnSync(process.execPath,[cli,'permissions','--project',out],{encoding:'utf8',timeout:20000});
+  assert.equal(permissions.status,0);await writeFile(policy,permissions.stdout);
+  assert.equal(run(undefined,'validate','--local','--policy',policy).status,0,'the reviewed --policy revision pins the host too');
+  // Adding a route changes the revision; the same process environment no longer activates the extension.
+  await writeFile(join(out,'urlcode.yaml'),(await readFile(join(out,'urlcode.yaml'),'utf8'))+'  /api/health:\n    respond:\n      text: ok\n');
+  const stale=run(reviewed,'validate','--local');assert.equal(stale.status,1);assert.match(stale.stderr,/Extension revision pin mismatch: auth/);
+  const stalePolicy=run(undefined,'validate','--local','--policy',policy);assert.equal(stalePolicy.status,1);assert.match(stalePolicy.stderr,/revision-pin-mismatch/);
+  const edited=await inspectExtensionRevision(out);assert.notEqual(edited,reviewed);
+  const repinned=run(edited,'validate','--local');assert.equal(repinned.status,0,repinned.stderr);
 });
 
 test('examples carry the same metadata shape and search returns the smallest runnable match with its route',async t=>{
