@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
 import {cp,mkdtemp,rm,readFile,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {fileURLToPath} from 'node:url';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {confinedPath} from '../packages/core/src/mcp-authoring.ts';import {project,redirect} from './helpers.ts';
-import {scaffoldProject} from '../packages/core/src/scaffold.ts';import {buildContext} from '../packages/core/src/context.ts';import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
+import {scaffoldProject} from '../packages/core/src/scaffold.ts';import {buildContext,shellWord} from '../packages/core/src/context.ts';import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 interface Reply { error?:{code:number;message:string};result:{tools:{name:string;annotations:{readOnlyHint:boolean}}[];content:{text:string}[];isError?:boolean} }
@@ -142,7 +142,12 @@ test('buildContext commands repeat the operator host file and origin and name wh
  assert.deepEqual(bare.prerequisites?.map(item=>item.flag),['--host-file','--origin']);
  // A host path that is not a plain shell word is quoted rather than split (an already-loaded host skips the load).
  const spaced=await buildContext(root,{projectFlag:'.',hostFile:'/srv/op host/host.mjs',host:{}});
- assert.equal(spaced.commands!.validate,`urlcode validate --local --project . --host-file '/srv/op host/host.mjs'`);
+ assert.equal(spaced.commands!.validate,`urlcode validate --local --project . --host-file ${process.platform==='win32'?'"/srv/op host/host.mjs"':`'/srv/op host/host.mjs'`}`);
+ // A Windows path keeps its backslashes and short-name tilde bare, and is double-quoted, never single-quoted, when needed.
+ assert.equal(shellWord('C:\\Users\\RUNNER~1\\Temp\\host.mjs','win32'),'C:\\Users\\RUNNER~1\\Temp\\host.mjs');
+ assert.equal(shellWord('C:\\Program Files\\op\\host.mjs','win32'),'"C:\\Program Files\\op\\host.mjs"');
+ assert.equal(shellWord('/home/op/RUNNER~1/host.mjs','linux'),'/home/op/RUNNER~1/host.mjs');
+ assert.equal(shellWord('~/host.mjs','linux'),`'~/host.mjs'`);
 });
 test('with the operator host file the runners validate and test the widget route like run_tests, and get_context carries it (#778)',async t=>{
  const {root,hostFile}=await widgetProject(t);

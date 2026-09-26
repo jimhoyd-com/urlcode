@@ -47,8 +47,15 @@ export interface ProjectContext {
  omitted?:ContextSection[];
 }
 export interface Prerequisite {flag:'--host-file'|'--origin'|'--policy';reason:string}
-/** A value for a POSIX shell command line: bare when it is plainly safe, single-quoted otherwise. */
-function shellWord(value:string):string {return /^[\w@%+=:,./-]+$/.test(value)?value:`'${value.replace(/'/g,`'\\''`)}'`;}
+/**
+ * A value for the local shell's command line: bare when it is plainly safe, quoted otherwise. Windows paths keep
+ * their `\` and `~` bare and are double-quoted when needed (cmd.exe does not treat single quotes as quoting);
+ * elsewhere the value is single-quoted for a POSIX shell, and `~` is bare only after the first character.
+ */
+export function shellWord(value:string,platform:NodeJS.Platform=process.platform):string {
+ if(platform==='win32')return /^[\w@%+=:,./\\~-]+$/.test(value)?value:`"${value}"`;
+ return /^[\w@%+=:,./-][\w@%+=:,./~-]*$/.test(value)?value:`'${value.replace(/'/g,`'\\''`)}'`;
+}
 /**
  * The operator flags the caller supplied, appended to every command that activates the project (validate, test,
  * audit, routes). Only values the operator gave are repeated: a missing one is named in `prerequisites`, never invented.
