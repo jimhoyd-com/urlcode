@@ -187,7 +187,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode docs search <text> [--project DIR] [--json]  # same as MCP search_docs: at most three bounded excerpts from the core agent docs and the site's installed, pin-verified add-on guides and urlcode.json schemas, with what was and was not searched; instead of grepping llms-full.txt
 ` },
   { name:'mcp', group:'Agent tooling', text:
-`  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools and runners that execute project code, host file adds get_extensions
+`  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...] [--origin https://links.example]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools and runners that execute project code, host file adds get_extensions
   urlcode mcp print-config [project] [--global]  # prints the .mcp.json JSON for a client to register BEFORE running init (pre-session bootstrap, #542); write it into an empty directory before starting an agent session there so MCP tools are loaded on that session's first turn. --global emits the bare 'urlcode' command for a global install; default is the portable 'npx --no --package' form. 'urlcode init' keeps a .mcp.json written this way as-is
 ` },
   { name:'capabilities', group:'Agent tooling', text:
@@ -202,7 +202,7 @@ const helpEntries: HelpEntry[] = [
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
 ` },
   { name:'plan-feature', group:'Agent tooling', text:
-`  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+`  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--origin https://links.example] [--json]
     # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
 ` },
   { name:'fixtures', group:'Agent tooling', text:
@@ -374,7 +374,7 @@ try {
       print(values.yaml ? stringifyYaml(fragment.schema) : JSON.stringify(fragment.schema,null,2)+'\n');
     }else if(command==='plan-feature'){
       if(arg===undefined)throw new ConfigError('Use urlcode plan-feature <goal>');
-      const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
+      const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='fixtures'||command==='diff'){
       // Both read YAML only: a project directory through the configuration loader (urlcode.yaml and its
