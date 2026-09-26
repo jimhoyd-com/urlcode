@@ -26,7 +26,8 @@ channels. A published release is not a production-readiness claim; see
    workspace `package.json`, the exact core and sibling peers of each add-on
    (siblings optional), `package-lock.json`, the CLI `VERSION` and MCP
    `serverInfo` literals, the starter's schema URL and Action ref, the Claude
-   plugin and marketplace manifests, and every `urlcode-current-version`
+   plugin and marketplace manifests, the exact `@jimhoyd/urlcode` dependency
+   of every `examples/*/package.json` that declares one, and every `urlcode-current-version`
    block in the documentation. It refuses a malformed version, one that is not
    newer than the current version, and a checkout whose declarations already
    disagree.

@@ -28,8 +28,20 @@ Without the grant, activation refuses the project. Editing any file changes the
 project hash, so regenerate and re-review the policy afterwards.
 
 A signal carries a fixed payload (route, method, status), not the submitted
-message, and is best effort: drops are counted, never retried. Test and audit
-probes do not fire it. See [egress](../../docs/EGRESS.md).
+message, and is best effort: drops are counted, never retried. See
+[egress](../../docs/EGRESS.md).
+
+`urlcode test` and `urlcode audit` send their fixtures as ordinary HTTP
+requests, so a fixture that reaches this route, such as the valid `POST` in
+`tests/requests.json`, calls the granted destination exactly as a visitor
+would. Only `HEAD` requests and the runtime's internal readiness probes skip
+the signal. Run the tests against a receiver you control: the policy can only
+grant the origin that `urlcode.yaml` declares, and the transport refuses
+loopback and private addresses, so a receiver on `localhost` cannot stand in.
+Declare a public HTTPS test endpoint you own while you test, generate and
+review its own policy with `urlcode permissions`, and switch to the production
+URL (and regenerate the policy) when you deploy. Each test call carries only
+the route, method and status.
 
 This minimal recipe demonstrates declarative validation and a metadata-only
 notification; it does not deliver or keep the message. Nothing downstream can

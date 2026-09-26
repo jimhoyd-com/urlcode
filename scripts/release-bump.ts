@@ -6,7 +6,7 @@
 //   node scripts/release-bump.ts --check     fail unless every declaration agrees (CI `checks` job)
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import semver from 'semver';
@@ -55,6 +55,25 @@ async function packages(root: string): Promise<{ path: string; manifest: Manifes
   }
   return list;
 }
+// Example projects (each examples/<name>/package.json) that depend on core pin it exactly at the release version, like an add-on's core peer.
+const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const;
+type Dependencies = Record<string, string>;
+const coreDependencies = (manifest: Record<string, unknown>): Dependencies[] =>
+  dependencyFields.map(field => manifest[field] as Dependencies | undefined).filter((deps): deps is Dependencies => deps?.[core] !== undefined);
+async function examples(root: string): Promise<{ path: string; manifest: Record<string, unknown> }[]> {
+  const list: { path: string; manifest: Record<string, unknown> }[] = [];
+  const entries = await readdir(join(root, 'examples'), { withFileTypes: true }).catch(() => []);
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory()) continue;
+    const path = `examples/${entry.name}/package.json`;
+    const text = await readFile(join(root, path), 'utf8').catch(() => null);
+    if (text === null) continue;
+    const manifest = JSON.parse(text) as Record<string, unknown>;
+    if (coreDependencies(manifest).length) list.push({ path, manifest });
+  }
+  return list;
+}
+
 function expectedPeers(manifest: Manifest, names: Set<string>, version: string): { peers: Record<string, string>; meta: Record<string, { optional: true }> } {
   const peers: Record<string, string> = {}, meta: Record<string, { optional: true }> = {};
   for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
@@ -80,6 +99,9 @@ export async function check(root = repositoryRoot): Promise<string> {
     assert.deepEqual(manifest.peerDependencies ?? {}, peers, `${path}: peers on core and sibling add-ons must be exactly ${version}`);
     for (const name of Object.keys(meta)) assert.equal(manifest.peerDependenciesMeta?.[name]?.optional, true, `${path}: sibling peer ${name} must be optional so npm never installs a second copy`);
     assert.deepEqual(lock.packages[lockKey]?.peerDependencies ?? {}, manifest.peerDependencies ?? {}, `package-lock.json ${lockKey} peers differ; run npm install`);
+  }
+  for (const { path, manifest } of await examples(root)) {
+    for (const deps of coreDependencies(manifest)) assert.equal(deps[core], version, `${path} depends on ${core} ${deps[core]}; an example pins core's version ${version} exactly`);
   }
   for (const [path, pattern] of Object.entries(runtimePatterns)) {
     const found = [...(await readFile(join(root, path), 'utf8')).matchAll(pattern)].map(match => match[0]);
@@ -114,6 +136,10 @@ export async function bump(version: string, root = repositoryRoot): Promise<stri
     await write(path, render(manifest));
   }
   await write('package-lock.json', render(lock));
+  for (const { path, manifest } of await examples(root)) {
+    for (const deps of coreDependencies(manifest)) deps[core] = version;
+    await write(path, render(manifest));
+  }
   for (const [path, pattern] of Object.entries(runtimePatterns)) await write(path, (await readFile(join(root, path), 'utf8')).replace(pattern, version));
   for (const [path, access] of Object.entries(jsonVersions)) { const value = await readJson<{ version?: string; metadata?: { version?: string } }>(root, path); access(value).set(version); await write(path, render(value)); }
   for (const path of documentation(root)) {

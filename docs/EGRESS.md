@@ -114,7 +114,10 @@ client and one bounded signal client, with at most 64 origins per purpose.
 Signals emit when route execution and response policies produce a result,
 including guest middleware responses and returned error status codes. Thrown
 handler errors and host request-policy/plugin short circuits (including cache
-hits) do not emit. HEAD requests and generated readiness probes do not emit.
+hits) do not emit. HEAD requests and the runtime's own health and readiness
+probes do not emit. `urlcode test` and `urlcode audit` fixtures are ordinary
+requests: one that reaches a signal route calls its granted destination, so
+run them against a receiver you control.
 The response never waits for webhook delivery. Counter events contain only
 accepted/delivered/failed/dropped outcomes and counts and are exposed through
 runtime metrics and the Prometheus `signals_total` series. A closed runtime stops

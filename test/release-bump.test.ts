@@ -24,6 +24,8 @@ async function fixture(version = '1.0.0'): Promise<string> {
     }),
     'artifacts/site/urlcode.json': json({ kind: 'artifact', name: 'site' }),
     'artifacts/site/package.json': json({ name: '@jimhoyd/urlcode-site', version }),
+    'examples/cloudflare/package.json': json({ name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: version }, devDependencies: { wrangler: '^4' } }),
+    'examples/aws/package.json': json({ name: 'aws-example', private: true, dependencies: { other: '^1.0.0' } }),
     'packages/core/src/cli.ts': `const VERSION = '${version}';\n`,
     'packages/core/src/mcp.ts': `const info = {serverInfo:{name:'urlcode',version:'${version}'}};\n`,
     'starters/default/app/urlcode.yaml': `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v${version}/schemas/urlcode.schema.json\nroutes: []\n`,
@@ -73,6 +75,10 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert.equal(lock.version, '1.1.0-alpha.1');
   for (const key of ['', 'packages/ui', 'packages/auth', 'artifacts/site']) assert.equal(lock.packages[key]!.version, '1.1.0-alpha.1', key);
   assert.deepEqual(lock.packages['packages/auth']!.peerDependencies, { [core]: '1.1.0-alpha.1', '@jimhoyd/urlcode-ui': '1.1.0-alpha.1', typescript: '>=6.0.3 <7.0.0' });
+  // An example that depends on core is pinned exactly and keeps its other fields; one that does not is left alone.
+  assert.deepEqual(await readJson(root, 'examples/cloudflare/package.json'), { name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: '1.1.0-alpha.1' }, devDependencies: { wrangler: '^4' } });
+  assert(changed.includes('examples/cloudflare/package.json'));
+  assert(!changed.includes('examples/aws/package.json'));
   assert.equal(await read(root, 'packages/core/src/cli.ts'), "const VERSION = '1.1.0-alpha.1';\n");
   assert.match(await read(root, 'packages/core/src/mcp.ts'), /version:'1\.1\.0-alpha\.1'/);
   assert.match(await read(root, 'starters/default/app/urlcode.yaml'), /urlcode\/v1\.1\.0-alpha\.1\/schemas\/urlcode\.schema\.json/);
@@ -114,6 +120,8 @@ const drifts: [string, (root: string) => Promise<void>, RegExp][] = [
   ['the lockfile', root => edit(root, 'package-lock.json', text => text.replace('"version": "1.0.0"', '"version": "0.9.0"')), /package-lock\.json version differs/],
   ['a ranged core peer', root => edit(root, 'packages/ui/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /must peer on @jimhoyd\/urlcode 1\.0\.0 exactly/],
   ['a required sibling peer', root => edit(root, 'packages/auth/package.json', text => text.replace('"@jimhoyd/urlcode-ui": {\n      "optional": true\n    },', '')), /sibling peer @jimhoyd\/urlcode-ui must be optional/],
+  ['a stale example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "0.3.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode 0\.3\.0/],
+  ['a ranged example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode \^1\.0\.0; an example pins core's version 1\.0\.0 exactly/],
   ['a runtime literal', root => edit(root, 'packages/core/src/mcp.ts', text => text.replace('1.0.0', '0.9.0')), /mcp\.ts must declare 1\.0\.0 exactly once/],
   ['a duplicated runtime literal', root => edit(root, 'starters/default/.github/workflows/urlcode.yml', text => text + text.slice('steps:\n'.length)), /urlcode\.yml must declare 1\.0\.0 exactly once/],
   ['the plugin manifest', root => edit(root, '.claude-plugin/marketplace.json', text => text.replace('1.0.0', '0.9.0')), /marketplace\.json is not 1\.0\.0/],
