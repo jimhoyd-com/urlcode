@@ -22,8 +22,10 @@ required. The extension refuses to register without one.
   to answer 503 and never admit on a throw.
 - **No partial admission.** `admit` checks every counter before incrementing any, inside one `BEGIN IMMEDIATE`
   transaction. A refused request increments nothing.
-- **Private files.** The database is created mode 0600. It is refused if it is not a private regular file with one
-  link. The scaffolded key is written mode 0600. SQLite builds without the fixes auth also requires are refused.
+- **Private files.** The database must be a regular file with one link. On POSIX it is created mode 0600 and
+  refused if group or other permission bits are set; the scaffolded key is written mode 0600. Windows uses ACLs:
+  these POSIX mode checks do not apply, and the operator must restrict access to the database and key directory.
+  The extension does not validate Windows ACLs. SQLite builds without the fixes auth also requires are refused.
 - **Bounded challenge verification.** The wrapper enforces these limits on any provider:
   - token shape;
   - an IP client;

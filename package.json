@@ -108,7 +108,7 @@
   ],
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
-    "prepare": "node --disable-warning=ExperimentalWarning scripts/build.ts --quiet",
+    "prepare": "node --disable-warning=ExperimentalWarning scripts/prepare.ts --quiet",
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:tooling": "npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-audit --workspace @jimhoyd/urlcode-abuse --workspace @jimhoyd/urlcode-mail && npm run build --workspace @jimhoyd/urlcode-auth && tsc -p tsconfig.checkjs.json",
     "test": "node --conditions=development --test test/*.test.ts",

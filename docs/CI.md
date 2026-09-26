@@ -104,10 +104,23 @@ integration (`npm run test:addons`: pack core and every add-on, pin them by
 sha512, create a site and add, serve and remove every extension); missing
 workspace outputs fail.
 
-Auth/admin fixtures register cleanup in package-local `test/cleanup.ts` in
-reverse acquisition order, closing servers and SQLite before temporary
-directories. Every closer is attempted even if one fails. The suites use a
-five-minute test-file timeout; platform-sensitive Windows coverage is Node 24
+Packaging tests use `npm pack --ignore-scripts` against the already-built core.
+The source `prepare` entry also checks npm's `ignore-scripts` setting because
+npm 10 can still invoke that lifecycle during packing. This keeps one test's
+pack from deleting and rebuilding the `dist/` files another test is reading.
+Normal source installs still build through `prepare`.
+
+Fixtures that own servers or SQLite connections register cleanup in reverse
+acquisition order using their package-local `test/cleanup.ts`, closing those
+resources before removing temporary directories. Every closer is attempted even
+if one fails. Register reopened databases and composed hosts on the same cleanup
+stack: Node runs separate `t.after()` hooks in registration order, so an earlier
+directory-removal hook would run while those later resources are still open.
+Filesystem retries cannot repair that ordering.
+
+Auth/admin suites use a five-minute test-file timeout; store uses two minutes.
+Keep large suites split into focused files so a file can finish within its budget
+on supported CI runners, with fixtures isolated between files. Platform-sensitive Windows coverage is Node 24
 in the cross-workspace integration and in the Windows leg of a
 [high-impact pull request](#high-impact-pull-requests), while sweep/exact-commit
 runs cover all supported Node versions.

@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 // forms as the second consumer of abuse: a mounted flow's `abuse` block rate limits submissions per client network
 // through a real abuse extension, escalates to the operator's challenge, and drops honeypot submissions silently.
 import test from 'node:test';
@@ -78,27 +79,27 @@ test('activation refuses abuse that cannot be enforced: missing, off node, or a 
   const limited = contact({ abuse: { client: { limit: 5, windowMs: 3600000 } } });
   const missing = await site(t, { contact: limited });
   const bare = await composeHost(missing.hostUrl, [ui(), forms({ csrfSecret })]);
-  t.after(() => bare.close?.());
+  cleanup(t, () => bare.close?.());
   await assert.rejects(createRuntime(missing.project, { origin, extensions: bare.extensions ?? [] }), /Form contact: abuse needs the abuse extension; run urlcode extensions add abuse/);
   await assert.rejects(createRuntime(missing.project, { origin, target: 'vercel', extensions: bare.extensions ?? [] }), /Form contact: abuse runs on node only; target vercel cannot enforce it/);
   const hosted = await site(t, { contact: contact({ abuse: { client: { limit: 5, windowMs: 3600000 }, challengeAfter: 2 } }) }, { declare: ['abuse'] });
   const noVerifier = await composeHost(hosted.hostUrl, [ui(), forms({ csrfSecret }), abuse({ key: randomBytes(32) })]);
-  t.after(() => noVerifier.close?.());
+  cleanup(t, () => noVerifier.close?.());
   await assert.rejects(createRuntime(hosted.project, { origin, extensions: noVerifier.extensions ?? [] }), /abuse\.challengeAfter needs a challenge verifier/);
   const badThreshold = await site(t, { contact: contact({ abuse: { client: { limit: 5, windowMs: 3600000 }, challengeAfter: 5 } }) }, { declare: ['abuse'] });
   const threshold = await composeHost(badThreshold.hostUrl, [ui(), forms({ csrfSecret }), abuse({ key: randomBytes(32), challenge: provider() })]);
-  t.after(() => threshold.close?.());
+  cleanup(t, () => threshold.close?.());
   await assert.rejects(createRuntime(badThreshold.project, { origin, extensions: threshold.extensions ?? [] }), /challengeAfter must be below abuse.client.limit/);
   const collision = await site(t, { contact: contact({ abuse: { client: { limit: 5, windowMs: 3600000 }, honeypot: 'email' } }) }, { declare: ['abuse'] });
   const colliding = await composeHost(collision.hostUrl, [ui(), forms({ csrfSecret }), abuse({ key: randomBytes(32) })]);
-  t.after(() => colliding.close?.());
+  cleanup(t, () => colliding.close?.());
   await assert.rejects(createRuntime(collision.project, { origin, extensions: colliding.extensions ?? [] }), /abuse.honeypot email collides with a field/);
 });
 
 test('flows without abuse are unchanged, and still serve on aws and vercel', async t => {
   const where = await site(t, { contact: contact() });
   const host = await composeHost(where.hostUrl, [ui(), forms({ csrfSecret })]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   for (const target of ['aws', 'vercel'] as const) {
     const runtime = await createRuntime(where.project, { origin, target, extensions: host.extensions ?? [] });
     await runtime.close?.();
