@@ -142,8 +142,11 @@ beside it and without changing the exports above:
   `<from>/...`, so one extension can never ship, replace or pin another's
   templates. The operator's own `ui({extensions})` is not checked. `urlcode-ui
   --extensions` applies the same rule against each package definition's name.
-  `screens` is an optional `UiScreenSource`, a function ui calls once
-  at activation with `{root}` (the route project) that returns `{<path>:
+  `screens` is an optional `UiScreenSource`, a function ui calls once per
+  activation with `{root, config}` (the route project, and the contributor's
+  own validated configuration from the snapshot being activated,
+  `ExtensionActivation.declarations[from]`, which ui passes on unread) that
+  returns `{<path>:
   {title, collection: {mount, fields, readOnly?, sortable?, filterable?},
   columns?}}`; ui serves each at its exact `extension: ui` mount, and a path
   two extensions claim refuses naming both contributors. Beyond that name, ui

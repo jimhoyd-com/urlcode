@@ -1,5 +1,5 @@
 import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders, installPrincipalSlot } from './extensions.ts';
-import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
+import type { RuntimeExtension, ActiveExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
 import { executeProxy } from './proxy.ts';
@@ -66,6 +66,10 @@ export interface RuntimeOptions {
    * accepted for this edited revision and reported once as `extension_pin_followed`. Every other extension check
    * still runs. Never supplied by project YAML, an environment variable or a tool argument (RIM-EXT-PIN-001). */
   acceptedExtensionPin?: { readonly from: string } | undefined;
+  /** `startServer`'s reload only: build and check the whole snapshot, including every extension declaration, but leave
+   * the extensions unactivated; the server activates them with `runtime.extensions.activate()` once the serving
+   * snapshot has released its own (RIM-EXT-HANDOFF-001). Never supplied by project YAML. */
+  deferExtensions?: boolean | undefined;
 }
 function withDataDirGrant(loaded: LoadedDocument, projectSha256: string, given: OperatorPolicy | undefined): OperatorPolicy | undefined {
   // An operator policy pinned to another revision stays as it is: it denies, exactly as it would without this option.
@@ -97,7 +101,26 @@ export interface Runtime {
   errorHeaders(error: unknown, origin: string): HeaderPair[];
   requestLimit(target: string): number | undefined;
   handle(request: RuntimeRequest): Promise<HandlerResult>;
+  /** The declared extensions' lifecycle (RIM-EXT-HANDOFF-001). */
+  readonly extensions: RuntimeExtensions;
   close(): Promise<void>;
+}
+/**
+ * At most one activation of each extension registration is live at a time. While a runtime that declares extensions
+ * has none active (deferred, released, or a failed restore), `handle()` answers 503 and `healthy` is false.
+ */
+export interface RuntimeExtensions {
+  /** This revision declares at least one extension. */
+  readonly declared: boolean;
+  /** An activation of the declared extensions is live (always true when none are declared). */
+  readonly active: boolean;
+  /** Activates the declared extensions afresh from this runtime's validated plan. On a refusal nothing stays active
+   * and the refusal is thrown. A no-op while active. */
+  activate(): Promise<void>;
+  /** Waits up to `timeoutMs` for every `handle()` call in flight to settle, then closes the live activation.
+   * Resolves false, closing nothing, when calls were still running at the deadline. A no-op returning true when
+   * nothing is active. The caller stops sending requests first. */
+  release(timeoutMs: number): Promise<boolean>;
 }
 export async function createRuntime(project: string, rawOptions: RuntimeOptions = {}): Promise<Runtime> {
   // Observers see every event this runtime emits; the operator's log stays
@@ -164,10 +187,19 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
   let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
   const signalBroker=new SignalBroker(signalClient,8,stats=>{for(const outcome of ['accepted','delivered','failed','dropped'] as const){const count=stats[outcome]-lastSignals[outcome];if(count)sink({event:'signal',outcome,count});}lastSignals=stats;});
-  let extensionRegistry:ExtensionRegistry;
-  try{extensionRegistry=await extensionPlan.activate();}
-  catch(error){await pool.close();await closePolicies(shared);await proxyClient.close();await signalClient.close();throw error;}
-  for(const name of extensionRegistry.credentialHeaders)credentialHeaders.add(name);
+  // Undefined while no activation is live: deferred by a reload, released for a handoff, or a restore that failed.
+  let extensionRegistry:ExtensionRegistry|undefined,pinFollowReported=false;
+  const reportFollowedPin=():void=>{
+    // Reported once, when the edited revision first fully activated, so a rejected reload never claims a followed pin.
+    if(pinFollowReported||!extensionPlan.followed.length)return;
+    pinFollowReported=true;
+    sink({event:'extension_pin_followed',extensions:[...extensionPlan.followed],from:options.acceptedExtensionPin!.from,to:snapshot.projectSha256});
+  };
+  if(!options.deferExtensions){
+    try{extensionRegistry=await extensionPlan.activate();}
+    catch(error){await pool.close();await closePolicies(shared);await proxyClient.close();await signalClient.close();throw error;}
+  }
+  for(const name of extensionPlan.credentialHeaders)credentialHeaders.add(name);
   for(const route of routes)route.extensionPolicyNames=Object.keys(effectiveExtensionPolicies(loaded.document,route));
   // Gates `authorize()` invocation, the extension request-body cap and
   // request-phase ordering: unaffected by declared cache sensitivity, so
@@ -179,9 +211,15 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // extension explicitly declares `cacheSensitive: false` (src/extensions.ts).
   const confidentialRoutes=new Set(routes.filter(route=>route.extension||isSensitiveExtensionPolicy(route.extensionPolicyNames??[],options.extensions)).map(route=>route.pattern));
   // Only an extension's own mount can serve its declared immutable assets.
-  const assetPrefixes=new Map(routes.filter(route=>route.extension).map(route=>[route.pattern,extensionRegistry.entries.get(route.extension!)!.assetPrefixes]));
+  const assetPrefixes=new Map(routes.filter(route=>route.extension).map(route=>[route.pattern,extensionPlan.assetPrefixes.get(route.extension!)!]));
   const assetContext=(method:string,path:string,pattern:string):ExtensionAssetContext|undefined=>{const prefixes=assetPrefixes.get(pattern);return prefixes?.length?{method,path,prefixes}:undefined;};
-  let active = 0, closing = false, finish: (() => void) | undefined;
+  let active = 0, closing = false;
+  // Resolved each time the last in-flight handle() call settles: close() and a handoff release wait on it.
+  const idle = new Set<() => void>();
+  const whenIdle = (): Promise<void> => active ? new Promise<void>(resolve => { idle.add(resolve); }) : Promise.resolve();
+  // Every entry lookup goes through here; handle() refuses first while nothing is active, so it never sees undefined.
+  const liveEntry = (name: string): ActiveExtension => extensionRegistry!.entries.get(name)!;
+  const extensionsUnavailable = (): boolean => extensionPlan.declared && extensionRegistry === undefined;
   // Response phase: cache store, throttle headers, security headers,
   // compression, then operator plugins in reverse. A result produced by a
   // request-phase policy skips that policy's own response hook (a cache hit
@@ -206,11 +244,35 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const workers = () => ({ healthy: pool.slots.filter(slot => slot?.ready).length, slots: pool.size });
   const testPlan = (): TestPlan => ({...projectPlan(compiled),policies:policyInventory()});
   try{await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });}
-  catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
-  // Reported only once the edited revision fully activated, so a rejected reload never claims a followed pin.
-  if(extensionPlan.followed.length)sink({event:'extension_pin_followed',extensions:[...extensionPlan.followed],from:options.acceptedExtensionPin!.from,to:snapshot.projectSha256});
+  catch(error){await Promise.all([extensionRegistry?.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
+  if(extensionRegistry)reportFollowedPin();
+  let transition: Promise<unknown> = Promise.resolve();
+  const serialized = <T>(step: () => Promise<T>): Promise<T> => { const run = transition.then(step, step); transition = run.catch(() => undefined); return run; };
+  const extensions: RuntimeExtensions = {
+    get declared() { return extensionPlan.declared; },
+    get active() { return !extensionsUnavailable(); },
+    activate: () => serialized(async () => {
+      assert(!closing, 'Runtime is closed');
+      if (extensionRegistry || !extensionPlan.declared) return;
+      extensionRegistry = await extensionPlan.activate();
+      reportFollowedPin();
+    }),
+    release: timeoutMs => serialized(async () => {
+      if (!extensionRegistry) return true;
+      if (active) {
+        let timer: NodeJS.Timeout | undefined;
+        const settled = await Promise.race([whenIdle().then(() => true), new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); })]);
+        clearTimeout(timer);
+        if (!settled || active) return false;
+      }
+      const registry = extensionRegistry; extensionRegistry = undefined;
+      await registry.close();
+      return true;
+    }),
+  };
   return {
-    get healthy() { return !closing && pool.healthy; },
+    get healthy() { return !closing && pool.healthy && !extensionsUnavailable(); },
+    extensions,
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root, revision: snapshot.projectSha256,
     testPlan,
     get plugins() { return plugins.map(plugin => ({ name: plugin.name, version: plugin.version })); },
@@ -228,7 +290,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       return match?.route.request?.body?.maxBytes ?? (match?.route.proxy||match?.route.extension?1048576:undefined);
     },
     async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client, requestId = crypto.randomUUID() }) {
-      if (closing) throw new HttpError(503, 'Runtime unavailable');
+      if (closing || extensionsUnavailable()) throw new HttpError(503, 'Runtime unavailable');
       assert(typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128, 'Request id must be a non-empty string of at most 128 characters');
       active++;
       let policyReq: PolicyRequest | undefined, policy: PolicyChain | null | undefined;
@@ -266,7 +328,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // The request's opaque principal (RIM-EXT-PRINCIPAL-001): null until a principal-providing extension's
         // authorize() on this route sets it and allows the request; never read from the client request.
         const principalSlot=installPrincipalSlot(extensionRequest);
-        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;const hook=entry.instance.authorize;if(typeof hook!=='function')continue;const result=await principalSlot.authorize(name,entry.providesPrincipal,()=>hook.call(entry.instance,entry.policies.get(route.pattern)!,extensionRequest));if(result)return result;}return undefined;};
+        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=liveEntry(name);const hook=entry.instance.authorize;if(typeof hook!=='function')continue;const result=await principalSlot.authorize(name,entry.providesPrincipal,()=>hook.call(entry.instance,entry.policies.get(route.pattern)!,extensionRequest));if(result)return result;}return undefined;};
         if (policy || plugins.length || protectedRoute) {
           policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
           trace.client = policyReq.client;
@@ -315,7 +377,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;
-        if(route.extension){native=extensionResponse(await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest),assetContext(method,parsed.path,route.pattern));}
+        if(route.extension){native=extensionResponse(await liveEntry(route.extension).instance.handle(extensionRequest),assetContext(method,parsed.path,route.pattern));}
         else if(route.compiledProxy){
           // Same credential-free projection a guest function receives: an
           // extension-declared credential header in requestHeaders must not
@@ -359,7 +421,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // (or short-circuited) before this point.
         let pipeline = runPipeline;
         for (const name of [...(route.extensionPolicyNames ?? [])].reverse()) {
-          const entry = extensionRegistry.entries.get(name)!;
+          const entry = liveEntry(name);
           if (typeof entry.instance.middleware !== 'function') continue;
           const config = entry.policies.get(route.pattern)!;
           const downstream = pipeline;
@@ -393,17 +455,17 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           await pluginsError(plugins, policyReq, error);
         }
         throw error;
-      } finally { active--; if (!active && closing) finish?.(); }
+      } finally { active--; if (!active) { for (const resolve of idle) resolve(); idle.clear(); } }
     },
     async close() {
       closing = true;
       await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
-      if (active) await new Promise<void>(resolve => { finish = resolve; });
+      await whenIdle();
       await pool.close();
       await trusted.close();
       await closePolicies(shared);
       await closePlugins(plugins);
-      await extensionRegistry.close();
+      await serialized(async () => { const registry = extensionRegistry; extensionRegistry = undefined; await registry?.close(); });
       await sink.close();
     },
   };

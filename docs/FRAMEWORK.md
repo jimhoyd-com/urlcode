@@ -177,7 +177,10 @@ export default await composeHost(import.meta.url, [
 
 `composeHost` orders the list by each extension's `requires` and `uses`,
 and the runtime activates the declared ones in that order, so a dependency is
-always active before the extension that reads it. It hands admin auth's typed
+always active before the extension that reads it. A reload closes them in
+reverse order before the edited snapshot's activate, so the store's directory
+lock is never held twice, and activates the last-good ones again if the edited
+ones refuse ([reloads and exclusive resources](EXTENSIONS.md#reloads-and-exclusive-resources)). It hands admin auth's typed
 `AuthExports` (version 1) through `ctx.get('auth')`: the signed-in account, a
 CSRF token and the administration API, never auth's keys, database or raw
 tokens. Auth sends every message itself, admin-initiated ones included,

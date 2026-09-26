@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A screen source now receives `{root, config}` (#777): `config` is the contributor's own validated configuration from the snapshot being activated (`ExtensionActivation.declarations[from]`), which ui passes on unread, so a reload that restores the last-good snapshot after a refused edit restores its screens instead of re-reading the edited project file.
 - A ui template namespace now belongs to its contributor (#753). core's `ctx.contributions('ui')` hands each value as `{from, value}` with the contributing extension's name; at host composition ui refuses a `templates` entry whose `name` is not `from` (`ui template namespace "<name>" is contributed by extension "<from>": ...`) and any template or view model key outside `<from>/` (`ui template "<key>" is contributed by extension "<from>" outside its namespace: ...`). `urlcode-ui --extensions` applies the same check against each package definition's name. `createUiExtension({screens})` takes `UiScreenContribution` entries (`{from, source}`), and a screen path two extensions claim names both. Operator-supplied `ui({extensions})` in host.mjs is not checked.
 
 - Extension scripts (`kit.wrap`/`kit.page` `scripts`) accept `async: true`, and an absolute `https:` URL whose origin the page lists in `csp.script`, so an extension passes a challenge widget to the kit instead of rewriting the page nonce. Any other off-site script is refused with `Extension script must be same-site or listed in csp.script`.
