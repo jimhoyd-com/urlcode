@@ -168,9 +168,25 @@ export const budgets: Record<string, Budget> = {
     // #540/#103/#779-#785 with their llms-full.txt copies. Together they measure
     // 770628 packed and 3103798 unpacked bytes in 464 entries on Node 26, 580
     // bytes over the old packed budget.
-    packed: 768 * 1024,
-    unpacked: 3080 * 1024,
-    entries: 470,
+    //
+    // Packed raised from 768 to 772 KiB for generic streamed responses (#659:
+    // dist/http-stream.js, the RIM-STREAM-001 runtime/extension/capability
+    // changes, the streaming-progress recipe and the specification, extension
+    // and operations sections with their llms-full.txt copies). It measures
+    // 788349 packed bytes on Node 26, 1917 over the old budget; 772 KiB keeps
+    // the ~2 KiB cross-Node gzip variance noted above. Unpacked it measures
+    // 3163145 bytes, 9225 over, so unpacked is raised from 3080 to 3100 KiB.
+    // The module, its declarations and the recipe's five files make 471
+    // entries, so entries is raised from 470 to 480.
+    //
+    // Raised to 788 KiB packed and 3140 KiB unpacked when the streaming
+    // responses change (#659) met main's studio/review-report additions
+    // (#792): together they measure 795299 packed and 3185100 unpacked bytes
+    // in 471 entries on Node 26, over the 772/3100 KiB budgets set for #659
+    // alone.
+    packed: 788 * 1024,
+    unpacked: 3140 * 1024,
+    entries: 480,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
@@ -268,9 +284,11 @@ export const budgets: Record<string, Budget> = {
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
+  // Unpacked raised from 140 KiB for the opt-in streaming transport (#659):
+  // dist/sessions.{js,d.ts} and the README section took it to 151597 bytes.
   '@jimhoyd/urlcode-mcp': {
     packed: 45 * 1024,
-    unpacked: 140 * 1024,
+    unpacked: 160 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

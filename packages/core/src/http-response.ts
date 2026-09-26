@@ -3,9 +3,20 @@ import { HttpError } from './errors.ts';
 
 export type HeaderPair = [string, string];
 export type ResponseBody = string | Uint8Array | null | undefined;
-/** What a handler, policy or asset produced; every host turns it into a wire response here. */
-export interface HandlerResult { status: number; headers: HeaderPair[]; body?: ResponseBody; contentLength?: number }
+/** One piece of a streamed response body: text is sent as UTF-8. An empty chunk sends nothing but commits the status and headers. */
+export type StreamChunk = string | Uint8Array;
+/** A streamed response body: pulled one chunk at a time, cancelled through the iterator's `return()`. */
+export type ResponseStream = AsyncIterable<StreamChunk>;
+/**
+ * What a handler, policy or asset produced; every host turns it into a wire response here.
+ * `stream` is the alternative to `body` (never both): a body sent in chunks as the producer yields them, accepted
+ * only from a route that declares streaming (`stream: true` on a trusted function route, `streams: true` on an
+ * extension registration) and only by a host that can deliver it (docs/SPECIFICATION.md#streamed-responses).
+ */
+export interface HandlerResult { status: number; headers: HeaderPair[]; body?: ResponseBody; contentLength?: number; stream?: ResponseStream }
 interface PreparedResponse { status: number; headers: HeaderPair[]; cookies: string[]; body: ResponseBody }
+/** A streamed result once prepared: runtime-decorated status and headers (no Content-Length); `stream` is absent for HEAD and bodyless statuses. */
+export interface PreparedStream { status: number; headers: HeaderPair[]; cookies: string[]; stream: ResponseStream | undefined }
 interface ErrorAnswer { status: number; headers: HeaderPair[]; body: string | undefined }
 // `enforceContentLength` defaults to on: the host asks Node itself to refuse
 // a body that does not match the length just stated (belt-and-suspenders
@@ -37,15 +48,9 @@ const runtimeOwnedHeaders = new Set(['x-content-type-options','x-request-id']);
 // JSON. Both go through here, so a project cannot behave differently on one
 // host than another without this function changing.
 export function prepareResponse(result: HandlerResult, { requestId, method }: ResponseOptions): PreparedResponse {
-  const status = result.status;
-  if (!Number.isInteger(status) || status < 200 || status > 599) throw new HttpError(502, 'Invalid function response');
-  const headers: HeaderPair[] = [], cookies: string[] = [];
-  for (const [key,value] of result.headers) {
-    if (forbiddenHeaders.has(key.toLowerCase()) || runtimeOwnedHeaders.has(key.toLowerCase())) continue;
-    validateHeaderName(key); validateHeaderValue(key,value);
-    if (key.toLowerCase() === 'set-cookie') cookies.push(value);
-    else headers.push([key,value]);
-  }
+  // A host that buffers must never receive a stream it would silently drop or read whole; streaming hosts call prepareStream.
+  if (result.stream !== undefined) throw new HttpError(502, 'Invalid function response');
+  const { status, headers, cookies } = responseHead(result);
   // A body these statuses must not carry, and HEAD, are suppressed once here
   // rather than in each host's writer.
   const bodyless = [204,205,304].includes(status);
@@ -58,9 +63,52 @@ export function prepareResponse(result: HandlerResult, { requestId, method }: Re
   // reports the length GET would send (RFC 9110 §8.6); without a stated
   // length it is measured on the result's body before the body is dropped.
   if (!bodyless) headers.push(['content-length', String(method === 'HEAD' ? headLength(result) : byteLength(result.body))]);
+  decorate(headers, requestId);
+  return { status, headers, cookies, body };
+}
+function responseHead(result: HandlerResult): { status: number; headers: HeaderPair[]; cookies: string[] } {
+  const status = result.status;
+  if (!Number.isInteger(status) || status < 200 || status > 599) throw new HttpError(502, 'Invalid function response');
+  const headers: HeaderPair[] = [], cookies: string[] = [];
+  for (const [key,value] of result.headers) {
+    if (forbiddenHeaders.has(key.toLowerCase()) || runtimeOwnedHeaders.has(key.toLowerCase())) continue;
+    validateHeaderName(key); validateHeaderValue(key,value);
+    if (key.toLowerCase() === 'set-cookie') cookies.push(value);
+    else headers.push([key,value]);
+  }
+  return { status, headers, cookies };
+}
+function decorate(headers: HeaderPair[], requestId: string): void {
   headers.push(['x-request-id',requestId],['x-content-type-options','nosniff']);
   if (!headers.some(([key]) => key.toLowerCase() === 'cache-control')) headers.push(['cache-control','no-store']);
-  return { status, headers, cookies, body };
+}
+/** Whether `value` can be pulled as a response stream (it has an async iterator). */
+export function isResponseStream(value: unknown): value is ResponseStream {
+  return typeof value === 'object' && value !== null && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function';
+}
+/**
+ * The streamed counterpart of prepareResponse: the same status check, header ownership and runtime decoration,
+ * but no Content-Length (the length is not known up front, so a host frames the body with chunked transfer or by
+ * closing the connection). A result carrying both `body` and `stream`, or a `stream` that is not async-iterable,
+ * is an invalid response (502). HEAD and 204/205/304 carry no stream; the caller cancels the producer.
+ */
+export function prepareStream(result: HandlerResult, { requestId, method }: ResponseOptions): PreparedStream {
+  if (!isResponseStream(result.stream) || (result.body !== undefined && result.body !== null) || result.contentLength !== undefined) throw new HttpError(502, 'Invalid function response');
+  const { status, headers, cookies } = responseHead(result);
+  decorate(headers, requestId);
+  const bodyless = [204,205,304].includes(status);
+  return { status, headers, cookies, stream: method === 'HEAD' || bodyless ? undefined : result.stream };
+}
+/**
+ * Stops a producer that will not be pulled to its end: calls the iterator's `return()` once, never awaiting it
+ * (a producer stuck on an await settles its `finally` when that await does) and never throwing.
+ */
+export function cancelStream(stream: ResponseStream | undefined, iterator?: AsyncIterator<StreamChunk>): void {
+  try {
+    const it = iterator ?? stream?.[Symbol.asyncIterator]();
+    const done = it?.return?.();
+    if (done && typeof (done as Promise<unknown>).then === 'function') (done as Promise<unknown>).then(undefined, () => {});
+  } catch { /* A producer's own failure to stop cannot fail the host. */ }
 }
 function headLength(result: HandlerResult): number {
   if (result.contentLength === undefined) return byteLength(result.body);
@@ -89,7 +137,7 @@ export function byteLength(body: ResponseBody): number {
 // by name first, in the case first seen, and hand Node the whole array; that
 // is the one call shape ResponseWriter#setHeader accepts for a repeated
 // header on every host this module writes to.
-function setGroupedHeaders(res: ResponseWriter, headers: readonly HeaderPair[]): void {
+export function setGroupedHeaders(res: ResponseWriter, headers: readonly HeaderPair[]): void {
   const order: string[] = [], grouped = new Map<string, string[]>();
   for (const [key, value] of headers) {
     const lower = key.toLowerCase();

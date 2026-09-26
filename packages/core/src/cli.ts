@@ -146,6 +146,8 @@ const helpEntries: HelpEntry[] = [
               # drain-delay-ms: /_urlcode/ready reports unhealthy this long before the listener stops accepting connections, for a load balancer to notice
               # close-timeout-ms: in-flight connections get this long to finish once accepting stops, then are forced closed; keep below the process supervisor's stop grace period (Docker --stop-timeout, Kubernetes terminationGracePeriodSeconds)
     timeouts: [--headers-timeout-ms 10000] [--request-timeout-ms 15000] [--keep-alive-timeout-ms 5000]
+    streams:  [--max-streams 32] [--stream-idle-timeout-ms 30000] [--stream-max-duration-ms 300000] [--stream-max-bytes 16777216]
+              # streamed responses (stream: true routes, streaming extensions): open at once, longest silence, longest life, most bytes; a stream leaves --max-in-flight once its handler returns
     # serve never reads local dotenv files; on a TTY, prints a readable startup line instead of JSON (--json forces JSON; piped stdout always uses JSON)
 ` },
   { name:'build', group:'Deploy', text:
@@ -241,13 +243,14 @@ function renderHelp(command?: string): string {
   return `URLCode ${VERSION} — local/self-hosted runtime\n${body}\n${helpFooter}`;
 }
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
-type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies' | 'healthDetails' | 'closeTimeoutMs' | 'readinessDrainMs' | 'headersTimeoutMs' | 'requestTimeoutMs' | 'keepAliveTimeoutMs'>;
+type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies' | 'healthDetails' | 'closeTimeoutMs' | 'readinessDrainMs' | 'headersTimeoutMs' | 'requestTimeoutMs' | 'keepAliveTimeoutMs' | 'maxStreams' | 'streamIdleTimeoutMs' | 'streamMaxDurationMs' | 'streamMaxBytes'>;
 // Deployment controls the container/CLI must be able to set; the embedding JS
 // API is not reachable from `urlcode serve`.
 const capacityFlags = [['workers','workers'],['function-timeout-ms','timeoutMs'],['max-response-bytes','maxBytes'],
   ['max-body-bytes','maxBodyBytes'],['max-in-flight','maxInFlightRequests'],['max-in-flight-health','maxInFlightHealthRequests'],
   ['close-timeout-ms','closeTimeoutMs'],['drain-delay-ms','readinessDrainMs'],
-  ['headers-timeout-ms','headersTimeoutMs'],['request-timeout-ms','requestTimeoutMs'],['keep-alive-timeout-ms','keepAliveTimeoutMs']] as const;
+  ['headers-timeout-ms','headersTimeoutMs'],['request-timeout-ms','requestTimeoutMs'],['keep-alive-timeout-ms','keepAliveTimeoutMs'],
+  ['max-streams','maxStreams'],['stream-idle-timeout-ms','streamIdleTimeoutMs'],['stream-max-duration-ms','streamMaxDurationMs'],['stream-max-bytes','streamMaxBytes']] as const;
 function serverCapacity(values: Values): ServerCapacity {
   const options: ServerCapacity = {};
   for (const [flag,key] of capacityFlags) {

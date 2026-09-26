@@ -2,6 +2,9 @@ import { extensionHookContext, extensionHookReferenceSchema, ExtensionHttpError,
 import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { assertBodySchema, bodySchemaIssues, bodySchemaLine } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
+import { acceptsEventStream, lastEventIdOf, McpSessionRegistry, ownerOf, progressStream, requestSession, resolveStreamingOptions } from './sessions.ts';
+import type { McpSession, McpStreamingOptions, ProgressFn, ResolvedStreamingOptions } from './sessions.ts';
+export type { McpStreamingOptions } from './sessions.ts';
 
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 const ARG_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
@@ -144,6 +147,15 @@ export interface McpExtensionOptions {
    * changes the response.
    */
   onToolCall?: (info: McpToolCallInfo) => void;
+  /**
+   * The optional parts of the MCP Streamable HTTP transport (issue #659): `Mcp-Session-Id` sessions, SSE replies
+   * with progress for a `tools/call` that carries `_meta.progressToken`, and the per-session GET stream with
+   * `Last-Event-ID` replay. Off by default, and then the extension behaves exactly as before on every target. On
+   * (`true`, or an options object with bounded overrides), the registration declares `streams: true`, so core
+   * refuses it on aws and cloudflare, and activation refuses vercel, whose function instances do not share the
+   * in-memory session table. See packages/mcp/README.md "Streaming transport".
+   */
+  streaming?: boolean | McpStreamingOptions;
 }
 export type McpHandlerKind = 'tool' | 'resource' | 'prompt';
 export type McpCallOutcome = 'success' | 'tool_error' | 'error';
@@ -153,7 +165,24 @@ export interface McpToolCallInfo { server: string; tool: string; kind: McpHandle
  * generic hook context (the mount route's granted `env` and the request id)
  * plus the server key, the tool/resource/prompt key and which kind it is.
  */
-export interface McpHandlerContext extends ExtensionHookContext { server: string; tool: string; kind: McpHandlerKind }
+export interface McpHandlerContext extends ExtensionHookContext {
+  server: string; tool: string; kind: McpHandlerKind;
+  /**
+   * Only when the operator enabled `streaming`: aborted when the client disconnects, sends
+   * `notifications/cancelled` for this request, or its session ends (and at a server stream limit or shutdown).
+   * A long-running handler should stop when it fires.
+   */
+  signal?: AbortSignal;
+  /**
+   * Only on a tool handler, and only when the operator enabled `streaming`: reports progress
+   * (`progress` must increase; `total` and `message` are optional). It sends `notifications/progress` when the
+   * call carries `_meta.progressToken` and accepts `text/event-stream`, and does nothing otherwise.
+   */
+  progress?: ProgressFn;
+}
+/** What a handler invocation receives beyond the generic context when streaming is enabled. */
+interface InvocationExtras { signal?: AbortSignal; progress?: ProgressFn }
+const noProgress: ProgressFn = () => {};
 type McpHandler = (input: unknown, context: McpHandlerContext) => unknown;
 interface ActiveTool { spec: McpToolSpec; call: McpHandler }
 interface ActiveResource { spec: McpResourceSpec; call: McpHandler }
@@ -249,7 +278,7 @@ export const mcpAuthoring: ExtensionAuthoringContract = {
     { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
     { kind: 'hook', name: 'resource handler', description: 'Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text|blob, mimeType}), served over resources/read.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler' },
     { kind: 'hook', name: 'prompt handler', description: 'Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler' },
-    { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD). Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
+    { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD); add GET and DELETE when the operator enables the streaming transport (sessions, progress and the server stream) in host.mjs. Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
 };
@@ -283,8 +312,9 @@ const DEFAULT_HEADER_PROTOCOL_VERSION = '2025-03-26';
 /**
  * The revision a non-`initialize` request was sent under: its
  * `MCP-Protocol-Version` header, or the transport's assumed default when it
- * has none. The server keeps no session, so this header is the negotiated
- * revision as far as a single request is concerned.
+ * has none. The header is read per request, with or without a streaming
+ * session, so it is the negotiated revision as far as a single request is
+ * concerned.
  */
 function requestProtocolVersion(request: ExtensionRequest): string {
   return request.headers.get('mcp-protocol-version') ?? DEFAULT_HEADER_PROTOCOL_VERSION;
@@ -372,18 +402,23 @@ function promptArgumentsSchema(args: readonly McpPromptArgumentSpec[] | undefine
  * the caller (`handle` below) decides whether a response is even sent (a
  * notification, i.e. a message with no `id`, never gets one).
  */
-async function dispatch(server: ActiveServer, method: string, params: unknown, options: McpExtensionOptions, request: ExtensionRequest): Promise<{ result: unknown } | { error: JsonRpcError }> {
+async function dispatch(server: ActiveServer, method: string, params: unknown, options: McpExtensionOptions, request: ExtensionRequest, extras?: InvocationExtras): Promise<{ result: unknown } | { error: JsonRpcError }> {
   const { onToolError, onToolCall } = options;
   /** Starts one handler invocation: the context it receives and the `onToolCall` report for its outcome. */
   const invocation = (kind: McpHandlerKind, tool: string) => {
     const started = performance.now();
-    const context: McpHandlerContext = { ...extensionHookContext(request), server: server.name, tool, kind };
+    const context: McpHandlerContext = {
+      ...extensionHookContext(request), server: server.name, tool, kind,
+      ...(extras?.signal ? { signal: extras.signal } : {}),
+      ...(extras && kind === 'tool' ? { progress: extras.progress ?? noProgress } : {}),
+    };
     const report = (outcome: McpCallOutcome): void => {
       try { onToolCall?.({ server: server.name, tool, kind, outcome, durationMs: Math.round((performance.now() - started) * 100) / 100, requestId: request.requestId }); } catch { /* host callback errors are never allowed to reach the caller */ }
     };
     return { context, report };
   };
   if (method === 'initialize') {
+    // listChanged stays false with streaming on: the declared sets are fixed for an activation.
     return { result: {
       protocolVersion: negotiateProtocolVersion(params),
       capabilities: {
@@ -523,13 +558,27 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
   return { error: { code: -32601, message: `Method not found: ${method}` } };
 }
 
+/**
+ * The session table of a registration's latest activation. Internal: nothing in this package sends a
+ * server-initiated message yet, so this is the plumbing's only trigger, used by the tests. Not exported from the
+ * package entry points.
+ */
+const activeSessions = new WeakMap<RuntimeExtension, McpSessionRegistry>();
+export function mcpSessionRegistry(registration: RuntimeExtension): McpSessionRegistry | undefined { return activeSessions.get(registration); }
+/** The JSON-RPC ids of requests in flight are compared by their JSON text, so `1` and `"1"` stay distinct. */
+const inflightKey = (id: unknown): string => JSON.stringify(id);
+
 /** Creates the MCP registration. See docs/EXTENSIONS.md and packages/mcp/README.md. */
 export function createMcpExtension(options: McpExtensionOptions): RuntimeExtension {
   if (!/^[a-f0-9]{64}$/.test(options.projectSha256)) throw new Error('mcp extension requires an explicit operator revision pin');
-  return {
+  const streaming: ResolvedStreamingOptions | undefined = resolveStreamingOptions(options.streaming);
+  const registration: RuntimeExtension = {
     name: 'mcp', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'],
+    // Declared only when the operator opted in: core then refuses aws (and cloudflare) before activation.
+    ...(streaming ? { streams: true } : {}),
     schema: mcpConfigSchema, authoring: mcpAuthoring,
     async activate(raw, context): Promise<ExtensionInstance> {
+      if (streaming && context.target !== 'node') throw new Error(`mcp streaming keeps sessions in this process's memory, which target ${context.target} does not share between function instances; enable streaming on the self-hosted server only, or leave it off`);
       const config = raw as unknown as McpConfig;
       const byMount = new Map<string, ActiveServer>();
       for (const [name, spec] of Object.entries(config.servers ?? {})) {
@@ -583,7 +632,29 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         byMount.set(spec.mount, { name, spec, tools, resources, resourcesByUri, prompts });
       }
       for (const mount of context.mounts) if (!byMount.has(mount)) throw new Error(`MCP mount ${mount} has no server declared`);
+      const sessions = streaming ? new McpSessionRegistry(streaming) : undefined;
+      if (sessions) activeSessions.set(registration, sessions);
+      /** GET: the session's stream for server-initiated messages (streaming only). */
+      const openServerStream = (request: ExtensionRequest): HandlerResult => {
+        if (!acceptsEventStream(request)) return textError(406, 'The MCP GET stream requires Accept: text/event-stream');
+        if (!supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
+        const found = requestSession(sessions!, request);
+        if ('refusal' in found) return found.refusal;
+        const lastEventId = lastEventIdOf(request, found.session);
+        if (lastEventId === null) return textError(400, 'Invalid Last-Event-ID');
+        const signal = request.signal ?? new AbortController().signal;
+        return { status: 200, headers: [['content-type', 'text/event-stream']], stream: sessions!.openStream(found.session, lastEventId, signal) };
+      };
+      /** DELETE: the client ends its session (streaming only). */
+      const endSession = (request: ExtensionRequest): HandlerResult => {
+        if (!supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
+        const found = requestSession(sessions!, request);
+        if ('refusal' in found) return found.refusal;
+        sessions!.terminate(found.session.id);
+        return { status: 204, headers: [] };
+      };
       return {
+        close() { sessions?.close(); if (activeSessions.get(registration) === sessions) activeSessions.delete(registration); },
         async handle(request: ExtensionRequest): Promise<HandlerResult> {
           const server = request.mount === null ? undefined : byMount.get(request.mount);
           if (!server || request.path !== request.mount) return textError(404, 'Not found');
@@ -593,10 +664,12 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           // send none) is admitted, since the endpoint takes application/json only. Refused before parsing.
           if (!isSameOriginRequest(request, context, { whenAbsent: 'admit' })) return textError(403, 'Forbidden');
           if (request.method === 'HEAD') return { status: 200, headers: [] };
-          // The Streamable HTTP transport also defines a GET stream for server-initiated messages;
-          // this extension does not implement it (see README "Not implemented"), and the
-          // specification's own guidance for that case is exactly this: refuse with 405.
-          if (request.method !== 'POST') return { status: 405, headers: [['allow', 'POST']], body: 'Method not allowed' };
+          if (sessions && request.method === 'GET') return openServerStream(request);
+          if (sessions && request.method === 'DELETE') return endSession(request);
+          // Without the operator's `streaming` option there is no GET stream for server-initiated messages and no
+          // session to end, and the specification's own guidance for a server without that stream is exactly
+          // this: refuse with 405.
+          if (request.method !== 'POST') return { status: 405, headers: [['allow', sessions ? 'GET, POST, DELETE' : 'POST']], body: 'Method not allowed' };
           // Core's bounded reader: size and media type answer as HTTP errors; any other refusal (bad encoding,
           // invalid JSON, a duplicate key, nesting too deep, a duplicated Content-Type) is a JSON-RPC parse error.
           let parsed: unknown;
@@ -615,12 +688,50 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           // 2025-06-18 and 2025-11-25 transports specify. initialize itself negotiates from params.protocolVersion.
           if (message.method !== 'initialize' && !supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
           const isNotification = !own(message as unknown as Record<string, unknown>, 'id');
-          if (isNotification) return { status: 202, headers: [] };
+          if (!sessions) {
+            if (isNotification) return { status: 202, headers: [] };
+            return rpc(200, message.id as JsonRpcId, await dispatch(server, message.method, message.params, options, request));
+          }
+          // Streaming on: every message but initialize names its session (400 without one, 404 for an unknown one).
+          let session: McpSession | undefined;
+          if (message.method !== 'initialize') {
+            const found = requestSession(sessions, request);
+            if ('refusal' in found) return found.refusal;
+            session = found.session;
+          }
+          if (isNotification) {
+            if (message.method === 'notifications/cancelled' && session && isRecord(message.params) && own(message.params, 'requestId')) {
+              session.inflight.get(inflightKey(message.params.requestId))?.abort('cancelled');
+            }
+            return { status: 202, headers: [] };
+          }
           const id = message.id as JsonRpcId;
-          const outcome = await dispatch(server, message.method, message.params, options, request);
-          return rpc(200, id, outcome);
+          if (message.method === 'initialize') {
+            const outcome = await dispatch(server, message.method, message.params, options, request);
+            const created = sessions.create(ownerOf(request));
+            const response = rpc(200, id, outcome);
+            return { ...response, headers: [...response.headers, ['mcp-session-id', created.id]] };
+          }
+          const live = session!;
+          const cancel = new AbortController();
+          const signal = AbortSignal.any([cancel.signal, live.ended.signal, ...(request.signal ? [request.signal] : [])]);
+          const key = inflightKey(id);
+          live.inflight.set(key, cancel);
+          const settle = (): void => { if (live.inflight.get(key) === cancel) live.inflight.delete(key); };
+          const meta = isRecord(message.params) && isRecord(message.params._meta) ? message.params._meta : undefined;
+          const progressToken = meta && (typeof meta.progressToken === 'string' || (typeof meta.progressToken === 'number' && Number.isInteger(meta.progressToken))) ? meta.progressToken : undefined;
+          if (message.method === 'tools/call' && progressToken !== undefined && acceptsEventStream(request)) {
+            const stream = progressStream({ signal, keepAliveMs: streaming!.keepAliveMs, progressToken, run: async progress => {
+              try { return { jsonrpc: JSONRPC_VERSION, id, ...await dispatch(server, message.method, message.params, options, request, { signal, progress }) }; }
+              finally { settle(); }
+            } });
+            return { status: 200, headers: [['content-type', 'text/event-stream']], stream };
+          }
+          try { return rpc(200, id, await dispatch(server, message.method, message.params, options, request, { signal })); }
+          finally { settle(); }
         },
       };
     },
   };
+  return registration;
 }

@@ -100,6 +100,10 @@ export interface RouteConfig {
    * Never inferred or enforced: the trust decision remains the author's judgment call
    * (docs/AI-AUTHORING.md, "Deciding when a route needs sandbox: true"). */
   sandboxReason?: string;
+  /** Deliver this trusted `function` route's Response body as a stream (chunked, pulled as the function produces it,
+   * bounded by the operator's stream limits) instead of reading it whole first. Requires `function`; refused with
+   * `sandbox: true` and on every target except the self-hosted runtime (docs/SPECIFICATION.md#streamed-responses). */
+  stream?: boolean;
   /** Per-method `audit` coverage waiver: method to a non-empty reason. Project file only (docs/READINESS.md). */
   coveredElsewhere?: Record<string, string>;
   parameters?: ParameterConfig[]; redirect?: RedirectConfig; function?: FunctionConfig;

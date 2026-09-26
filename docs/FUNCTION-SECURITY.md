@@ -86,6 +86,9 @@ into it; only the default for routes that declare neither option has changed.
   host checks its shape before trusting it. A result that states a body length
   for any method other than HEAD is invalid and answers 502; the runtime frames
   the response by the bytes it sends ([responses](HTTP.md#responses)).
+- A sandboxed route always answers with one whole buffered response:
+  `stream: true` is refused beside `sandbox: true`, and no `AbortSignal` or
+  other host object crosses into the guest's context.
 - External bindings are denied by default. Project YAML cannot self-authorize.
   Operator grants are exact-name, route-scoped and pinned to configuration/source.
 
@@ -136,6 +139,11 @@ restrictions above:
   itself, or restart rather than reload after editing a trusted route's
   dependencies. A `sandbox: true` route has no such gap: reload always
   rebuilds its whole snapshot, dependencies included.
+- A trusted route may declare `stream: true` to send its Response body as it
+  is produced ([streamed responses](SPECIFICATION.md#streamed-responses)).
+  The operator's stream limits bound delivery (bytes, duration, idle time,
+  concurrency) and cancel the producer, but like the call deadline they
+  cannot preempt code that blocks the event loop.
 
 What does **not** change with trust: `args` are still exactly the validated
 values the route declares (never raw request input), and `env`/`secrets` are

@@ -63,7 +63,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields; per-flow submission budgets through `abuse` and a notification through `mail` | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth`, `abuse` and `mail` |
 | `@jimhoyd/urlcode-form-records` | [`packages/form-records`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back, an edit page limited to declared fields and an optional per-user list page, through the typed exports of `forms` and `store` (and `ui` for the list) | `extensions.form-records` plus a `GET, HEAD, POST` mount with `auth: {csrf: origin}`, over an `ownership: owner` collection |
-| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
+| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount (`GET, POST, DELETE, HEAD` when the operator opts into `mcp({ streaming: true })`, self-hosted only); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
 All eleven are Apache-2.0. Core is published through npm, GitHub Releases and
 Homebrew. The ten extensions, and the inert `store-schema` artifact in
@@ -147,8 +147,8 @@ Rungs 1 to 3 need only the core package. Rungs 4 to 8 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
 operator host. Auth, admin, audit and abuse additionally need the Node/SQLite
 runtime their packages document; forms (except a flow with `abuse`), mail and
-mcp declare Node, AWS and Vercel targets, while store, and so form-records, are
-currently Node-only. See each package's README ([auth](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md),
+mcp declare Node, AWS and Vercel targets (mcp's opt-in streaming transport is
+self-hosted only), while store, and so form-records, are currently Node-only. See each package's README ([auth](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md),
 [admin](https://github.com/jimhoyd-com/urlcode/blob/main/packages/admin/README.md), [ui](https://github.com/jimhoyd-com/urlcode/blob/main/packages/ui/README.md),
 [audit](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md), [abuse](https://github.com/jimhoyd-com/urlcode/blob/main/packages/abuse/README.md),
 [mail](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mail/README.md),
@@ -292,7 +292,12 @@ Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store
 collection) reads it, without either knowing the other
-([request principal](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-principal)). A composition reaches
+([request principal](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-principal)). A long-lived answer
+(server-sent events, progress) is generic too: a registration that declares
+`streams: true` may return `HandlerResult.stream` instead of `body`, which the
+self-hosted server and Vercel adapter write as it is produced under operator
+stream limits and every other target refuses before serving
+([streamed responses](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#streamed-responses)). A composition reaches
 the add-ons it requires only through their typed, versioned exports:
 `form-records` reads `FormsExports` and `StoreExports` with `ctx.get`, never
 their configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)).
@@ -751,6 +756,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | `function: functions/x.mjs` and `middleware: [middleware/y.mjs]` short forms expanding to the long form (path `{param}`s become required strings, maxLength 128, and `args`) | Short forms for query/header/env/secret arguments or named exports; write those long |
 | Trusted, in-process `function`/`middleware` by default: full Node, npm, filesystem, `fetch` | Route-level `sandbox: true` opt-in for isolation, not a separate execution feature to hallucinate a config surface for |
 | `sandbox: true` route: Text/JSON Request/Response sandbox | fetch, Node/npm APIs, filesystem, WebSocket, streaming, crypto API (only inside a `sandbox: true` route) |
+| `stream: true` on a trusted `function` route (self-hosted only): the Response body is sent as it is produced, bounded by operator stream limits | Streaming from a `sandbox: true` route, on AWS/Cloudflare/static, WebSocket, or a route-level stream limit |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
@@ -1221,8 +1227,8 @@ schema-valid combinations activate successfully.
 
 - [Project entry: version, includes, shared](#project-entry-version-includes-shared)
 - [Routes: common fields (methods, parameters, env, secrets, policies, cache)](#routes-common-fields-methods-parameters-env-secrets-policies-cache)
-- [Handler: redirect](#handler-redirect)
 - [Handler: function](#handler-function)
+- [Handler: redirect](#handler-redirect)
 - [Handler: page, static, download](#handler-page-static-download)
 - [Handler: respond](#handler-respond)
 - [Middleware](#middleware)
@@ -1414,6 +1420,29 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.cache.force` | boolean | no | default: false | Allow immutable on a path without a content hash |
 | `routes.*.use` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" | Name of a top-level shared block whose request and response.headers this route inherits. A key the route declares itself replaces the shared block as a whole; there is no deep merge. |
 
+### Handler: function
+
+See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/functions.md) for examples.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `routes.*.stream` | boolean | no | default: false | Send a trusted function route's Response body to the client as it is produced (chunked, bounded by the operator's stream limits) instead of reading it whole first. Needs function; refused with sandbox: true and on every target except the self-hosted runtime. |
+| `routes.*.function` | one of the shapes below | no | — | Run a JavaScript module for this route, as a project-relative .mjs/.js path or an object naming source, export and args (docs/yaml/functions.md). |
+| `routes.*.function (option 1)` | string | no | minLength: 1; maxLength: 1024 | — |
+| `routes.*.function (option 2)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).source` | string | yes | maxLength: 1024 | Project-relative path of the .mjs or .js module to run. |
+| `routes.*.function (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call; the default export when omitted. |
+| `routes.*.function (option 2).args` | object | no | — | Named values passed to the function as context.args: literals, declared inputs or route bindings; omitted binds every declared path input. |
+| `routes.*.function (option 2).args.*` | one of the shapes below | no | — | — |
+| `routes.*.function (option 2).args.* (option 1)` | string / number / boolean | no | — | — |
+| `routes.*.function (option 2).args.* (option 2)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).args.* (option 2).from` | string | yes | enum: ["path","query","header"] | Where the declared input comes from: path, query or header. |
+| `routes.*.function (option 2).args.* (option 2).name` | string | yes | — | Name of the declared input whose validated value becomes this argument. |
+| `routes.*.function (option 2).args.* (option 3)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's env whose value becomes this argument. |
+| `routes.*.function (option 2).args.* (option 4)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's secrets whose value becomes this argument. |
+
 ### Handler: redirect
 
 See [redirects](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/redirects.md) for examples.
@@ -1432,28 +1461,6 @@ See [redirects](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/redir
 | `routes.*.redirect.query.map.*` | object | no | unknown keys rejected | — |
 | `routes.*.redirect.query.map.*.from` | string | yes | enum: ["path","query","header"] | Where the declared input comes from: path, query or header. |
 | `routes.*.redirect.query.map.*.name` | string | yes | — | Name of the declared input whose validated value fills this destination key. |
-
-### Handler: function
-
-See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/functions.md) for examples.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `routes.*.function` | one of the shapes below | no | — | Run a JavaScript module for this route, as a project-relative .mjs/.js path or an object naming source, export and args (docs/yaml/functions.md). |
-| `routes.*.function (option 1)` | string | no | minLength: 1; maxLength: 1024 | — |
-| `routes.*.function (option 2)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).source` | string | yes | maxLength: 1024 | Project-relative path of the .mjs or .js module to run. |
-| `routes.*.function (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call; the default export when omitted. |
-| `routes.*.function (option 2).args` | object | no | — | Named values passed to the function as context.args: literals, declared inputs or route bindings; omitted binds every declared path input. |
-| `routes.*.function (option 2).args.*` | one of the shapes below | no | — | — |
-| `routes.*.function (option 2).args.* (option 1)` | string / number / boolean | no | — | — |
-| `routes.*.function (option 2).args.* (option 2)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).args.* (option 2).from` | string | yes | enum: ["path","query","header"] | Where the declared input comes from: path, query or header. |
-| `routes.*.function (option 2).args.* (option 2).name` | string | yes | — | Name of the declared input whose validated value becomes this argument. |
-| `routes.*.function (option 2).args.* (option 3)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's env whose value becomes this argument. |
-| `routes.*.function (option 2).args.* (option 4)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's secrets whose value becomes this argument. |
 
 ### Handler: page, static, download
 
@@ -2039,6 +2046,87 @@ The build never imports application code into Node, uses fixed compiler settings
 and does not perform semantic type checking. Grants must target the built
 configuration/source revision. `export` defaults to `default`.
 
+#### Streamed responses
+
+A trusted function route that declares `stream: true` sends its Response body
+to the client as the function produces it, instead of reading the whole body
+first:
+
+```yaml
+version: "1"
+routes:
+  /jobs/progress:
+    stream: true
+    function: functions/progress.mjs
+```
+
+```js
+export default function progress(request, { signal }) {
+  async function* lines() {
+    for (let step = 1; step <= 3 && !signal.aborted; step++) {
+      yield `step ${step} of 3\n`;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    yield 'done\n';
+  }
+  return new Response(ReadableStream.from(lines()), { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+}
+```
+
+- **Declaration.** `stream: true` needs `function` and is refused with
+  `sandbox: true`: the sandbox always answers with a whole buffered response.
+  An extension mount streams when its operator registration declares
+  `streams: true` ([extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#streamed-responses)). A route
+  that declares neither never streams: a trusted function's Response body is
+  read whole and bounded by the function response limit exactly as before,
+  and a streamed result from anywhere else (an extension without `streams`,
+  an extension `middleware()` or `authorize()` short-circuit, a host plugin)
+  is answered with the generic 502 `Invalid function response` and logged as
+  `stream_refused`.
+- **Targets.** Only the self-hosted server delivers streams natively. The
+  Vercel adapter delivers streamed extension responses (`delegated`: the
+  provider decides whether chunks reach the client as they are written, and
+  functions are refused there anyway). AWS, Cloudflare and static refuse a
+  project that streams before serving, at activation or build, never by
+  buffering it ([capabilities](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPABILITIES.md)).
+- **Head.** The status and headers get the runtime's usual decoration (route
+  `response.headers`, policies, `X-Request-Id`, `X-Content-Type-Options`,
+  default `Cache-Control: no-store`) and are written when the first chunk
+  arrives, before that chunk. There is no `Content-Length`; HTTP/1.1 bodies
+  use chunked transfer. An empty chunk (`''`) sends nothing but commits the
+  head, for a stream that should announce itself before it has data.
+- **Chunks.** Each chunk is a string (sent as UTF-8) or a `Uint8Array`.
+  Anything else ends the stream as an error.
+- **HEAD** runs the handler for its status and headers, then cancels the body
+  without pulling it; no `Content-Length` is stated.
+- **Ending.** A producer that finishes ends the chunked body normally. Every
+  other ending (client disconnect, a stream limit, a producer error after the
+  head, server shutdown) closes the connection without the terminating chunk,
+  so the client sees a truncated body rather than a complete-looking one.
+  What a producer throws is never written to the client or the event log. A
+  failure or limit before the first chunk is answered through the ordinary
+  error path instead (502 for an error or an oversized first chunk, 504 when
+  nothing arrives in time, 503 at shutdown).
+- **Cancellation.** The host stops a producer that will not be read to its end
+  by calling its iterator's `return()` (for a Response body, cancelling the
+  stream), and aborts the request's `AbortSignal`: `context.signal` in a
+  trusted function, `request.signal` in an extension. `signal.reason` is the
+  end reason (`client-closed`, `idle-timeout`, `max-duration`, `max-bytes`,
+  `shutdown`, or `capacity` for a stream refused because too many are open).
+  A producer waiting on something else should watch the signal.
+- **Backpressure.** The next chunk is pulled only after the previous one was
+  accepted by the connection.
+- **Limits** are operator settings, not route YAML: concurrent streams, idle
+  time without progress, total duration and total bytes
+  ([operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#streamed-responses)). The short-request
+  admission and timeouts do not end a healthy stream.
+- **Policies.** Nothing reads a stream whole. The cache policy never stores a
+  streamed response and adds no strategy headers or ETag to it (logged as
+  cache outcome `stream-bypass`); compression leaves it identity-encoded.
+  Header-only policies (security, throttle) apply as usual. A route's own
+  trusted `middleware` receives the Response and passes it through; reading
+  its body there buffers it by the middleware's own choice.
+
 #### Trust: unsandboxed by default, `sandbox: true` opt-in
 
 A route's `function`/`middleware` chain runs one of two ways, chosen by the
@@ -2141,7 +2229,8 @@ build/dependency directories and hidden files. Includes and source dependencies
 must be normal watched files; changes in symlink targets or `node_modules`
 require restart. A candidate fully validates and initializes its functions
 and snapshots its assets before activation. Invalid candidates leave the old snapshot serving. In-flight
-function calls finish on their original snapshot; new requests use the new one.
+function calls and open streamed responses finish on their original snapshot,
+which closes after its last one; new requests use the new one.
 Production `serve` is a fixed snapshot; restart/redeploy for code, secret or
 operator-policy changes. Config/code edits invalidate old binding grants.
 
@@ -2412,6 +2501,10 @@ that measured length -- except on Node 22.13.0-22.14.x, where that Node
 self-check is itself broken and asking for it turns a correct response into a
 crash, so it is skipped only on that narrow, documented-floor range
 (`engines`: `>=22.13.0`; [RIM-OUTPUT-001](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)).
+A [streamed response](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md#streamed-responses) is the one
+exception: its length is not known when its head is sent, so it carries no
+Content-Length (on HEAD either) and HTTP/1.1 frames it with chunked transfer;
+`response.headers` and every other header rule above still apply to it.
 Configure redirect URLs/status on `redirect`; asset content type,
 cache and disposition on its own handler. Asset metadata cannot be overridden by
 `response.headers`. On functions/declared responses, Content-Type may be configured;
@@ -3433,7 +3526,13 @@ negotiation, exact request-id round-tripping and
 it refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks)) and an unsupported `MCP-Protocol-Version`
 (400) before dispatch; project YAML never carries JSON-RPC mechanics. Clients
 connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
-mounted with `auth: true`. See the [mcp package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md).
+mounted with `auth: true`. The optional Streamable HTTP transport parts
+(`Mcp-Session-Id` sessions, SSE progress for `tools/call`, cancellation and
+the GET stream with `Last-Event-ID` replay) are an operator opt-in,
+`mcp({ streaming: true })`, off by default; on, the registration declares
+[`streams: true`](#streamed-responses), so it serves on the self-hosted server
+only, and its sessions live in memory and do not survive a restart. See the
+[mcp package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md).
 
 A project declares versioned configuration and exclusive route mounts:
 
@@ -3720,6 +3819,9 @@ recipe, but declared by an operator-installed extension instead of project
 code. Skipping it short-circuits everything after that point, the same
 capability `authorize` already has, just usable from either side of the
 handler now. `next()` may be called at most once; calling it again throws.
+On a route that streams, the result may carry `stream` instead of `body`:
+return it with the stream intact rather than reading it
+([streamed responses](#streamed-responses)).
 
 A route naming more than one extension in `policies.extensions` chains every
 one that implements `middleware`, in the order the keys are declared, each
@@ -3998,6 +4100,9 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    ([site origins](#site-origins-and-same-origin-checks)).
 8. Reads bodies, fields and cookies and writes JSON answers with core's
    [request helpers](#request-helpers), never with its own parser.
+9. Answers a long-lived or progressive response by declaring `streams: true`
+   and returning a [streamed response](#streamed-responses), never by holding a
+   buffered answer open or polling.
 
 #### Request helpers
 
@@ -4016,6 +4121,62 @@ parsing, JSON responses, cookie parsing or origin checks; use these:
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
 | `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
+
+#### Streamed responses
+
+A mount's `handle()` may answer with a body sent as it is produced (server-sent
+events, progress, logs) when the registration declares it (`RIM-STREAM-001` in
+[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)):
+
+```ts
+import type { RuntimeExtension, HandlerResult, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
+
+const registration: RuntimeExtension = {
+  name: 'live', version: '1', projectSha256, targets: ['node', 'vercel'], schema: { type: 'object' },
+  streams: true,
+  activate: () => ({
+    handle(request: ExtensionRequest): HandlerResult {
+      async function* events() {
+        yield ': open\n\n'; // commits the status and headers before the first event
+        while (!request.signal?.aborted) { yield `data: ${Date.now()}\n\n`; await new Promise(r => setTimeout(r, 1000)); }
+      }
+      return { status: 200, headers: [['content-type', 'text/event-stream']], stream: events() };
+    },
+  }),
+};
+```
+
+- `HandlerResult.stream` is an `AsyncIterable<StreamChunk>` (`StreamChunk` is
+  `string | Uint8Array`; text is sent as UTF-8). It replaces `body`: a result
+  with both, or with `contentLength`, is refused.
+- `streams: true` on the registration is the declaration. Without it a
+  streamed result from `handle()` is the generic 502 and a `stream_refused`
+  log record; the producer is cancelled unread. An `authorize()` denial or a
+  `middleware()` short-circuit never streams. A `middleware()` hook that calls
+  `next()` on a route that streams receives the streamed result and must
+  return it with `stream` intact (it may change headers); replacing it with
+  another stream on a route that does not declare streaming is refused the
+  same way.
+- The runtime's floor still applies: `Cache-Control: no-store`, the header
+  caps, no compression, and immutable-asset caching never applies to a stream.
+- `request.signal` aborts when the client disconnects, a stream limit ends
+  the stream, or the server shuts down; its `reason` is the end reason. The
+  host also calls the iterator's `return()`, so an async generator's `finally`
+  runs as soon as it resumes. Watch the signal while waiting on anything else.
+- The first chunk commits the status and headers; an empty chunk (`''`)
+  commits them without body bytes. An error before the first chunk is
+  answered with the ordinary generic error; after it, the connection closes
+  without the chunked terminator. HEAD never pulls the producer.
+- Operator [stream limits](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#streamed-responses) bound every
+  stream: concurrent streams, idle time, total duration and bytes. `close()`
+  of the runtime (shutdown, or a retired dev reload) waits for open streams,
+  so an extension's own `close()` runs only after its last stream ended.
+- Targets: `prepareExtensions` refuses a declared registration with
+  `streams: true` on any target but `node` and `vercel`, before activation.
+  An extension that can also answer without streaming should expose an
+  operator option that leaves `streams` unset for AWS. On Vercel delivery is
+  `delegated`: the adapter writes each chunk, the provider's function
+  streaming and duration limit decide the rest.
 
 #### Activation warnings
 
@@ -5329,6 +5490,9 @@ into it; only the default for routes that declare neither option has changed.
   host checks its shape before trusting it. A result that states a body length
   for any method other than HEAD is invalid and answers 502; the runtime frames
   the response by the bytes it sends ([responses](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#responses)).
+- A sandboxed route always answers with one whole buffered response:
+  `stream: true` is refused beside `sandbox: true`, and no `AbortSignal` or
+  other host object crosses into the guest's context.
 - External bindings are denied by default. Project YAML cannot self-authorize.
   Operator grants are exact-name, route-scoped and pinned to configuration/source.
 
@@ -5379,6 +5543,11 @@ restrictions above:
   itself, or restart rather than reload after editing a trusted route's
   dependencies. A `sandbox: true` route has no such gap: reload always
   rebuilds its whole snapshot, dependencies included.
+- A trusted route may declare `stream: true` to send its Response body as it
+  is produced ([streamed responses](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md#streamed-responses)).
+  The operator's stream limits bound delivery (bytes, duration, idle time,
+  concurrency) and cancel the producer, but like the call deadline they
+  cannot preempt code that blocks the event loop.
 
 What does **not** change with trust: `args` are still exactly the validated
 values the route declares (never raw request input), and `env`/`secrets` are

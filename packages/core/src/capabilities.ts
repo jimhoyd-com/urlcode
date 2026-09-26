@@ -11,7 +11,7 @@ export type CapabilityTarget = typeof capabilityTargets[number];
  * runtime policy outright, so it needs no entry in that exhaustive per-target record. */
 type PolicyCapableTarget = Exclude<CapabilityTarget, 'static'>;
 export type CapabilitySupport = PolicySupport | 'conditional' | 'unknown';
-export const capabilityNames = ['extension','policies.extensions','proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle'] as const;
+export const capabilityNames = ['extension','policies.extensions','proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle', 'streaming'] as const;
 export type CapabilityName = typeof capabilityNames[number];
 /** The resolved operator registration set, when known (loaded via --host-file, same as `inspectExtensions`). Keyed by extension name. */
 export type ExtensionRegistry = ReadonlyMap<string, RuntimeExtension>;
@@ -61,7 +61,11 @@ const staticRefusals: Partial<Record<CapabilityName, string>> = {
   'request.body': 'no server, so there is no request body to read or validate',
   'response.headers': 'no server, so response headers cannot be added per request; set them via S3 object metadata or a CloudFront response headers policy instead',
   bindings: 'no server, so env/secret bindings cannot be resolved per request',
+  streaming: 'no server, so no response can be written while it is produced',
 };
+// Streamed responses (RIM-STREAM-001): written incrementally only by hosts that sit on a node:http response.
+const STREAMING_VERCEL_REASON = 'The adapter writes each chunk to the platform\'s node:http response and enforces the stream limits per instance, but whether chunks reach the client as they are written, and how long a stream may stay open, is decided by the provider (Vercel function streaming and maxDuration); provider deployment unverified.';
+const STREAMING_AWS_REASON = 'Lambda payload format 2.0 returns one buffered response object; response streaming needs a different handler shape (awslambda.streamifyResponse with a Function URL), which this adapter does not implement.';
 
 // Policy modules remain the authority for configuration-dependent support.
 // `extension`/`policies.extensions` cannot get a target-independent answer:
@@ -83,6 +87,13 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
     const refused=checked.filter(item=>item.support==='refused').map(item=>item.name);
     if(refused.length)return {support:'refused',reason:`Refused by the extension's own declared targets: ${refused.join(', ')}`};
     return {support:'native',reason:'Registered extension declares support for this target'};
+  }
+  if (capability === 'streaming') {
+    if (target === 'self-hosted') return { support: 'native', reason: 'Written incrementally by the self-hosted server with its own stream limits; implemented and tested in the local runtime' };
+    if (target === 'vercel') return { support: 'delegated', reason: STREAMING_VERCEL_REASON };
+    if (target === 'aws') return { support: 'refused', reason: STREAMING_AWS_REASON };
+    if (target === 'cloudflare') return { support: 'refused', reason: 'The Worker artifact has no streamed-response lowering (it runs no functions or extensions)' };
+    return { support: 'refused', reason: staticRefusals.streaming! };
   }
   const policy = policyNames.find(name => capability === `policies.${name}`);
   if (policy) {
@@ -145,6 +156,7 @@ export function routeCapabilities(route: RouteConfig | CompiledRoute, document: 
   }
   for (const name of ['redirect', 'respond', 'page', 'static', 'download', 'function'] as const) if (route[name]) result.push(name);
   if (route.middleware?.length) result.push('middleware');
+  if (route.stream === true) result.push('streaming');
   if (route.parameters?.length) result.push('parameters');
   // Defaults are still semantics required by every route.
   result.push('methods', 'enabled');
@@ -165,7 +177,10 @@ function analyze(document: ProjectDocument, iterable: Iterable<readonly [string,
   if (Object.keys(document.extensions??{}).length) requirements.push({path:'(project)',capability:'extension',...decision('extension',target,undefined,Object.keys(document.extensions??{}),extensions)});
   for (const [path, route] of routes) {
     const policies = effectivePolicies(document, route);
-    for (const capability of routeCapabilities(route, document)) {
+    const capabilities = routeCapabilities(route, document);
+    // An extension mount streams when its registration says so, which only the resolved registration set can tell.
+    if (!capabilities.includes('streaming') && route.extension && extensions?.get(route.extension)?.streams === true) capabilities.push('streaming');
+    for (const capability of capabilities) {
       const extensionNames = capability==='extension' ? (route.extension?[route.extension]:[])
         : capability==='policies.extensions' ? Object.keys(effectiveExtensionPolicies(document,route)) : undefined;
       requirements.push({ path, capability, ...decision(capability, target, policies, extensionNames, extensions) });
@@ -277,5 +292,8 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   'policies.security': policyDetail('security', 'Security response headers.', ['Fixed header set with validated values']),
   'policies.cache': policyDetail('cache', 'Host cache strategy for route replies.', ['Refused on Cloudflare: no cache enforcement in the artifact']),
   'policies.compression': policyDetail('compression', 'Response compression.', ['Delegated on AWS, Vercel and Cloudflare only with no explicit encodings/minBytes/types/level/allowWithSecrets; any of those is refused there because the provider has no channel to receive them']),
+  streaming: { kind: 'handler', summary: 'Response body sent while it is produced: a trusted function route with `stream: true`, or an extension registered with `streams: true`.', schema: ['stream'],
+    constraints: ['`stream: true` needs `function` and is refused with `sandbox: true`', 'Only the declaring route may stream; any other streamed result is the generic 502', 'No Content-Length; chunked transfer; HEAD runs the handler but never pulls the body', 'Bounded by operator stream limits (concurrent streams, idle timeout, maximum duration, maximum bytes), not by the short-request limits', 'Self-hosted native; Vercel delegated (extensions only); refused on AWS, Cloudflare and static before serving'],
+    grants: [] },
   'policies.throttle': policyDetail('throttle', 'Per-instance request quota per window.', ['`quota` and `window` are required', 'Only `partition: route` is implemented on serverless targets, reported delegated there because counters are per instance and the effective quota is quota × instance count; `client` and `client-route` are refused there']),
 };

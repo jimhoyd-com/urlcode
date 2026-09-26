@@ -261,6 +261,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | `function: functions/x.mjs` and `middleware: [middleware/y.mjs]` short forms expanding to the long form (path `{param}`s become required strings, maxLength 128, and `args`) | Short forms for query/header/env/secret arguments or named exports; write those long |
 | Trusted, in-process `function`/`middleware` by default: full Node, npm, filesystem, `fetch` | Route-level `sandbox: true` opt-in for isolation, not a separate execution feature to hallucinate a config surface for |
 | `sandbox: true` route: Text/JSON Request/Response sandbox | fetch, Node/npm APIs, filesystem, WebSocket, streaming, crypto API (only inside a `sandbox: true` route) |
+| `stream: true` on a trusted `function` route (self-hosted only): the Response body is sent as it is produced, bounded by operator stream limits | Streaming from a `sandbox: true` route, on AWS/Cloudflare/static, WebSocket, or a route-level stream limit |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |

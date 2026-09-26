@@ -54,7 +54,17 @@ provider has no channel to receive it and dropping it silently would change
 the project's behavior. Route throttle counters and caches remain per
 instance; `policies.throttle`'s `partition: route` on Vercel/AWS is reported
 `delegated`, not `native`, because the quota it enforces is effectively
-quota × instance count once the target scales past one instance. No
+quota × instance count once the target scales past one instance.
+`streaming` (a `stream: true` function route, or an extension mount whose
+registration declares `streams: true`; see
+[streamed responses](SPECIFICATION.md#streamed-responses)) is `native` on
+self-hosted, `delegated` on Vercel (the adapter writes each chunk to the
+platform's `node:http` response and enforces the stream limits per instance,
+but incremental delivery and the maximum open time are the provider's), and
+`refused` on AWS (payload format 2.0 has one buffered response object),
+Cloudflare and static, which therefore refuse such a project at activation or
+build rather than buffering it. An extension mount counts as `streaming` only
+when the registration is known (`--host-file`). No
 supported entry bypasses semantic validation, required operator grants or
 deployment prerequisites.
 

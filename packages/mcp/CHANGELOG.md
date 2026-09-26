@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- The optional parts of the MCP Streamable HTTP transport, as an operator
+  opt-in: `mcp({ streaming: true })` (or bounded options `maxSessions`,
+  `sessionIdleTimeoutMs`, `keepAliveMs`, `replayMaxEvents`,
+  `replayMaxBytes`). Off by default, with the previous behavior unchanged on
+  every target. On, `initialize` issues an `Mcp-Session-Id` (later requests
+  without one answer `400`, an unknown one `404`, `DELETE` ends it), bound to
+  the creating principal; a `tools/call` with `_meta.progressToken` and an SSE
+  `Accept` streams `notifications/progress` then the result; handlers get
+  `context.signal` (client disconnect, `notifications/cancelled`, session end)
+  and tools `context.progress`; and `GET` opens the session's server stream
+  with keep-alive comments, event ids and bounded `Last-Event-ID` replay. The
+  registration then declares `streams: true`, so AWS is refused by core and
+  Vercel by activation. Sessions live in memory and do not survive a restart
+  (#659, #626).
+
 - Requests use core's extension request helpers: the same-origin check is core's `isSameOriginRequest` (`whenAbsent: 'admit'`), so `Sec-Fetch-Site: cross-site`, duplicated provenance headers and a foreign `Referer` without `Origin` are now refused with `403`; an oversized body is `413` before the media type is checked (`415`); a duplicate JSON key or nesting deeper than the bound is a `-32700` parse error; and JSON answers carry core's deny-all CSP and referrer policy.
 - A present `Origin` is admitted when it is the canonical origin or one of the
   operator's site-wide alias origins (`--alias-origin`, `aliasOrigins`), using

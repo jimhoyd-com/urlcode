@@ -257,6 +257,87 @@ The build never imports application code into Node, uses fixed compiler settings
 and does not perform semantic type checking. Grants must target the built
 configuration/source revision. `export` defaults to `default`.
 
+### Streamed responses
+
+A trusted function route that declares `stream: true` sends its Response body
+to the client as the function produces it, instead of reading the whole body
+first:
+
+```yaml
+version: "1"
+routes:
+  /jobs/progress:
+    stream: true
+    function: functions/progress.mjs
+```
+
+```js
+export default function progress(request, { signal }) {
+  async function* lines() {
+    for (let step = 1; step <= 3 && !signal.aborted; step++) {
+      yield `step ${step} of 3\n`;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    yield 'done\n';
+  }
+  return new Response(ReadableStream.from(lines()), { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+}
+```
+
+- **Declaration.** `stream: true` needs `function` and is refused with
+  `sandbox: true`: the sandbox always answers with a whole buffered response.
+  An extension mount streams when its operator registration declares
+  `streams: true` ([extensions](EXTENSIONS.md#streamed-responses)). A route
+  that declares neither never streams: a trusted function's Response body is
+  read whole and bounded by the function response limit exactly as before,
+  and a streamed result from anywhere else (an extension without `streams`,
+  an extension `middleware()` or `authorize()` short-circuit, a host plugin)
+  is answered with the generic 502 `Invalid function response` and logged as
+  `stream_refused`.
+- **Targets.** Only the self-hosted server delivers streams natively. The
+  Vercel adapter delivers streamed extension responses (`delegated`: the
+  provider decides whether chunks reach the client as they are written, and
+  functions are refused there anyway). AWS, Cloudflare and static refuse a
+  project that streams before serving, at activation or build, never by
+  buffering it ([capabilities](CAPABILITIES.md)).
+- **Head.** The status and headers get the runtime's usual decoration (route
+  `response.headers`, policies, `X-Request-Id`, `X-Content-Type-Options`,
+  default `Cache-Control: no-store`) and are written when the first chunk
+  arrives, before that chunk. There is no `Content-Length`; HTTP/1.1 bodies
+  use chunked transfer. An empty chunk (`''`) sends nothing but commits the
+  head, for a stream that should announce itself before it has data.
+- **Chunks.** Each chunk is a string (sent as UTF-8) or a `Uint8Array`.
+  Anything else ends the stream as an error.
+- **HEAD** runs the handler for its status and headers, then cancels the body
+  without pulling it; no `Content-Length` is stated.
+- **Ending.** A producer that finishes ends the chunked body normally. Every
+  other ending (client disconnect, a stream limit, a producer error after the
+  head, server shutdown) closes the connection without the terminating chunk,
+  so the client sees a truncated body rather than a complete-looking one.
+  What a producer throws is never written to the client or the event log. A
+  failure or limit before the first chunk is answered through the ordinary
+  error path instead (502 for an error or an oversized first chunk, 504 when
+  nothing arrives in time, 503 at shutdown).
+- **Cancellation.** The host stops a producer that will not be read to its end
+  by calling its iterator's `return()` (for a Response body, cancelling the
+  stream), and aborts the request's `AbortSignal`: `context.signal` in a
+  trusted function, `request.signal` in an extension. `signal.reason` is the
+  end reason (`client-closed`, `idle-timeout`, `max-duration`, `max-bytes`,
+  `shutdown`, or `capacity` for a stream refused because too many are open).
+  A producer waiting on something else should watch the signal.
+- **Backpressure.** The next chunk is pulled only after the previous one was
+  accepted by the connection.
+- **Limits** are operator settings, not route YAML: concurrent streams, idle
+  time without progress, total duration and total bytes
+  ([operations](OPERATIONS.md#streamed-responses)). The short-request
+  admission and timeouts do not end a healthy stream.
+- **Policies.** Nothing reads a stream whole. The cache policy never stores a
+  streamed response and adds no strategy headers or ETag to it (logged as
+  cache outcome `stream-bypass`); compression leaves it identity-encoded.
+  Header-only policies (security, throttle) apply as usual. A route's own
+  trusted `middleware` receives the Response and passes it through; reading
+  its body there buffers it by the middleware's own choice.
+
 ### Trust: unsandboxed by default, `sandbox: true` opt-in
 
 A route's `function`/`middleware` chain runs one of two ways, chosen by the
@@ -359,7 +440,8 @@ build/dependency directories and hidden files. Includes and source dependencies
 must be normal watched files; changes in symlink targets or `node_modules`
 require restart. A candidate fully validates and initializes its functions
 and snapshots its assets before activation. Invalid candidates leave the old snapshot serving. In-flight
-function calls finish on their original snapshot; new requests use the new one.
+function calls and open streamed responses finish on their original snapshot,
+which closes after its last one; new requests use the new one.
 Production `serve` is a fixed snapshot; restart/redeploy for code, secret or
 operator-policy changes. Config/code edits invalidate old binding grants.
 

@@ -8,7 +8,8 @@ the server; the extension owns JSON-RPC 2.0 framing, protocol version
 negotiation, request-id handling, cursor pagination and
 `initialize`/`ping`/`tools/list`/`tools/call`/`resources/list`/`resources/read`/`prompts/list`/`prompts/get`
 dispatch. Project YAML never carries JSON-RPC mechanics or a transport
-choice.
+choice; the optional streaming transport (sessions, SSE progress and the
+server stream) is an operator opt-in in `host.mjs`.
 
 Released as a tarball on core's GitHub Release, at core's version, and pinned
 by sha512 in core's `dist/addons.json`; only core is on npm. See
@@ -239,6 +240,114 @@ urlcode serve --project app --host-file host.mjs \
   --policy /etc/urlcode/policy.json --origin https://site.example
 ```
 
+## Streaming transport (operator opt-in)
+
+The optional parts of the MCP Streamable HTTP transport are an operator
+choice in `host.mjs`, never project YAML. They are off by default; with them
+off the extension answers exactly as described above on every target.
+
+```js
+// host.mjs
+export default await composeHost(import.meta.url, [
+  mcp({ streaming: true }),
+  // or with bounded overrides:
+  // mcp({ streaming: { maxSessions: 200, sessionIdleTimeoutMs: 600000, keepAliveMs: 10000, replayMaxEvents: 32, replayMaxBytes: 32768 } }),
+]);
+```
+
+| Option | Default | Range | Meaning |
+|---|---|---|---|
+| `maxSessions` | `1000` | 1–100000 | Sessions kept at once. `initialize` beyond it evicts the least recently used session (its open GET stream ends, its in-flight calls are aborted). |
+| `sessionIdleTimeoutMs` | `1800000` (30 min) | 1000–86400000 | A session with no request, and no open GET stream, for this long is forgotten. |
+| `keepAliveMs` | `15000` | 100–600000 | Interval of the `: ping` SSE comment on an open stream. Must be below `sessionIdleTimeoutMs`, and should be below the server's `--stream-idle-timeout-ms` (default 30000), or the server ends a quiet stream. |
+| `replayMaxEvents` | `64` | 1–10000 | Server-initiated events a session keeps for `Last-Event-ID` replay. |
+| `replayMaxBytes` | `65536` | 1024–16777216 | Bytes of those events a session keeps; a single larger event is not sent. |
+
+With streaming on, the registration declares `streams: true`
+([streamed responses](../../docs/EXTENSIONS.md#streamed-responses)), so the
+site must be served by the self-hosted server: core refuses the registration
+on `aws` (and there is no `cloudflare` target for extensions) before
+activation, and the extension refuses `vercel` at activation, because its
+function instances do not share the in-memory session table. Leave streaming
+off to deploy the same project to AWS or Vercel. The server's stream limits
+(`--max-streams`, `--stream-idle-timeout-ms`, `--stream-max-duration-ms`,
+`--stream-max-bytes`; [operations](../../docs/OPERATIONS.md#streamed-responses))
+bound every SSE response, and each open GET stream counts against
+`--max-streams`.
+
+The mount must also accept the extra methods:
+
+```yaml
+routes:
+  /mcp/*:
+    extension: mcp
+    methods: [GET, POST, DELETE, HEAD]
+```
+
+What changes when it is on:
+
+- **Sessions.** A successful `initialize` answers with an `Mcp-Session-Id`
+  header: 32 random bytes as base64url (43 visible-ASCII characters). Every
+  later request, notification, GET and DELETE must carry it. A request
+  without it (other than `initialize`) answers `400`; an unknown, ended,
+  expired or evicted id answers `404`, which tells the client to
+  re-initialize. `DELETE` with the header ends the session (`204`), ends its
+  GET stream and aborts its in-flight calls. When the mount runs behind a
+  principal-providing extension (for example `auth`), a session is bound to
+  the principal that created it; the same id presented by another principal,
+  or by an anonymous caller, answers `404` exactly like an unknown id. On an
+  unauthenticated mount the id itself is the only credential, so treat it as
+  a bearer secret and keep the mount on HTTPS.
+- **Sessions live in memory only.** The table belongs to one extension
+  instance in one process. A restart, a redeploy or a dev reload forgets
+  every session, so a client's next request answers `404` and it
+  re-initializes; nothing is persisted and there is no sharing between
+  processes or replicas (pin a client to one process, for example with
+  sticky routing, if you run several).
+- **Progress over SSE.** A `tools/call` whose `params._meta.progressToken`
+  is a string or integer, sent with an `Accept` that includes
+  `text/event-stream`, is answered as an SSE stream
+  (`Content-Type: text/event-stream`): zero or more
+  `notifications/progress` messages, then the JSON-RPC response, then the
+  end of the stream. Every other request keeps the plain JSON reply. A tool
+  handler reports progress with `context.progress(progress, total?, message?)`;
+  a value that does not increase is dropped, as the progress utility
+  requires, and values reported faster than the client reads are coalesced
+  to the latest one. Without a token or an SSE `Accept`, `progress` does
+  nothing. A POST stream carries no event ids and cannot be resumed.
+- **Cancellation.** Every handler receives `context.signal`. It aborts when
+  the client disconnects (including closing a POST SSE stream), when the
+  client sends `notifications/cancelled` naming the request's id in the same
+  session, when the session ends, or at a server stream limit or shutdown. A
+  handler should stop when it fires. A cancelled call's response is still
+  sent if the handler returns one; the client ignores it.
+- **The GET stream.** `GET` on the mount with `Accept: text/event-stream`
+  and the session header opens the session's stream for server-initiated
+  messages (`406` without that `Accept`). It sends `: ping` keep-alive
+  comments every `keepAliveMs`, and every message event has an `id`: a
+  per-session integer counting from 1, consecutive, so a client can see a
+  gap. The session keeps the newest `replayMaxEvents` events (within
+  `replayMaxBytes`). A reconnect with `Last-Event-ID: <n>` replays the kept
+  events after `n` in order, then continues live; `Last-Event-ID: 0` replays
+  everything kept. When some events after `n` were already dropped from the
+  buffer, the reconnect replays only what is still kept, and the jump in ids
+  shows what was lost. A `Last-Event-ID` that is not an id this session
+  issued answers `400`. A GET without `Last-Event-ID` starts with the events
+  not yet handed to an earlier stream. The server ends a stream at
+  `--stream-max-duration-ms`; a client reconnects with `Last-Event-ID` as it
+  would after any drop.
+- **One GET stream per session.** A second GET for the same session
+  replaces the open one, which ends cleanly; each message is sent on one
+  stream only, as the transport requires. Replacing, rather than refusing
+  with `409`, means a client whose connection died silently can always
+  reconnect.
+- **What is sent on it.** No declared feature of this package sends a
+  server-initiated message yet: tool, resource and prompt sets are fixed for
+  an activation, so `listChanged` stays `false`. The stream, its ids and
+  replay are the plumbing such messages will use.
+- `HEAD` stays `200` with no body, and any other method answers `405` with
+  `Allow: GET, POST, DELETE`.
+
 ## Protecting a mount
 
 Add `auth: true` (or a specific `auth: {role: ...}`) to the route like any
@@ -257,8 +366,8 @@ extension has no identity or authorization model of its own.
   client's requested `protocolVersion` is echoed back when supported,
   otherwise `2025-11-25` is returned, per the MCP specification's negotiation
   flow. Behavior varies by revision in one place only: under `2025-11-25`
-  (read from the request's `MCP-Protocol-Version` header, since the server
-  keeps no session), `tools/call` arguments that fail the declared
+  (read from each request's `MCP-Protocol-Version` header, with or without
+  a session), `tools/call` arguments that fail the declared
   `inputSchema` answer a tool execution error (`isError: true`, the schema
   issues as text) instead of `-32602`, as that revision's tools
   specification requires so the model can correct its arguments. Every
@@ -313,18 +422,27 @@ extension has no identity or authorization model of its own.
 - Host-owned usage observation: `onToolCall` reports every handler
   invocation's outcome, duration and request id, success or failure.
 - Handler request context: `handler(input, { env, requestId, server, tool, kind })`,
-  with `env` from the mount route's operator-granted `env` block.
+  with `env` from the mount route's operator-granted `env` block (plus
+  `signal`, and `progress` for a tool, when the operator enables streaming).
+- The optional Streamable HTTP transport parts, when the operator enables
+  `streaming`: `Mcp-Session-Id` sessions, SSE progress replies to
+  `tools/call`, cancellation, and the per-session GET stream with keep-alive
+  and bounded `Last-Event-ID` replay (see "Streaming transport" above).
 
 ## What this does not implement (v1)
 
-- The Streamable HTTP transport's optional GET/SSE stream for
-  server-initiated messages (a GET request answers `405`, the specification's
-  own guidance when a server does not offer that stream) and `Mcp-Session-Id`
-  session resumption. This is a transport-level gap, not merely an unwired
-  feature: `HandlerResult` (the generic extension response type every
-  runtime target implements) carries a single buffered body, not a stream, so
-  serving SSE would need a core capability this extension contract does not
-  have yet. Tracked as a core follow-up (see the package's tracked issues).
+- Streaming on AWS or Vercel: the streaming transport needs the self-hosted
+  server (see "Streaming transport" above). Without `streaming` a GET answers
+  `405`, the specification's own guidance when a server does not offer that
+  stream, and no session id is issued.
+- Resuming a POST SSE stream: its events carry no id, so a dropped progress
+  stream is not replayed; the call is cancelled instead. Only the GET stream
+  replays.
+- The `2025-11-25` SSE polling behavior (priming an empty event with an id
+  and closing the connection so the client polls): streams stay open with
+  keep-alive comments instead.
+- Persisted or shared sessions: sessions live in one process's memory and a
+  restart forgets them (the client re-initializes after a `404`).
 - JSON-RPC batching (arrays of requests); the 2025-06-18 MCP revision removed
   batching from the specification entirely, and this extension refuses a
   batch outright for every protocol revision it negotiates — a confirmed
@@ -349,7 +467,8 @@ extension has no identity or authorization model of its own.
   `tasks` utility (no `tasks` capability is advertised and no tool declares
   `execution.taskSupport`, so every call runs synchronously), and the
   client-side elicitation and sampling changes, which need server-initiated
-  requests this server does not send.
+  requests this server does not send (the GET stream carries only
+  notifications, and the server never waits for a client response).
 
 These are deliberate scope choices for a first, minimal, declarative surface
 ("MCP over HTTP becomes declarative", not a full-featured MCP server) rather

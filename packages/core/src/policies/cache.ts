@@ -234,6 +234,13 @@ function evict(store: CacheStore, maxEntries: number): void {
 export function onResponse(state: CacheState, req: PolicyRequest, result: HandlerResult): HandlerResult {
   const flight = state.inflight.get(req);
   if (flight) state.inflight.delete(req);
+  // A streamed response is never read whole: no store, no strategy headers, no body-derived validator. Waiters are
+  // released empty and reach the handler themselves (RIM-STREAM-001).
+  if (result.stream !== undefined) {
+    if (flight) { state.store.pending.delete(flight.key); flight.flight.resolve(null); }
+    log(state, 'stream-bypass');
+    return result;
+  }
   const handlerControl = header(result.headers, 'cache-control');
   // Explicit beats strategy: YAML headers, an inherited policy over an asset
   // handler's own cacheControl, and a handler that asked for private or

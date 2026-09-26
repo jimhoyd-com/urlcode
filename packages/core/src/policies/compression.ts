@@ -163,6 +163,8 @@ function noneMatch(value: string, etag: string): boolean {
 }
 
 export function onResponse(state: CompressionState, request: PolicyRequest, result: AssetResult): HandlerResult {
+  // A streamed response is sent as produced, identity-encoded: compressing it would mean buffering it (RIM-STREAM-001).
+  if (result.stream !== undefined) return result;
   const { status } = result;
   if (BODYLESS.has(status) && status !== 304) return result;
   const headers = result.headers;
