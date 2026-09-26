@@ -93,13 +93,19 @@ export function githubSlug(text: string): string {
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
+/** Inline HTML tags removed, repeated until none is left so a nested `<<a>b>` cannot leave a tag behind. */
+function stripTags(text: string): string {
+  let previous: string;
+  do { previous = text; text = text.replace(/<[^<>]*>/g, ''); } while (text !== previous);
+  return text;
+}
+
 /** The text GitHub renders for a heading's inline Markdown, which is what it slugs. */
 export function headingText(markdown: string): string {
   // Code spans render their content literally; everything else loses its markup.
   return markdown.split(/(`+[^`]*`+)/).map((part, index) => {
     if (index % 2 === 1) return part.replace(/^`+|`+$/g, '');
-    return part
-      .replace(/<[^>]*>/g, '')
+    return stripTags(part)
       .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1')

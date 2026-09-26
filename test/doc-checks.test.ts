@@ -13,6 +13,8 @@ test('githubSlug follows GitHub heading anchors: lowercase, punctuation but - an
   assert.equal(githubSlug(headingText('2b. Root-relative and suffix redirects')), '2b-root-relative-and-suffix-redirects');
   assert.equal(githubSlug(headingText('Add-ons: extensions and artifacts')), 'add-ons-extensions-and-artifacts');
   assert.equal(githubSlug(headingText('What `snake_case` keeps')), 'what-snake_case-keeps');
+  // Tag stripping repeats until stable, so a nested tag cannot survive one pass.
+  assert.equal(headingText('Safe <scr<b>ipt>heading'), 'Safe heading');
   assert.equal(githubSlug(headingText('[Linked](OTHER.md) & *emphasised* text')), 'linked--emphasised-text');
   assert.equal(githubSlug(headingText('Café — über')), 'café--über');
 });
