@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 // Real composed sites for the forms consumers of abuse and mail: a project on disk, host.mjs's extension list
 // through composeHost, and a served runtime with a cookie jar.
 import assert from 'node:assert/strict';
@@ -29,7 +30,7 @@ export interface SiteOptions { declare?: readonly string[]; hook?: string }
 /** Writes app/urlcode.yaml with ui, forms (the given flows) and any extra `declare`d extensions, and pins its revision. */
 export async function site(t: TestContext, flows: Record<string, unknown>, options: SiteOptions = {}) {
   const root = await mkdtemp(join(tmpdir(), 'forms-consumer-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app');
   await mkdir(project);
   if (options.hook) { (globalThis as unknown as { __formsHookCalls?: unknown[] }).__formsHookCalls = []; await writeFile(join(project, 'on-submit.mjs'), options.hook); }
@@ -41,16 +42,16 @@ export async function site(t: TestContext, flows: Record<string, unknown>, optio
   const sha = await inspectExtensionRevision(project);
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = sha;
-  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  cleanup(t, () => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
   return { root, project, sha, hostUrl: pathToFileURL(join(root, 'host.mjs')) };
 }
 
 /** Composes `entries` for the site and serves it; `call` keeps cookies like a browser. */
 export async function serve(t: TestContext, where: Awaited<ReturnType<typeof site>>, entries: readonly ExtensionEntry[]) {
   const host = await composeHost(where.hostUrl, entries);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   const app = await startServer({ project: where.project, origin, port: 0, log: () => {}, extensions: host.extensions ?? [] });
-  t.after(() => app.close());
+  cleanup(t, () => app.close());
   const cookies = new Map<string, string>();
   const call = async (path: string, init: { method?: string; body?: URLSearchParams } = {}) => {
     const response = await fetch(`http://127.0.0.1:${app.address.port}${path}`, {

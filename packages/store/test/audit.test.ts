@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 // The store as the second audit producer (a non-SQLite outbox): a collection declared `audit: true` writes one event
 // per record write into its own data file, in the same atomic replace, and a real audit drains it from there.
 import test from 'node:test';
@@ -32,13 +33,13 @@ const plain = { mount: '/api/plain', fields: { title: { type: 'string', required
 
 async function tempRoot(t: TestContext): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'store-audit-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  cleanup(t, () => rm(root, { recursive: true, force: true }));
   return root;
 }
 function withSha(t: TestContext, sha: string): void {
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = sha;
-  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  cleanup(t, () => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
 }
 /** `Authorization: Badge <id>` sets the principal; no header leaves the request anonymous. */
 function badge(projectSha256: string): RuntimeExtension {
@@ -88,10 +89,10 @@ async function serve(t: TestContext, collections: Record<string, unknown>) {
   const { root, project, sha, hostUrl } = await site(t, collections);
   const seen: { audit?: AuditExports | undefined } = {};
   const host = await composeHost(hostUrl, [store(), audit(), probe(seen)()]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   assert.deepEqual(host.extensions!.map(extension => extension.name), ['audit', 'probe', 'store'], 'audit is hosted before the store that uses it');
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [...host.extensions!, badge(sha)] });
-  t.after(() => app.close());
+  cleanup(t, () => app.close());
   const call = (path: string, init: { method?: string; body?: unknown; who?: string; headers?: Record<string, string> } = {}) => fetch(`http://127.0.0.1:${app.address.port}${path}`, {
     method: init.method ?? 'GET', redirect: 'manual',
     headers: { origin, ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...(init.who ? { authorization: `Badge ${init.who}` } : {}), ...init.headers },
@@ -147,7 +148,7 @@ test('every write kind emits one event naming the changed fields only; an idempo
 /** A store over a real (active) audit whose drain never runs for the store: what a process killed before draining leaves. */
 async function stalled(t: TestContext, root: string) {
   const log = await createAudit({ projectSha256: pin, database: join(root, 'audit.sqlite') });
-  t.after(() => log.close());
+  cleanup(t, () => log.close());
   await log.registration.activate({}, { origin, target: 'node', projectSha256: pin, mounts: [], root });
   const exports: AuditExports = { ...log.exports, get active() { return log.exports.active; }, validate: value => log.exports.validate(value), attach: () => ({ notify() {}, async close() {} }) };
   return { log, exports };
@@ -165,9 +166,9 @@ test('at the backlog cap a write is refused 503 audit_backlog and the data file 
   await writeFile(join(directory, 'notes.json'), JSON.stringify({ version: 2, records: [], idempotency: [], audit: pending }));
   const before = await readFile(join(directory, 'notes.json'));
   const instance = createStore({ directory, projectSha256: pin, audit: exports });
-  t.after(() => instance.close());
+  cleanup(t, () => instance.close());
   const served = await instance.registration.activate(config, activation(root));
-  t.after(() => served.close?.());
+  cleanup(t, () => served.close?.());
   await assert.rejects(instance.exports.records('notes').create({ id: 'alice' }, { code: 'late', destination: 'https://example.test/' }), (error: unknown) => error instanceof StoreError && error.status === 503 && error.code === 'audit_backlog');
   assert.deepEqual(await readFile(join(directory, 'notes.json')), before, 'nothing is written');
   assert.equal(instance.exports.records('notes').list(null).total, 0);
@@ -209,10 +210,10 @@ test('the producer peeks the oldest events across collections, so a flush never 
   await writeFile(join(directory, 'alpha.json'), JSON.stringify({ version: 2, records: [], idempotency: [], audit: pending('alpha', 120, at + 1000) }));
   await writeFile(join(directory, 'beta.json'), JSON.stringify({ version: 2, records: [], idempotency: [], audit: pending('beta', 5, at) }));
   const instance = createStore({ directory, projectSha256: pin, audit: capturing });
-  t.after(() => instance.close());
+  cleanup(t, () => instance.close());
   const collections = { alpha: { ...plain, mount: '/api/alpha', audit: true }, beta: { ...plain, mount: '/api/beta', audit: true } };
   const served = await instance.registration.activate({ collections }, activation(root, ['/api/alpha', '/api/beta']));
-  t.after(() => served.close?.());
+  cleanup(t, () => served.close?.());
   const batch = await producer!.peek(100);
   assert.equal(batch.length, 100);
   assert.deepEqual(batch.slice(0, 5).map(event => event.subject.split('/')[0]), ['beta', 'beta', 'beta', 'beta', 'beta'], 'the older collection comes first');
@@ -224,7 +225,7 @@ test('audit: true refuses a collection mount no principal-providing policy guard
   await mkdir(join(root, 'app')); await mkdir(directory);
   const { exports } = await stalled(t, root);
   const instance = createStore({ directory, projectSha256: pin, audit: exports });
-  t.after(() => instance.close());
+  cleanup(t, () => instance.close());
   const unguarded = { ...activation(root), principalMounts: [] };
   await assert.rejects(Promise.resolve().then(() => instance.registration.activate(config, unguarded)), /Collection notes: audit: true needs route \/api\/notes\/\* guarded by a principal-providing policy/);
 });
@@ -233,19 +234,19 @@ test('audit: true refuses activation without an active audit; the store runs wit
   // Absent: audit is not in host.mjs at all.
   const absent = await site(t, { notes }, false);
   const bare = await composeHost(absent.hostUrl, [store()]);
-  t.after(() => bare.close?.());
+  cleanup(t, () => bare.close?.());
   await assert.rejects(createRuntime(absent.project, { origin, extensions: [...bare.extensions!, badge(absent.sha)] }), /collection notes declares audit: true; install the audit extension \(urlcode extensions add audit\)/);
   // Hosted but not declared in the project, so never activated.
   const undeclared = await site(t, { notes }, false);
   const hosted = await composeHost(undeclared.hostUrl, [store(), audit()]);
-  t.after(() => hosted.close?.());
+  cleanup(t, () => hosted.close?.());
   await assert.rejects(createRuntime(undeclared.project, { origin, extensions: [...hosted.extensions!, badge(undeclared.sha)] }), /collection notes declares audit: true/);
   // No collection opts in: the store serves with audit absent.
   const quiet = await site(t, { plain }, false);
   const without = await composeHost(quiet.hostUrl, [store()]);
-  t.after(() => without.close?.());
+  cleanup(t, () => without.close?.());
   const runtime = await createRuntime(quiet.project, { origin, extensions: [...without.extensions!, badge(quiet.sha)] });
-  t.after(() => runtime.close?.());
+  cleanup(t, () => runtime.close?.());
 });
 
 test('events left in a file are kept when audit is later absent, and a write keeps them', async t => {
@@ -258,7 +259,7 @@ test('events left in a file are kept when audit is later absent, and a write kee
   await served.close?.(); await first.close();
   const unaudited = createStore({ directory, projectSha256: pin });
   const again = await unaudited.registration.activate({ ...config, collections: { notes: { ...notes, audit: false } } }, activation(root));
-  t.after(() => again.close?.());
+  cleanup(t, () => again.close?.());
   await unaudited.exports.records('notes').create({ id: 'alice' }, { code: 'plain', destination: 'https://example.test/' });
   const file = JSON.parse(await readFile(join(directory, 'notes.json'), 'utf8')) as { records: unknown[]; audit: AuditEvent[] };
   assert.equal(file.records.length, 2);

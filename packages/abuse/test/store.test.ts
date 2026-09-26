@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -63,7 +64,7 @@ test('the table is bounded: capacity answers 503, and each add sweeps at most 10
   const { abuse, database, now, tick } = await setup(t, { maxKeys: 1000 });
   const ns = abuse.exports.namespace('forms'), budget = ns.budget({ scope: 'client', limit: 5, windowMs: 1000 }), backoff = ns.backoff({ scope: 'password' });
   const other = new DatabaseSync(database);
-  t.after(() => other.close());
+  cleanup(t, () => other.close());
   const fill = (count: number, expires: number, prefix: string) => { other.exec('BEGIN'); const insert = other.prepare('INSERT INTO abuse_counters VALUES(?,1,?,0,\'other/fill\')'); for (let i = 0; i < count; i++) insert.run(prefix + i, expires); other.exec('COMMIT'); };
   const rows = () => Number((other.prepare('SELECT count(*) AS n FROM abuse_counters').get() as { n: number }).n);
   fill(1000, now() + 1000, 'live-');
@@ -96,7 +97,7 @@ test('the default bound is 100000 rows and the sweep still deletes at most 1000'
   const { abuse, database, now, tick } = await setup(t);
   const ns = abuse.exports.namespace('forms'), budget = ns.budget({ scope: 'client', limit: 5, windowMs: 1000 });
   const other = new DatabaseSync(database);
-  t.after(() => other.close());
+  cleanup(t, () => other.close());
   other.exec('BEGIN');
   const insert = other.prepare('INSERT INTO abuse_counters VALUES(?,1,?,0,\'other/fill\')');
   for (let i = 0; i < 2500; i++) insert.run('old-' + i, now());

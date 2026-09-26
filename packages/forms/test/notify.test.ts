@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 // forms as the second consumer of mail: a mounted flow's `notify` mails each accepted submission, after onSubmit and
 // before the confirmation, to an operator-named recipient through a real mail extension (recording transport).
 import test from 'node:test';
@@ -85,18 +86,18 @@ test('activation refuses notify without mail, with delivery disabled, or with an
   const notifying = contact({ notify: { recipient: 'office' } });
   const absent = await site(t, { contact: notifying });
   const bare = await composeHost(absent.hostUrl, [ui(), forms({ csrfSecret })]);
-  t.after(() => bare.close?.());
+  cleanup(t, () => bare.close?.());
   await assert.rejects(createRuntime(absent.project, { origin, extensions: bare.extensions ?? [] }), /Form contact: notify needs the mail extension; run urlcode extensions add mail/);
   const declared = await site(t, { contact: notifying }, { declare: ['mail'] });
   const disabled = await composeHost(declared.hostUrl, [ui(), forms({ csrfSecret }), mail({ transport: null, recipients })]);
-  t.after(() => disabled.close?.());
+  cleanup(t, () => disabled.close?.());
   await assert.rejects(createRuntime(declared.project, { origin, extensions: disabled.extensions ?? [] }), /Form contact: notify needs mail delivery, which is disabled/);
   const unknown = await composeHost(declared.hostUrl, [ui(), forms({ csrfSecret }), mail({ transport: recordingTransport() })]);
-  t.after(() => unknown.close?.());
+  cleanup(t, () => unknown.close?.());
   await assert.rejects(createRuntime(declared.project, { origin, extensions: unknown.extensions ?? [] }), /Form contact: notify recipient office is not configured/);
   const include = await site(t, { contact: contact({ notify: { recipient: 'office', include: ['phone'] } }) }, { declare: ['mail'] });
   const undeclaredField = await composeHost(include.hostUrl, [ui(), forms({ csrfSecret }), mail({ transport: recordingTransport(), recipients })]);
-  t.after(() => undeclaredField.close?.());
+  cleanup(t, () => undeclaredField.close?.());
   await assert.rejects(createRuntime(include.project, { origin, extensions: undeclaredField.extensions ?? [] }), /notify include lists undeclared field phone/);
 });
 

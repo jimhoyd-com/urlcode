@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 // The definition end to end: the key file the scaffold writes, composeHost, activation through the real runtime,
 // and a synthetic consumer extension that reads AbuseExports from the host and answers 429 with Retry-After over
 // real HTTP. The real consumers (auth, forms) are proven in their own packages.
@@ -48,7 +49,7 @@ const consumer = defineExtension({
 
 async function site(t: test.TestContext, key: Uint8Array | null = randomBytes(32)) {
   const dir = await mkdtemp(join(tmpdir(), 'abuse-site-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  cleanup(t, () => rm(dir, { recursive: true, force: true }));
   const project = join(dir, 'app');
   await mkdir(project);
   await mkdir(join(dir, 'data'), { mode: 0o700 });
@@ -59,7 +60,7 @@ async function pinned(t: test.TestContext, project: string, document: unknown) {
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify(document));
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = await inspectExtensionRevision(project);
-  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  cleanup(t, () => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
 }
 
 test('the definition declares node-only, route-free abuse with its config schema', async () => {
@@ -88,8 +89,9 @@ test('composeHost reads the key file and opens a private database; a consumer ge
   const { dir, project } = await site(t);
   await pinned(t, project, { version: '1', extensions: { abuse: { version: '1', config: { maxKeys: 1000 } }, consumer: { version: '1', config: {} } }, routes: { '/limited/*': { extension: 'consumer', methods: ['POST'] } } });
   const host = await composeHost(pathToFileURL(join(dir, 'host.mjs')), [abuse(), consumer()]);
+  cleanup(t, () => host.close?.());
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: host.extensions ?? [] });
-  t.after(async () => { await app.close(); await host.close?.(); });
+  cleanup(t, () => app.close());
   const info = await stat(join(dir, 'data', 'abuse.sqlite'));
   assert.equal(info.mode & 0o777, 0o600);
   const post = () => fetch(`http://127.0.0.1:${app.address.port}/limited/submit`, { method: 'POST' });
@@ -126,7 +128,7 @@ test('activation refuses any mount', async t => {
   const { dir, project } = await site(t);
   await pinned(t, project, { version: '1', extensions: { abuse: { version: '1', config: {} } }, routes: { '/abuse/*': { extension: 'abuse', methods: ['GET'] } } });
   const host = await composeHost(pathToFileURL(join(dir, 'host.mjs')), [abuse()]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   await assert.rejects(startServer({ project, origin, port: 0, log: () => {}, extensions: host.extensions ?? [] }), /abuse serves no routes/);
 });
 
@@ -134,7 +136,7 @@ test('the runtime refuses a non-node target before serving', async t => {
   const { dir, project } = await site(t);
   await pinned(t, project, { version: '1', extensions: { abuse: { version: '1', config: {} } }, routes: {} });
   const host = await composeHost(pathToFileURL(join(dir, 'host.mjs')), [abuse()]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   assert.deepEqual(host.extensions?.[0]?.targets, ['node']);
   for (const target of ['aws', 'vercel'] as const)
     await assert.rejects(createRuntime(project, { origin, extensions: host.extensions ?? [], target }), /declared targets: abuse/);
@@ -144,6 +146,6 @@ test('config maxKeys outside 1000..1000000 is refused by the schema', async t =>
   const { dir, project } = await site(t);
   await pinned(t, project, { version: '1', extensions: { abuse: { version: '1', config: { maxKeys: 999 } } }, routes: {} });
   const host = await composeHost(pathToFileURL(join(dir, 'host.mjs')), [abuse()]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   await assert.rejects(startServer({ project, origin, port: 0, log: () => {}, extensions: host.extensions ?? [] }), /extensions\/abuse\/config\/maxKeys/);
 });

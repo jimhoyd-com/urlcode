@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 // The transitive proof: form-records writes through StoreExports, so a submission into an audited collection is
 // recorded by a real audit with the request principal as actor, with no audit code in form-records.
 import test from 'node:test';
@@ -48,7 +49,7 @@ function probe(seen: { audit?: AuditExports | undefined }) {
 }
 
 test('a form-records submission into an audit: true collection is audited once, with the principal as actor', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'form-records-audit-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'form-records-audit-')); cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'); await mkdir(project);
   await writeFile(join(root, 'forms-csrf.key'), 'k'.repeat(32));
   const todos = { mount: '/api/todos', ownership: 'owner', audit: true, fields: { title: { type: 'string', required: true, maxLength: 200 }, done: { type: 'boolean', default: false } } };
@@ -58,12 +59,12 @@ test('a form-records submission into an audit: true collection is audited once, 
     routes: { '/assets/ui/*': { extension: 'ui' }, '/api/todos/*': { extension: 'store', methods: ['GET', 'POST'], auth: { csrf: 'origin' } }, '/todo-form/*': { extension: 'form-records', methods: ['GET', 'HEAD', 'POST'], auth: { csrf: 'origin' } } } }));
   const sha = await inspectExtensionRevision(project);
   const previous = process.env.PROJECT_SHA256; process.env.PROJECT_SHA256 = sha;
-  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  cleanup(t, () => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
   const seen: { audit?: AuditExports | undefined } = {};
   const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [formRecords(), store(), forms({ csrfSecretFile: join(root, 'forms-csrf.key') }), ui(), audit(), probe(seen)()]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [...host.extensions!, badgeAuth(sha)] });
-  t.after(() => app.close());
+  cleanup(t, () => app.close());
   const cookies = new Map<string, string>();
   const call = async (path: string, body?: URLSearchParams) => {
     const response = await fetch(`http://127.0.0.1:${app.address.port}${path}`, { method: body ? 'POST' : 'GET', redirect: 'manual', headers: { authorization: 'Badge ada', origin, ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), ...(cookies.size ? { cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; ') } : {}) }, ...(body ? { body } : {}) });
