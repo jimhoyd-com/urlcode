@@ -693,7 +693,9 @@ const registration: RuntimeExtension = {
 - The runtime's floor still applies: `Cache-Control: no-store`, the header
   caps, no compression, and immutable-asset caching never applies to a stream.
 - `request.signal` aborts when the client disconnects, a stream limit ends
-  the stream, or the server shuts down; its `reason` is the end reason. The
+  the stream, or the server shuts down; its `reason` is the end reason. It
+  also aborts, with reason `bodyless`, when the response carries no body
+  (HEAD, 204, 205, 304) and the stream will never be read. The
   host also calls the iterator's `return()`, so an async generator's `finally`
   runs as soon as it resumes. Watch the signal while waiting on anything else.
 - The first chunk commits the status and headers; an empty chunk (`''`)

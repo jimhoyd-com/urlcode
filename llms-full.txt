@@ -2112,7 +2112,11 @@ export default function progress(request, { signal }) {
   stream), and aborts the request's `AbortSignal`: `context.signal` in a
   trusted function, `request.signal` in an extension. `signal.reason` is the
   end reason (`client-closed`, `idle-timeout`, `max-duration`, `max-bytes`,
-  `shutdown`, or `capacity` for a stream refused because too many are open).
+  `error`, `shutdown`), `capacity` for a stream refused because too many are
+  open, or `bodyless` when the response carries no body (HEAD, 204, 205, 304)
+  and so the producer is never read; that response is still logged with
+  reason `complete`. Do not start work in the handler that the signal cannot
+  stop.
   A producer waiting on something else should watch the signal.
 - **Backpressure.** The next chunk is pulled only after the previous one was
   accepted by the connection.
@@ -4163,7 +4167,9 @@ const registration: RuntimeExtension = {
 - The runtime's floor still applies: `Cache-Control: no-store`, the header
   caps, no compression, and immutable-asset caching never applies to a stream.
 - `request.signal` aborts when the client disconnects, a stream limit ends
-  the stream, or the server shuts down; its `reason` is the end reason. The
+  the stream, or the server shuts down; its `reason` is the end reason. It
+  also aborts, with reason `bodyless`, when the response carries no body
+  (HEAD, 204, 205, 304) and the stream will never be read. The
   host also calls the iterator's `return()`, so an async generator's `finally`
   runs as soon as it resumes. Watch the signal while waiting on anything else.
 - The first chunk commits the status and headers; an empty chunk (`''`)

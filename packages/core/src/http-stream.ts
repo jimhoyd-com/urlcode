@@ -99,7 +99,7 @@ export class StreamHost {
     const { controller } = options;
     let prepared;
     try { prepared = prepareStream(result, options); }
-    catch (error) { cancelStream(result.stream); throw error; }
+    catch (error) { if (!controller.signal.aborted) controller.abort('error'); cancelStream(result.stream); throw error; }
     const commit = (): void => {
       res.strictContentLength = false;
       setGroupedHeaders(res, prepared.headers);
@@ -108,6 +108,8 @@ export class StreamHost {
     };
     if (prepared.stream === undefined) {
       // HEAD (or a bodyless status): the handler already chose status and headers; the producer is never pulled.
+      // Work the handler started before returning is cancelled through the signal too, not only the iterator (#801).
+      if (!controller.signal.aborted) controller.abort('bodyless');
       cancelStream(result.stream);
       commit(); res.end();
       return { status: prepared.status, finished: Promise.resolve({ status: prepared.status, bytes: 0, durationMs: 0, reason: 'complete' }) };
