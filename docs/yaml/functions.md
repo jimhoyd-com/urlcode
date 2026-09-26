@@ -64,6 +64,14 @@ are to any other Node code in the host. Add `sandbox: true` to trade them away
 for isolation -- inside the guest none of them exist. See
 [trust model and sandbox opt-in](../FUNCTION-SECURITY.md).
 
+A trusted route can also send its Response body while it is still being
+produced -- progress lines, logs, server-sent events -- by declaring
+`stream: true`; without it the body is read whole first. `context.signal`
+aborts when the client leaves or a stream limit ends the stream. Streaming is
+self-hosted only and refused with `sandbox: true`; see
+[streamed responses](../SPECIFICATION.md#streamed-responses) and the runnable
+[streaming-progress recipe](../../recipes/streaming-progress/README.md).
+
 ### Host overrides for env bindings
 
 An `env` entry with only `value` is a plain literal — never touched by any
@@ -168,7 +176,7 @@ This validates JSON syntax/media type/UTF-8 and body size, not an application
 object schema. Validate business fields in code. Empty required body: 400;
 oversized body: 413; wrong media type: 415. For text, use `contentTypes:
 [text/plain]`, `format: text`, and `request.text()`; see the runnable `/text`
-recipe. `maxBytes: 0` can reject nonempty bodies. Bodies are buffered, not streamed.
+recipe. `maxBytes: 0` can reject nonempty bodies. Request bodies are buffered, not streamed.
 
 Allowed methods: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS. An explicit list
 replaces the defaults: `[GET]` does not add HEAD. Wrong method returns 405 with

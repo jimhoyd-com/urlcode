@@ -84,7 +84,10 @@ time to notice and stop routing here; `/_urlcode/health` (liveness) stays
 healthy throughout so a supervisor does not restart a process that is
 deliberately draining. Once the listener stops accepting connections, HTTP
 connections get up to `--close-timeout-ms` (default `10000`) to finish before
-being forced closed, and bounded in-flight functions drain. A `sandbox: true`
+being forced closed, and bounded in-flight functions drain. Open
+[streamed responses](#streamed-responses) get the same grace to finish and
+are then ended (end reason `shutdown`) just before the remaining connections
+are closed. A `sandbox: true`
 worker still starting at shutdown (for example a replacement after a guest
 deadline) is allowed to finish starting, for at most its 5-second
 initialization timeout, before it is stopped. Set
@@ -328,6 +331,46 @@ has been retired and unpublished. Stored short links are served by the
 operator-installed `store` extension's `extensions.store.config.shortLinks`
 ([data store](STORE.md)), whose records live in the store's data directory:
 back it up with the rest of the store.
+
+### Streamed responses
+
+A route that [streams](SPECIFICATION.md#streamed-responses) (a trusted
+`stream: true` function or a streaming extension) holds its connection while it
+produces. Streams have their own limits, separate from the short-request ones:
+
+| Flag (`startServer` option) | Default | Range | Ends a stream with reason |
+|---|---|---|---|
+| `--max-streams` (`maxStreams`) | 32 | 1–1024 | none: one more is answered 503 before any byte (`stream_refused`, reason `capacity`) and counted as shed |
+| `--stream-idle-timeout-ms` (`streamIdleTimeoutMs`) | 30000 | 1000–3600000 | `idle-timeout`: no chunk produced, or the client not reading what was written, for this long |
+| `--stream-max-duration-ms` (`streamMaxDurationMs`) | 300000 | 1000–86400000 | `max-duration`, however active the stream is |
+| `--stream-max-bytes` (`streamMaxBytes`) | 16777216 | 1–268435456 | `max-bytes`; the chunk that would pass the limit is not sent |
+
+- A streamed response counts against `--max-in-flight` only until its handler
+  returns its status and headers; from then until it ends it counts against
+  `--max-streams`. An open stream therefore never holds an application
+  admission slot, and the in-flight gauge does not include it.
+- `--request-timeout-ms` and the socket inactivity timeout do not end a
+  healthy stream: the stream's idle timeout replaces the socket timeout for
+  that response, and the socket timeout is restored when the stream completes
+  and the connection is reused.
+- A stream ended by a limit, a disconnect, an error or shutdown closes the
+  connection without the chunked terminator; the producer is cancelled and its
+  `AbortSignal` aborted with the reason. Every stream writes one `stream` log
+  record when it ends (`requestId`, `status`, `bytes`, `durationMs`, `reason`;
+  `method` and `route` with `--request-log detailed`), after the ordinary
+  `request` record written when its head was sent ([monitoring](MONITORING.md)).
+- Shutdown: streams share `--close-timeout-ms` with other connections and are
+  ended with reason `shutdown` at its deadline. A dev hot reload lets streams
+  on the retired snapshot run to their end (bounded by these limits); the
+  retired snapshot and its extensions close after the last one.
+- Put a reverse proxy's response buffering off for these routes (for example
+  nginx `proxy_buffering off`, or the route sending `X-Accel-Buffering: no`),
+  and keep its read timeout above `--stream-idle-timeout-ms`, or it will hold
+  or cut the stream itself.
+- On Vercel, `createVercelHandler({ streams: { maxStreams, idleTimeoutMs,
+  maxDurationMs, maxBytes } })` sets the same limits per function instance; the
+  platform's own function duration limit still applies. AWS, Cloudflare and
+  static refuse streaming before serving.
 
 The health version combines route-definition and asset-representation digests;
 it does not identify the complete function/runtime release. Record runtime commit,

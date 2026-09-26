@@ -168,9 +168,19 @@ export const budgets: Record<string, Budget> = {
     // #540/#103/#779-#785 with their llms-full.txt copies. Together they measure
     // 770628 packed and 3103798 unpacked bytes in 464 entries on Node 26, 580
     // bytes over the old packed budget.
-    packed: 768 * 1024,
-    unpacked: 3080 * 1024,
-    entries: 470,
+    //
+    // Packed raised from 768 to 772 KiB for generic streamed responses (#659:
+    // dist/http-stream.js, the RIM-STREAM-001 runtime/extension/capability
+    // changes, the streaming-progress recipe and the specification, extension
+    // and operations sections with their llms-full.txt copies). It measures
+    // 788349 packed bytes on Node 26, 1917 over the old budget; 772 KiB keeps
+    // the ~2 KiB cross-Node gzip variance noted above. Unpacked it measures
+    // 3163145 bytes, 9225 over, so unpacked is raised from 3080 to 3100 KiB.
+    // The module, its declarations and the recipe's five files make 471
+    // entries, so entries is raised from 470 to 480.
+    packed: 772 * 1024,
+    unpacked: 3100 * 1024,
+    entries: 480,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

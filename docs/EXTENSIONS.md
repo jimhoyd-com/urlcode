@@ -346,6 +346,9 @@ recipe, but declared by an operator-installed extension instead of project
 code. Skipping it short-circuits everything after that point, the same
 capability `authorize` already has, just usable from either side of the
 handler now. `next()` may be called at most once; calling it again throws.
+On a route that streams, the result may carry `stream` instead of `body`:
+return it with the stream intact rather than reading it
+([streamed responses](#streamed-responses)).
 
 A route naming more than one extension in `policies.extensions` chains every
 one that implements `middleware`, in the order the keys are declared, each
@@ -624,6 +627,9 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    ([site origins](#site-origins-and-same-origin-checks)).
 8. Reads bodies, fields and cookies and writes JSON answers with core's
    [request helpers](#request-helpers), never with its own parser.
+9. Answers a long-lived or progressive response by declaring `streams: true`
+   and returning a [streamed response](#streamed-responses), never by holding a
+   buffered answer open or polling.
 
 ### Request helpers
 
@@ -642,6 +648,62 @@ parsing, JSON responses, cookie parsing or origin checks; use these:
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
 | `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
+
+### Streamed responses
+
+A mount's `handle()` may answer with a body sent as it is produced (server-sent
+events, progress, logs) when the registration declares it (`RIM-STREAM-001` in
+[runtime implementation](RUNTIME-IMPLEMENTATION.md)):
+
+```ts
+import type { RuntimeExtension, HandlerResult, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
+
+const registration: RuntimeExtension = {
+  name: 'live', version: '1', projectSha256, targets: ['node', 'vercel'], schema: { type: 'object' },
+  streams: true,
+  activate: () => ({
+    handle(request: ExtensionRequest): HandlerResult {
+      async function* events() {
+        yield ': open\n\n'; // commits the status and headers before the first event
+        while (!request.signal?.aborted) { yield `data: ${Date.now()}\n\n`; await new Promise(r => setTimeout(r, 1000)); }
+      }
+      return { status: 200, headers: [['content-type', 'text/event-stream']], stream: events() };
+    },
+  }),
+};
+```
+
+- `HandlerResult.stream` is an `AsyncIterable<StreamChunk>` (`StreamChunk` is
+  `string | Uint8Array`; text is sent as UTF-8). It replaces `body`: a result
+  with both, or with `contentLength`, is refused.
+- `streams: true` on the registration is the declaration. Without it a
+  streamed result from `handle()` is the generic 502 and a `stream_refused`
+  log record; the producer is cancelled unread. An `authorize()` denial or a
+  `middleware()` short-circuit never streams. A `middleware()` hook that calls
+  `next()` on a route that streams receives the streamed result and must
+  return it with `stream` intact (it may change headers); replacing it with
+  another stream on a route that does not declare streaming is refused the
+  same way.
+- The runtime's floor still applies: `Cache-Control: no-store`, the header
+  caps, no compression, and immutable-asset caching never applies to a stream.
+- `request.signal` aborts when the client disconnects, a stream limit ends
+  the stream, or the server shuts down; its `reason` is the end reason. The
+  host also calls the iterator's `return()`, so an async generator's `finally`
+  runs as soon as it resumes. Watch the signal while waiting on anything else.
+- The first chunk commits the status and headers; an empty chunk (`''`)
+  commits them without body bytes. An error before the first chunk is
+  answered with the ordinary generic error; after it, the connection closes
+  without the chunked terminator. HEAD never pulls the producer.
+- Operator [stream limits](OPERATIONS.md#streamed-responses) bound every
+  stream: concurrent streams, idle time, total duration and bytes. `close()`
+  of the runtime (shutdown, or a retired dev reload) waits for open streams,
+  so an extension's own `close()` runs only after its last stream ended.
+- Targets: `prepareExtensions` refuses a declared registration with
+  `streams: true` on any target but `node` and `vercel`, before activation.
+  An extension that can also answer without streaming should expose an
+  operator option that leaves `streams` unset for AWS. On Vercel delivery is
+  `delegated`: the adapter writes each chunk, the provider's function
+  streaming and duration limit decide the rest.
 
 ### Activation warnings
 

@@ -20,8 +20,8 @@ schema-valid combinations activate successfully.
 
 - [Project entry: version, includes, shared](#project-entry-version-includes-shared)
 - [Routes: common fields (methods, parameters, env, secrets, policies, cache)](#routes-common-fields-methods-parameters-env-secrets-policies-cache)
-- [Handler: redirect](#handler-redirect)
 - [Handler: function](#handler-function)
+- [Handler: redirect](#handler-redirect)
 - [Handler: page, static, download](#handler-page-static-download)
 - [Handler: respond](#handler-respond)
 - [Middleware](#middleware)
@@ -213,6 +213,29 @@ See [functions, inputs and methods](yaml/functions.md) and [bindings, split file
 | `routes.*.cache.force` | boolean | no | default: false | Allow immutable on a path without a content hash |
 | `routes.*.use` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" | Name of a top-level shared block whose request and response.headers this route inherits. A key the route declares itself replaces the shared block as a whole; there is no deep merge. |
 
+## Handler: function
+
+See [functions, inputs and methods](yaml/functions.md) for examples.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `routes.*.stream` | boolean | no | default: false | Send a trusted function route's Response body to the client as it is produced (chunked, bounded by the operator's stream limits) instead of reading it whole first. Needs function; refused with sandbox: true and on every target except the self-hosted runtime. |
+| `routes.*.function` | one of the shapes below | no | — | Run a JavaScript module for this route, as a project-relative .mjs/.js path or an object naming source, export and args (docs/yaml/functions.md). |
+| `routes.*.function (option 1)` | string | no | minLength: 1; maxLength: 1024 | — |
+| `routes.*.function (option 2)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).source` | string | yes | maxLength: 1024 | Project-relative path of the .mjs or .js module to run. |
+| `routes.*.function (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call; the default export when omitted. |
+| `routes.*.function (option 2).args` | object | no | — | Named values passed to the function as context.args: literals, declared inputs or route bindings; omitted binds every declared path input. |
+| `routes.*.function (option 2).args.*` | one of the shapes below | no | — | — |
+| `routes.*.function (option 2).args.* (option 1)` | string / number / boolean | no | — | — |
+| `routes.*.function (option 2).args.* (option 2)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).args.* (option 2).from` | string | yes | enum: ["path","query","header"] | Where the declared input comes from: path, query or header. |
+| `routes.*.function (option 2).args.* (option 2).name` | string | yes | — | Name of the declared input whose validated value becomes this argument. |
+| `routes.*.function (option 2).args.* (option 3)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's env whose value becomes this argument. |
+| `routes.*.function (option 2).args.* (option 4)` | object | no | unknown keys rejected | — |
+| `routes.*.function (option 2).args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's secrets whose value becomes this argument. |
+
 ## Handler: redirect
 
 See [redirects](yaml/redirects.md) for examples.
@@ -231,28 +254,6 @@ See [redirects](yaml/redirects.md) for examples.
 | `routes.*.redirect.query.map.*` | object | no | unknown keys rejected | — |
 | `routes.*.redirect.query.map.*.from` | string | yes | enum: ["path","query","header"] | Where the declared input comes from: path, query or header. |
 | `routes.*.redirect.query.map.*.name` | string | yes | — | Name of the declared input whose validated value fills this destination key. |
-
-## Handler: function
-
-See [functions, inputs and methods](yaml/functions.md) for examples.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `routes.*.function` | one of the shapes below | no | — | Run a JavaScript module for this route, as a project-relative .mjs/.js path or an object naming source, export and args (docs/yaml/functions.md). |
-| `routes.*.function (option 1)` | string | no | minLength: 1; maxLength: 1024 | — |
-| `routes.*.function (option 2)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).source` | string | yes | maxLength: 1024 | Project-relative path of the .mjs or .js module to run. |
-| `routes.*.function (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call; the default export when omitted. |
-| `routes.*.function (option 2).args` | object | no | — | Named values passed to the function as context.args: literals, declared inputs or route bindings; omitted binds every declared path input. |
-| `routes.*.function (option 2).args.*` | one of the shapes below | no | — | — |
-| `routes.*.function (option 2).args.* (option 1)` | string / number / boolean | no | — | — |
-| `routes.*.function (option 2).args.* (option 2)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).args.* (option 2).from` | string | yes | enum: ["path","query","header"] | Where the declared input comes from: path, query or header. |
-| `routes.*.function (option 2).args.* (option 2).name` | string | yes | — | Name of the declared input whose validated value becomes this argument. |
-| `routes.*.function (option 2).args.* (option 3)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's env whose value becomes this argument. |
-| `routes.*.function (option 2).args.* (option 4)` | object | no | unknown keys rejected | — |
-| `routes.*.function (option 2).args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Alias of a binding in this route's secrets whose value becomes this argument. |
 
 ## Handler: page, static, download
 

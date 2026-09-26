@@ -248,7 +248,12 @@ Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store
 collection) reads it, without either knowing the other
-([request principal](EXTENSIONS.md#request-principal)). A composition reaches
+([request principal](EXTENSIONS.md#request-principal)). A long-lived answer
+(server-sent events, progress) is generic too: a registration that declares
+`streams: true` may return `HandlerResult.stream` instead of `body`, which the
+self-hosted server and Vercel adapter write as it is produced under operator
+stream limits and every other target refuses before serving
+([streamed responses](EXTENSIONS.md#streamed-responses)). A composition reaches
 the add-ons it requires only through their typed, versioned exports:
 `form-records` reads `FormsExports` and `StoreExports` with `ctx.get`, never
 their configuration ([nesting](EXTENSIONS.md#nesting)).

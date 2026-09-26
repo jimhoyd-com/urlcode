@@ -30,6 +30,8 @@ named.
 | Event | Fields | Emitted when |
 |---|---|---|
 | `request` | `requestId` string, `status` integer, `durationMs` number; `method` string and `route` string or `null` with `--request-log detailed` | Every response the server wrote, including probes and shed 503s. `route` is the configured pattern (`/u/{id}`) or the probe path, never the requested path. |
+| `stream` | `requestId` string, `status` integer, `bytes` integer, `durationMs` number, `reason` (`complete`, `client-closed`, `idle-timeout`, `max-duration`, `max-bytes`, `error`, `shutdown`); `method` and `route` with `--request-log detailed` | A [streamed response](SPECIFICATION.md#streamed-responses) whose head was sent has ended. It follows that request's `request` record (written when the head was sent); `durationMs` counts from the handler's result to the end, `bytes` the body bytes sent. Never chunk content or what a producer threw. |
+| `stream_refused` | `requestId` string, `route` string or `null`, `reason` (`undeclared`, `invalid`, `capacity`) | A streamed result was answered 502 because its route does not declare streaming (or the result was malformed), or 503 because `--max-streams` were open. |
 | `reload` | `status` `ok`/`rejected`; `version` string and `routes` integer on `ok` | `app.reload()` or the development watcher swapped, or refused to swap, the snapshot. |
 | `watch` | `status` `failed` | The development watcher could not fingerprint the project. |
 | `extension_pin_followed` | `extensions` string array, `from` string, `to` string | `urlcode dev` only, once per reload: the edited project (revision `to`) activated extensions whose registration is still pinned to `from`, the revision dev started from ([the revision pin](EXTENSIONS.md#the-revision-pin)). Emitted after the reload fully activated, never for a rejected one and never by `serve`. |
@@ -39,7 +41,7 @@ named.
 | `observer` | `status` `failed`, `name` string | An observer hook threw or rejected. Written to the default log only, never to observers. |
 | `throttle` | `route`, `outcome` `allowed`/`exceeded`, `remaining` integer | A throttle decision. `allowed` is logged only in `mode: report`; enforce mode logs refusals. |
 | `agents` | `route`, `list` string, `outcome` `denied`/`reported` | A User-Agent matched a list. The list name is logged, never the header. |
-| `cache` | `route`, `outcome` `hit`/`stale`/`miss`/`store` | A cache lookup or store. |
+| `cache` | `route`, `outcome` `hit`/`stale`/`miss`/`store`, or `vary-bypass`/`stream-bypass` when a response was not stored because of an undeclared `Vary` or because it streamed | A cache lookup or store. |
 | `listening` | `address`, `port`, `mode`, `origin` | Printed once by the CLI at startup, not emitted by the server. |
 | `extension_warning` | `extension` string, `message` string | An operator extension called `warn()` while it activated ([activation warnings](EXTENSIONS.md#activation-warnings)): at startup or a reload, never per request. `message` is one line of at most 500 characters; at most 21 records per extension per activation. |
 

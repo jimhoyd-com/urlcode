@@ -15,6 +15,7 @@ import { assert, describeError, HttpError } from './errors.ts';
 import { functionFailure } from './trusted-functions.ts';
 import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
+import { StreamHost } from './http-stream.ts';
 import { compileTrustedProxies, loopbackHostCheck, resolveClient } from './client-address.ts';
 
 export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin'> {
@@ -48,6 +49,16 @@ export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'accep
   requestTimeoutMs?: number | undefined;
   /** Milliseconds an idle keep-alive connection is held open for reuse. */
   keepAliveTimeoutMs?: number | undefined;
+  /** Streamed responses open at once (default 32, 1–1024). A streamed response counts against `maxInFlightRequests`
+   * only until its handler returns, then against this limit until it ends; one over it is answered 503 before any byte. */
+  maxStreams?: number | undefined;
+  /** Milliseconds a streamed response may make no progress (no chunk produced, or a chunk not drained by the client)
+   * before it is ended (default 30000, 1000–3600000). Replaces the socket inactivity timeout for that response. */
+  streamIdleTimeoutMs?: number | undefined;
+  /** Milliseconds a streamed response may stay open however active it is (default 300000, 1000–86400000). */
+  streamMaxDurationMs?: number | undefined;
+  /** Body bytes one streamed response may send before it is ended (default 16777216, 1–268435456). */
+  streamMaxBytes?: number | undefined;
   /** Test helper. Directory the project may use for its own files, offered as the `URLCODE_DATA_DIR`
    * environment value (a route reads it through a declared `env` binding). Created if absent and
    * never deleted by `close()`, so a later server started on the same directory sees the same data. */
@@ -164,6 +175,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   headersTimeoutMs = 10000, requestTimeoutMs = 15000, keepAliveTimeoutMs = 5000,
   debugErrors = false, diagnostics = (line: string) => { process.stderr.write(line); },
   followExtensionPinOnReload = false,
+  maxStreams, streamIdleTimeoutMs, streamMaxDurationMs, streamMaxBytes,
   ...runtimeOptions }: ServerOptions = {}): Promise<Server> {
   // Which peers may set X-Forwarded-For. Empty means the socket peer is the
   // client for every policy; a forwarded header from anyone else is ignored.
@@ -184,6 +196,9 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   assert(Number.isInteger(headersTimeoutMs) && headersTimeoutMs >= 1000 && headersTimeoutMs <= 300000, 'Headers timeout must be 1000–300000 ms');
   assert(Number.isInteger(requestTimeoutMs) && requestTimeoutMs >= 1000 && requestTimeoutMs <= 300000, 'Request timeout must be 1000–300000 ms');
   assert(Number.isInteger(keepAliveTimeoutMs) && keepAliveTimeoutMs >= 0 && keepAliveTimeoutMs <= 300000, 'Keep-alive timeout must be 0–300000 ms');
+  // Streamed responses get their own limits, separate from the short-request admission above (RIM-STREAM-001).
+  const streams = new StreamHost({ ...(maxStreams === undefined ? {} : { maxStreams }), ...(streamIdleTimeoutMs === undefined ? {} : { idleTimeoutMs: streamIdleTimeoutMs }),
+    ...(streamMaxDurationMs === undefined ? {} : { maxDurationMs: streamMaxDurationMs }), ...(streamMaxBytes === undefined ? {} : { maxBytes: streamMaxBytes }) });
   if (origin) {
     let u: URL;
     try { u = new URL(origin); } catch { assert(false, 'Invalid public origin'); }
@@ -222,6 +237,10 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
     let status = 500;
     res.on('error', () => {});
     req.on('error', () => {});
+    // Handed to the handler as its signal: aborted when the client leaves before the response finished.
+    const controller = new AbortController();
+    res.once('close', () => { if (!res.writableFinished && !controller.signal.aborted) controller.abort('client-closed'); });
+    let release: (() => void) | undefined;
     try {
       if (shuttingDown) throw new HttpError(503, 'Runtime shutting down');
       // DNS-rebinding defence for a loopback bind: refused before probes or routing.
@@ -254,7 +273,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         inFlight++; counters.inFlight('requests', 1);
         // Keep admission until the response finishes or the peer disconnects.
         let released = false;
-        const release = () => { if (!released) { released = true; inFlight--; counters.inFlight('requests', -1); } };
+        release = () => { if (!released) { released = true; inFlight--; counters.inFlight('requests', -1); } };
         res.once('finish', release); res.once('close', release);
         const headers = new Headers(), headerCounts: Record<string, number> = Object.create(null) as Record<string, number>;
         for (let i = 0; i < req.rawHeaders.length; i += 2) {
@@ -263,10 +282,26 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         }
         const target = originForm(url);
         const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(target) ?? maxBodyBytes));
-        result = await current.handle({ target, method, headers, headerCounts, body, trace, requestId,
+        result = await current.handle({ target, method, headers, headerCounts, body, trace, requestId, signal: controller.signal,
           origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') ?? undefined : undefined, proxies) });
       }
-      status = writeResponse(res, result, { requestId, method, enforceContentLength });
+      if (result.stream !== undefined) {
+        // From here the response counts against the stream limit, not the short-request admission.
+        release?.();
+        const route = trace.route ?? null;
+        const opened = await streams.start(res, result, { requestId, method, controller, restoreSocketTimeoutMs: requestTimeoutMs,
+          onRefused: () => { counters.shed('requests'); emit({ event: 'stream_refused', requestId, route, reason: 'capacity' }); } });
+        status = opened.status;
+        void opened.finished.then(outcome => {
+          // The completion record: no chunk content, no request text, and never what the producer threw.
+          emit({ event: 'stream', requestId, status: outcome.status, bytes: outcome.bytes, durationMs: outcome.durationMs, reason: outcome.reason,
+            ...(requestLog === 'detailed' ? { method, route } : {}) }, { ...(route === null ? {} : { route }), probe: false });
+          if (outcome.reason === 'error' && debugErrors) {
+            const failure = functionFailure(new HttpError(502, 'Function execution failed', undefined, { cause: outcome.error }));
+            if (failure) diagnose({ event: 'function_error', requestId, status: outcome.status, route, message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) });
+          }
+        });
+      } else status = writeResponse(res, result, { requestId, method, enforceContentLength });
     } catch (error) {
       status = writeError(res, error, { requestId, method, enforceContentLength, headers: current.errorHeaders(error, publicOrigin()) });
       if (debugErrors) {
@@ -354,7 +389,9 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         if (readinessDrainMs > 0) await new Promise<void>(resolve => setTimeout(resolve, readinessDrainMs));
       }
       shuttingDown = true; clearInterval(interval); clearInterval(metricsTimer);
-      const deadline = setTimeout(() => server.closeAllConnections(), closeTimeoutMs);
+      // Open streams get the same grace as other in-flight responses, then end (reason `shutdown`) just before the
+      // remaining connections are forced closed.
+      const deadline = setTimeout(() => { streams.endAll('shutdown'); server.closeAllConnections(); }, closeTimeoutMs);
       deadline.unref();
       await new Promise<void>(resolve => server.close(() => resolve()));
       clearTimeout(deadline);

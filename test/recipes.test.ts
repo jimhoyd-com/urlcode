@@ -61,6 +61,7 @@ test('every recipe is found first by the words someone would search for',async()
     'cors-api':'cors preflight',                   'webhook-receiver':'webhook',
     'contact-form':'contact form',                 'authenticated-json-api':'signed-in json api',
     'protected-download':'protected download attachment','store-crud':'crud store persist',
+    'streaming-progress':'stream progress lines',
   };
   for(const [name,text] of Object.entries(queries)){
     const found=await searchRecipes(text);

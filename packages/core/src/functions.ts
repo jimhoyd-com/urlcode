@@ -34,7 +34,10 @@ export interface FunctionWorkerData { sources: Record<string, string>; dependenc
  * `route.pattern` is the route key that matched, so one module can serve several routes without reading `request.url`.
  * `requestId` is the id the response carries in `X-Request-Id`: a plain string, identical for trusted and `sandbox: true` routes.
  */
-export type FunctionContext = RequestContext & { requestId: string; args?: Record<string, ParameterValue>; route?: { pattern: string } };
+export type FunctionContext = RequestContext & { requestId: string; args?: Record<string, ParameterValue>; route?: { pattern: string };
+  /** Trusted routes only (never sent into the sandbox): aborted when the client disconnects, or when a streamed
+   * response ends early; `signal.reason` is then the end reason string such as `client-closed` or `idle-timeout`. */
+  signal?: AbortSignal };
 export interface FunctionWorkerRequest {
   id: string; source: string | undefined; name: string | undefined;
   chain: { source: string | undefined; name: string }[];

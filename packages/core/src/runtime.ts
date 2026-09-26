@@ -26,8 +26,9 @@ import { createObserverSink } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink } from './observability.ts';
 import { applySite } from './site.ts';
 import { passkeyRpId, siteOrigins } from './site-origins.ts';
-import type { HandlerResult, HeaderPair } from './http-response.ts';
-import type { CompiledRouteTable, LoadedDocument, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
+import { cancelStream, isResponseStream } from './http-response.ts';
+import type { HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
+import type { CompiledRoute, CompiledRouteTable, LoadedDocument, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
 import type { SecurityState } from './policies/security.ts';
 
 export type { OperatorPolicy } from './policy.ts';
@@ -85,6 +86,9 @@ export interface RuntimeRequest {
   headerCounts?: Record<string, number> | undefined; trace?: RequestTrace | undefined; origin?: string | undefined; client?: string | undefined;
   /** The id the host answers this request with (`X-Request-Id`); generated when a caller supplies none. Reaches extension requests, hook contexts and function contexts. */
   requestId?: string | undefined;
+  /** Aborted by the host when the client disconnects or a streamed response ends early; handed to extensions
+   * (`ExtensionRequest.signal`) and trusted functions (`context.signal`), never into the sandbox. */
+  signal?: AbortSignal | undefined;
 }
 export interface Runtime {
   readonly healthy: boolean; assetWatch: string[]; version: string; count: number; root: string;
@@ -96,6 +100,7 @@ export interface Runtime {
   metrics(): MetricsSnapshot;
   errorHeaders(error: unknown, origin: string): HeaderPair[];
   requestLimit(target: string): number | undefined;
+  /** A result carrying `stream` must be pulled to its end or cancelled (its iterator's `return()`); `close()` waits for it. */
   handle(request: RuntimeRequest): Promise<HandlerResult>;
   close(): Promise<void>;
 }
@@ -181,7 +186,38 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // Only an extension's own mount can serve its declared immutable assets.
   const assetPrefixes=new Map(routes.filter(route=>route.extension).map(route=>[route.pattern,extensionRegistry.entries.get(route.extension!)!.assetPrefixes]));
   const assetContext=(method:string,path:string,pattern:string):ExtensionAssetContext|undefined=>{const prefixes=assetPrefixes.get(pattern);return prefixes?.length?{method,path,prefixes}:undefined;};
-  let active = 0, closing = false, finish: (() => void) | undefined;
+  let active = 0, streamsOpen = 0, closing = false, finish: (() => void) | undefined;
+  const settle = (): void => { if (!active && !streamsOpen && closing) finish?.(); };
+  // An admitted stream keeps this runtime (its extensions and function modules) open until the stream ends, so a
+  // retired runtime closes only after its last stream, like its last buffered request (RIM-STREAM-001).
+  const track = (stream: ResponseStream): ResponseStream => {
+    streamsOpen++;
+    let ended = false, source: AsyncIterator<StreamChunk> | undefined;
+    const end = (): void => { if (!ended) { ended = true; streamsOpen--; settle(); } };
+    const from = (): AsyncIterator<StreamChunk> => (source ??= stream[Symbol.asyncIterator]());
+    const iterator: AsyncIterator<StreamChunk> = {
+      async next() { try { const step = await from().next(); if (step.done) end(); return step; } catch (error) { end(); throw error; } },
+      async return(value?: unknown) { end(); const it = from(); return it.return ? await it.return(value) : { done: true, value: undefined }; },
+    };
+    return { [Symbol.asyncIterator]: () => iterator };
+  };
+  interface DispatchState { route?: CompiledRoute; produced: ResponseStream[] }
+  // Only a route that declares streaming may answer with a stream: a trusted `function` route with `stream: true`,
+  // or the mount of an extension registered with `streams: true`. Anything else is the generic 502, logged.
+  const admitStream = (result: HandlerResult, state: DispatchState, requestId: string): HandlerResult => {
+    const route = state.route;
+    const declared = route !== undefined && route.sandbox !== true
+      && ((route.stream === true && route.function !== undefined) || (route.extension !== undefined && extensionRegistry.entries.get(route.extension)?.streams === true));
+    if (!declared || !isResponseStream(result.stream) || (result.body !== undefined && result.body !== null)) {
+      cancelStream(isResponseStream(result.stream) ? result.stream : undefined);
+      for (const produced of state.produced) cancelStream(produced);
+      sink({ event: 'stream_refused', requestId, route: route?.pattern ?? null, reason: declared ? 'invalid' : 'undeclared' });
+      const error = new HttpError(502, 'Invalid function response');
+      if (route) errorRoutes.set(error, route.policy ?? null);
+      throw error;
+    }
+    return { ...result, stream: track(result.stream) };
+  };
   // Response phase: cache store, throttle headers, security headers,
   // compression, then operator plugins in reverse. A result produced by a
   // request-phase policy skips that policy's own response hook (a cache hit
@@ -227,7 +263,25 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes ?? (match?.route.proxy||match?.route.extension?1048576:undefined);
     },
-    async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client, requestId = crypto.randomUUID() }) {
+    async handle(request) {
+      const requestId = request.requestId ?? crypto.randomUUID();
+      const state: DispatchState = { produced: [] };
+      const result = await dispatch({ ...request, requestId }, state);
+      return result.stream === undefined ? result : admitStream(result, state, requestId);
+    },
+    async close() {
+      closing = true;
+      await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
+      if (active || streamsOpen) await new Promise<void>(resolve => { finish = resolve; });
+      await pool.close();
+      await trusted.close();
+      await closePolicies(shared);
+      await closePlugins(plugins);
+      await extensionRegistry.close();
+      await sink.close();
+    },
+  };
+  async function dispatch({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client, requestId = crypto.randomUUID(), signal = new AbortController().signal }: RuntimeRequest, state: DispatchState): Promise<HandlerResult> {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
       assert(typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128, 'Request id must be a non-empty string of at most 128 characters');
       active++;
@@ -238,12 +292,13 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         if (!match) {
           // site.notFound: answer an unmatched GET/HEAD with the configured page and status 404.
           if (notFoundPage && (method === 'GET' || method === 'HEAD')) {
-            const page = await (this as Runtime).handle({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, requestId, ...(client ? { client } : {}) });
+            const page = await dispatch({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, requestId, signal, ...(client ? { client } : {}) }, { produced: [] });
             return { ...page, status: 404 };
           }
           throw new HttpError(404, 'Not found');
         }
         const { route, path } = match;
+        state.route = route;
         // Configured pattern only; never the request path, query or parameter values.
         trace.route = route.pattern;
         // Known from here on, so an error thrown by the route's own checks
@@ -261,7 +316,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // (stripReservedContextHeaders), so a client can never inject or spoof a value
         // in it; only an authorize()/middleware() hook below can write into this clone
         // (RIM-EXT-CONTEXT-001, docs/RUNTIME-IMPLEMENTATION.md).
-        const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:stripReservedContextHeaders(new Headers(headers)),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null,requestId,env:Object.freeze({...route.env})};
+        const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:stripReservedContextHeaders(new Headers(headers)),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null,requestId,env:Object.freeze({...route.env}),signal};
         if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,route.request?.body?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
         // The request's opaque principal (RIM-EXT-PRINCIPAL-001): null until a principal-providing extension's
         // authorize() on this route sets it and allows the request; never read from the client request.
@@ -312,10 +367,12 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         const guestHeaders=new Headers(extensionRequest.headers);
         for(const name of credentialHeaders)guestHeaders.delete(name);
         const context: FunctionContext = { ...contextFor(route, path, parsed.query, guestHeaders, headerCounts), requestId };
+        // Never into the sandbox: an AbortSignal is host state and cannot cross the worker boundary.
+        if (route.sandbox !== true) context.signal = signal;
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;
-        if(route.extension){native=extensionResponse(await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest),assetContext(method,parsed.path,route.pattern));}
+        if(route.extension){const answer=await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest);if(answer&&isResponseStream(answer.stream))state.produced.push(answer.stream);native=extensionResponse(answer,assetContext(method,parsed.path,route.pattern));}
         else if(route.compiledProxy){
           // Same credential-free projection a guest function receives: an
           // extension-declared credential header in requestHeaders must not
@@ -347,7 +404,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // `sandbox: true`; every other route runs trusted, in-process
         // (docs/FUNCTION-SECURITY.md).
         const executor = route.sandbox ? pool : trusted;
-        return await finishResponse(await executor.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
+        const executed = await executor.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native);
+        if (isResponseStream(executed.stream)) state.produced.push(executed.stream);
+        return await finishResponse(executed);
         };
         // Extension `middleware()` hooks, declared the same way `authorize` is
         // (policies.extensions.<name> on this route, config already validated
@@ -380,6 +439,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         return await pipeline();
       } catch (error) {
+        // A stream produced before a later step failed is never pulled; stop its producer.
+        for (const produced of state.produced) cancelStream(produced);
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
           // A policy may answer instead of the error (stale-if-error serving a
@@ -393,18 +454,6 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           await pluginsError(plugins, policyReq, error);
         }
         throw error;
-      } finally { active--; if (!active && closing) finish?.(); }
-    },
-    async close() {
-      closing = true;
-      await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
-      if (active) await new Promise<void>(resolve => { finish = resolve; });
-      await pool.close();
-      await trusted.close();
-      await closePolicies(shared);
-      await closePlugins(plugins);
-      await extensionRegistry.close();
-      await sink.close();
-    },
-  };
+      } finally { active--; settle(); }
+  }
 }
