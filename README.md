@@ -63,7 +63,7 @@ npm run dev
 The starter deliberately has no routes. Ask the local MCP `get_context` tool
 (or run `urlcode context` in the site; the route project is `app/`), then add the smallest declarative route
 or custom code the application needs. `urlcode test` runs the project's HTTP
-fixtures, and `urlcode studio` serves a read-only page on localhost showing
+fixtures, and `urlcode studio` opens a read-only page on localhost showing
 what each route does and what needs attention
 ([review report and studio](docs/TOOLING.md#review-report)). The [install guide](docs/INSTALL.md) covers the checksum-verified
 script, project-local installs, the container image and signed provenance. To

@@ -456,9 +456,15 @@ existing outputs and adds no analysis of its own: the routes are exactly what
 reads it: a YAML file, or a project directory with its includes) the changes
 are [`diff`](#yaml-change-summaries)'s. So it shows no value those outputs
 omit: no binding value, secret or redirect destination from the change
-summary, and no project code runs.
+summary, and no project code runs. The one thing it reads that they do not:
+when `BEFORE` is a project directory, it compares the two directories' files
+by content, because `diff` reads YAML only and an edit to function code
+changes what a route does with no YAML change at all.
 
-The page has three parts:
+The page opens with a verdict (how many items to fix and to check) and four
+numbers: routes (with how many are new, changed and removed), routes that run
+project code (trusted and sandboxed), what the project needs from the host,
+and review findings. Then:
 
 - **Needs attention**, the only thing the report derives. `Fix` items need
   the operator's files, which stay outside the project. With `--policy` (the
@@ -473,18 +479,35 @@ The page has three parts:
   does, so a host file whose pin disagrees with the policy stops with that
   same error instead of producing a page. `Check` items: a disabled or
   expired route, each review finding, and, with `BEFORE`, new function or
-  middleware code, a `sandbox:` flip, a newly requested operator grant and a
-  removed route.
-- **Changes since `BEFORE`**, in plain sentences, and the grant note.
+  middleware code, a `sandbox:` flip, a newly requested operator grant, a
+  removed route and each changed code file (`.js`, `.mjs`, `.cjs`, `.ts` and
+  their variants), named with the route that runs it when one does.
+- **Changes since `BEFORE`**, in plain sentences, the files added, changed and
+  removed, and the grant note. The file comparison skips dot-entries,
+  `node_modules` and symbolic links, reads at most 5000 files per side and
+  parses nothing. A file a route names as its function or middleware, or that
+  an add-on's configuration names (an MCP tool handler, a hook) on a route
+  that mounts or requires that add-on, is attributed to that route; other
+  changed code, such as a helper it imports, is flagged with no route named. With a YAML
+  `BEFORE` only YAML is compared, and the page says that too.
 - **Routes**: handler, methods, whether code runs trusted or sandboxed,
-  policies and what the route needs from the host. Opening a route shows what
-  happens to a request: match, policies, add-on requirements, middleware,
-  handler, response caching and the targets that refuse it.
+  policies and what the route needs from the host. Each row is marked `new`,
+  `changed` or `code changed` and carries its own attention items; removed
+  routes are listed struck through. Filters narrow the table to routes that
+  need attention, changed routes or routes that run code; they are CSS, not
+  script. Opening a route shows what happens to a request: match, policies,
+  add-on requirements, middleware, handler, response caching, the targets
+  that refuse it and which keys changed.
+- **Code review findings**, one per `review` observation: its category and
+  confidence, the file and line, the routes, the excerpt and the suggested
+  alternative.
 
 Handler details are printed generically from `explain`, so a new handler or
 field appears without a change to the report. `--json` prints the same data
 (`format`, `projectSha256`, `routeCount`, `host`, `policy`, `attention`, `routes`,
-`review` and, with `BEFORE`, `change`), and `buildProjectReport` /
+`review` and, with `BEFORE`, `change`; with a project directory `BEFORE`,
+`change.files` holds `added`, `removed`, `changed` and `runBy`, file to
+routes), and `buildProjectReport` /
 `renderProjectReport` in `project-report.ts` produce it and the page. The page
 is deterministic, carries a Content-Security-Policy that allows no script and
 escapes all project text, so it is safe to publish as a pull request artifact.
@@ -493,9 +516,16 @@ It is read-only: it grants nothing and does not replace `validate` or `test`.
 ### Studio
 
 `urlcode studio [BEFORE] [--project DIR] [--port 4100] [--host 127.0.0.1]
-[--policy F] [--host-file F]` serves the same page while you work: it prints
-a URL, and every page load rebuilds the report from disk, so reloading shows
-the project as it is now. It takes `BEFORE`, `--policy` and `--host-file`
+[--policy F] [--host-file F] [--open|--no-open]` serves the same page while
+you work: it prints a URL and, run from a terminal, opens it in your browser.
+Every page load rebuilds the report from disk, so reloading shows the project
+as it is now, and the header says when the page was built. `--no-open` only
+prints the URL; when stdout is not a terminal (an agent or script reading
+the JSON `listening` event) nothing opens unless `--open` asks, and the event
+reports `opened`. The browser is `$BROWSER` when set (`BROWSER=none` never
+opens one), otherwise `open` on macOS, `explorer.exe` on Windows and
+`xdg-open` elsewhere; the URL is passed as one argument, never through a
+shell, and a browser that fails to start does not stop the studio. It takes `BEFORE`, `--policy` and `--host-file`
 exactly as `report` does. The policy file and `BEFORE` are re-read on each
 load, so a re-pin shows on reload. The host file is trusted operator code: it
 is loaded once at start, and a change to it needs a restart. When the project

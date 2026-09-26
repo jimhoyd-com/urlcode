@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,symlink,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -57,8 +57,8 @@ test('report against an earlier version lists new code, sandbox flips and reques
   ]);
   const html=renderProjectReport(report);
   assert.match(html,/Changes since <code>main<\/code>/);
-  assert.match(html,/Adds <code>\/g<\/code> \(function/);
-  assert.match(html,/Removes <code>\/a<\/code>/);
+  assert.match(html,/Adds <a href="#%2Fg"><code>\/g<\/code><\/a> \(function/);
+  assert.match(html,/Removes <a href="#%2Fa"><code>\/a<\/code><\/a>/);
   // Without --policy the page says grants are unchecked, because /g asks for one.
   assert.match(html,/No operator policy: env, secret and outbound grants/);
   assert.doesNotMatch(html,/No host file/);
@@ -136,6 +136,59 @@ test('a project-wide grant release reads as one line per name, and a removed rou
   const html=renderProjectReport(await buildProjectReport(after,{before:{input:{project:before},label:'before'}}));
   assert.equal(html.match(/No longer asks for secret TOKEN/g)?.length,1);
   assert.match(html,/No longer asks for secret TOKEN on 3 routes/);
-  assert.match(html,/Removes <code>\/c<\/code>/);
+  assert.match(html,/Removes <a href="#%2Fc"><code>\/c<\/code><\/a>/);
   assert.doesNotMatch(html,/Removes function/);
+});
+
+test('against a project directory the report compares files, so code-only edits and add-on handlers show',async t=>{
+  const handler=(text:string)=>`import {greet} from './lib/greet.mjs';\nexport default () => new Response(greet(${JSON.stringify(text)}));\n`;
+  const settings={extensions:{tools:{version:'1',config:{handlers:{list:{source:'./functions/tools.mjs'}}}}}};
+  const routes={'/a':{function:{source:'functions/a.mjs'}},'/b':{function:{source:'functions/b.mjs'}},'/tools/*':{extension:'tools'}};
+  const before=await project(t,routes,{'functions/a.mjs':handler('a'),'functions/b.mjs':handler('b'),'functions/lib/greet.mjs':'export const greet=x=>x;\n',
+    'functions/tools.mjs':'export const list=()=>[];\n','notes.txt':'old'},settings);
+  const after=await project(t,routes,{'functions/a.mjs':handler('A'),'functions/b.mjs':handler('b'),'functions/lib/greet.mjs':'export const greet=x=>`hi ${x}`;\n',
+    'functions/tools.mjs':'export const list=()=>[1];\n','functions/new.mjs':'export default 1;\n'},settings);
+  // Dot-entries, node_modules and links are never read.
+  await mkdir(join(after,'node_modules/pkg'),{recursive:true});
+  await writeFile(join(after,'node_modules/pkg/index.js'),'x');
+  await writeFile(join(after,'.env'),'SECRET=1');
+  if(process.platform!=='win32')await symlink(join(before,'notes.txt'),join(after,'linked.txt'));
+  const report=await buildProjectReport(after,{before:{input:{project:before},label:'main'}});
+  assert.deepEqual(report.change?.files,{
+    added:['functions/new.mjs'],removed:['notes.txt'],changed:['functions/a.mjs','functions/lib/greet.mjs','functions/tools.mjs'],
+    runBy:{'functions/a.mjs':['/a'],'functions/tools.mjs':['/tools/*']},
+  });
+  assert.deepEqual(report.attention.map(item=>`${item.route??'-'} ${item.message}`),[
+    '/a Code changed in functions/a.mjs.',
+    '- Code changed in functions/lib/greet.mjs (no route names it).',
+    '/tools/* Code changed in functions/tools.mjs.',
+  ]);
+  const html=renderProjectReport(report);
+  assert.match(html,/Changes 3 files: <code>functions\/a\.mjs<\/code>/);
+  assert.match(html,/Removes 1 file: <code>notes\.txt<\/code>/);
+  assert.match(html,/<tr id="%2Fa" class="route attention changed code"><td><details><summary><code>\/a<\/code> <span class="pill new">code changed<\/span>/);
+  assert.match(html,/<label for="show-changed">Changed \(2\)<\/label>/);
+  assert.doesNotMatch(html,/node_modules|\.env|linked\.txt/);
+  // A YAML BEFORE compares YAML only, and the page says so.
+  const yaml=await buildProjectReport(after,{before:{input:{yaml:stringify({version:'1',...settings,routes})},label:'urlcode.yaml'}});
+  assert.equal(yaml.change?.files,undefined);
+  assert.match(renderProjectReport(yaml),/BEFORE is a YAML file, so only YAML was compared/);
+});
+
+test('the page leads with a verdict, marks each route, and shows review findings with their excerpt',async t=>{
+  const orders='let count = 0;\nexport default async (request) => {\n  const body = await request.json();\n  if (typeof body.id !== "string") return new Response("<script>", {status: 422});\n  if (body.qty.length > 3) throw new Error("invalid qty");\n  count++;\n  return new Response(String(count));\n};\n';
+  const before=await project(t,{'/old':{respond:{text:'old'}},'/orders':{function:{source:'functions/orders.mjs'}}},{'functions/orders.mjs':'export default () => new Response("");\n'});
+  const after=await project(t,{'/orders':{function:{source:'functions/orders.mjs'}},'/ping':{respond:{text:'pong'}}},{'functions/orders.mjs':orders});
+  const report=await buildProjectReport(after,{before:{input:{project:before},label:'main'}});
+  assert(report.review.observations.length>0);
+  const html=renderProjectReport(report);
+  assert.match(html,new RegExp(`<div class="verdict check"><b>Nothing to fix</b> · ${report.attention.length} items to check before approving\\.</div>`));
+  assert.match(html,/<b>2<\/b><span>routes<\/span><span class="muted">1 new · 1 removed<\/span>/);
+  assert.match(html,/<tr id="%2Fping" class="route changed">.*<span class="pill new">new<\/span>/);
+  assert.match(html,/<tr id="%2Fold" class="route changed removed attention"><td><s><code>\/old<\/code><\/s>/);
+  assert.match(html,/<section id="findings"><h2>Code review findings \(\d+\)<\/h2>/);
+  assert.match(html,/<pre><code>[^<]*&lt;script&gt;/);
+  assert(!/<script/i.test(html));
+  // With nothing to report the verdict says so.
+  assert.match(renderProjectReport(await buildProjectReport(before)),/<div class="verdict ok"><b>Nothing needs attention\.<\/b><\/div>/);
 });
