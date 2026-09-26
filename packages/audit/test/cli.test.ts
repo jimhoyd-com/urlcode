@@ -84,8 +84,13 @@ test('backup and restore round-trip through the CLI to a new private file', asyn
   assert.equal((await run('backup', { database, destination, projectRoot })).code, 1, 'an existing destination is refused');
   assert.equal((await run('backup', { database, destination: join(projectRoot, 'copy.sqlite'), projectRoot })).code, 1, 'a destination inside the project is refused');
   const reopened = await createAudit({ projectSha256: pin, database: restored });
-  t.after(() => reopened.close());
   const instance = await reopened.registration.activate({}, activation(root));
-  t.after(() => instance.close?.());
-  assert.equal((await reopened.exports.query()).events.length, 3, 'a restored file opens as a live audit log');
+  try {
+    assert.equal((await reopened.exports.query()).events.length, 3, 'a restored file opens as a live audit log');
+  } finally {
+    // Close before the test's own t.after cleanup removes root: t.after hooks run in registration order, and
+    // this reopened database must not still be open when that runs (#768).
+    await instance.close?.();
+    await reopened.close();
+  }
 });

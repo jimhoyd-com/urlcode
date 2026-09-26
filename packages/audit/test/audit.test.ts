@@ -51,11 +51,16 @@ test('record stores a batch durably, once per id, with its defaults', async t =>
   assert.equal(events[1]!.metadata, null);
   await audit.close();
   const reopened = await createAudit({ projectSha256: pin, database });
-  t.after(() => reopened.close());
   const instance = await reopened.registration.activate({}, activation('/'));
-  t.after(() => instance.close?.());
-  assert.equal((await reopened.exports.query()).events.length, 2, 'the log survives a restart');
-  if (process.platform !== 'win32') assert.equal((await stat(database)).mode & 0o777, 0o600);
+  try {
+    assert.equal((await reopened.exports.query()).events.length, 2, 'the log survives a restart');
+    if (process.platform !== 'win32') assert.equal((await stat(database)).mode & 0o777, 0o600);
+  } finally {
+    // Close before the test's own t.after cleanup removes the directory: t.after hooks run in registration
+    // order, and this reopened database must not still be open when that runs (#768).
+    await instance.close?.();
+    await reopened.close();
+  }
 });
 
 test('record refuses a batch outside 1..100 or with any invalid event, storing nothing', async t => {
