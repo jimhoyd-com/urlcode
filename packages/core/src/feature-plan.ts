@@ -9,8 +9,11 @@ import type {RuntimeExtension} from './extensions.ts';
  * text as instructions, opens a host, or reads extension/project source. */
 export const featurePlanMaxBytes=32768;
 export const featurePlanMaxGoalLength=512;
-/** `extensions`: registrations from a loaded operator host file (an empty array when it registers none); leave it undefined when no host file is loaded, and `next` omits `get_extensions`. */
-export interface FeaturePlanOptions { target?:string; extensions?:readonly RuntimeExtension[]|undefined; }
+/**
+ * `extensions`: registrations from a loaded operator host file (an empty array when it registers none); leave it undefined when no host file is loaded, and `next` omits `get_extensions`.
+ * `origin`: the canonical origin the operator supplied (`--origin`), compiled into the project exactly as `context` does; never guessed.
+ */
+export interface FeaturePlanOptions { target?:string; extensions?:readonly RuntimeExtension[]|undefined; origin?:string|undefined; }
 export interface FeaturePlan {
  format:1; goalTerms:string[]; target:CapabilityTarget; project:{routes:number;extensions:string[]};
  applicable:{capabilities:{name:CapabilityName;support:string;reason:string}[];recipes:{name:string;description:string;matched:string[]}[]};
@@ -75,7 +78,7 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  // "signed" in a signature goal ("an HMAC-signed webhook") or "sign" in "sign-up" is not about signing a person in.
  const signatureGoal=goalTerms.some(term=>signatureTerms.includes(term)),signupGoal=goalTerms.includes('sign-up');
  const recipeGoalTerms=signatureGoal||signupGoal?goalTerms.filter(term=>term!=='sign'&&term!=='signed'):goalTerms;
- const context=await buildContext(project,{target,projectFlag:'.'}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes());
+ const context=await buildContext(project,{target,projectFlag:'.',origin:options.origin}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes());
  const capabilities=[...new Set(recipes.flatMap(recipe=>recipe.capabilities??[]).filter((name):name is CapabilityName=>typeof name==='string'))].sort();
  const catalog=getCapabilities(target), rows=new Map(catalog.capabilities.map(row=>[row.capability,row]));
  const registrations=new Map((options.extensions??[]).map(extension=>[extension.name,extension]));

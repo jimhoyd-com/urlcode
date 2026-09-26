@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
-import {cp,mkdtemp,rm,readFile,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {fileURLToPath} from 'node:url';
+import {cp,mkdtemp,rm,readFile,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {fileURLToPath} from 'node:url';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {confinedPath} from '../packages/core/src/mcp-authoring.ts';import {project,redirect} from './helpers.ts';
 import {scaffoldProject} from '../packages/core/src/scaffold.ts';import {buildContext,shellWord} from '../packages/core/src/context.ts';import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
@@ -157,13 +157,13 @@ test('with the operator host file the runners validate and test the widget route
  assert.equal(validated.exitCode,0,JSON.stringify(validated));
  assert.equal(tested.exitCode,0,JSON.stringify(tested));assert.match(String(tested.stdout),/"failed":0/);
  assert.equal(inProcess.total,1);assert.equal(inProcess.failed,0);
- assert.equal(context.commands.test,`urlcode test --project . --host-file ${hostFile} --origin ${widgetOrigin}`);
+ assert.equal(context.commands.test,`urlcode test --project ${shellWord(resolve(root))} --host-file ${hostFile} --origin ${widgetOrigin}`);
  assert.equal(context.prerequisites,undefined);
  // Without the host file the runners behave as before: the extension has no provider, so validation fails.
  const bare=await hostSession(root,[initialize,ready,...calls([{name:'run_validate',arguments:{}},{name:'get_context',arguments:{}}])],{origin:widgetOrigin});
  assert.notEqual(payload(bare[1]!).exitCode,0);
  const bareContext=payload(bare[2]!) as {commands:Record<string,string>;prerequisites:{flag:string}[]};
- assert.equal(bareContext.commands.validate,`urlcode validate --local --project . --origin ${widgetOrigin}`);
+ assert.equal(bareContext.commands.validate,`urlcode validate --local --project ${shellWord(resolve(root))} --origin ${widgetOrigin}`);
  assert.deepEqual(bareContext.prerequisites.map(item=>item.flag),['--host-file']);
 });
 test('authoring verdicts use the operator host file registrations: a scaffolded route under the widget extension validates (#778)',async t=>{

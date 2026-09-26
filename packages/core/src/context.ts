@@ -25,7 +25,7 @@ export interface ContextOptions {
  origin?:string|undefined;
  /** Estimated token budget; sections are dropped in a fixed order until the YAML rendering fits. */
  budget?:number|undefined;
- /** What `--project` should say in the emitted commands; defaults to the project argument itself. */
+ /** What `--project` should say in the emitted commands (shell-quoted on output); defaults to the project argument itself. Name the project as the caller's working directory reaches it: the commands carry no directory change. */
  projectFlag?:string|undefined;
 }
 export type ContextSection='routes'|'targets'|'constraintNotes'|'files'|'commands'|'summary';
@@ -89,9 +89,12 @@ const constraints:Record<string,{value:boolean|string;note:string}>={
 const routesOf=(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[]=>[...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];
 const sorted=(values:Iterable<string>)=>[...new Set(values)].sort();
 async function packageVersion():Promise<string> {return (JSON.parse(await readFile(new URL('../../../package.json',import.meta.url),'utf8')) as {version:string}).version;}
-/** Same loader and semantic compiler as inspectProject: no binding reads, no guest execution, no network. */
-async function compile(project:string) {
- const loaded=await loadDocument(project);await applySite(loaded,{});
+/**
+ * Same loader and semantic compiler as inspectProject: no binding reads, no guest execution, no network. `origin` is
+ * the operator's `--origin`, which site expansion needs for a sitemap; without it that expansion fails naming the flag.
+ */
+async function compile(project:string,origin:string|undefined) {
+ const loaded=await loadDocument(project);await applySite(loaded,{origin});
  const snapshot=await prepareFunctionSnapshot(loaded),bindings:Record<string,string>=Object.create(null);
  for(const route of Object.values(loaded.routes)) {for(const ref of Object.values(route.env||{}))if(ref.env)bindings[ref.env]='validation-only';for(const ref of Object.values(route.secrets||{}))bindings[ref.secret]='validation-only';}
  const compiled=await compileRoutes(loaded,bindings,requestedPermissions(loaded,snapshot),snapshot.projectSha256),routes=routesOf(compiled);
@@ -139,7 +142,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
  const selected:CapabilityTarget[]=options.target===undefined?[...capabilityTargets]:[normalizeCapabilityTarget(options.target)];
  const owned=options.host===undefined,host=options.host??await loadOperatorHost(options.hostFile,project);
  try {
-  const {loaded,compiled,routes}=await compile(project),document=loaded.document;
+  const {loaded,compiled,routes}=await compile(project,options.origin),document=loaded.document;
   const handlers:Record<string,number>={},policyCounts:Record<string,number>={},used=new Set<CapabilityName>();
   for(const name of handlerNames)handlers[name]=0;
   for(const name of policyNames)policyCounts[name]=0;
@@ -171,7 +174,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    }
    targets[target]=entry;
   }
-  const flag=options.projectFlag??project,cli=await cliInvocation(project),operator=operatorFlags(options);
+  const flag=shellWord(options.projectFlag??project),cli=await cliInvocation(project),operator=operatorFlags(options);
   const prerequisites=prerequisitesFor(options,Object.keys(document.extensions??{}).length,env.size+secrets.size);
   const context:ProjectContext={
    urlcode:await packageVersion(),schema:'1',
@@ -288,13 +291,13 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  if(!(contextTasks as readonly string[]).includes(task))throw new ConfigError(`Unknown context task; use one of: ${contextTasks.join(', ')}`,{code:'invalid-option-value'});
  const budget=options.budget;
  if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
- const flag=options.projectFlag??project;
+ const flag=shellWord(options.projectFlag??project);
  const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape})),starter:redirectStarter()};
  const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
  if(exists) {
   const owned=options.host===undefined,host=options.host??await loadOperatorHost(options.hostFile,project);
   try {
-   const {loaded,compiled,routes}=await compile(project);
+   const {loaded,compiled,routes}=await compile(project,options.origin);
    context.project={entry:'urlcode.yaml',routes:compiled.count,redirects:routes.filter(route=>route.redirect).map(route=>({path:route.pattern,status:route.redirect!.status??302,url:route.redirect!.url})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0).slice(0,20),site:sorted(Object.keys(loaded.document.site??{}))};
   } finally {if(owned)await host.close?.();}
  }

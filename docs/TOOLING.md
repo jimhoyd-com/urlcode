@@ -88,7 +88,10 @@ The tooling API consolidates authoring operations without starting a runtime:
 `--json`) derived only from the compiled project and the capability catalog,
 never from prose. It uses the same loader and semantic compiler as
 `inspectProject`: no binding values, guest execution, environment reads or
-network. Keys always appear in this order:
+network. `--origin` reaches site expansion exactly as it does for `validate`,
+so a project that declares `site.sitemap` compiles with it; without it the
+command fails naming `--origin` as the missing prerequisite, and no origin is
+guessed. Keys always appear in this order:
 
 - `urlcode` (package version) and `schema` (`"1"`).
 - `project`: entry file, route count, handlers used with counts, extensions
@@ -110,7 +113,12 @@ network. Keys always appear in this order:
   the compiled route count), `routes` and `capabilities` invocations. The four
   that activate the project (`validate`, `test`, `audit`, `routes`) repeat the
   operator's own `--host-file` and `--origin` when they were given, so the
-  suggested command checks the same host-registered extensions (#778).
+  suggested command checks the same host-registered extensions (#778). Every
+  path in them is shell-quoted for the local shell (single quotes on POSIX,
+  double quotes on Windows) when it is not a plain word, so a project directory
+  with spaces or an apostrophe stays one argument. They carry no directory
+  change: the CLI repeats `--project` as you gave it, so run them from the
+  directory you ran `context` in.
 - `prerequisites` (only when something is missing): the operator flags those
   commands need but the caller did not supply, each with a reason:
   `--host-file` when the project declares extensions and no host file was
@@ -129,12 +137,16 @@ budget the smallest rendering cannot meet is an error rather than an
 overrun. `--stats` writes a JSON line to stderr comparing the estimated size
 of the shipped documentation (`docs/*.md` and `llms.txt`) with the emitted
 context, labeled `estimate: characters/4`. The MCP tool `get_context` takes
-`target` and `budget` and returns the same object with `--project .` in the
-commands; it never takes a host file or any other path as an argument. When
-the operator started the server with `--host-file` (and `--origin`), the
-commands carry that host file as an absolute path (and that origin); a flag
-the operator did not give the server is listed under `prerequisites`.
-`--task redirects` repeats the same operator flags in its commands.
+`target` and `budget` and returns the same object with the project's absolute
+path as `--project` in the commands, so they run from the client's working
+directory (the site root for the `--project app --host-file host.mjs` server
+`urlcode init` registers) or any other; it never takes a host file or any
+other path as an argument. When the operator started the server with
+`--host-file` (and `--origin`), the commands carry that host file as an
+absolute path (and that origin), and the origin also reaches site expansion; a
+flag the operator did not give the server is listed under `prerequisites`.
+`--task redirects` repeats the same project path and operator flags in its
+commands.
 
 Inspection reads declared configuration and function source graphs to validate
 references and compute revision hashes. It compiles route and policy semantics
@@ -148,7 +160,9 @@ checks. Build output remains an explicit separate build API/CLI operation.
 ## Feature planning
 
 After `get_context`, use `urlcode plan-feature "goal" --project DIR --target
-self-hosted --json` (MCP `plan_feature {goal, target?}`) when the next question
+self-hosted --json` (MCP `plan_feature {goal, target?}`; add `--origin URL`,
+or start the server with it, when the project declares `site.sitemap`, as for
+`context`) when the next question
 is which already-supported contract applies. It returns a bounded structured
 plan: matching local recipes and capability decisions for the current revision,
 operator-owned extension prerequisites and their registration/target status,

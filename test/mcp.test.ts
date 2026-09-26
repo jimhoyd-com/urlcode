@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
-import {mkdtemp,rm,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {artifactSite,project,redirect} from './helpers.ts';
 import {initProject} from '../packages/core/src/authoring.ts';
 import {readAddonCatalog} from '../packages/core/src/addon-manifest.ts';
@@ -248,7 +248,7 @@ test('MCP forwards the --host-file registrations to get_context, inspect, valida
  // The host-aware SDK: the same host file, its registrations passed as `extensions` (buildContext loads it by `hostFile`).
  const host=await loadOperatorHost(file,root);const extensions=host.extensions;
  const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as unknown;
- assert.deepEqual(context,json(await buildContext(root,{projectFlag:'.',hostFile:file})));
+ assert.deepEqual(context,json(await buildContext(root,{projectFlag:resolve(root),hostFile:file})));
  assert.deepEqual(inspected,json(await inspectProject(root,{extensions})));
  assert.deepEqual(validated,json(await validateProject(root,{extensions})));
  assert.deepEqual(explained,json(await explainRoute(root,'/private',{extensions})));

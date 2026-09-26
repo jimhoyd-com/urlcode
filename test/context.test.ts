@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {resolve} from 'node:path';
 import {Readable,Writable} from 'node:stream';
 import {parse} from 'yaml';
 import {buildContext,renderContext,estimateTokens} from '../packages/core/src/context.ts';
@@ -64,7 +65,7 @@ test('MCP get_context returns the same object read-only',async()=>{
   {jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_context',arguments:{budget:500}}},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_context',arguments:{hostFile:'/etc/passwd'}}}];
  await serveMcp({project:starter,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});
  const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{content:{text:string}[]};error?:{code:number}});
- assert.deepEqual(JSON.parse(replies[1]!.result.content[0]!.text),JSON.parse(JSON.stringify(await buildContext(starter,{budget:500,projectFlag:'.'}))));
+ assert.deepEqual(JSON.parse(replies[1]!.result.content[0]!.text),JSON.parse(JSON.stringify(await buildContext(starter,{budget:500,projectFlag:resolve(starter)}))));
  assert.equal(replies[2]!.error?.code,-32602);
 });
 test('the CLI emits YAML by default, JSON on request and estimates on stderr',()=>{
