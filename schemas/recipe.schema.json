@@ -117,7 +117,7 @@
       "properties": {
         "fixtures": {"description": "The request fixture file, when the project has one.", "type": "string", "maxLength": 200},
         "commands": {
-          "description": "The exact commands that validate, test and audit the project, run from its directory.",
+          "description": "The exact commands that validate, test and audit the project, run from its directory with only the published package installed: the directory `urlcode recipes add` or `urlcode examples add` creates, or for a non-runnable example the project it applies to. A `/operator/` path is an operator-owned location outside the project that an earlier command writes or the operator supplies; a `<...>` placeholder is operator input.",
           "type": "array",
           "minItems": 1,
           "maxItems": 12,

@@ -86,6 +86,27 @@ copy), so a search for `etag` answers the cookbook and its `/versioned` route.
 Entries without a `urlcode.yaml` (operator rules, monitoring configuration,
 scripts) are `runnable: false` and carry no derived fields.
 
+`urlcode examples add NAME --out NEW_DIRECTORY [--dry-run]` copies a runnable
+example into a new directory with the same guarantees as `recipes add` below. It
+copies every file of the packaged example except its catalog metadata
+(`example.yaml`, the cookbook's `route-index.json`); files an authoring copy
+refuses, such as dotfiles and `package.json`, are listed under `omitted` and stay
+readable in the installed package. A non-runnable entry is refused; read its
+files with MCP `get_example`, which also returns the `add` command for a
+runnable one.
+
+### Listed commands
+
+`tests.commands` of every recipe and example run as written from the directory
+`recipes add` or `examples add` creates, with only the published package
+installed (a non-runnable example's commands run from the project it applies
+to). A `/operator/` path is an operator-owned location outside the project,
+written by an earlier command or supplied by the operator; a `<...>` placeholder
+is operator input. `npm run check` refuses a command that starts with anything
+but `urlcode`, `node`, `npm` or `npx`, or names a path of the source checkout, and the package
+smoke test (`npm run test:package`) copies each example with fixtures from the
+packed archive and runs its commands verbatim.
+
 ## Adding a recipe
 
 `add` creates a new standalone directory. It refuses an existing destination,
@@ -101,7 +122,8 @@ attacker concurrently replacing the caller's output directories.
 ## SDK and MCP
 
 The SDK provides `listRecipes()`, `searchRecipes(text)`, `showRecipe(name)`,
-`addRecipe(name, output, {dryRun})`, `listExamples()` and `searchExamples(text)`.
+`addRecipe(name, output, {dryRun})`, `listExamples()`, `searchExamples(text)` and
+`addExample(name, output, {dryRun})`.
 Catalog names are a fixed list in code; metadata and file lists come from each
 schema-checked `recipe.yaml` and are returned as copies. Unknown names and
 arbitrary paths/URLs fail closed. The stdio MCP server adds `search_recipes` and

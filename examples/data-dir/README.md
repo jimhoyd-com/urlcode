@@ -22,15 +22,17 @@ There is no default: a binding the operator did not grant, or a `DATA_DIR` that
 is not set, refuses to activate rather than falling back to a directory the
 project chose. Use `{value: ...}` only for a fixed literal.
 
-Run it from the runtime checkout. The policy lives outside the project, and the
-`--policy` file must be regenerated whenever the config or function changes:
+Copy it with `urlcode examples add data-dir --out data-dir` and run it from that
+directory. The policy lives outside the project (below, in an operator-owned
+`/operator/` directory), and the `--policy` file must be regenerated whenever the
+config or function changes:
 
 ```sh
-urlcode permissions --project examples/data-dir > /path/outside/project/policy.json
-export DATA_DIR=./examples/data-dir/data        # relative paths resolve from the process working directory
-urlcode validate --local --project examples/data-dir --policy /path/outside/project/policy.json
-urlcode test --project examples/data-dir --policy /path/outside/project/policy.json
-urlcode audit --project examples/data-dir --expect-routes 1 --policy /path/outside/project/policy.json
+urlcode permissions --project . > /operator/data-dir-policy.json
+export DATA_DIR=./data        # relative paths resolve from the process working directory
+urlcode validate --local --project . --policy /operator/data-dir-policy.json
+urlcode test --project . --policy /operator/data-dir-policy.json
+urlcode audit --project . --expect-routes 1 --policy /operator/data-dir-policy.json
 ```
 
 For local development, `DATA_DIR=...` may live in an ignored `.env.local`;

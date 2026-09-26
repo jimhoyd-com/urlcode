@@ -18,6 +18,10 @@ routes:
     match: {host: conditions.example.test}
     respond: {text: trusted origin}
   /limited:
+    # The only case matches GET, so HEAD falls through to 404 by design; the
+    # fixtures assert that 404, and audit lists this waiver with its reason.
+    coveredElsewhere:
+      HEAD: "Deliberately unmatched: the only case requires GET, and tests/requests.json asserts HEAD's 404."
     conditional:
       cases:
         - match: {method: GET}

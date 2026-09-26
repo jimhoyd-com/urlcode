@@ -71,6 +71,23 @@ export function derivedDifferences(metadata: CatalogMetadata,derived: DerivedMet
   if(metadata.routes!==derived.routes)problems.push(`routes should be ${derived.routes}`);
   return problems;
 }
+/**
+ * Reports `tests.commands` a consumer cannot run as written. The commands run from
+ * the added directory with only the published package installed, so each starts
+ * with `urlcode`, `node`, `npm` or `npx` (after `NAME=value` assignments) and names
+ * no path of this source checkout; empty means every command is in consumer form.
+ */
+const consumerPrograms=new Set(['urlcode','node','npm','npx']);
+export function commandProblems(metadata: CatalogMetadata): string[] {
+  const problems: string[]=[];
+  for(const command of metadata.tests?.commands??[]){
+    // A `<...>` placeholder is one word of operator input, even when it contains spaces.
+    const program=command.replace(/<[^>]*>/g,'placeholder').split(/\s+/).find(word=>!/^[A-Z_][A-Z0-9_]*=/.test(word));
+    if(!consumerPrograms.has(program??''))problems.push(`${command}: start with ${[...consumerPrograms].join(', ')}, the programs a consumer of the published package has`);
+    if(/(?:^|[\s="'])(?:\.\/)?(?:packages|examples|recipes|starters)\/|\$PWD|\bsrc\/cli\.ts\b/.test(command))problems.push(`${command}: names a path in the URLCode source checkout; write it for the added directory (--project .)`);
+  }
+  return problems;
+}
 const stopWords=new Set(['a','an','and','the','with','for','to','of','in','on','that','my','i','want','need']);
 export function searchTerms(text: string): string[] {
   assert(typeof text==='string' && text.length<=256,'Search text must be at most 256 characters');

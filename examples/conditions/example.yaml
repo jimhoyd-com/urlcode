@@ -12,8 +12,8 @@ files: [urlcode.yaml, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - node packages/core/src/cli.ts validate --local --project examples/conditions --origin https://conditions.example.test
-    - node packages/core/src/cli.ts test --project examples/conditions --origin https://conditions.example.test
-    - node packages/core/src/cli.ts audit --project examples/conditions --expect-routes 4 --origin https://conditions.example.test
+    - urlcode validate --local --project . --origin https://conditions.example.test
+    - urlcode test --project . --origin https://conditions.example.test
+    - urlcode audit --project . --expect-routes 4 --origin https://conditions.example.test
 behavior:
   - cases are provably disjoint and every branch stays no-store; no branch is authentication

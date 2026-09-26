@@ -12,10 +12,10 @@ files: [urlcode.yaml, functions/note.mjs, data/welcome.txt, tests/requests.json,
 tests:
   fixtures: tests/requests.json
   commands:
-    - urlcode permissions --project examples/data-dir > /path/outside/project/policy.json
-    - DATA_DIR=./examples/data-dir/data urlcode validate --local --project examples/data-dir --policy /path/outside/project/policy.json
-    - DATA_DIR=./examples/data-dir/data urlcode test --project examples/data-dir --policy /path/outside/project/policy.json
-    - DATA_DIR=./examples/data-dir/data urlcode audit --project examples/data-dir --expect-routes 1 --policy /path/outside/project/policy.json
+    - urlcode permissions --project . > /operator/data-dir-policy.json
+    - DATA_DIR=./data urlcode validate --local --project . --policy /operator/data-dir-policy.json
+    - DATA_DIR=./data urlcode test --project . --policy /operator/data-dir-policy.json
+    - DATA_DIR=./data urlcode audit --project . --expect-routes 1 --policy /operator/data-dir-policy.json
 behavior:
   - GET /notes/welcome answers 200 with the text of $DATA_DIR/welcome.txt
   - an unknown or malformed name answers 404 or 400 and never reaches outside the directory

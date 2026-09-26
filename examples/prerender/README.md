@@ -11,14 +11,15 @@ first-party code that reads nothing but the literal arguments in
 `sandbox: true` prerenders the same way — and either way the generated project
 runs no code at all.
 
-From the runtime checkout:
+Copy it with `urlcode examples add prerender --out prerender`, then from that
+directory (`/operator/prerendered` is any output directory outside the project):
 
 ```sh
-node packages/core/src/cli.ts dev --project examples/prerender        # the dynamic source, live
-node packages/core/src/cli.ts test --project examples/prerender       # 7 fixtures
-node examples/prerender/prerender.mjs examples/prerender /absolute/out
-node packages/core/src/cli.ts test --project /absolute/out            # fixtures the build wrote
-node packages/core/src/cli.ts audit --project /absolute/out --expect-routes 3
+urlcode dev --project .                                  # the dynamic source, live
+urlcode test --project .                                 # 7 fixtures
+node prerender.mjs . /operator/prerendered
+urlcode test --project /operator/prerendered             # fixtures the build wrote
+urlcode audit --project /operator/prerendered --expect-routes 3
 ```
 
 The same three URLs answer identically before and after. The difference is what

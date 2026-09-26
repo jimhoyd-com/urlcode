@@ -1,9 +1,10 @@
 # Create, read, update, restart
 
-One ordered fixture in `tests/requests.json` walks a note through its whole life:
+One ordered fixture in `tests/requests.json` walks a note through its whole life.
+Copy it with `urlcode examples add lifecycle --out lifecycle`, then from that directory:
 
 ```sh
-urlcode test --project examples/lifecycle
+urlcode test --project .
 ```
 
 The fixture is a `steps` list. The POST captures the new note's `id` (from the JSON

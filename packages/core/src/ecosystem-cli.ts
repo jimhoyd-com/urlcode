@@ -19,7 +19,7 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
     else if(operation==='add'){assert(name && options.out,'Provide a recipe name and --out new-directory');print(await addRecipe(name,options.out,{dryRun:options['dry-run']}));}
     else assert(false,'Use recipes list, search, show or add');
   }else if(command==='examples'||command==='example'){
-    const {listExamples,searchExamples}=await import('./examples.ts');
+    const {listExamples,searchExamples,addExample,exampleAddCommand}=await import('./examples.ts');
     const [operation='list',text]=args;
     assert(args.length<=2,'Unexpected example arguments');
     if(operation==='list'){assert(text===undefined,'Unexpected example name');const examples=await listExamples();print(options.json?examples:formatCatalog(examples));}
@@ -28,12 +28,13 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
       if(options.json)print(found);
       else{
         const lines=[formatSearch(found.query,found.results)];
-        if(found.best)lines.push(`\nSmallest runnable match: examples/${found.best.id} (${found.best.routes??0} routes)`+(found.best.route?`, route ${found.best.route.path} in ${found.best.route.file}`:''));
+        if(found.best)lines.push(`\nSmallest runnable match: examples/${found.best.id} (${found.best.routes??0} routes)`+(found.best.route?`, route ${found.best.route.path} in ${found.best.route.file}`:'')+`\nCopy it to run its commands: ${exampleAddCommand(found.best.id)}`);
         for(const result of found.results)for(const route of result.matchedRoutes.slice(0,5))lines.push(`  ${result.id} ${route.path.padEnd(24)} ${route.file}  ${route.tags.join(' ')}`);
         print(lines.join('\n')+'\n');
       }
     }
-    else assert(false,'Use examples list or search');
+    else if(operation==='add'){assert(text && options.out,'Provide an example name and --out new-directory');print(await addExample(text,options.out,{dryRun:options['dry-run']}));}
+    else assert(false,'Use examples list, search or add');
   }else if(command==='docs'){
     const [operation,text]=args;
     assert(operation==='search' && args.length===2,'Use docs search <text>');

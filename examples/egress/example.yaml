@@ -13,7 +13,7 @@ grants:
 files: [urlcode.yaml, README.md]
 tests:
   commands:
-    - node packages/core/src/cli.ts permissions --project examples/egress
-    - node packages/core/src/cli.ts validate --local --project examples/egress --policy /operator/egress-policy.json
+    - urlcode permissions --project . > /operator/egress-policy.json
+    - urlcode validate --local --project . --policy /operator/egress-policy.json
 behavior:
   - without the policy the project refuses to activate; nothing here reaches the network during authoring inspection

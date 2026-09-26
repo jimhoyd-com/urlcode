@@ -9,13 +9,13 @@ exercise the fourteen reusable modules in `middleware/`, described in
 [middleware examples](../../docs/MIDDLEWARE-EXAMPLES.md). No credentials or
 external services are required. Redirects target example.com; tests never follow them.
 
-From the runtime checkout:
+Copy it with `urlcode examples add cookbook --out cookbook`, then from that directory:
 
 ```sh
-node packages/core/src/cli.ts validate --project examples/cookbook
-node packages/core/src/cli.ts test --project examples/cookbook
-node packages/core/src/cli.ts audit --project examples/cookbook --expect-routes 40
-node packages/core/src/cli.ts dev --project examples/cookbook
+urlcode validate --local --project .
+urlcode test --project .
+urlcode audit --project . --expect-routes 40
+urlcode dev --project .
 ```
 
 The [YAML guide](../../docs/YAML-GUIDE.md) explains the recipes and binding policy.

@@ -137,6 +137,38 @@ try {
     await cp(resolve('starters','default'),copied,{recursive:true});
     command(process.execPath,[cli,'test','--project',join(copied,'app')]);
   }
+  {
+    // Every packaged example with fixtures, copied the way a consumer copies it, runs
+    // its listed tests.commands verbatim from that copy (#789): `urlcode` is the
+    // installed CLI and `/operator/` a scratch directory outside the project. The
+    // copies sit under the install so prerender.mjs resolves the package as a consumer's would.
+    const examples = JSON.parse(command(process.execPath,[cli,'examples','list','--json'])) as { id:string; runnable?:boolean; tests?:{ fixtures?:string; commands:string[] } }[];
+    const copies = join(install,'examples'), operator = join(root,'operator'); await mkdir(copies); await mkdir(operator);
+    const refused = spawnSync(process.execPath,[cli,'examples','add','monitoring','--out',join(copies,'monitoring')],{ encoding:'utf8',timeout:childTimeoutMs });
+    assert.notEqual(refused.status,0,'A non-runnable example must not be added as a project');
+    let ran = 0;
+    for (const example of examples) {
+      if (!example.tests?.fixtures) continue;
+      const project = join(copies,example.id);
+      command(process.execPath,[cli,'examples','add',example.id,'--out',project]);
+      for (const line of example.tests.commands) {
+        assert.doesNotMatch(line,/["'<]/,`${example.id} has fixtures, so its commands must run without operator input: ${line}`);
+        const words = line.split(/\s+/).map(word => word.startsWith('/operator/') ? join(operator,word.slice('/operator/'.length)) : word);
+        const environment: Record<string,string> = {};
+        while (/^[A-Z_][A-Z0-9_]*=/.test(words[0] ?? '')) { const [name,...value] = words.shift()!.split('='); environment[name!] = value.join('='); }
+        const redirect = words.indexOf('>'), output = redirect === -1 ? undefined : words[redirect+1];
+        if (redirect !== -1) words.splice(redirect,2);
+        const [program,...args] = words;
+        assert.ok(program === 'urlcode' || program === 'node',`${example.id}: ${line}`);
+        const result = spawnSync(process.execPath,program === 'urlcode' ? [cli,...args] : args,{ cwd:project,encoding:'utf8',timeout:childTimeoutMs,env:{ ...process.env,...environment } });
+        assert.equal(result.status,0,`examples/${example.id}: ${line}\n${result.stderr || result.stdout}`);
+        if (output) await writeFile(output,result.stdout);
+        ran++;
+      }
+    }
+    assert.ok(ran > 0,'No packaged example command ran');
+    console.log(`${ran} packaged example commands ran from consumer copies`);
+  }
   const scaffold = join(root,'scaffold'); await mkdir(scaffold);
   await writeFile(join(scaffold,'urlcode.yaml'),'version: "1"\nroutes:\n  /hello:\n    function:\n      source: functions/hello.mjs\n');
   const preview=JSON.parse(command(process.execPath,[cli,'scaffold','--project',scaffold,'--dry-run'])) as { created: string[] }; // child-process boundary: the CLI's JSON preview

@@ -1,11 +1,12 @@
 # Asset demonstration
 
-This is a runnable example, not a separate starter choice. From the runtime checkout:
+This is a runnable example, not a separate starter choice. Copy it with
+`urlcode examples add assets --out assets`, then from that directory:
 
 ```sh
-make dev PROJECT=examples/assets
+make dev
 # In another terminal:
-make test-project PROJECT=examples/assets
+make test
 ```
 
 Try `/hello/Ada` for a function, `/go` for a redirect, `/about` for HTML,

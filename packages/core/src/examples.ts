@@ -1,5 +1,5 @@
-import {readFile} from 'node:fs/promises';
-import {basename} from 'node:path';
+import {readFile,readdir} from 'node:fs/promises';
+import {basename,join,relative,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {loadDocument,parseYaml} from './config.ts';
 import {applySite} from './site.ts';
@@ -7,6 +7,7 @@ import {routeCapabilities} from './capabilities.ts';
 import {readMetadata,searchMetadata,searchTerms} from './catalog.ts';
 import type {CatalogMetadata,SearchHit} from './catalog.ts';
 import {assert} from './errors.ts';
+import {authoringPath,readAuthoringFile,publishAuthoringProject} from './authoring-files.ts';
 import {resolveHandlerName} from './types.ts';
 import type {RouteConfig} from './types.ts';
 
@@ -15,6 +16,8 @@ export interface ExampleSummary extends CatalogMetadata { name: string }
 /** One cookbook route in the generated tag index (examples/cookbook/route-index.json). */
 export interface RouteIndexEntry { path: string; file: string; handler: string; methods: string[]; tags: string[]; description: string }
 export interface RouteIndex { format: 1; project: string; routes: number; entries: RouteIndexEntry[] }
+/** `omitted` names packaged files an authoring copy refuses (dotfiles, package.json); they stay readable in the installed package. */
+export interface ExampleAddReport { name: string; output: string; dryRun: boolean; files: string[]; omitted: string[] }
 export interface ExampleSearchResult {
   query: string; count: number;
   /** The smallest matching runnable example, and its best matching cookbook route when the cookbook is that example. */
@@ -31,6 +34,35 @@ export async function listExamples(): Promise<ExampleSummary[]> {
   const result: ExampleSummary[]=[];
   for(const name of exampleNames)result.push(await metadata(name));
   return result;
+}
+/** The command that copies a runnable example into a new directory, where its `tests.commands` run. */
+export const exampleAddCommand=(name: string): string=>`urlcode examples add ${name} --out ${name}`;
+// Package metadata beside the project, not part of it.
+const catalogFiles=new Set(['example.yaml',routeIndexFile]);
+/** Every regular file of one fixed packaged example, project-relative and sorted; `dist/` and `node_modules/` are local build state. */
+async function exampleFiles(name: string): Promise<string[]> {
+  const found: string[]=[];
+  for(const entry of await readdir(root(name),{recursive:true,withFileTypes:true})){
+    const path=relative(root(name),join(entry.parentPath,entry.name)).split(sep).join('/');
+    if(/^(?:dist|node_modules)(?:\/|$)/.test(path)||catalogFiles.has(path)||entry.isDirectory())continue;
+    assert(entry.isFile(),`examples/${name}/${path} is not an ordinary file`);
+    found.push(path);
+  }
+  return found.sort();
+}
+const safe=(path: string): boolean=>{try{authoringPath(path);return true;}catch{return false;}};
+/**
+ * Copies one fixed runnable example into a new directory, the way `addRecipe`
+ * copies a recipe, so its `tests.commands` (written for `--project .`) run there
+ * with only the published package installed. It refuses an existing destination.
+ */
+export async function addExample(name: string,output: string,{dryRun=false}: {dryRun?: boolean|undefined}={}): Promise<ExampleAddReport> {
+  assert((exampleNames as readonly string[]).includes(name),'Unknown bundled example');
+  const example=await metadata(name);
+  assert(example.runnable!==false,`${name} is not a runnable project; read its files with get_example or from the installed package`);
+  const all=await exampleFiles(name),files=all.filter(safe),content=new Map<string,Buffer>();
+  for(const path of files)content.set(path,await readAuthoringFile(root(name),path,1048576));
+  return {name,output:await publishAuthoringProject(output,content,dryRun),dryRun,files,omitted:all.filter(path=>!safe(path))};
 }
 const handlerOf = (route: RouteConfig): string => resolveHandlerName(route, 'unknown');
 /**

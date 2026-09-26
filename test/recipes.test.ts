@@ -6,8 +6,9 @@ import {createHmac} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {listRecipes,searchRecipes,showRecipe,addRecipe,recipeNames} from '../packages/core/src/recipes.ts';
-import {listExamples,searchExamples,buildRouteIndex,readRouteIndex} from '../packages/core/src/examples.ts';
-import {searchMetadata,deriveMetadata,derivedDifferences} from '../packages/core/src/catalog.ts';
+import {listExamples,searchExamples,buildRouteIndex,readRouteIndex,addExample} from '../packages/core/src/examples.ts';
+import {getExample} from '../packages/core/src/agent-context.ts';
+import {searchMetadata,deriveMetadata,derivedDifferences,commandProblems} from '../packages/core/src/catalog.ts';
 import {buildTypeScriptProject} from '../packages/core/src/typescript-authoring.ts';
 import {startServer} from '../packages/core/src/server.ts';
 import {runProjectTests} from '../packages/core/src/project-tests.ts';
@@ -263,4 +264,30 @@ test('examples carry the same metadata shape and search returns the smallest run
   await mkdir(join(small,'m'));await writeFile(join(small,'f.mjs'),'export default ()=>new Response("x")');await writeFile(join(small,'m','trace.mjs'),'export default (r,c,n)=>n()');
   const index=await buildRouteIndex(small,'small');
   assert.deepEqual(index.entries.map(entry=>[entry.path,entry.file,entry.handler,entry.tags]),[['/a','urlcode.yaml','redirect',['redirect','get','head']],['/f','urlcode.yaml','function',['function','get','head','middleware','trace']]]);
+});
+
+test('example add copies a whole runnable example whose listed commands run from the copy (#789)',async t=>{
+  const root=await project(t,{}),out=join(root,'assets');
+  const preview=await addExample('assets',out,{dryRun:true});await assert.rejects(lstat(out),{code:'ENOENT'});
+  const added=await addExample('assets',out);assert.deepEqual(added.files,preview.files);
+  for(const file of ['urlcode.yaml','functions/hello.mjs','public/assets/example.txt','tests/requests.json','README.md','Makefile'])assert.ok(added.files.includes(file),file);
+  assert.ok(!added.files.includes('example.yaml'));
+  assert.deepEqual(added.omitted,['.env.example','.gitattributes','.gitignore']);
+  await assert.rejects(addExample('assets',out),/already exists/);
+  const tested=await runProjectTests(out,{});assert.ok(tested.total>0);assert.equal(tested.failed,0);
+  const cookbook=await addExample('cookbook',join(root,'cookbook'));
+  assert.ok(!cookbook.files.includes('route-index.json'));assert.ok(cookbook.files.includes('middleware/etag.mjs'));
+  await assert.rejects(addExample('monitoring',join(root,'monitoring')),/not a runnable project/);
+  await assert.rejects(addExample('../recipes/redirect',join(root,'escape')),/Unknown bundled example/);
+});
+
+test('every catalog command is written for the added directory, never the source checkout (#789)',async()=>{
+  for(const entry of [...await listRecipes(),...await listExamples()])assert.deepEqual(commandProblems(entry),[],entry.id);
+  const checkout={id:'x',description:'x',tags:['x'],complexity:'starter' as const,files:['urlcode.yaml']};
+  for(const command of ['node packages/core/src/cli.ts test --project examples/x','urlcode test --project examples/x','DATA_DIR=./examples/x/data urlcode test --project .','urlcode audit --compliance-rules "$PWD/rules.mjs"','make test'])
+    assert.equal(commandProblems({...checkout,tests:{commands:[command]}}).length>0,true,command);
+  assert.deepEqual(commandProblems({...checkout,tests:{commands:['DATA_DIR=./data urlcode test --project . --policy /operator/p.json','node prerender.mjs . /operator/out','urlcode test --project ../hello-built','PROJECT_SHA256=<reviewed revision> urlcode test --project .']}}),[]);
+  const example=await getExample('body-validation');assert.equal(example.add,'urlcode examples add body-validation --out body-validation');
+  assert.deepEqual(Object.keys(example.content).sort(),['README.md','urlcode.yaml']);
+  const monitoring=await getExample('monitoring');assert.equal('add' in monitoring,false);assert.equal(Object.keys(monitoring.content).length,4);
 });

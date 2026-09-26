@@ -101,7 +101,7 @@ test('the published conditions example has executable branch and guard coverage'
   const {runProjectTests}=await import('../packages/core/src/project-tests.ts');
   const {fileURLToPath}=await import('node:url');
   const result=await runProjectTests(fileURLToPath(new URL('../examples/conditions',import.meta.url)),{origin:'https://conditions.example.test'});
-  assert.deepEqual(result,{total:11,failed:0});
+  assert.deepEqual(result,{total:13,failed:0});
 });
 test('conditional route responses cannot opt into provider-specific downstream caches',async t=>{
   for(const name of ['CDN-Cache-Control','Vercel-CDN-Cache-Control','Surrogate-Control']){

@@ -408,7 +408,8 @@ capability preflight, required services and operator grants, inputs to edit,
 the exact validate/test/audit commands and expected behavior. `urlcode examples
 search <text>` (MCP `search_examples`) answers the smallest runnable example and,
 for the cookbook, the single route that demonstrates it. `recipes add NAME --out
-NEW_DIRECTORY` creates a standalone project; it never merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
+NEW_DIRECTORY` and `examples add NAME --out NEW_DIRECTORY` create a standalone
+project whose listed commands run from that directory; neither merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
 converts strict redirect rows into deterministic 1,000-route include files with
 source fingerprints. Both support `--dry-run`. See [recipes](RECIPES.md),
 [bulk import and measured limits](BULK.md), and [interchange](INTERCHANGE.md).

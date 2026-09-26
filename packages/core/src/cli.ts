@@ -87,7 +87,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
 ` },
   { name:'examples', group:'Author', text:
-`  urlcode examples [list|search <text>] [--json]  # bundled runnable examples and the cookbook route index
+`  urlcode examples [list|search <text>|add <name> --out new-directory] [--dry-run] [--json]  # bundled runnable examples and the cookbook route index; add copies one so its tests.commands run there
 ` },
   { name:'bulk-import', group:'Author', text:
 `  urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]

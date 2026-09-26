@@ -1,7 +1,7 @@
 import { readdir, readFile, lstat } from 'node:fs/promises';
 import { recipeNames } from '../packages/core/src/recipes.ts';
 import { exampleNames } from '../packages/core/src/examples.ts';
-import { readMetadata, deriveMetadata, derivedDifferences } from '../packages/core/src/catalog.ts';
+import { readMetadata, deriveMetadata, derivedDifferences, commandProblems } from '../packages/core/src/catalog.ts';
 import { execFile } from 'node:child_process';
 import { stripTypeScriptTypes } from 'node:module';
 import { availableParallelism } from 'node:os';
@@ -71,6 +71,8 @@ async function checkCatalog(kind: 'recipe'|'example', directory: string, names: 
     try { await lstat(root + 'urlcode.yaml'); } catch { runnable = false; }
     if (runnable !== (metadata.runnable !== false)) { console.error(`${root}${kind}.yaml: runnable must be ${runnable}`); process.exit(1); }
     if (kind === 'recipe' && !metadata.files.includes('urlcode.yaml')) { console.error(`${root}recipe.yaml must copy urlcode.yaml`); process.exit(1); }
+    const commands = commandProblems(metadata);
+    if (commands.length) { console.error(`${root}${kind}.yaml lists commands a consumer cannot run:\n  ${commands.join('\n  ')}`); process.exit(1); }
     if (!runnable) {
       if (metadata.capabilities || metadata.targets || metadata.routes !== undefined) { console.error(`${root}${kind}.yaml is not runnable and must not carry derived fields`); process.exit(1); }
       continue;

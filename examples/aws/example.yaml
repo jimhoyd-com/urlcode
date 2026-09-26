@@ -12,9 +12,9 @@ files: [urlcode.yaml, handler.mjs, template.yaml, public/index.html, public/note
 tests:
   fixtures: tests/requests.json
   commands:
-    - node packages/core/src/cli.ts validate --local --project examples/aws
-    - node packages/core/src/cli.ts test --project examples/aws
-    - node packages/core/src/cli.ts audit --project examples/aws --expect-routes 5
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 5
 behavior:
   - every route is native, so the project activates on Lambda without the sandbox
   - handler.mjs wraps the project with createLambdaHandler; deployment itself is unverified evidence
