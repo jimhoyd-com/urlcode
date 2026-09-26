@@ -78,7 +78,17 @@ test('closing a pool while a replacement worker is starting waits for it', async
       subscribe('worker_threads', onWorker);
     });
     await pool.slots[0]?.worker.terminate(); // schedules a replacement after the 250 ms backoff
-    await closed;
+    // scheduleRespawn's backoff timer is deliberately unref()'d so it never keeps a real process alive; with the
+    // original worker already exited, nothing else here references the event loop while we wait for it to fire
+    // and spawn the replacement, so Node can otherwise decide the loop is idle before that happens (#765). Hold a
+    // referenced timer for the wait and bound it, so a genuine regression fails clearly instead of hanging.
+    const keepAlive = setInterval(() => {}, 50);
+    try {
+      await Promise.race([
+        closed,
+        new Promise((_resolve, reject) => setTimeout(() => reject(new Error('timed out waiting for the replacement worker and close()')), 10000)),
+      ]);
+    } finally { clearInterval(keepAlive); }
   });
   assert.equal(created.length, 1);
   assert.equal(events.filter(event => event['status'] === 'started').length, 2);
