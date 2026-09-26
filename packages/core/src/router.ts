@@ -99,6 +99,10 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       }
       compileHttp(route);
       if (config.match) route.match = normalizeMatch(config.match);
+      if (config.stream) {
+        assert(config.function, `${pattern}: stream: true needs a function route; an extension mount streams through its registration's streams declaration`, { code: 'stream-without-function' });
+        assert(config.sandbox !== true, `${pattern}: stream: true cannot be combined with sandbox: true; a sandboxed route always answers with a whole buffered response`, { code: 'stream-in-sandbox' });
+      }
       if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or secrets');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
       const extensionPolicyNames = Object.keys(effectiveExtensionPolicies(loaded.document,config));
       // Name the condition that actually made the route confidential, so an author knows which declaration to change (#725).

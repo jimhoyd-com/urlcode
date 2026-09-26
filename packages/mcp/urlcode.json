@@ -327,7 +327,7 @@
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Mount each server at its declared path with POST (and HEAD). Add `auth: true` when tool calls require a signed-in caller.",
+        "description": "Mount each server at its declared path with POST (and HEAD); add GET and DELETE when the operator enables the streaming transport (sessions, progress and the server stream) in host.mjs. Add `auth: true` when tool calls require a signed-in caller.",
         "path": "urlcode.yaml"
       }
     ],

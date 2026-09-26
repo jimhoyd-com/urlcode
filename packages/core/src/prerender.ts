@@ -5,6 +5,7 @@ import {loadDocument, functionFile} from './config.ts';
 import {applySite} from './site.ts';
 import {collectFunctionSources, routeFunctions, MODULE_LIMIT, TOTAL_BYTE_LIMIT} from './function-sources.ts';
 import {ConfigError, assert} from './errors.ts';
+import {cancelStream} from './http-response.ts';
 import {isCode} from './object-guards.ts';
 import type {RouteInventory, RequestCase} from './readiness.ts';
 import type {LogFn} from './types.ts';
@@ -182,6 +183,8 @@ export async function prerenderPages(project: string, output: string, {
         assert(!taken.has(key), `Routes ${taken.get(key)} and ${route.path} both render ${file}`);
         taken.set(key, route.path);
         const result = await runtime.handle({target: route.path, method: 'GET', origin});
+        // A streamed answer has no fixed bytes to write to a file; stop it and refuse the page.
+        if (result.stream !== undefined) { cancelStream(result.stream); assert(false, `${route.path} streams its response; a streamed route cannot be prerendered`); }
         assert(result.status === 200, `${route.path} rendered ${result.status}; expected 200`);
         const type = result.headers.find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? '';
         assert(/^text\/html\s*(?:;|$)/i.test(type), `${route.path} rendered ${type || 'no content type'}; expected text/html`);

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { activateNativeOnly, lazyRuntime, resolveAliasOrigins, resolveOrigin, resolvePasskeyRpId } from './adapters.ts';
 import type { Environment } from './adapters.ts';
 import type { HostPlugin, Runtime } from './runtime.ts';
-import { prepareResponse, errorResponse } from './http-response.ts';
+import { cancelStream, prepareResponse, errorResponse } from './http-response.ts';
 import type { HeaderPair } from './http-response.ts';
 import { assert, ConfigError, HttpError } from './errors.ts';
 import { isRecord } from './object-guards.ts';
@@ -102,6 +102,8 @@ export function createLambdaHandler({ project = process.cwd(), origin, aliasOrig
         origin: resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost',
         // Set by the platform from the connection, not by the client.
         client: event.requestContext?.http?.sourceIp });
+      // Streaming is refused before serving on this target; a stream reaching here anyway is stopped, never buffered.
+      if (result.stream !== undefined) { cancelStream(result.stream); throw new HttpError(502, 'Invalid function response'); }
       return respond(prepareResponse(result,{ requestId, method }));
     } catch (error) {
       // An activation or configuration failure is the operator's to read in the

@@ -1,0 +1,14 @@
+version: "1"
+routes:
+  /jobs/progress:
+    description: Progress lines sent as the work advances, not after it finishes.
+    # stream: true sends the function's Response body as it is produced; without it the body is read whole first.
+    stream: true
+    parameters:
+      - name: steps
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 10, default: 3}
+    function:
+      source: functions/progress.mjs
+      args:
+        steps: {from: query, name: steps}

@@ -8,7 +8,9 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import type { HandlerResult } from './http-response.ts';
 import type { LogFn, ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
 import type { AddonAgentTooling } from './addon-manifest.ts';
-export type { HandlerResult } from './http-response.ts';
+export type { HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
+/** Why a streamed response ended; also the `reason` of `ExtensionRequest.signal` when a stream ends early. */
+export type { StreamEndReason } from './http-stream.ts';
 /**
  * The same conservative regex admission core uses for route and body
  * patterns (docs/RUNTIME-IMPLEMENTATION.md), exposed so a workspace package
@@ -172,6 +174,13 @@ export interface ExtensionRequest {
    * are never included. An injection convenience for trusted extension code, not a restriction on it.
    */
   env:Readonly<Record<string,string>>;
+  /**
+   * Aborted when the request ends early: the client disconnects, or a streamed response hits a stream limit or the
+   * server's shutdown deadline (`signal.reason` is then the end reason, such as `client-closed` or `idle-timeout`).
+   * A streaming `handle()` should stop producing when it fires. The runtime always sets it; it is optional only so a
+   * request built by hand (a test) may omit it.
+   */
+  signal?:AbortSignal;
 }
 /**
  * What a principal-providing extension passes to `ExtensionRequest.setPrincipal`: a plain object whose only own key
@@ -396,8 +405,15 @@ export interface RuntimeExtension {
    */
   providesPrincipal?:boolean;
   /**
+   * Declares that this extension's mount `handle()` may answer with a streamed `HandlerResult` (`stream` instead of
+   * `body`; docs/EXTENSIONS.md#streamed-responses). Without it a streamed result is refused with the generic 502.
+   * Only the self-hosted server (native) and the Vercel adapter (delegated) deliver streams; `prepareExtensions`
+   * refuses a declared registration that sets it on any other target, before activation.
+   */
+  streams?:boolean;
+  /**
    * Builds one activation. The runtime keeps at most one activation of a registration live at a time
-   * (RIM-EXT-HANDOFF-001): a reload closes the serving instance, after its in-flight requests settle, before it
+   * (RIM-EXT-HANDOFF-001): a reload closes the serving instance, after its in-flight requests settle and its open streams end, before it
    * activates the replacement, and when the replacement refuses it calls `activate` again with the last-good
    * configuration. So an activation may take exclusive resources (a directory lock, a database handle) and release
    * them in `close()`, and `activate` must be callable again once the previous instance has closed.
@@ -528,7 +544,7 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
 }
-export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean }
+export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean; streams:boolean }
 /** What the runtime knows about the request when it applies the privacy floor. */
 export interface ExtensionAssetContext { method:string; path:string; prefixes:readonly string[] }
 /** One live activation of the declared extensions. `close()` closes every instance once, in reverse activation order. */
@@ -550,6 +566,8 @@ export interface ExtensionPlan {
   activate():Promise<ExtensionRegistry>;
 }
 const namePattern=/^[a-z][a-z0-9-]{0,63}$/;
+/** The runtime targets that deliver a streamed response incrementally; every other target refuses streaming before serving. */
+export const streamingTargets:readonly TargetName[]=Object.freeze(['node','vercel']);
 const hookNamePattern=/^[a-z][A-Za-z0-9]{0,63}$/;
 const authoringNamePattern=/^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,127}$/;
 const cacheHeaders=new Set(['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control']);
@@ -638,6 +656,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(!provided.has(registration.name),'Duplicate extension provider');
     assert(registration.version==='1'&&typeof registration.activate==='function','Invalid extension version or activation hook');
     assert(registration.providesPrincipal===undefined||typeof registration.providesPrincipal==='boolean','Invalid extension providesPrincipal');
+    assert(registration.streams===undefined||typeof registration.streams==='boolean','Invalid extension streams');
     assert(Array.isArray(registration.targets)&&registration.targets.every(target=>['node','aws','vercel'].includes(target)),'Extension targets must be node, aws or vercel');
     assert(typeof registration.projectSha256==='string'&&/^[a-f0-9]{64}$/.test(registration.projectSha256),'Extension requires an explicit operator revision pin');
     const hookNames=new Set<string>();
@@ -681,6 +700,8 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
         followed.push(name);
       }
       assert(registration.targets.includes(context.target),`Extension ${name} refuses target ${context.target}`);
+      // Refused before activation, never silently buffered (RIM-STREAM-001).
+      if(registration.streams===true&&!streamingTargets.includes(context.target))throw new ConfigError(`Extension ${name} streams responses, which target ${context.target} cannot deliver; only node and vercel deliver streamed responses`,{extension:name,code:'unsupported-capability'});
       assert(declaration.version===registration.version,`Extension contract version mismatch: ${name}`);
       const config=structuredClone(declaration.config);
       const ajv=new Ajv.default({strict:true,allErrors:false,verbose:true});
@@ -718,11 +739,11 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       try{instance=await registration.activate(config,frozen({...context,mounts,principalMounts,declarations:activated,warn:warnings.warn}));}
       catch(error){throw extensionError(error,name,'activate');}
       finally{warnings.close();}
-      const providesPrincipal=registration.providesPrincipal===true;
-      if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes,providesPrincipal});
+      const providesPrincipal=registration.providesPrincipal===true,streams=registration.streams===true;
+      if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes,providesPrincipal,streams});
       assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);
       assert(!providesPrincipal||!policies.size||typeof instance.authorize==='function',`Extension ${name} declares providesPrincipal but has no authorization hook`);
-      entries.set(name,{instance,policies,assetPrefixes,providesPrincipal});
+      entries.set(name,{instance,policies,assetPrefixes,providesPrincipal,streams});
     }}catch(error){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
     let closed=false;
     return {entries,async close(){if(closed)return;closed=true;for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
@@ -739,6 +760,8 @@ const maxAge=(value:string):number|undefined=>{const match=/(?:^|[\s,])max-age\s
  */
 export function immutableAssetResponse(result:HandlerResult,asset:ExtensionAssetContext|undefined):boolean {
   if(!asset||!asset.prefixes.some(prefix=>asset.path.startsWith(prefix)))return false;
+  // A stream has no representation fixed in advance; it is never public-cacheable.
+  if(result.stream!==undefined)return false;
   if(asset.method!=='GET'&&asset.method!=='HEAD')return false;
   if(result.status!==200&&result.status!==304)return false;
   const etag=header(result.headers,'etag');

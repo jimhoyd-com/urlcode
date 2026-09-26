@@ -107,6 +107,10 @@ that measured length -- except on Node 22.13.0-22.14.x, where that Node
 self-check is itself broken and asking for it turns a correct response into a
 crash, so it is skipped only on that narrow, documented-floor range
 (`engines`: `>=22.13.0`; [RIM-OUTPUT-001](RUNTIME-IMPLEMENTATION.md)).
+A [streamed response](SPECIFICATION.md#streamed-responses) is the one
+exception: its length is not known when its head is sent, so it carries no
+Content-Length (on HEAD either) and HTTP/1.1 frames it with chunked transfer;
+`response.headers` and every other header rule above still apply to it.
 Configure redirect URLs/status on `redirect`; asset content type,
 cache and disposition on its own handler. Asset metadata cannot be overridden by
 `response.headers`. On functions/declared responses, Content-Type may be configured;

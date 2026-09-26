@@ -14,6 +14,8 @@ import { assert } from './errors.ts';
 export const events = Object.freeze({
   signal: Object.freeze(['event','outcome','count']),
   request: Object.freeze(['event', 'requestId', 'status', 'durationMs', 'method', 'route']),
+  stream: Object.freeze(['event', 'requestId', 'status', 'bytes', 'durationMs', 'reason', 'method', 'route']),
+  stream_refused: Object.freeze(['event', 'requestId', 'route', 'reason']),
   reload: Object.freeze(['event', 'status', 'version', 'routes']),
   watch: Object.freeze(['event', 'status']),
   function_worker: Object.freeze(['event', 'status', 'slot', 'attempt', 'delayMs']),

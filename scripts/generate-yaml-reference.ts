@@ -64,7 +64,7 @@ const areas: Area[]=[
     match:p=>p==='routes'||p==='routes.*'||/^routes\.\*\.(methods|enabled|sandbox|sandboxReason|coveredElsewhere|expires|description|parameters|env|secrets|policies|auth|cache|match|use|request|response)($|\.|\[| )/.test(p)},
   {title:'Handler: redirect',guide:'[redirects](yaml/redirects.md)',match:p=>/^routes\.\*\.redirect($|\.|\[| )/.test(p)},
   {title:'Handler: respond',guide:'[declared responses, headers and cookies](yaml/responses.md)',match:p=>/^routes\.\*\.respond($|\.|\[| )/.test(p)},
-  {title:'Handler: function',guide:'[functions, inputs and methods](yaml/functions.md)',match:p=>/^routes\.\*\.function($|\.|\[| )/.test(p)},
+  {title:'Handler: function',guide:'[functions, inputs and methods](yaml/functions.md)',match:p=>/^routes\.\*\.(function|stream)($|\.|\[| )/.test(p)},
   {title:'Handler: page, static, download',guide:'[pages, static folders and downloads](yaml/assets.md)',match:p=>/^routes\.\*\.(page|static|download)($|\.|\[)/.test(p)},
   {title:'Handler: conditional',guide:'[enable, disable and expire](yaml/conditions.md)',match:p=>/^routes\.\*\.conditional($|\.|\[| )/.test(p)},
   {title:'Handler: proxy and signals',guide:'[bounded egress](EGRESS.md)',match:p=>/^routes\.\*\.(proxy|signals)($|\.|\[| )/.test(p)},

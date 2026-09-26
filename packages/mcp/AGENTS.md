@@ -29,9 +29,12 @@
   scaffold and `host()` changes need one in `test/scaffold.test.ts`.
 - Never commit credentials or customer data. Synthetic fixtures only.
 - Report actual evidence and remaining limitations; CI is not a security
-  review. This extension's known remaining v1 gaps (SSE/streaming transport,
-  session ids, resource templates/subscriptions) are documented in README.md,
-  not silently implied. JSON-RPC batching is refused by design, re-confirmed
+  review. The streaming transport (sessions, SSE progress, the GET stream and
+  its replay) is an operator opt-in that must stay off by default and leave
+  the non-streaming behavior byte for byte unchanged; its tests are
+  `test/streaming.test.ts`. This extension's known remaining gaps (streaming
+  on AWS/Vercel, persisted sessions, resumable POST streams, resource
+  templates/subscriptions) are documented in README.md, not silently implied. JSON-RPC batching is refused by design, re-confirmed
   against the current MCP revision, not merely deferred.
 
 ## File what you find

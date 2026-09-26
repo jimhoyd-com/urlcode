@@ -407,6 +407,11 @@
           "maxLength": 500,
           "description": "Optional justification for this route's sandbox decision, whether sandbox is true or false: why it needs isolation, or why it is safe to trust. Never inferred or enforced; surfaced verbatim by explain/context/manifest."
         },
+        "stream": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send a trusted function route's Response body to the client as it is produced (chunked, bounded by the operator's stream limits) instead of reading it whole first. Needs function; refused with sandbox: true and on every target except the self-hosted runtime."
+        },
         "coveredElsewhere": {
           "type": "object",
           "minProperties": 1,

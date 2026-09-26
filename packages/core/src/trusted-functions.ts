@@ -94,7 +94,8 @@ async function syntaxLocation(source: string): Promise<{ parses: boolean; line?:
     });
   });
 }
-export type TrustedRoute = FunctionRoute<TrustedDefinition>;
+/** `stream: true` (a declared streaming route) delivers the returned Response's body as a stream instead of reading it whole. */
+export type TrustedRoute = FunctionRoute<TrustedDefinition> & { stream?: boolean | undefined };
 type TrustedHandler = (request: Request, context: FunctionContext) => Response | Promise<Response>;
 type TrustedMiddleware = (request: Request, context: FunctionContext, next: () => Promise<Response>) => Response | Promise<Response>;
 
@@ -273,6 +274,11 @@ export class TrustedFunctions {
     // Header count/byte limits apply either way, matching function-worker.ts.
     { let bytes = 0; for (const [k,v] of headers) bytes += Buffer.byteLength(k) + Buffer.byteLength(v) + 4;
       if (headers.length > 256 || bytes > 16384) throw failed('response headers exceed 256 fields or 16384 bytes', outer); }
+    // A declared streaming route hands the body on unread; the host pulls it under its stream limits and
+    // cancels it on HEAD, on a disconnect or at a limit (RIM-STREAM-001). A native reply keeps its own bytes.
+    if (route.stream === true && !nativeBody && response.body !== null) {
+      return { status: response.status, headers, stream: response.body as unknown as AsyncIterable<Uint8Array>, nativeBody };
+    }
     // Measured on HEAD too, not skipped: prepareResponse (http-response.ts)
     // is what decides not to put the bytes on the wire for HEAD, but it
     // still needs the real length rather than the 0 a skipped read leaves it

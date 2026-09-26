@@ -41,6 +41,8 @@ export function createDevEventFormatter(routes: { count: number }): EventFormatt
     if (kind === 'watch') return 'Could not watch the project for changes';
     if (kind === 'extension_pin_followed' && Array.isArray(event.extensions)) return `Extension pin followed the edit for ${event.extensions.map(name => JSON.stringify(String(name))).join(', ')} (dev only; re-review and re-pin before serve)`;
     if (kind === 'extension_warning') return `Extension ${JSON.stringify(String(event.extension))} warning: ${String(event.message)}`;
+    if (kind === 'stream') return [typeof event.method === 'string' ? event.method : undefined, typeof event.route === 'string' ? event.route : undefined, 'stream', String(event.status), `${String(event.bytes)} bytes`, `${String(event.durationMs)}ms`, String(event.reason)].filter((part): part is string => part !== undefined).join(' ');
+    if (kind === 'stream_refused') return `Streamed response refused (${String(event.reason)})${typeof event.route === 'string' ? ' on ' + event.route : ''}`;
     if (kind !== 'request') return undefined;
     const { status, durationMs, method, route } = event as { status?: unknown; durationMs?: unknown; method?: unknown; route?: unknown };
     const parts = [typeof method === 'string' ? method : undefined, typeof route === 'string' ? route : route === null ? '(unmatched)' : undefined, String(status), `${String(durationMs)}ms`].filter((part): part is string => part !== undefined);

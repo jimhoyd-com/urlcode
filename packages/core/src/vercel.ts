@@ -5,6 +5,8 @@ import { activateNativeOnly, lazyRuntime, resolveAliasOrigins, resolveOrigin, re
 import type { Environment } from './adapters.ts';
 import type { HostPlugin, Runtime } from './runtime.ts';
 import { writeResponse, writeError } from './http-response.ts';
+import { StreamHost } from './http-stream.ts';
+import type { StreamLimits } from './http-stream.ts';
 import { contentLengthEnforcementIsSafe } from './server.ts';
 import { assert, HttpError } from './errors.ts';
 
@@ -13,7 +15,10 @@ import { assert, HttpError } from './errors.ts';
 // 22.13.0-22.14.x false-positive ERR_HTTP_CONTENT_LENGTH_MISMATCH crash.
 const enforceContentLength = contentLengthEnforcementIsSafe();
 
-export interface VercelHandlerOptions { project?: string | undefined; origin?: string | undefined; aliasOrigins?: readonly string[] | undefined; passkeyRpId?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined }
+export interface VercelHandlerOptions { project?: string | undefined; origin?: string | undefined; aliasOrigins?: readonly string[] | undefined; passkeyRpId?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined;
+  /** Limits for streamed extension responses on this function instance (docs/OPERATIONS.md#streamed-responses); each
+   * given value replaces its default. The provider's own function duration limit still applies on top. */
+  streams?: Partial<StreamLimits> | undefined }
 export type VercelHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 
 const platformOrigins = ['VERCEL_PROJECT_PRODUCTION_URL','VERCEL_URL','VERCEL_BRANCH_URL'];
@@ -49,14 +54,17 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
 // instance and reused across warm invocations; a failed activation is not
 // cached, so a fixed deployment recovers without a code change.
 export function createVercelHandler({ project = process.cwd(), origin, aliasOrigins, passkeyRpId, environment = process.env,
-  maxBodyBytes = 1048576, plugins, extensions }: VercelHandlerOptions = {}): VercelHandler {
+  maxBodyBytes = 1048576, plugins, extensions, streams: streamLimits }: VercelHandlerOptions = {}): VercelHandler {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
+  const streams = new StreamHost(streamLimits);
   const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'vercel', plugins, extensions, origin:resolveOrigin(origin,environment,platformOrigins), aliasOrigins:resolveAliasOrigins(aliasOrigins,environment), passkeyRpId:resolvePasskeyRpId(passkeyRpId,environment) }));
 
   return async function handler(req,res) {
     const requestId = randomUUID();
     const target = req.url ?? '', method = req.method ?? 'GET';
     let runtime: Runtime | undefined;
+    const controller = new AbortController();
+    res.once('close', () => { if (!res.writableFinished && !controller.signal.aborted) controller.abort('client-closed'); });
     try {
       runtime = await ready();
       const headers = new Headers(), headerCounts: Record<string, number> = Object.create(null) as Record<string, number>;
@@ -68,9 +76,11 @@ export function createVercelHandler({ project = process.cwd(), origin, aliasOrig
       const body = await readBody(req,limit);
       const forwarded = forwardedClient(headers, headerCounts);
       const publicOrigin = resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost';
-      const result = await runtime.handle({ target, method, headers, headerCounts, body, requestId,
+      const result = await runtime.handle({ target, method, headers, headerCounts, body, requestId, signal: controller.signal,
         origin: publicOrigin, client: forwarded || req.socket?.remoteAddress });
-      writeResponse(res,result,{ requestId, method, enforceContentLength });
+      // A streamed extension response is written as produced; the invocation settles when the stream ends.
+      if (result.stream !== undefined) await (await streams.start(res, result, { requestId, method, controller })).finished;
+      else writeResponse(res,result,{ requestId, method, enforceContentLength });
     } catch (error) {
       // An activation failure is the operator's to see; a request never learns why.
       writeError(res,error instanceof HttpError ? error : new HttpError(500,'Internal server error'),{ requestId, method, enforceContentLength,

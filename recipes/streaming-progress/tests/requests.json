@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/jobs/progress",
+    "status": 200,
+    "expectBody": "step 1 of 3\nstep 2 of 3\nstep 3 of 3\ndone\n",
+    "expectHeaders": {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "transfer-encoding": "chunked"
+    }
+  },
+  {
+    "path": "/jobs/progress?steps=1",
+    "status": 200,
+    "expectBody": "step 1 of 1\ndone\n"
+  },
+  {
+    "path": "/jobs/progress",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/jobs/progress?steps=11",
+    "status": 400
+  },
+  {
+    "path": "/jobs/progress",
+    "method": "POST",
+    "status": 405
+  }
+]

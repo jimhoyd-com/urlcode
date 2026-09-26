@@ -1,0 +1,27 @@
+id: streaming-progress
+description: Progress lines streamed from a trusted function while the work runs; stream true sends each line as it is produced.
+tags: [stream, streaming, streamed, progress, chunked, lines, long-running, job, function, signal, abort]
+complexity: intermediate
+capabilities: [enabled, function, methods, parameters, streaming]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
+routes: 1
+inputs:
+  - name: producer
+    file: functions/progress.mjs
+    description: Replace the loop with the real work; yield a line (a string or Uint8Array) whenever there is progress to report.
+  - name: steps
+    file: urlcode.yaml
+    description: The query parameter bounding how many steps a request may ask for.
+files: [urlcode.yaml, functions/progress.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 1
+behavior:
+  - GET /jobs/progress answers 200 with chunked text/plain, one "step N of 3" line per step then "done", each sent when it is produced
+  - ?steps=1 to 10 chooses the number of steps; anything else answers 400 before the function runs
+  - HEAD answers the status and headers without running the steps
+  - a client that disconnects aborts context.signal, so the loop stops producing
+  - streaming is self-hosted only; AWS, Vercel, Cloudflare and static refuse the project before serving
