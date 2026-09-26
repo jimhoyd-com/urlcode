@@ -74,6 +74,14 @@ export interface ExtensionActivation {
    */
   principalMounts?:readonly string[];
   /**
+   * The validated `extensions.<name>.config` of every extension this snapshot activates (this one included), frozen,
+   * keyed by name. It is the snapshot being activated, never the project file on disk, which a reload may already
+   * have edited: a value one extension resolves from another's own declaration (a contribution) reads it here, so
+   * restoring the last-good snapshot after a refused reload sees the last-good declarations (RIM-EXT-HANDOFF-001).
+   * The runtime always sets it; it is optional only so an activation built by hand (a test) can leave it out.
+   */
+  declarations?:Readonly<Record<string,Readonly<Record<string,unknown>>>>;
+  /**
    * Reports a condition the operator should act on that does not stop the site (RIM-EXT-WARN-001): for example
    * stored data that no longer matches the operator's configuration. The runtime writes it to the operator's log as
    * one `{"event":"extension_warning","extension":"<name>","message":"..."}` record, the same log `validate`, `test`,
@@ -248,6 +256,10 @@ export interface ExtensionInstance {
    * dispatch, and never runs before `authorize` on the same route.
    */
   middleware?(config:Readonly<Record<string,unknown>>,request:ExtensionRequest,next:()=>Promise<HandlerResult>):HandlerResult|Promise<HandlerResult>;
+  /**
+   * Releases what this activation took. The runtime calls it once no request is running in this instance and before
+   * any replacement activation of the same registration starts (RIM-EXT-HANDOFF-001), in reverse activation order.
+   */
   close?():void|Promise<void>;
 }
 /** Trusted operator code only. YAML declares names/configuration, never modules. */
@@ -383,6 +395,13 @@ export interface RuntimeExtension {
    * extension that declares it and is named in a route policy must implement `authorize()`.
    */
   providesPrincipal?:boolean;
+  /**
+   * Builds one activation. The runtime keeps at most one activation of a registration live at a time
+   * (RIM-EXT-HANDOFF-001): a reload closes the serving instance, after its in-flight requests settle, before it
+   * activates the replacement, and when the replacement refuses it calls `activate` again with the last-good
+   * configuration. So an activation may take exclusive resources (a directory lock, a database handle) and release
+   * them in `close()`, and `activate` must be callable again once the previous instance has closed.
+   */
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
 /**
@@ -512,7 +531,24 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
 export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean }
 /** What the runtime knows about the request when it applies the privacy floor. */
 export interface ExtensionAssetContext { method:string; path:string; prefixes:readonly string[] }
-export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; credentialHeaders:string[]; close():Promise<void> }
+/** One live activation of the declared extensions. `close()` closes every instance once, in reverse activation order. */
+export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; close():Promise<void> }
+/**
+ * The validated activation step `prepareExtensions` returns. Preparing takes no resource, so a replacement snapshot can
+ * be fully checked while the serving one still holds its extensions. Each `activate()` builds a fresh registry (a new
+ * instance of every declared extension); a refusal closes the instances it already activated and throws.
+ */
+export interface ExtensionPlan {
+  /** Names activated under `urlcode dev`'s accepted pin rather than an exact one (RIM-EXT-PIN-001). */
+  readonly followed:readonly string[];
+  /** Whether this revision declares at least one extension, so there is something to activate. */
+  readonly declared:boolean;
+  /** Every declared extension's credential headers, lowercase, plus `cookie` and `authorization`. */
+  readonly credentialHeaders:readonly string[];
+  /** The immutable-asset prefixes of each declared extension's mounts, by extension name. */
+  readonly assetPrefixes:ReadonlyMap<string,readonly string[]>;
+  activate():Promise<ExtensionRegistry>;
+}
 const namePattern=/^[a-z][a-z0-9-]{0,63}$/;
 const hookNamePattern=/^[a-z][A-Za-z0-9]{0,63}$/;
 const authoringNamePattern=/^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,127}$/;
@@ -592,11 +628,11 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
  * revision the dev server started from and strictly checked) is accepted for the edited live revision and listed in
  * `followed`. Every other check still runs, and without it the pin must equal the live revision (RIM-EXT-PIN-001).
  */
-export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string}): {readonly followed:readonly string[];activate():Promise<ExtensionRegistry>} {
+export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'principalMounts'|'declarations'|'warn'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string}):ExtensionPlan {
   assert(acceptedPin===undefined||typeof acceptedPin.from==='string'&&/^[a-f0-9]{64}$/.test(acceptedPin.from),'Invalid accepted extension revision pin');
   const followed:string[]=[];
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
-  const provided=new Map<string,RuntimeExtension>(),entries=new Map<string,ActiveExtension>(),credentialHeaders=new Set<string>();
+  const provided=new Map<string,RuntimeExtension>(),credentialHeaders=new Set<string>();
   for(const registration of registrations??[]){
     assert(registration&&typeof registration==='object'&&typeof registration.name==='string'&&namePattern.test(registration.name),'Invalid extension registration');
     assert(!provided.has(registration.name),'Duplicate extension provider');
@@ -668,14 +704,18 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       const assetPrefixes=registration.immutableAssets===undefined?[]:mounts.map(mount=>mount+validateAssetPrefix((registration.immutableAssets as ExtensionImmutableAssets).prefix,name)+'/');
       preparations.push({name,registration,config:frozen(config),policies,mounts,principalMounts,assetPrefixes});
   }
-  return {followed:Object.freeze([...followed]),async activate(){
+  const activated:Readonly<Record<string,Readonly<Record<string,unknown>>>>=Object.freeze(Object.fromEntries(preparations.map(({name,config})=>[name,config])));
+  return {followed:Object.freeze([...followed]),declared:preparations.length>0,credentialHeaders:Object.freeze([...credentialHeaders]),
+    assetPrefixes:new Map(preparations.map(({name,assetPrefixes})=>[name,Object.freeze([...assetPrefixes])])),async activate(){
+    // A fresh registry per call: a runtime may activate its plan again after closing an earlier activation.
+    const entries=new Map<string,ActiveExtension>();
     try{for(const {name,registration,config,policies,mounts,principalMounts,assetPrefixes}of preparations){
       // What activate throws is the operator's own extension reporting its configuration or environment; it is
       // named and kept (bounded, without a stack) so validate, test, dev and serve startup can print it.
       let instance:ExtensionInstance;
       // warn() reaches the same operator log; it is closed once activate() settles (RIM-EXT-WARN-001).
       const warnings=activationWarnings(name,log);
-      try{instance=await registration.activate(config,frozen({...context,mounts,principalMounts,warn:warnings.warn}));}
+      try{instance=await registration.activate(config,frozen({...context,mounts,principalMounts,declarations:activated,warn:warnings.warn}));}
       catch(error){throw extensionError(error,name,'activate');}
       finally{warnings.close();}
       const providesPrincipal=registration.providesPrincipal===true;
@@ -684,7 +724,8 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       assert(!providesPrincipal||!policies.size||typeof instance.authorize==='function',`Extension ${name} declares providesPrincipal but has no authorization hook`);
       entries.set(name,{instance,policies,assetPrefixes,providesPrincipal});
     }}catch(error){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
-    return {entries,credentialHeaders:[...credentialHeaders],async close(){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
+    let closed=false;
+    return {entries,async close(){if(closed)return;closed=true;for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
   }};
 }
 const header=(headers:readonly (readonly [string,string])[],name:string):string[]=>headers.filter(([key])=>key.toLowerCase()===name).map(([,value])=>value);

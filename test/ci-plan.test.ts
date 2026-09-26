@@ -105,8 +105,8 @@ test('a release run is planned as exact-commit coverage whatever event triggered
 });
 
 test('workspace selection includes reverse dependencies and reserves integration for release dispatch', () => {
-  assert.deepEqual(workspacePackages(['packages/admin/src/admin-ui.ts']), ['admin']);
-  assert.deepEqual(workspacePackages(['packages/auth/src/auth-ui.ts']), ['auth', 'admin']);
+  assert.deepEqual(workspacePackages(['packages/admin/src/admin-ui.ts']), ['admin', 'form-records']);
+  assert.deepEqual(workspacePackages(['packages/auth/src/auth-ui.ts']), ['auth', 'admin', 'form-records']);
   assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'store', 'forms', 'form-records']);
   assert.deepEqual(workspacePackages(['packages/store/src/screens.ts']), ['store', 'form-records']);
   assert.deepEqual(workspacePackages(['packages/forms/src/forms.ts']), ['forms', 'form-records']);
@@ -117,7 +117,7 @@ test('workspace selection includes reverse dependencies and reserves integration
   assert.deepEqual(workspacePackages(['packages/mail/src/mail.ts']), ['mail', 'auth', 'admin', 'forms', 'form-records']);
   for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'audit', 'abuse', 'mail', 'auth', 'admin', 'store', 'forms', 'form-records', 'mcp']);
   assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 6);
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/form-records/README.md']).include[0]!.deps, 'ui audit abuse mail forms store');
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/form-records/README.md']).include[0]!.deps, 'ui audit abuse mail forms store auth admin');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/README.md']).include[0]!.deps, 'ui audit mail abuse auth');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/store/src/screens.ts']).include[0]!.deps, 'ui audit');
   for (const event of ['pull_request', 'push', 'schedule']) assert.deepEqual(workspaceIntegrationMatrix(event, ['packages/core/src/runtime.ts']).include, []);

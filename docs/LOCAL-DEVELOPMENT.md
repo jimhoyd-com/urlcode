@@ -137,6 +137,12 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   `--policy` grants are not carried forward: when the host is pinned by
   `--policy` and the project requests an env, secret or egress grant, a reload
   is still rejected as described above.
+- Stateful extensions and reloads: a reload closes the serving extensions (the
+  store's directory lock included) once their requests finish, then activates
+  the edited ones, holding new requests meanwhile. If the edited ones refuse,
+  dev activates the last-good ones again and keeps serving them; the
+  `reload_rejected` line names the refusal. No two store instances ever hold the
+  directory at once ([reloads and exclusive resources](EXTENSIONS.md#reloads-and-exclusive-resources)).
 - A function answers `502 Function execution failed`: the response stays
   generic on purpose, and dev writes a `function_error` line to stderr with the
   matched `route`, the `source` file and `export`, the thrown `message` and its

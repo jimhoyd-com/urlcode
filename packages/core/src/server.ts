@@ -11,13 +11,13 @@ import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.
 import { createJsonLogger } from './logging.ts';
 import { createObserverSink, renderPrometheus } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink, RecordContext } from './observability.ts';
-import { assert, describeError, HttpError } from './errors.ts';
+import { assert, ConfigError, describeError, HttpError } from './errors.ts';
 import { functionFailure } from './trusted-functions.ts';
 import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
 import { compileTrustedProxies, loopbackHostCheck, resolveClient } from './client-address.ts';
 
-export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin'> {
+export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin' | 'deferExtensions'> {
   /** `urlcode dev` only: on a reload, accept an extension registration still pinned to the revision this server
    * started from (checked strictly at startup) for the edited project, and log `extension_pin_followed`. The first
    * runtime and every other check are unchanged; `serve` and every other command leave it off (RIM-EXT-PIN-001). */
@@ -37,7 +37,9 @@ export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'accep
    * `/_urlcode/health` (liveness) stays healthy during this window. 0 disables the delay. */
   readinessDrainMs?: number | undefined;
   /** Milliseconds `close()` gives in-flight HTTP connections to finish once it stops
-   * accepting new ones, before forcing them closed. Keep this below the process
+   * accepting new ones, before forcing them closed. A reload that hands extensions over
+   * waits at most this long for the serving snapshot's requests to settle, and is
+   * rejected (the serving snapshot keeps its extensions) if they have not. Keep this below the process
    * supervisor's stop grace period (Docker's `--stop-timeout`, Kubernetes'
    * `terminationGracePeriodSeconds`) combined with `readinessDrainMs`, or the process
    * can be SIGKILLed mid-drain. */
@@ -179,6 +181,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   assert(typeof followExtensionPinOnReload === 'boolean', 'Extension pin following must be a boolean');
   // Only reload() below derives it, from this server's own first runtime; a caller cannot hand one in.
   assert(!Object.hasOwn(runtimeOptions, 'acceptedExtensionPin'), 'acceptedExtensionPin is set only by the dev server reload');
+  assert(!Object.hasOwn(runtimeOptions, 'deferExtensions'), 'deferExtensions is set only by the server reload');
   assert(Number.isInteger(readinessDrainMs) && readinessDrainMs >= 0 && readinessDrainMs <= 300000, 'Readiness drain delay must be 0–300000 ms');
   assert(Number.isInteger(closeTimeoutMs) && closeTimeoutMs >= 0 && closeTimeoutMs <= 300000, 'Close timeout must be 0–300000 ms');
   assert(Number.isInteger(headersTimeoutMs) && headersTimeoutMs >= 1000 && headersTimeoutMs <= 300000, 'Headers timeout must be 1000–300000 ms');
@@ -204,6 +207,9 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   // `draining` flips /_urlcode/ready unhealthy ahead of `shuttingDown`, which stops
   // serving entirely; the gap between them is the pre-close readiness delay.
   let shuttingDown = false, draining = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
+  // Set while a reload hands extensions from the serving snapshot to its replacement (RIM-EXT-HANDOFF-001): admitted
+  // requests wait on it before they reach a runtime, so neither snapshot runs a request while no activation is live.
+  let handoff: Promise<void> | undefined;
   const retired = new Set<Promise<void>>();
   const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
     const started = performance.now();
@@ -263,6 +269,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         }
         const target = originForm(url);
         const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(target) ?? maxBodyBytes));
+        while (handoff) await handoff;
         result = await current.handle({ target, method, headers, headerCounts, body, trace, requestId,
           origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') ?? undefined : undefined, proxies) });
       }
@@ -309,20 +316,44 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   // Like `address`, bound before any request can arrive; undefined (no check) for a non-loopback bind.
   // Alias origins were validated by createRuntime above; each names an authority the site is served under.
   const hostAdmitted = loopbackHostCheck(address, siteOrigins(origin, runtimeOptions.aliasOrigins));
+  /**
+   * Moves the extensions from `old` to `next` with at most one live activation of each (RIM-EXT-HANDOFF-001): hold new
+   * requests, let `old`'s settle, close its extensions, activate `next`'s and make it `current` before the held
+   * requests resume, so none of them reaches `old` without its extensions. When `next` refuses, activate `old`'s
+   * last-good configuration again before requests resume. Throws what refused the reload; if the restore failed too,
+   * `old.extensions.active` stays false and `old` answers 503 until a later reload succeeds.
+   */
+  async function handOver(old: Runtime, next: Runtime): Promise<void> {
+    let resume!: () => void;
+    handoff = new Promise<void>(resolve => { resume = resolve; });
+    try {
+      if (!await old.extensions.release(closeTimeoutMs)) throw new ConfigError(`Reload refused: requests were still running on the serving snapshot after ${closeTimeoutMs} ms, so its extensions were not handed over; the edit applies on the next change`);
+      try { await next.extensions.activate(); current = next; }
+      catch (error) {
+        try { await old.extensions.activate(); }
+        catch (restore) { throw new ConfigError(`${describeError(error)}; restoring the last-good extensions also failed: ${describeError(restore)}`); }
+        throw error;
+      }
+    } finally { handoff = undefined; resume(); }
+  }
   async function reload(): Promise<boolean> {
     if (shuttingDown || reloading) return false;
     reloading = true;
+    let next: Runtime | undefined;
     try {
-      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions, ...(acceptedExtensionPin ? { acceptedExtensionPin } : {}) });
+      // Built and checked in full while `current` keeps serving; its extensions are prepared but not activated.
+      next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions, ...(acceptedExtensionPin ? { acceptedExtensionPin } : {}), deferExtensions: true });
       if (shuttingDown) { await next.close(); return false; }
-      const old = current; current = next;
+      const old = current;
+      await handOver(old, next);
       const cleanup = old.close(); retired.add(cleanup); void cleanup.finally(() => retired.delete(cleanup));
       emit({ event: 'reload', status: 'ok', version: current.version, routes: current.count });
       return true;
     } catch (error) {
+      if (next) await next.close().catch(() => undefined);
       emit({ event: 'reload', status: 'rejected' });
       // The same text `urlcode validate` prints for this project state.
-      diagnose({ event: 'reload_rejected', message: describeError(error), serving: current.version });
+      diagnose({ event: 'reload_rejected', message: describeError(error), serving: current.version, ...(current.extensions.active ? {} : { extensions: 'unavailable' }) });
       return false;
     }
     finally { reloading = false; }

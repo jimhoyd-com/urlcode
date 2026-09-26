@@ -216,7 +216,9 @@ const WORKSPACE_DEPS: Record<string, readonly string[]> = {
   admin: ['ui', 'audit', 'mail', 'abuse', 'auth'],
   store: ['ui', 'audit'],
   forms: ['ui', 'abuse', 'mail'],
-  'form-records': ['ui', 'audit', 'abuse', 'mail', 'forms', 'store'],
+  // form-records' reload test serves the site `init --with admin,form-records --example` generates (#777), so its job
+  // builds auth and admin too, and a change to either reverifies it.
+  'form-records': ['ui', 'audit', 'abuse', 'mail', 'forms', 'store', 'auth', 'admin'],
   mcp: [],
 };
 // The inverse of WORKSPACE_DEPS: a change to a package reverifies every

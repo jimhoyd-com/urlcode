@@ -221,7 +221,10 @@ export default await composeHost(import.meta.url, [
 
 `composeHost` orders the list by each extension's `requires` and `uses`,
 and the runtime activates the declared ones in that order, so a dependency is
-always active before the extension that reads it. It hands admin auth's typed
+always active before the extension that reads it. A reload closes them in
+reverse order before the edited snapshot's activate, so the store's directory
+lock is never held twice, and activates the last-good ones again if the edited
+ones refuse ([reloads and exclusive resources](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#reloads-and-exclusive-resources)). It hands admin auth's typed
 `AuthExports` (version 1) through `ctx.get('auth')`: the signed-in account, a
 CSRF token and the administration API, never auth's keys, database or raw
 tokens. Auth sends every message itself, admin-initiated ones included,
@@ -3994,7 +3997,8 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    condition the operator should act on that does not stop the site, call
    [`context.warn(message)`](#activation-warnings) during activation instead.
 5. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
-   policies. It closes resources it owns. An extension that authenticates may
+   policies. It closes resources it owns, and can be activated again once
+   closed ([reloads and exclusive resources](#reloads-and-exclusive-resources)). An extension that authenticates may
    declare `providesPrincipal` and set the [request principal](#request-principal);
    one that needs to know who a request is for reads `request.principal` and
    checks `principalMounts` at activation, and never parses another extension's
@@ -4008,6 +4012,46 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    ([site origins](#site-origins-and-same-origin-checks)).
 8. Reads bodies, fields and cookies and writes JSON answers with core's
    [request helpers](#request-helpers), never with its own parser.
+
+#### Reloads and exclusive resources
+
+The runtime keeps at most one activation of each registration live at a time,
+so an activation may take an exclusive resource (the store's directory lock, a
+database handle, a port) and release it in `close()`. A reload
+(`app.reload()`, and so `urlcode dev`'s watcher) hands the extensions over in
+this order:
+
+1. Build the edited snapshot in full while the serving one keeps answering:
+   routes, functions, policies, and every extension declaration's
+   configuration, policy schema, target, pin and mounts. No extension is
+   activated yet. A refusal here leaves the serving snapshot untouched.
+2. Hold new requests (the health and readiness probes still answer, and
+   `/_urlcode/ready` reports `degraded` while no activation is live), wait up
+   to `closeTimeoutMs` for the requests already running in the serving
+   snapshot to finish, then close its extensions in reverse activation order.
+   Requests still running at the deadline reject the reload and the serving
+   snapshot keeps its extensions.
+3. Activate the edited snapshot's extensions in registration order. On success
+   it becomes the serving snapshot before the held requests resume.
+4. When one of them refuses (a throw from `activate()`, a missing hook), close
+   the ones that did activate, then activate the serving snapshot's own
+   configuration again and resume the held requests on it. The reload is
+   rejected (`reload_rejected` names the refusal). If that restore also
+   refuses, the diagnostic says so with `"extensions":"unavailable"`, every
+   request answers 503 and readiness stays `degraded` until a later reload
+   activates.
+
+So `activate()` must work again after `close()` with the same configuration,
+and must derive everything from its `config` and `context`, never from the
+project file on disk, which a reload may already have edited. A value one
+extension resolves from another's declaration reads it from
+`context.declarations` (the validated configuration of every extension this
+snapshot activates): the store's screens reach `ui` that way, so a restored
+snapshot shows its own screens. Hook modules loaded with `loadExtensionHooks`
+are the exception: they are imported from the project directory at each
+activation, so a restore after a refused reload loads the hook sources as they
+are on disk then. A host plugin is not handed over: its `activate` runs when a
+snapshot is built.
 
 #### Request helpers
 
@@ -4404,8 +4448,11 @@ The module default-exports `{extensions, plugins?, close?}`; a site's
 `host.mjs` builds that object with `composeHost` from
 `@jimhoyd/urlcode/host`. It may import installed operator packages, open their
 stores and read operator secrets. `close` releases shared services when the CLI
-command finishes or the server shuts down. A runtime reload closes extension
-instances but does not close caller-owned services. Host modules are not
+command finishes or the server shuts down. A runtime reload closes the serving
+extension instances before it activates their replacements, and activates the
+last-good ones again if a replacement refuses
+([reloads and exclusive resources](#reloads-and-exclusive-resources)); it never
+closes caller-owned services. Host modules are not
 watched or automatically rediscovered. Restart to update them.
 
 The same explicit option is supported by dev, validate, test, routes, audit,

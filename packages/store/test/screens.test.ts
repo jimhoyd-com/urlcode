@@ -49,12 +49,12 @@ test('storeScreens hands ui a generic description and refuses an undeclared coll
   assert.throws(() => storeScreens({ collections, screens: { '/notes': { collection: 'notes' } } }), /Screen \/notes: collection notes is not declared/);
 });
 
-test('contributedScreens reads the store block of the project and nothing else', async t => {
+test('contributedScreens resolves the snapshot configuration ui hands it, never the project file on disk', async t => {
   const root = await mkdtemp(join(tmpdir(), 'store-screens-')); t.after(() => rm(root, { recursive: true, force: true }));
-  await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', routes: { '/': { respond: { text: 'hi' } } } }));
-  assert.deepEqual(await contributedScreens({ root }), {}, 'a project that does not declare the store contributes no screens');
-  await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', fields } }, screens: { '/todos': { collection: 'todos', title: 'Mine' } } } } }, routes: { '/api/todos/*': { extension: 'store' } } }));
-  assert.equal((await contributedScreens({ root }))['/todos']?.title, 'Mine');
+  // The file on disk may already hold a later edit; only the configuration passed in counts.
+  await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', fields } }, screens: { '/todos': { collection: 'todos', title: 'On disk' } } } } }, routes: { '/api/todos/*': { extension: 'store' } } }));
+  assert.deepEqual(contributedScreens({ config: undefined }), {}, 'a snapshot that does not declare the store contributes no screens');
+  assert.equal(contributedScreens({ config: { collections: { todos: { mount: '/api/todos', fields } }, screens: { '/todos': { collection: 'todos', title: 'Mine' } } } })['/todos']?.title, 'Mine');
 });
 
 test('store activation refuses a screen naming a collection it does not declare', async t => {
