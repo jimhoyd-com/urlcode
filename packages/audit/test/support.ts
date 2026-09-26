@@ -27,9 +27,14 @@ export function activation(root: string, mounts: readonly string[] = []): Extens
 }
 
 export async function openAudit(t: TestContext, options: Partial<AuditOptions> = {}): Promise<{ audit: Audit; dir: string; database: string }> {
-  const dir = await tempDir(t), database = options.database ?? join(dir, 'audit.sqlite');
+  const dir = await mkdtemp(join(tmpdir(), 'urlcode-audit-'));
+  const database = options.database ?? join(dir, 'audit.sqlite');
   const audit = await createAudit({ projectSha256: pin, database, ...options });
   t.after(() => audit.close());
+  // Close the database before removing its directory: t.after hooks run in registration order, and Windows can
+  // hang deleting a directory that still holds an open sqlite (WAL) handle, so this must not reuse tempDir(t),
+  // whose own cleanup would otherwise run first.
+  t.after(() => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   return { audit, dir, database };
 }
 
