@@ -93,7 +93,10 @@ test('composeHost reads the key file and opens a private database; a consumer ge
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: host.extensions ?? [] });
   cleanup(t, () => app.close());
   const info = await stat(join(dir, 'data', 'abuse.sqlite'));
-  assert.equal(info.mode & 0o777, 0o600);
+  assert.ok(info.isFile());
+  assert.equal(info.nlink, 1);
+  // Windows permissions are ACL-based; only POSIX exposes the mode enforced by the store.
+  if (process.platform !== 'win32') assert.equal(info.mode & 0o777, 0o600);
   const post = () => fetch(`http://127.0.0.1:${app.address.port}/limited/submit`, { method: 'POST' });
   assert.equal((await post()).status, 200);
   assert.equal((await post()).status, 200);
@@ -114,14 +117,18 @@ test('a missing key or a key of the wrong size refuses with the scaffold hint', 
   await assert.rejects(composeHost(pathToFileURL(join(long.dir, 'host.mjs')), [abuse()]), /exactly 32 bytes/);
 });
 
-test('host options can supply the key and database, and a shared database file must stay private', async t => {
+test('host options can supply the key and database', async t => {
   const { dir, project } = await site(t, null);
   await pinned(t, project, { version: '1', extensions: { abuse: { version: '1', config: {} } }, routes: {} });
   const database = join(dir, 'elsewhere.sqlite');
   const host = await composeHost(pathToFileURL(join(dir, 'host.mjs')), [abuse({ key: randomBytes(32), database })]);
+  cleanup(t, () => host.close?.());
+  assert.ok((await stat(database)).isFile());
   await host.close?.();
-  await chmod(database, 0o644);
-  await assert.rejects(composeHost(pathToFileURL(join(dir, 'host.mjs')), [abuse({ key: randomBytes(32), database })]), /must be a private regular file/);
+  await t.test('POSIX refuses a database readable by other users', { skip: process.platform === 'win32' }, async () => {
+    await chmod(database, 0o644);
+    await assert.rejects(composeHost(pathToFileURL(join(dir, 'host.mjs')), [abuse({ key: randomBytes(32), database })]), /must be a private regular file/);
+  });
 });
 
 test('activation refuses any mount', async t => {
