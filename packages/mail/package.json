@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-mail",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Plain-text transactional email: templates contributed by other extensions, one operator transport.",
   "private": true,
   "type": "module",
@@ -48,7 +48,7 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.2",
+    "@jimhoyd/urlcode": "0.6.3",
     "@aws-sdk/client-sesv2": ">=3.1135.0 <4.0.0"
   },
   "peerDependenciesMeta": {

@@ -125,9 +125,9 @@ release tag:
 
 <!-- urlcode-current-version:start -->
 ```sh
-git clone --branch v0.6.2 https://github.com/jimhoyd-com/urlcode.git
-docker build -f urlcode/packaging/container/Dockerfile -t urlcode:0.6.2 urlcode
-docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.6.2 \
+git clone --branch v0.6.3 https://github.com/jimhoyd-com/urlcode.git
+docker build -f urlcode/packaging/container/Dockerfile -t urlcode:0.6.3 urlcode
+docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.6.3 \
   serve --project /project --host 0.0.0.0
 ```
 <!-- urlcode-current-version:end -->
