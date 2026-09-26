@@ -18,13 +18,14 @@ import ui from '@jimhoyd/urlcode-ui/extension';
 import forms from '@jimhoyd/urlcode-forms/extension';
 import store from '@jimhoyd/urlcode-store/extension';
 import formRecords from '../src/extension.ts';
+import { cleanup } from './cleanup.ts';
 
 const origin = 'https://reload.example.test';
 
 function withSha(t: TestContext, sha: string): void {
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = sha;
-  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  cleanup(t, () => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
 }
 /** A stand-in `auth` for the `auth: true` short form: `Badge <id>` sets the principal. */
 function badgeAuth(projectSha256: string): RuntimeExtension {
@@ -46,7 +47,8 @@ function badgeAuth(projectSha256: string): RuntimeExtension {
 }
 
 test('the generated admin/form-records example reloads a contact title edit and keeps its data (#777)', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'form-records-reload-')); t.after(() => rm(root, { recursive: true, force: true }));
+  // Close the server and host-owned audit database before removing their files (also on assertion failure).
+  const root = await mkdtemp(join(tmpdir(), 'form-records-reload-')); cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'); await mkdir(project);
   // What `init --with admin,form-records --example` installs, minus the account screens (admin, auth, mail).
   const installed = ['admin', 'audit', 'auth', 'form-records', 'forms', 'mail', 'store', 'ui'];
@@ -73,13 +75,13 @@ test('the generated admin/form-records example reloads a contact title edit and 
   await save();
   const sha = await inspectExtensionRevision(project); withSha(t, sha);
   const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [audit(), store(), ui(), forms(), formRecords()]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   const events: Record<string, unknown>[] = [], diagnostics: string[] = [];
   // `urlcode dev`: the watcher's reload() with the startup pin followed.
   const app = await startServer({ project, origin, port: 0, followExtensionPinOnReload: true, log: event => { events.push(event as Record<string, unknown>); },
     debugErrors: true, diagnostics: line => { diagnostics.push(line); }, extensions: [...host.extensions!, badgeAuth(sha)] });
   let open = true;
-  t.after(async () => { if (open) await app.close(); });
+  cleanup(t, async () => { if (open) await app.close(); });
   const cookies = new Map<string, string>();
   const call = async (path: string, init: { method?: string; body?: string; json?: boolean } = {}) => {
     const response = await fetch(`http://127.0.0.1:${app.address.port}${path}`, { method: init.method ?? 'GET', ...(init.body === undefined ? {} : { body: init.body }), redirect: 'manual', headers: { authorization: 'Badge ada', origin, 'content-type': init.json ? 'application/json' : 'application/x-www-form-urlencoded', ...(cookies.size ? { cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; ') } : {}) } });
