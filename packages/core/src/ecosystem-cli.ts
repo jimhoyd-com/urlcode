@@ -77,7 +77,7 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
   }else if(command==='mcp'){
     if(args[0]==='print-config'){
       // Pre-session bootstrap (#542): a human registers this output as `.mcp.json` in an empty/not-yet-initialized
-      // directory BEFORE starting an agent session there, so a project-scoped MCP client (Claude Code, Codex) loads
+      // directory BEFORE starting an agent session there, so Claude Code (which reads a project `.mcp.json`) loads
       // the `urlcode` server from that session's very first turn — before the agent ever runs `urlcode init`. The
       // server starts fine against an empty directory (tools/list works; a project-reading tool such as get_context
       // returns the same actionable "run urlcode init" error the CLI prints); `urlcode init` then keeps this exact

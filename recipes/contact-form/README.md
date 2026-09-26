@@ -29,6 +29,24 @@ project hash, so regenerate and re-review the policy afterwards.
 
 A signal carries a fixed payload (route, method, status), not the submitted
 message, and is best effort: drops are counted, never retried. Test and audit
-probes do not fire it. To deliver the message itself, put a store or mailer
-behind the hook that reads the request log, or serve this route behind an
-operator extension. See [egress](../../docs/EGRESS.md).
+probes do not fire it. See [egress](../../docs/EGRESS.md).
+
+This minimal recipe demonstrates declarative validation and a metadata-only
+notification; it does not deliver or keep the message. Nothing downstream can
+recover it either: request logs and events never carry a request body or field
+value ([privacy guarantees](../../docs/OBSERVABILITY.md#privacy-guarantees)).
+To act on what was submitted, use the declarative extensions instead of this
+route:
+
+- Delivery: a [forms](../../packages/forms/README.md) flow with
+  [`notify`](../../packages/forms/README.md#notifications-notify) sends one
+  plain-text email per valid submission through the
+  [mail](../../packages/mail/README.md) extension, to a recipient the operator
+  names in `host.mjs`.
+- Persistence: [form-records](../../packages/form-records/README.md) saves a
+  forms flow into an owned [store](../../packages/store/README.md) collection
+  for a signed-in user.
+
+Both are operator-installed (`urlcode extensions add forms`, `urlcode
+extensions add form-records`) and take an HTML form's URL-encoded body rather
+than this route's JSON.

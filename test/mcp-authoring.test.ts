@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
 import {cp,mkdtemp,rm,readFile,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {fileURLToPath} from 'node:url';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {confinedPath} from '../packages/core/src/mcp-authoring.ts';import {project,redirect} from './helpers.ts';
+import {scaffoldProject} from '../packages/core/src/scaffold.ts';import {buildContext,shellWord} from '../packages/core/src/context.ts';import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 interface Reply { error?:{code:number;message:string};result:{tools:{name:string;annotations:{readOnlyHint:boolean}}[];content:{text:string}[];isError?:boolean} }
@@ -102,4 +103,90 @@ test('scaffold_feature creates placeholders for a created route and refuses to o
  await writeFile(join(root,'functions/item.mjs'),'// mine');
  const again=await session(root,[initialize,ready,...calls([{name:'scaffold_feature',arguments:{}}])],true);
  assert.deepEqual(payload(again[1]!).created,[]);assert.equal(await readFile(join(root,'functions/item.mjs'),'utf8'),'// mine');
+});
+// #778: a project whose `widget` extension is registered only by an external operator host file, pinned to the
+// project's revision. The runners and get_context's commands must carry that host file (and the operator's origin).
+const widgetYaml='version: "1"\nextensions:\n  widget:\n    version: "1"\n    config: {}\nroutes:\n  /widget/*:\n    extension: widget\n    methods: [GET, HEAD]\n';
+// `extraRoutes` adds YAML under routes; `pinned` names the directory whose revision the registration pins (default:
+// root); `policySchema` is the registration's route-requirement schema.
+async function widgetProject(t:{after(fn:()=>Promise<void>):void},{extraRoutes='',pinned,policySchema}:{extraRoutes?:string;pinned?:(root:string)=>Promise<string>;policySchema?:object}={}) {
+ const root=await mkdtemp(join(tmpdir(),'urlcode-widget-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ await writeFile(join(root,'urlcode.yaml'),widgetYaml+extraRoutes);
+ await mkdir(join(root,'tests'));await writeFile(join(root,'tests/requests.json'),JSON.stringify([{path:'/widget/',status:200,expectBody:'ok'}]));
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-widget-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const registration={name:'widget',version:'1',projectSha256:await inspectExtensionRevision(pinned?await pinned(root):root),targets:['node'],schema:{type:'object',additionalProperties:false},...(policySchema?{policySchema}:{})};
+ const hostFile=join(dir,'host.mjs');
+ await writeFile(hostFile,`export default {extensions:[{...${JSON.stringify(registration)},activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'ok'};}};}}]};`);
+ return {root,hostFile};
+}
+const widgetOrigin='https://widget.example.test';
+async function hostSession(root:string,messages:unknown[],options:{hostFile?:string;origin?:string}) {
+ let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
+ await serveMcp({project:root,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output,allowAuthoring:true,...options});
+ return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply);
+}
+test('buildContext commands repeat the operator host file and origin and name what the operator has not supplied (#778)',async t=>{
+ const {root,hostFile}=await widgetProject(t);
+ const withHost=await buildContext(root,{projectFlag:'.',hostFile});
+ for(const command of ['validate','test','audit','routes'])assert.ok(withHost.commands![command]!.endsWith(` --host-file ${hostFile}`),command);
+ assert.equal(withHost.commands!.capabilities!.includes('--host-file'),false);
+ // No origin was supplied: the commands carry none and the missing flag is named, not guessed.
+ assert.equal(withHost.commands!.validate!.includes('--origin'),false);
+ assert.deepEqual(withHost.prerequisites?.map(item=>item.flag),['--origin']);
+ const complete=await buildContext(root,{projectFlag:'.',hostFile,origin:widgetOrigin});
+ assert.equal(complete.commands!.test,`urlcode test --project . --host-file ${hostFile} --origin ${widgetOrigin}`);
+ assert.equal(complete.prerequisites,undefined);
+ // Without a host file the commands stay host-less and both operator flags are named.
+ const bare=await buildContext(root,{projectFlag:'.'});
+ assert.equal(bare.commands!.validate,'urlcode validate --local --project .');
+ assert.deepEqual(bare.prerequisites?.map(item=>item.flag),['--host-file','--origin']);
+ // A host path that is not a plain shell word is quoted rather than split (an already-loaded host skips the load).
+ const spaced=await buildContext(root,{projectFlag:'.',hostFile:'/srv/op host/host.mjs',host:{}});
+ assert.equal(spaced.commands!.validate,`urlcode validate --local --project . --host-file ${process.platform==='win32'?'"/srv/op host/host.mjs"':`'/srv/op host/host.mjs'`}`);
+ // A Windows path keeps its backslashes and short-name tilde bare, and is double-quoted, never single-quoted, when needed.
+ assert.equal(shellWord('C:\\Users\\RUNNER~1\\Temp\\host.mjs','win32'),'C:\\Users\\RUNNER~1\\Temp\\host.mjs');
+ assert.equal(shellWord('C:\\Program Files\\op\\host.mjs','win32'),'"C:\\Program Files\\op\\host.mjs"');
+ assert.equal(shellWord('/home/op/RUNNER~1/host.mjs','linux'),'/home/op/RUNNER~1/host.mjs');
+ assert.equal(shellWord('~/host.mjs','linux'),`'~/host.mjs'`);
+});
+test('with the operator host file the runners validate and test the widget route like run_tests, and get_context carries it (#778)',async t=>{
+ const {root,hostFile}=await widgetProject(t);
+ const messages=[initialize,ready,...calls([{name:'run_validate',arguments:{}},{name:'run_test',arguments:{}},{name:'run_tests',arguments:{}},{name:'get_context',arguments:{}}])];
+ const replies=await hostSession(root,messages,{hostFile,origin:widgetOrigin});
+ const validated=payload(replies[1]!),tested=payload(replies[2]!),inProcess=payload(replies[3]!),context=payload(replies[4]!) as {commands:Record<string,string>;prerequisites?:unknown};
+ assert.equal(validated.exitCode,0,JSON.stringify(validated));
+ assert.equal(tested.exitCode,0,JSON.stringify(tested));assert.match(String(tested.stdout),/"failed":0/);
+ assert.equal(inProcess.total,1);assert.equal(inProcess.failed,0);
+ assert.equal(context.commands.test,`urlcode test --project . --host-file ${hostFile} --origin ${widgetOrigin}`);
+ assert.equal(context.prerequisites,undefined);
+ // Without the host file the runners behave as before: the extension has no provider, so validation fails.
+ const bare=await hostSession(root,[initialize,ready,...calls([{name:'run_validate',arguments:{}},{name:'get_context',arguments:{}}])],{origin:widgetOrigin});
+ assert.notEqual(payload(bare[1]!).exitCode,0);
+ const bareContext=payload(bare[2]!) as {commands:Record<string,string>;prerequisites:{flag:string}[]};
+ assert.equal(bareContext.commands.validate,`urlcode validate --local --project . --origin ${widgetOrigin}`);
+ assert.deepEqual(bareContext.prerequisites.map(item=>item.flag),['--host-file']);
+});
+test('authoring verdicts use the operator host file registrations: a scaffolded route under the widget extension validates (#778)',async t=>{
+ // The scaffolded route carries a widget requirement, checked against the registration's policy schema. Scaffolding adds
+ // a placeholder module, which changes the revision; the operator pins the reviewed post-scaffold revision (computed on
+ // a scaffolded copy).
+ const policySchema={type:'object',properties:{role:{const:'member'}},required:['role'],additionalProperties:false};
+ const route=(role:string)=>`  /hello:\n    function:\n      source: functions/hello.mjs\n    policies:\n      extensions:\n        widget:\n          role: ${role}\n`;
+ const pinned=async(root:string)=>{
+  const copy=await mkdtemp(join(tmpdir(),'urlcode-widget-pin-'));t.after(()=>rm(copy,{recursive:true,force:true}));
+  await cp(root,copy,{recursive:true});await scaffoldProject(copy);return copy;
+ };
+ const scaffold=[initialize,ready,...calls([{name:'scaffold_feature',arguments:{}}])];
+ const verdictOf=async(role:string,withHost:boolean)=>{
+  const {root,hostFile}=await widgetProject(t,{extraRoutes:route(role),pinned,policySchema});
+  const reply=payload((await hostSession(root,scaffold,{...(withHost?{hostFile}:{}),origin:widgetOrigin}))[1]!);
+  assert.deepEqual(reply.created,['functions/hello.mjs']);
+  return reply.validation as {valid:boolean;note?:string};
+ };
+ // With the host file: a requirement the registration accepts validates, one it refuses does not.
+ assert.equal((await verdictOf('member',true)).valid,true);
+ assert.equal((await verdictOf('admin',true)).valid,false);
+ // Without it the verdict is what it was before #778: no registration to check against, so both pass.
+ assert.equal((await verdictOf('member',false)).valid,true);
+ assert.equal((await verdictOf('admin',false)).valid,true);
 });

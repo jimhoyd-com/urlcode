@@ -6,14 +6,15 @@ import { assert } from './errors.ts';
 
 /** Where the packaged agent skill lives, relative to the installed @jimhoyd/urlcode package. */
 export const skillPath = 'skills/urlcode/SKILL.md';
-/** The MCP registration file `urlcode init` writes beside the project (Claude Code and Codex read this shape). */
+/** The project-scoped MCP registration file `urlcode init` writes beside the project (Claude Code reads it; Codex registers servers in its own TOML config). */
 export const mcpConfigFile = '.mcp.json';
 /**
  * Renders `.mcp.json` registering the read-only `urlcode mcp` server for the project at `project`, relative
  * to the file. `--allow-authoring` is deliberately absent: the operator adds it by hand when they want it.
  * `local` is for a project whose package.json pins the runtime: the server is then launched through `npx --no`,
- * which uses the installed copy and refuses to fetch anything (a bare `urlcode` is not on PATH for a local-only install,
- * and `npx urlcode` would resolve an unrelated registry package). Without a pin the bare command is kept for global installs.
+ * which uses the installed copy and refuses to fetch anything (a bare `urlcode` is not on PATH for a local-only install;
+ * a bare `npx urlcode` finds the local binary only after `npm install`, and before it tries to fetch the unclaimed
+ * unscoped `urlcode` registry name). Without a pin the bare command is kept for global installs.
  */
 export function renderMcpConfig(project = '.', { local = false }: { local?: boolean } = {}): string {
   assert(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(project) && !project.split('/').includes('..'), 'MCP project path must be a relative path without ..');
@@ -59,7 +60,7 @@ validation, middleware wiring, policies, static serving and authentication. Read
 
 ## MCP
 
-When present, \`${mcpConfigFile}\` registers the read-only \`urlcode mcp\` server, which never executes project code; prefer its
+When present, \`${mcpConfigFile}\` registers the read-only \`urlcode mcp\` server for Claude Code, which never executes project code (Codex does not read that file: its operator registers the same command under \`[mcp_servers.urlcode]\` in \`~/.codex/config.toml\` or a trusted project \`.codex/config.toml\`, with this site as \`cwd\`, or with \`codex mcp add\`); prefer its
 tools (also \`get_manifest\`) to reading documents, and run fixtures with \`urlcode test\`. Inspect \`get_extensions\` before
 replacing extension behavior. \`--allow-authoring\` is an operator opt-in; never add it. Prefer tested first-party extensions when suitable. External/private extensions are allowed: install them separately and wire them into the operator host, following EXTENSIONS.md’s "External extensions and AI tooling" workflow in llms-full.txt. Inspect their host registrations and validate/test with that host; catalog commands do not manage arbitrary external packages. First-party extensions are installed with \`urlcode extensions available|add|remove\` and moved with \`urlcode upgrade\`, which pins them in \`package.json\` and wires \`host.mjs\`. Artifacts are inert add-ons (schemas, example configuration) installed with \`urlcode artifacts add\`; read them with \`get_extension_artifacts\`/\`get_extension_artifact\`, which never activate an extension. [URLCode AI](https://urlcode.ai/) is a separate optional hosted service for version-pinned reference and shared skills; its anonymous remote MCP runs no model of its own and never replaces this local project server. Its machine-readable entry point is \`https://urlcode.ai/llms.txt\`.
 

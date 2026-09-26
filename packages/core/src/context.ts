@@ -19,8 +19,10 @@ export interface ContextOptions {
  target?:string|undefined;
  /** Absolute path to a trusted operator host module outside the project; its extensions and plugins are counted, never run. */
  hostFile?:string|undefined;
- /** An operator host the caller already loaded from its own host file (the MCP server's `--host-file`); used instead of `hostFile`, and left for the caller to close. */
+ /** An operator host the caller already loaded from its own host file (the MCP server's `--host-file`); used instead of loading `hostFile` again, and left for the caller to close. Pass `hostFile` too so the emitted commands name it. */
  host?:OperatorHost|undefined;
+ /** The canonical origin the operator supplied (`--origin`); the emitted commands carry it. Never guessed. */
+ origin?:string|undefined;
  /** Estimated token budget; sections are dropped in a fixed order until the YAML rendering fits. */
  budget?:number|undefined;
  /** What `--project` should say in the emitted commands; defaults to the project argument itself. */
@@ -40,7 +42,33 @@ export interface ProjectContext {
  constraints:Record<string,boolean|string|{value:boolean|string;note:string}>;
  targets?:Record<string,{deployment:string;supported:string[];conditional:string[];refused:string[];unknown:string[]}>;
  commands?:Record<string,string>;
+ /** Operator flags `commands` need but the caller did not supply: named, never guessed. Absent when nothing is missing. */
+ prerequisites?:Prerequisite[];
  omitted?:ContextSection[];
+}
+export interface Prerequisite {flag:'--host-file'|'--origin'|'--policy';reason:string}
+/**
+ * A value for the local shell's command line: bare when it is plainly safe, quoted otherwise. Windows paths keep
+ * their `\` and `~` bare and are double-quoted when needed (cmd.exe does not treat single quotes as quoting);
+ * elsewhere the value is single-quoted for a POSIX shell, and `~` is bare only after the first character.
+ */
+export function shellWord(value:string,platform:NodeJS.Platform=process.platform):string {
+ if(platform==='win32')return /^[\w@%+=:,./\\~-]+$/.test(value)?value:`"${value}"`;
+ return /^[\w@%+=:,./-][\w@%+=:,./~-]*$/.test(value)?value:`'${value.replace(/'/g,`'\\''`)}'`;
+}
+/**
+ * The operator flags the caller supplied, appended to every command that activates the project (validate, test,
+ * audit, routes). Only values the operator gave are repeated: a missing one is named in `prerequisites`, never invented.
+ */
+function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefined}):string {
+ return `${options.hostFile===undefined?'':` --host-file ${shellWord(options.hostFile)}`}${options.origin===undefined?'':` --origin ${shellWord(options.origin)}`}`;
+}
+function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
+ const needs:Prerequisite[]=[];
+ if(extensions&&options.hostFile===undefined)needs.push({flag:'--host-file',reason:'The project declares extensions; only the operator\'s host file outside the project registers them.'});
+ if(extensions&&options.origin===undefined)needs.push({flag:'--origin',reason:'Extensions activate only with the canonical https origin the operator serves this project on.'});
+ if(bindings)needs.push({flag:'--policy',reason:'Routes request env or secret bindings; only the operator\'s policy pinned to this project revision grants them.'});
+ return needs;
 }
 /** Characters divided by four, rounded up: an estimate, not a tokenizer. */
 export function estimateTokens(text:string):number {return Math.ceil(text.length/4);}
@@ -143,7 +171,8 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    }
    targets[target]=entry;
   }
-  const flag=options.projectFlag??project,cli=await cliInvocation(project);
+  const flag=options.projectFlag??project,cli=await cliInvocation(project),operator=operatorFlags(options);
+  const prerequisites=prerequisitesFor(options,Object.keys(document.extensions??{}).length,env.size+secrets.size);
   const context:ProjectContext={
    urlcode:await packageVersion(),schema:'1',
    project:{
@@ -157,12 +186,13 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    constraints:{...constraints},
    targets,
    commands:{
-    validate:`${cli} validate --local --project ${flag}`,
-    test:`${cli} test --project ${flag}`,
-    audit:`${cli} audit --project ${flag} --expect-routes ${compiled.count}`,
-    routes:`${cli} routes --project ${flag}`,
+    validate:`${cli} validate --local --project ${flag}${operator}`,
+    test:`${cli} test --project ${flag}${operator}`,
+    audit:`${cli} audit --project ${flag} --expect-routes ${compiled.count}${operator}`,
+    routes:`${cli} routes --project ${flag}${operator}`,
     capabilities:`${cli} capabilities${options.target===undefined?'':` --target ${selected[0]}`}`,
    },
+   ...(prerequisites.length?{prerequisites}:{}),
   };
   return budget===undefined?context:fitBudget(context,budget);
  } finally {if(owned)await host.close?.();}
@@ -173,7 +203,7 @@ const drops:[ContextSection,(context:ProjectContext)=>void][]=[
  ['targets',context=>{delete context.targets;}],
  ['constraintNotes',context=>{for(const [key,item] of Object.entries(context.constraints))context.constraints[key]=typeof item==='object'?item.value:item;}],
  ['files',context=>{delete context.project.files;}],
- ['commands',context=>{delete context.commands;}],
+ ['commands',context=>{delete context.commands;delete context.prerequisites;}],
  ['summary',context=>{context.project={entry:context.project.entry,routes:context.project.routes,routeCountNote:context.project.routeCountNote,handlers:context.project.handlers,extensions:[],policies:{project:[],routes:{}},bindings:{env:[],secrets:[]},site:[]};}],
 ];
 function fitBudget(context:ProjectContext,budget:number):ProjectContext {
@@ -254,7 +284,7 @@ export function renderTaskContext(context:TaskContext):string {return stringify(
  * One bounded call for a task: fixed guidance plus this project's facts for that task. Same compiler as buildContext;
  * a directory without urlcode.yaml still gets the guidance, any other load failure propagates.
  */
-export async function buildTaskContext(project:string,task:string,options:{budget?:number|undefined;hostFile?:string|undefined;projectFlag?:string|undefined}={}):Promise<TaskContext> {
+export async function buildTaskContext(project:string,task:string,options:{budget?:number|undefined;hostFile?:string|undefined;host?:OperatorHost|undefined;origin?:string|undefined;projectFlag?:string|undefined}={}):Promise<TaskContext> {
  if(!(contextTasks as readonly string[]).includes(task))throw new ConfigError(`Unknown context task; use one of: ${contextTasks.join(', ')}`,{code:'invalid-option-value'});
  const budget=options.budget;
  if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
@@ -262,15 +292,16 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape})),starter:redirectStarter()};
  const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
  if(exists) {
-  const host=await loadOperatorHost(options.hostFile,project);
+  const owned=options.host===undefined,host=options.host??await loadOperatorHost(options.hostFile,project);
   try {
    const {loaded,compiled,routes}=await compile(project);
    context.project={entry:'urlcode.yaml',routes:compiled.count,redirects:routes.filter(route=>route.redirect).map(route=>({path:route.pattern,status:route.redirect!.status??302,url:route.redirect!.url})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0).slice(0,20),site:sorted(Object.keys(loaded.document.site??{}))};
-  } finally {await host.close?.();}
+  } finally {if(owned)await host.close?.();}
  }
  const cli=await cliInvocation(project);
  context.recipe=`${cli} recipes show redirect`;
- context.commands={validate:`${cli} validate --local --project ${flag}`,test:`${cli} test --project ${flag}`,audit:`${cli} audit --project ${flag} --expect-routes ${context.project?context.project.routes:'N'}`,schema:`${cli} schema redirect`};
+ const operator=operatorFlags(options);
+ context.commands={validate:`${cli} validate --local --project ${flag}${operator}`,test:`${cli} test --project ${flag}${operator}`,audit:`${cli} audit --project ${flag} --expect-routes ${context.project?context.project.routes:'N'}${operator}`,schema:`${cli} schema redirect`};
  if(budget===undefined)return context;
  // Fixed order, like fitBudget: this project's facts, then commands, then the notes, then the shapes.
  const omitted:string[]=[];

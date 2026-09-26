@@ -638,11 +638,11 @@ the starter, a few thousand for the cookbook), not with the framework.
 For an installed CLI:
 
 ```sh
-urlcode validate --local --project ./my-links
-urlcode routes --project ./my-links
-urlcode test --project ./my-links
-urlcode audit --project ./my-links --expect-routes 2
-urlcode benchmark --project ./my-links --requests 100 --concurrency 2
+urlcode validate --local --project ./my-links/app
+urlcode routes --project ./my-links/app
+urlcode test --project ./my-links/app
+urlcode audit --project ./my-links/app --expect-routes 2
+urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. Runtime checkout users can replace
@@ -968,7 +968,7 @@ generated scaffolding should not omit it silently when a recipe's own
 description calls for isolation (a "run this contributed script" recipe, for
 instance) — say explicitly why a generated route does or does not declare
 `sandbox: true`. Most native handlers (`redirect`, `respond`, `page`,
-`static`, `download`, `link`, `proxy`) need no `function`/`middleware` at all
+`static`, `download`, `proxy`) need no `function`/`middleware` at all
 and this decision does not apply to them.
 
 Put that justification where tooling can see it, not only in a source
@@ -1052,10 +1052,16 @@ inferring either from the YAML. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe and scaffold tools, and runner
 tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
-project's trusted code.
-`urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only
-server for the project ([registering the server](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#registering-the-server)).
-A project-scoped MCP client loads `.mcp.json` only at session start, so an agent
+project's trusted code and, when the operator gave the server `--host-file`,
+that operator-supplied host module. The runners and `get_context`'s commands
+repeat only the operator's own `--host-file` and `--origin`; a flag the operator
+did not supply is listed under `prerequisites`, never guessed.
+`urlcode init` writes `.mcp.json`, the project-scoped file Claude Code reads to
+register the read-only server. Codex does not read it: register the same pinned
+command in `~/.codex/config.toml` or a trusted project `.codex/config.toml`
+under `[mcp_servers.urlcode]` with the site root as `cwd`, or with `codex mcp
+add` ([registering the server](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#registering-the-server)).
+Claude Code loads `.mcp.json` only at session start, so an agent
 whose first turn is `init` itself does not see these tools that turn. Run
 `urlcode mcp print-config > .mcp.json` in the target directory before starting
 that session to register the server ahead of `init`
@@ -1092,9 +1098,19 @@ trust (adding `sandbox: true` without saying why, or relying on the trusted
 default for code that plainly needed isolation) to work around them.
 
 There is no native `link` handler or `dynamicLinks` project flag; both were
-removed. The `urlcode-dynamic-link` extension package that briefly owned them
-has been retired and unpublished, so there is no supported replacement. Report a
-request for live stored links as a gap rather than inventing a `link` field.
+removed, and the retired `urlcode-dynamic-link` extension package is not a
+supported path. Never invent a `link` field. Stored short links are declared
+through the operator-installed `store` extension's
+`extensions.store.config.shortLinks` (at most 32 entries, Node target only):
+each entry names a collection with a unique `key` (one required string field,
+at most 128 characters), a `required` `format: http-url` destination field and
+one declared `increments` counter, and a public `GET`/`HEAD` redirect mount
+routed to the store with no function. A hit answers `302` to the stored
+destination (only `GET` counts a click) and a missing code answers `404`. The
+store refuses short links on a collection scoped to its owners. Report a gap
+only for stored-link needs beyond `shortLinks`: a custom redirect status,
+non-HTTP(S) destinations, per-record ownership or a target other than Node
+([data store](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md)).
 
 See [capabilities and normalized route representation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPABILITIES.md) for the target catalog,
 programmatic compatibility analysis and provider verification limits.
@@ -2240,7 +2256,7 @@ to a shorter mount. See [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/
 ### Adding a configured redirect today
 
 ```sh
-urlcode add https://example.com/new-page --alias new-link --project ./my-links
+urlcode add https://example.com/new-page --alias new-link --project ./my-links/app
 ```
 
 This validates and writes `/new-link` to the project's `urlcode.yaml`. It is a
@@ -2925,6 +2941,7 @@ profiles:
     security: { headers: oshp-no-csp }
 routes:
   /feed:
+    respond: { json: { items: [] } }
     policies:
       profile: mine                # merges over the project layer, not instead of it
       throttle: false              # removed for this route only
@@ -3116,7 +3133,7 @@ as the not-found page instead. The page answers every unknown URL, so it cannot 
 Cloudflare inlines it: the page is small, singular and static, so the build
 reads it (64 KiB cap, must decode as UTF-8) and carries it in the artifact as a
 `respond` route at `/404.html`, answering the same status, headers and method
-rules as every other target. See [`docs/CLOUDFLARE.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#site-notfound-is-inlined).
+rules as every other target. See [`docs/CLOUDFLARE.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#sitenotfound-is-inlined).
 `favicon` and `llms` stay refused there like any other `page` route (no asset
 binding).
 
@@ -3258,9 +3275,10 @@ portable scalar header contract. Upstream redirects are returned as responses;
 Location is forwarded only if explicitly selected and is never fetched. Headers
 nominated by an incoming or upstream Connection field are removed even if selected.
 Header names are normalized to lowercase; array-valued upstream fields are omitted.
-A proxy route reads incoming headers from the same credential-free projection a
-trusted function receives: a header an installed plugin or extension declares
-as a credential is withheld before `requestHeaders` selection runs, even when a
+A proxy route reads incoming headers from the same projection a trusted
+function receives: a header the runtime withholds (Cookie, Authorization and
+every declared name while an extension is active; the names an operator plugin
+declares) is removed before `requestHeaders` selection runs, even when a
 project's own `requestHeaders` names it explicitly, so a route cannot forward a
 credential header upstream by declaring it.
 An encoded request body requires explicitly selecting its Content-Encoding
@@ -3587,7 +3605,9 @@ The operator passes `extensions: RuntimeExtension[]` to `createRuntime`,
 `@jimhoyd/urlcode/extensions`. Inspection does not grant access: review the
 project and place the exact returned SHA-256 in each registration's
 `projectSha256`. YAML extension configuration, policies and routes participate
-in the revision. Changing them requires an explicit operator reapproval.
+in the revision. Changing them requires an explicit operator reapproval; the
+one exception is `urlcode dev`'s hot reload, described under
+[the revision pin](#the-revision-pin).
 
 Registrations provide a name, contract version, target list, JSON configuration
 schema, optional policy schema, an optional declared `cacheSensitive` (below)
@@ -3727,8 +3747,14 @@ that fails a condition, including a cookie added by a later response hook,
 stays no-store. The extension owns the content-hashed filename: a file under
 the prefix must change its name when its bytes change, because clients never
 revalidate it. The prefix belongs to the operator registration, not to the
-pinned project revision. The runtime withholds Cookie and Authorization plus any declared
-credential headers from all application guest requests and mapped parameters.
+pinned project revision. While any extension is active, the runtime withholds
+Cookie and Authorization plus every extension's declared credential headers
+from all application guest requests and mapped parameters, on every route,
+including routes that never name an extension. A project with no active
+extension (and no operator plugin declaring credential headers) withholds
+nothing, so its own trusted middleware can read Authorization and Cookie (see
+[the security policy](https://github.com/jimhoyd-com/urlcode/blob/main/SECURITY.md)). The projection keeps credentials away
+from code that does not need them; it does not confine trusted Node code.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
 
@@ -3751,8 +3777,8 @@ credential-shaped one. This is generic core infrastructure
 (`extensionContextHeaderPrefix`, `stripReservedContextHeaders`,
 `@jimhoyd/urlcode/extensions`); core never reads or interprets a value
 written there. It is not a credential channel:
-the withheld headers above (`cookie`, `authorization`, any declared
-credential header) are stripped from that guest-facing projection exactly as
+the withheld headers above (`cookie`, `authorization` and any declared
+credential header, whenever an extension is active) are stripped from that guest-facing projection exactly as
 before, and an extension must never write a raw session or bearer credential
 into this namespace — only a derived, non-secret value. `packages/auth`'s
 `bearer` requirement uses it to expose the verified API key's id, name and
@@ -4807,6 +4833,27 @@ process-global `Symbol.for('urlcode.host.operatorRevision')` slot that is set
 only while the host file is imported, so a host file that imports another copy
 of core still sees it.
 
+The runtime checks the pin every time it builds a snapshot: a registration
+whose `projectSha256` is not the project's live revision is refused with
+`Extension revision pin mismatch: <name>`. `urlcode dev` has one narrow
+exception so editing a project with `--host-file` does not end every hot
+reload in that error (#777). The first `dev` start checks the pin strictly,
+exactly like `serve`. After that, a hot reload accepts a registration pinned
+to exactly the revision `dev` started from and activates it for the edited
+revision (`context.projectSha256` is the new revision), logging one
+`{"event":"extension_pin_followed","extensions":[...],"from":"<startup>","to":"<edited>"}`
+record per reload ([observability](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OBSERVABILITY.md#event-catalogue)). Every
+other check still runs on each reload: the target, the contract version, the
+configuration and policy schemas, origins and mounts. The registration object
+is not changed, and no project YAML, environment variable, CLI flag or tool
+argument can turn this on: `urlcode dev` alone enables it, through
+`startServer`'s `followExtensionPinOnReload`. `serve`, `validate`, `test`,
+`audit` and every other command, `app.reload()` on any other server, and the
+hosted adapters keep the strict check. What `dev` ran is not reviewed: review
+the edited project and pin its revision before `serve` runs it. `--policy`
+grants are not followed; see
+[local development](https://github.com/jimhoyd-com/urlcode/blob/main/docs/LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
+
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
 `composeHost` from `@jimhoyd/urlcode/host`. The runtime contract, the
@@ -4843,7 +4890,7 @@ extensions, checks each `extensions.<name>.config` and each route's
 `urlcode.json` schemas. No extension code runs. Pass `--host-file host.mjs` to
 activate the extensions and validate the whole runtime.
 
-The [GitHub Action](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md#github-action) installs the site with `npm ci
+The [GitHub Action](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md#what-it-runs) installs the site with `npm ci
 --ignore-scripts` (a committed `package-lock.json` is required), runs `urlcode
 extensions list --strict` and `urlcode artifacts list --strict`, then validates
 the project. Without a `host-file` input it validates declared extensions

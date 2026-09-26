@@ -148,11 +148,11 @@ the starter, a few thousand for the cookbook), not with the framework.
 For an installed CLI:
 
 ```sh
-urlcode validate --local --project ./my-links
-urlcode routes --project ./my-links
-urlcode test --project ./my-links
-urlcode audit --project ./my-links --expect-routes 2
-urlcode benchmark --project ./my-links --requests 100 --concurrency 2
+urlcode validate --local --project ./my-links/app
+urlcode routes --project ./my-links/app
+urlcode test --project ./my-links/app
+urlcode audit --project ./my-links/app --expect-routes 2
+urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. Runtime checkout users can replace
@@ -478,7 +478,7 @@ generated scaffolding should not omit it silently when a recipe's own
 description calls for isolation (a "run this contributed script" recipe, for
 instance) — say explicitly why a generated route does or does not declare
 `sandbox: true`. Most native handlers (`redirect`, `respond`, `page`,
-`static`, `download`, `link`, `proxy`) need no `function`/`middleware` at all
+`static`, `download`, `proxy`) need no `function`/`middleware` at all
 and this decision does not apply to them.
 
 Put that justification where tooling can see it, not only in a source
@@ -562,10 +562,16 @@ inferring either from the YAML. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe and scaffold tools, and runner
 tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
-project's trusted code.
-`urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only
-server for the project ([registering the server](TOOLING.md#registering-the-server)).
-A project-scoped MCP client loads `.mcp.json` only at session start, so an agent
+project's trusted code and, when the operator gave the server `--host-file`,
+that operator-supplied host module. The runners and `get_context`'s commands
+repeat only the operator's own `--host-file` and `--origin`; a flag the operator
+did not supply is listed under `prerequisites`, never guessed.
+`urlcode init` writes `.mcp.json`, the project-scoped file Claude Code reads to
+register the read-only server. Codex does not read it: register the same pinned
+command in `~/.codex/config.toml` or a trusted project `.codex/config.toml`
+under `[mcp_servers.urlcode]` with the site root as `cwd`, or with `codex mcp
+add` ([registering the server](TOOLING.md#registering-the-server)).
+Claude Code loads `.mcp.json` only at session start, so an agent
 whose first turn is `init` itself does not see these tools that turn. Run
 `urlcode mcp print-config > .mcp.json` in the target directory before starting
 that session to register the server ahead of `init`
@@ -602,9 +608,19 @@ trust (adding `sandbox: true` without saying why, or relying on the trusted
 default for code that plainly needed isolation) to work around them.
 
 There is no native `link` handler or `dynamicLinks` project flag; both were
-removed. The `urlcode-dynamic-link` extension package that briefly owned them
-has been retired and unpublished, so there is no supported replacement. Report a
-request for live stored links as a gap rather than inventing a `link` field.
+removed, and the retired `urlcode-dynamic-link` extension package is not a
+supported path. Never invent a `link` field. Stored short links are declared
+through the operator-installed `store` extension's
+`extensions.store.config.shortLinks` (at most 32 entries, Node target only):
+each entry names a collection with a unique `key` (one required string field,
+at most 128 characters), a `required` `format: http-url` destination field and
+one declared `increments` counter, and a public `GET`/`HEAD` redirect mount
+routed to the store with no function. A hit answers `302` to the stored
+destination (only `GET` counts a click) and a missing code answers `404`. The
+store refuses short links on a collection scoped to its owners. Report a gap
+only for stored-link needs beyond `shortLinks`: a custom redirect status,
+non-HTTP(S) destinations, per-record ownership or a target other than Node
+([data store](STORE.md)).
 
 See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
 programmatic compatibility analysis and provider verification limits.

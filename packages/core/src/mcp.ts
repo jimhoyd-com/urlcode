@@ -117,6 +117,8 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  }),input=options.input??process.stdin,output=options.output??process.stdout;
  const authoring=options.allowAuthoring===true,tools=[...readTools,...(options.hostFile===undefined?[]:[hostTool]),...(authoring?authoringTools:[])],names=new Set(tools.map(tool=>tool.name));
  const host=await loadOperatorHost(options.hostFile,project);
+ // Only what the operator put on the command line: the runners and get_context's commands repeat these, nothing else.
+ const operator={...(options.hostFile===undefined?{}:{hostFile:resolve(options.hostFile)}),...(options.origin?{origin:options.origin}:{})};
  try{await serve();}finally{await host.close?.();}
  async function serve():Promise<void> {
  let initialized=false,ready=false,pending=Buffer.alloc(0);
@@ -131,9 +133,11 @@ export async function serveMcp(options:McpOptions):Promise<void> {
   const base={...(options.origin?{origin:options.origin}:{}),...registered};
   // Legacy tool names route to the same handler as their canonical name (see aliasOf/legacyNames).
   switch(aliasOf[name]??name){
+   // The suggested commands repeat the operator's own --host-file (absolute, since they run from the project) and
+   // --origin; a flag the operator did not give is named under `prerequisites`, never guessed (#778).
    case 'get_context':{const deployTarget=deployTargetOf(args);return typeof args.task==='string'
-    ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})
-    :buildContext(project,{projectFlag:'.',...(options.hostFile===undefined?{}:{host}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
+    ?buildTaskContext(project,args.task,{...operator,...(options.hostFile===undefined?{}:{host}),...(typeof args.budget==='number'?{budget:args.budget}:{})})
+    :buildContext(project,{projectFlag:'.',...operator,...(options.hostFile===undefined?{}:{host}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
    // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
@@ -168,7 +172,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    // With no host file there is no get_extensions tool, and the plan must not point at one.
    case 'plan_feature':{const deployTarget=deployTargetOf(args);return planFeature(project,args.goal as string,{...(deployTarget!==undefined?{target:deployTarget}:{}),...(options.hostFile===undefined?{}:{extensions:host.extensions??[]})});}
    case 'review':{const deployTarget=deployTargetOf(args);return reviewProject(project,{...base,...(deployTarget!==undefined?{target:deployTarget}:{}),extensions:host.extensions});}
-   default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
+   default:if(authoring)return callAuthoringTool(project,name,args,operator,host.extensions);throw new Error('Unknown tool');
   }
  };
  const line=async(bytes:Buffer)=> {

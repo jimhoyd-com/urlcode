@@ -210,7 +210,7 @@ test('MCP returns the CLI message for tool failures and names bad tools and argu
  const unknown=JSON.parse(replies[10]!.result.content[0]!.text);assert.equal(unknown.matched,null);assert.ok(unknown.nextTools.includes('search_docs'));
 });
 test('MCP pre-session bootstrap: a fresh agent session sees the server before urlcode init ever runs (#542)',async t=>{
- // Simulates the exact gap #542 reports: a project-scoped MCP client (Claude Code, Codex) loads `.mcp.json` at
+ // Simulates the exact gap #542 reports: Claude Code loads a project `.mcp.json` at
  // session start, before any agent turn runs. `urlcode mcp print-config` lets a human register that file in an
  // empty directory beforehand, so the server named there must behave usefully against a directory that has no
  // urlcode.yaml yet, not just crash or refuse to start.

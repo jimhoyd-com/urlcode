@@ -63,7 +63,7 @@ to a shorter mount. See [HTTP](HTTP.md) and [the contract](SPECIFICATION.md).
 ## Adding a configured redirect today
 
 ```sh
-urlcode add https://example.com/new-page --alias new-link --project ./my-links
+urlcode add https://example.com/new-page --alias new-link --project ./my-links/app
 ```
 
 This validates and writes `/new-link` to the project's `urlcode.yaml`. It is a

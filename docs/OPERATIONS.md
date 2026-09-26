@@ -137,11 +137,11 @@ docker run --rm --name my-links \
   --memory 512m --cpus 1 --pids-limit 128 \
   --stop-timeout 10 \
   -p 127.0.0.1:3000:3000 \
-  -v "$PWD/starters/default:/project:ro" \
+  -v "$PWD/starters/default/app:/project:ro" \
   urlcode:local
 ```
 
-Replace the example mount with your app. The image uses the unprivileged `node`
+Replace the example mount with your route project (a site's `app/` directory). The image uses the unprivileged `node`
 user; ensure mounted config/functions are readable by it. Core has no writable
 mount of its own; a future mount-based extension (like `auth`/`admin`, see
 [extensions](EXTENSIONS.md)) is the place for operator-owned writable state.
@@ -324,7 +324,10 @@ function state is reset after every invocation, not durable/shared application s
 General application storage needs a future explicit capability broker; no
 storage/network access is exposed to the guest. Core no longer has a native
 link store, and the `urlcode-dynamic-link` extension package that replaced it
-has been retired and unpublished.
+has been retired and unpublished. Stored short links are served by the
+operator-installed `store` extension's `extensions.store.config.shortLinks`
+([data store](STORE.md)), whose records live in the store's data directory:
+back it up with the rest of the store.
 
 The health version combines route-definition and asset-representation digests;
 it does not identify the complete function/runtime release. Record runtime commit,

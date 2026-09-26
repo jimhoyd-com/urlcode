@@ -8,8 +8,8 @@ responses only. It has no infrastructure access, uses no credential, follows no
 redirect and offers no `--insecure`.
 
 ```bash
-urlcode verify-deployment --project ../my-links --target https://links.example
-urlcode verify-deployment --project ../my-links --target https://links.example \
+urlcode verify-deployment --project ../my-links/app --target https://links.example
+urlcode verify-deployment --project ../my-links/app --target https://links.example \
   --expect-routes 12 --compliance baseline --fail-on medium --timeout-ms 5000
 ```
 

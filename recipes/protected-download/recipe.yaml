@@ -10,7 +10,7 @@ services:
     description: An operator registry providing the `auth` extension; the authenticated-json-api README shows a minimal protocol fixture.
 grants:
   - kind: extension
-    description: The registration pins projectSha256 to this exact revision, including the attachment.
+    description: The host registers the projectSha256 the operator reviewed (PROJECT_SHA256 or the --policy revision), which covers the attachment; every edit needs operator review and a new pin.
   - kind: origin
     description: The canonical origin passed as --origin at every command that activates the project.
 inputs:
@@ -21,9 +21,10 @@ files: [urlcode.yaml, files/report.txt, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - urlcode validate --local --project . --host-file /operator/host.mjs --origin https://files.example.com
-    - urlcode test --project . --host-file /operator/host.mjs --origin https://files.example.com
-    - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://files.example.com
+    - urlcode extensions --project .
+    - PROJECT_SHA256=<reviewed revision> urlcode validate --local --project . --host-file /operator/host.mjs --origin https://files.example.com
+    - PROJECT_SHA256=<reviewed revision> urlcode test --project . --host-file /operator/host.mjs --origin https://files.example.com
+    - PROJECT_SHA256=<reviewed revision> urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://files.example.com
 behavior:
   - GET /downloads/report without credentials answers 401
   - GET with the accepted credential answers 200, Content-Disposition attachment and Cache-Control no-store

@@ -161,8 +161,15 @@ export const budgets: Record<string, Budget> = {
     // llms-full.txt copies). Together they measure 763472 packed and 3077097
     // unpacked bytes in 464 entries on Node 26, which left under 1 KiB of
     // packed headroom against the ~2 KiB cross-Node gzip variance above.
-    packed: 752 * 1024,
-    unpacked: 3040 * 1024,
+    //
+    // Raised to 768 KiB packed and 3080 KiB unpacked for the dev extension-pin
+    // follow (#777: RIM-EXT-PIN-001 and dist/ changes), host-file propagation into
+    // context commands and MCP runners (#778), and the docs corrections of
+    // #540/#103/#779-#785 with their llms-full.txt copies. Together they measure
+    // 770628 packed and 3103798 unpacked bytes in 464 entries on Node 26, 580
+    // bytes over the old packed budget.
+    packed: 768 * 1024,
+    unpacked: 3080 * 1024,
     entries: 470,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

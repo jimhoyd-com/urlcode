@@ -106,7 +106,9 @@ capability grants. Application data stays in the operator's systems.
 - **Not a URL shortener.** Core is redirects, validated responses, request
   functions, middleware, pages, static assets and downloads. Stored short
   links are not a core handler; the `urlcode-dynamic-link` extension package
-  that owned them has been retired and unpublished.
+  that owned them has been retired and unpublished. The operator-installed
+  `store` extension declares them through `extensions.store.config.shortLinks`
+  ([data store](STORE.md)).
 - **Not a general Node web framework.** There is no framework code to write
   for routing, validation, middleware wiring or policies — those are declared
   in YAML and enforced by the runtime. Function/middleware code that needs

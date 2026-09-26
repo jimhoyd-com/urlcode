@@ -197,7 +197,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
 ` },
   { name:'context', group:'Agent tooling', text:
-`  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--budget 500] [--json] [--stats]
+`  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--host-file ...] [--origin https://links.example] [--budget 500] [--json] [--stats]
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
 ` },
   { name:'plan-feature', group:'Agent tooling', text:
@@ -417,10 +417,10 @@ try {
       let text: string;
       if (values.task !== undefined) {
         if (values.target !== undefined) throw new ConfigError('--task cannot be combined with --target');
-        const task = await buildTaskContext(values.project, values.task, { hostFile:values['host-file'], ...budget });
+        const task = await buildTaskContext(values.project, values.task, { hostFile:values['host-file'], origin:values.origin, ...budget });
         text = values.json ? JSON.stringify(task) + '\n' : renderTaskContext(task);
       } else {
-        const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], ...budget });
+        const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], origin:values.origin, ...budget });
         text = values.json ? JSON.stringify(context) + '\n' : renderContext(context);
       }
       print(text);
@@ -573,7 +573,7 @@ try {
           if (human && values['request-log'] === undefined) values['request-log'] = 'detailed';
           const routes = { count: 0 };
           const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
-            local:command === 'dev', watch:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'], permissions,
+            local:command === 'dev', watch:command === 'dev', followExtensionPinOnReload:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'], permissions,
             ...(human ? { log:createJsonLogger(process.stdout, undefined, createDevEventFormatter(routes)) } : {}),
             ...serverCapacity(values) });
           routes.count = app.testPlan().inventory.length;

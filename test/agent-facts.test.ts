@@ -59,3 +59,51 @@ test('get_context, capabilities and the schema state the real wildcard rule (#58
  assert.ok(getCapability('redirect').constraints.some(line=>/may end in `\/\*\*`/.test(line)));
  assert.match(JSON.stringify(getSchemaFragment('static')),/must end in a terminal \/\*/);
 });
+
+test('the removed link handler and "stored links have no replacement" cannot reappear in agent-visible prose (#540)',async t=>{
+ const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
+ assert.equal(inventory.status,0,inventory.stderr);
+ const facts=JSON.parse(inventory.stdout) as {linkHandler:boolean;storeShortLinks:boolean};
+ assert.equal(facts.linkHandler,false);assert.equal(facts.storeShortLinks,true);
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const scan=async(text:string)=>{const file=join(dir,'AI-AUTHORING.md');await writeFile(file,text);return spawnSync(process.execPath,[script,'--files',file],{encoding:'utf8',timeout:30000});};
+ // The exact sentences docs/AI-AUTHORING.md shipped before this guard.
+ for(const [text,fact] of [
+  ['instance — say explicitly why a generated route does or does not declare\n`sandbox: true`. Most native handlers (`redirect`, `respond`, `page`,\n`static`, `download`, `link`, `proxy`) need no `function`/`middleware` at all\nand this decision does not apply to them.\n','linkHandler = false'],
+  ['There is no native `link` handler or `dynamicLinks` project flag; both were\nremoved. The `urlcode-dynamic-link` extension package that briefly owned them\nhas been retired and unpublished, so there is no supported replacement. Report a\nrequest for live stored links as a gap rather than inventing a `link` field.\n','storeShortLinks (no-replacement)'],
+  ['Report a request for live stored links as a gap rather than inventing a `link` field.\n','storeShortLinks (reported-as-gap)'],
+  ['Declare stored short links with the native `link` handler.\n','linkHandler = false'],
+ ] as const){
+  const result=await scan(text);
+  assert.equal(result.status,1,`${fact} should reject: ${text}`);
+  assert.ok(result.stderr.includes(`[${fact}`),result.stderr);
+ }
+ // Accurate wording stays clean: the removal itself, and a gap limited to needs beyond shortLinks.
+ const clean=await scan('There is no native `link` handler or `dynamicLinks` project flag; both were removed. Never invent a `link` field.\n\nCore has no native handler for this: the `link` handler that implemented it was removed, and the `urlcode-dynamic-link` package that replaced it is retired. There is no in-core replacement or deprecation shim for `link`/`dynamicLinks`.\n\nReport a gap only for stored-link needs beyond `shortLinks`: a custom redirect status or non-HTTP(S) destinations.\n');
+ assert.equal(clean.status,0,clean.stderr);
+});
+
+test('prose cannot claim Codex reads or discovers a project .mcp.json (#103)',async t=>{
+ const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
+ assert.equal(inventory.status,0,inventory.stderr);
+ assert.deepEqual(JSON.parse(inventory.stdout).mcpRegistration,{projectFile:'.mcp.json',readBy:['Claude Code'],codexReadsProjectFile:false});
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const scan=async(text:string)=>{const file=join(dir,'TOOLING.md');await writeFile(file,text);return spawnSync(process.execPath,[script,'--files',file],{encoding:'utf8',timeout:30000});};
+ // The exact wording docs/TOOLING.md, docs/STARTERS.md, docs/AI-AUTHORING.md and llms.txt shipped before this guard.
+ for(const text of [
+  '`urlcode init` writes `.mcp.json` at the site root, beside `host.mjs`, the\nshape Claude Code and Codex read:\n',
+  '- **Codex** reads the same `mcpServers` shape; alternatively register it in\n  `~/.codex/config.toml`:\n',
+  'A project-scoped MCP client (Claude Code, Codex) reads `.mcp.json` once, at the\nstart of its session, before the agent\'s first turn.\n',
+  '`AGENTS.md`, and a read-only local `.mcp.json` for Claude Code and Codex. It\n',
+  'Both paths also write `.mcp.json`, which registers the read-only `urlcode mcp`\nserver for Claude Code and Codex with `--project app`; it is\n',
+  '`urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only\nserver for the project.\n',
+  '`.mcp.json` only exists once `init` writes it, so a project-scoped MCP client (Claude Code, Codex) that loads it at session start sees no `urlcode` tools.\n',
+  'Codex discovers a project `.mcp.json` at session startup.\n',
+ ]){
+  const result=await scan(text);
+  assert.equal(result.status,1,`should reject: ${text}`);
+  assert.ok(result.stderr.includes('[mcpRegistration.codexReadsProjectFile'),result.stderr);
+ }
+ const clean=await scan('`urlcode init` writes `.mcp.json`, the project-scoped file Claude Code reads.\n\nCodex does not read `.mcp.json`: register the same command under `[mcp_servers.urlcode]` in `~/.codex/config.toml`, or with `codex mcp add`.\n\nA plugin-bundled `.mcp.json` is a separate Codex plugin integration, not a project registration.\n');
+ assert.equal(clean.status,0,clean.stderr);
+});

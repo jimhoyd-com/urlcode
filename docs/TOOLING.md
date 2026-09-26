@@ -83,8 +83,8 @@ The tooling API consolidates authoring operations without starting a runtime:
 
 ## Project context
 
-`urlcode context [--project DIR] [--target T] [--host-file F] [--budget N]
-[--json] [--stats]` emits one deterministic YAML document (JSON with
+`urlcode context [--project DIR] [--target T] [--host-file F] [--origin URL]
+[--budget N] [--json] [--stats]` emits one deterministic YAML document (JSON with
 `--json`) derived only from the compiled project and the capability catalog,
 never from prose. It uses the same loader and semantic compiler as
 `inspectProject`: no binding values, guest execution, environment reads or
@@ -107,11 +107,22 @@ network. Keys always appear in this order:
 - `targets`: for each capability target (or the one `--target`), which of this
   project's used features are supported, conditional, refused or unknown.
 - `commands`: the exact `validate`, `test`, `audit --expect-routes N` (N is
-  the compiled route count), `routes` and `capabilities` invocations.
+  the compiled route count), `routes` and `capabilities` invocations. The four
+  that activate the project (`validate`, `test`, `audit`, `routes`) repeat the
+  operator's own `--host-file` and `--origin` when they were given, so the
+  suggested command checks the same host-registered extensions (#778).
+- `prerequisites` (only when something is missing): the operator flags those
+  commands need but the caller did not supply, each with a reason:
+  `--host-file` when the project declares extensions and no host file was
+  given, `--origin` when it declares extensions and no origin was given, and
+  `--policy` when routes request env or secret bindings. The values are never
+  guessed: no origin, credential or grant is invented, and only the operator
+  can supply them.
 
 `--budget N` drops sections in a fixed order until the YAML rendering fits
 the estimate: per-route detail, then `targets`, then the constraint notes
-(keys and values stay), then `project.files`, then `commands`. The dropped
+(keys and values stay), then `project.files`, then `commands` (with
+`prerequisites`). The dropped
 sections are listed under `omitted`. The estimate is `ceil(characters / 4)`;
 there is no tokenizer dependency, so treat both numbers as approximate. A
 budget the smallest rendering cannot meet is an error rather than an
@@ -119,7 +130,11 @@ overrun. `--stats` writes a JSON line to stderr comparing the estimated size
 of the shipped documentation (`docs/*.md` and `llms.txt`) with the emitted
 context, labeled `estimate: characters/4`. The MCP tool `get_context` takes
 `target` and `budget` and returns the same object with `--project .` in the
-commands; it never takes a host file or any other path.
+commands; it never takes a host file or any other path as an argument. When
+the operator started the server with `--host-file` (and `--origin`), the
+commands carry that host file as an absolute path (and that origin); a flag
+the operator did not give the server is listed under `prerequisites`.
+`--task redirects` repeats the same operator flags in its commands.
 
 Inspection reads declared configuration and function source graphs to validate
 references and compute revision hashes. It compiles route and policy semantics
@@ -672,8 +687,9 @@ evidence that a feature is unsupported.
 
 ## Registering the server
 
-`urlcode init` writes `.mcp.json` at the site root, beside `host.mjs`, the
-shape Claude Code and Codex read:
+`urlcode init` writes `.mcp.json` at the site root, beside `host.mjs`. That
+file is the project-scoped registration **Claude Code** reads; other clients
+register the same command in their own configuration:
 
 ```json
 { "mcpServers": { "urlcode": { "command": "npx", "args": ["--no", "--package", "@jimhoyd/urlcode", "urlcode", "mcp", "--project", "app"] } } }
@@ -683,32 +699,57 @@ An existing `.mcp.json` is never overwritten. The file registers
 the read-only server only: `--allow-authoring` (and `--host-file`) are operator
 choices added by hand, never by `init` or by an agent.
 
+The command is the same for every client: the pinned local runtime, started
+from the site root. The site pins the runtime in its `package.json`, so the
+command is `npx` with `--no --package @jimhoyd/urlcode urlcode mcp --project app`,
+which runs the installed copy from `node_modules` and never fetches. In an
+installed site a bare `npx urlcode` also runs that copy: npm finds the local
+`urlcode` binary that `@jimhoyd/urlcode` provides. The explicit form matters
+before the install, or anywhere outside a site: there the unscoped `urlcode`
+name is unclaimed on the npm registry (it 404s; it is not this project's under
+a different owner), so a bare `npx urlcode` tries, and fails, to fetch it,
+while `--no --package @jimhoyd/urlcode` names the right package and refuses to
+fetch anything. The registration keeps that form so it never depends on
+whether `npm install` has run. `--no` resolves the package from the working
+directory, and `--project app` is relative to it, so the server must start in
+the site root. For a global install, `urlcode mcp print-config --global` prints
+the bare `urlcode` command instead.
+
 - **Claude Code** reads `.mcp.json` in the project directory as a project-scoped
-  server and asks for approval on first use. The site pins the runtime in its
-  `package.json`, so `init` writes
-  `"command": "npx"` with `--no --package @jimhoyd/urlcode urlcode mcp ...`, which runs the
-  installed copy and never fetches (do not use a bare `npx urlcode`: the unscoped `urlcode`
-  name is unclaimed on the npm registry -- it 404s, it is not this project's under a
-  different owner -- so a bare `npx urlcode` would try, and fail, to install it instead of
-  running the pinned `@jimhoyd/urlcode` already in `node_modules`). For a global
-  install, `urlcode mcp print-config --global` prints the bare `urlcode` command instead.
-- **Codex** reads the same `mcpServers` shape; alternatively register it in
-  `~/.codex/config.toml`:
+  server and asks for approval on first use.
+- **Codex** does not use this file. Its MCP servers are configured in TOML under
+  `[mcp_servers.<name>]`, in `~/.codex/config.toml` or in a project
+  `.codex/config.toml` that Codex loads only for a trusted project, or added
+  with `codex mcp add`. A plugin-bundled `.mcp.json` is a separate Codex plugin
+  integration, not a project registration. Register the same pinned command
+  and give the site root explicitly as the working directory:
 
   ```toml
   [mcp_servers.urlcode]
-  command = "urlcode"
-  args = ["mcp", "--project", "app"]
+  command = "npx"
+  args = ["--no", "--package", "@jimhoyd/urlcode", "urlcode", "mcp", "--project", "app"]
+  cwd = "/absolute/path/to/site"
   ```
-- **Any stdio client** spawns `urlcode mcp --project DIR` with the project as the
+
+  With `codex mcp add`, which takes the command after `--`, use absolute paths
+  so the registration does not depend on where Codex starts it:
+
+  ```sh
+  codex mcp add urlcode -- /absolute/path/to/site/node_modules/.bin/urlcode mcp --project /absolute/path/to/site/app
+  ```
+
+  URLCode's tests exercise the server over stdio, not through a Codex client,
+  so this registration is documented from OpenAI's Codex configuration
+  reference and has no URLCode client evidence yet.
+- **Any stdio client** spawns `urlcode mcp --project DIR` with the site as the
   working directory, speaks newline-delimited JSON-RPC 2.0 over stdin/stdout,
   and follows the 2025-11-25 lifecycle described above. Nothing listens on a
   port; closing stdin ends the session.
 
 ### Registering before `init` runs (pre-session bootstrap, #542)
 
-A project-scoped MCP client (Claude Code, Codex) reads `.mcp.json` once, at the
-start of its session, before the agent's first turn. Because `init` writes
+Claude Code reads a project's `.mcp.json` once, at the start of its session,
+before the agent's first turn. Because `init` writes
 `.mcp.json`, an agent whose very first turn is `urlcode init .` cannot see the
 local server on that turn: the tools were never loaded. `urlcode mcp
 print-config [project] [--global]` closes that gap without a new distribution
@@ -734,9 +775,12 @@ portable `npx --no --package` form, which works whether or not
 bare `urlcode` command instead, if the runtime is installed globally. This path
 covers `urlcode init <existing-or-empty-dir>`, with or without `--with`.
 
-If a client cannot be bootstrapped this way (registration made outside the
-project directory, or a client that cannot register a server before the
-project it points at exists), fall back to running the agent's first turn as a
+`print-config` emits Claude Code's `.mcp.json` only. For Codex the equivalent
+step is its own registration: add the TOML entry above, with `cwd` set to that
+directory, before starting the Codex session there (not yet exercised with a
+Codex client). If a client cannot be bootstrapped this
+way (a client that cannot register a server before the project it points at
+exists), fall back to running the agent's first turn as a
 plain CLI call — `npx --no --package @jimhoyd/urlcode urlcode init .` — then
 starting or restarting the MCP-aware session in the now-initialized directory;
 `llms.txt`, `docs/AI-AUTHORING.md` and the generated `AGENTS.md`/skill all name
@@ -801,7 +845,19 @@ What it can do, all inside the selected project root (resolved with realpath):
 - `run_validate`, `run_test`, `run_audit` spawn `urlcode validate --local`,
   `urlcode test` and `urlcode audit` against the project with a minimal
   environment (`PATH` only), a two-minute deadline and stdout/stderr each capped
-  at 32 KiB. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
+  at 32 KiB. They repeat exactly the operator flags the server itself received:
+  `--host-file` (as an absolute path) and `--origin`. Besides `PATH`, the only
+  environment variable a runner passes is `PROJECT_SHA256`, and only with a host
+  file and when the server's own value is a well-formed 64-hex revision: it is
+  the revision pin the server already loaded its own (composed) host under, not
+  a credential. No other variable goes along, no tool argument can add a flag,
+  and no grant is created or changed. The host file is operator-supplied trusted code: the
+  child imports it, so its code (and every extension's `host()` hook and
+  activation) runs with full Node access. `urlcode mcp` accepts no `--policy`,
+  so the runners never pass one; bindings that need an operator-granted policy
+  fail as they do without one (`get_context` names `--policy` under
+  `prerequisites`). Without `--host-file` a project that declares extensions
+  fails validation as it does on the CLI without one. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
   `truncated`. All three activate the local runtime, so they execute the
   project's trusted code under the same rules as the CLI: `run_validate`
   imports the trusted function and middleware modules (their top-level code
@@ -824,8 +880,10 @@ What it can do, all inside the selected project root (resolved with realpath):
   operator-granted policy fail as they do without one.
 
 `create_route`, `add_recipe` and `scaffold_feature` return `validation`, the
-`validateProject` verdict of the project after the operation (or `valid: false` with a generic note; use `run_validate`
-for the CLI report).
+`validateProject` verdict of the project after the operation, computed with the
+registrations of the operator's `--host-file` when the server has one, as MCP
+`validate` does. A project that does not validate yields `valid: false` with a
+generic note; use `run_validate` for the CLI report.
 
 What it cannot do:
 

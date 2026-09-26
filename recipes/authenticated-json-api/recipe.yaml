@@ -10,7 +10,7 @@ services:
     description: An operator registry providing the `auth` extension (urlcode-auth in a real deployment); the README shows a minimal protocol fixture.
 grants:
   - kind: extension
-    description: The registration pins projectSha256 to this exact revision; every edit needs operator review and a new pin.
+    description: The host registers the projectSha256 the operator reviewed (PROJECT_SHA256 or the --policy revision), never one it recomputes; every edit needs operator review and a new pin.
   - kind: origin
     description: The canonical origin passed as --origin at every command that activates the project.
 inputs:
@@ -24,9 +24,10 @@ files: [urlcode.yaml, functions/profile.mjs, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com
-    - urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
-    - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://api.example.com
+    - urlcode extensions --project .
+    - PROJECT_SHA256=<reviewed revision> urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - PROJECT_SHA256=<reviewed revision> urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - PROJECT_SHA256=<reviewed revision> urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://api.example.com
 behavior:
   - GET /api/profile without credentials answers 401 from the extension before the function runs
   - GET with the credential the extension accepts answers 200 JSON with Cache-Control no-store

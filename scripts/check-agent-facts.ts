@@ -30,6 +30,8 @@ import { mcpToolInventory } from '../packages/core/src/mcp.ts';
 import { docsSearchScope } from '../packages/core/src/docs-search.ts';
 import { addons } from './workspaces.ts';
 import { storeAuthoring } from '../packages/store/src/authoring.ts';
+import { capabilityNames } from '../packages/core/src/capabilities.ts';
+import { mcpConfigFile } from '../packages/core/src/agents-guide.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
@@ -60,6 +62,16 @@ if (!withIsUnordered) sourceProblems.push('packages/core/src/addon-install.ts: r
 // Store short links: the store's machine-readable authoring contract.
 const storeShortLinks = storeAuthoring.surfaces.some(surface => surface.name === 'shortLinks');
 
+// Native route handlers and other route capabilities: the removed `link` handler must stay absent (#540).
+const routeCapabilities: readonly string[] = capabilityNames.filter(name => /^[a-z]+$/.test(name));
+const linkHandler = routeCapabilities.includes('link');
+
+// MCP registration (#103). Core writes one project file, `.mcp.json` (agents-guide.ts `mcpConfigFile`), which
+// Claude Code reads. Codex registers MCP servers in its own TOML configuration (`[mcp_servers.<name>]` in
+// ~/.codex/config.toml or a trusted project .codex/config.toml, or `codex mcp add`); nothing in this checkout
+// writes that, and there is no Codex client evidence that it reads a project `.mcp.json`.
+const mcpRegistration = { projectFile: mcpConfigFile, readBy: ['Claude Code'], codexReadsProjectFile: false } as const;
+
 // The optional hosted URLCode AI MCP (#756). It lives in the separate urlcode-ai
 // service repository, so this checkout cannot derive its contract from source;
 // these are the connection facts that service publishes, pinned here as the one
@@ -85,6 +97,8 @@ const inventory = {
   scaffoldWithUnordered: withIsUnordered,
   mcpTools: { read: mcpToolInventory.read.length, hostFile: mcpToolInventory.hostFile.length, authoring: mcpToolInventory.authoring.length },
   storeShortLinks,
+  linkHandler,
+  mcpRegistration,
   hostedAi,
 };
 
@@ -169,6 +183,48 @@ if (storeShortLinks) {
       ? 'says stored short links are unsupported, but the store extension\'s authoring contract declares `extensions.store.config.shortLinks`' : undefined,
   });
 }
+
+// A sentence is about stored/dynamic links when it names them, the retired package or the removed YAML shape.
+const LINKS = /\b(?:stored|short|dynamic|live)[- ](?:stored[- ]|short[- ])?links?\b|\bdynamic-link\b|`link`|\bdynamicLinks\b|\bshortLinks\b/i;
+if (storeShortLinks) {
+  claims.push({
+    fact: 'storeShortLinks (no-replacement)',
+    test: (sentence, context) => (LINKS.test(sentence) || LINKS.test(context))
+      && /\bno\s+(?:supported\s+|other\s+)?(?:replacement|successor|substitute)\b/i.test(sentence)
+      ? 'says stored links have no replacement, but the store extension declares `extensions.store.config.shortLinks` (docs/STORE.md)' : undefined,
+  });
+  claims.push({
+    fact: 'storeShortLinks (reported-as-gap)',
+    test: sentence => LINKS.test(sentence) && /\b(?:report|treat|flag|list)\b[^.|]*\bas\s+(?:a\s+)?(?:gap|unsupported|missing)\b/i.test(sentence) && !/\bbeyond\b/i.test(sentence)
+      ? 'tells agents to report stored links as a gap; only needs beyond `extensions.store.config.shortLinks` are gaps' : undefined,
+  });
+}
+
+if (!linkHandler) {
+  const names = routeCapabilities.join('|');
+  const listed = new RegExp(String.raw`\`(?:${names})\`\s*(?:,|/|\bor\b|\band\b)\s*\`link\`|\`link\`\s*(?:,|/|\bor\b|\band\b)\s*\`(?:${names})\``);
+  claims.push({
+    fact: 'linkHandler = false',
+    test: sentence => listed.test(sentence)
+      || (/(?<!\b(?:no|not\s+a|any)\s+(?:native\s+)?)`link`\s+(?:handler|route)\b/i.test(sentence) && !/\b(?:removed|retired|no\s+longer|never)\b/i.test(sentence))
+      ? 'lists `link` as an available handler, but packages/core/src/capabilities.ts has no `link` capability (it was removed)' : undefined,
+  });
+}
+
+// Within one clause: no sentence-ending period or semicolon (a dot inside `.mcp.json` or `host.mjs` is not one).
+const CLAUSE = String.raw`(?:[^.;]|\.(?!\s|$))`;
+const CODEX_READS_MCP_JSON = [
+  String.raw`\bCodex\b${CLAUSE}{0,80}\b(?:reads?|discovers?|loads?|picks?\s+up|finds?)\b${CLAUSE}{0,80}(?:\.mcp\.json|mcpServers)`,
+  String.raw`(?:\.mcp\.json|mcpServers)${CLAUSE}{0,120}\b(?:Claude\s+Code\s+(?:and|or)\s+)?Codex\s+(?:reads?|discovers?|loads?|registers?|picks?\s+up|uses?)\b`,
+  String.raw`\.mcp\.json${CLAUSE}{0,80}\bfor\s+(?:Claude\s+Code\s+and\s+)?Codex\b`,
+  String.raw`\((?:Claude\s+Code,\s*)?Codex(?:,\s*Claude\s+Code)?\)${CLAUSE}{0,60}\b(?:reads?|loads?|discovers?)\b`,
+].map(source => new RegExp(source, 'i'));
+claims.push({
+  fact: 'mcpRegistration.codexReadsProjectFile = false',
+  test: sentence => /\bCodex\b/.test(sentence) && CODEX_READS_MCP_JSON.some(pattern => pattern.test(sentence))
+    && !/\bCodex\s+(?:does\s+not|doesn't|never|cannot)\b|\bnot\s+(?:a\s+)?(?:project\s+)?registration\b/i.test(sentence)
+    ? `says Codex reads or discovers a project ${mcpConfigFile}; Codex registers MCP servers under [mcp_servers.<name>] in its TOML config or with \`codex mcp add\` (docs/TOOLING.md#registering-the-server)` : undefined,
+});
 
 // A sentence is about documentation search when it names the tool, the CLI command or the SDK function.
 const DOCS_SEARCH = /\bsearch_docs\b|\bdocs\s+search\b|\bsearchDocs\b/;

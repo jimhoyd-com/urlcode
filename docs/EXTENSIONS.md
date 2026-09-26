@@ -233,7 +233,9 @@ The operator passes `extensions: RuntimeExtension[]` to `createRuntime`,
 `@jimhoyd/urlcode/extensions`. Inspection does not grant access: review the
 project and place the exact returned SHA-256 in each registration's
 `projectSha256`. YAML extension configuration, policies and routes participate
-in the revision. Changing them requires an explicit operator reapproval.
+in the revision. Changing them requires an explicit operator reapproval; the
+one exception is `urlcode dev`'s hot reload, described under
+[the revision pin](#the-revision-pin).
 
 Registrations provide a name, contract version, target list, JSON configuration
 schema, optional policy schema, an optional declared `cacheSensitive` (below)
@@ -373,8 +375,14 @@ that fails a condition, including a cookie added by a later response hook,
 stays no-store. The extension owns the content-hashed filename: a file under
 the prefix must change its name when its bytes change, because clients never
 revalidate it. The prefix belongs to the operator registration, not to the
-pinned project revision. The runtime withholds Cookie and Authorization plus any declared
-credential headers from all application guest requests and mapped parameters.
+pinned project revision. While any extension is active, the runtime withholds
+Cookie and Authorization plus every extension's declared credential headers
+from all application guest requests and mapped parameters, on every route,
+including routes that never name an extension. A project with no active
+extension (and no operator plugin declaring credential headers) withholds
+nothing, so its own trusted middleware can read Authorization and Cookie (see
+[the security policy](../SECURITY.md)). The projection keeps credentials away
+from code that does not need them; it does not confine trusted Node code.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
 
@@ -397,8 +405,8 @@ credential-shaped one. This is generic core infrastructure
 (`extensionContextHeaderPrefix`, `stripReservedContextHeaders`,
 `@jimhoyd/urlcode/extensions`); core never reads or interprets a value
 written there. It is not a credential channel:
-the withheld headers above (`cookie`, `authorization`, any declared
-credential header) are stripped from that guest-facing projection exactly as
+the withheld headers above (`cookie`, `authorization` and any declared
+credential header, whenever an extension is active) are stripped from that guest-facing projection exactly as
 before, and an extension must never write a raw session or bearer credential
 into this namespace — only a derived, non-secret value. `packages/auth`'s
 `bearer` requirement uses it to expose the verified API key's id, name and
@@ -1453,6 +1461,27 @@ process-global `Symbol.for('urlcode.host.operatorRevision')` slot that is set
 only while the host file is imported, so a host file that imports another copy
 of core still sees it.
 
+The runtime checks the pin every time it builds a snapshot: a registration
+whose `projectSha256` is not the project's live revision is refused with
+`Extension revision pin mismatch: <name>`. `urlcode dev` has one narrow
+exception so editing a project with `--host-file` does not end every hot
+reload in that error (#777). The first `dev` start checks the pin strictly,
+exactly like `serve`. After that, a hot reload accepts a registration pinned
+to exactly the revision `dev` started from and activates it for the edited
+revision (`context.projectSha256` is the new revision), logging one
+`{"event":"extension_pin_followed","extensions":[...],"from":"<startup>","to":"<edited>"}`
+record per reload ([observability](OBSERVABILITY.md#event-catalogue)). Every
+other check still runs on each reload: the target, the contract version, the
+configuration and policy schemas, origins and mounts. The registration object
+is not changed, and no project YAML, environment variable, CLI flag or tool
+argument can turn this on: `urlcode dev` alone enables it, through
+`startServer`'s `followExtensionPinOnReload`. `serve`, `validate`, `test`,
+`audit` and every other command, `app.reload()` on any other server, and the
+hosted adapters keep the strict check. What `dev` ran is not reviewed: review
+the edited project and pin its revision before `serve` runs it. `--policy`
+grants are not followed; see
+[local development](LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
+
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
 `composeHost` from `@jimhoyd/urlcode/host`. The runtime contract, the
@@ -1489,7 +1518,7 @@ extensions, checks each `extensions.<name>.config` and each route's
 `urlcode.json` schemas. No extension code runs. Pass `--host-file host.mjs` to
 activate the extensions and validate the whole runtime.
 
-The [GitHub Action](CI.md#github-action) installs the site with `npm ci
+The [GitHub Action](CI.md#what-it-runs) installs the site with `npm ci
 --ignore-scripts` (a committed `package-lock.json` is required), runs `urlcode
 extensions list --strict` and `urlcode artifacts list --strict`, then validates
 the project. Without a `host-file` input it validates declared extensions
