@@ -6,7 +6,7 @@
     "build": "urlcode build --target cloudflare --project . --out dist"
   },
   "dependencies": {
-    "@jimhoyd/urlcode": "0.6.3"
+    "@jimhoyd/urlcode": "0.6.4"
   },
   "devDependencies": {
     "wrangler": "^4"
