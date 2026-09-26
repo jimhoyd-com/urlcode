@@ -672,8 +672,9 @@ evidence that a feature is unsupported.
 
 ## Registering the server
 
-`urlcode init` writes `.mcp.json` at the site root, beside `host.mjs`, the
-shape Claude Code and Codex read:
+`urlcode init` writes `.mcp.json` at the site root, beside `host.mjs`. That
+file is the project-scoped registration **Claude Code** reads; other clients
+register the same command in their own configuration:
 
 ```json
 { "mcpServers": { "urlcode": { "command": "npx", "args": ["--no", "--package", "@jimhoyd/urlcode", "urlcode", "mcp", "--project", "app"] } } }
@@ -683,32 +684,53 @@ An existing `.mcp.json` is never overwritten. The file registers
 the read-only server only: `--allow-authoring` (and `--host-file`) are operator
 choices added by hand, never by `init` or by an agent.
 
+The command is the same for every client: the pinned local runtime, started
+from the site root. The site pins the runtime in its `package.json`, so the
+command is `npx` with `--no --package @jimhoyd/urlcode urlcode mcp --project app`,
+which runs the installed copy from `node_modules` and never fetches. Do not use
+a bare `npx urlcode`: the unscoped `urlcode` name is unclaimed on the npm
+registry (it 404s; it is not this project's under a different owner), so a
+bare `npx urlcode` would try, and fail, to install it instead of running the
+pinned `@jimhoyd/urlcode`. `--no` resolves the package from the working
+directory, and `--project app` is relative to it, so the server must start in
+the site root. For a global install, `urlcode mcp print-config --global` prints
+the bare `urlcode` command instead.
+
 - **Claude Code** reads `.mcp.json` in the project directory as a project-scoped
-  server and asks for approval on first use. The site pins the runtime in its
-  `package.json`, so `init` writes
-  `"command": "npx"` with `--no --package @jimhoyd/urlcode urlcode mcp ...`, which runs the
-  installed copy and never fetches (do not use a bare `npx urlcode`: the unscoped `urlcode`
-  name is unclaimed on the npm registry -- it 404s, it is not this project's under a
-  different owner -- so a bare `npx urlcode` would try, and fail, to install it instead of
-  running the pinned `@jimhoyd/urlcode` already in `node_modules`). For a global
-  install, `urlcode mcp print-config --global` prints the bare `urlcode` command instead.
-- **Codex** reads the same `mcpServers` shape; alternatively register it in
-  `~/.codex/config.toml`:
+  server and asks for approval on first use.
+- **Codex** does not use this file. Its MCP servers are configured in TOML under
+  `[mcp_servers.<name>]`, in `~/.codex/config.toml` or in a project
+  `.codex/config.toml` that Codex loads only for a trusted project, or added
+  with `codex mcp add`. A plugin-bundled `.mcp.json` is a separate Codex plugin
+  integration, not a project registration. Register the same pinned command
+  and give the site root explicitly as the working directory:
 
   ```toml
   [mcp_servers.urlcode]
-  command = "urlcode"
-  args = ["mcp", "--project", "app"]
+  command = "npx"
+  args = ["--no", "--package", "@jimhoyd/urlcode", "urlcode", "mcp", "--project", "app"]
+  cwd = "/absolute/path/to/site"
   ```
-- **Any stdio client** spawns `urlcode mcp --project DIR` with the project as the
+
+  With `codex mcp add`, which takes the command after `--`, use absolute paths
+  so the registration does not depend on where Codex starts it:
+
+  ```sh
+  codex mcp add urlcode -- /absolute/path/to/site/node_modules/.bin/urlcode mcp --project /absolute/path/to/site/app
+  ```
+
+  URLCode's tests exercise the server over stdio, not through a Codex client,
+  so this registration is documented from OpenAI's Codex configuration
+  reference and has no URLCode client evidence yet.
+- **Any stdio client** spawns `urlcode mcp --project DIR` with the site as the
   working directory, speaks newline-delimited JSON-RPC 2.0 over stdin/stdout,
   and follows the 2025-11-25 lifecycle described above. Nothing listens on a
   port; closing stdin ends the session.
 
 ### Registering before `init` runs (pre-session bootstrap, #542)
 
-A project-scoped MCP client (Claude Code, Codex) reads `.mcp.json` once, at the
-start of its session, before the agent's first turn. Because `init` writes
+Claude Code reads a project's `.mcp.json` once, at the start of its session,
+before the agent's first turn. Because `init` writes
 `.mcp.json`, an agent whose very first turn is `urlcode init .` cannot see the
 local server on that turn: the tools were never loaded. `urlcode mcp
 print-config [project] [--global]` closes that gap without a new distribution
@@ -734,9 +756,12 @@ portable `npx --no --package` form, which works whether or not
 bare `urlcode` command instead, if the runtime is installed globally. This path
 covers `urlcode init <existing-or-empty-dir>`, with or without `--with`.
 
-If a client cannot be bootstrapped this way (registration made outside the
-project directory, or a client that cannot register a server before the
-project it points at exists), fall back to running the agent's first turn as a
+`print-config` emits Claude Code's `.mcp.json` only. For Codex the equivalent
+step is its own registration: add the TOML entry above, with `cwd` set to that
+directory, before starting the Codex session there (not yet exercised with a
+Codex client). If a client cannot be bootstrapped this
+way (a client that cannot register a server before the project it points at
+exists), fall back to running the agent's first turn as a
 plain CLI call — `npx --no --package @jimhoyd/urlcode urlcode init .` — then
 starting or restarting the MCP-aware session in the now-initialized directory;
 `llms.txt`, `docs/AI-AUTHORING.md` and the generated `AGENTS.md`/skill all name

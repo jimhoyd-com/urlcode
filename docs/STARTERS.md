@@ -4,7 +4,9 @@
 route project in `app/` (`urlcode.yaml` with no routes or request fixtures),
 `host.mjs` (the operator host, with no extensions yet), a `package.json` that
 pins the exact runtime version with npm scripts, a Makefile, project CI,
-`AGENTS.md`, and a read-only local `.mcp.json` for Claude Code and Codex. It
+`AGENTS.md`, and a read-only local `.mcp.json` for Claude Code. Codex registers
+the same command in its own TOML configuration instead
+([registering the server](TOOLING.md#registering-the-server)). It
 does not include sample functions, middleware, redirects, pages or tests. Add
 the first request fixture only when you add the first route.
 
@@ -103,8 +105,9 @@ regenerated with `npm run docs:agents` from the same function and a test keeps
 the two identical. The file
 points at the agent skill the package ships at `skills/urlcode/SKILL.md`.
 Both paths also write `.mcp.json`, which registers the read-only `urlcode mcp`
-server for Claude Code and Codex with `--project app`; it is
-never overwritten and carries no `--allow-authoring` ([tooling](TOOLING.md#registering-the-server)).
+server for Claude Code with `--project app` (Codex does not read it; see
+[registering the server](TOOLING.md#registering-the-server) for its
+`[mcp_servers.urlcode]` entry); it is never overwritten and carries no `--allow-authoring` ([tooling](TOOLING.md#registering-the-server)).
 [URLCode AI](https://urlcode.ai/) is an optional, separate hosted MCP for
 version-pinned reference and shared skills; it is never added to the generated file and does not
 replace the local project server ([setup](TOOLING.md#optional-hosted-ai-mcp)).

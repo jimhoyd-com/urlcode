@@ -324,7 +324,10 @@ function state is reset after every invocation, not durable/shared application s
 General application storage needs a future explicit capability broker; no
 storage/network access is exposed to the guest. Core no longer has a native
 link store, and the `urlcode-dynamic-link` extension package that replaced it
-has been retired and unpublished.
+has been retired and unpublished. Stored short links are served by the
+operator-installed `store` extension's `extensions.store.config.shortLinks`
+([data store](STORE.md)), whose records live in the store's data directory:
+back it up with the rest of the store.
 
 The health version combines route-definition and asset-representation digests;
 it does not identify the complete function/runtime release. Record runtime commit,
