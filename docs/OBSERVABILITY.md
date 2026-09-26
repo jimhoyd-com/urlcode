@@ -32,6 +32,7 @@ named.
 | `request` | `requestId` string, `status` integer, `durationMs` number; `method` string and `route` string or `null` with `--request-log detailed` | Every response the server wrote, including probes and shed 503s. `route` is the configured pattern (`/u/{id}`) or the probe path, never the requested path. |
 | `reload` | `status` `ok`/`rejected`; `version` string and `routes` integer on `ok` | `app.reload()` or the development watcher swapped, or refused to swap, the snapshot. |
 | `watch` | `status` `failed` | The development watcher could not fingerprint the project. |
+| `extension_pin_followed` | `extensions` string array, `from` string, `to` string | `urlcode dev` only, once per reload: the edited project (revision `to`) activated extensions whose registration is still pinned to `from`, the revision dev started from ([the revision pin](EXTENSIONS.md#the-revision-pin)). Emitted after the reload fully activated, never for a rejected one and never by `serve`. |
 | `function_worker` | `status` `started`/`restarting`, `slot` integer; `attempt` and `delayMs` integers on `restarting` | A function worker became ready or is scheduled for replacement. |
 | `signal` | `outcome` (`accepted`, `delivered`, `failed`, `dropped`), positive `count` | Best-effort webhook totals; no destination, request data or secrets. |
 | `logs_dropped` | `count` integer | The JSON logger shed records because stdout was not writable. Written by the logger itself, so observers do not see it. |
@@ -52,8 +53,8 @@ every in-process observer always see exactly these events, unchanged. When
 stdout is a TTY and `--json` is not passed, the CLI's own default logger for
 `urlcode dev`/`serve` additionally renders `request` (`GET /go 302 0.9ms`,
 using the same `method`/`route`/`status`/`durationMs` fields; a bare
-`302 0.9ms` when `--request-log` was left at `minimal`), `reload`, `watch` and
-`extension_warning` as one short line apiece instead of the JSON line; every other event still
+`302 0.9ms` when `--request-log` was left at `minimal`), `reload`, `watch`,
+`extension_warning` and `extension_pin_followed` as one short line apiece instead of the JSON line; every other event still
 prints as JSON on that same stdout. This is terminal-only formatting done by
 the CLI's logger, not a change to the events themselves or to what an operator
 observer receives.

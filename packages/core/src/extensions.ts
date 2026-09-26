@@ -586,7 +586,15 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
  * requires or uses), filtered to the declared ones, and close in reverse; YAML declaration order does not matter.
  * `log` receives every activation warning (RIM-EXT-WARN-001).
  */
-export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn): {activate():Promise<ExtensionRegistry>} {
+/**
+ * `acceptedPin` is set only by `urlcode dev`'s hot reload (`startServer`'s `followExtensionPinOnReload`), never by
+ * project YAML, an environment variable or a tool argument: a registration pinned to exactly `acceptedPin.from` (the
+ * revision the dev server started from and strictly checked) is accepted for the edited live revision and listed in
+ * `followed`. Every other check still runs, and without it the pin must equal the live revision (RIM-EXT-PIN-001).
+ */
+export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string}): {readonly followed:readonly string[];activate():Promise<ExtensionRegistry>} {
+  assert(acceptedPin===undefined||typeof acceptedPin.from==='string'&&/^[a-f0-9]{64}$/.test(acceptedPin.from),'Invalid accepted extension revision pin');
+  const followed:string[]=[];
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
   const provided=new Map<string,RuntimeExtension>(),entries=new Map<string,ActiveExtension>(),credentialHeaders=new Set<string>();
   for(const registration of registrations??[]){
@@ -632,7 +640,10 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
   for(const [name,registration]of provided){
       if(!Object.hasOwn(declarations,name))continue;
       const declaration=declarations[name]!;
-      assert(registration.projectSha256===context.projectSha256,`Extension revision pin mismatch: ${name}`);
+      if(registration.projectSha256!==context.projectSha256){
+        assert(acceptedPin!==undefined&&registration.projectSha256===acceptedPin.from,`Extension revision pin mismatch: ${name}`);
+        followed.push(name);
+      }
       assert(registration.targets.includes(context.target),`Extension ${name} refuses target ${context.target}`);
       assert(declaration.version===registration.version,`Extension contract version mismatch: ${name}`);
       const config=structuredClone(declaration.config);
@@ -657,7 +668,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       const assetPrefixes=registration.immutableAssets===undefined?[]:mounts.map(mount=>mount+validateAssetPrefix((registration.immutableAssets as ExtensionImmutableAssets).prefix,name)+'/');
       preparations.push({name,registration,config:frozen(config),policies,mounts,principalMounts,assetPrefixes});
   }
-  return {async activate(){
+  return {followed:Object.freeze([...followed]),async activate(){
     try{for(const {name,registration,config,policies,mounts,principalMounts,assetPrefixes}of preparations){
       // What activate throws is the operator's own extension reporting its configuration or environment; it is
       // named and kept (bounded, without a stack) so validate, test, dev and serve startup can print it.

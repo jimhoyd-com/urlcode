@@ -114,6 +114,17 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   policies or function sources changes the revision, so regenerate, review and
   re-pin the grants, then restart dev (policies are read at startup). There is
   no automatic re-pin.
+- Extensions and edits: with `--host-file`, `dev` checks the extension
+  revision pin strictly at startup, then lets each hot reload carry that pin
+  forward to the edited project and logs one `extension_pin_followed` record
+  (`extensions`, `from`, `to`; on a terminal, `Extension pin followed the edit
+  for "<name>" (dev only; re-review and re-pin before serve)`). Every other
+  extension check still runs on the reload. This is development only: `serve`
+  and every other command refuse a stale pin, so review the edited project and
+  pin its revision before serving it ([the revision pin](EXTENSIONS.md#the-revision-pin)).
+  `--policy` grants are not carried forward: when the host is pinned by
+  `--policy` and the project requests an env, secret or egress grant, a reload
+  is still rejected as described above.
 - A function answers `502 Function execution failed`: the response stays
   generic on purpose, and dev writes a `function_error` line to stderr with the
   matched `route`, the `source` file and `export`, the thrown `message` and its

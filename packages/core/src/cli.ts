@@ -573,7 +573,7 @@ try {
           if (human && values['request-log'] === undefined) values['request-log'] = 'detailed';
           const routes = { count: 0 };
           const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
-            local:command === 'dev', watch:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'], permissions,
+            local:command === 'dev', watch:command === 'dev', followExtensionPinOnReload:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, aliasOrigins:values['alias-origin'],passkeyRpId:values['passkey-rp-id'], permissions,
             ...(human ? { log:createJsonLogger(process.stdout, undefined, createDevEventFormatter(routes)) } : {}),
             ...serverCapacity(values) });
           routes.count = app.testPlan().inventory.length;

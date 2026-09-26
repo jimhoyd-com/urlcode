@@ -45,6 +45,8 @@ test('a format function renders known events as one human line and falls back to
   assert.equal(written.at(-1), 'Could not watch the project for changes\n');
   log({ event:'extension_warning', extension:'demo', message:'2 stored items use a retired setting' });
   assert.equal(written.at(-1), 'Extension "demo" warning: 2 stored items use a retired setting\n');
+  log({ event:'extension_pin_followed', extensions:['auth','store'], from:'a'.repeat(64), to:'b'.repeat(64) });
+  assert.equal(written.at(-1), 'Extension pin followed the edit for "auth", "store" (dev only; re-review and re-pin before serve)\n');
   // An event this formatter does not know about still falls back to a JSON line.
   log({ event:'function_worker', status:'started', slot:0 });
   assert.deepEqual(JSON.parse(written.at(-1)!), { event:'function_worker', status:'started', slot:0 });

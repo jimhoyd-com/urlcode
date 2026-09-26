@@ -17,7 +17,11 @@ import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
 import { compileTrustedProxies, loopbackHostCheck, resolveClient } from './client-address.ts';
 
-export interface ServerOptions extends Omit<RuntimeOptions, 'observers'> {
+export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin'> {
+  /** `urlcode dev` only: on a reload, accept an extension registration still pinned to the revision this server
+   * started from (checked strictly at startup) for the edited project, and log `extension_pin_followed`. The first
+   * runtime and every other check are unchanged; `serve` and every other command leave it off (RIM-EXT-PIN-001). */
+  followExtensionPinOnReload?: boolean | undefined;
   project?: string | undefined; host?: string | undefined; port?: number | undefined; watch?: boolean | undefined;
   maxBodyBytes?: number | undefined; maxInFlightRequests?: number | undefined; maxInFlightHealthRequests?: number | undefined;
   requestLog?: string | undefined; trustRequestId?: boolean | undefined;
@@ -159,6 +163,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   readinessDrainMs = 0, closeTimeoutMs = 10000,
   headersTimeoutMs = 10000, requestTimeoutMs = 15000, keepAliveTimeoutMs = 5000,
   debugErrors = false, diagnostics = (line: string) => { process.stderr.write(line); },
+  followExtensionPinOnReload = false,
   ...runtimeOptions }: ServerOptions = {}): Promise<Server> {
   // Which peers may set X-Forwarded-For. Empty means the socket peer is the
   // client for every policy; a forwarded header from anyone else is ignored.
@@ -171,6 +176,9 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   assert(typeof metrics === 'boolean', 'Metrics exposition must be a boolean');
   assert(metricsIntervalMs === 0 || (Number.isInteger(metricsIntervalMs) && metricsIntervalMs >= 1000 && metricsIntervalMs <= 3600000), 'Metrics interval must be 0 or 1000–3600000 ms');
   assert(typeof healthDetails === 'boolean', 'Health details exposition must be a boolean');
+  assert(typeof followExtensionPinOnReload === 'boolean', 'Extension pin following must be a boolean');
+  // Only reload() below derives it, from this server's own first runtime; a caller cannot hand one in.
+  assert(!Object.hasOwn(runtimeOptions, 'acceptedExtensionPin'), 'acceptedExtensionPin is set only by the dev server reload');
   assert(Number.isInteger(readinessDrainMs) && readinessDrainMs >= 0 && readinessDrainMs <= 300000, 'Readiness drain delay must be 0–300000 ms');
   assert(Number.isInteger(closeTimeoutMs) && closeTimeoutMs >= 0 && closeTimeoutMs <= 300000, 'Close timeout must be 0–300000 ms');
   assert(Number.isInteger(headersTimeoutMs) && headersTimeoutMs >= 1000 && headersTimeoutMs <= 300000, 'Headers timeout must be 1000–300000 ms');
@@ -191,6 +199,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   // promise never to contain (docs/OBSERVABILITY.md).
   const diagnose = (record: Record<string, unknown>): void => { if (debugErrors) try { diagnostics(JSON.stringify(record) + '\n'); } catch { /* Diagnostics cannot fail requests. */ } };
   let current: Runtime = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions });
+  // The revision the first runtime passed the strict extension pin check at; a dev reload may carry that pin forward.
+  const acceptedExtensionPin = followExtensionPinOnReload ? { from: current.revision } : undefined;
   // `draining` flips /_urlcode/ready unhealthy ahead of `shuttingDown`, which stops
   // serving entirely; the gap between them is the pre-close readiness delay.
   let shuttingDown = false, draining = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
@@ -303,7 +313,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
     if (shuttingDown || reloading) return false;
     reloading = true;
     try {
-      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions });
+      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions, ...(acceptedExtensionPin ? { acceptedExtensionPin } : {}) });
       if (shuttingDown) { await next.close(); return false; }
       const old = current; current = next;
       const cleanup = old.close(); retired.add(cleanup); void cleanup.finally(() => retired.delete(cleanup));

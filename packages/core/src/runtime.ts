@@ -61,6 +61,11 @@ export interface RuntimeOptions {
    * route's `{env: URLCODE_DATA_DIR}` binding, and only that name, for this project revision. The value
    * is the harness's own directory, not an ambient secret. Never supplied by project YAML or guest code. */
   grantDataDir?: boolean | undefined;
+  /** `urlcode dev` hot reload only (set by `startServer` when `followExtensionPinOnReload` is on, never on its first
+   * runtime): an extension registration pinned to exactly `from`, the revision the dev server started from, is
+   * accepted for this edited revision and reported once as `extension_pin_followed`. Every other extension check
+   * still runs. Never supplied by project YAML, an environment variable or a tool argument (RIM-EXT-PIN-001). */
+  acceptedExtensionPin?: { readonly from: string } | undefined;
 }
 function withDataDirGrant(loaded: LoadedDocument, projectSha256: string, given: OperatorPolicy | undefined): OperatorPolicy | undefined {
   // An operator policy pinned to another revision stays as it is: it denies, exactly as it would without this option.
@@ -83,6 +88,8 @@ export interface RuntimeRequest {
 }
 export interface Runtime {
   readonly healthy: boolean; assetWatch: string[]; version: string; count: number; root: string;
+  /** The project revision (`projectSha256`) this runtime compiled. */
+  readonly revision: string;
   testPlan(): TestPlan;
   readonly plugins: { name: string; version: string }[];
   readonly workers: { healthy: number; slots: number };
@@ -120,7 +127,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
-  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',origins,...(rpId===undefined?{}:{passkeyRpId:rpId}),target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root},loaded.routeAuth,sink);
+  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',origins,...(rpId===undefined?{}:{passkeyRpId:rpId}),target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root},loaded.routeAuth,sink,options.acceptedExtensionPin);
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const notFoundPage = loaded.document.site?.notFound !== undefined && loaded.document.site.notFound !== null;
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.grantDataDir ? withDataDirGrant(loaded, snapshot.projectSha256, options.permissions) : options.permissions, snapshot.projectSha256, options.extensions);
@@ -200,9 +207,11 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const testPlan = (): TestPlan => ({...projectPlan(compiled),policies:policyInventory()});
   try{await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });}
   catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
+  // Reported only once the edited revision fully activated, so a rejected reload never claims a followed pin.
+  if(extensionPlan.followed.length)sink({event:'extension_pin_followed',extensions:[...extensionPlan.followed],from:options.acceptedExtensionPin!.from,to:snapshot.projectSha256});
   return {
     get healthy() { return !closing && pool.healthy; },
-    assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
+    assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root, revision: snapshot.projectSha256,
     testPlan,
     get plugins() { return plugins.map(plugin => ({ name: plugin.name, version: plugin.version })); },
     get workers() { return workers(); },

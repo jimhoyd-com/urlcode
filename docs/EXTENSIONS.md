@@ -233,7 +233,9 @@ The operator passes `extensions: RuntimeExtension[]` to `createRuntime`,
 `@jimhoyd/urlcode/extensions`. Inspection does not grant access: review the
 project and place the exact returned SHA-256 in each registration's
 `projectSha256`. YAML extension configuration, policies and routes participate
-in the revision. Changing them requires an explicit operator reapproval.
+in the revision. Changing them requires an explicit operator reapproval; the
+one exception is `urlcode dev`'s hot reload, described under
+[the revision pin](#the-revision-pin).
 
 Registrations provide a name, contract version, target list, JSON configuration
 schema, optional policy schema, an optional declared `cacheSensitive` (below)
@@ -1452,6 +1454,27 @@ keep working. A hand-written host file that builds registrations without
 process-global `Symbol.for('urlcode.host.operatorRevision')` slot that is set
 only while the host file is imported, so a host file that imports another copy
 of core still sees it.
+
+The runtime checks the pin every time it builds a snapshot: a registration
+whose `projectSha256` is not the project's live revision is refused with
+`Extension revision pin mismatch: <name>`. `urlcode dev` has one narrow
+exception so editing a project with `--host-file` does not end every hot
+reload in that error (#777). The first `dev` start checks the pin strictly,
+exactly like `serve`. After that, a hot reload accepts a registration pinned
+to exactly the revision `dev` started from and activates it for the edited
+revision (`context.projectSha256` is the new revision), logging one
+`{"event":"extension_pin_followed","extensions":[...],"from":"<startup>","to":"<edited>"}`
+record per reload ([observability](OBSERVABILITY.md#event-catalogue)). Every
+other check still runs on each reload: the target, the contract version, the
+configuration and policy schemas, origins and mounts. The registration object
+is not changed, and no project YAML, environment variable, CLI flag or tool
+argument can turn this on: `urlcode dev` alone enables it, through
+`startServer`'s `followExtensionPinOnReload`. `serve`, `validate`, `test`,
+`audit` and every other command, `app.reload()` on any other server, and the
+hosted adapters keep the strict check. What `dev` ran is not reviewed: review
+the edited project and pin its revision before `serve` runs it. `--policy`
+grants are not followed; see
+[local development](LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and

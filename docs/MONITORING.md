@@ -37,6 +37,7 @@ configuration digest and route count, so keep them internal.
 | `request` | `requestId`, `status`, `durationMs`; plus `method` and `route` with `--request-log detailed` | Error rate and latency per route. `route` is the configured pattern such as `/u/{id}`, never the requested path. |
 | `reload` | `status` (`ok`/`rejected`); `version` and `routes` on `ok` | A `rejected` reload means the last-good snapshot is still serving and a deploy did not take effect. |
 | `watch` | `status` | Development watcher failure; not used by `serve`. |
+| `extension_pin_followed` | `extensions` (names), `from`, `to` (project revisions) | `urlcode dev` only: a hot reload accepted extensions still pinned to the revision dev started from for the edited project ([the revision pin](EXTENSIONS.md#the-revision-pin)). Never emitted by `serve`; if a deployed process logs it, something other than `serve` is running. Re-review and re-pin `to` before serving that revision. |
 | `function_worker` | `status` (`started`/`restarting`), `slot`; `attempt` and `delayMs` on `restarting` | Sustained `restarting` means a function is failing on real traffic. |
 | `logs_dropped` | `count` | The logger shed records because the collector fell behind. Every other signal is unreliable while this fires. |
 | `observer` | `status` (`failed`), `name` | An in-process observer threw; the request was unaffected. Written to the log only, never to observers. Sustained failures mean the observer's own sink is broken. |
