@@ -369,31 +369,6 @@ test('an extension registered with streams: true streams through the extension p
   assert.equal(state.closed, true);
 });
 
-test('a reload ends an open extension stream (reason reload) so the extensions can be handed over (RIM-EXT-HANDOFF-001)', async t => {
-  const { root, pin } = await extensionProject(t);
-  const state = extensionState();
-  const events: Record<string, unknown>[] = [];
-  const app = await startServer({ project: root, port: 0, origin, log: event => events.push(event), extensions: [extension(root, pin, state)] });
-  t.after(() => app.close());
-  const reader = await open(app, '/live/events');
-  await until(() => reader.chunks.join('').includes('ready'), 'the first event');
-  // Without ending it the stream would hold the serving activation until its client left, refusing the reload.
-  assert.equal(await app.reload(), true);
-  assert.equal((await reader.ended).complete, false);
-  assert.equal(state.signal?.aborted, true);
-  assert.equal(state.signal?.reason, 'reload');
-  // The producer is parked on its gate; its pending return() runs once it resumes, so it never yields again.
-  state.gate.resolve();
-  await until(() => state.returned, 'the cancelled producer to return');
-  assert.equal(streamEvent(events, reader.headers['x-request-id'])?.reason, 'reload');
-  assert.equal(state.closed, true, 'the serving activation closed before the replacement activated');
-  state.gate = extensionState().gate;
-  const again = await open(app, '/live/events');
-  await until(() => again.chunks.join('').includes('ready'), 'a stream on the replacement');
-  state.gate.resolve();
-  assert.equal((await again.ended).complete, true);
-});
-
 test('HEAD on a streaming extension never starts its producer', async t => {
   const { root, pin } = await extensionProject(t);
   const state = extensionState();

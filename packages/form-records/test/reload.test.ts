@@ -1,133 +1,137 @@
-// `urlcode dev`'s hot reload of the site `urlcode init <site> --with admin,form-records --example` generates (#777,
-// RIM-EXT-HANDOFF-001): the real ui, audit, mail, abuse, auth, admin, store, forms and form-records packages, composed
-// by the generated host.mjs, served with a canonical origin and the dev server's followed revision pin. The store
-// takes an exclusive directory lock on every activation, so a reload has to hand it over rather than overlap.
+// The generated stateful composition hot reloads (#777, core RIM-EXT-HANDOFF-001): what `urlcode init --with
+// admin,form-records --example` writes for audit, ui, forms, store and form-records, composed through composeHost
+// and served by `urlcode dev`'s reload path. A stand-in auth sets the principal (admin and auth hold no exclusive
+// per-activation resource; their own suites cover them).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { addAddons, initSite, startServer } from '@jimhoyd/urlcode';
-import type { RuntimeExtension } from '@jimhoyd/urlcode/extensions';
-import { cleanup } from './cleanup.ts';
+import { pathToFileURL } from 'node:url';
+import { startServer } from '@jimhoyd/urlcode';
+import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionRequest, RuntimeExtension, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
+import { composeHost } from '@jimhoyd/urlcode/host';
+import audit from '@jimhoyd/urlcode-audit/extension';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import forms from '@jimhoyd/urlcode-forms/extension';
+import store from '@jimhoyd/urlcode-store/extension';
+import formRecords from '../src/extension.ts';
 
 const origin = 'https://reload.example.test';
-const repository = fileURLToPath(new URL('../../../', import.meta.url));
 
-function environment(t: TestContext, values: Record<string, string>): void {
-  const previous = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
-  Object.assign(process.env, values);
-  cleanup(t, () => { for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
+function withSha(t: TestContext, sha: string): void {
+  const previous = process.env.PROJECT_SHA256;
+  process.env.PROJECT_SHA256 = sha;
+  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
 }
-/**
- * `urlcode init <site> --with admin,form-records --example` against this checkout: `initSite`, then `addAddons` with
- * core's development manifest (every add-on at its workspace source), through the add-on tests' offline npm stand-in
- * that links each `file:` dependency. The site's core dependency is this checkout, as `test/addons.integration.ts` does.
- */
-async function generatedSite(t: TestContext): Promise<{ site: string; app: string; projectSha256: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'form-records-reload-'));
-  cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
-  environment(t, { URLCODE_NPM: join(repository, 'test', 'fixtures', 'addons', 'fake-npm.mjs') });
-  const { site } = await initSite(join(root, 'site'));
-  const packageFile = join(site, 'package.json');
-  const pkg = JSON.parse(await readFile(packageFile, 'utf8')) as { dependencies: Record<string, string> };
-  pkg.dependencies['@jimhoyd/urlcode'] = `file:${repository}`;
-  await writeFile(packageFile, JSON.stringify(pkg, null, 2) + '\n');
-  const added = await addAddons(site, 'extension', ['admin', 'form-records'], { example: true });
-  assert.deepEqual([...added.examples].sort(), ['auth', 'form-records', 'forms', 'store']);
-  assert.ok(added.projectSha256);
-  return { site, app: join(site, 'app'), projectSha256: added.projectSha256 };
-}
-/** The generated host.mjs, imported as `urlcode dev --host-file host.mjs` does, with the reviewed pin. */
-async function generatedHost(t: TestContext, site: string, projectSha256: string): Promise<{ extensions: RuntimeExtension[]; close(): Promise<void> }> {
-  environment(t, { PROJECT_SHA256: projectSha256, AUTH_ORIGIN: origin });
-  const host = (await import(pathToFileURL(join(site, 'host.mjs')).href) as { default: { extensions: RuntimeExtension[]; close(): Promise<void> } }).default;
-  cleanup(t, () => host.close());
-  assert.ok(host.extensions.some(extension => extension.name === 'store'));
-  return host;
-}
-const lockOf = (site: string): Promise<string> => readFile(join(site, 'data', 'store', '.store.lock'), 'utf8');
-const strays = async (site: string): Promise<string[]> => (await readdir(join(site, 'data', 'store'))).filter(name => name.startsWith('.store.lock.'));
-async function page(port: number, path: string): Promise<{ status: number; text: string }> {
-  const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
-  return { status: response.status, text: await response.text() };
+/** A stand-in `auth` for the `auth: true` short form: `Badge <id>` sets the principal. */
+function badgeAuth(projectSha256: string): RuntimeExtension {
+  return {
+    name: 'auth', version: '1', projectSha256, targets: ['node'], providesPrincipal: true,
+    schema: { type: 'object', additionalProperties: false }, policySchema: { type: 'object', additionalProperties: false, properties: { csrf: { enum: ['token', 'origin'] } } },
+    activate() {
+      return {
+        handle() { return { status: 404, headers: [] }; },
+        authorize(_policy: unknown, incoming: ExtensionRequest) {
+          const match = /^Badge (\S+)$/.exec(incoming.headers.get('authorization') ?? '');
+          if (!match) return { status: 401, headers: [['content-type', 'text/plain']], body: 'sign in' };
+          incoming.setPrincipal!({ id: match[1]! });
+          return undefined;
+        },
+      };
+    },
+  };
 }
 
-test('the generated stateful site hot reloads an edited contact title, then keeps its last-good snapshot and single store lock when a reload is refused (#777)', { timeout: 120000 }, async t => {
-  const { site, app, projectSha256 } = await generatedSite(t);
-  const host = await generatedHost(t, site, projectSha256);
-  const events: Record<string, unknown>[] = [], diagnostics: Record<string, unknown>[] = [];
-  const server = await startServer({ project: app, extensions: host.extensions, port: 0, host: '127.0.0.1', origin, followExtensionPinOnReload: true, debugErrors: true,
-    log: event => { events.push(event as Record<string, unknown>); }, diagnostics: line => { diagnostics.push(JSON.parse(line) as Record<string, unknown>); } });
-  // Registered after the host's close, so it runs first: the server releases the store before the host closes.
-  cleanup(t, () => server.close());
-  const port = server.address.port;
-  const before = await page(port, '/contact');
-  assert.equal(before.status, 200);
-  assert.match(before.text, /Contact us/);
-  const lock = await lockOf(site);
-  assert.match(lock, new RegExp(`^${process.pid}:`));
-
-  // Change only the contact form's title, as the reproduction does.
-  const yamlFile = join(app, 'urlcode.yaml'), original = await readFile(yamlFile, 'utf8');
-  assert.equal(original.split('title: Contact us').length, 2, 'the generated project names the contact title once');
-  const changed = original.replace('title: Contact us', 'title: Changed contact title');
-  await writeFile(yamlFile, changed);
-  assert.equal(await server.reload(), true, JSON.stringify(diagnostics.at(-1)));
-  assert.deepEqual(events.filter(event => event.event === 'reload').map(event => event.status), ['ok']);
-  assert.deepEqual(events.find(event => event.event === 'extension_pin_followed')?.from, projectSha256);
-  const after = await page(port, '/contact');
-  assert.equal(after.status, 200);
-  assert.match(after.text, /Changed contact title/);
-  assert.doesNotMatch(after.text, /Contact us/);
-  assert.equal(await lockOf(site), lock, 'the handed-over store holds the same process lock');
-  for (const path of ['/account/login', '/api/todos', '/todos', '/private', '/todo-form']) {
-    const answered = await page(port, path);
-    assert.ok(answered.status !== 404 && answered.status < 500, `${path} answered ${answered.status} after the reload`);
+test('the generated admin/form-records example reloads a contact title edit and keeps its data (#777)', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'form-records-reload-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const project = join(root, 'app'); await mkdir(project);
+  // What `init --with admin,form-records --example` installs, minus the account screens (admin, auth, mail).
+  const installed = ['admin', 'audit', 'auth', 'form-records', 'forms', 'mail', 'store', 'ui'];
+  const add = { site: root, project, installed, acknowledgements: [] };
+  const merge = async (definition: { scaffold?: typeof store.definition.scaffold; example?: typeof store.definition.example }): Promise<ScaffoldResult> => {
+    const capability = await definition.scaffold!(add);
+    if (!definition.example) return capability;
+    const extra = await definition.example(add);
+    return { ...capability, config: { ...capability.config, ...extra.config }, routes: { ...capability.routes, ...extra.routes } };
+  };
+  const results: Record<string, ScaffoldResult> = {
+    audit: await merge(audit.definition), ui: await merge(ui.definition), auth: { config: {}, routes: {} }, forms: await merge(forms.definition),
+    store: await merge(store.definition), 'form-records': await merge(formRecords.definition),
+  };
+  for (const result of Object.values(results)) for (const file of result.files ?? []) {
+    await mkdir(join(root, file.path, '..'), { recursive: true });
+    await writeFile(join(root, file.path), file.content, { flag: 'wx', ...(file.mode === undefined ? {} : { mode: file.mode }) });
   }
+  const document = { version: '1', extensions: Object.fromEntries(Object.entries(results).map(([name, result]) => [name, { version: '1', config: result.config }])) as Record<string, { version: string; config: Record<string, unknown> }>, routes: Object.assign({}, ...Object.values(results).map(result => result.routes)) as Record<string, unknown> };
+  const flows = (document.extensions.forms!.config as { flows: Record<string, { title: string }> }).flows;
+  assert.equal(flows.contact!.title, 'Contact us', 'the forms example declares the contact form');
+  assert.equal((document.extensions.store!.config as { collections: Record<string, { audit?: boolean }> }).collections.todos!.audit, true, 'with audit installed the todos collection is audited');
+  const save = () => writeFile(join(project, 'urlcode.yaml'), JSON.stringify(document));
+  await save();
+  const sha = await inspectExtensionRevision(project); withSha(t, sha);
+  const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [audit(), store(), ui(), forms(), formRecords()]);
+  t.after(() => host.close?.());
+  const events: Record<string, unknown>[] = [], diagnostics: string[] = [];
+  // `urlcode dev`: the watcher's reload() with the startup pin followed.
+  const app = await startServer({ project, origin, port: 0, followExtensionPinOnReload: true, log: event => { events.push(event as Record<string, unknown>); },
+    debugErrors: true, diagnostics: line => { diagnostics.push(line); }, extensions: [...host.extensions!, badgeAuth(sha)] });
+  let open = true;
+  t.after(async () => { if (open) await app.close(); });
+  const cookies = new Map<string, string>();
+  const call = async (path: string, init: { method?: string; body?: string; json?: boolean } = {}) => {
+    const response = await fetch(`http://127.0.0.1:${app.address.port}${path}`, { method: init.method ?? 'GET', ...(init.body === undefined ? {} : { body: init.body }), redirect: 'manual', headers: { authorization: 'Badge ada', origin, 'content-type': init.json ? 'application/json' : 'application/x-www-form-urlencoded', ...(cookies.size ? { cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; ') } : {}) } });
+    for (const header of response.headers.getSetCookie()) { const first = header.split(';')[0]!, index = first.indexOf('='); cookies.set(first.slice(0, index), first.slice(index + 1)); }
+    return response;
+  };
+  const csrfOf = (html: string) => /name="csrf" value="([^"]+)"/.exec(html)![1]!;
+  const todos = async () => ((await (await call('/api/todos')).json()) as { items: { title: string }[] }).items.map(item => item.title);
+  // Data written before the reload, through the form and through the API.
+  const form = await (await call('/todo-form')).text();
+  const saved = await call('/todo-form', { method: 'POST', body: new URLSearchParams({ csrf: csrfOf(form), title: 'Before the reload' }).toString() });
+  assert.equal(saved.status, 303);
+  const location = saved.headers.get('location')!;
+  assert.equal((await call('/api/todos', { method: 'POST', json: true, body: JSON.stringify({ title: 'API before' }) })).status, 201);
+  assert.match(await (await call('/contact')).text(), /Contact us/);
 
-  // A refused reload: the edit passes every static check, and form-records refuses at activation, after the store
-  // (which it requires) has already taken the lock for the replacement. The last-good snapshot keeps serving.
-  const broken = changed.replace('title: Changed contact title', 'title: Rejected contact title').replace(/(mount: \/todo-form\n\s+collection: )todos\n/, '$1missing\n');
-  assert.equal(broken.split('collection: missing').length, 2, 'the form-records example names its store collection after its mount');
-  await writeFile(yamlFile, broken);
-  assert.equal(await server.reload(), false);
-  assert.deepEqual(events.filter(event => event.event === 'reload').map(event => event.status), ['ok', 'rejected']);
-  const rejected = diagnostics.at(-1)!;
-  assert.equal(rejected.event, 'reload_rejected');
-  assert.match(String(rejected.message), /^Extension "form-records" failed to activate: .*missing/);
-  assert.doesNotMatch(String(rejected.message), /locked/);
-  assert.equal(rejected.extensions, undefined, 'the last-good extensions were restored');
-  const kept = await page(port, '/contact');
-  assert.equal(kept.status, 200);
-  assert.match(kept.text, /Changed contact title/);
-  assert.doesNotMatch(kept.text, /Rejected contact title/);
-  assert.equal((await page(port, '/_urlcode/ready')).status, 200);
-  assert.equal(await lockOf(site), lock, 'exactly one store instance holds the lock, the restored one');
-  assert.deepEqual(await strays(site), []);
+  flows.contact!.title = 'Changed contact title';
+  await save();
+  assert.equal(await app.reload(), true, diagnostics.at(-1) ?? 'reload rejected');
+  assert.equal(events.filter(event => event.event === 'reload').at(-1)?.status, 'ok');
+  const contact = await call('/contact');
+  assert.equal(contact.status, 200);
+  assert.match(await contact.text(), /Changed contact title/, 'the new title is served');
+  assert.match(await (await call(location)).text(), /Before the reload/, 'data written before the reload is still readable');
+  assert.deepEqual(await todos(), ['Before the reload', 'API before']);
+  const again = await (await call('/todo-form')).text();
+  assert.equal((await call('/todo-form', { method: 'POST', body: new URLSearchParams({ csrf: csrfOf(again), title: 'After the reload' }).toString() })).status, 303);
+  assert.deepEqual(await todos(), ['Before the reload', 'API before', 'After the reload']);
+  assert.ok(await access(join(root, 'data', 'store', '.store.lock')).then(() => true, () => false), 'the store still holds its one lock');
 
-  // A refused reload whose edit the restored ui would trip over if it resolved the store's screens from the file on
-  // disk: the edited store screen names a collection the store does not declare. The restore resolves them from the
-  // last-good snapshot's declarations instead.
-  await writeFile(yamlFile, changed.replace(/(\/todos:\n\s+collection: )todos\n/, '$1missing\n'));
-  assert.notEqual(await readFile(yamlFile, 'utf8'), changed, 'the store example declares a /todos screen');
-  assert.equal(await server.reload(), false);
-  assert.match(String(diagnostics.at(-1)?.message), /Screen \/todos: collection missing is not declared/);
-  assert.doesNotMatch(String(diagnostics.at(-1)?.message), /restoring the last-good extensions also failed/);
-  assert.equal(diagnostics.at(-1)?.extensions, undefined);
-  assert.match((await page(port, '/contact')).text, /Changed contact title/);
-  assert.notEqual((await page(port, '/todos')).status, 404);
-  assert.equal(await lockOf(site), lock);
+  // A reload that fails in form-records, after the store accepted its hand-off, keeps the last good site serving.
+  const records = (document.extensions['form-records']!.config as { records: Record<string, { collection: string }> }).records;
+  const collection = records.todo!.collection;
+  records.todo!.collection = 'missing';
+  flows.contact!.title = 'Never served';
+  await save();
+  assert.equal(await app.reload(), false);
+  assert.match(JSON.parse(diagnostics.at(-1)!).message, /Extension "form-records" failed to activate/);
+  assert.match(await (await call('/contact')).text(), /Changed contact title/);
+  const kept = await (await call('/todo-form')).text();
+  assert.equal((await call('/todo-form', { method: 'POST', body: new URLSearchParams({ csrf: csrfOf(kept), title: 'After the failure' }).toString() })).status, 303, 'the serving store, forms and ui still work');
+  assert.deepEqual(await todos(), ['Before the reload', 'API before', 'After the reload', 'After the failure']);
 
-  // Fixing the edit hands over again.
-  await writeFile(yamlFile, changed.replace('title: Changed contact title', 'title: Fixed contact title'));
-  assert.equal(await server.reload(), true, JSON.stringify(diagnostics.at(-1)));
-  assert.match((await page(port, '/contact')).text, /Fixed contact title/);
-
-  // The one live activation releases the lock on close: nothing else still holds it.
-  await server.close();
-  await assert.rejects(lockOf(site), { code: 'ENOENT' });
-  assert.deepEqual(await strays(site), []);
+  records.todo!.collection = collection;
+  flows.contact!.title = 'Fixed contact title';
+  await save();
+  assert.equal(await app.reload(), true);
+  assert.match(await (await call('/contact')).text(), /Fixed contact title/);
+  assert.equal((await todos()).length, 4);
+  open = false; await app.close();
+  const file = JSON.parse(await readFile(join(root, 'data', 'store', 'todos.json'), 'utf8')) as { records: { title: string; _owner: string }[] };
+  assert.deepEqual(file.records.map(record => record.title), ['Before the reload', 'API before', 'After the reload', 'After the failure']);
+  assert.ok(file.records.every(record => record._owner === 'ada'));
+  assert.equal(await access(join(root, 'data', 'store', '.store.lock')).then(() => true, () => false), false, 'closing the server released the lock');
 });

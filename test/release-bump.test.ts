@@ -24,14 +24,14 @@ async function fixture(version = '1.0.0'): Promise<string> {
     }),
     'artifacts/site/urlcode.json': json({ kind: 'artifact', name: 'site' }),
     'artifacts/site/package.json': json({ name: '@jimhoyd/urlcode-site', version }),
+    'examples/cloudflare/package.json': json({ name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: version }, devDependencies: { wrangler: '^4' } }),
+    'examples/aws/package.json': json({ name: 'aws-example', private: true, dependencies: { other: '^1.0.0' } }),
     'packages/core/src/cli.ts': `const VERSION = '${version}';\n`,
     'packages/core/src/mcp.ts': `const info = {serverInfo:{name:'urlcode',version:'${version}'}};\n`,
     'starters/default/app/urlcode.yaml': `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v${version}/schemas/urlcode.schema.json\nroutes: []\n`,
     'starters/default/.github/workflows/urlcode.yml': `steps:\n  - uses: jimhoyd-com/urlcode/action@v${version}\n`,
     'packaging/claude-plugin/.claude-plugin/plugin.json': json({ name: 'urlcode', version }),
     '.claude-plugin/marketplace.json': json({ name: 'urlcode', metadata: { version } }),
-    'examples/edge/package.json': json({ name: 'edge-example', private: true, type: 'module', dependencies: { [core]: version }, devDependencies: { wrangler: '^4' } }),
-    'examples/plain/package.json': json({ name: 'plain-example', private: true, type: 'module' }),
     'README.md': `Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: ${version}.\n<!-- urlcode-current-version:end -->\n`,
     'docs/GUIDE.md': 'No version here.\n',
     'packages/ui/CHANGELOG.md': `## ${version}\n`,
@@ -75,16 +75,16 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert.equal(lock.version, '1.1.0-alpha.1');
   for (const key of ['', 'packages/ui', 'packages/auth', 'artifacts/site']) assert.equal(lock.packages[key]!.version, '1.1.0-alpha.1', key);
   assert.deepEqual(lock.packages['packages/auth']!.peerDependencies, { [core]: '1.1.0-alpha.1', '@jimhoyd/urlcode-ui': '1.1.0-alpha.1', typescript: '>=6.0.3 <7.0.0' });
+  // An example that depends on core is pinned exactly and keeps its other fields; one that does not is left alone.
+  assert.deepEqual(await readJson(root, 'examples/cloudflare/package.json'), { name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: '1.1.0-alpha.1' }, devDependencies: { wrangler: '^4' } });
+  assert(changed.includes('examples/cloudflare/package.json'));
+  assert(!changed.includes('examples/aws/package.json'));
   assert.equal(await read(root, 'packages/core/src/cli.ts'), "const VERSION = '1.1.0-alpha.1';\n");
   assert.match(await read(root, 'packages/core/src/mcp.ts'), /version:'1\.1\.0-alpha\.1'/);
   assert.match(await read(root, 'starters/default/app/urlcode.yaml'), /urlcode\/v1\.1\.0-alpha\.1\/schemas\/urlcode\.schema\.json/);
   assert.match(await read(root, 'starters/default/.github/workflows/urlcode.yml'), /action@v1\.1\.0-alpha\.1\n/);
   assert.equal((await readJson(root, 'packaging/claude-plugin/.claude-plugin/plugin.json')).version, '1.1.0-alpha.1');
   assert.deepEqual((await readJson(root, '.claude-plugin/marketplace.json')).metadata, { version: '1.1.0-alpha.1' });
-  // An example's core pin moves; its other dependencies stay, and an example that names no core is not rewritten.
-  assert.deepEqual((await readJson(root, 'examples/edge/package.json')).dependencies, { [core]: '1.1.0-alpha.1' });
-  assert.deepEqual((await readJson(root, 'examples/edge/package.json')).devDependencies, { wrangler: '^4' });
-  assert(!changed.includes('examples/plain/package.json'));
   // Only the marked block moves; history outside it and changelogs are left alone, and untouched files are not rewritten.
   assert.equal(await read(root, 'README.md'), 'Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: 1.1.0-alpha.1.\n<!-- urlcode-current-version:end -->\n');
   assert.equal(await read(root, 'packages/ui/CHANGELOG.md'), '## 1.0.0\n');
@@ -120,10 +120,11 @@ const drifts: [string, (root: string) => Promise<void>, RegExp][] = [
   ['the lockfile', root => edit(root, 'package-lock.json', text => text.replace('"version": "1.0.0"', '"version": "0.9.0"')), /package-lock\.json version differs/],
   ['a ranged core peer', root => edit(root, 'packages/ui/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /must peer on @jimhoyd\/urlcode 1\.0\.0 exactly/],
   ['a required sibling peer', root => edit(root, 'packages/auth/package.json', text => text.replace('"@jimhoyd/urlcode-ui": {\n      "optional": true\n    },', '')), /sibling peer @jimhoyd\/urlcode-ui must be optional/],
+  ['a stale example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "0.3.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode 0\.3\.0/],
+  ['a ranged example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode \^1\.0\.0; an example pins core's version 1\.0\.0 exactly/],
   ['a runtime literal', root => edit(root, 'packages/core/src/mcp.ts', text => text.replace('1.0.0', '0.9.0')), /mcp\.ts must declare 1\.0\.0 exactly once/],
   ['a duplicated runtime literal', root => edit(root, 'starters/default/.github/workflows/urlcode.yml', text => text + text.slice('steps:\n'.length)), /urlcode\.yml must declare 1\.0\.0 exactly once/],
   ['the plugin manifest', root => edit(root, '.claude-plugin/marketplace.json', text => text.replace('1.0.0', '0.9.0')), /marketplace\.json is not 1\.0\.0/],
-  ['an example pinning a stale range', root => edit(root, 'examples/edge/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^0.3.0"`)), /examples\/edge\/package\.json dependencies names @jimhoyd\/urlcode \^0\.3\.0; examples pin core's version 1\.0\.0 exactly/],
   ['a current version outside its markers', root => edit(root, 'docs/GUIDE.md', () => 'Install 1.0.0.\n'), /GUIDE\.md: 1\.0\.0 appears outside a current-version block/],
   ['a stale marker block', root => edit(root, 'README.md', text => text.replace('Current: 1.0.0', 'Current: 0.9.0')), /README\.md: a current-version block does not name 1\.0\.0/],
   ['unbalanced markers', root => edit(root, 'README.md', text => text.replace('<!-- urlcode-current-version:end -->', '')), /markers are unbalanced/],

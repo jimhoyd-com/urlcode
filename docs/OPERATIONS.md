@@ -360,12 +360,9 @@ produces. Streams have their own limits, separate from the short-request ones:
   `method` and `route` with `--request-log detailed`), after the ordinary
   `request` record written when its head was sent ([monitoring](MONITORING.md)).
 - Shutdown: streams share `--close-timeout-ms` with other connections and are
-  ended with reason `shutdown` at its deadline. A dev hot reload of a project
-  without extensions lets streams on the retired snapshot run to their end
-  (bounded by these limits); the retired snapshot closes after the last one.
-  With extensions declared, the reload ends open streams with reason `reload`
-  so it can [hand the extensions over](EXTENSIONS.md#reloads-and-exclusive-resources);
-  clients reconnect to the new snapshot.
+  ended with reason `shutdown` at its deadline. A dev hot reload lets streams
+  on the retired snapshot run to their end (bounded by these limits); the
+  retired snapshot and its extensions close after the last one.
 - Put a reverse proxy's response buffering off for these routes (for example
   nginx `proxy_buffering off`, or the route sending `X-Accel-Buffering: no`),
   and keep its read timeout above `--stream-idle-timeout-ms`, or it will hold

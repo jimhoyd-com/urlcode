@@ -198,3 +198,21 @@ test('the presentation directory itself cannot redirect reads to operator files'
     await assert.rejects(() => loadProjectUi(root, { stylesheet: 'ui/private.css' }), /must not be a symlink/);
     assert.equal((await loadProjectUi(root, {})).stylesheet, undefined);
 });
+test('the kit follows the newest live activation across a reload overlap (#777)', async () => {
+    const root = await project();
+    const ui = createUiExtension({ projectSha256: sha, projectRoot: root });
+    const serving = await ui.registration.activate({}, activation(['/assets/ui'], root));
+    const servingKit = ui.kit;
+    // A reload activates the replacement before the serving runtime closes.
+    const replacement = await ui.registration.activate({ theme: { name: 'Next' } }, activation(['/assets/ui'], root));
+    const replacementKit = ui.kit;
+    assert.notEqual(replacementKit, servingKit);
+    await serving.close?.();
+    assert.equal(ui.kit, replacementKit, 'the retired runtime closing leaves the replacement kit');
+    // A failed replacement: its close restores the activation that keeps serving.
+    const failed = await ui.registration.activate({}, activation(['/assets/ui'], root));
+    await failed.close?.();
+    assert.equal(ui.kit, replacementKit, 'a failed reload restores the serving kit');
+    await replacement.close?.();
+    assert.equal(ui.active, false);
+});

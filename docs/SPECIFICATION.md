@@ -323,8 +323,7 @@ export default function progress(request, { signal }) {
   stream), and aborts the request's `AbortSignal`: `context.signal` in a
   trusted function, `request.signal` in an extension. `signal.reason` is the
   end reason (`client-closed`, `idle-timeout`, `max-duration`, `max-bytes`,
-  `shutdown`, `reload` (a dev reload handing extensions over), or `capacity`
-  for a stream refused because too many are open).
+  `shutdown`, or `capacity` for a stream refused because too many are open).
   A producer waiting on something else should watch the signal.
 - **Backpressure.** The next chunk is pulled only after the previous one was
   accepted by the connection.

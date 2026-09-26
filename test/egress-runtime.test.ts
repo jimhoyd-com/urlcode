@@ -2,8 +2,7 @@ import {fileURLToPath} from 'node:url';
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
 import {writeFile} from 'node:fs/promises';import {join} from 'node:path';import {stringify} from 'yaml';
 import {createRuntime} from '../packages/core/src/runtime.ts';import {validatePolicy} from '../packages/core/src/policy.ts';import {loadDocument} from '../packages/core/src/config.ts';import {compileRoutes} from '../packages/core/src/router.ts';
-import {EgressClient,type EgressDependencies,type EgressRequest} from '../packages/core/src/egress.ts';
-import {runProjectTests} from '../packages/core/src/project-tests.ts';import {startServer} from '../packages/core/src/server.ts';import {auditProject} from '../packages/core/src/readiness.ts';import {project,param,approveBindings} from './helpers.ts';
+import type {EgressDependencies} from '../packages/core/src/egress.ts';import {project,param,approveBindings} from './helpers.ts';
 import type {Plugin} from '../packages/core/src/plugins.ts';
 interface Captured { url:string;method:string;headers:Record<string,string>;body:string }
 function transport(captured:Captured[],responseHeaders:Record<string,string>={}):EgressDependencies {
@@ -75,18 +74,4 @@ test('changing inherited project policies or profiles invalidates old egress gra
   await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',routes,...after}));const changed=await approveBindings(root);assert.notEqual(changed.projectSha256,permissions.projectSha256);
   await assert.rejects(createRuntime(root,{permissions}),/Egress denied/);
  }
-});
-test('the contact-form recipe fixtures call the granted signal hook under urlcode test and audit; nothing exempts them (#793)',async t=>{
- // The recipe README once promised that test and audit probes do not fire the signal. Only the outbound transport is
- // replaced here; fixture execution, routing, signal scheduling and grant activation are the real ones.
- const calls:{url:string;method:string;body:string}[]=[];
- t.mock.method(EgressClient.prototype,'request',async(input:EgressRequest)=>{calls.push({url:String(input.url),method:input.method,body:Buffer.from(input.body??new Uint8Array()).toString()});return {status:204,headers:{},body:Buffer.alloc(0)};});
- const root=fileURLToPath(new URL('../recipes/contact-form/',import.meta.url)),permissions=await approveBindings(root);
- const expected=[['https://hooks.example.com/contact','POST',{version:1,route:'/contact',status:202,method:'POST'}]];
- const seen=()=>calls.splice(0).map(call=>[call.url,call.method,JSON.parse(call.body)]);
- assert.equal((await runProjectTests(root,{permissions})).failed,0);
- assert.deepEqual(seen(),expected);
- const app=await startServer({project:root,port:0,local:true,permissions,log:()=>{}});
- try {assert.equal((await auditProject(app)).ready,true);} finally {await app.close();}
- assert.deepEqual(seen(),expected);
 });

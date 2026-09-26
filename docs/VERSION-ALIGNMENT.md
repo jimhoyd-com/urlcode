@@ -13,12 +13,6 @@ version changes, and `node scripts/release-bump.ts --check` (part of
 | Every extension (`@jimhoyd/urlcode-<name>`: `ui`, `audit`, `abuse`, `mail`, `auth`, `admin`, `store`, `forms`, `form-records`, `mcp`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 | Every artifact (`@jimhoyd/urlcode-<name>`) | `artifacts/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 
-The example manifests (`examples/<name>/package.json`) are not published and
-are not workspaces, so the lockfile does not cover them. Their deploy steps
-install core from them, so each one that names `@jimhoyd/urlcode` pins it
-exactly at core's version; the bump rewrites that pin and the check fails when
-it drifts.
-
 | Version | npm dist-tag | GitHub Release | Homebrew | GHCR tags | Template PR |
 | --- | --- | --- | --- | --- | --- |
 | `X.Y.Z` | `latest` | latest release | updated | `:X.Y.Z`, `:latest` | opened |
@@ -33,6 +27,12 @@ through the packages' `file:../..` links (`check-workspace-links.ts`), and
 `npm run build` writes a development `addons.json` that points
 `urlcode extensions add` at the local workspaces. Core never imports an
 extension package.
+
+Example projects under `examples/` that carry a `package.json` depending on
+`@jimhoyd/urlcode` pin it exactly at the current version, the same way an
+add-on pins its core peer. They are not workspaces, so the lockfile does not
+record them; the release bump rewrites each pin and
+`node scripts/release-bump.ts --check` fails when one drifts.
 
 Beside it, `dist/addon-catalog.json` is the same release's agent discovery
 catalog: every add-on's name, package, version, description, `requires`,

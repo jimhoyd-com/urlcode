@@ -158,3 +158,18 @@ test('composeHost refuses a mail namespace that is not its contributor\'s own na
     await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [...entries, mail({ recipients: { ops: 'ops@example.test' } })]), (error: Error & { details?: { extension?: string } }) =>
       error.constructor.name === 'ConfigError' && error.details?.extension === 'mail' && /Mail namespace "notifier" is contributed by extension "copycat"/.test(error.message));
 });
+
+test('the delivery context follows the newest live activation across a reload overlap (#777)', async t => {
+  const { exports, registration, project } = await hosted(t);
+  const serving = await registration.activate({}, activation(project, { origin: 'http://localhost:4173' }));
+  // A failed reload activates a replacement, then closes it: the serving activation stays current.
+  const failed = await registration.activate({}, activation(project, { origin: 'http://localhost:4174' }));
+  await failed.close?.();
+  assert.equal(exports.active, true, 'a failed reload does not switch mail off');
+  // A successful reload: the retired activation closing leaves the replacement current.
+  const replacement = await registration.activate({}, activation(project, { origin: 'http://localhost:4175' }));
+  await serving.close?.();
+  assert.equal(exports.active, true);
+  await replacement.close?.();
+  assert.equal(exports.active, false, 'mail is inactive once no activation is left');
+});

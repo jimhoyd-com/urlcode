@@ -619,8 +619,7 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    condition the operator should act on that does not stop the site, call
    [`context.warn(message)`](#activation-warnings) during activation instead.
 5. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
-   policies. It closes resources it owns, and can be activated again once
-   closed ([reloads and exclusive resources](#reloads-and-exclusive-resources)). An extension that authenticates may
+   policies. It closes resources it owns. An extension that authenticates may
    declare `providesPrincipal` and set the [request principal](#request-principal);
    one that needs to know who a request is for reads `request.principal` and
    checks `principalMounts` at activation, and never parses another extension's
@@ -637,49 +636,6 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 9. Answers a long-lived or progressive response by declaring `streams: true`
    and returning a [streamed response](#streamed-responses), never by holding a
    buffered answer open or polling.
-
-### Reloads and exclusive resources
-
-The runtime keeps at most one activation of each registration live at a time,
-so an activation may take an exclusive resource (the store's directory lock, a
-database handle, a port) and release it in `close()`. A reload
-(`app.reload()`, and so `urlcode dev`'s watcher) hands the extensions over in
-this order:
-
-1. Build the edited snapshot in full while the serving one keeps answering:
-   routes, functions, policies, and every extension declaration's
-   configuration, policy schema, target, pin and mounts. No extension is
-   activated yet. A refusal here leaves the serving snapshot untouched.
-2. Hold new requests (the health and readiness probes still answer, and
-   `/_urlcode/ready` reports `degraded` while no activation is live), wait up
-   to `closeTimeoutMs` for the requests already running in the serving
-   snapshot to finish, then close its extensions in reverse activation order.
-   Open [streamed responses](#streamed-responses) are ended first, with reason
-   `reload`, because a stream can last as long as its client stays; a client
-   resumes on the new snapshot (MCP replays from `Last-Event-ID`). Requests
-   still running at the deadline reject the reload and the serving snapshot
-   keeps its extensions.
-3. Activate the edited snapshot's extensions in registration order. On success
-   it becomes the serving snapshot before the held requests resume.
-4. When one of them refuses (a throw from `activate()`, a missing hook), close
-   the ones that did activate, then activate the serving snapshot's own
-   configuration again and resume the held requests on it. The reload is
-   rejected (`reload_rejected` names the refusal). If that restore also
-   refuses, the diagnostic says so with `"extensions":"unavailable"`, every
-   request answers 503 and readiness stays `degraded` until a later reload
-   activates.
-
-So `activate()` must work again after `close()` with the same configuration,
-and must derive everything from its `config` and `context`, never from the
-project file on disk, which a reload may already have edited. A value one
-extension resolves from another's declaration reads it from
-`context.declarations` (the validated configuration of every extension this
-snapshot activates): the store's screens reach `ui` that way, so a restored
-snapshot shows its own screens. Hook modules loaded with `loadExtensionHooks`
-are the exception: they are imported from the project directory at each
-activation, so a restore after a refused reload loads the hook sources as they
-are on disk then. A host plugin is not handed over: its `activate` runs when a
-snapshot is built.
 
 ### Request helpers
 
@@ -747,9 +703,7 @@ const registration: RuntimeExtension = {
 - Operator [stream limits](OPERATIONS.md#streamed-responses) bound every
   stream: concurrent streams, idle time, total duration and bytes. `close()`
   of the runtime (shutdown, or a retired dev reload) waits for open streams,
-  so an extension's own `close()` runs only after its last stream ended. A dev
-  reload of a project that declares extensions ends the open streams (reason
-  `reload`) before it [hands the extensions over](#reloads-and-exclusive-resources).
+  so an extension's own `close()` runs only after its last stream ended.
 - Targets: `prepareExtensions` refuses a declared registration with
   `streams: true` on any target but `node` and `vercel`, before activation.
   An extension that can also answer without streaming should expose an
@@ -789,6 +743,74 @@ names no extension and interprets no message.
 `warn` is optional in the `ExtensionActivation` type only so an activation
 built by hand in a test can leave it out; the runtime always sets it, so call
 it as `context.warn?.(message)` if you also support such tests.
+
+### Reload hand-off
+
+An in-process reload (`app.reload()` on a `startServer` server, which the
+`urlcode dev` watcher calls) builds and activates the replacement runtime while
+the serving one keeps answering, then switches to it and closes the old one. If
+anything in the replacement fails, the serving runtime keeps serving, unchanged
+(issue #777). An extension that holds something exclusive per activation (a
+directory lock, an exclusive database handle, an open file it alone may write)
+would refuse the replacement's activation because the serving instance still
+holds it. The optional hand-off lets the two activations share it instead
+(`RIM-EXT-HANDOFF-001`):
+
+```ts
+interface ExtensionInstance {
+  // Called only during an in-process reload, on the serving instance, just before
+  // the same registration activates in the replacement runtime.
+  handoff?(): unknown | Promise<unknown>;
+  close?(): void | Promise<void>;
+  // handle, authorize, middleware as before
+}
+interface ExtensionActivation {
+  // Present only in that replacement activation, when handoff() returned a value.
+  handoff?: ExtensionHandoff;
+  // origin, mounts, root, warn ... as before
+}
+interface ExtensionHandoff { readonly value: unknown }
+```
+
+Core only carries the value: it passes exactly what `handoff()` returned, never
+inspects, copies or freezes it, and offers it only to the activation of the
+very same registration object under the same name. It never offers one on a
+first activation, from a runtime that is closing, or on `serve` startup,
+`validate`, `test` or the hosted adapters. A `handoff()` that throws rejects the
+reload as `Extension "<name>" failed to hand off for a reload: <message>` and
+the serving runtime keeps serving.
+
+Ownership is reference counted, and the extension keeps the count (for example
+a lease in its registration's closure, which lives as long as the host):
+
+| Step | What happens | References |
+|---|---|---|
+| Serving | the instance holds the resource | 1 |
+| Offer | `handoff()` returns a value naming it; nothing is released, the serving instance keeps using it | 1 |
+| Accept | the replacement's `activate()` recognizes the value and takes its own reference | 2 |
+| Replacement fails (its own activation, any extension after it, or anything later in the runtime's start) | core closes every instance it activated; each `close()` drops only its own reference; the serving instance is intact and usable | 1 |
+| Replacement installed | the retired runtime closes once idle; its `close()` drops only its reference, so the resource stays open for the replacement | 1 |
+| Last close | the resource is released | 0 |
+
+So write `close()` to release the reference its own activation holds, never
+the resource outright, and let only the last reference release it. While both
+runtimes are live (the retiring one finishing in-flight requests) both
+instances may use the resource: share one write path between them, never two
+independent writers. An activation that cannot use the value (it did not issue
+it, the lease is gone, an operator option such as a directory differs) ignores
+it and opens fresh, which an exclusive resource then refuses exactly as it did
+without a hand-off. The exclusion against other processes, other hosts and
+other registrations of the same extension is unchanged: only a reload shares.
+
+An extension that holds nothing exclusive leaves `handoff()` out and behaves as
+before. The same overlap applies to any per-registration "current activation"
+an extension keeps for its exports (the served kit, a records export, a
+delivery context): make the newest live activation current and, when it
+closes, fall back to the previous live one rather than to nothing, so a failed
+reload's close cannot switch off the runtime that is still serving. The store
+adopts the hand-off for its directory lock
+([single-writer lock and reload](STORE.md#single-writer-lock-and-reload)); ui,
+auth and mail keep their current activation that way.
 
 ### Site origins and same-origin checks
 
@@ -1134,11 +1156,8 @@ The module default-exports `{extensions, plugins?, close?}`; a site's
 `host.mjs` builds that object with `composeHost` from
 `@jimhoyd/urlcode/host`. It may import installed operator packages, open their
 stores and read operator secrets. `close` releases shared services when the CLI
-command finishes or the server shuts down. A runtime reload closes the serving
-extension instances before it activates their replacements, and activates the
-last-good ones again if a replacement refuses
-([reloads and exclusive resources](#reloads-and-exclusive-resources)); it never
-closes caller-owned services. Host modules are not
+command finishes or the server shuts down. A runtime reload closes extension
+instances but does not close caller-owned services. Host modules are not
 watched or automatically rediscovered. Restart to update them.
 
 The same explicit option is supported by dev, validate, test, routes, audit,

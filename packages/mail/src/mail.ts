@@ -100,6 +100,7 @@ export function createMail(options: MailOptions): { registration: RuntimeExtensi
   const deadlineMs = bounded(options.deadlineMs, 5000, 1000, 30000, 'deadlineMs');
 
   let activation: Activation | undefined, generation = 0, closed = false, inFlight = 0;
+  const live: Activation[] = [];
   /** One stop function per delivery in flight, so close() can end each with 'closed'. */
   const stoppers = new Set<(why: 'closed') => void>();
   let defaultTransport: MailTransport | undefined;
@@ -197,9 +198,19 @@ export function createMail(options: MailOptions): { registration: RuntimeExtensi
       const copy = await loadCopy(options.site, config.copy ?? {}, templates);
       const mine = ++generation;
       activation = { origin: origin.origin, transport, copy, defaultLocale, generation: mine };
+      live.push(activation);
       return {
         handle() { return { status: 404, headers: [['content-type', 'text/plain; charset=utf-8']], body: 'Not found' }; },
-        close() { if (activation?.generation === mine) { activation = undefined; abortAll(); } },
+        // Closing one activation restores the newest still live (a failed reload's close leaves the serving one);
+        // in-flight deliveries are aborted only when none is left (RIM-EXT-HANDOFF-001).
+        close() {
+          const index = live.findIndex(entry => entry.generation === mine);
+          if (index < 0) return;
+          live.splice(index, 1);
+          if (activation?.generation !== mine) return;
+          activation = closed ? undefined : live.at(-1);
+          if (!activation) abortAll();
+        },
       };
     },
   };
@@ -208,6 +219,7 @@ export function createMail(options: MailOptions): { registration: RuntimeExtensi
   const close = (): Promise<void> => closing ??= (async () => {
     closed = true;
     activation = undefined;
+    live.length = 0;
     abortAll();
     const transports = new Set([configured ?? undefined, defaultTransport].filter((value): value is MailTransport => !!value));
     for (const transport of transports) await transport.close?.();

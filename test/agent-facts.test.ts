@@ -40,6 +40,25 @@ test('the retired hosted AI token and hosted LLM-tool claims cannot reappear in 
  assert.equal(clean.status,0,clean.stderr);
 });
 
+test('prose cannot promise that test or audit fixtures skip a route signal (#793)',async t=>{
+ const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
+ assert.equal(inventory.status,0,inventory.stderr);
+ assert.equal(JSON.parse(inventory.stdout).signalsSkipOnlyHeadAndProbes,true);
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const scan=async(text:string)=>{const file=join(dir,'README.md');await writeFile(file,text);return spawnSync(process.execPath,[script,'--files',file],{encoding:'utf8',timeout:30000});};
+ for(const text of [
+  'A signal carries a fixed payload and is best effort. Test and audit probes do not fire it.\n',
+  '`urlcode test` fixtures never call the webhook.\n',
+  'Egress is granted per origin; audit requests will not reach the destination.\n',
+ ]){
+  const result=await scan(text);
+  assert.equal(result.status,1,`should reject: ${text}`);
+  assert.ok(result.stderr.includes('[signalsSkipOnlyHeadAndProbes]'),result.stderr);
+ }
+ const clean=await scan('HEAD requests and the runtime\'s own health and readiness probes do not emit signals; `urlcode test` and `urlcode audit` requests to `/event` do, to the granted destination.\n\nNo test or authoring inspection needs network access.\n');
+ assert.equal(clean.status,0,clean.stderr);
+});
+
 test('MCP tool counts in prose follow run_tests into the --allow-authoring set (#590)',async t=>{
  // run_tests executes project code, so it left the read tools for the authoring-gated set.
  assert.equal(mcpToolInventory.read.includes('run_tests'),false);assert.equal(mcpToolInventory.authoring.includes('run_tests'),true);

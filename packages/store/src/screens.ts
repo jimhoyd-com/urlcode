@@ -59,11 +59,12 @@ export function storeScreens(config: unknown): Record<string, StoreScreen> {
 }
 
 /**
- * The `screens` source the store contributes to ui (`contributes.ui.screens`). ui calls it once per activation with
- * the store's own validated configuration from the snapshot being activated, never the project file on disk, so a
- * restored last-good snapshot shows its own screens after a refused reload. A snapshot that does not declare the
- * store contributes no screens.
+ * The `screens` source the store contributes to ui (`contributes.ui.screens`). ui calls it once at activation
+ * with the route project root; the store reads its own block from the reviewed project document there. A project
+ * that does not declare the store contributes no screens.
  */
-export function contributedScreens({ config }: { readonly config: Readonly<Record<string, unknown>> | undefined }): Record<string, StoreScreen> {
-  return storeScreens(config);
+export async function contributedScreens({ root }: { readonly root: string }): Promise<Record<string, StoreScreen>> {
+  const { loadDocument } = await import('@jimhoyd/urlcode');
+  const loaded = await loadDocument(root);
+  return storeScreens(loaded.document.extensions?.store?.config);
 }

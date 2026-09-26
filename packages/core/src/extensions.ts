@@ -76,14 +76,6 @@ export interface ExtensionActivation {
    */
   principalMounts?:readonly string[];
   /**
-   * The validated `extensions.<name>.config` of every extension this snapshot activates (this one included), frozen,
-   * keyed by name. It is the snapshot being activated, never the project file on disk, which a reload may already
-   * have edited: a value one extension resolves from another's own declaration (a contribution) reads it here, so
-   * restoring the last-good snapshot after a refused reload sees the last-good declarations (RIM-EXT-HANDOFF-001).
-   * The runtime always sets it; it is optional only so an activation built by hand (a test) can leave it out.
-   */
-  declarations?:Readonly<Record<string,Readonly<Record<string,unknown>>>>;
-  /**
    * Reports a condition the operator should act on that does not stop the site (RIM-EXT-WARN-001): for example
    * stored data that no longer matches the operator's configuration. The runtime writes it to the operator's log as
    * one `{"event":"extension_warning","extension":"<name>","message":"..."}` record, the same log `validate`, `test`,
@@ -94,6 +86,33 @@ export interface ExtensionActivation {
    * runtime always sets it; it is optional only so an activation built by hand (a test) can leave it out.
    */
   warn?:(message:string)=>void;
+  /**
+   * The reload hand-off (RIM-EXT-HANDOFF-001): present only when this activation belongs to the replacement runtime
+   * of an in-process reload (`startServer`'s `reload()`, which the `urlcode dev` watcher calls), and the serving
+   * runtime's instance of this same registration offered one from `handoff()`. Absent on every first activation,
+   * every other command and a registration whose serving instance offered nothing. An activation that accepts it
+   * takes its own reference to what the value names; it never becomes the only owner. See `ExtensionHandoff`.
+   */
+  handoff?:ExtensionHandoff;
+}
+/**
+ * What the serving runtime's instance of a registration offers the same registration's activation in the replacement
+ * runtime during an in-process reload (RIM-EXT-HANDOFF-001, docs/EXTENSIONS.md "Reload hand-off"). Core only carries
+ * it: `value` is exactly what `ExtensionInstance.handoff()` returned, never inspected, copied or frozen, and never
+ * given to another extension name or another registration object.
+ *
+ * The contract is reference counting, owned by the extension. The offer transfers nothing: the serving instance
+ * keeps using the resource while the replacement activates. An activation that accepts takes one more reference
+ * (for example a lease count in the registration's own closure); every instance's `close()` releases only the
+ * reference it holds; the resource is released when the last reference goes. So a replacement that fails (its own
+ * activation, or any other extension's after it, or anything later in the runtime's start) closes its activated
+ * instances and leaves the serving instance's resource intact, and a replacement that is installed keeps the
+ * resource when the retired runtime closes. An extension that finds the value unusable (a changed operator option,
+ * an expired or foreign value) ignores it and opens fresh, which an exclusive resource then refuses as before.
+ */
+export interface ExtensionHandoff {
+  /** What the serving instance's `handoff()` returned. Opaque to core. */
+  readonly value:unknown;
 }
 /** How many `warn()` calls one extension activation records before a single "further warnings suppressed" line. */
 export const maxExtensionWarnings=20;
@@ -266,9 +285,14 @@ export interface ExtensionInstance {
    */
   middleware?(config:Readonly<Record<string,unknown>>,request:ExtensionRequest,next:()=>Promise<HandlerResult>):HandlerResult|Promise<HandlerResult>;
   /**
-   * Releases what this activation took. The runtime calls it once no request is running in this instance and before
-   * any replacement activation of the same registration starts (RIM-EXT-HANDOFF-001), in reverse activation order.
+   * Optional reload hand-off offer (RIM-EXT-HANDOFF-001). Core calls it only during an in-process reload, on this
+   * serving instance, immediately before the same registration activates in the replacement runtime, at most once
+   * per reload; the result reaches that activation as `context.handoff.value` (`undefined` offers nothing). It must
+   * not release, close or stop using anything: this instance keeps serving, and keeps serving alone if the reload
+   * fails. What it throws rejects the reload, named as this extension's `handoff` failure. An extension that holds
+   * nothing exclusive leaves it out and behaves exactly as without it.
    */
+  handoff?():unknown|Promise<unknown>;
   close?():void|Promise<void>;
 }
 /** Trusted operator code only. YAML declares names/configuration, never modules. */
@@ -411,13 +435,6 @@ export interface RuntimeExtension {
    * refuses a declared registration that sets it on any other target, before activation.
    */
   streams?:boolean;
-  /**
-   * Builds one activation. The runtime keeps at most one activation of a registration live at a time
-   * (RIM-EXT-HANDOFF-001): a reload closes the serving instance, after its in-flight requests settle and its open streams end, before it
-   * activates the replacement, and when the replacement refuses it calls `activate` again with the last-good
-   * configuration. So an activation may take exclusive resources (a directory lock, a database handle) and release
-   * them in `close()`, and `activate` must be callable again once the previous instance has closed.
-   */
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
 /**
@@ -544,27 +561,10 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
 }
-export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean; streams:boolean }
+export interface ActiveExtension { instance:ExtensionInstance; registration:RuntimeExtension; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean; streams:boolean }
 /** What the runtime knows about the request when it applies the privacy floor. */
 export interface ExtensionAssetContext { method:string; path:string; prefixes:readonly string[] }
-/** One live activation of the declared extensions. `close()` closes every instance once, in reverse activation order. */
-export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; close():Promise<void> }
-/**
- * The validated activation step `prepareExtensions` returns. Preparing takes no resource, so a replacement snapshot can
- * be fully checked while the serving one still holds its extensions. Each `activate()` builds a fresh registry (a new
- * instance of every declared extension); a refusal closes the instances it already activated and throws.
- */
-export interface ExtensionPlan {
-  /** Names activated under `urlcode dev`'s accepted pin rather than an exact one (RIM-EXT-PIN-001). */
-  readonly followed:readonly string[];
-  /** Whether this revision declares at least one extension, so there is something to activate. */
-  readonly declared:boolean;
-  /** Every declared extension's credential headers, lowercase, plus `cookie` and `authorization`. */
-  readonly credentialHeaders:readonly string[];
-  /** The immutable-asset prefixes of each declared extension's mounts, by extension name. */
-  readonly assetPrefixes:ReadonlyMap<string,readonly string[]>;
-  activate():Promise<ExtensionRegistry>;
-}
+export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; credentialHeaders:string[]; close():Promise<void> }
 const namePattern=/^[a-z][a-z0-9-]{0,63}$/;
 /** The runtime targets that deliver a streamed response incrementally; every other target refuses streaming before serving. */
 export const streamingTargets:readonly TargetName[]=Object.freeze(['node','vercel']);
@@ -646,11 +646,17 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
  * revision the dev server started from and strictly checked) is accepted for the edited live revision and listed in
  * `followed`. Every other check still runs, and without it the pin must equal the live revision (RIM-EXT-PIN-001).
  */
-export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'principalMounts'|'declarations'|'warn'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string}):ExtensionPlan {
+/**
+ * `activate(serving)` is given the serving runtime's registry only by an in-process reload (`createRuntime`'s
+ * `replacing`): each extension whose serving instance was activated from the very same registration object and
+ * implements `handoff()` is asked for its offer just before its replacement activates, and the offer reaches that
+ * activation as `context.handoff` (RIM-EXT-HANDOFF-001). The serving registry is never closed or changed here.
+ */
+export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'|'handoff'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string}): {readonly followed:readonly string[];activate(serving?:ExtensionRegistry):Promise<ExtensionRegistry>} {
   assert(acceptedPin===undefined||typeof acceptedPin.from==='string'&&/^[a-f0-9]{64}$/.test(acceptedPin.from),'Invalid accepted extension revision pin');
   const followed:string[]=[];
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
-  const provided=new Map<string,RuntimeExtension>(),credentialHeaders=new Set<string>();
+  const provided=new Map<string,RuntimeExtension>(),entries=new Map<string,ActiveExtension>(),credentialHeaders=new Set<string>();
   for(const registration of registrations??[]){
     assert(registration&&typeof registration==='object'&&typeof registration.name==='string'&&namePattern.test(registration.name),'Invalid extension registration');
     assert(!provided.has(registration.name),'Duplicate extension provider');
@@ -725,28 +731,33 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       const assetPrefixes=registration.immutableAssets===undefined?[]:mounts.map(mount=>mount+validateAssetPrefix((registration.immutableAssets as ExtensionImmutableAssets).prefix,name)+'/');
       preparations.push({name,registration,config:frozen(config),policies,mounts,principalMounts,assetPrefixes});
   }
-  const activated:Readonly<Record<string,Readonly<Record<string,unknown>>>>=Object.freeze(Object.fromEntries(preparations.map(({name,config})=>[name,config])));
-  return {followed:Object.freeze([...followed]),declared:preparations.length>0,credentialHeaders:Object.freeze([...credentialHeaders]),
-    assetPrefixes:new Map(preparations.map(({name,assetPrefixes})=>[name,Object.freeze([...assetPrefixes])])),async activate(){
-    // A fresh registry per call: a runtime may activate its plan again after closing an earlier activation.
-    const entries=new Map<string,ActiveExtension>();
+  return {followed:Object.freeze([...followed]),async activate(serving?:ExtensionRegistry){
     try{for(const {name,registration,config,policies,mounts,principalMounts,assetPrefixes}of preparations){
+      // Offered only by the serving instance of this very registration: never across names or registration objects.
+      const previous=serving?.entries.get(name);
+      let handoff:ExtensionHandoff|undefined;
+      if(previous&&previous.registration===registration&&typeof previous.instance.handoff==='function'){
+        let value:unknown;
+        try{value=await previous.instance.handoff();}
+        catch(error){throw extensionError(error,name,'handoff');}
+        // The value is the extension's own reference: carried as is, never frozen or cloned.
+        if(value!==undefined)handoff=Object.freeze({value});
+      }
       // What activate throws is the operator's own extension reporting its configuration or environment; it is
       // named and kept (bounded, without a stack) so validate, test, dev and serve startup can print it.
       let instance:ExtensionInstance;
       // warn() reaches the same operator log; it is closed once activate() settles (RIM-EXT-WARN-001).
       const warnings=activationWarnings(name,log);
-      try{instance=await registration.activate(config,frozen({...context,mounts,principalMounts,declarations:activated,warn:warnings.warn}));}
+      try{instance=await registration.activate(config,Object.freeze({...frozen({...context,mounts,principalMounts,warn:warnings.warn}),...(handoff?{handoff}:{})}));}
       catch(error){throw extensionError(error,name,'activate');}
       finally{warnings.close();}
       const providesPrincipal=registration.providesPrincipal===true,streams=registration.streams===true;
-      if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes,providesPrincipal,streams});
+      if(instance&&typeof instance==='object')entries.set(name,{instance,registration,policies,assetPrefixes,providesPrincipal,streams});
       assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);
       assert(!providesPrincipal||!policies.size||typeof instance.authorize==='function',`Extension ${name} declares providesPrincipal but has no authorization hook`);
-      entries.set(name,{instance,policies,assetPrefixes,providesPrincipal,streams});
+      entries.set(name,{instance,registration,policies,assetPrefixes,providesPrincipal,streams});
     }}catch(error){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
-    let closed=false;
-    return {entries,async close(){if(closed)return;closed=true;for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
+    return {entries,credentialHeaders:[...credentialHeaders],async close(){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
   }};
 }
 const header=(headers:readonly (readonly [string,string])[],name:string):string[]=>headers.filter(([key])=>key.toLowerCase()===name).map(([,value])=>value);

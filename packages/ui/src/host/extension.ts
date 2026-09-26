@@ -118,24 +118,22 @@ export interface UiScreen {
     columns?: readonly CrudColumn[] | undefined;
 }
 /**
- * Resolves the screens one contributing extension serves, keyed by exact mount path (`/todos`). Called once per ui
- * activation with the route project root and the contributor's own validated configuration from the snapshot being
- * activated (`ExtensionActivation.declarations[from]`, undefined when the snapshot does not declare it). ui hands it
- * over without reading it; the contributor resolves its screens from it, never from the project file on disk.
+ * Resolves the screens one contributing extension serves, keyed by exact mount path (`/todos`). Called once at
+ * ui activation with the route project root; the contributor reads its own declaration there.
  */
-export type UiScreenSource = (context: { readonly root: string; readonly config: Readonly<Record<string, unknown>> | undefined }) => Readonly<Record<string, UiScreen>> | Promise<Readonly<Record<string, UiScreen>>>;
+export type UiScreenSource = (context: { readonly root: string }) => Readonly<Record<string, UiScreen>> | Promise<Readonly<Record<string, UiScreen>>>;
 /** One contributed screen source and the name of the extension that contributed it. */
 export interface UiScreenContribution { readonly from: string; readonly source: UiScreenSource }
 const screenPath = /^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 /** Collects every contributed screen once, refusing a malformed one or a path two sources both claim, naming the contributors. */
-async function contributedScreens(contributions: readonly UiScreenContribution[], context: Pick<ExtensionActivation, 'root' | 'declarations'>): Promise<Map<string, UiScreen>> {
+async function contributedScreens(contributions: readonly UiScreenContribution[], root: string): Promise<Map<string, UiScreen>> {
     const screens = new Map<string, UiScreen>(), owners = new Map<string, string>();
     for (const contribution of contributions) {
         const from = isRecord(contribution) && typeof contribution.from === 'string' ? contribution.from : undefined;
         if (!from || typeof contribution.source !== 'function') throw new Error('ui screens contributions must be {from, source} with a source function');
         const source = contribution.source;
-        const resolved: unknown = await source(Object.freeze({ root: context.root, config: context.declarations?.[from] }));
+        const resolved: unknown = await source(Object.freeze({ root }));
         if (!isRecord(resolved)) throw new Error(`ui screens contributed by extension "${from}" must resolve to an object keyed by path`);
         for (const [path, screen] of Object.entries(resolved)) {
             if (path.length > 256 || !screenPath.test(path)) throw new Error(`ui screen path ${path} contributed by extension "${from}" must be an absolute literal path such as /todos`);
@@ -154,11 +152,15 @@ async function contributedScreens(contributions: readonly UiScreenContribution[]
 export function createUiExtension(options: UiExtensionOptions): UiExtension {
     if (typeof options.projectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(options.projectSha256)) throw new Error('ui extension requires an explicit operator revision pin');
     if (typeof options.projectRoot !== 'string' || !options.projectRoot) throw new Error('ui extension requires the project root');
+    // The kits of the live activations, oldest first; the newest serves. A reload activates the replacement before
+    // the serving runtime closes, so closing one activation drops only its own kit: the retiring runtime's close
+    // leaves the replacement's, and a failed replacement's close leaves the serving one's (RIM-EXT-HANDOFF-001).
+    const live: Kit[] = [];
     let kit: Kit | undefined;
     const registration: RuntimeExtension = {
         name: 'ui', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'], schema: uiConfigSchema, hooks: uiHookContracts, authoring: uiAuthoring, immutableAssets: { prefix: uiAssetPrefix },
         async activate(config: Readonly<Record<string, unknown>>, context: ExtensionActivation): Promise<ExtensionInstance> {
-            const screens = await contributedScreens(options.screens ?? [], context);
+            const screens = await contributedScreens(options.screens ?? [], context.root);
             // Screen paths are exact page mounts; the one remaining mount serves the kit's assets.
             for (const path of screens.keys()) if (!context.mounts.includes(path)) throw new Error(`ui screen ${path} needs a route ${path}/* with extension: ui`);
             const assetMounts = context.mounts.filter(candidate => !screens.has(candidate));
@@ -195,7 +197,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                 if (Object.keys(changed).some(key => !allowed.has(key))) throw new Error('ui transformPage hook returned an unsupported page field');
                 return { ...page, ...changed } as PageOptions;
             };
-            kit = Object.freeze({
+            const mine: Kit = Object.freeze({
                 ...baseKit,
                 render,
                 wrap(content: ReturnType<typeof render>, page: PageOptions) {
@@ -206,7 +208,8 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                     return baseKit.wrap(render(name, view, renderContext), transformPage({ ...page, context: renderContext }));
                 },
             });
-            const byPath = new Map(kit.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
+            live.push(mine); kit = mine;
+            const byPath = new Map(mine.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
             return {
                 handle(request: ExtensionRequest): HandlerResult {
                     const screen = request.mount !== null ? screens.get(request.mount) : undefined;
@@ -214,7 +217,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                         if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
                         if (request.path !== request.mount) return { status: 404, headers: [['content-type', 'text/plain; charset=utf-8']], body: 'Not found' };
                         const language = request.headers.get('accept-language');
-                        const page = crudScreen(kit!, { collection: screen.collection, ...(screen.columns ? { columns: screen.columns } : {}), title: screen.title, preferences: { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(language ? { acceptLanguage: language } : {}) } });
+                        const page = crudScreen(mine, { collection: screen.collection, ...(screen.columns ? { columns: screen.columns } : {}), title: screen.title, preferences: { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(language ? { acceptLanguage: language } : {}) } });
                         return { status: page.status, headers: page.headers, body: request.method === 'HEAD' ? undefined : page.body };
                     }
                     if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
@@ -225,7 +228,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                     if (request.headers.get('if-none-match') === `"${asset.hash}"`) return { status: 304, headers };
                     return { status: 200, headers, body: request.method === 'HEAD' ? undefined : asset.body };
                 },
-                close() { kit = undefined; },
+                close() { const index = live.indexOf(mine); if (index >= 0) live.splice(index, 1); kit = live.at(-1); },
             };
         },
     };

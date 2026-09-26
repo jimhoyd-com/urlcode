@@ -121,11 +121,8 @@ In a composed site the `ui` extension serves these screens for the extensions
 that contribute them; it never reads another extension's configuration. An
 extension that owns collections passes a screen source through its
 definition's `contributes.ui.screens` (see `UiContribution` in the
-[contract](CONTRACT.md)). At each activation `ui` calls each source once with the
-route project root and the contributor's own configuration from the snapshot
-being activated (never re-read from the project file, so a reload that restores
-the last-good snapshot restores its screens too), and receives
-`{<path>: {title, collection, columns?}}`; each
+[contract](CONTRACT.md)). At activation `ui` calls each source once with the
+route project root and receives `{<path>: {title, collection, columns?}}`; each
 path must have a route `<path>/*` with `extension: ui`, a path claimed twice
 refuses naming both contributing extensions, and a bad collection, column or title fails activation naming the
 screen. The store extension is one such contributor: its screens are declared

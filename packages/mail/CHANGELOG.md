@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The delivery context follows the newest live activation (#777): a failed hot reload's close restores the serving activation's instead of leaving mail inactive, and in-flight deliveries are aborted only when no activation is left.
+
 First release. Plain-text transactional email as its own extension: `MailExports` v1, templates contributed by
 other extensions through `contributes.mail` with checked slot kinds (`page-link`, `token-link`, `code`, `text`),
 site copy files for overrides and translations, one operator transport (`sesTransport`, `outboxTransport`,

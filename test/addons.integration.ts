@@ -113,9 +113,10 @@ test('every extension installs once, composes, serves, and removes in dependency
   const previous = { ...process.env };
   Object.assign(process.env, env);
   t.after(() => { for (const key of Object.keys(env)) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key]; });
-  const core = await import(pathToFileURL(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'index.js')).href) as { startServer(options: object): Promise<{ address: { port: number }; close(): Promise<void> }> };
+  const core = await import(pathToFileURL(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'index.js')).href) as { startServer(options: object): Promise<{ address: { port: number }; reload(): Promise<boolean>; close(): Promise<void> }> };
   const host = (await import(pathToFileURL(join(dir, 'host.mjs')).href) as { default: { extensions: unknown[]; close(): Promise<void> } }).default;
-  const server = await core.startServer({ project: join(dir, 'app'), extensions: host.extensions, port: 0, host: '127.0.0.1', origin: 'https://site.example', log: () => undefined });
+  // `urlcode dev`'s reload path: the stateful composition must hot reload an edit (#777, RIM-EXT-HANDOFF-001).
+  const server = await core.startServer({ project: join(dir, 'app'), extensions: host.extensions, port: 0, host: '127.0.0.1', origin: 'https://site.example', log: () => undefined, followExtensionPinOnReload: true });
   // Closed here, not in an after hook: the site is removed in one, and Windows cannot delete the auth
   // database while the service still holds it open.
   try {
@@ -145,6 +146,19 @@ test('every extension installs once, composes, serves, and removes in dependency
     assert.ok(token, 'the form carries forms\' own token');
     const posted = await send('/todo-form', { method: 'POST', headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf: token, title: 'second' }).toString() });
     assert.equal(posted.status, 303, await posted.text());
+
+    // Hot reload an edit of the contact form's title: the store hands its directory lock to the replacement
+    // runtime, the new title is served, and the records written before the reload are still readable.
+    const yaml = join(dir, 'app', 'urlcode.yaml');
+    const text = await readFile(yaml, 'utf8');
+    assert.match(text, /title: Contact us/);
+    await writeFile(yaml, text.replace('title: Contact us', 'title: Changed contact title'));
+    assert.equal(await server.reload(), true, 'the generated stateful site reloads');
+    assert.match(await (await send('/contact', { headers: { accept: 'text/html' } })).text(), /Changed contact title/);
+    const kept = await (await send('/api/todos', { headers: { accept: 'application/json' } })).json() as { items: { title: string }[] };
+    assert.deepEqual(kept.items.map(item => item.title), ['first', 'second']);
+    const later = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'after reload' }) });
+    assert.equal(later.status, 201, await later.text());
 
     // The store's audited write drains into the audit log while the host runs; the operator lists it offline.
     const database = join(dir, 'data', 'audit.sqlite');

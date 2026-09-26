@@ -267,8 +267,7 @@ jobs:
       # `auth` imports `ui`, `audit`, `mail` and `abuse`; `admin` imports
       # `auth` and so needs its dependencies too; `store` imports `ui` and
       # `audit`; `forms` imports `ui`, `abuse` and `mail`; `form-records`
-      # imports `forms` and `store`, and its reload test serves a site that
-      # composes `auth` and `admin` too (#777). The matrix carries each package's
+      # imports `forms` and `store`. The matrix carries each package's
       # transitive dependencies in build order (empty for `ui`, `audit`,
       # `abuse`, `mail` and `mcp`, which have none) so this job's own
       # typecheck/build can resolve them, the way the removed serial script

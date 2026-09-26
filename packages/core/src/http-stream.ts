@@ -39,8 +39,8 @@ export function resolveStreamLimits(given: Partial<StreamLimits> = {}): StreamLi
   return limits;
 }
 /** Why a stream ended; `complete` is the only reason that ends the chunked body normally. */
-export type StreamEndReason = 'complete' | 'client-closed' | 'idle-timeout' | 'max-duration' | 'max-bytes' | 'error' | 'shutdown' | 'reload';
-const endReasons: readonly string[] = ['complete', 'client-closed', 'idle-timeout', 'max-duration', 'max-bytes', 'error', 'shutdown', 'reload'];
+export type StreamEndReason = 'complete' | 'client-closed' | 'idle-timeout' | 'max-duration' | 'max-bytes' | 'error' | 'shutdown';
+const endReasons: readonly string[] = ['complete', 'client-closed', 'idle-timeout', 'max-duration', 'max-bytes', 'error', 'shutdown'];
 export interface StreamOutcome {
   status: number; bytes: number; durationMs: number; reason: StreamEndReason;
   /** What the producer threw, for operator diagnostics only; never written to the client or the event log. */
@@ -62,7 +62,6 @@ function preCommitError(reason: StreamEndReason, failure: unknown): HttpError {
   if (reason === 'error') return new HttpError(502, 'Function execution failed', undefined, { cause: failure });
   if (reason === 'max-bytes') return new HttpError(502, 'Streamed response exceeds limit');
   if (reason === 'shutdown') return new HttpError(503, 'Runtime shutting down');
-  if (reason === 'reload') return new HttpError(503, 'Runtime reloading');
   return new HttpError(504, 'Stream deadline exceeded');
 }
 
@@ -88,8 +87,8 @@ export class StreamHost {
   constructor(limits: Partial<StreamLimits> = {}) { this.limits = resolveStreamLimits(limits); }
   /** Streams currently open on this host. */
   get active(): number { return this.open.size; }
-  /** Ends every open stream now: graceful shutdown at the close deadline, or an extension handoff on reload. */
-  endAll(reason: 'shutdown' | 'reload' = 'shutdown'): void { for (const stop of [...this.open]) stop(reason); }
+  /** Ends every open stream now (graceful shutdown at the close deadline). */
+  endAll(reason: 'shutdown' = 'shutdown'): void { for (const stop of [...this.open]) stop(reason); }
 
   /**
    * Resolves once the status and headers are committed (the first chunk arrived, or the producer finished empty),

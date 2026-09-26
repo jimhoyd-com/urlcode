@@ -14,9 +14,9 @@ its explicit path/query/header behavior; it is not a guest fetch capability.
 `GET /proxy/hello?page=2` proxies to the declared items endpoint. Incoming cookies,
 Authorization and unlisted query values are not forwarded. `GET /event` returns
 its native response and schedules a best-effort webhook with route pattern,
-method and status only. HEAD requests do not emit signals; a `urlcode test` or
-`urlcode audit` fixture that reaches `/event` under a granted policy does
-([signals under test and audit](../../docs/EGRESS.md#signals-under-test-and-audit)).
+method and status only. HEAD requests and the runtime's own health and
+readiness probes do not emit signals; `urlcode test` and `urlcode audit`
+requests to `/event` do, to the granted destination.
 There is no retry, queue or delivery guarantee.
 
 See [egress contract](../../docs/EGRESS.md). Integration tests execute this example

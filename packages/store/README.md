@@ -61,7 +61,10 @@ rate limiting, abuse protection or multi-tenant isolation).
 
 The full guide, HTTP contract, limits and the honest list of concurrency
 guarantees is [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
-Short version: one server process per directory (enforced by a lock file),
+Short version: one server process per directory (enforced by a lock file,
+which a `urlcode dev` hot reload shares with the replacement runtime through
+core's reload hand-off rather than taking twice; see
+[single-writer lock and reload](../../docs/STORE.md#single-writer-lock-and-reload)),
 whole-file atomic writes, per-collection record and byte quotas, last write
 wins, no transactions. A collection is shared by default; one that holds
 per-user data declares `ownership: owner`, and every request is then scoped to

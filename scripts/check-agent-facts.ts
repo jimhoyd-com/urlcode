@@ -90,7 +90,15 @@ const hostedAi = {
 // Documentation search coverage (#759): what search_docs / urlcode docs search reads, from docs-search.ts.
 const docsSearch = { core: [...docsSearchScope.core], installedAddonGuides: docsSearchScope.installed.length > 0, maxResults: docsSearchScope.maxResults };
 
+// Signal suppression (#793): the runtime skips a route's signals only for HEAD and for its own health/readiness
+// probes (`trace.probe`, set by server.ts). `urlcode test` and `urlcode audit` send ordinary requests, so their
+// fixtures fire a granted signal like any visitor's request.
+const runtimeSource = await read('packages/core/src/runtime.ts');
+const signalsSkipOnlyHeadAndProbes = /if\(method!=='HEAD'&&!trace\.probe\)for\(const signal of route\.compiledSignals/.test(runtimeSource);
+if (!signalsSkipOnlyHeadAndProbes) sourceProblems.push('packages/core/src/runtime.ts: signal suppression (HEAD and trace.probe only) not found; update this check with the new rule');
+
 const inventory = {
+  signalsSkipOnlyHeadAndProbes,
   docsSearch,
   extensionBundles: builtBundles,
   kitAdopters,
@@ -225,6 +233,17 @@ claims.push({
     && !/\bCodex\s+(?:does\s+not|doesn't|never|cannot)\b|\bnot\s+(?:a\s+)?(?:project\s+)?registration\b/i.test(sentence)
     ? `says Codex reads or discovers a project ${mcpConfigFile}; Codex registers MCP servers under [mcp_servers.<name>] in its TOML config or with \`codex mcp add\` (docs/TOOLING.md#registering-the-server)` : undefined,
 });
+
+// A sentence (or its paragraph) is about signals when it names them or the webhook/egress they perform.
+const SIGNALS = /\bsignals?\b|\bwebhooks?\b|\begress\b|\bnotification\s+hooks?\b/i;
+const TEST_OR_AUDIT_SKIPS = new RegExp(String.raw`\b(?:urlcode\s+)?(?:tests?|audits?|fixtures?)\b${CLAUSE}{0,60}\b(?:(?:do|does|will|would|should)\s*n[o']t|never|cannot|can't)\s+(?:\w+\s+)?(?:fire|emit|call|trigger|send|reach|perform|deliver)`, 'i');
+if (signalsSkipOnlyHeadAndProbes) {
+  claims.push({
+    fact: 'signalsSkipOnlyHeadAndProbes',
+    test: (sentence, context) => (SIGNALS.test(sentence) || SIGNALS.test(context)) && TEST_OR_AUDIT_SKIPS.test(sentence)
+      ? 'says test or audit requests do not fire signals, but runtime.ts skips a signal only for HEAD and the runtime\'s own health probes; a fixture that reaches the route calls the granted destination' : undefined,
+  });
+}
 
 // A sentence is about documentation search when it names the tool, the CLI command or the SDK function.
 const DOCS_SEARCH = /\bsearch_docs\b|\bdocs\s+search\b|\bsearchDocs\b/;
