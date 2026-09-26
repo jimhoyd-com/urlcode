@@ -21,7 +21,7 @@ import type { TestContext } from 'node:test';
 
 // Streamed responses (RIM-STREAM-001) over real node:http sockets. Trusted functions run in this process, so a
 // test coordinates with its producer through one shared global keyed per test.
-interface Probe { gate: PromiseWithResolvers<void>; started: boolean; returned: boolean; pulls: number; aborted?: unknown; signalSeen: boolean }
+interface Probe { gate: PromiseWithResolvers<void>; started: boolean; returned: boolean; pulls: number; aborted?: unknown; signalSeen: boolean; signal?: AbortSignal }
 const probes = new Map<string, Probe>();
 (globalThis as { __urlcodeStreamProbes?: Map<string, Probe> }).__urlcodeStreamProbes = probes;
 function probe(key: string): Probe {
@@ -36,6 +36,7 @@ const waitAbort = signal => new Promise(resolve => { if (signal.aborted) resolve
 export default (request, context) => {
   const p = probes.get(context.args.key);
   p.signalSeen = context.signal instanceof AbortSignal;
+  p.signal = context.signal;
   const mode = context.args.mode;
   async function* body() {
     p.started = true;
@@ -258,7 +259,11 @@ test('HEAD answers the head only and never pulls the body', async t => {
   assert.equal(answer.headers['x-produced'], 'yes');
   assert.equal(answer.headers['content-length'], undefined);
   assert.equal(p.started, false, 'the body was pulled for HEAD');
+  // Work the handler started is cancelled through context.signal as well (#801).
+  assert.equal(p.signal?.aborted, true);
+  assert.equal(p.signal?.reason, 'bodyless');
   assert.equal((await request(app, '/lazy')).body, 'x');
+  assert.equal(p.signal?.aborted, false, 'a GET that reads the stream to its end is not aborted');
 });
 
 test('shutdown lets a stream finish within the grace period and ends the rest at the deadline', async t => {
@@ -378,6 +383,37 @@ test('HEAD on a streaming extension never starts its producer', async t => {
   assert.equal(answer.status, 200);
   assert.equal(answer.body, '');
   assert.equal(state.started, false);
+  assert.equal(state.signal?.aborted, true, 'request.signal is aborted for a body that will never be read (#801)');
+  assert.equal(state.signal?.reason, 'bodyless');
+});
+
+test('a bodyless status on a streamed response aborts request.signal and still logs complete (#801)', async t => {
+  const { root, pin } = await extensionProject(t);
+  const state = extensionState();
+  let returns = 0, pulls = 0, abortEvents = 0;
+  const bodyless = extension(root, pin, state, {
+    activate() {
+      return {
+        handle(request: ExtensionRequest): HandlerResult {
+          state.signal = request.signal;
+          request.signal?.addEventListener('abort', () => { abortEvents++; });
+          const stream = { [Symbol.asyncIterator]: () => ({
+            async next() { pulls++; return { done: true as const, value: undefined }; },
+            async return() { returns++; return { done: true as const, value: undefined }; },
+          }) };
+          return { status: 204, headers: [], stream };
+        },
+      };
+    },
+  });
+  const events: Record<string, unknown>[] = [];
+  const app = await startServer({ project: root, port: 0, origin, log: event => events.push(event), extensions: [bodyless] });
+  t.after(() => app.close());
+  const answer = await request(app, '/live/events');
+  assert.equal(answer.status, 204);
+  assert.deepEqual({ pulls, returns, abortEvents, aborted: state.signal?.aborted, reason: state.signal?.reason },
+    { pulls: 0, returns: 1, abortEvents: 1, aborted: true, reason: 'bodyless' });
+  assert.equal(streamEvent(events, answer.headers['x-request-id'])?.reason, 'complete');
 });
 
 test('a stream from an extension that did not declare streams is the generic 502, logged', async t => {
