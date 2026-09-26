@@ -8,14 +8,6 @@ on:
   # complete matrix before it can land. PRs retain the faster feedback lane.
   merge_group:
   workflow_dispatch:
-    inputs:
-      # TEMPORARY (#768): opens an interactive tmate session in workspace-verify
-      # right before its test step, to debug the windows-latest audit hang.
-      # Remove this input and the gated step below once #768 is closed.
-      debug:
-        description: Open a tmate session in workspace-verify before its test step (#768)
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       release:
@@ -285,12 +277,6 @@ jobs:
         run: |
           set -euo pipefail
           for dep in ${{ matrix.deps }}; do npm run build --workspace @jimhoyd/urlcode-$dep; done
-      # TEMPORARY (#768): see the workflow_dispatch input above. Scoped to the one leg that hangs,
-      # so a debug dispatch doesn't open a tmate session per matrix combination.
-      - if: github.event_name == 'workflow_dispatch' && inputs.debug == true && matrix.os == 'windows-latest' && matrix.node == 22 && matrix.package == 'audit'
-        uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113
-        with:
-          limit-access-to-actor: true
       - run: npm run verify --workspace @jimhoyd/urlcode-${{ matrix.package }}
   # Cross-package checks that need every workspace package already built:
   # the publish audit and the integration suite (init --with <ext>, which
