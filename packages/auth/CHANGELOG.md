@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The current activation (mount, origin, CSRF signer) and the project lifecycle hooks follow the newest live activation (#777): a failed hot reload's close restores the serving activation's instead of leaving auth inactive.
+
 **Extension split (breaking).** Auth now `requires` `ui`, `audit` and `mail` and `uses` `abuse`; `urlcode extensions add auth` installs the required ones. There are no aliases or migrations:
 
 - Email: every message goes through the mail extension (`MailExports`), including the ones an administrator starts. The sender callbacks (`sendEmailCode`, `notify` and the rest), `createSesSender`, `createDevelopmentSender`, `emailCopy`/`createEmailCopy` and the `@aws-sdk/client-sesv2` peer are removed; choose the transport with `mail({transport, from})` in `host.mjs` and translate messages in `mail/copy/<locale>.json`. Without a transport auth serves password sign-in only; a service with required email verification refuses to activate. New messages: `account-setup` and `impersonation-started`.

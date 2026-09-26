@@ -18,7 +18,7 @@ import type { HandlerResult } from './http-response.ts';
 import { StreamHost } from './http-stream.ts';
 import { compileTrustedProxies, loopbackHostCheck, resolveClient } from './client-address.ts';
 
-export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin'> {
+export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin' | 'replacing'> {
   /** `urlcode dev` only: on a reload, accept an extension registration still pinned to the revision this server
    * started from (checked strictly at startup) for the edited project, and log `extension_pin_followed`. The first
    * runtime and every other check are unchanged; `serve` and every other command leave it off (RIM-EXT-PIN-001). */
@@ -191,6 +191,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   assert(typeof followExtensionPinOnReload === 'boolean', 'Extension pin following must be a boolean');
   // Only reload() below derives it, from this server's own first runtime; a caller cannot hand one in.
   assert(!Object.hasOwn(runtimeOptions, 'acceptedExtensionPin'), 'acceptedExtensionPin is set only by the dev server reload');
+  // Likewise the runtime a reload replaces: only reload() below names it, as the one serving now (RIM-EXT-HANDOFF-001).
+  assert(!Object.hasOwn(runtimeOptions, 'replacing'), 'replacing is set only by the server reload');
   assert(Number.isInteger(readinessDrainMs) && readinessDrainMs >= 0 && readinessDrainMs <= 300000, 'Readiness drain delay must be 0–300000 ms');
   assert(Number.isInteger(closeTimeoutMs) && closeTimeoutMs >= 0 && closeTimeoutMs <= 300000, 'Close timeout must be 0–300000 ms');
   assert(Number.isInteger(headersTimeoutMs) && headersTimeoutMs >= 1000 && headersTimeoutMs <= 300000, 'Headers timeout must be 1000–300000 ms');
@@ -348,7 +350,10 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
     if (shuttingDown || reloading) return false;
     reloading = true;
     try {
-      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions, ...(acceptedExtensionPin ? { acceptedExtensionPin } : {}) });
+      // The replacement is built and activated while `current` keeps serving; extensions that hold an exclusive
+      // resource take a shared reference through their hand-off (RIM-EXT-HANDOFF-001), so closing `old` below
+      // releases only its own references, and a failed build leaves `current` serving with everything it holds.
+      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions, ...(acceptedExtensionPin ? { acceptedExtensionPin } : {}), replacing: current });
       if (shuttingDown) { await next.close(); return false; }
       const old = current; current = next;
       const cleanup = old.close(); retired.add(cleanup); void cleanup.finally(() => retired.delete(cleanup));

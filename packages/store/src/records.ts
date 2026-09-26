@@ -87,10 +87,12 @@ function records(collection: Collection): StoreRecords {
 
 /**
  * The export object and the two calls the registration makes: `attach` when an activation has loaded its
- * collections, and `detach` (with the token `attach` returned) when that activation closes. A newer activation's
- * collections are never detached by an older one's close.
+ * collections, and `detach` (with the token `attach` returned) when that activation closes. The newest live
+ * activation is the one served: a newer activation's collections are never detached by an older one's close, and
+ * when a failed reload closes the newest, the activation still serving is current again (RIM-EXT-HANDOFF-001).
  */
 export function storeExports(): { exports: StoreExports; attach(collections: readonly Collection[]): symbol; detach(token: symbol): void } {
+  const attached: { token: symbol; byName: Map<string, StoreRecords> }[] = [];
   let current: { token: symbol; byName: Map<string, StoreRecords> } | undefined;
   const exports: StoreExports = Object.freeze({
     version: 1 as const,
@@ -104,7 +106,7 @@ export function storeExports(): { exports: StoreExports; attach(collections: rea
   });
   return {
     exports,
-    attach(collections) { const token = Symbol('store activation'); current = { token, byName: new Map(collections.map(collection => [collection.name, records(collection)])) }; return token; },
-    detach(token) { if (current?.token === token) current = undefined; },
+    attach(collections) { const token = Symbol('store activation'); current = { token, byName: new Map(collections.map(collection => [collection.name, records(collection)])) }; attached.push(current); return token; },
+    detach(token) { const index = attached.findIndex(entry => entry.token === token); if (index >= 0) attached.splice(index, 1); current = attached.at(-1); },
   };
 }

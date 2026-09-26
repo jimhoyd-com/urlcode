@@ -152,6 +152,10 @@ async function contributedScreens(contributions: readonly UiScreenContribution[]
 export function createUiExtension(options: UiExtensionOptions): UiExtension {
     if (typeof options.projectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(options.projectSha256)) throw new Error('ui extension requires an explicit operator revision pin');
     if (typeof options.projectRoot !== 'string' || !options.projectRoot) throw new Error('ui extension requires the project root');
+    // The kits of the live activations, oldest first; the newest serves. A reload activates the replacement before
+    // the serving runtime closes, so closing one activation drops only its own kit: the retiring runtime's close
+    // leaves the replacement's, and a failed replacement's close leaves the serving one's (RIM-EXT-HANDOFF-001).
+    const live: Kit[] = [];
     let kit: Kit | undefined;
     const registration: RuntimeExtension = {
         name: 'ui', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'], schema: uiConfigSchema, hooks: uiHookContracts, authoring: uiAuthoring, immutableAssets: { prefix: uiAssetPrefix },
@@ -193,7 +197,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                 if (Object.keys(changed).some(key => !allowed.has(key))) throw new Error('ui transformPage hook returned an unsupported page field');
                 return { ...page, ...changed } as PageOptions;
             };
-            kit = Object.freeze({
+            const mine: Kit = Object.freeze({
                 ...baseKit,
                 render,
                 wrap(content: ReturnType<typeof render>, page: PageOptions) {
@@ -204,7 +208,8 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                     return baseKit.wrap(render(name, view, renderContext), transformPage({ ...page, context: renderContext }));
                 },
             });
-            const byPath = new Map(kit.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
+            live.push(mine); kit = mine;
+            const byPath = new Map(mine.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
             return {
                 handle(request: ExtensionRequest): HandlerResult {
                     const screen = request.mount !== null ? screens.get(request.mount) : undefined;
@@ -212,7 +217,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                         if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
                         if (request.path !== request.mount) return { status: 404, headers: [['content-type', 'text/plain; charset=utf-8']], body: 'Not found' };
                         const language = request.headers.get('accept-language');
-                        const page = crudScreen(kit!, { collection: screen.collection, ...(screen.columns ? { columns: screen.columns } : {}), title: screen.title, preferences: { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(language ? { acceptLanguage: language } : {}) } });
+                        const page = crudScreen(mine, { collection: screen.collection, ...(screen.columns ? { columns: screen.columns } : {}), title: screen.title, preferences: { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(language ? { acceptLanguage: language } : {}) } });
                         return { status: page.status, headers: page.headers, body: request.method === 'HEAD' ? undefined : page.body };
                     }
                     if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
@@ -223,7 +228,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                     if (request.headers.get('if-none-match') === `"${asset.hash}"`) return { status: 304, headers };
                     return { status: 200, headers, body: request.method === 'HEAD' ? undefined : asset.body };
                 },
-                close() { kit = undefined; },
+                close() { const index = live.indexOf(mine); if (index >= 0) live.splice(index, 1); kit = live.at(-1); },
             };
         },
     };

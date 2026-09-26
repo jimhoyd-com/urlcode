@@ -82,11 +82,12 @@ export function boundedLine(text: string, max = MAX_REPORTED_MESSAGE): string {
  * (request-time answers keep the fixed `Internal server error`). A ConfigError that already names an extension is
  * returned unchanged; other ConfigErrors keep their details and gain the `extension` field.
  */
-export function extensionError(error: unknown, name: string, phase: 'activate' | 'prepare' | 'host'): ConfigError {
+export function extensionError(error: unknown, name: string, phase: 'activate' | 'handoff' | 'prepare' | 'host'): ConfigError {
   if (error instanceof ConfigError && error.details.extension !== undefined) return error;
-  const code = phase === 'activate' ? 'extension-activation' : phase === 'host' ? 'extension-host' : 'extension-registration';
+  // A serving instance's reload hand-off offer (RIM-EXT-HANDOFF-001) is part of activating its replacement.
+  const code = phase === 'activate' || phase === 'handoff' ? 'extension-activation' : phase === 'host' ? 'extension-host' : 'extension-registration';
   const details: ErrorDetails = error instanceof ConfigError ? { ...error.details, code: error.details.code ?? code, extension: name } : { code, extension: name };
-  const what = phase === 'activate' ? 'failed to activate' : phase === 'host' ? 'host() failed' : 'registration could not be prepared';
+  const what = phase === 'activate' ? 'failed to activate' : phase === 'handoff' ? 'failed to hand off for a reload' : phase === 'host' ? 'host() failed' : 'registration could not be prepared';
   return new ConfigError(`Extension ${JSON.stringify(name)} ${what}: ${boundedMessage(error)}`, details, { cause: error });
 }
 /**

@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jimhoyd/urlcode": "^0.3.0"
+    "@jimhoyd/urlcode": "0.6.3"
   }
 }

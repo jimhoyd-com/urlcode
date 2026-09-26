@@ -28,6 +28,12 @@ through the packages' `file:../..` links (`check-workspace-links.ts`), and
 `urlcode extensions add` at the local workspaces. Core never imports an
 extension package.
 
+Example projects under `examples/` that carry a `package.json` depending on
+`@jimhoyd/urlcode` pin it exactly at the current version, the same way an
+add-on pins its core peer. They are not workspaces, so the lockfile does not
+record them; the release bump rewrites each pin and
+`node scripts/release-bump.ts --check` fails when one drifts.
+
 Beside it, `dist/addon-catalog.json` is the same release's agent discovery
 catalog: every add-on's name, package, version, description, `requires`,
 `uses` and descriptor agent references, built from the add-on descriptors and identical
