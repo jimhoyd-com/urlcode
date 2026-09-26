@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {parseYaml,validateDocument} from './config.ts';
-import {listExamples} from './examples.ts';
+import {listExamples,exampleAddCommand} from './examples.ts';
 import {shippedSkillFiles as skills} from './shipped-skills.ts';
 import {readAddonCatalog,readAddonManifest} from './addon-manifest.ts';
 import {errorRules} from './explain-error-rules.ts';
@@ -92,14 +92,20 @@ export {readAddonCatalog};
 export {searchDocs};
 export type {DocsSearch,DocsSearchOptions,DocsSearchResult,DocsCatalogMatch,DocsCoverageGap,DocsSource} from './docs-search.ts';
 
-/** Returns the two smallest high-value files of a fixed packaged example. */
+/**
+ * Returns one fixed packaged example: `urlcode.yaml` and `README.md` of a runnable
+ * project, every listed file of a non-runnable one (rules, monitoring configuration,
+ * a script). A runnable example's `tests.commands` run from the directory that
+ * `add` (`urlcode examples add`) creates, not from this content alone.
+ */
 export async function getExample(name:string) {
   const example=(await listExamples()).find(candidate=>candidate.name===name);
   if(!example)throw new Error('Unknown bundled example');
-  const files=example.files.filter(file=>file==='urlcode.yaml'||file==='README.md');
+  const runnable=example.runnable!==false;
+  const files=runnable?example.files.filter(file=>file==='urlcode.yaml'||file==='README.md'):example.files;
   const content:Record<string,string>=Object.create(null);
   for(const file of files)content[file]=await readFile(`${packageRoot}examples/${name}/${file}`,'utf8');
-  return {metadata:example,content};
+  return {metadata:example,content,...(runnable?{add:exampleAddCommand(name)}:{})};
 }
 
 /** Validates only supplied YAML syntax and the versioned document schema. It never resolves includes or reads source files. */

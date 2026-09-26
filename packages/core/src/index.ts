@@ -14,8 +14,8 @@ export type { InterchangeFormat, ConversionDiagnostic, ConversionCounts, Convers
 
 export {listRecipes, searchRecipes, showRecipe, addRecipe} from './recipes.ts';
 export type {RecipeSummary, Recipe, RecipeAddReport, RecipeSearchResult} from './recipes.ts';
-export {listExamples, searchExamples} from './examples.ts';
-export type {ExampleSummary, ExampleSearchResult, RouteIndex, RouteIndexEntry} from './examples.ts';
+export {listExamples, searchExamples, addExample} from './examples.ts';
+export type {ExampleSummary, ExampleSearchResult, ExampleAddReport, RouteIndex, RouteIndexEntry} from './examples.ts';
 export type {CatalogMetadata, TargetVerdict, Complexity} from './catalog.ts';
 export {buildTypeScriptProject} from './typescript-authoring.ts';
 export type {TypeScriptBuildReport} from './typescript-authoring.ts';

@@ -12,8 +12,8 @@ files: [urlcode.yaml, api/index.js, vercel.json, public/index.html, public/notes
 tests:
   fixtures: tests/requests.json
   commands:
-    - node packages/core/src/cli.ts validate --local --project examples/vercel
-    - node packages/core/src/cli.ts test --project examples/vercel
-    - node packages/core/src/cli.ts audit --project examples/vercel --expect-routes 5
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 5
 behavior:
   - every route is native, so the project activates on Vercel without the sandbox

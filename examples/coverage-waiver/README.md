@@ -1,6 +1,6 @@
 # Audit coverage waiver
 
-`urlcode audit --project examples/coverage-waiver` reports `ready: true` although
+`urlcode audit --project .`, run in a copy made with `urlcode examples add coverage-waiver --out coverage-waiver`, reports `ready: true` although
 `POST /notes` has no fixture, because the route declares `coveredElsewhere` for
 that method with a reason. The pair is still listed under `waivedRouteMethods`.
 A waiver is honored only when the route has another passing normal-response

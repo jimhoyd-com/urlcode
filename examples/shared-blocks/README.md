@@ -1,8 +1,10 @@
 # Shared request and response.headers blocks
 
+Copy it with `urlcode examples add shared-blocks --out shared-blocks`, then from that directory:
+
 ```sh
-urlcode test --project examples/shared-blocks
-urlcode routes --project examples/shared-blocks
+urlcode test --project .
+urlcode routes --project .
 ```
 
 `shared` names reusable `request` and `response.headers` blocks; a route picks

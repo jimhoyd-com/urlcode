@@ -12,8 +12,8 @@ files: [urlcode.yaml, functions/notes.mjs, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - node packages/core/src/cli.ts test --project examples/lifecycle
-    - node packages/core/src/cli.ts audit --project examples/lifecycle --expect-routes 2
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 2
 behavior:
   - a note created by POST /notes is readable, replaceable and still present after the runtime restarts on the same data directory
   - the id and Location the create response returns are captured and substituted into later steps as {{id}} and {{where}}

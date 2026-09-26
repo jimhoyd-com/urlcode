@@ -9,8 +9,8 @@ files: [urlcode.yaml, functions/notes.mjs, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - node packages/core/src/cli.ts validate --local --project examples/coverage-waiver
-    - node packages/core/src/cli.ts test --project examples/coverage-waiver
-    - node packages/core/src/cli.ts audit --project examples/coverage-waiver --expect-routes 1
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 1
 behavior:
   - POST /notes is waived from coverage with a reason; GET is asserted by a fixture; the waiver is listed by audit, not hidden

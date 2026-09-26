@@ -4,7 +4,9 @@
 route, with status 404 and `text/html`. See
 [site conventions](../../docs/SITE.md#notfound--404html).
 
+Copy it with `urlcode examples add not-found --out not-found`, then from that directory:
+
 ```sh
-node packages/core/src/cli.ts test --project examples/not-found
-node packages/core/src/cli.ts build --target static --project examples/not-found   # writes 404.html
+urlcode test --project .
+urlcode build --target static --project .   # writes 404.html
 ```
