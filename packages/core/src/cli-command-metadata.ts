@@ -13,7 +13,7 @@ export const aliasOriginCommands = ['dev','serve','validate','test','routes','au
 export const commandOptions = {
   json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
   project:{ type:'string' }, 'host-file':{type:'string'}, with:{type:'string'}, ack:{type:'string', multiple:true}, example:{type:'boolean'}, site:{type:'string'}, strict:{type:'boolean'}, to:{type:'string'}, check:{type:'boolean'},
-  port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
+  port:{ type:'string' }, open:{ type:'boolean' }, 'no-open':{ type:'boolean' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},

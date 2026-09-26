@@ -3,6 +3,7 @@
 // same data as `urlcode report`. Read-only: it writes nothing and never runs project code. The operator policy and
 // BEFORE are re-read per request, so a re-pin or a new baseline shows on reload; the host file is trusted operator
 // code, loaded once by the CLI and never re-imported here.
+import {spawn} from 'node:child_process';
 import http from 'node:http';
 import type {AddressInfo} from 'node:net';
 import {ConfigError} from './errors.ts';
@@ -33,7 +34,7 @@ export async function renderStudioPage(options:StudioPageOptions):Promise<{statu
   try{
     const policy=await loadOperatorPolicy(options.policyFile,options.project);
     const before=options.before===undefined?undefined:{input:await readChangeInput(options.before),label:options.before};
-    return {status:200,html:renderProjectReport(await buildProjectReport(options.project,{extensions:options.extensions,policy,before}))};
+    return {status:200,html:renderProjectReport(await buildProjectReport(options.project,{extensions:options.extensions,policy,before}),{builtAt:new Date()})};
   }catch(error){
     return {status:500,html:renderReportError(error instanceof Error?error.message:String(error))};
   }
@@ -62,4 +63,29 @@ export function startStudio(options:StudioOptions):Promise<Studio> {
       resolve({url:`http://${address.family==='IPv6'?`[${address.address}]`:address.address}:${address.port}/`,close:()=>new Promise(done=>{server.close(()=>done());server.closeAllConnections();})});
     });
   });
+}
+
+/**
+ * The command that opens `url` in the default browser: `$BROWSER` when set (the convention xdg-open, Python and most
+ * dev servers share; `none` turns opening off), otherwise the platform's opener. The URL is the studio's own loopback
+ * address and is passed as one argument, never through a shell.
+ */
+export function browserCommand(url:string,platform:NodeJS.Platform=process.platform,browser:string|undefined=process.env.BROWSER):[string,string[]]|undefined {
+  if(browser!==undefined&&browser.trim()!=='')return browser.trim()==='none'?undefined:[browser.trim(),[url]];
+  if(platform==='darwin')return ['open',[url]];
+  if(platform==='win32')return ['explorer.exe',[url]];
+  return ['xdg-open',[url]];
+}
+/** Opens the page and never waits for, or fails on, the browser: the URL is printed either way. */
+export function openInBrowser(url:string):boolean {
+  const command=browserCommand(url);
+  if(!command)return false;
+  try{
+    const child=spawn(command[0],command[1],{detached:true,stdio:'ignore',windowsHide:true});
+    child.on('error',()=>{});
+    child.unref();
+    return true;
+  }catch{
+    return false;
+  }
 }

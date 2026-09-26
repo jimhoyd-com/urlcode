@@ -121,6 +121,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'studio', group:'Check', text:
 `  urlcode studio [before.yaml|before-directory] [--project directory] [--port 4100] [--host 127.0.0.1] [--policy /absolute/policy.json] [--host-file /absolute/operator/host.mjs]
+    [--open|--no-open]  # opens the page in your browser from a terminal; --open forces it when piped, BROWSER=none never opens
     # serves the report on this machine only and rebuilds it on every page load; read-only
 ` },
   { name:'permissions', group:'Check', text:
@@ -337,6 +338,8 @@ try {
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
     if (values.ack !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--ack is only supported by init --with and extensions add');
     if (values.example !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--example is only supported by init --with and extensions add');
+    if ((values.open || values['no-open']) && command !== 'studio') throw new ConfigError('--open and --no-open are only supported by studio');
+    if (values.open && values['no-open']) throw new ConfigError('Use --open or --no-open, not both');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions and artifacts list');
@@ -404,9 +407,11 @@ try {
       // convention for serve/dev, so studio reads only an explicit --port.
       const port=Number(parsed.port??'4100');
       if(!/^\d+$/.test(parsed.port??'4100')||port>65535)throw new ConfigError('Invalid port');
-      const {startStudio}=await import('./studio.ts');
+      const {startStudio,openInBrowser}=await import('./studio.ts');
       const studio=await startStudio({project:values.project,host:values.host,port,before:arg,policyFile:values.policy,extensions:operatorHost.extensions});
-      print(human?`URLCode Studio on ${studio.url} — reload the page after a change; Ctrl+C stops it\n`:{event:'listening',mode:'studio',url:studio.url});
+      // A person at a terminal gets the page opened for them; a script or agent reading JSON does not, unless it asks.
+      const opened=(values.open??(human&&!values['no-open']))&&openInBrowser(studio.url);
+      print(human?`URLCode Studio on ${studio.url}${opened?' (opened in your browser)':''} — reload the page after a change; Ctrl+C stops it\n`:{event:'listening',mode:'studio',url:studio.url,opened});
       serving=true;
       const stop=async()=>{try{await studio.close();}finally{await operatorHost.close?.();}};
       process.once('SIGINT',stop);process.once('SIGTERM',stop);

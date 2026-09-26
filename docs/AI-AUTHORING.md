@@ -426,8 +426,9 @@ Report those grants to the user; never approve them yourself. See
 [YAML change summaries](TOOLING.md#yaml-change-summaries). For the person
 reviewing the change, `urlcode report BEFORE > report.html` renders the same
 summary with the review findings and each route's request path as one
-read-only page, and `urlcode studio BEFORE` serves it on localhost, rebuilt
-on every reload ([review report](TOOLING.md#review-report)).
+read-only page, with the files that changed since `BEFORE`, and `urlcode
+studio BEFORE` serves it on localhost, rebuilt on every reload
+([review report](TOOLING.md#review-report)).
 
 ## Deciding when a route needs `sandbox: true`
 
