@@ -23,7 +23,7 @@ Recommendations below are not implemented behavior.
 | Decision | Current direction |
 | --- | --- |
 | Where work status lives | Issues own actionable status, the roadmap owns sequence and the archive keeps completed proposals. |
-| Business-application expansion | Gather repeated real application friction before selecting a collection, CMS or forms capability. Internal exploration is not an implementation promise. |
+| Business-application expansion | Forms, the [store](STORE.md) and their [forms-to-store composition](../packages/form-records/README.md) have shipped. For form-records, owner decisions in [#529](https://github.com/jimhoyd-com/urlcode/issues/529) superseded the original repeated-evidence gate; [#760](https://github.com/jimhoyd-com/urlcode/issues/760) records that, and no measured before/after comparison is planned. Any further collection or CMS capability still waits for repeated real application friction. Internal exploration is not an implementation promise. |
 | Extension schemas in bounded context ([#174](https://github.com/jimhoyd-com/urlcode/issues/174)) | Measure whether automatically including registered schemas improves authoring without exceeding a bounded context or loading a project-selected host file. |
 | Tested-image promotion ([#233](https://github.com/jimhoyd-com/urlcode/issues/233)) | Each release builds and pushes the image from the release commit in its publish job; decide whether to promote the exact image CI tested instead (see [container promotion](CONTAINER-PROMOTION.md)). |
 | `renderDocument` under strict CSP ([#287](https://github.com/jimhoyd-com/urlcode/issues/287)) | Keep `oshp` strict; decide whether the nonce recipe is sufficient before changing the document API. |
