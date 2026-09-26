@@ -36,11 +36,11 @@ It pins nothing and installs nothing; see
 [the release-wide agent catalog](EXTENSIONS.md#the-release-wide-agent-catalog).
 
 <!-- urlcode-current-version:start -->
-Core `0.6.2` is published to npm, GitHub Releases and Homebrew. For a new
+Core `0.6.3` is published to npm, GitHub Releases and Homebrew. For a new
 composed site:
 
 ```sh
-npx @jimhoyd/urlcode@0.6.2 init site --with ui,auth,admin,store --example
+npx @jimhoyd/urlcode@0.6.3 init site --with ui,auth,admin,store --example
 ```
 <!-- urlcode-current-version:end -->
 

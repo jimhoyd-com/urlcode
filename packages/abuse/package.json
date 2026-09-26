@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-abuse",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Persistent, pseudonymous rate limits, failure backoff and challenge escalation for extensions",
   "private": true,
   "type": "module",
@@ -47,6 +47,6 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.2"
+    "@jimhoyd/urlcode": "0.6.3"
   }
 }
