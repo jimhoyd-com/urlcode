@@ -13,6 +13,7 @@ import {addRecipe} from './recipes.ts';
 import {authoringPath} from './authoring-files.ts';
 import {assert} from './errors.ts';
 import type {LoadedDocument,MiddlewareConfig,RouteConfig} from './types.ts';
+import type {RuntimeExtension} from './extensions.ts';
 
 /**
  * Authoring tools for `urlcode mcp --allow-authoring`. Every write lands inside
@@ -20,7 +21,9 @@ import type {LoadedDocument,MiddlewareConfig,RouteConfig} from './types.ts';
  * authoring, recipe and scaffold paths. Nothing here reads bindings, creates
  * grants, deploys, or touches operator policy, compliance rules or host files.
  * The runners spawn the CLI against the same root only; they activate the local
- * runtime, so the project's trusted code runs with full Node access.
+ * runtime, so the project's trusted code runs with full Node access. They repeat
+ * only the operator's own `--host-file` and `--origin` (the server takes no
+ * `--policy`), so the operator host module's code runs in the child too.
  */
 const text={type:'string',maxLength:1024};
 const handler={anyOf:[{type:'string',maxLength:2048},{type:'object'}]};
@@ -29,9 +32,9 @@ export const authoringDefinitions=[
  {name:'create_route',description:'Add one route to urlcode.yaml or a named include under the project. The merged project is validated before the write; missing function sources are reported for scaffold_feature.',properties:{path:{type:'string',maxLength:2048},handler,middleware,file:text},required:['path','handler']},
  {name:'add_recipe',description:'Copy a bundled recipe into a new directory inside the project (recipes add). dryRun reports the destination and writes nothing.',properties:{name:{type:'string',maxLength:64},destination:text,dryRun:{type:'boolean'}},required:['name','destination']},
  {name:'scaffold_feature',description:'Create placeholder modules, pages and directories the project YAML references and that do not exist yet; existing files are never edited.',properties:{dryRun:{type:'boolean'}},required:[]},
- {name:'run_validate',executes:true,description:'Run `urlcode validate --local` against the project in a child process; returns exit code and bounded output. This activates the local runtime, which imports the project\'s trusted function and middleware modules with full Node access (their top-level code runs and may write or delete files, spawn processes or reach the network); the minimal environment is not confinement.',properties:{},required:[]},
- {name:'run_test',executes:true,description:'Run `urlcode test` against the project in a child process; returns exit code and bounded output. This activates the local runtime and executes the fixtures, so the project\'s trusted function and middleware modules run with full Node access and may write or delete files, spawn processes or reach the network; the minimal environment and scratch data directory are not confinement.',properties:{},required:[]},
- {name:'run_audit',executes:true,description:'Run `urlcode audit` against the project in a child process; returns exit code and bounded output. This starts the local runtime and sends probe requests, so the project\'s trusted function and middleware modules run with full Node access and may write or delete files, spawn processes or reach the network; the minimal environment is not confinement.',properties:{},required:[]},
+ {name:'run_validate',executes:true,description:'Run `urlcode validate --local` against the project in a child process; returns exit code and bounded output. This activates the local runtime, which imports the project\'s trusted function and middleware modules with full Node access (their top-level code runs and may write or delete files, spawn processes or reach the network); the minimal environment is not confinement. With the operator\'s --host-file the child receives that same path and, besides PATH, exactly one environment variable: PROJECT_SHA256, only when the server\'s own is a well-formed 64-hex revision, the pin its host already loaded under and imports that operator-supplied host module, whose code runs with full Node access too; --origin is repeated only when the operator gave it. No other flag and no other environment variable is forwarded: the server accepts no --policy, so bindings that need an operator grant fail as they do without one, and no grant is created or changed.',properties:{},required:[]},
+ {name:'run_test',executes:true,description:'Run `urlcode test` against the project in a child process; returns exit code and bounded output. This activates the local runtime and executes the fixtures, so the project\'s trusted function and middleware modules run with full Node access and may write or delete files, spawn processes or reach the network; the minimal environment and scratch data directory are not confinement. With the operator\'s --host-file the child receives that same path and, besides PATH, exactly one environment variable: PROJECT_SHA256, only when the server\'s own is a well-formed 64-hex revision, the pin its host already loaded under and imports that operator-supplied host module, whose code runs with full Node access too; --origin is repeated only when the operator gave it. No other flag and no other environment variable is forwarded: the server accepts no --policy, so bindings that need an operator grant fail as they do without one, and no grant is created or changed.',properties:{},required:[]},
+ {name:'run_audit',executes:true,description:'Run `urlcode audit` against the project in a child process; returns exit code and bounded output. This starts the local runtime and sends probe requests, so the project\'s trusted function and middleware modules run with full Node access and may write or delete files, spawn processes or reach the network; the minimal environment is not confinement. With the operator\'s --host-file the child receives that same path and, besides PATH, exactly one environment variable: PROJECT_SHA256, only when the server\'s own is a well-formed 64-hex revision, the pin its host already loaded under and imports that operator-supplied host module, whose code runs with full Node access too; --origin is repeated only when the operator gave it. No other flag and no other environment variable is forwarded: the server accepts no --policy, so bindings that need an operator grant fail as they do without one, and no grant is created or changed.',properties:{},required:[]},
 ];
 /** Annotations for an authoring tool: every one writes, and a runner (`executes`) runs trusted project code that can do anything Node can. */
 export function authoringAnnotations(def:{executes?:boolean}):{readOnlyHint:false;destructiveHint:boolean;idempotentHint?:false;openWorldHint:boolean} {
@@ -54,8 +57,9 @@ export async function confinedPath(root:string,path:unknown):Promise<string> {
  }
  return join(root,path);
 }
-async function verdict(root:string,origin?:string) {
- try{return await validateProject(root,origin?{origin}:{});}
+// The operator's --host-file registrations reach the verdict exactly as they reach MCP `validate` (#755, #778).
+async function verdict(root:string,origin?:string,extensions?:RuntimeExtension[]) {
+ try{return await validateProject(root,{...(origin?{origin}:{}),...(extensions===undefined?{}:{extensions})});}
  catch{return {valid:false as const,note:'Project does not validate; call run_validate for the CLI report.'};}
 }
 function expandHandler(handler:unknown):Record<string,unknown> {
@@ -80,7 +84,7 @@ async function sources(root:string,route:RouteConfig):Promise<{present:string[];
  }
  return {present,missing:[...new Set(missing)]};
 }
-async function createRoute(root:string,args:Record<string,unknown>,origin?:string) {
+async function createRoute(root:string,args:Record<string,unknown>,origin?:string,extensions?:RuntimeExtension[]) {
  const path=args.path;assert(typeof path==='string'&&path.startsWith('/'),'Route path must start with /');
  const loaded=await loadDocument(root);
  const file=typeof args.file==='string'?args.file:'urlcode.yaml';
@@ -114,18 +118,24 @@ async function createRoute(root:string,args:Record<string,unknown>,origin?:strin
   try{await out.writeFile(String(doc));await out.sync();}finally{await out.close();}
   assert((await readFile(target)).equals(original),'Configuration changed during edit; retry');
   await rename(temporary,target);
-  return {created:true,path,file,route:added,sources:present,missingSources:missing,next:missing.length?'Call scaffold_feature to create placeholder modules, then implement them.':null,validation:await verdict(root,origin)};
+  return {created:true,path,file,route:added,sources:present,missingSources:missing,next:missing.length?'Call scaffold_feature to create placeholder modules, then implement them.':null,validation:await verdict(root,origin,extensions)};
  } finally {if(temp)await rm(temp,{recursive:true,force:true});await lock.close();await rm(lockPath,{force:true});}
 }
 const outputLimit=32768;
 function bounded(chunks:Buffer[]):{text:string;truncated:boolean} {
  const all=Buffer.concat(chunks);return {text:all.subarray(0,outputLimit).toString('utf8'),truncated:all.length>outputLimit};
 }
-async function runCli(root:string,command:'validate'|'test'|'audit',origin?:string) {
+/** What the operator put on the `urlcode mcp` command line; the runners repeat exactly this and nothing a tool argument names. */
+export interface OperatorFlags {hostFile?:string|undefined;origin?:string|undefined}
+async function runCli(root:string,command:'validate'|'test'|'audit',operator:OperatorFlags) {
  const cli=fileURLToPath(new URL('./cli.ts',import.meta.url));
- const args=[cli,command,'--project',root,...(command==='validate'?['--local']:[]),...(origin?['--origin',origin]:[])];
- // A fresh minimal environment: the runner never forwards this process's ambient variables to the project.
- const child=spawn(process.execPath,args,{cwd:root,env:{PATH:process.env.PATH??''},stdio:['ignore','pipe','pipe']});
+ const args=[cli,command,'--project',root,...(command==='validate'?['--local']:[]),...(operator.origin?['--origin',operator.origin]:[]),...(operator.hostFile===undefined?[]:['--host-file',operator.hostFile])];
+ // A fresh minimal environment: the runner never forwards this process's ambient variables to the project. The one
+ // exception is the revision pin a composed host needs (#778): with the operator's host file, PROJECT_SHA256 goes
+ // along when it is a well-formed revision, since the server's own host already loaded under it. It is not a credential and grants nothing.
+ const pin=process.env.PROJECT_SHA256,env:Record<string,string>={PATH:process.env.PATH??''};
+ if(operator.hostFile!==undefined&&pin!==undefined&&/^[a-f0-9]{64}$/.test(pin))env.PROJECT_SHA256=pin;
+ const child=spawn(process.execPath,args,{cwd:root,env,stdio:['ignore','pipe','pipe']});
  const stdout:Buffer[]=[],stderr:Buffer[]=[];let total=0;
  const collect=(sink:Buffer[])=>(chunk:Buffer)=>{if(total<outputLimit*4){sink.push(chunk);total+=chunk.length;}};
  child.stdout.on('data',collect(stdout));child.stderr.on('data',collect(stderr));
@@ -134,18 +144,20 @@ async function runCli(root:string,command:'validate'|'test'|'audit',origin?:stri
  const out=bounded(stdout),err=bounded(stderr);
  return {command,exitCode:exit.code,signal:exit.signal,stdout:out.text,stderr:err.text,truncated:out.truncated||err.truncated};
 }
-export async function callAuthoringTool(root:string,name:string,args:Record<string,unknown>,origin?:string):Promise<unknown> {
+/** `extensions` are the registrations the server already loaded from the operator's --host-file, for the verdicts only. */
+export async function callAuthoringTool(root:string,name:string,args:Record<string,unknown>,operator:OperatorFlags={},extensions?:RuntimeExtension[]):Promise<unknown> {
+ const origin=operator.origin;
  switch(name){
-  case 'create_route':return createRoute(root,args,origin);
+  case 'create_route':return createRoute(root,args,origin,extensions);
   case 'add_recipe':{
    const destination=await confinedPath(root,args.destination);
    const report=await addRecipe(args.name as string,destination,{dryRun:args.dryRun===true});
-   return {...report,output:args.destination,validation:await verdict(root,origin)};
+   return {...report,output:args.destination,validation:await verdict(root,origin,extensions)};
   }
-  case 'scaffold_feature':return {...await scaffoldProject(root,{dryRun:args.dryRun===true}),validation:await verdict(root,origin)};
-  case 'run_validate':return runCli(root,'validate',origin);
-  case 'run_test':return runCli(root,'test',origin);
-  case 'run_audit':return runCli(root,'audit',origin);
+  case 'scaffold_feature':return {...await scaffoldProject(root,{dryRun:args.dryRun===true}),validation:await verdict(root,origin,extensions)};
+  case 'run_validate':return runCli(root,'validate',operator);
+  case 'run_test':return runCli(root,'test',operator);
+  case 'run_audit':return runCli(root,'audit',operator);
   default:throw new Error('Unknown tool');
  }
 }

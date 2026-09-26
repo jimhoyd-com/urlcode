@@ -197,7 +197,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
 ` },
   { name:'context', group:'Agent tooling', text:
-`  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--budget 500] [--json] [--stats]
+`  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--host-file ...] [--origin https://links.example] [--budget 500] [--json] [--stats]
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
 ` },
   { name:'plan-feature', group:'Agent tooling', text:
@@ -417,10 +417,10 @@ try {
       let text: string;
       if (values.task !== undefined) {
         if (values.target !== undefined) throw new ConfigError('--task cannot be combined with --target');
-        const task = await buildTaskContext(values.project, values.task, { hostFile:values['host-file'], ...budget });
+        const task = await buildTaskContext(values.project, values.task, { hostFile:values['host-file'], origin:values.origin, ...budget });
         text = values.json ? JSON.stringify(task) + '\n' : renderTaskContext(task);
       } else {
-        const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], ...budget });
+        const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], origin:values.origin, ...budget });
         text = values.json ? JSON.stringify(context) + '\n' : renderContext(context);
       }
       print(text);

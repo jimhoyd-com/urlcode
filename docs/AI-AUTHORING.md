@@ -562,7 +562,10 @@ inferring either from the YAML. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe and scaffold tools, and runner
 tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
-project's trusted code.
+project's trusted code and, when the operator gave the server `--host-file`,
+that operator-supplied host module. The runners and `get_context`'s commands
+repeat only the operator's own `--host-file` and `--origin`; a flag the operator
+did not supply is listed under `prerequisites`, never guessed.
 `urlcode init` writes `.mcp.json`, the project-scoped file Claude Code reads to
 register the read-only server. Codex does not read it: register the same pinned
 command in `~/.codex/config.toml` or a trusted project `.codex/config.toml`

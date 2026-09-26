@@ -83,8 +83,8 @@ The tooling API consolidates authoring operations without starting a runtime:
 
 ## Project context
 
-`urlcode context [--project DIR] [--target T] [--host-file F] [--budget N]
-[--json] [--stats]` emits one deterministic YAML document (JSON with
+`urlcode context [--project DIR] [--target T] [--host-file F] [--origin URL]
+[--budget N] [--json] [--stats]` emits one deterministic YAML document (JSON with
 `--json`) derived only from the compiled project and the capability catalog,
 never from prose. It uses the same loader and semantic compiler as
 `inspectProject`: no binding values, guest execution, environment reads or
@@ -107,11 +107,22 @@ network. Keys always appear in this order:
 - `targets`: for each capability target (or the one `--target`), which of this
   project's used features are supported, conditional, refused or unknown.
 - `commands`: the exact `validate`, `test`, `audit --expect-routes N` (N is
-  the compiled route count), `routes` and `capabilities` invocations.
+  the compiled route count), `routes` and `capabilities` invocations. The four
+  that activate the project (`validate`, `test`, `audit`, `routes`) repeat the
+  operator's own `--host-file` and `--origin` when they were given, so the
+  suggested command checks the same host-registered extensions (#778).
+- `prerequisites` (only when something is missing): the operator flags those
+  commands need but the caller did not supply, each with a reason:
+  `--host-file` when the project declares extensions and no host file was
+  given, `--origin` when it declares extensions and no origin was given, and
+  `--policy` when routes request env or secret bindings. The values are never
+  guessed: no origin, credential or grant is invented, and only the operator
+  can supply them.
 
 `--budget N` drops sections in a fixed order until the YAML rendering fits
 the estimate: per-route detail, then `targets`, then the constraint notes
-(keys and values stay), then `project.files`, then `commands`. The dropped
+(keys and values stay), then `project.files`, then `commands` (with
+`prerequisites`). The dropped
 sections are listed under `omitted`. The estimate is `ceil(characters / 4)`;
 there is no tokenizer dependency, so treat both numbers as approximate. A
 budget the smallest rendering cannot meet is an error rather than an
@@ -119,7 +130,11 @@ overrun. `--stats` writes a JSON line to stderr comparing the estimated size
 of the shipped documentation (`docs/*.md` and `llms.txt`) with the emitted
 context, labeled `estimate: characters/4`. The MCP tool `get_context` takes
 `target` and `budget` and returns the same object with `--project .` in the
-commands; it never takes a host file or any other path.
+commands; it never takes a host file or any other path as an argument. When
+the operator started the server with `--host-file` (and `--origin`), the
+commands carry that host file as an absolute path (and that origin); a flag
+the operator did not give the server is listed under `prerequisites`.
+`--task redirects` repeats the same operator flags in its commands.
 
 Inspection reads declared configuration and function source graphs to validate
 references and compute revision hashes. It compiles route and policy semantics
@@ -826,7 +841,19 @@ What it can do, all inside the selected project root (resolved with realpath):
 - `run_validate`, `run_test`, `run_audit` spawn `urlcode validate --local`,
   `urlcode test` and `urlcode audit` against the project with a minimal
   environment (`PATH` only), a two-minute deadline and stdout/stderr each capped
-  at 32 KiB. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
+  at 32 KiB. They repeat exactly the operator flags the server itself received:
+  `--host-file` (as an absolute path) and `--origin`. Besides `PATH`, the only
+  environment variable a runner passes is `PROJECT_SHA256`, and only with a host
+  file and when the server's own value is a well-formed 64-hex revision: it is
+  the revision pin the server already loaded its own (composed) host under, not
+  a credential. No other variable goes along, no tool argument can add a flag,
+  and no grant is created or changed. The host file is operator-supplied trusted code: the
+  child imports it, so its code (and every extension's `host()` hook and
+  activation) runs with full Node access. `urlcode mcp` accepts no `--policy`,
+  so the runners never pass one; bindings that need an operator-granted policy
+  fail as they do without one (`get_context` names `--policy` under
+  `prerequisites`). Without `--host-file` a project that declares extensions
+  fails validation as it does on the CLI without one. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
   `truncated`. All three activate the local runtime, so they execute the
   project's trusted code under the same rules as the CLI: `run_validate`
   imports the trusted function and middleware modules (their top-level code
@@ -849,8 +876,10 @@ What it can do, all inside the selected project root (resolved with realpath):
   operator-granted policy fail as they do without one.
 
 `create_route`, `add_recipe` and `scaffold_feature` return `validation`, the
-`validateProject` verdict of the project after the operation (or `valid: false` with a generic note; use `run_validate`
-for the CLI report).
+`validateProject` verdict of the project after the operation, computed with the
+registrations of the operator's `--host-file` when the server has one, as MCP
+`validate` does. A project that does not validate yields `valid: false` with a
+generic note; use `run_validate` for the CLI report.
 
 What it cannot do:
 
