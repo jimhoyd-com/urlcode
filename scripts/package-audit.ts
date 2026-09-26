@@ -178,8 +178,14 @@ export const budgets: Record<string, Budget> = {
     // 3163145 bytes, 9225 over, so unpacked is raised from 3080 to 3100 KiB.
     // The module, its declarations and the recipe's five files make 471
     // entries, so entries is raised from 470 to 480.
-    packed: 772 * 1024,
-    unpacked: 3100 * 1024,
+    //
+    // Raised to 788 KiB packed and 3140 KiB unpacked when the streaming
+    // responses change (#659) met main's studio/review-report additions
+    // (#792): together they measure 795299 packed and 3185100 unpacked bytes
+    // in 471 entries on Node 26, over the 772/3100 KiB budgets set for #659
+    // alone.
+    packed: 788 * 1024,
+    unpacked: 3140 * 1024,
     entries: 480,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
