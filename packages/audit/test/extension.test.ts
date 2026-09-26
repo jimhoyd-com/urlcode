@@ -65,41 +65,44 @@ test('composeHost and createRuntime activate audit from its declaration; a consu
   const { root, project, hostUrl } = await site(t, { retention: 1000 });
   const seen: { exports?: AuditExports } = {}, producer = fakeProducer('consumer');
   const host = await composeHost(hostUrl, [consumer(seen, producer)(), audit()]);
-  t.after(() => host.close?.());
-  assert.deepEqual(host.extensions!.map(item => item.name), ['audit', 'consumer']);
-  const exports = seen.exports!;
-  assert.equal(exports.active, false, 'inactive until the runtime activates it');
-  producer.outbox.push(event({ source: 'consumer' }));
-  const runtime = await createRuntime(project, { origin, extensions: host.extensions ?? [] });
-  assert.equal(exports.active, true);
-  await until(() => producer.outbox.length === 0);
-  await exports.record([event({ source: 'admin', action: 'admin.audit_exported' })]);
-  assert.deepEqual((await exports.query({ order: 'desc' })).events.map(item => item.source), ['admin', 'consumer']);
-  const database = join(root, 'data', 'audit.sqlite');
-  if (process.platform !== 'win32') {
-    assert.equal((await stat(database)).mode & 0o777, 0o600);
-    assert.equal((await stat(join(root, 'data'))).mode & 0o777, 0o700);
-  }
-  await runtime.close();
-  assert.equal(exports.active, false, 'closing the runtime deactivates it');
+  // Close before the test's own t.after cleanup removes root: t.after hooks run in registration order, and this
+  // host's database must not still be open when that runs (#768).
+  try {
+    assert.deepEqual(host.extensions!.map(item => item.name), ['audit', 'consumer']);
+    const exports = seen.exports!;
+    assert.equal(exports.active, false, 'inactive until the runtime activates it');
+    producer.outbox.push(event({ source: 'consumer' }));
+    const runtime = await createRuntime(project, { origin, extensions: host.extensions ?? [] });
+    assert.equal(exports.active, true);
+    await until(() => producer.outbox.length === 0);
+    await exports.record([event({ source: 'admin', action: 'admin.audit_exported' })]);
+    assert.deepEqual((await exports.query({ order: 'desc' })).events.map(item => item.source), ['admin', 'consumer']);
+    const database = join(root, 'data', 'audit.sqlite');
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(database)).mode & 0o777, 0o600);
+      assert.equal((await stat(join(root, 'data'))).mode & 0o777, 0o700);
+    }
+    await runtime.close();
+    assert.equal(exports.active, false, 'closing the runtime deactivates it');
+  } finally { await host.close?.(); }
 });
 
 test('activation refuses a route that mounts audit, and every target but node', async t => {
   const mounted = await site(t, {}, { '/audit/*': { extension: 'audit', methods: ['GET'] } });
   const host = await composeHost(mounted.hostUrl, [audit()]);
-  t.after(() => host.close?.());
-  await assert.rejects(createRuntime(mounted.project, { origin, extensions: host.extensions ?? [] }), /audit serves no routes/);
+  try { await assert.rejects(createRuntime(mounted.project, { origin, extensions: host.extensions ?? [] }), /audit serves no routes/); }
+  finally { await host.close?.(); }
   const plain = await site(t, {});
   const second = await composeHost(plain.hostUrl, [audit()]);
-  t.after(() => second.close?.());
-  await assert.rejects(createRuntime(plain.project, { origin, extensions: second.extensions ?? [], target: 'aws' }), /declared targets: audit/);
+  try { await assert.rejects(createRuntime(plain.project, { origin, extensions: second.extensions ?? [], target: 'aws' }), /declared targets: audit/); }
+  finally { await second.close?.(); }
 });
 
 test('the YAML config is validated against the schema', async t => {
   const { project, hostUrl } = await site(t, { retention: 10 });
   const host = await composeHost(hostUrl, [audit()]);
-  t.after(() => host.close?.());
-  await assert.rejects(createRuntime(project, { origin, extensions: host.extensions ?? [] }), /extensions.audit.*retention|retention.*1000/);
+  try { await assert.rejects(createRuntime(project, { origin, extensions: host.extensions ?? [] }), /extensions.audit.*retention|retention.*1000/); }
+  finally { await host.close?.(); }
 });
 
 test('host() refuses a database inside app/ or a relative path', async t => {
