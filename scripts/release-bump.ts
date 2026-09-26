@@ -33,10 +33,17 @@ interface Lock { version: string; packages: Record<string, { version?: string; p
 const readJson = async <T>(root: string, path: string): Promise<T> => JSON.parse(await readFile(join(root, path), 'utf8')) as T;
 const render = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
 
+const tracked = (root: string): string[] => execFileSync('git', ['-c', `safe.directory=${root}`, 'ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n');
 function documentation(root: string): string[] {
-  return execFileSync('git', ['-c', `safe.directory=${root}`, 'ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n')
-    .filter(path => (path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt') && !path.endsWith('/CHANGELOG.md'));
+  return tracked(root).filter(path => (path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt') && !path.endsWith('/CHANGELOG.md'));
 }
+/** Example manifests the deploy steps install. They are not workspaces, so the lockfile does not cover them: core is pinned exactly, as a workspace peer is. */
+const exampleManifests = (root: string): string[] => tracked(root).filter(path => /^examples\/[^/]+\/package\.json$/.test(path));
+const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const;
+type DependencyField = typeof dependencyFields[number];
+type Dependencies = Partial<Record<DependencyField, Record<string, string>>>;
+const corePins = (manifest: Dependencies): [DependencyField, string][] =>
+  dependencyFields.flatMap(field => { const range = manifest[field]?.[core]; return range === undefined ? [] : [[field, range] as [DependencyField, string]]; });
 /** Every version outside the marker blocks is history; every block names the current version. */
 function markedVersions(text: string, path: string, version: string): number {
   assert.equal(text.split(markerStart).length, text.split(markerEnd).length, `${path}: current-version markers are unbalanced`);
@@ -86,6 +93,8 @@ export async function check(root = repositoryRoot): Promise<string> {
     assert.deepEqual(found, [version], `${path} must declare ${version} exactly once`);
   }
   for (const [path, access] of Object.entries(jsonVersions)) assert.equal(access(await readJson(root, path)).get(), version, `${path} is not ${version}`);
+  for (const path of exampleManifests(root)) for (const [field, range] of corePins(await readJson<Dependencies>(root, path)))
+    assert.equal(range, version, `${path} ${field} names ${core} ${range}; examples pin core's version ${version} exactly`);
   let blocks = 0;
   for (const path of documentation(root)) blocks += markedVersions(await readFile(join(root, path), 'utf8'), path, version);
   assert(blocks > 0, 'No urlcode-current-version blocks found');
@@ -116,6 +125,11 @@ export async function bump(version: string, root = repositoryRoot): Promise<stri
   await write('package-lock.json', render(lock));
   for (const [path, pattern] of Object.entries(runtimePatterns)) await write(path, (await readFile(join(root, path), 'utf8')).replace(pattern, version));
   for (const [path, access] of Object.entries(jsonVersions)) { const value = await readJson<{ version?: string; metadata?: { version?: string } }>(root, path); access(value).set(version); await write(path, render(value)); }
+  for (const path of exampleManifests(root)) {
+    const manifest = await readJson<Dependencies>(root, path), pins = corePins(manifest);
+    for (const [field] of pins) manifest[field]![core] = version;
+    if (pins.length) await write(path, render(manifest));
+  }
   for (const path of documentation(root)) {
     const text = await readFile(join(root, path), 'utf8');
     if (!text.includes(markerStart)) continue;

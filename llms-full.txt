@@ -3352,7 +3352,8 @@ client and one bounded signal client, with at most 64 origins per purpose.
 Signals emit when route execution and response policies produce a result,
 including guest middleware responses and returned error status codes. Thrown
 handler errors and host request-policy/plugin short circuits (including cache
-hits) do not emit. HEAD requests and generated readiness probes do not emit.
+hits) do not emit. HEAD requests do not emit, and neither do the health,
+readiness and metrics probes, which never reach a route.
 The response never waits for webhook delivery. Counter events contain only
 accepted/delivered/failed/dropped outcomes and counts and are exposed through
 runtime metrics and the Prometheus `signals_total` series. A closed runtime stops
@@ -3360,6 +3361,15 @@ new requests, aborts egress and drains bounded pending work. Client disconnects
 are not currently propagated into the runtime transport; the five-second deadline
 still applies. All non-self-hosted targets currently refuse proxy and signals.
 See the [executable example](https://github.com/jimhoyd-com/urlcode/blob/main/examples/egress/README.md).
+
+#### Signals under test and audit
+
+`urlcode test` and `urlcode audit` have no signal exemption. A request fixture
+is an ordinary request: when one reaches a route that declares signals and the
+policy grants that destination, the runtime calls it, as it would in service.
+`urlcode audit` generates no readiness case of its own for an active signal
+route, so only the fixtures you declare reach it. Before running either command
+against a granted policy, point the signal at a test receiver you control.
 
 Revision hashes also include declared project policies, profiles and site
 configuration. Changing an inherited pre-egress restriction invalidates grants
