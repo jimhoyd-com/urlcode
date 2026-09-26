@@ -157,7 +157,7 @@ as the not-found page instead. The page answers every unknown URL, so it cannot 
 Cloudflare inlines it: the page is small, singular and static, so the build
 reads it (64 KiB cap, must decode as UTF-8) and carries it in the artifact as a
 `respond` route at `/404.html`, answering the same status, headers and method
-rules as every other target. See [`docs/CLOUDFLARE.md`](CLOUDFLARE.md#site-notfound-is-inlined).
+rules as every other target. See [`docs/CLOUDFLARE.md`](CLOUDFLARE.md#sitenotfound-is-inlined).
 `favicon` and `llms` stay refused there like any other `page` route (no asset
 binding).
 

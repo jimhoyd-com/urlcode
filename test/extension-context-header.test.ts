@@ -62,6 +62,27 @@ test('declared credential headers stay withheld from the guest even on a route a
   const body=JSON.parse(Buffer.from(result.body as Uint8Array).toString()) as {cookie:string|null;authorization:string|null;principal:string|null};
   assert.equal(body.cookie,null);assert.equal(body.authorization,null);assert.equal(body.principal,'{"id":"key_1"}');
 });
+// #782: what the guest-facing projection withholds depends on what the operator
+// activated. With no extension or plugin declaring credential headers, a route's
+// own trusted middleware reads Authorization and Cookie (recipes/middleware relies
+// on it); once an extension is active, cookie, authorization and every header it
+// declares are withheld from every route's middleware and function, including
+// routes that never name the extension.
+test('credential headers reach trusted middleware without an extension and are withheld once one is active (#782)',async t=>{
+  const middleware='export default async(req,ctx,next)=>{await next();return Response.json({authorization:req.headers.get("authorization"),cookie:req.headers.get("cookie"),apiKey:req.headers.get("x-api-key"),visible:req.headers.get("x-visible")});};';
+  const routes={'/m':{middleware:[{source:'mw.mjs'}],respond:{text:'ok'}}};
+  const headers=()=>new Headers({authorization:'Bearer synthetic-token',cookie:'session=synthetic','x-api-key':'synthetic-key','x-visible':'kept'});
+  const read=(result:{body?:unknown})=>JSON.parse(Buffer.from(result.body as Uint8Array).toString()) as Record<string,string|null>;
+
+  const plainRoot=await project(t,routes,{'mw.mjs':middleware});
+  const plain=await createRuntime(plainRoot);t.after(()=>plain.close());
+  assert.deepEqual(read(await plain.handle({target:'/m',method:'GET',headers:headers()})),{authorization:'Bearer synthetic-token',cookie:'session=synthetic',apiKey:'synthetic-key',visible:'kept'});
+
+  const root=await project(t,routes,{'mw.mjs':middleware},{extensions:{principal:{version:'1',config:{}}}});
+  const extension:RuntimeExtension={...await principalExtension(root),credentialHeaders:['x-api-key']};
+  const guarded=await createRuntime(root,{origin,extensions:[extension]});t.after(()=>guarded.close());
+  assert.deepEqual(read(await guarded.handle({target:'/m',method:'GET',headers:headers()})),{authorization:null,cookie:null,apiKey:null,visible:'kept'});
+});
 test('a proxy route can never name a reserved-namespace header in requestHeaders or responseHeaders',async()=>{
   const {validateProxy}=await import('../packages/core/src/proxy.ts');
   assert.throws(()=>validateProxy({url:'https://example.com',requestHeaders:['x-urlcode-context-auth-principal']}),/denied/);

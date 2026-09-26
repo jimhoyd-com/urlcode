@@ -2,7 +2,7 @@
 
 NPM ?= npm
 NODE ?= node
-PROJECT ?= starters/default
+PROJECT ?= starters/default/app
 HOST ?= 127.0.0.1
 PORT ?= 3000
 DEST ?= ../my-links
@@ -12,7 +12,7 @@ DEST ?= ../my-links
 help:
 	@echo "make dev             Run PROJECT under the watcher (installs dependencies if needed)"
 	@echo "make setup           Reinstall dependencies from the lockfile"
-	@echo "make init            Create an independent app (DEST=../my-links)"
+	@echo "make init            Create an independent site (DEST=../my-links; its route project is DEST/app)"
 	@echo "make validate        Validate PROJECT with local environment loading"
 	@echo "make routes / audit / benchmark  Inventory, readiness and local load checks (ARGS=...)"
 	@echo "make test-project    Run PROJECT's HTTP assertions"
@@ -22,7 +22,7 @@ help:
 	@echo "make serve           Serve a fixed snapshot; no watcher or local dotenv"
 	@echo "make doctor          Show runtime/platform details"
 	@echo "make tunnel          Run dev behind an already-running ngrok tunnel (see docs/TUNNELS.md)"
-	@echo "Options: PROJECT=../my-links PORT=3001 HOST=127.0.0.1"
+	@echo "Options: PROJECT=../my-links/app PORT=3001 HOST=127.0.0.1 (PROJECT is the route project, default starters/default/app)"
 
 setup:
 	$(NPM) ci

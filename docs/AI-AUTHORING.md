@@ -148,11 +148,11 @@ the starter, a few thousand for the cookbook), not with the framework.
 For an installed CLI:
 
 ```sh
-urlcode validate --local --project ./my-links
-urlcode routes --project ./my-links
-urlcode test --project ./my-links
-urlcode audit --project ./my-links --expect-routes 2
-urlcode benchmark --project ./my-links --requests 100 --concurrency 2
+urlcode validate --local --project ./my-links/app
+urlcode routes --project ./my-links/app
+urlcode test --project ./my-links/app
+urlcode audit --project ./my-links/app --expect-routes 2
+urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. Runtime checkout users can replace

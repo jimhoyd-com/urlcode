@@ -31,7 +31,7 @@ Generated [site conventions](SITE.md) follow the same table: `robots`,
 `llms` are `page` routes and are refused. `notFound` is the one exception: the
 configured page is small, singular and static, so the build reads it and
 carries it inline in the artifact as a `respond` route at `/404.html` — see
-[below](#site-notfound-is-inlined).
+[below](#sitenotfound-is-inlined).
 
 A build artifact is a file that gets copied, cached and committed by mistake, so
 it never carries a secret. That is why `env` and `secrets` are refused even when

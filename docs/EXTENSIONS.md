@@ -375,8 +375,14 @@ that fails a condition, including a cookie added by a later response hook,
 stays no-store. The extension owns the content-hashed filename: a file under
 the prefix must change its name when its bytes change, because clients never
 revalidate it. The prefix belongs to the operator registration, not to the
-pinned project revision. The runtime withholds Cookie and Authorization plus any declared
-credential headers from all application guest requests and mapped parameters.
+pinned project revision. While any extension is active, the runtime withholds
+Cookie and Authorization plus every extension's declared credential headers
+from all application guest requests and mapped parameters, on every route,
+including routes that never name an extension. A project with no active
+extension (and no operator plugin declaring credential headers) withholds
+nothing, so its own trusted middleware can read Authorization and Cookie (see
+[the security policy](../SECURITY.md)). The projection keeps credentials away
+from code that does not need them; it does not confine trusted Node code.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
 
@@ -399,8 +405,8 @@ credential-shaped one. This is generic core infrastructure
 (`extensionContextHeaderPrefix`, `stripReservedContextHeaders`,
 `@jimhoyd/urlcode/extensions`); core never reads or interprets a value
 written there. It is not a credential channel:
-the withheld headers above (`cookie`, `authorization`, any declared
-credential header) are stripped from that guest-facing projection exactly as
+the withheld headers above (`cookie`, `authorization` and any declared
+credential header, whenever an extension is active) are stripped from that guest-facing projection exactly as
 before, and an extension must never write a raw session or bearer credential
 into this namespace — only a derived, non-secret value. `packages/auth`'s
 `bearer` requirement uses it to expose the verified API key's id, name and
@@ -1512,7 +1518,7 @@ extensions, checks each `extensions.<name>.config` and each route's
 `urlcode.json` schemas. No extension code runs. Pass `--host-file host.mjs` to
 activate the extensions and validate the whole runtime.
 
-The [GitHub Action](CI.md#github-action) installs the site with `npm ci
+The [GitHub Action](CI.md#what-it-runs) installs the site with `npm ci
 --ignore-scripts` (a committed `package-lock.json` is required), runs `urlcode
 extensions list --strict` and `urlcode artifacts list --strict`, then validates
 the project. Without a `host-file` input it validates declared extensions

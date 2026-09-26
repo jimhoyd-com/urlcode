@@ -39,7 +39,7 @@ profiles:
     cache: { strategy: swr, maxAge: 30, staleWhileRevalidate: 300 }
 routes:
   /:
-    page: {source: pages/index.html}
+    page: {file: pages/index.html}
   /api/lookup/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, maxLength: 64}}

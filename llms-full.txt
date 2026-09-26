@@ -638,11 +638,11 @@ the starter, a few thousand for the cookbook), not with the framework.
 For an installed CLI:
 
 ```sh
-urlcode validate --local --project ./my-links
-urlcode routes --project ./my-links
-urlcode test --project ./my-links
-urlcode audit --project ./my-links --expect-routes 2
-urlcode benchmark --project ./my-links --requests 100 --concurrency 2
+urlcode validate --local --project ./my-links/app
+urlcode routes --project ./my-links/app
+urlcode test --project ./my-links/app
+urlcode audit --project ./my-links/app --expect-routes 2
+urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. Runtime checkout users can replace
@@ -2256,7 +2256,7 @@ to a shorter mount. See [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/
 ### Adding a configured redirect today
 
 ```sh
-urlcode add https://example.com/new-page --alias new-link --project ./my-links
+urlcode add https://example.com/new-page --alias new-link --project ./my-links/app
 ```
 
 This validates and writes `/new-link` to the project's `urlcode.yaml`. It is a
@@ -2941,6 +2941,7 @@ profiles:
     security: { headers: oshp-no-csp }
 routes:
   /feed:
+    respond: { json: { items: [] } }
     policies:
       profile: mine                # merges over the project layer, not instead of it
       throttle: false              # removed for this route only
@@ -3132,7 +3133,7 @@ as the not-found page instead. The page answers every unknown URL, so it cannot 
 Cloudflare inlines it: the page is small, singular and static, so the build
 reads it (64 KiB cap, must decode as UTF-8) and carries it in the artifact as a
 `respond` route at `/404.html`, answering the same status, headers and method
-rules as every other target. See [`docs/CLOUDFLARE.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#site-notfound-is-inlined).
+rules as every other target. See [`docs/CLOUDFLARE.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#sitenotfound-is-inlined).
 `favicon` and `llms` stay refused there like any other `page` route (no asset
 binding).
 
@@ -3274,9 +3275,10 @@ portable scalar header contract. Upstream redirects are returned as responses;
 Location is forwarded only if explicitly selected and is never fetched. Headers
 nominated by an incoming or upstream Connection field are removed even if selected.
 Header names are normalized to lowercase; array-valued upstream fields are omitted.
-A proxy route reads incoming headers from the same credential-free projection a
-trusted function receives: a header an installed plugin or extension declares
-as a credential is withheld before `requestHeaders` selection runs, even when a
+A proxy route reads incoming headers from the same projection a trusted
+function receives: a header the runtime withholds (Cookie, Authorization and
+every declared name while an extension is active; the names an operator plugin
+declares) is removed before `requestHeaders` selection runs, even when a
 project's own `requestHeaders` names it explicitly, so a route cannot forward a
 credential header upstream by declaring it.
 An encoded request body requires explicitly selecting its Content-Encoding
@@ -3745,8 +3747,14 @@ that fails a condition, including a cookie added by a later response hook,
 stays no-store. The extension owns the content-hashed filename: a file under
 the prefix must change its name when its bytes change, because clients never
 revalidate it. The prefix belongs to the operator registration, not to the
-pinned project revision. The runtime withholds Cookie and Authorization plus any declared
-credential headers from all application guest requests and mapped parameters.
+pinned project revision. While any extension is active, the runtime withholds
+Cookie and Authorization plus every extension's declared credential headers
+from all application guest requests and mapped parameters, on every route,
+including routes that never name an extension. A project with no active
+extension (and no operator plugin declaring credential headers) withholds
+nothing, so its own trusted middleware can read Authorization and Cookie (see
+[the security policy](https://github.com/jimhoyd-com/urlcode/blob/main/SECURITY.md)). The projection keeps credentials away
+from code that does not need them; it does not confine trusted Node code.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
 
@@ -3769,8 +3777,8 @@ credential-shaped one. This is generic core infrastructure
 (`extensionContextHeaderPrefix`, `stripReservedContextHeaders`,
 `@jimhoyd/urlcode/extensions`); core never reads or interprets a value
 written there. It is not a credential channel:
-the withheld headers above (`cookie`, `authorization`, any declared
-credential header) are stripped from that guest-facing projection exactly as
+the withheld headers above (`cookie`, `authorization` and any declared
+credential header, whenever an extension is active) are stripped from that guest-facing projection exactly as
 before, and an extension must never write a raw session or bearer credential
 into this namespace — only a derived, non-secret value. `packages/auth`'s
 `bearer` requirement uses it to expose the verified API key's id, name and
@@ -4882,7 +4890,7 @@ extensions, checks each `extensions.<name>.config` and each route's
 `urlcode.json` schemas. No extension code runs. Pass `--host-file host.mjs` to
 activate the extensions and validate the whole runtime.
 
-The [GitHub Action](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md#github-action) installs the site with `npm ci
+The [GitHub Action](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md#what-it-runs) installs the site with `npm ci
 --ignore-scripts` (a committed `package-lock.json` is required), runs `urlcode
 extensions list --strict` and `urlcode artifacts list --strict`, then validates
 the project. Without a `host-file` input it validates declared extensions

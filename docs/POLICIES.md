@@ -190,6 +190,7 @@ profiles:
     security: { headers: oshp-no-csp }
 routes:
   /feed:
+    respond: { json: { items: [] } }
     policies:
       profile: mine                # merges over the project layer, not instead of it
       throttle: false              # removed for this route only

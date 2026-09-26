@@ -5,9 +5,9 @@ These validate a local snapshot, not the reachability of external redirect
 services or the correctness of an entire production deployment.
 
 ```sh
-urlcode routes --project ../my-links
-urlcode audit --project ../my-links --expect-routes 2
-urlcode benchmark --project ../my-links --requests 1000 --concurrency 2 --max-p95-ms 50
+urlcode routes --project ../my-links/app
+urlcode audit --project ../my-links/app --expect-routes 2
+urlcode benchmark --project ../my-links/app --requests 1000 --concurrency 2 --max-p95-ms 50
 ```
 
 All three activate/validate the project with the same runtime that serves it --

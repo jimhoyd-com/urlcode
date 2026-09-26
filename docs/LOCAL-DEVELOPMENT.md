@@ -41,26 +41,38 @@ same fields as a `created` JSON event otherwise.
 
 ## Own an application
 
-Run `make init DEST=../my-links`, then
-`make dev PROJECT=../my-links`. The CLI equivalents from the runtime checkout:
+Run `make init DEST=../my-links`. It writes a site, not a bare project: the
+route project is `../my-links/app/` (its `urlcode.yaml`), and the trusted
+operator host `../my-links/host.mjs` sits beside it, outside the project.
+`PROJECT` and `--project` name the route project, so from the runtime checkout
+run `make dev PROJECT=../my-links/app`. The CLI equivalents:
 
 ```sh
 npm run init -- ../my-links
-npm run dev -- --project ../my-links
-npm run validate -- --project ../my-links
-npm run test:project -- --project ../my-links
+npm run dev -- --project ../my-links/app
+npm run validate -- --project ../my-links/app
+npm run test:project -- --project ../my-links/app
 ```
+
+These run the route project without the operator host, which is all a site
+without extensions needs. Once `urlcode extensions add` wires an extension into
+`host.mjs`, also pass `--host-file ../my-links/host.mjs`; `host.mjs` imports
+`@jimhoyd/urlcode/host`, so run `npm install` in the site first.
 
 There is one starter, and it starts with no routes. Initialization never overwrites
 an existing directory. Once created, edits belong to your app repository; upgrading
-the runtime does not regenerate them. Each starter has a Makefile for its own
-`dev`, `serve`, `validate`, `test` and `doctor` commands. It uses an installed
-`urlcode`, or an explicit runtime command:
+the runtime does not regenerate them. Each site has a Makefile and npm scripts
+for its own `dev`, `serve`, `validate`, `test` and `doctor` commands; both pass
+`--project app --host-file host.mjs`, so install the site before using them:
 
 ```sh
 cd ../my-links
+npm install
+npm run dev
+# The site's Makefile, run against this runtime checkout instead of the pinned install
+# (host.mjs still resolves @jimhoyd/urlcode from the site's node_modules):
 make dev URLCODE='node /path/to/urlcode/packages/core/src/cli.ts'
-# Without Make or a global install:
+# Without an install, a site with no extensions: no --project selects app/, no host file
 node /path/to/urlcode/packages/core/src/cli.ts dev
 ```
 
@@ -81,12 +93,12 @@ node /path/to/urlcode/packages/core/src/cli.ts dev
 | `make serve` | `npm run serve` | Fixed snapshot, no watcher or dotenv |
 | `make doctor` | `npm run doctor` | Runtime/platform details |
 
-Run `make help` for shortcuts. `PROJECT` defaults to `starters/default`; `HOST`
+Run `make help` for shortcuts. `PROJECT` defaults to `starters/default/app`; `HOST`
 to `127.0.0.1`; `PORT` to `3000`. Quote paths containing spaces:
 
 ```sh
-make dev PROJECT="../my-links demo" PORT=3001
-npm run dev -- --project "../my-links demo" --port 3001
+make dev PROJECT="../my-links demo/app" PORT=3001
+npm run dev -- --project "../my-links demo/app" --port 3001
 ```
 
 Make automatically runs `npm ci` when its dependency marker is missing or older
@@ -95,12 +107,12 @@ Do not run setup concurrently with a running dev server or tests.
 
 ## Environment and troubleshooting
 
-`.env.local` belongs in the selected app directory and is ignored by Git; process
+`.env.local` belongs in the selected route project directory (`app/` in a site) and is ignored by Git; process
 environment values take precedence. No starter requires secret values. Do not
 copy placeholder credentials into a working secret store. External env/secret
 bindings still need an operator policy outside the app, pinned to its config/code.
 Inspect and set it up using the [security guide](FUNCTION-SECURITY.md); pass it
-through the CLI, for example `npm run dev -- --project ../my-links --policy /path/to/policy.json`.
+through the CLI, for example `npm run dev -- --project ../my-links/app --policy /path/to/policy.json`.
 Local convenience never grants permissions or changes a route's execution mode:
 a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
 

@@ -12,8 +12,9 @@ export const mcpConfigFile = '.mcp.json';
  * Renders `.mcp.json` registering the read-only `urlcode mcp` server for the project at `project`, relative
  * to the file. `--allow-authoring` is deliberately absent: the operator adds it by hand when they want it.
  * `local` is for a project whose package.json pins the runtime: the server is then launched through `npx --no`,
- * which uses the installed copy and refuses to fetch anything (a bare `urlcode` is not on PATH for a local-only install,
- * and `npx urlcode` would resolve an unrelated registry package). Without a pin the bare command is kept for global installs.
+ * which uses the installed copy and refuses to fetch anything (a bare `urlcode` is not on PATH for a local-only install;
+ * a bare `npx urlcode` finds the local binary only after `npm install`, and before it tries to fetch the unclaimed
+ * unscoped `urlcode` registry name). Without a pin the bare command is kept for global installs.
  */
 export function renderMcpConfig(project = '.', { local = false }: { local?: boolean } = {}): string {
   assert(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(project) && !project.split('/').includes('..'), 'MCP project path must be a relative path without ..');

@@ -32,7 +32,7 @@ policies:
 routes:
   /api/report:
     function: { source: functions/report.mjs }
-    secrets: { KEY: { secret: api-key } }
+    secrets: { API_KEY: { secret: REPORT_API_KEY } }
     policies:
       compression: { allowWithSecrets: true }   # route keys merge over project keys
 ```

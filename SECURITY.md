@@ -31,10 +31,19 @@ execution platform. Authorized inputs/secrets can be exposed
 by code receiving them; grant the minimum required authority. Do not deploy
 older snapshots for untrusted functions; review and upgrade to the current revision.
 
-A route's own `function`/`middleware` never receives the request's session
-cookie or `Authorization` header, or any header an operator extension/plugin
-declares as a credential (`credentialHeaders`): the runtime strips them from
-the guest-facing projection before that code ever runs. An extension's
+Which request headers a route's own `function`/`middleware` receives depends
+on what the operator activated. Each active operator extension (declared in
+the project and provided by the host) withholds `Cookie` and `Authorization`
+plus every header it declares in `credentialHeaders` (`auth` adds
+`X-CSRF-Token`); an operator plugin withholds the headers it declares. The
+runtime strips those names from the guest-facing projection (headers, header
+inputs and arguments) of every route before that code runs. Without such an
+extension or plugin nothing is withheld: your own trusted middleware or
+function reads `Authorization` and `Cookie` like any other header, which is how
+the [middleware recipe](recipes/middleware/README.md)'s bearer and Basic
+examples work. The projection keeps a credential away from code that does not
+need it; it is not confinement of trusted Node code, which runs with full
+process access. An extension's
 `authorize()`/`middleware()` gate can hand a *derived*, non-secret value
 forward into that same guest-facing context — never the credential itself —
 through the reserved `x-urlcode-context-*` request-header namespace, which

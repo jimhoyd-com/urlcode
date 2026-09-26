@@ -13,6 +13,7 @@ files: [urlcode.yaml, functions/hello.ts, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
+    - npm install --save-dev --save-exact typescript@6.0.3
     - urlcode build-typescript --project . --out ../hello-built
     - urlcode validate --local --project ../hello-built
     - urlcode test --project ../hello-built

@@ -30,7 +30,7 @@ middleware means no sandbox execution for these routes.
   /people/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, minLength: 1}}
-    redirect: {url: /profiles/{id}}           # Location: /profiles/42
+    redirect: {url: '/profiles/{id}'}         # Location: /profiles/42
   /legacy/**:
     redirect: {url: 'https://example.com/modern/{**}'}   # /legacy/a/b/c -> /modern/a/b/c
 ```

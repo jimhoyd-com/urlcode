@@ -74,7 +74,7 @@ targets; `favicon`, `llms` and any other `page`/`static`/`download` route stay
 refused, since those are open-ended, not one bounded page. Verified on real
 workerd via `wrangler dev --local` (status 404, content type, `no-store`,
 security headers, HEAD's body length, and POST's plain-text `Not found`
-unchanged). See [`docs/CLOUDFLARE.md`](CLOUDFLARE.md#site-notfound-is-inlined)
+unchanged). See [`docs/CLOUDFLARE.md`](CLOUDFLARE.md#sitenotfound-is-inlined)
 and [`docs/SITE.md`](SITE.md#notfound--404html). Revisit the assets-binding
 design only if a future site convention or route type needs to serve more than
 one small file on this target.

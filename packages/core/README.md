@@ -11,7 +11,7 @@ directory into that root `dist/` output; do not commit the generated files.
 For a source checkout, run the CLI from the repository root, for example:
 
 ```sh
-node packages/core/src/cli.ts validate --local --project starters/default
+node packages/core/src/cli.ts validate --local --project starters/default/app
 ```
 
 Optional extension packages live beside this directory under `packages/` and

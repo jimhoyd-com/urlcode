@@ -702,11 +702,15 @@ choices added by hand, never by `init` or by an agent.
 The command is the same for every client: the pinned local runtime, started
 from the site root. The site pins the runtime in its `package.json`, so the
 command is `npx` with `--no --package @jimhoyd/urlcode urlcode mcp --project app`,
-which runs the installed copy from `node_modules` and never fetches. Do not use
-a bare `npx urlcode`: the unscoped `urlcode` name is unclaimed on the npm
-registry (it 404s; it is not this project's under a different owner), so a
-bare `npx urlcode` would try, and fail, to install it instead of running the
-pinned `@jimhoyd/urlcode`. `--no` resolves the package from the working
+which runs the installed copy from `node_modules` and never fetches. In an
+installed site a bare `npx urlcode` also runs that copy: npm finds the local
+`urlcode` binary that `@jimhoyd/urlcode` provides. The explicit form matters
+before the install, or anywhere outside a site: there the unscoped `urlcode`
+name is unclaimed on the npm registry (it 404s; it is not this project's under
+a different owner), so a bare `npx urlcode` tries, and fails, to fetch it,
+while `--no --package @jimhoyd/urlcode` names the right package and refuses to
+fetch anything. The registration keeps that form so it never depends on
+whether `npm install` has run. `--no` resolves the package from the working
 directory, and `--project app` is relative to it, so the server must start in
 the site root. For a global install, `urlcode mcp print-config --global` prints
 the bare `urlcode` command instead.

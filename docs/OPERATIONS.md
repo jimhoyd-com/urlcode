@@ -137,11 +137,11 @@ docker run --rm --name my-links \
   --memory 512m --cpus 1 --pids-limit 128 \
   --stop-timeout 10 \
   -p 127.0.0.1:3000:3000 \
-  -v "$PWD/starters/default:/project:ro" \
+  -v "$PWD/starters/default/app:/project:ro" \
   urlcode:local
 ```
 
-Replace the example mount with your app. The image uses the unprivileged `node`
+Replace the example mount with your route project (a site's `app/` directory). The image uses the unprivileged `node`
 user; ensure mounted config/functions are readable by it. Core has no writable
 mount of its own; a future mount-based extension (like `auth`/`admin`, see
 [extensions](EXTENSIONS.md)) is the place for operator-owned writable state.

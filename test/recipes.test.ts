@@ -26,6 +26,19 @@ test('local recipe catalog is defensive and rejects arbitrary paths',async()=>{
   for(const recipe of catalog){assert.equal(recipe.name,recipe.id);assert.ok(recipe.files.includes('urlcode.yaml'));assert.ok(recipe.behavior!.length);assert.ok(recipe.tests!.commands.length);}
 });
 
+test('the typescript recipe states the optional compiler install before its first build, as the runtime prints it (#785)',async()=>{
+  const manifest=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {devDependencies:{typescript:string};peerDependenciesMeta:{typescript:{optional:boolean}}};
+  const install=`npm install --save-dev --save-exact typescript@${manifest.devDependencies.typescript}`;
+  assert.equal(manifest.peerDependenciesMeta.typescript.optional,true);
+  const diagnostic=await readFile(new URL('../packages/core/src/typescript-authoring.ts',import.meta.url),'utf8');
+  assert.ok(diagnostic.includes(`(${install})`),'the missing-compiler diagnostic prints the same install command');
+  const commands=(await showRecipe('typescript')).tests!.commands;
+  assert.equal(commands[0],install);
+  assert.ok(commands.findIndex(command=>command.includes('build-typescript'))>0);
+  const readme=await readFile(new URL('../recipes/typescript/README.md',import.meta.url),'utf8');
+  assert.ok(readme.includes(install)&&readme.indexOf(install)<readme.indexOf('urlcode build-typescript --project'));
+});
+
 test('recipe metadata is what the capability preflight derives, not a hand-written claim',async()=>{
   for(const recipe of await listRecipes()){
     const root=fileURLToPath(new URL('../recipes/'+recipe.id+'/',import.meta.url));

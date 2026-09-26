@@ -1,7 +1,10 @@
 # Build-time TypeScript guests
 
 The runtime does not need the TypeScript compiler. Install the optional compiler
-only in a project that uses `build-typescript`:
+only where you use `build-typescript`, in the site whose `@jimhoyd/urlcode`
+install runs it (the directory holding its `package.json`), so the runtime
+resolves it from the same `node_modules`. The runtime prints this command when
+the compiler is missing:
 
 ```sh
 npm install --save-dev --save-exact typescript@6.0.3

@@ -8,13 +8,13 @@ Use Node.js 22.18+ (the source is TypeScript, run directly through Node's type
 stripping; CI targets 22, 24 and 26). Installed packages still run on 22.13+:
 
 ```sh
-make dev         # installs dependencies and runs the bare starter (starters/default) under the watcher
+make dev         # installs dependencies and runs the bare starter's route project (starters/default/app) under the watcher
 # In another terminal:
 make verify
 make test-package
 ```
 
-`starters/default` has zero routes, so `make dev` starts a server with nothing
+`starters/default/app` has zero routes, so `make dev` starts a server with nothing
 to request yet — it proves the toolchain and watcher, not a working demo. To
 see a route respond, point it at a populated project instead, for example
 `make dev PROJECT=examples/cookbook`.
@@ -146,8 +146,13 @@ status; do not leave historical proposals presenting themselves as current
 instructions. Avoid moving files only for tidiness: existing links and anchors
 are part of the documentation interface.
 
-Run `npm run check:docs` after documentation changes. It checks local links,
-retired repository references, guidance claims and generated resources. These
+Run `npm run check:docs` after documentation changes. It checks local links
+and their `#fragment` anchors (GitHub heading slugs or an explicit
+`<a id>`), retired repository references, guidance claims, generated
+resources, and every fenced `yaml` block: each must parse with the runtime's
+YAML profile, and project YAML (a complete project, project-level keys or a
+route map) must pass the schema. Mark an intentionally partial block with a
+`# snippet: partial` comment line and say why in the prose. These
 checks cannot prove prose is current: review the affected facts against code
 and evidence too. Reviewers should ask which page owns the changed information
 and whether this PR introduced a competing explanation.
