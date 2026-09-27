@@ -105,7 +105,12 @@ beside it and without changing the exports above:
 - The `./host` entry (Node only): `createUiExtension`, the `ui` runtime
   extension owning `extensions.ui`, reading bounded project copy, template and
   stylesheet files, and serving the kit assets under `<mount>/static/`, declared
-  as `immutableAssets` so the runtime caches them publicly; `loadProjectUi`;
+  as `immutableAssets` so the runtime caches them publicly. Activation requires
+  exactly one such asset mount besides the screen mounts (`ui extension needs
+  exactly one route mount`), whether or not the site renders HTML: an extension
+  that requires `ui` renders its pages to non-JSON clients with links under it,
+  so a JSON-only site keeps the mount, which serves only `GET`/`HEAD` of the
+  hashed kit files and `404` otherwise (#812); `loadProjectUi`;
   and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
   Configured copy, template and stylesheet paths must begin with `ui/` and
   resolve inside that dedicated presentation directory, which cannot itself

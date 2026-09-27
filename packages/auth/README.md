@@ -571,6 +571,16 @@ routes:
   /account/*: { extension: auth, methods: [GET, HEAD, POST] }
 ```
 
+A headless site, whose clients only send `Accept: application/json`, still
+declares the `ui` route ([#812](https://github.com/jimhoyd-com/urlcode/issues/812)).
+The requirement is not conditional: the same auth mount answers its account
+pages to any client that does not ask for JSON, and `ui` activates only with
+exactly one asset mount (`ui extension needs exactly one route mount`), because
+those pages link its stylesheet and scripts there. The mount is harmless: `GET`
+and `HEAD` of the kit's content-hashed static files, `404` for anything else, no
+cookies and no state. [`recipes/headless-auth-profile`](../../recipes/headless-auth-profile/README.md#why-a-json-only-site-mounts-ui)
+is such a site.
+
 Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor --extensions @jimhoyd/urlcode-auth` reports every `auth/*` template behind its view model (the CLI reads the namespace, copy and samples from this package's `./extension` definition, `contributes.ui`; without the flag it sees the kit alone). Copy resolves through the kit's catalogue, the auth catalogue and the project's `extensions.ui` copy.
 
 There is no fallback render path. The auth passkey script is nonce-bound to the kit's page nonce. A challenge widget (from the abuse extension's provider) is passed to the kit as an `async` script whose origin the page CSP lists; auth no longer rewrites the page nonce.

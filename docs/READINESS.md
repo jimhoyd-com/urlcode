@@ -88,8 +88,9 @@ author's own debugging loop, so a failing case there also prints the fixture's
 its `check` (`status`, `header` or `body`), the header `name`, and the
 `expected` and `actual` values, each cut to about 200 characters from just
 before the first difference (`firstDifference`). A value a `steps` fixture
-captured is printed as its `{{name}}`, never as the value. Keep secrets out of
-fixtures and test responses you would not want in a CI log.
+captured is printed as its `{{name}}`, never as the value, and a cookie value a
+response set is printed as `<cookie NAME>` (see [cookies](#cookies)). Keep
+secrets out of fixtures and test responses you would not want in a CI log.
 
 `urlcode test` with no cases (no `tests/requests.json`, or an empty array)
 exits nonzero once the project has an active route, because a run that checks
@@ -166,8 +167,11 @@ restart step `{"restart": true}`:
 `examples/lifecycle` runs this against a project that keeps notes in files.
 
 - **Capture.** `capture` maps a name to `{"json":"items.0.id"}` (dotted keys and
-  array indexes into a JSON response body) or `{"header":"location"}` (one
-  single-valued response header, so not `set-cookie`). The value must be a
+  array indexes into a JSON response body), `{"header":"location"}` (one
+  single-valued response header; `set-cookie` is refused, use the next form) or
+  `{"cookie":"session"}` (the value the fixture's [cookie jar](#cookies) holds for
+  that cookie name after this step's response, as the jar would send it to this
+  step's path). The value must be a
   nonempty string, finite number or boolean of at most 4096 bytes with no control
   characters; the body is read up to 1 MiB. Names are letters, digits and
   underscores, at most 32; at most 16 per step. A step captures only when it
@@ -198,7 +202,7 @@ restart step `{"restart": true}`:
   restart costs a runtime start, so use it sparingly.
 - **Output.** Reports carry case numbers and statuses only. Captured values never
   appear in a report, log line or error, and a failure names the fixture as written
-  (`{{id}}`), never as sent.
+  (`{{id}}`), never as sent. Cookie values are redacted the same way (below).
 
 **Counting.** Each request step is one case: it adds one to `checks` and to `passed`
 or `failed`, and gets the next case number after the generated cases (a restart is
@@ -227,6 +231,53 @@ of the two, not both.
 `urlcode test` runs only explicit fixtures. `audit` adds generated native checks,
 counts and coverage. Both execute locally and never follow redirect destinations.
 Audits run sequentially to avoid mistaking worker saturation for a routing failure.
+
+### Cookies
+
+Each `steps` fixture is one client with its own cookie jar. The jar starts empty
+when the fixture starts and is dropped when it ends: its steps send the cookies
+that earlier steps' responses set, and no other fixture, and no later run, ever
+sees them. A single-request entry has no jar. A restart step keeps the jar, as a
+client outlives a server restart; whether the server still accepts the cookie
+afterwards is the server's business.
+
+- **Storage.** The jar follows the RFC 6265 storage model for one client of one
+  origin. `Path` scopes a cookie, and without one it defaults to the directory
+  of the request that set it; `Domain` must match the origin's host (a host-only
+  cookie otherwise); `Max-Age` wins over `Expires`, and a zero or negative
+  `Max-Age` or a past `Expires` deletes the stored cookie of that name, domain
+  and path. `__Secure-` and `__Host-` prefixes are enforced. `HttpOnly` and
+  `SameSite` do not apply, because every fixture request is a same-site request
+  made by the client itself. There is no public-suffix list: the only host is the
+  test origin. The jar keeps at most 50 cookies of at most 4096 bytes each; one it
+  refuses is dropped, as a browser drops it.
+- **Origin and `Secure`.** The jar is a client of the site origin: the `--origin`
+  given to `urlcode test` or `audit`, else the runtime's own loopback address; for
+  `verify-deployment`, the `--target`. `Secure` cookies are kept and sent when that
+  origin is `https`, or loopback (`127.0.0.0/8`, `::1`, `localhost`), which
+  browsers also treat as a secure context. So `urlcode test --origin
+  https://api.example.com` keeps a `__Host-` session cookie even though the local
+  runtime is reached over plain HTTP on loopback; an `http://` origin that is not
+  loopback does not.
+- **An explicit `cookie` header.** A step's own `cookie` request header is sent as
+  written, and the jar adds only the cookies whose names it does not already send,
+  so an explicit `name=value` wins for that name on that request. It never changes
+  the jar. Replaying a captured cookie after sign-out is written this way:
+  `"headers":{"cookie":"session={{old}}"}`.
+- **Redaction.** No cookie value a response set is printed: not in `urlcode test`
+  failures, in the `audit` report or log, or in `verify-deployment` findings. A
+  failure shows each such value as `<cookie NAME>` (a captured one as its
+  `{{name}}`), including in a mismatched `set-cookie` header or a body that echoes
+  it. This applies to single-request entries' `set-cookie` headers too.
+
+This is how a route behind a cookie session (`auth: true`) is covered: sign in
+within the fixture, then assert the protected responses. `audit` counts those
+steps like any other, so a signed-in step that passes and asserts a body or
+header covers its route and method.
+[`recipes/headless-auth-profile`](../recipes/headless-auth-profile/README.md)
+tests a whole cookie-session lifecycle this way: CSRF token, registration and
+sign-in, a signed-in profile, another user refused, sign-out, and the revoked
+session cookie replayed and refused.
 
 ## Benchmark your actual project
 

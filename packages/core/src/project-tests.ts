@@ -26,7 +26,7 @@ export async function startRestartable(options: ServerOptions): Promise<Restarta
   try { current = await startServer({ ...options, dataDir }); } catch (error) { await cleanup(); throw error; }
   const running = (): Server => { if (!current) throw new Error('Server is not running'); return current; };
   return {
-    get address() { return running().address; }, get root() { return running().root; }, testPlan: () => running().testPlan(),
+    get address() { return running().address; }, get root() { return running().root; }, get origin() { return running().origin; }, testPlan: () => running().testPlan(),
     async restart() { const old = running(); current = undefined; await old.close(); current = await startServer({ ...options, dataDir }); },
     async close() { try { await current?.close(); } finally { current = undefined; await cleanup(); } },
   };

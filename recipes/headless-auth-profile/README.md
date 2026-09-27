@@ -32,6 +32,23 @@ the project, in route YAML or in a route's environment. Auth's key material
 (`data/encryption.key`, `data/csrf.key`) belongs to the operator, and routes
 reach the shared auth service only through the extension the host composes.
 
+## Why a JSON-only site mounts `ui`
+
+The project declares `/assets/ui/*: {extension: ui}` although this API serves
+no page of its own. That is intended ([#812](https://github.com/jimhoyd-com/urlcode/issues/812)):
+
+- auth requires the `ui` extension. `ui` is auth's only render path: the same
+  `/account/*` mount that answers JSON to `Accept: application/json` answers
+  its account pages to any other client, such as a browser that follows a link
+  to `/account/login`. Auth refuses to activate without an active `ui`.
+- `ui` activates only with exactly one asset mount, because the pages it renders
+  link their stylesheet and scripts under it. Without one, activation stops with
+  `ui extension needs exactly one route mount`.
+
+The mount is harmless. It answers `GET` and `HEAD` only, serves nothing but the
+kit's content-hashed stylesheet and scripts under `/assets/ui/static/` (`404`
+for any other path), sets no cookie, reads no request data and holds no state.
+
 ## Operator setup
 
 In a new site ([site layout](../../docs/EXTENSIONS.md#the-site-layout)):
@@ -134,14 +151,35 @@ session is `401` before the store reads anything.
 
 ## What the tests cover
 
-`tests/requests.json` holds only signed-out cases (the CSRF endpoint, and `401`
-or `403` on every protected route and method): a `urlcode test` fixture cannot
-carry a cookie from one step to the next, so it cannot sign in. The whole flow
-(register, sign in, read and update both profiles, a second user refused with
-`404`, sign-out with the old session then refused) runs in
-`packages/auth/test/headless-auth-profile-recipe.test.ts`, against the real
-extensions composed as above. `urlcode audit` cannot report this project ready
-from signed-out fixtures, so the recipe does not list it.
+`tests/requests.json` holds the signed-out cases (the CSRF endpoint, and `401`
+or `403` on every protected route and method) and one `steps` fixture for the
+whole signed-in lifecycle. The fixture is one client with its own
+[cookie jar](../../docs/READINESS.md#cookies), so the session cookie auth sets
+on sign-in is sent on every later step:
+
+1. `GET /account/csrf`, then `POST /account/register` and `POST /account/login`
+   as Ada, each write carrying the latest `csrf` the fixture captured;
+2. the auth-owned profile read and updated, and the application profile created,
+   read, patched and replaced, with `HEAD`, the second-record `409` and a stale
+   token or foreign `Origin` refused with `403`;
+3. `POST /account/logout`, then Ada's old session cookie (captured with
+   `{"cookie": "__Host-urlcode-session"}`) replayed through an explicit
+   `cookie` header and refused with `401` on every endpoint;
+4. Bob signs up and in, sees his own empty profile, and gets `404` for every
+   method on Ada's record;
+5. Ada signs in again, sees her record unchanged, and deletes it.
+
+Registration is followed by sign-in because an address that already has an
+account answers `201` with no session, and the fixture deletes the record it
+created: it runs again against the same operator database. No cookie value is
+printed in a failure or report. `packages/auth/test/headless-auth-profile-recipe.test.ts`
+runs these fixtures through `urlcode test --host-file` against the real
+extensions composed as above, and keeps a direct client test of the same flow.
+
+`urlcode audit` now covers every `/account/*` and `/api/profile/*` method from
+these fixtures, but it still reports two pairs uncovered: `GET` and `HEAD` on
+`/assets/ui/*`. That mount serves only content-hashed file names, which a
+fixture cannot know ahead of time, so the recipe does not list `audit`.
 
 ## Limits
 
