@@ -43,7 +43,7 @@ Bootstrap first as above; then, before writing any YAML:
 2. Call `urlcode_task_plan` with its one argument, `task`: the requirements in
    plain words (at most 512 characters), led by the capability names you gave
    bootstrap. Send nothing else: no secrets, file contents, paths or projects.
-   Prefer a registered hosted MCP server (`https://api.urlcode.ai/mcp`). A
+   Prefer a registered hosted MCP server (`https://urlcode.ai/mcp`). A
    skill cannot register one; see the tooling guide's hosted section, and keep
    the local `urlcode mcp` server as the project-aware one.
 3. With no hosted server registered and network use allowed, run the bounded

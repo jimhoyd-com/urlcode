@@ -917,7 +917,7 @@ there is no account, key or request header to configure. It runs no model of
 its own either; your agent's model reads what its tools return. A client that
 supports remote HTTP MCP can add it as a second server at this URL:
 
-- URL: `https://api.urlcode.ai/mcp`
+- URL: `https://urlcode.ai/mcp`
 
 Each client has its own remote-server configuration syntax, so configure that
 endpoint explicitly in the client rather than asking `urlcode init` to generate
@@ -925,11 +925,11 @@ it. Add it as its own named entry beside the local `urlcode` one and leave any
 existing entries untouched. In Claude Code, for example:
 
 ```sh
-claude mcp add --transport http urlcode-ai https://api.urlcode.ai/mcp
+claude mcp add --transport http urlcode-ai https://urlcode.ai/mcp
 ```
 
 A client that takes JSON uses
-`{"mcpServers": {"urlcode-ai": {"type": "http", "url": "https://api.urlcode.ai/mcp"}}}`;
+`{"mcpServers": {"urlcode-ai": {"type": "http", "url": "https://urlcode.ai/mcp"}}}`;
 merge that entry into the existing file by hand rather than replacing it. A
 skill cannot register an MCP server: the `urlcode-authoring` skill's
 [hosted-assisted mode](AI-AUTHORING.md#hosted-assisted-authoring-opt-in) uses

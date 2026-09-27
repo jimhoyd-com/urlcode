@@ -610,7 +610,7 @@ before any YAML is written (#806):
    Without one, where network use is allowed, the skill runs the bounded HTTP
    fallback shipped beside its `SKILL.md`, `hosted-plan.mjs`: one MCP
    `initialize`, `notifications/initialized` and `tools/call` exchange with
-   `https://api.urlcode.ai/mcp`, a 20-second deadline and a 1 MiB reply cap,
+   `https://urlcode.ai/mcp`, a 20-second deadline and a 1 MiB reply cap,
    printing one JSON result. Exit 0 (`hostedGuidance: used`) is the only
    outcome in which hosted guidance was used. Exit 3 is a runtime mismatch
    with the kit withheld; 1 is unavailable (unreachable, timeout, HTTP,

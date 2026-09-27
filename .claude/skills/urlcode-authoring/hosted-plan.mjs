@@ -14,7 +14,7 @@
 // guidance may be used or claimed.
 import { parseArgs } from 'node:util';
 
-const DEFAULT_ENDPOINT = 'https://api.urlcode.ai/mcp';
+const DEFAULT_ENDPOINT = 'https://urlcode.ai/mcp';
 const PROTOCOL_VERSION = '2025-06-18';
 const MAX_TASK = 512; // the published inputSchema's maxLength
 const MAX_REPLY_BYTES = 1024 * 1024;

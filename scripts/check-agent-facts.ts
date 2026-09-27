@@ -82,7 +82,7 @@ const mcpRegistration = { projectFile: mcpConfigFile, readBy: ['Claude Code'], c
 // own agent guide (https://urlcode.ai/llms.txt) names. Change this only when the
 // service's contract changes.
 const hostedAi = {
-  endpoint: 'https://api.urlcode.ai/mcp',
+  endpoint: 'https://urlcode.ai/mcp',
   authentication: 'none',
   hostedModelTools: false,
   retiredCredentials: ['URLCODE_AI_TOKEN'],
