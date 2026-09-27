@@ -114,6 +114,12 @@ historical, not valid YAML guidance.
   the project. Build a new extension only for a reusable capability the
   installed contracts cannot express. Extension hooks run trusted in-process
   and reject `sandbox: true` in contract v1.
+- For accounts, sign-in and a per-user profile served as JSON, start from the
+  `headless-auth-profile` recipe (`recipes show headless-auth-profile`,
+  `get_recipe`): auth's JSON endpoints under `/account/*` plus an owned store
+  collection behind `auth: true`, with its request shapes, status codes and
+  owner boundaries in its README. Never write login, cookie, password, CSRF or
+  ownership checks in a function; report what the recipe cannot express.
 - When a React frontend has `components.json`, follow the installed official
   shadcn/ui skill for component discovery, composition, accessibility and
   semantic Tailwind styling. Start with `shadcn info --json`, then use its

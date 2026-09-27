@@ -184,8 +184,14 @@ export const budgets: Record<string, Budget> = {
     // (#792): together they measure 795299 packed and 3185100 unpacked bytes
     // in 471 entries on Node 26, over the 772/3100 KiB budgets set for #659
     // alone.
-    packed: 788 * 1024,
-    unpacked: 3140 * 1024,
+    //
+    // Packed raised from 788 to 792 KiB for the headless-auth-profile recipe
+    // (#810: its three files, the recipe catalog and planner entries, and the
+    // authoring, recipes and skill guidance with their llms-full.txt copies).
+    // It measures 808293 packed bytes on Node 26, 1381 over the old budget,
+    // and 3226821 unpacked, 11461 over, so unpacked is raised to 3160 KiB.
+    packed: 792 * 1024,
+    unpacked: 3160 * 1024,
     entries: 480,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

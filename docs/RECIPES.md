@@ -34,6 +34,7 @@ urlcode validate --local --project ./orders-hook
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
+| `headless-auth-profile` | advanced | Register, sign in, read and update a per-user profile and sign out as JSON: auth's own endpoints plus an owned store collection, no handler code | `ui`, `audit`, `mail`, `auth` and `store` extensions (`urlcode init DIR --with ui,auth,store`), `registrationMode: 'open'`, `--host-file`, `--origin` |
 | `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | `store` extension (`urlcode extensions add store`), `--host-file`, `--origin`; or initialize with `urlcode init DIR --with ui,auth,store --example` |
 
 Each recipe contains a README, `tests/requests.json` and editable files.
@@ -135,4 +136,9 @@ building the TypeScript recipe, with a fixture registry for the authenticated
 ones, the generated policy for the contact form and the webhook receiver, and
 the webhook fixtures' test key in the process environment). `store-crud` runs against the
 real `storeExtension` from `packages/store` with a temporary data directory, and a
-separate test drives its full lifecycle across a restart.
+separate test drives its full lifecycle across a restart. `headless-auth-profile`
+runs in `packages/auth` against the real auth and store extensions composed
+through `composeHost`: its fixtures, and the signed-in flow its fixtures cannot
+express because a fixture carries no cookie between steps (register, sign in,
+profile read and update, another user refused, sign-out and the revoked session
+refused).

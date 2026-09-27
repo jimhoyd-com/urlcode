@@ -359,6 +359,17 @@ collection stays shared. Report anything beyond that recipe (filtering, sorting,
 ownership beyond owner-only records, a database) as a gap. `urlcode context` lists the same built-ins so
 they are visible before you write code.
 
+Accounts with a per-user profile, served as a headless JSON API, need no code
+either: `urlcode recipes show headless-auth-profile` is the bounded entry
+point. Registration, sign-in, the auth-owned profile (`displayName`, `locale`)
+and sign-out are auth's own JSON endpoints under `/account/*`
+([auth JSON contract](../packages/auth/docs/JSON-API.md)); the application's
+profile fields are an `ownership: owner` store collection behind `auth: true`,
+so another user's record is a `404`. Its README states every request and
+response shape, status code, header and owner boundary, and which operator
+files hold the keys. A function that reads a session cookie, checks a password
+or compares user ids reimplements what these contracts already enforce.
+
 ## Agent skills
 
 This repository ships two agent skills, each a thin trigger pointing at the

@@ -1,0 +1,12 @@
+[
+  {"path": "/account/csrf", "headers": {"accept": "application/json"}, "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+  {"path": "/account/account", "headers": {"accept": "application/json"}, "status": 401},
+  {"path": "/account/register", "method": "POST", "headers": {"accept": "application/json", "content-type": "application/json", "origin": "https://api.example.com"}, "body": "{\"email\":\"ada@example.com\",\"password\":\"correct horse battery staple\"}", "status": 403},
+  {"path": "/account/logout", "method": "POST", "headers": {"accept": "application/json", "content-type": "application/json", "origin": "https://api.example.com"}, "body": "{}", "status": 403},
+  {"path": "/api/profile", "status": 401},
+  {"path": "/api/profile", "method": "HEAD", "status": 401},
+  {"path": "/api/profile", "method": "POST", "headers": {"content-type": "application/json", "origin": "https://api.example.com"}, "body": "{\"bio\":\"x\"}", "status": 401},
+  {"path": "/api/profile/00000000-0000-4000-8000-000000000000", "method": "PATCH", "headers": {"content-type": "application/json", "origin": "https://api.example.com"}, "body": "{\"bio\":\"x\"}", "status": 401},
+  {"path": "/api/profile/00000000-0000-4000-8000-000000000000", "method": "PUT", "headers": {"content-type": "application/json", "origin": "https://api.example.com"}, "body": "{\"bio\":\"x\"}", "status": 401},
+  {"path": "/api/profile/00000000-0000-4000-8000-000000000000", "method": "DELETE", "headers": {"origin": "https://api.example.com"}, "status": 401}
+]
