@@ -72,7 +72,7 @@ export async function buildStatic(project: string, { out = 'dist/static', origin
     }
   }
 
-  await compileAssets(loaded.root, routes);
+  await compileAssets(loaded.root, routes, loaded.locations);
 
   const objectsDir = join(out, 'objects');
   await mkdir(objectsDir, { recursive: true });

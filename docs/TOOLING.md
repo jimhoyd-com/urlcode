@@ -150,7 +150,10 @@ commands.
 
 Inspection reads declared configuration and function source graphs to validate
 references and compute revision hashes. It compiles route and policy semantics
-using dummy binding values. It never reads environment or dotenv credentials,
+using dummy binding values. It checks that each page, download and static
+reference names an existing file or directory inside the project, with the same
+message `validate` prints (see [assets](ASSETS.md)), without reading asset
+bytes. It never reads environment or dotenv credentials,
 starts guest execution, follows network destinations, or opens operator link
 stores. The result contains no raw compiled route, binding values or source text.
 Inspection is not deployment readiness: missing operator grants, live service

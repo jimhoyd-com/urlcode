@@ -129,8 +129,12 @@ export interface ProjectDocument {
   version: '1'; extensions?:Record<string,ExtensionDeclaration>; routes: Record<string, RouteConfig>; includes?: string[];
   policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; shared?: Record<string, SharedBlock>; site?: SiteConfig;
 }
+/** Where a YAML value was written: the entry or include file as authored, and the 1-based line/column when known. */
+export interface SourceLocation { file: string; line?: number | undefined; column?: number | undefined }
 /** What config.ts returns: the entry document, the merged route table and the files it came from. */
-export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string; /** Routes whose `policies.extensions.auth` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm>;
+export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string;
+  /** Where each page/download/static reference and site file convention was written, keyed by its RFC 6901 pointer (for diagnostics). */
+  locations?: Record<string, SourceLocation>; /** Routes whose `policies.extensions.auth` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm>;
   /** Only when loaded with `sources`: the file (`urlcode.yaml` or the include path as written) each route and extension declaration came from. */
   sources?: { routes: Record<string, string>; extensions: Record<string, string> } }
 

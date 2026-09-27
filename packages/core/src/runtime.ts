@@ -145,7 +145,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const notFoundPage = loaded.document.site?.notFound !== undefined && loaded.document.site.notFound !== null;
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.grantDataDir ? withDataDirGrant(loaded, snapshot.projectSha256, options.permissions) : options.permissions, snapshot.projectSha256, options.extensions);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
-  const assets = await compileAssets(loaded.root, routes);
+  const assets = await compileAssets(loaded.root, routes, loaded.locations);
   // Host policies compile after assets so a policy can see what a route serves
   // (precompressed variants, cacheability). Cross-request state lives in one
   // per-runtime object and is released with the runtime, never shared across

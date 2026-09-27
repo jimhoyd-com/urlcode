@@ -2,12 +2,12 @@ import { stat, readdir, lstat, readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { assert, ConfigError } from './errors.ts';
 import { safeFile } from './config.ts';
-import { publishableAssetName } from './assets.ts';
+import { checkAssetReference, publishableAssetName } from './assets.ts';
 import { lists as bundled } from '../../../data/agents/index.js';
-import type { LoadedDocument, LogFn, ProjectDocument, RobotsConfig, RouteConfig, SecurityTxtConfig, SiteConfig, SitemapConfig } from './types.ts';
+import type { LoadedDocument, LogFn, ProjectDocument, RobotsConfig, RouteConfig, SecurityTxtConfig, SiteConfig, SitemapConfig, SourceLocation } from './types.ts';
 
-interface SiteOptions { origin?: string | undefined; log?: LogFn; routes?: Record<string, RouteConfig> }
-interface SiteContext { origin: string | undefined; log: LogFn }
+interface SiteOptions { origin?: string | undefined; log?: LogFn; routes?: Record<string, RouteConfig>; locations?: Record<string, SourceLocation> | undefined }
+interface SiteContext { origin: string | undefined; log: LogFn; locations?: Record<string, SourceLocation> | undefined }
 type SiteKey = keyof SiteConfig;
 
 // Site conventions: the optional top-level `site` block. Every key generates
@@ -108,7 +108,7 @@ async function walkHtml(root: string, directory: string, index: string | undefin
   return found;
 }
 
-async function sitemapRoute(config: true | SitemapConfig | undefined, routes: Record<string, RouteConfig>, root: string, { origin }: SiteContext): Promise<RouteConfig> {
+async function sitemapRoute(config: true | SitemapConfig | undefined, routes: Record<string, RouteConfig>, root: string, { origin, locations }: SiteContext): Promise<RouteConfig> {
   const where = 'site.sitemap';
   assert(config === true || (config && typeof config === 'object'), `${where} must be true or an object`);
   const options: SitemapConfig = config === true ? {} : config;
@@ -123,11 +123,14 @@ async function sitemapRoute(config: true | SitemapConfig | undefined, routes: Re
     if (pattern.includes('{') || route.enabled === false || (route.expires && Date.parse(route.expires) <= now)) continue;
     if ([generatedPaths.robots, generatedPaths.sitemap, generatedPaths.notFound].includes(pattern) || noindex(route)) continue;
     if (route.methods && !route.methods.includes('GET')) continue;
+    // A reference is checked before it is read, with the same route-named and redacted answer activation gives,
+    // so walking the tree for the sitemap never reads outside the project or reveals what exists there (#808).
     if (route.page) {
-      if (htmlFile(route.page.file) || htmlType(route.page.contentType)) add(pattern, (await stat(await safeFile(root, route.page.file))).mtimeMs);
+      if (htmlFile(route.page.file) || htmlType(route.page.contentType)) add(pattern, (await stat(await checkAssetReference(root, pattern, route, locations))).mtimeMs);
     } else if (route.respond) {
       if (Object.entries(route.response?.headers ?? {}).some(([name, value]) => name.toLowerCase() === 'content-type' && htmlType(value))) add(pattern);
     } else if (route.static) {
+      await checkAssetReference(root, pattern, route, locations);
       const prefix = pattern.slice(0, -1);
       for (const file of await walkHtml(root, route.static.directory, route.static.index)) add(prefix + file.key.split('/').map(encodeURIComponent).join('/'), file.modified);
     }
@@ -199,13 +202,13 @@ function securityTxtRoute(config: SecurityTxtConfig | undefined, { log }: SiteCo
 
 // Returns the generated routes, keyed by path, that the project did not
 // declare itself. `routes` is the merged route table (entry plus includes).
-export async function expandSite(document: ProjectDocument, root: string, { origin, log = () => {}, routes = document.routes ?? {} }: SiteOptions = {}): Promise<Record<string, RouteConfig>> {
+export async function expandSite(document: ProjectDocument, root: string, { origin, log = () => {}, routes = document.routes ?? {}, locations }: SiteOptions = {}): Promise<Record<string, RouteConfig>> {
   const site = document.site;
   const generated: Record<string, RouteConfig> = Object.create(null) as Record<string, RouteConfig>;
   if (!site) return generated;
   assert(typeof site === 'object' && !Array.isArray(site), 'site must be an object');
   const publicOrigin = checkOrigin(origin);
-  const context: SiteContext = { origin: publicOrigin, log };
+  const context: SiteContext = { origin: publicOrigin, log, locations };
   const builders: Record<SiteKey, () => RouteConfig | Promise<RouteConfig>> = {
     robots: () => robotsRoute(site.robots, context),
     sitemap: () => sitemapRoute(site.sitemap, routes, root, context),
@@ -229,7 +232,7 @@ export async function expandSite(document: ProjectDocument, root: string, { orig
 
 // Merges the generated routes into a loaded project in place and returns them.
 export async function applySite(loaded: LoadedDocument, options: SiteOptions = {}): Promise<Record<string, RouteConfig>> {
-  const generated = await expandSite(loaded.document, loaded.root, { ...options, routes: loaded.routes });
+  const generated = await expandSite(loaded.document, loaded.root, { ...options, routes: loaded.routes, locations: loaded.locations });
   for (const [path, route] of Object.entries(generated)) loaded.routes[path] = route;
   return generated;
 }
