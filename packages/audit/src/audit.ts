@@ -11,7 +11,7 @@ export const DEFAULT_RETENTION = 100000, MIN_RETENTION = 1000, MAX_RETENTION = 1
 
 export const auditConfigSchema = {
   type: 'object', additionalProperties: false,
-  properties: { retention: { type: 'integer', minimum: MIN_RETENTION, maximum: MAX_RETENTION } },
+  properties: { retention: { type: 'integer', minimum: MIN_RETENTION, maximum: MAX_RETENTION, description: 'How many of the newest events the log keeps (default 100000); older events are pruned as new ones arrive. Read on every activation, so removing the key returns to the default.' } },
 } as const;
 
 export const auditAuthoring: ExtensionAuthoringContract = {

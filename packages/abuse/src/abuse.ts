@@ -12,7 +12,7 @@ import { honeypot } from './honeypot.ts';
 export const DEFAULT_MAX_KEYS = 100000;
 export const abuseConfigSchema = {
   type: 'object', additionalProperties: false,
-  properties: { maxKeys: { type: 'integer', minimum: 1000, maximum: 1000000 } },
+  properties: { maxKeys: { type: 'integer', minimum: 1000, maximum: 1000000, description: 'Hard bound on stored counters across every consumer (default 100000). Each claimed scope gets an equal share, so one consumer cannot fill the table; a full table answers 503 rather than forgetting counts.' } },
 } as const;
 export const abuseAuthoring: ExtensionAuthoringContract = {
   description: 'Persistent, pseudonymous counters other extensions call: request budgets, failure backoff and challenge escalation. It has no routes and no route policy; use policies.throttle for a declarative per-route budget.',

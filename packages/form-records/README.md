@@ -175,3 +175,71 @@ composition declares `targets: ['node']` and a build or runtime for `aws` or
 - [docs/FRAMEWORK.md](../../docs/FRAMEWORK.md): how the packages compose.
 
 Apache-2.0.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `form-records` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** requires `forms`, `store`, `ui` (`urlcode extensions add form-records` installs them too).
+
+### Configuration: `extensions.form-records.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.form-records.config.records` | object | yes | maxProperties: 16; keys: "^[a-z][a-z0-9-]{0,63}$" | Record flows by name. Each needs a route `<mount>/*` with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: {csrf: origin}; records are private to their signed-in creator. |
+| `extensions.form-records.config.records.*.mount` | string | yes | maxLength: 128; pattern: "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$" | URL path of the flow: `<mount>` is the new-record form, `<mount>/<id>` the saved record's confirmation, `<mount>/<id>/edit` the edit page and, with list, `<mount>/` the caller's records. |
+| `extensions.form-records.config.records.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A store collection declared with ownership: owner; each mapped form field must be type-compatible with its collection field. Activation fails otherwise. |
+| `extensions.form-records.config.records.*.form` | object | yes | unknown keys rejected | The form, in the forms flow shape without a mount (and without abuse or notify); forms renders and validates it. |
+| `extensions.form-records.config.records.*.form.title` | string | yes | minLength: 1; maxLength: 512 | Page heading and title of the form. |
+| `extensions.form-records.config.records.*.form.timeZone` | string | no | pattern: "^[A-Za-z][A-Za-z0-9_+/-]{0,63}$" | IANA time zone (default UTC) that defines "today" for relative date bounds; refused at activation when unknown. |
+| `extensions.form-records.config.records.*.form.submitLabel` | string | yes | minLength: 1; maxLength: 512 | Text of the submit button. |
+| `extensions.form-records.config.records.*.form.confirmation` | object | yes | unknown keys rejected | The page a valid submission leads to. |
+| `extensions.form-records.config.records.*.form.confirmation.title` | string | yes | minLength: 1; maxLength: 512 | Heading of the confirmation page. |
+| `extensions.form-records.config.records.*.form.confirmation.message` | string | yes | minLength: 1; maxLength: 2048 | Confirmation text; a {field} placeholder is replaced by that submitted value (escaped) and must be listed in show. |
+| `extensions.form-records.config.records.*.form.confirmation.show` | array | no | minItems: 1; maxItems: 32; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields whose submitted values the confirmation may display: carried in a sealed five-minute cookie on redirect, or rendered directly inline. Nothing else is echoed. |
+| `extensions.form-records.config.records.*.form.success` | object | no | unknown keys rejected | What a valid POST answers: redirect (default) is a 303 to `<mount>/confirmation`; inline renders the confirmation in the POST response. |
+| `extensions.form-records.config.records.*.form.success.mode` | string | yes | enum: ["redirect","inline"] | redirect or inline. |
+| `extensions.form-records.config.records.*.form.success.status` | number | no | enum: [200,201] | Status of the inline confirmation (default 200); refused with mode redirect. |
+| `extensions.form-records.config.records.*.form.fields` | object | yes | minProperties: 1; maxProperties: 32; keys: "^[a-z][A-Za-z0-9_]{0,63}$" | The form's fields in display order, keyed by field name (the submitted name). A field not declared here is refused. |
+| `extensions.form-records.config.records.*.form.fields.*.label` | string | yes | minLength: 1; maxLength: 512 | Visible label of the field; also names it in error messages and on the confirmation. |
+| `extensions.form-records.config.records.*.form.fields.*.control` | string | no | enum: ["input","textarea","select","checkbox"] | HTML control (default input). select needs options; checkbox takes no type or bounds and submits true or false. |
+| `extensions.form-records.config.records.*.form.fields.*.type` | string | no | enum: ["text","email","number","tel","url","date","datetime-local"] | Input type for an input control (default text); decides which bounds apply and how the value is checked. |
+| `extensions.form-records.config.records.*.form.fields.*.required` | boolean | no | — | Fields are required unless this is false. Not allowed together with requiredWhen. |
+| `extensions.form-records.config.records.*.form.fields.*.minLength` | integer | no | minimum: 0; maximum: 65536 | Fewest characters a text value may have; not for number, date or checkbox fields. |
+| `extensions.form-records.config.records.*.form.fields.*.maxLength` | integer | no | minimum: 1; maximum: 65536 | Most characters a text value may have; required (and bounded) when pattern is set. |
+| `extensions.form-records.config.records.*.form.fields.*.minimum` | number / string / constant / object | no | one of: number; string (pattern: "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$"); constant (const: "today"); object (fields below) | Lower bound: a number for type number; for date and datetime-local an absolute YYYY-MM-DD or YYYY-MM-DDTHH:MM value, today, or {from: today, add: `<duration>`} in the flow's timeZone. |
+| `extensions.form-records.config.records.*.form.fields.*.minimum.from` | constant | yes | const: "today" | The flow's current date in its timeZone. |
+| `extensions.form-records.config.records.*.form.fields.*.minimum.add` | string | yes | pattern: "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$" | Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y. |
+| `extensions.form-records.config.records.*.form.fields.*.maximum` | number / string / constant / object | no | one of: number; string (pattern: "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$"); constant (const: "today"); object (fields below) | Upper bound, with the same forms as minimum; it must not be below minimum. |
+| `extensions.form-records.config.records.*.form.fields.*.maximum.from` | constant | yes | const: "today" | The flow's current date in its timeZone. |
+| `extensions.form-records.config.records.*.form.fields.*.maximum.add` | string | yes | pattern: "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$" | Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y. |
+| `extensions.form-records.config.records.*.form.fields.*.pattern` | string | no | minLength: 1; maxLength: 128 | Regular expression the whole text value must match; checked for catastrophic backtracking at activation and requires maxLength. |
+| `extensions.form-records.config.records.*.form.fields.*.enum` | array | no | minItems: 1; maxItems: 128; uniqueItems: true; items: string (maxLength: 512) | Exact values an input accepts, or the subset of a select's option values it accepts. |
+| `extensions.form-records.config.records.*.form.fields.*.description` | string | no | maxLength: 512 | Help text rendered under the field. |
+| `extensions.form-records.config.records.*.form.fields.*.requiredWhen` | object | no | unknown keys rejected | Makes the field required only when a sibling select or enum field was submitted once with one of the listed values, and optional otherwise. Replaces required; the sibling must not itself be conditional. |
+| `extensions.form-records.config.records.*.form.fields.*.requiredWhen.field` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | Name of the sibling field in this flow; it needs a fixed value set (a select or an enum input). |
+| `extensions.form-records.config.records.*.form.fields.*.requiredWhen.in` | array | yes | minItems: 1; maxItems: 128; uniqueItems: true; items: string (maxLength: 512) | Values of the sibling that make this field required; each must be one the sibling accepts. |
+| `extensions.form-records.config.records.*.form.fields.*.options` | array | no | minItems: 1; maxItems: 128 | Choices of a select control, in display order; only select fields take options. |
+| `extensions.form-records.config.records.*.form.fields.*.options[].value` | string | yes | maxLength: 512 | Submitted value of the choice. |
+| `extensions.form-records.config.records.*.form.fields.*.options[].label` | string | yes | maxLength: 512 | Visible text of the choice; the confirmation shows it for a shown select. |
+| `extensions.form-records.config.records.*.fields` | object | no | maxProperties: 32; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Map from form field to collection field. Default: each form field to the collection field of the same name. |
+| `extensions.form-records.config.records.*.editable` | array | no | maxItems: 32; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Form fields the edit page may change; every other field is read-only after create. Default: none, and no edit page. |
+| `extensions.form-records.config.records.*.editTitle` | string | no | minLength: 1; maxLength: 512 | Title of the edit page. Default: the form's title. |
+| `extensions.form-records.config.records.*.list` | object | no | unknown keys rejected | Adds a page at `<mount>/` listing the signed-in user's own records (paginated; needs ui). Default: no list page. |
+| `extensions.form-records.config.records.*.list.title` | string | no | minLength: 1; maxLength: 512 | Title of the list page. Default: Your records. |
+| `extensions.form-records.config.records.*.list.columns` | array | yes | minItems: 1; maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Form fields shown as columns, in this order. |
+
+### Authoring surfaces and limits
+
+Save a declared form into an owned store collection: a submission creates a record private to its signed-in creator, the confirmation page reads the saved record back, and an edit page changes only the fields listed in `editable`. forms keeps rendering, CSRF and validation; the store keeps ownership, limits and ETags. No handler code.
+
+- **records** (configuration, `urlcode.yaml#extensions.form-records.config.records`): Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, optional `success` (`{mode: inline, status: 200\|201}` answers a create or edit with the saved record's confirmation instead of a 303 to `<mount>/<id>`; an edit is always 200), fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).
+- **mount** (extension, `urlcode.yaml`): Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records).
+
+Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
+<!-- extension-reference:end -->

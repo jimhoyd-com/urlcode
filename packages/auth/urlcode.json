@@ -24,7 +24,8 @@
           "invite-only",
           "waitlist",
           "off"
-        ]
+        ],
+        "description": "Who may create an account from the register page: anyone (open), holders of an invitation token (invite-only), a request an administrator approves (waitlist), or nobody (off, the default). Activation fails unless it equals the operator auth service's registration mode."
       },
       "hooks": {
         "type": "object",
@@ -35,7 +36,8 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 1024
+                "maxLength": 1024,
+                "description": "Project-relative module path; its default export is the hook."
               },
               {
                 "type": "object",
@@ -47,30 +49,36 @@
                   "source": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                   },
                   "export": {
                     "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "Named export to call (default: the module default export)."
                   },
                   "sandbox": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                   },
                   "sandboxReason": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                   }
                 }
               }
-            ]
+            ],
+            "description": "Filter hook: Runs before any path creates an account (self-service, provider sign-up, waitlist request, administrator creation, import) and may deny it."
           },
           "beforeRoleChange": {
             "oneOf": [
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 1024
+                "maxLength": 1024,
+                "description": "Project-relative module path; its default export is the hook."
               },
               {
                 "type": "object",
@@ -82,30 +90,36 @@
                   "source": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                   },
                   "export": {
                     "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "Named export to call (default: the module default export)."
                   },
                   "sandbox": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                   },
                   "sandboxReason": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                   }
                 }
               }
-            ]
+            ],
+            "description": "Filter hook: Runs before an account's roles change (direct, case, case approval, bulk account operation) and may deny it."
           },
           "onAccountCreated": {
             "oneOf": [
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 1024
+                "maxLength": 1024,
+                "description": "Project-relative module path; its default export is the hook."
               },
               {
                 "type": "object",
@@ -117,30 +131,36 @@
                   "source": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                   },
                   "export": {
                     "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "Named export to call (default: the module default export)."
                   },
                   "sandbox": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                   },
                   "sandboxReason": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                   }
                 }
               }
-            ]
+            ],
+            "description": "Action hook: Runs after an account is created, by any path."
           },
           "onAccountStatusChanged": {
             "oneOf": [
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 1024
+                "maxLength": 1024,
+                "description": "Project-relative module path; its default export is the hook."
               },
               {
                 "type": "object",
@@ -152,30 +172,36 @@
                   "source": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                   },
                   "export": {
                     "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "Named export to call (default: the module default export)."
                   },
                   "sandbox": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                   },
                   "sandboxReason": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                   }
                 }
               }
-            ]
+            ],
+            "description": "Action hook: Runs after an administrator locks or unlocks an account."
           },
           "onDeletionScheduled": {
             "oneOf": [
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 1024
+                "maxLength": 1024,
+                "description": "Project-relative module path; its default export is the hook."
               },
               {
                 "type": "object",
@@ -187,30 +213,36 @@
                   "source": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                   },
                   "export": {
                     "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "Named export to call (default: the module default export)."
                   },
                   "sandbox": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                   },
                   "sandboxReason": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                   }
                 }
               }
-            ]
+            ],
+            "description": "Action hook: Runs after an account's deletion is scheduled, by its owner (no actorId) or an administrator."
           },
           "onAccountDeleted": {
             "oneOf": [
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 1024
+                "maxLength": 1024,
+                "description": "Project-relative module path; its default export is the hook."
               },
               {
                 "type": "object",
@@ -222,27 +254,34 @@
                   "source": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                   },
                   "export": {
                     "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "Named export to call (default: the module default export)."
                   },
                   "sandbox": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                   },
                   "sandboxReason": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                   }
                 }
               }
-            ]
+            ],
+            "description": "Action hook: Runs after a scheduled deletion is purged."
           }
-        }
+        },
+        "description": "Project lifecycle hooks by name: a trusted module reference ({source, export} or a bare path) auth calls at that point. Filters run before the change and may deny it; actions run after the commit. sandbox: true is refused."
       },
       "abuse": {
+        "description": "Sign-in and sign-up budgets, challenge escalation and password backoff, enforced through the abuse extension. Activation refuses this block when abuse is not installed and active; client budgets need the runtime trusted-proxy boundary (503 trusted_client_required otherwise).",
         "type": "object",
         "additionalProperties": false,
         "minProperties": 1,
@@ -253,6 +292,7 @@
         },
         "properties": {
           "client": {
+            "description": "Budget for every auth entry request (sign-in, sign-up, recovery, email code) per client network: an IPv4 address, or an IPv6 /64.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -263,16 +303,19 @@
               "limit": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 100000
+                "maximum": 100000,
+                "description": "Requests admitted per window for one key; the next one answers 429 with Retry-After."
               },
               "windowMs": {
                 "type": "integer",
                 "minimum": 1000,
-                "maximum": 86400000
+                "maximum": 86400000,
+                "description": "Length of the counting window in milliseconds."
               }
             }
           },
           "signupClient": {
+            "description": "Additional budget for sign-up requests per client network.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -283,16 +326,19 @@
               "limit": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 100000
+                "maximum": 100000,
+                "description": "Requests admitted per window for one key; the next one answers 429 with Retry-After."
               },
               "windowMs": {
                 "type": "integer",
                 "minimum": 1000,
-                "maximum": 86400000
+                "maximum": 86400000,
+                "description": "Length of the counting window in milliseconds."
               }
             }
           },
           "signupDomain": {
+            "description": "Budget for sign-up requests per email domain (the part after @).",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -303,43 +349,51 @@
               "limit": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 100000
+                "maximum": 100000,
+                "description": "Requests admitted per window for one key; the next one answers 429 with Retry-After."
               },
               "windowMs": {
                 "type": "integer",
                 "minimum": 1000,
-                "maximum": 86400000
+                "maximum": 86400000,
+                "description": "Length of the counting window in milliseconds."
               }
             }
           },
           "challengeAfter": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 99999
+            "maximum": 99999,
+            "description": "Once the client budget has admitted this many requests in its window, further entry requests must pass the operator challenge (abuse({challenge}) in host.mjs; activation refuses it without one). Requires client and must be below client.limit; a passed challenge never overrides the hard budget."
           },
           "passwordBackoff": {
+            "description": "Exponential delay per email address after repeated wrong passwords at sign-in or step-up; a blocked address is refused before any password is checked. Bounds match the abuse backoff.",
             "type": "object",
             "additionalProperties": false,
             "properties": {
               "threshold": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 20
+                "maximum": 20,
+                "description": "Failures allowed before the first delay (default 5)."
               },
               "initialDelayMs": {
                 "type": "integer",
                 "minimum": 100,
-                "maximum": 60000
+                "maximum": 60000,
+                "description": "First delay in milliseconds; each further failure doubles it (default 1000)."
               },
               "maxDelayMs": {
                 "type": "integer",
                 "minimum": 100,
-                "maximum": 86400000
+                "maximum": 86400000,
+                "description": "Cap on the delay in milliseconds (default 900000); must be at least initialDelayMs."
               },
               "resetAfterMs": {
                 "type": "integer",
                 "minimum": 100,
-                "maximum": 604800000
+                "maximum": 604800000,
+                "description": "Quiet period in milliseconds after which the failure count resets (default 86400000); must be at least maxDelayMs."
               }
             }
           }
@@ -354,20 +408,24 @@
       "role": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 64
+        "maxLength": 64,
+        "description": "The signed-in account must hold this role."
       },
       "permission": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 128
+        "maxLength": 128,
+        "description": "The signed-in account must hold this permission through one of its roles, for example audit.read."
       },
       "verified": {
-        "type": "boolean"
+        "type": "boolean",
+        "description": "true: the account's email address must be verified."
       },
       "freshWithinSeconds": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 3600
+        "maximum": 3600,
+        "description": "The session must have authenticated within this many seconds (step-up); an older one is denied."
       },
       "onDeny": {
         "enum": [
@@ -375,15 +433,18 @@
           403,
           404,
           "sign-in"
-        ]
+        ],
+        "description": "Answer to a denied request: that status with a JSON error, or sign-in to redirect a GET/HEAD to the login page (other methods then get 401/403). Default: 401 without a session, 403 with one."
       },
       "csrf": {
         "enum": [
           "token",
           "origin"
-        ]
+        ],
+        "description": "How a session write proves same-site intent: token (default) requires auth's session-bound x-csrf-token header or csrf body field; origin admits same-origin provenance with the SameSite=Strict session cookie, for mounts that verify their own token or accept JSON only."
       },
       "bearer": {
+        "description": "Protect the route with operator-issued API keys (Authorization: Bearer) instead of a session. Exclusive of csrf; the session keys (role, permission, verified, freshWithinSeconds, onDeny) do not apply to a bearer caller.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -398,9 +459,11 @@
               "minLength": 1,
               "maxLength": 128,
               "pattern": "^[a-z][a-z0-9_.:-]*$"
-            }
+            },
+            "description": "Scopes the key must hold, all of them; a key missing one answers 403 insufficient_scope. An empty list admits any valid key."
           },
           "quota": {
+            "description": "Per-key budget on this route, counted by key id in the auth store; over it the request answers 429 credential_quota_exceeded. A key issued with its own quota uses that instead.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -411,12 +474,14 @@
               "requests": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 1000000
+                "maximum": 1000000,
+                "description": "Requests one key may make per window."
               },
               "window": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 2592000
+                "maximum": 2592000,
+                "description": "Window length in seconds (at most 30 days), the units of core policies.throttle."
               }
             }
           }
@@ -425,8 +490,12 @@
     },
     "not": {
       "properties": {
-        "csrf": true,
-        "bearer": true
+        "csrf": {
+          "description": "Present: the exclusion applies."
+        },
+        "bearer": {
+          "description": "Present: the exclusion applies."
+        }
       },
       "required": [
         "csrf",
@@ -449,7 +518,8 @@
         ],
         "properties": {
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Normalized email address of the account to be created."
           },
           "method": {
             "enum": [
@@ -460,10 +530,12 @@
               "invitation",
               "administrator",
               "import"
-            ]
+            ],
+            "description": "The path creating the account."
           },
           "profile": {
-            "type": "object"
+            "type": "object",
+            "description": "Registration profile fields, when the path collects them."
           }
         }
       },
@@ -475,10 +547,12 @@
         ],
         "properties": {
           "allow": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "false refuses the change with 403 and the reason."
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "Why the change was refused (at most 256 characters, control characters removed); returned with the 403."
           }
         }
       }
@@ -499,25 +573,30 @@
         ],
         "properties": {
           "accountId": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the account whose roles change."
           },
           "currentRoles": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Roles the account holds now."
           },
           "requestedRoles": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Roles it would hold after the change."
           },
           "actorId": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the account making the change."
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "The reason recorded for the change."
           }
         }
       },
@@ -529,10 +608,12 @@
         ],
         "properties": {
           "allow": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "false refuses the change with 403 and the reason."
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "Why the change was refused (at most 256 characters, control characters removed); returned with the 403."
           }
         }
       }
@@ -551,10 +632,12 @@
         ],
         "properties": {
           "accountId": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the new account."
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Its email address."
           },
           "method": {
             "enum": [
@@ -566,10 +649,12 @@
               "administrator",
               "import",
               "bootstrap"
-            ]
+            ],
+            "description": "The path that created it."
           },
           "actorId": {
-            "type": "string"
+            "type": "string",
+            "description": "The administrator who created it, when one did."
           }
         }
       }
@@ -589,19 +674,23 @@
         ],
         "properties": {
           "accountId": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the account."
           },
           "status": {
             "enum": [
               "active",
               "locked"
-            ]
+            ],
+            "description": "Its new status."
           },
           "actorId": {
-            "type": "string"
+            "type": "string",
+            "description": "The administrator who changed it."
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "The reason recorded for the change."
           }
         }
       }
@@ -620,16 +709,20 @@
         ],
         "properties": {
           "accountId": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the account."
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Its email address."
           },
           "deleteAfter": {
-            "type": "integer"
+            "type": "integer",
+            "description": "When the purge becomes due, in epoch milliseconds."
           },
           "actorId": {
-            "type": "string"
+            "type": "string",
+            "description": "The administrator who scheduled it; absent when the owner did."
           }
         }
       }
@@ -646,7 +739,8 @@
         ],
         "properties": {
           "accountId": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the purged account."
           }
         }
       }
@@ -698,7 +792,7 @@
     "references": [
       {
         "name": "auth extension guide",
-        "description": "Configuration, operator setup and route integration guidance.",
+        "description": "Configuration, operator setup and route integration guidance; ends with the generated field reference for every configuration key.",
         "path": "README.md"
       }
     ]

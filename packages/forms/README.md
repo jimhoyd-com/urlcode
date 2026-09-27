@@ -194,6 +194,61 @@ flows:
   absolute bound against a relative one is not compared at activation; once
   the relative side passes the absolute one, every value is refused with a 422.
 
+## Handling a submission (`onSubmit`)
+
+Without a hook, a valid submission only shows the confirmation. To do
+something with it, name a trusted project module under
+`extensions.forms.config.hooks.onSubmit`. The path is relative to the route
+project (`app/`), like a function route's `source`; the bare string calls the
+module's default export, and `{source, export}` names another export. One
+hook serves every flow; `input.flow` says which one was submitted.
+
+```yaml
+version: "1"
+extensions:
+  ui: {version: "1", config: {}}
+  forms:
+    version: "1"
+    config:
+      hooks:
+        onSubmit: hooks/on-submit.mjs   # or {source: hooks/on-submit.mjs, export: onSubmit}
+      flows:
+        contact:
+          mount: /contact
+          title: Contact us
+          submitLabel: Send message
+          confirmation: {title: Thank you, message: We received your message.}
+          fields:
+            email: {label: Email, type: email, maxLength: 320}
+            topic: {label: Topic, control: select, options: [{value: support, label: Support}, {value: sales, label: Sales}]}
+            message: {label: Message, control: textarea, minLength: 10, maxLength: 2000}
+routes:
+  /assets/ui/*: {extension: ui}
+  /contact/*: {extension: forms, methods: [GET, HEAD, POST]}
+```
+
+```js
+// app/hooks/on-submit.mjs: trusted project code, run in-process after CSRF and field validation.
+import { appendFile, mkdir } from 'node:fs/promises';
+
+const data = new URL('../../data/', import.meta.url); // the site's data/, outside app/
+
+export default async function onSubmit({ flow, values }, { requestId }) {
+  // values holds the declared fields only, validated, as strings keyed by field name.
+  await mkdir(data, { recursive: true });
+  await appendFile(new URL('form-submissions.jsonl', data), JSON.stringify({ flow, requestId, ...values }) + '\n');
+}
+```
+
+The hook runs after CSRF admission, any `abuse` budget and field validation,
+and before `notify` and the confirmation. It receives
+`{flow, values}` (frozen) and a frozen context with the request id and the
+mount route's granted `env`; its return value is ignored. If it throws, the
+visitor gets a 500 page and no confirmation, and may submit again, so an effect
+that must happen once needs its own idempotency. A missing module or export
+fails activation, not the first request, and `sandbox: true` is refused. This
+exact YAML and module run in the package tests (`test/readme-example.test.ts`).
+
 ## Showing submitted values on the confirmation
 
 The confirmation page is fixed text unless the flow lists fields in
@@ -377,3 +432,101 @@ if (!sent.ok) return sent.response;                  // 403, 405, 413, 415 or th
 A flow defined this way has no mount and no `onSubmit` hook: the consumer
 decides what a valid submission does. [form-records](../form-records/README.md)
 is the first-party consumer.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `forms` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** requires `ui` (`urlcode extensions add forms` installs them too); uses `abuse`, `mail` when installed (optional: the features that need one refuse to activate without it); contributes to `mail` (read only when that extension is installed).
+
+### Configuration: `extensions.forms.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.forms.config.flows` | object | yes | maxProperties: 16; keys: "^[a-z][a-z0-9-]{0,63}$" | Mounted form flows by name. Each needs a route `<mount>/*` with extension: forms (GET, HEAD, POST); a flow without its route, or a forms route without a flow, fails activation. |
+| `extensions.forms.config.flows.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$" | URL path the flow is served at: the form on GET and POST, the confirmation at `<mount>/confirmation`. |
+| `extensions.forms.config.flows.*.title` | string | yes | minLength: 1; maxLength: 512 | Page heading and title of the form. |
+| `extensions.forms.config.flows.*.timeZone` | string | no | pattern: "^[A-Za-z][A-Za-z0-9_+/-]{0,63}$" | IANA time zone (default UTC) that defines "today" for relative date bounds; refused at activation when unknown. |
+| `extensions.forms.config.flows.*.submitLabel` | string | yes | minLength: 1; maxLength: 512 | Text of the submit button. |
+| `extensions.forms.config.flows.*.confirmation` | object | yes | unknown keys rejected | The page a valid submission leads to. |
+| `extensions.forms.config.flows.*.confirmation.title` | string | yes | minLength: 1; maxLength: 512 | Heading of the confirmation page. |
+| `extensions.forms.config.flows.*.confirmation.message` | string | yes | minLength: 1; maxLength: 2048 | Confirmation text; a {field} placeholder is replaced by that submitted value (escaped) and must be listed in show. |
+| `extensions.forms.config.flows.*.confirmation.show` | array | no | minItems: 1; maxItems: 32; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields whose submitted values the confirmation may display: carried in a sealed five-minute cookie on redirect, or rendered directly inline. Nothing else is echoed. |
+| `extensions.forms.config.flows.*.success` | object | no | unknown keys rejected | What a valid POST answers: redirect (default) is a 303 to `<mount>/confirmation`; inline renders the confirmation in the POST response. |
+| `extensions.forms.config.flows.*.success.mode` | string | yes | enum: ["redirect","inline"] | redirect or inline. |
+| `extensions.forms.config.flows.*.success.status` | number | no | enum: [200,201] | Status of the inline confirmation (default 200); refused with mode redirect. |
+| `extensions.forms.config.flows.*.fields` | object | yes | minProperties: 1; maxProperties: 32; keys: "^[a-z][A-Za-z0-9_]{0,63}$" | The form's fields in display order, keyed by field name (the submitted name). A field not declared here is refused. |
+| `extensions.forms.config.flows.*.fields.*.label` | string | yes | minLength: 1; maxLength: 512 | Visible label of the field; also names it in error messages and on the confirmation. |
+| `extensions.forms.config.flows.*.fields.*.control` | string | no | enum: ["input","textarea","select","checkbox"] | HTML control (default input). select needs options; checkbox takes no type or bounds and submits true or false. |
+| `extensions.forms.config.flows.*.fields.*.type` | string | no | enum: ["text","email","number","tel","url","date","datetime-local"] | Input type for an input control (default text); decides which bounds apply and how the value is checked. |
+| `extensions.forms.config.flows.*.fields.*.required` | boolean | no | — | Fields are required unless this is false. Not allowed together with requiredWhen. |
+| `extensions.forms.config.flows.*.fields.*.minLength` | integer | no | minimum: 0; maximum: 65536 | Fewest characters a text value may have; not for number, date or checkbox fields. |
+| `extensions.forms.config.flows.*.fields.*.maxLength` | integer | no | minimum: 1; maximum: 65536 | Most characters a text value may have; required (and bounded) when pattern is set. |
+| `extensions.forms.config.flows.*.fields.*.minimum` | number / string / constant / object | no | one of: number; string (pattern: "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$"); constant (const: "today"); object (fields below) | Lower bound: a number for type number; for date and datetime-local an absolute YYYY-MM-DD or YYYY-MM-DDTHH:MM value, today, or {from: today, add: `<duration>`} in the flow's timeZone. |
+| `extensions.forms.config.flows.*.fields.*.minimum.from` | constant | yes | const: "today" | The flow's current date in its timeZone. |
+| `extensions.forms.config.flows.*.fields.*.minimum.add` | string | yes | pattern: "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$" | Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y. |
+| `extensions.forms.config.flows.*.fields.*.maximum` | number / string / constant / object | no | one of: number; string (pattern: "^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$"); constant (const: "today"); object (fields below) | Upper bound, with the same forms as minimum; it must not be below minimum. |
+| `extensions.forms.config.flows.*.fields.*.maximum.from` | constant | yes | const: "today" | The flow's current date in its timeZone. |
+| `extensions.forms.config.flows.*.fields.*.maximum.add` | string | yes | pattern: "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$" | Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y. |
+| `extensions.forms.config.flows.*.fields.*.pattern` | string | no | minLength: 1; maxLength: 128 | Regular expression the whole text value must match; checked for catastrophic backtracking at activation and requires maxLength. |
+| `extensions.forms.config.flows.*.fields.*.enum` | array | no | minItems: 1; maxItems: 128; uniqueItems: true; items: string (maxLength: 512) | Exact values an input accepts, or the subset of a select's option values it accepts. |
+| `extensions.forms.config.flows.*.fields.*.description` | string | no | maxLength: 512 | Help text rendered under the field. |
+| `extensions.forms.config.flows.*.fields.*.requiredWhen` | object | no | unknown keys rejected | Makes the field required only when a sibling select or enum field was submitted once with one of the listed values, and optional otherwise. Replaces required; the sibling must not itself be conditional. |
+| `extensions.forms.config.flows.*.fields.*.requiredWhen.field` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | Name of the sibling field in this flow; it needs a fixed value set (a select or an enum input). |
+| `extensions.forms.config.flows.*.fields.*.requiredWhen.in` | array | yes | minItems: 1; maxItems: 128; uniqueItems: true; items: string (maxLength: 512) | Values of the sibling that make this field required; each must be one the sibling accepts. |
+| `extensions.forms.config.flows.*.fields.*.options` | array | no | minItems: 1; maxItems: 128 | Choices of a select control, in display order; only select fields take options. |
+| `extensions.forms.config.flows.*.fields.*.options[].value` | string | yes | maxLength: 512 | Submitted value of the choice. |
+| `extensions.forms.config.flows.*.fields.*.options[].label` | string | yes | maxLength: 512 | Visible text of the choice; the confirmation shows it for a shown select. |
+| `extensions.forms.config.flows.*.abuse` | object | no | unknown keys rejected | Per-flow submission budget through the abuse extension (node target only); the flow refuses to activate without abuse installed. Needs the runtime trusted-proxy boundary to key clients. |
+| `extensions.forms.config.flows.*.abuse.client` | object | yes | unknown keys rejected | Submissions admitted per client network (IPv4 address or IPv6 /64); over it a POST answers 429 with Retry-After. |
+| `extensions.forms.config.flows.*.abuse.client.limit` | integer | yes | minimum: 1; maximum: 100000 | Submissions per window. |
+| `extensions.forms.config.flows.*.abuse.client.windowMs` | integer | yes | minimum: 1000; maximum: 86400000 | Window length in milliseconds. |
+| `extensions.forms.config.flows.*.abuse.challengeAfter` | integer | no | minimum: 1; maximum: 99999 | After this many admitted submissions in the window, a submission must pass the operator challenge (abuse({challenge}) in host.mjs); must be below client.limit. |
+| `extensions.forms.config.flows.*.abuse.honeypot` | string | no | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | Name of a hidden field humans leave empty; a submission that fills it is answered as a success and dropped. Must not be a declared field. |
+| `extensions.forms.config.flows.*.notify` | object | no | unknown keys rejected | Emails each accepted submission (template forms.submission) through the mail extension, after onSubmit and before the confirmation; the flow refuses to activate without mail. A failed delivery answers 503 and the visitor may resubmit, so delivery is at least once. |
+| `extensions.forms.config.flows.*.notify.recipient` | string | yes | pattern: "^[a-z][a-z0-9-]{0,63}$" | Operator-named recipient from mail({recipients}) in host.mjs; an address never appears in YAML. |
+| `extensions.forms.config.flows.*.notify.include` | array | no | minItems: 1; maxItems: 32; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields whose values the message carries as plain text (default none). |
+
+### Project hooks: `extensions.forms.config.hooks`
+
+Trusted project hooks by name ({source, export} or a bare module path). onSubmit runs for every flow; sandbox: true is refused.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.forms.config.hooks.onSubmit` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after the extension has admitted and validated a form submission, before the confirmation (a redirect, or the inline page with success.mode inline). It is trusted project code and receives only declared field values. |
+| `extensions.forms.config.hooks.onSubmit.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.forms.config.hooks.onSubmit.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.forms.config.hooks.onSubmit.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.forms.config.hooks.onSubmit.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+
+#### `onSubmit` (action)
+
+Runs after the extension has admitted and validated a form submission, before the confirmation (a redirect, or the inline page with success.mode inline). It is trusted project code and receives only declared field values.
+
+Called as `onSubmit(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.flow` | string | yes | — | Name of the flow the submission belongs to (its key under flows). |
+| `input.values` | object | yes | — | Validated values of the declared fields, as strings keyed by field name (a checkbox is true or false); frozen. |
+
+Its return value is ignored.
+
+### Authoring surfaces and limits
+
+Declare a bounded server-rendered form flow with fixed fields and a confirmation page that can show opted-in submitted values (confirmation.show), reached by a 303 redirect or, with success.mode inline, rendered in the POST response (200 or 201). The forms extension owns HTML escaping, admission, CSRF and field validation; attach auth on the mount when submissions need a signed-in caller.
+
+- **flows** (configuration, `urlcode.yaml#extensions.forms.config.flows`): Declare each mounted form, its bounded fields, explicit submit label and confirmation page.
+- **success** (configuration, `urlcode.yaml#extensions.forms.config.flows.<name>.success`): Optional per-flow success answer: `success: {mode: redirect}` (the default) answers a valid POST with 303 to `<mount>/confirmation`; `success: {mode: inline, status: 200\|201}` renders the confirmation (title, message, opted-in `show` values, escaped) in the POST response itself, `no-store`, status 200 unless 201 is declared. `status` is refused with `mode: redirect`. CSRF, admission, validation (422) and onSubmit/notify ordering are the same in both modes.
+- **abuse** (configuration, `urlcode.yaml#extensions.forms.config.flows.<name>.abuse`): Optional per-flow rate limit through the abuse extension (node only): `abuse: {client: {limit, windowMs}, challengeAfter?, honeypot?}`. Over the limit a POST gets 429 with Retry-After; above challengeAfter it must pass the operator's challenge (abuse({challenge}) in host.mjs); a filled honeypot field is accepted silently and dropped.
+- **notify** (configuration, `urlcode.yaml#extensions.forms.config.flows.<name>.notify`): Optional per-flow email through the mail extension: `notify: {recipient, include?}` sends forms.submission to the operator-named recipient (mail({recipients}) in host.mjs) after onSubmit, with the include fields as plain text. A failed delivery answers 503 and the visitor may resubmit, so delivery is at least once.
+- **onSubmit** (hook, `urlcode.yaml#extensions.forms.config.hooks.onSubmit`): Optional trusted project action, called only after successful form validation and CSRF admission. It is not sandboxed and must keep external effects idempotent.
+- **mount** (extension, `urlcode.yaml`): Mount each flow as `/contact/*` with GET, HEAD and POST. Add `auth: {csrf: origin}` (never `auth: true`) when the form is for signed-in callers.
+
+Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
+<!-- extension-reference:end -->

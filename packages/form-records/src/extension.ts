@@ -60,7 +60,7 @@ export default defineExtension<FormRecordsHostOptions>({
   requires: ['forms', 'store', 'ui'],
   schema: formRecordsConfigSchema,
   authoring: formRecordsAuthoring,
-  agent: { description: 'Local, revision-pinned references for agents configuring the form-records extension.', references: [{ name: 'form-records extension guide', description: 'Configuration and composition guidance for saving a form into an owned store collection.', path: 'README.md' }] },
+  agent: { description: 'Local, revision-pinned references for agents configuring the form-records extension.', references: [{ name: 'form-records extension guide', description: 'Configuration and composition guidance for saving a form into an owned store collection; ends with the generated field reference for every configuration key.', path: 'README.md' }] },
   scaffold,
   example,
   host(context) {

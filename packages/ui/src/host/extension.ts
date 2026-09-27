@@ -57,17 +57,19 @@ export interface UiExtension {
     readonly kit: Kit;
     readonly active: boolean;
 }
-const colorSchema = { type: 'string', maxLength: 32 };
-const colors = { type: 'object', additionalProperties: false, properties: Object.fromEntries(['background', 'foreground', 'card', 'cardForeground', 'popover', 'popoverForeground', 'primary', 'primaryForeground', 'secondary', 'secondaryForeground', 'muted', 'mutedForeground', 'accent', 'accentForeground', 'destructive', 'destructiveForeground', 'border', 'input', 'ring'].map(name => [name, colorSchema])) };
+const colorNames = ['background', 'foreground', 'card', 'cardForeground', 'popover', 'popoverForeground', 'primary', 'primaryForeground', 'secondary', 'secondaryForeground', 'muted', 'mutedForeground', 'accent', 'accentForeground', 'destructive', 'destructiveForeground', 'border', 'input', 'ring'];
+const cssName = (name: string): string => name.replace(/[A-Z]/g, ch => '-' + ch.toLowerCase());
+const colorSchemes = (scheme: string) => ({ type: 'object', additionalProperties: false, properties: Object.fromEntries(colorNames.map(name => [name, { type: 'string', maxLength: 32, description: `Semantic colour --${cssName(name)}${scheme}: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation.` }])) });
+const colors = colorSchemes('');
 export const uiHookContracts = [{
     name: 'transformView', kind: 'filter',
     description: 'Runs before a named kit template renders and returns the view model to render.',
-    inputSchema: { type: 'object', additionalProperties: false, required: ['template', 'view'], properties: { template: { type: 'string' }, view: { type: 'object' } } },
+    inputSchema: { type: 'object', additionalProperties: false, required: ['template', 'view'], properties: { template: { type: 'string', description: 'Name of the template about to render, for example auth/sign-in.' }, view: { type: 'object', description: 'The view model; return it, changed or not, as the model to render.' } } },
     outputSchema: { type: 'object' },
 }, {
     name: 'transformPage', kind: 'filter',
     description: 'Runs before the shared page layout renders and may change its title, layout, navigation, account menu or flash message.',
-    inputSchema: { type: 'object', additionalProperties: false, required: ['page'], properties: { page: { type: 'object' } } },
+    inputSchema: { type: 'object', additionalProperties: false, required: ['page'], properties: { page: { type: 'object', description: 'The page options (title, layout, navigation, account menu, flash); return the options to render.' } } },
     outputSchema: { type: 'object' },
 }] as const satisfies readonly ExtensionHookContract[];
 export const uiAuthoring: ExtensionAuthoringContract = Object.freeze({
@@ -90,18 +92,23 @@ export const uiConfigSchema = {
     type: 'object', additionalProperties: false,
     properties: {
         theme: {
+            description: 'Brand and design tokens for every page the kit renders. Values are checked against a narrow grammar at activation, so a theme never carries CSS syntax, URLs or markup.',
             type: 'object', additionalProperties: false,
             properties: {
-                name: { type: 'string', maxLength: 80 }, logo: { type: 'string', maxLength: 512 }, favicon: { type: 'string', maxLength: 512 }, backTo: { type: 'string', maxLength: 1024 },
-                colors: { ...colors, properties: { ...colors.properties, dark: colors } },
-                radius: { type: 'string', maxLength: 16 }, font: { type: 'string', maxLength: 128 },
+                name: { type: 'string', maxLength: 80, description: 'Brand name shown in the page header; plain text.' },
+                logo: { type: 'string', maxLength: 512, description: 'Local absolute path of the header logo image, for example /public/logo.svg; no scheme, query or traversal.' },
+                favicon: { type: 'string', maxLength: 512, description: 'Local absolute path of the favicon; same rules as logo.' },
+                backTo: { type: 'string', maxLength: 1024, description: 'Same-site path (optional query) the header links back to, for example /; never a scheme or protocol-relative URL.' },
+                colors: { ...colors, description: 'Light-scheme colour overrides by semantic shadcn/ui token; unset tokens keep the kit defaults.', properties: { ...colors.properties, dark: { ...colorSchemes(' in the dark scheme'), description: 'Dark-scheme colour overrides, applied by media query and by the dark class.' } } },
+                radius: { type: 'string', maxLength: 16, description: 'Corner radius --radius: 0 to 2rem or 0 to 32px.' },
+                font: { type: 'string', maxLength: 128, description: 'Plain font-family list, for example Inter, sans-serif; no url() or escapes.' },
             },
         },
-        languages: { type: 'array', minItems: 1, maxItems: 32, uniqueItems: true, items: { type: 'string', maxLength: 35 } },
-        copy: { type: 'string', maxLength: 256 },
-        templates: { type: 'string', maxLength: 256 },
-        stylesheet: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'object', additionalProperties: false, required: ['file'], properties: { file: { type: 'string', maxLength: 256 }, replace: { type: 'boolean' } } }] },
-        hooks: extensionHooksSchema(uiHookContracts),
+        languages: { type: 'array', minItems: 1, maxItems: 32, uniqueItems: true, items: { type: 'string', maxLength: 35 }, description: 'Language tags the site offers (default [en]); any other than en needs a copy directory with <copy>/<tag>.json.' },
+        copy: { type: 'string', maxLength: 256, description: 'Relative directory under ui/ holding <locale>.json catalogues that override or translate catalogue entries by id, for example ui/copy.' },
+        templates: { type: 'string', maxLength: 256, description: 'Relative directory under ui/ whose <name>.html files shadow a kit or extension template of that name, for example ui/templates.' },
+        stylesheet: { description: 'Project CSS under ui/: a path is appended after the kit stylesheet; {file, replace: true} replaces it. Script, javascript:, expression() and @import are refused.', oneOf: [{ type: 'string', maxLength: 256 }, { type: 'object', additionalProperties: false, required: ['file'], properties: { file: { type: 'string', maxLength: 256, description: 'Relative path of the CSS file under ui/ (at most 512 KiB).' }, replace: { type: 'boolean', description: 'true: serve this file instead of the kit stylesheet; default false (append).' } } }] },
+        hooks: { ...extensionHooksSchema(uiHookContracts), description: 'Trusted project filter hooks by name ({source, export} or a bare module path) that adjust a view model or the page shell before rendering; sandbox: true is refused.' },
     },
 } as const;
 /**

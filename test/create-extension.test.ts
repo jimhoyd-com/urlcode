@@ -15,6 +15,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { buildAddonCatalog } from '../packages/core/src/addon-manifest.ts';
+import type { AddonDescriptor } from '../packages/core/src/addon-manifest.ts';
+import { missingDescriptions } from '../scripts/generate-extension-reference.ts';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const scriptPath = join(repoRoot, 'scripts', 'create-extension.ts');
@@ -73,7 +75,8 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   // root install's prepare step builds accepts it before the package is ever built.
   const descriptor = JSON.parse(await readFile(join(dir, 'urlcode.json'), 'utf8')) as Record<string, unknown>;
   const { definition } = (await import(pathToFileURL(join(dir, 'src', 'extension.ts')).href) as { default: { definition: Record<string, unknown> } }).default;
-  assert.deepEqual(descriptor, { kind: 'extension', name, description: 'A generated test extension.', requires: [], schema: definition.schema, authoring: definition.authoring });
+  assert.deepEqual(descriptor, { kind: 'extension', name, description: 'A generated test extension.', requires: [], schema: definition.schema, authoring: definition.authoring, agent: definition.agent });
+  assert.deepEqual(missingDescriptions(descriptor as unknown as AddonDescriptor), [], 'every generated schema property is described (#822)');
   assert.equal(JSON.stringify(descriptor.schema), JSON.stringify(definition.schema), 'key order matches, so build:addons --check sees no drift');
   assert.equal(JSON.stringify(descriptor.authoring), JSON.stringify(definition.authoring));
   assert.doesNotThrow(() => buildAddonCatalog(coreVersion, [{ descriptor, package: `@jimhoyd/urlcode-${name}`, version: coreVersion, source: 'urlcode.json' }]));

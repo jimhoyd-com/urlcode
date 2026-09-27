@@ -28,7 +28,8 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 1024
+                "maxLength": 1024,
+                "description": "Project-relative module path; its default export is the hook."
               },
               {
                 "type": "object",
@@ -40,25 +41,31 @@
                   "source": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                   },
                   "export": {
                     "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                    "description": "Named export to call (default: the module default export)."
                   },
                   "sandbox": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                   },
                   "sandboxReason": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                   }
                 }
               }
-            ]
+            ],
+            "description": "Action hook: Runs after the extension has admitted and validated a form submission, before the confirmation (a redirect, or the inline page with success.mode inline). It is trusted project code and receives only declared field values."
           }
-        }
+        },
+        "description": "Trusted project hooks by name ({source, export} or a bare module path). onSubmit runs for every flow; sandbox: true is refused."
       },
       "flows": {
         "type": "object",
@@ -66,6 +73,7 @@
         "propertyNames": {
           "pattern": "^[a-z][a-z0-9-]{0,63}$"
         },
+        "description": "Mounted form flows by name. Each needs a route <mount>/* with extension: forms (GET, HEAD, POST); a flow without its route, or a forms route without a flow, fails activation.",
         "additionalProperties": {
           "type": "object",
           "additionalProperties": false,
@@ -80,21 +88,25 @@
             "mount": {
               "type": "string",
               "pattern": "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$",
-              "maxLength": 256
+              "maxLength": 256,
+              "description": "URL path the flow is served at: the form on GET and POST, the confirmation at <mount>/confirmation."
             },
             "title": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 512
+              "maxLength": 512,
+              "description": "Page heading and title of the form."
             },
             "timeZone": {
               "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_+/-]{0,63}$"
+              "pattern": "^[A-Za-z][A-Za-z0-9_+/-]{0,63}$",
+              "description": "IANA time zone (default UTC) that defines \"today\" for relative date bounds; refused at activation when unknown."
             },
             "submitLabel": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 512
+              "maxLength": 512,
+              "description": "Text of the submit button."
             },
             "confirmation": {
               "type": "object",
@@ -103,16 +115,19 @@
                 "title",
                 "message"
               ],
+              "description": "The page a valid submission leads to.",
               "properties": {
                 "title": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 512
+                  "maxLength": 512,
+                  "description": "Heading of the confirmation page."
                 },
                 "message": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 2048
+                  "maxLength": 2048,
+                  "description": "Confirmation text; a {field} placeholder is replaced by that submitted value (escaped) and must be listed in show."
                 },
                 "show": {
                   "type": "array",
@@ -122,7 +137,8 @@
                   "items": {
                     "type": "string",
                     "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                  }
+                  },
+                  "description": "Declared fields whose submitted values the confirmation may display: carried in a sealed five-minute cookie on redirect, or rendered directly inline. Nothing else is echoed."
                 }
               }
             },
@@ -132,18 +148,21 @@
               "required": [
                 "mode"
               ],
+              "description": "What a valid POST answers: redirect (default) is a 303 to <mount>/confirmation; inline renders the confirmation in the POST response.",
               "properties": {
                 "mode": {
                   "enum": [
                     "redirect",
                     "inline"
-                  ]
+                  ],
+                  "description": "redirect or inline."
                 },
                 "status": {
                   "enum": [
                     200,
                     201
-                  ]
+                  ],
+                  "description": "Status of the inline confirmation (default 200); refused with mode redirect."
                 }
               }
             },
@@ -164,7 +183,8 @@
                   "label": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Visible label of the field; also names it in error messages and on the confirmation."
                   },
                   "control": {
                     "enum": [
@@ -172,7 +192,8 @@
                       "textarea",
                       "select",
                       "checkbox"
-                    ]
+                    ],
+                    "description": "HTML control (default input). select needs options; checkbox takes no type or bounds and submits true or false."
                   },
                   "type": {
                     "enum": [
@@ -183,22 +204,27 @@
                       "url",
                       "date",
                       "datetime-local"
-                    ]
+                    ],
+                    "description": "Input type for an input control (default text); decides which bounds apply and how the value is checked."
                   },
                   "required": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Fields are required unless this is false. Not allowed together with requiredWhen."
                   },
                   "minLength": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 65536
+                    "maximum": 65536,
+                    "description": "Fewest characters a text value may have; not for number, date or checkbox fields."
                   },
                   "maxLength": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 65536
+                    "maximum": 65536,
+                    "description": "Most characters a text value may have; required (and bounded) when pattern is set."
                   },
                   "minimum": {
+                    "description": "Lower bound: a number for type number; for date and datetime-local an absolute YYYY-MM-DD or YYYY-MM-DDTHH:MM value, today, or {from: today, add: <duration>} in the flow's timeZone.",
                     "anyOf": [
                       {
                         "type": "number"
@@ -219,17 +245,20 @@
                         ],
                         "properties": {
                           "from": {
-                            "const": "today"
+                            "const": "today",
+                            "description": "The flow's current date in its timeZone."
                           },
                           "add": {
                             "type": "string",
-                            "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$"
+                            "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$",
+                            "description": "Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y."
                           }
                         }
                       }
                     ]
                   },
                   "maximum": {
+                    "description": "Upper bound, with the same forms as minimum; it must not be below minimum.",
                     "anyOf": [
                       {
                         "type": "number"
@@ -250,11 +279,13 @@
                         ],
                         "properties": {
                           "from": {
-                            "const": "today"
+                            "const": "today",
+                            "description": "The flow's current date in its timeZone."
                           },
                           "add": {
                             "type": "string",
-                            "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$"
+                            "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$",
+                            "description": "Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y."
                           }
                         }
                       }
@@ -263,7 +294,8 @@
                   "pattern": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 128
+                    "maxLength": 128,
+                    "description": "Regular expression the whole text value must match; checked for catastrophic backtracking at activation and requires maxLength."
                   },
                   "enum": {
                     "type": "array",
@@ -273,11 +305,13 @@
                     "items": {
                       "type": "string",
                       "maxLength": 512
-                    }
+                    },
+                    "description": "Exact values an input accepts, or the subset of a select's option values it accepts."
                   },
                   "description": {
                     "type": "string",
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Help text rendered under the field."
                   },
                   "requiredWhen": {
                     "type": "object",
@@ -286,10 +320,12 @@
                       "field",
                       "in"
                     ],
+                    "description": "Makes the field required only when a sibling select or enum field was submitted once with one of the listed values, and optional otherwise. Replaces required; the sibling must not itself be conditional.",
                     "properties": {
                       "field": {
                         "type": "string",
-                        "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                        "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+                        "description": "Name of the sibling field in this flow; it needs a fixed value set (a select or an enum input)."
                       },
                       "in": {
                         "type": "array",
@@ -299,7 +335,8 @@
                         "items": {
                           "type": "string",
                           "maxLength": 512
-                        }
+                        },
+                        "description": "Values of the sibling that make this field required; each must be one the sibling accepts."
                       }
                     }
                   },
@@ -307,6 +344,7 @@
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 128,
+                    "description": "Choices of a select control, in display order; only select fields take options.",
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
@@ -317,17 +355,20 @@
                       "properties": {
                         "value": {
                           "type": "string",
-                          "maxLength": 512
+                          "maxLength": 512,
+                          "description": "Submitted value of the choice."
                         },
                         "label": {
                           "type": "string",
-                          "maxLength": 512
+                          "maxLength": 512,
+                          "description": "Visible text of the choice; the confirmation shows it for a shown select."
                         }
                       }
                     }
                   }
                 }
-              }
+              },
+              "description": "The form's fields in display order, keyed by field name (the submitted name). A field not declared here is refused."
             },
             "abuse": {
               "type": "object",
@@ -335,6 +376,7 @@
               "required": [
                 "client"
               ],
+              "description": "Per-flow submission budget through the abuse extension (node target only); the flow refuses to activate without abuse installed. Needs the runtime trusted-proxy boundary to key clients.",
               "properties": {
                 "client": {
                   "type": "object",
@@ -343,27 +385,32 @@
                     "limit",
                     "windowMs"
                   ],
+                  "description": "Submissions admitted per client network (IPv4 address or IPv6 /64); over it a POST answers 429 with Retry-After.",
                   "properties": {
                     "limit": {
                       "type": "integer",
                       "minimum": 1,
-                      "maximum": 100000
+                      "maximum": 100000,
+                      "description": "Submissions per window."
                     },
                     "windowMs": {
                       "type": "integer",
                       "minimum": 1000,
-                      "maximum": 86400000
+                      "maximum": 86400000,
+                      "description": "Window length in milliseconds."
                     }
                   }
                 },
                 "challengeAfter": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 99999
+                  "maximum": 99999,
+                  "description": "After this many admitted submissions in the window, a submission must pass the operator challenge (abuse({challenge}) in host.mjs); must be below client.limit."
                 },
                 "honeypot": {
                   "type": "string",
-                  "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                  "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+                  "description": "Name of a hidden field humans leave empty; a submission that fills it is answered as a success and dropped. Must not be a declared field."
                 }
               }
             },
@@ -373,10 +420,12 @@
               "required": [
                 "recipient"
               ],
+              "description": "Emails each accepted submission (template forms.submission) through the mail extension, after onSubmit and before the confirmation; the flow refuses to activate without mail. A failed delivery answers 503 and the visitor may resubmit, so delivery is at least once.",
               "properties": {
                 "recipient": {
                   "type": "string",
-                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                  "description": "Operator-named recipient from mail({recipients}) in host.mjs; an address never appears in YAML."
                 },
                 "include": {
                   "type": "array",
@@ -386,7 +435,8 @@
                   "items": {
                     "type": "string",
                     "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                  }
+                  },
+                  "description": "Declared fields whose values the message carries as plain text (default none)."
                 }
               }
             }
@@ -409,10 +459,12 @@
         ],
         "properties": {
           "flow": {
-            "type": "string"
+            "type": "string",
+            "description": "Name of the flow the submission belongs to (its key under flows)."
           },
           "values": {
-            "type": "object"
+            "type": "object",
+            "description": "Validated values of the declared fields, as strings keyed by field name (a checkbox is true or false); frozen."
           }
         }
       }
@@ -468,7 +520,7 @@
     "references": [
       {
         "name": "forms extension guide",
-        "description": "Configuration and integration guidance for declarative form flows.",
+        "description": "Configuration and integration guidance for declarative form flows; ends with the generated field reference for every configuration key.",
         "path": "README.md"
       }
     ]

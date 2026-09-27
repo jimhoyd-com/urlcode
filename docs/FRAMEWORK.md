@@ -343,6 +343,7 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Need | Read |
 |---|---|
 | Write or change routes | [YAML guide](YAML-GUIDE.md), [field reference](YAML-REFERENCE.md), [cookbook](../examples/cookbook/README.md) |
+| Configure an extension: every key it accepts | [extension field references](EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
 | Add administration | [admin README](../packages/admin/README.md) |
 | Audit log, abuse budgets, email | [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md), [mail](../packages/mail/README.md) |
