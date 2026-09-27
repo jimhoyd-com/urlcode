@@ -136,6 +136,14 @@ npm run verify:addons
 For releasing, retries and recovery, see
 [release operations](RELEASE-OPERATIONS.md).
 
+### Diagnostic workflows
+
+**Repro — V8 JIT worker crash (#708)** (`v8-jit-repro.yml`) runs the
+[#708 reproducers](../scripts/repro/README.md) for a V8 abort seen in the
+sandbox tests on Windows. It has only a manual `workflow_dispatch` trigger, is
+not part of `verify-complete` or any ruleset, and never retries: a run that
+aborts fails its job and uploads its logs.
+
 ## Checking a URLCode project on GitHub
 
 `jimhoyd-com/urlcode/action` is a composite GitHub Action for a URLCode

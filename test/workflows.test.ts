@@ -19,8 +19,19 @@ function job(workflow: Workflow, name: string): Job {
   return found;
 }
 
-test('the repository has exactly three workflows: ci.yml, publish.yml and release.yml', async () => {
-  assert.deepEqual((await readdir(directory)).sort(), ['ci.yml', 'publish.yml', 'release.yml']);
+test('the repository has exactly four workflows: ci.yml, publish.yml, release.yml and the manual #708 reproducer', async () => {
+  assert.deepEqual((await readdir(directory)).sort(), ['ci.yml', 'publish.yml', 'release.yml', 'v8-jit-repro.yml']);
+});
+
+// #708: a diagnostic that must stay opt-in. It never runs on a push or pull request, cannot write, is called by no
+// other workflow (so no required check depends on it) and never hides a failure.
+test('v8-jit-repro.yml is manually dispatched only, read-only and never masks a failure', async () => {
+  const repro = await load('v8-jit-repro.yml');
+  assert.deepEqual(Object.keys(repro.on), ['workflow_dispatch']);
+  assert.deepEqual(repro.permissions, { contents: 'read' });
+  for (const name of ['ci.yml', 'publish.yml', 'release.yml']) assert.doesNotMatch(await readFile(join(directory, name), 'utf8'), /v8-jit-repro/);
+  const text = await readFile(join(directory, 'v8-jit-repro.yml'), 'utf8');
+  assert.doesNotMatch(text, /continue-on-error|\|\| *true|retry/i);
 });
 
 test('release.yml only bumps versions on a release/v<version> branch; it never writes main or publishes', async () => {

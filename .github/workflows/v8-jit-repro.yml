@@ -1,0 +1,131 @@
+name: Repro — V8 JIT worker crash (#708)
+run-name: Repro #708 — ${{ inputs.reproducer }} on ${{ inputs.os }} Node ${{ inputs.node }}
+# Diagnostic only. Runs the #708 reproducers in scripts/repro/ on demand, to
+# measure how often Windows/Node 24 aborts with
+# `Check failed: jit_page_->allocations_.erase(addr) == 1` and to collect the
+# fatal stack for an upstream nodejs/node report. It is manually dispatched,
+# never triggered by a push or pull request, and is not a required check.
+# Nothing here retries a crash: every run's exit code is recorded, and a job
+# that saw a failure, a V8 fatal error or a timeout fails.
+on:
+  workflow_dispatch:
+    inputs:
+      reproducer:
+        description: Which reproducer(s) to run
+        type: choice
+        options: [all, wasm-churn, pool-churn, sandbox-test]
+        default: all
+      os:
+        description: Runner labels, as a JSON array
+        type: string
+        default: '["windows-latest"]'
+      node:
+        description: Node majors, as a JSON array (for comparison, e.g. ["22","24","26"])
+        type: string
+        default: '["24"]'
+      runs:
+        description: Process runs per reproducer (each run is a fresh Node process)
+        type: string
+        default: '10'
+      wasm-iterations:
+        description: Workers spawned and terminated per wasm-churn run
+        type: string
+        default: '2000'
+      wasm-args:
+        description: Extra wasm-churn arguments (e.g. --unique-modules --workloads synthetic)
+        type: string
+        default: '--concurrency 8'
+      pool-iterations:
+        description: Pool start/deadline/respawn/close cycles per pool-churn run
+        type: string
+        default: '20'
+      pool-args:
+        description: Extra pool-churn arguments (e.g. --pattern churn --pools 2)
+        type: string
+        default: '--pattern test'
+      sandbox-test-args:
+        description: node --test arguments for the sandbox-test reproducer (e.g. --test-shard=3/3 test/*.test.ts)
+        type: string
+        default: 'test/sandbox.test.ts'
+      node-flags:
+        description: Extra Node/V8 flags for every reproducer process (e.g. --no-wasm-lazy-compilation)
+        type: string
+        default: ''
+      run-timeout-minutes:
+        description: Wall-clock limit for one reproducer process
+        type: string
+        default: '15'
+permissions:
+  contents: read
+concurrency:
+  group: v8-jit-repro-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  repro:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+        node: ${{ fromJSON(inputs.node) }}
+    runs-on: ${{ matrix.os }}
+    # A literal (test/ci-workflow.test.ts requires one); lower `runs` or `run-timeout-minutes` to fit.
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      LOG_DIR: repro-logs
+      RUNS: ${{ inputs.runs }}
+      RUN_TIMEOUT_MINUTES: ${{ inputs.run-timeout-minutes }}
+      MATRIX_OS: ${{ matrix.os }}
+      MATRIX_NODE: ${{ matrix.node }}
+      NODE_FLAGS: ${{ inputs.node-flags }}
+      WASM_ITERATIONS: ${{ inputs.wasm-iterations }}
+      WASM_ARGS: ${{ inputs.wasm-args }}
+      POOL_ITERATIONS: ${{ inputs.pool-iterations }}
+      POOL_ARGS: ${{ inputs.pool-args }}
+      SANDBOX_TEST_ARGS: ${{ inputs.sandbox-test-args }}
+      REPRODUCER: ${{ inputs.reproducer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # Same install and build as ci.yml's core test job.
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Record the environment
+        run: |
+          mkdir -p "$LOG_DIR"
+          { node -p "JSON.stringify({node: process.version, versions: process.versions, platform: process.platform, arch: process.arch, cpus: require('os').cpus().length, memory: require('os').totalmem()}, null, 2)"; echo "runner: $MATRIX_OS"; } | tee "$LOG_DIR/environment.txt"
+      # Inputs reach the shell only through env and are word-split deliberately
+      # (they are argument lists); nothing is interpolated into the script text.
+      - name: wasm-churn (standalone, no URLCode code)
+        if: always() && (env.REPRODUCER == 'all' || env.REPRODUCER == 'wasm-churn')
+        run: |
+          # shellcheck disable=SC2086
+          node scripts/repro/run-capture.mjs --label "wasm-churn-node$MATRIX_NODE" --runs "$RUNS" --timeout-ms "$((RUN_TIMEOUT_MINUTES * 60000))" --log-dir "$LOG_DIR" -- \
+            node $NODE_FLAGS scripts/repro/wasm-worker-churn.mjs --iterations "$WASM_ITERATIONS" $WASM_ARGS
+      - name: pool-churn (URLCode SandboxPool deadline/respawn/close)
+        if: always() && (env.REPRODUCER == 'all' || env.REPRODUCER == 'pool-churn')
+        run: |
+          # shellcheck disable=SC2086
+          node scripts/repro/run-capture.mjs --label "pool-churn-node$MATRIX_NODE" --runs "$RUNS" --timeout-ms "$((RUN_TIMEOUT_MINUTES * 60000))" --log-dir "$LOG_DIR" -- \
+            node $NODE_FLAGS --conditions=development scripts/repro/function-pool-churn.ts --iterations "$POOL_ITERATIONS" $POOL_ARGS
+      - name: sandbox-test (test/sandbox.test.ts under node --test, as CI runs it)
+        if: always() && (env.REPRODUCER == 'all' || env.REPRODUCER == 'sandbox-test')
+        run: |
+          # shellcheck disable=SC2086
+          node scripts/repro/run-capture.mjs --label "sandbox-test-node$MATRIX_NODE" --runs "$RUNS" --timeout-ms "$((RUN_TIMEOUT_MINUTES * 60000))" --log-dir "$LOG_DIR" -- \
+            node $NODE_FLAGS --conditions=development --test $SANDBOX_TEST_ARGS
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: v8-jit-repro-${{ matrix.os }}-node${{ matrix.node }}
+          path: repro-logs/
+          if-no-files-found: warn
+          retention-days: 30
