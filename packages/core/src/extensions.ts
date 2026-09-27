@@ -348,18 +348,18 @@ export type LoadedExtensionHooks<T extends string=string,C extends ExtensionHook
 /** Shared schema for project hook references. Omission means trusted execution. */
 export const extensionHookReferenceSchema={
   oneOf:[
-    {type:'string',minLength:1,maxLength:1024},
+    {type:'string',minLength:1,maxLength:1024,description:'Project-relative module path; its default export is the hook.'},
     {type:'object',additionalProperties:false,required:['source'],properties:{
-      source:{type:'string',minLength:1,maxLength:1024},
-      export:{type:'string',pattern:'^[A-Za-z_][A-Za-z0-9_]*$'},
-      sandbox:{type:'boolean'},
-      sandboxReason:{type:'string',minLength:1,maxLength:512},
+      source:{type:'string',minLength:1,maxLength:1024,description:'Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation.'},
+      export:{type:'string',pattern:'^[A-Za-z_][A-Za-z0-9_]*$',description:'Named export to call (default: the module default export).'},
+      sandbox:{type:'boolean',description:'Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed.'},
+      sandboxReason:{type:'string',minLength:1,maxLength:512,description:'Reviewer note recorded with a sandbox choice; it grants nothing.'},
     }},
   ],
 } as const;
 /** Builds the strict `config.hooks` schema from an extension's declared hook names. */
 export function extensionHooksSchema(contracts:readonly ExtensionHookContract[]):object {
-  return {type:'object',additionalProperties:false,properties:Object.fromEntries(contracts.map(contract=>[contract.name,extensionHookReferenceSchema]))};
+  return {type:'object',additionalProperties:false,properties:Object.fromEntries(contracts.map(contract=>[contract.name,{...extensionHookReferenceSchema,description:`${contract.kind==='filter'?'Filter':'Action'} hook: ${contract.description}`}]))};
 }
 /**
  * Loads project hooks once per activation. Project hooks are trusted first-party

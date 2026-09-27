@@ -92,7 +92,12 @@ release does and runs the end-to-end site integration.
 
 When changing YAML fields, update schema and semantics, run `npm run docs:reference`,
 and add a runnable example/response fixture in `examples/cookbook` where appropriate.
-`npm run verify` rejects a stale generated field reference. `npm run docs:llms`
+`npm run verify` rejects a stale generated field reference. When changing a first-party
+extension's configuration, route-policy or hook schema, give every property a
+`description` and run `npm run build:addons`: it rewrites the descriptor and the
+field reference at the end of the package README (`npm run docs:extensions` alone
+refreshes the reference), and `npm run check` rejects an undescribed property, a
+stale reference or an extension without shipped agent references. `npm run docs:llms`
 regenerates the consolidated `llms-full.txt`, and verify rejects a stale copy of it too. For a documentation PR, rebase onto current `main` and run `npm run docs:llms` as the final pre-merge step; do not hand-merge the generated bundle. CI runs cookbook tests
 and its expected-count audit on supported Node/OS combinations; package checks
 verify the cookbook and AI authoring resources ship. Keep unsupported features

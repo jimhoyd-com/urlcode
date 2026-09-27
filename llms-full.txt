@@ -18,6 +18,14 @@ or fetch inside a `sandbox: true` function, regex routes, database access,
 global middleware, YAML interpolation, or packages named in YAML. Secrets need external revision-pinned
 grants. Unsupported features fail with the route named; nothing degrades silently.
 
+## Coverage
+
+This file bundles exactly the pages listed under Contents, and nothing else. It omits the add-on package READMEs, which hold each extension's guide and its generated field reference, along with the other docs/ pages, recipes and examples. A key or feature missing here is not evidence that URLCode lacks it. Bounded ways to reach what is omitted:
+
+- the add-ons installed in a project: `urlcode docs search "<term>" --project app` (MCP `search_docs`) reads their README and `urlcode.json`;
+- every first-party extension's configuration, route policy and hooks: the index in [Extension field references](#extension-field-references), each row linking to `packages/<name>/README.md#field-reference`;
+- this release's add-ons and their agent references, installed or not: MCP `get_release_addon_catalog`.
+
 ## Contents
 
 1. [The URLCode framework](#the-urlcode-framework)
@@ -35,8 +43,9 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 13. [Conditional routing](#conditional-routing)
 14. [Bounded proxy and webhook transport](#bounded-proxy-and-webhook-transport)
 15. [Operator-installed extensions](#operator-installed-extensions)
-16. [Composing a site from ui, auth and admin](#composing-a-site-from-ui-auth-and-admin)
-17. [Function execution: trusted by default, sandboxed opt-in](#function-execution-trusted-by-default-sandboxed-opt-in)
+16. [Extension field references](#extension-field-references)
+17. [Composing a site from ui, auth and admin](#composing-a-site-from-ui-auth-and-admin)
+18. [Function execution: trusted by default, sandboxed opt-in](#function-execution-trusted-by-default-sandboxed-opt-in)
 
 ---
 
@@ -387,6 +396,7 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Need | Read |
 |---|---|
 | Write or change routes | [YAML guide](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-GUIDE.md), [field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-REFERENCE.md), [cookbook](https://github.com/jimhoyd-com/urlcode/blob/main/examples/cookbook/README.md) |
+| Configure an extension: every key it accepts | [extension field references](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
 | Add accounts | [auth README](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md), [auth security](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/SECURITY.md) |
 | Add administration | [admin README](https://github.com/jimhoyd-com/urlcode/blob/main/packages/admin/README.md) |
 | Audit log, abuse budgets, email | [audit](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md), [abuse](https://github.com/jimhoyd-com/urlcode/blob/main/packages/abuse/README.md), [mail](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mail/README.md) |
@@ -573,10 +583,18 @@ for installation, host registration, discovery and validation. The managed
    presentation overrides under `ui/`, the project functions its lifecycle
    hooks call, and when a requirement instead needs a new extension in
    TypeScript.
+8. [Extension field references](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md): core's field
+   reference stops at `extensions.<name>.config`, so each first-party
+   extension's package README ends with a field reference generated from its
+   `urlcode.json`: every configuration key, route-policy key and hook contract,
+   described. The page maps a capability (stored short links, a form's
+   `onSubmit` hook, per-user records) to the keys and a checked example.
 
 The root [llms.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms.txt) is a compact discovery index; the generated
 [llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms-full.txt) concatenates the authoring documents above in
-reading order for agents that want complete context in one fetch. It is a convenience,
+reading order for agents that want complete context in one fetch. Its opening
+coverage note lists what it leaves out: the add-on package READMEs and their
+field references, which `search_docs` reads for installed add-ons. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
 [URLCode AI](https://urlcode.ai/) is the optional hosted companion for
@@ -4160,7 +4178,12 @@ An extension package default-exports a [definition](#the-extension-definition)
 from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 
 1. Declares its logical name, contract version, supported targets, exact project
-   revision pin and strict configuration/policy schemas.
+   revision pin and strict configuration/policy schemas. Give every property a
+   `description` saying what it does, including nested, map-value and hook
+   input/output properties: `get_extensions`, `search_docs` and editors show
+   it. For the first-party packages in this repository `npm run check` fails an
+   undescribed property and renders each package README's
+   [field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md) from the descriptor.
 2. Publishes every project hook through `hooks` and reuses
    `extensionHooksSchema` plus `loadExtensionHooks`; it does not implement its
    own path resolver or dynamic-import cache. If it admits an author-supplied
@@ -4846,6 +4869,12 @@ stays a local concern: MCP `get_addon_agent_tooling`, `get_extension_artifacts`
 and, with the operator host, `get_extensions`. The descriptor does not record
 whether an extension ships an `--example`; the catalog does not either.
 
+Every first-party extension declares `agent` references, and at least one of
+them is its `README.md`, which ends with the generated
+[field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md). `npm run check` fails when an
+extension has none, or names a file its package does not ship, so an installed
+extension always appears in `get_addon_agent_tooling`.
+
 #### The site layout
 
 `urlcode init <directory>` always writes one layout:
@@ -5250,6 +5279,97 @@ extensions list --strict` and `urlcode artifacts list --strict`, then validates
 the project. Without a `host-file` input it validates declared extensions
 statically and skips `test` and `audit` when the project declares extensions;
 with one it computes `PROJECT_SHA256` for that CI run only.
+
+---
+
+# Extension field references
+
+Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md
+
+The [YAML field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-REFERENCE.md) is core's schema, and it stops at
+`extensions.<name>.config`: core accepts any object there and hands it to the
+extension. Each first-party extension owns the syntax below that key. Its
+package README ends with a **Field reference** generated from the package's
+`urlcode.json`, the same schema the runtime validates against: configuration,
+route policy, project hooks, peers and the authoring surfaces and limits. Every
+property carries a description, and `npm run check` fails when one does not or
+when a reference is stale.
+
+Two distinctions hold throughout:
+
+- **Schema-valid is not activatable.** A document can pass the schema and still
+  refuse to start: a flow without its route, a collection a short link names
+  but does not declare, a peer that is not installed. Activation checks those;
+  `urlcode validate --project . --host-file <host.mjs> --origin <origin>`
+  activates the project and reports them.
+- **Available is not installed.** This page, the release catalog (MCP
+  `get_release_addon_catalog`) and the list below describe what this release
+  ships. A site has an extension only when `urlcode extensions add <name>`
+  installed it and `host.mjs` registers it. A third-party extension documents
+  its own syntax; nothing here describes it.
+
+### Where each extension's fields are documented
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+| Extension | What it declares | Peers | Described fields | Field reference |
+|---|---|---|---|---|
+| `abuse` | Persistent, pseudonymous rate limits, failure backoff and challenge escalation for extensions | — | config 1 | [@jimhoyd/urlcode-abuse](https://github.com/jimhoyd-com/urlcode/blob/main/packages/abuse/README.md#field-reference) |
+| `admin` | Administration console for users, sessions, roles and audit, on top of the auth and audit extensions | requires auth, ui, audit | config 0 | [@jimhoyd/urlcode-admin](https://github.com/jimhoyd-com/urlcode/blob/main/packages/admin/README.md#field-reference) |
+| `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md#field-reference) |
+| `auth` | Accounts, sessions, passkeys, OIDC and TOTP sign-in with trusted account pages | requires ui, audit, mail; uses abuse | config 48, route policy 11, hook input/output 25 | [@jimhoyd/urlcode-auth](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#field-reference) |
+| `form-records` | Saves a declared form into an owned store collection, with a confirmation page and an edit page limited to declared fields. | requires forms, store, ui | config 42 | [@jimhoyd/urlcode-form-records](https://github.com/jimhoyd-com/urlcode/blob/main/packages/form-records/README.md#field-reference) |
+| `forms` | Declarative server-rendered form flows with CSRF, field validation and a confirmation page, rendered through ui. | requires ui; uses abuse, mail | config 49, hook input/output 2 | [@jimhoyd/urlcode-forms](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#field-reference) |
+| `mail` | Plain-text transactional email: templates contributed by other extensions, one operator transport. | — | config 2 | [@jimhoyd/urlcode-mail](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mail/README.md#field-reference) |
+| `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#field-reference) |
+| `store` | File-backed JSON collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 36 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference) |
+| `ui` | Shared presentation kit: theme, copy, templates and the data screens other extensions contribute, for every extension page. | — | config 64, hook input/output 3 | [@jimhoyd/urlcode-ui](https://github.com/jimhoyd-com/urlcode/blob/main/packages/ui/README.md#field-reference) |
+<!-- extension-reference:end -->
+
+### Capability to reference
+
+Start from what you need. Each row names the keys to declare and where their
+full definition and a checked example live.
+
+| I need | Declare | Reference and example |
+|---|---|---|
+| Stored short links: create, redirect, click count | store: a collection with a `key`, a required `format: http-url` destination field and one `increments` counter, plus `shortLinks.<name>: {mount, collection, destination, clicks}` and a `/go/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference); the complete YAML is in [bounded keyed transitions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#bounded-keyed-transitions) |
+| Run project code when a form is submitted | forms: `hooks.onSubmit: hooks/on-submit.mjs`, a trusted module `(input, context)` called after CSRF and validation | [forms: handling a submission](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#handling-a-submission-onsubmit) (its YAML and module run in the package tests); [hook contract](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#project-hooks-extensionsformsconfighooks) |
+| A server-rendered form with validation | forms: `flows.<name>` with `fields`, `confirmation`, and a `<mount>/*` route (GET, HEAD, POST) | [forms field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#field-reference); `urlcode extensions add forms --example` writes a working `/contact` |
+| A field required only for some answers | forms: `fields.<field>.requiredWhen: {field, in}` | [conditionally required fields](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#conditionally-required-fields) |
+| Email each submission | forms: `flows.<name>.notify: {recipient, include}`; the recipient's address in `mail({recipients})` in `host.mjs` | [notifications](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#notifications-notify), [mail field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mail/README.md#field-reference) |
+| Save a form as a per-user record | form-records: `records.<name>: {mount, collection, form}` over an `ownership: owner` store collection | [form-records field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/form-records/README.md#field-reference) |
+| A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference), [recipe `store-crud`](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/store-crud/README.md) |
+| Records private to each signed-in user | store: `ownership: owner` on the collection, and a principal-providing policy (`auth: {csrf: origin}`) on its route | [per-record ownership](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#per-record-ownership) |
+| Sign-in and protected routes | auth: `registration`; on a route, `auth: true` or `auth: {role, permission, verified, freshWithinSeconds, onDeny, csrf}` | [auth field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#field-reference), [protecting a route](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form) |
+| API keys for machine callers | auth: `auth: {bearer: {scopes, quota}}` on the route; keys issued by the operator | [auth route policy](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#route-policy-policiesextensionsauth), [bearer routes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#bearerapi-key-routes) |
+| Sign-in or form rate limits | auth: `abuse: {client, signupClient, signupDomain, challengeAfter, passwordBackoff}`; forms: `flows.<name>.abuse`; both need the abuse extension | [auth field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#field-reference), [abuse field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/abuse/README.md#field-reference) |
+| An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md#field-reference) |
+| Brand, colours, copy and templates | ui: `theme`, `languages`, `copy`, `templates`, `stylesheet`, `hooks` | [ui field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/ui/README.md#field-reference) |
+| MCP tools, resources and prompts | mcp: `servers.<name>` with `tools`, each backed by a trusted handler module | [mcp field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#field-reference) |
+
+A plain per-route request budget is core's `policies.throttle`, not an
+extension ([policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md)).
+
+### Bounded retrieval
+
+An agent does not need the whole corpus to find one key.
+
+- **Installed in the project:** `urlcode docs search "<term>" --project app`
+  (MCP `search_docs`) reads each installed, pin-verified add-on's README (with
+  its field reference) and `urlcode.json`, returns at most three bounded
+  excerpts and says which sources it searched. MCP `get_addon_agent_tooling`
+  lists the installed add-ons' agent references; `get_extensions` (with the
+  operator's `--host-file`) returns the registered schemas themselves.
+- **In this release, installed or not:** MCP `get_release_addon_catalog` lists
+  every add-on's agent references by package path. It is availability, not
+  installation.
+- **A source checkout or GitHub:** `packages/<name>/README.md#field-reference`,
+  one file per extension, linked from the table above.
+
+[llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms-full.txt) bundles core's authoring pages and this page,
+but not the package READMEs; its coverage note says so.
 
 ---
 

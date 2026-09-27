@@ -50,23 +50,44 @@ interface FormConfig { flows:Record<string,FormFlowSpec>; hooks?:Record<string,u
  */
 export interface FormsExtensionOptions { projectSha256:string; csrfSecret:string|Uint8Array; ui:UiExtension; abuse?:AbuseExports|undefined; mail?:MailExports|undefined; now?:()=>number }
 
-const stringSchema={type:'string',minLength:1,maxLength:512};
+const stringSchema=(description:string)=>({type:'string',minLength:1,maxLength:512,description});
 /** Relative bound durations: signed, years/months/days only, at least one part (`P2Y`, `-P18Y`, `P1Y6M`, `P30D`). */
 const DURATION=/^(-?)P(?=\d)(?:(\d{1,5})Y)?(?:(\d{1,5})M)?(?:(\d{1,5})D)?$/, ZONE=/^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/;
 /** A bound is a number for `type: number`, or a `YYYY-MM-DD` date / `YYYY-MM-DDTHH:MM` local date and time, `today` or `{from: today, add: <duration>}` for the date types; validateFlow checks which applies. */
-const boundSchema={anyOf:[{type:'number'},{type:'string',pattern:'^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$'},{const:'today'},{type:'object',additionalProperties:false,required:['from','add'],properties:{from:{const:'today'},add:{type:'string',pattern:DURATION.source}}}]};
+const boundSchema=(description:string)=>({description,anyOf:[{type:'number'},{type:'string',pattern:'^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2})?$'},{const:'today'},{type:'object',additionalProperties:false,required:['from','add'],properties:{from:{const:'today',description:'The flow\'s current date in its timeZone.'},add:{type:'string',pattern:DURATION.source,description:'Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y.'}}}]});
 const fieldSchema={type:'object',additionalProperties:false,required:['label'],properties:{
-  label:stringSchema,control:{enum:['input','textarea','select','checkbox']},type:{enum:['text','email','number','tel','url','date','datetime-local']},required:{type:'boolean'},
-  minLength:{type:'integer',minimum:0,maximum:65536},maxLength:{type:'integer',minimum:1,maximum:65536},minimum:boundSchema,maximum:boundSchema,pattern:{type:'string',minLength:1,maxLength:maxPatternInputLength},enum:{type:'array',minItems:1,maxItems:128,uniqueItems:true,items:{type:'string',maxLength:512}},description:{type:'string',maxLength:512},
-  requiredWhen:{type:'object',additionalProperties:false,required:['field','in'],properties:{field:{type:'string',pattern:FIELD.source},in:{type:'array',minItems:1,maxItems:128,uniqueItems:true,items:{type:'string',maxLength:512}}}},
-  options:{type:'array',minItems:1,maxItems:128,items:{type:'object',additionalProperties:false,required:['value','label'],properties:{value:{type:'string',maxLength:512},label:{type:'string',maxLength:512}}}},
+  label:stringSchema('Visible label of the field; also names it in error messages and on the confirmation.'),
+  control:{enum:['input','textarea','select','checkbox'],description:'HTML control (default input). select needs options; checkbox takes no type or bounds and submits true or false.'},
+  type:{enum:['text','email','number','tel','url','date','datetime-local'],description:'Input type for an input control (default text); decides which bounds apply and how the value is checked.'},
+  required:{type:'boolean',description:'Fields are required unless this is false. Not allowed together with requiredWhen.'},
+  minLength:{type:'integer',minimum:0,maximum:65536,description:'Fewest characters a text value may have; not for number, date or checkbox fields.'},
+  maxLength:{type:'integer',minimum:1,maximum:65536,description:'Most characters a text value may have; required (and bounded) when pattern is set.'},
+  minimum:boundSchema('Lower bound: a number for type number; for date and datetime-local an absolute YYYY-MM-DD or YYYY-MM-DDTHH:MM value, today, or {from: today, add: <duration>} in the flow\'s timeZone.'),
+  maximum:boundSchema('Upper bound, with the same forms as minimum; it must not be below minimum.'),
+  pattern:{type:'string',minLength:1,maxLength:maxPatternInputLength,description:'Regular expression the whole text value must match; checked for catastrophic backtracking at activation and requires maxLength.'},
+  enum:{type:'array',minItems:1,maxItems:128,uniqueItems:true,items:{type:'string',maxLength:512},description:'Exact values an input accepts, or the subset of a select\'s option values it accepts.'},
+  description:{type:'string',maxLength:512,description:'Help text rendered under the field.'},
+  requiredWhen:{type:'object',additionalProperties:false,required:['field','in'],description:'Makes the field required only when a sibling select or enum field was submitted once with one of the listed values, and optional otherwise. Replaces required; the sibling must not itself be conditional.',properties:{
+    field:{type:'string',pattern:FIELD.source,description:'Name of the sibling field in this flow; it needs a fixed value set (a select or an enum input).'},
+    in:{type:'array',minItems:1,maxItems:128,uniqueItems:true,items:{type:'string',maxLength:512},description:'Values of the sibling that make this field required; each must be one the sibling accepts.'},
+  }},
+  options:{type:'array',minItems:1,maxItems:128,description:'Choices of a select control, in display order; only select fields take options.',items:{type:'object',additionalProperties:false,required:['value','label'],properties:{value:{type:'string',maxLength:512,description:'Submitted value of the choice.'},label:{type:'string',maxLength:512,description:'Visible text of the choice; the confirmation shows it for a shown select.'}}}},
 }};
-export const formHookContracts=[{name:'onSubmit',kind:'action',description:'Runs after the extension has admitted and validated a form submission, before the confirmation (a redirect, or the inline page with success.mode inline). It is trusted project code and receives only declared field values.',inputSchema:{type:'object',additionalProperties:false,required:['flow','values'],properties:{flow:{type:'string'},values:{type:'object'}}}}] as const satisfies readonly ExtensionHookContract[];
+export const formHookContracts=[{name:'onSubmit',kind:'action',description:'Runs after the extension has admitted and validated a form submission, before the confirmation (a redirect, or the inline page with success.mode inline). It is trusted project code and receives only declared field values.',inputSchema:{type:'object',additionalProperties:false,required:['flow','values'],properties:{flow:{type:'string',description:'Name of the flow the submission belongs to (its key under flows).'},values:{type:'object',description:'Validated values of the declared fields, as strings keyed by field name (a checkbox is true or false); frozen.'}}}}] as const satisfies readonly ExtensionHookContract[];
 const flowBodyProperties={
-  title:stringSchema,timeZone:{type:'string',pattern:ZONE.source},submitLabel:stringSchema,
-  confirmation:{type:'object',additionalProperties:false,required:['title','message'],properties:{title:stringSchema,message:{type:'string',minLength:1,maxLength:2048},show:{type:'array',minItems:1,maxItems:32,uniqueItems:true,items:{type:'string',pattern:FIELD.source}}}},
-  success:{type:'object',additionalProperties:false,required:['mode'],properties:{mode:{enum:['redirect','inline']},status:{enum:[200,201]}}},
-  fields:{type:'object',minProperties:1,maxProperties:32,propertyNames:{pattern:FIELD.source},additionalProperties:fieldSchema},
+  title:stringSchema('Page heading and title of the form.'),
+  timeZone:{type:'string',pattern:ZONE.source,description:'IANA time zone (default UTC) that defines "today" for relative date bounds; refused at activation when unknown.'},
+  submitLabel:stringSchema('Text of the submit button.'),
+  confirmation:{type:'object',additionalProperties:false,required:['title','message'],description:'The page a valid submission leads to.',properties:{
+    title:stringSchema('Heading of the confirmation page.'),
+    message:{type:'string',minLength:1,maxLength:2048,description:'Confirmation text; a {field} placeholder is replaced by that submitted value (escaped) and must be listed in show.'},
+    show:{type:'array',minItems:1,maxItems:32,uniqueItems:true,items:{type:'string',pattern:FIELD.source},description:'Declared fields whose submitted values the confirmation may display: carried in a sealed five-minute cookie on redirect, or rendered directly inline. Nothing else is echoed.'},
+  }},
+  success:{type:'object',additionalProperties:false,required:['mode'],description:'What a valid POST answers: redirect (default) is a 303 to <mount>/confirmation; inline renders the confirmation in the POST response.',properties:{
+    mode:{enum:['redirect','inline'],description:'redirect or inline.'},
+    status:{enum:[200,201],description:'Status of the inline confirmation (default 200); refused with mode redirect.'},
+  }},
+  fields:{type:'object',minProperties:1,maxProperties:32,propertyNames:{pattern:FIELD.source},additionalProperties:fieldSchema,description:'The form\'s fields in display order, keyed by field name (the submitted name). A field not declared here is refused.'},
 } as const;
 /**
  * The JSON Schema of a flow body: everything a flow declares except its `mount` (#529). It is the
@@ -76,18 +97,20 @@ const flowBodyProperties={
  */
 export const formFlowBodySchema={type:'object',additionalProperties:false,required:['title','submitLabel','confirmation','fields'],properties:flowBodyProperties} as const;
 /** A mounted flow's `abuse` block (the abuse extension's budget bounds); validateFlow checks `challengeAfter` < `limit` and the honeypot name. */
-const abuseSchema={type:'object',additionalProperties:false,required:['client'],properties:{
-  client:{type:'object',additionalProperties:false,required:['limit','windowMs'],properties:{limit:{type:'integer',minimum:1,maximum:100000},windowMs:{type:'integer',minimum:1000,maximum:86400000}}},
-  challengeAfter:{type:'integer',minimum:1,maximum:99999},honeypot:{type:'string',pattern:FIELD.source},
+const abuseSchema={type:'object',additionalProperties:false,required:['client'],description:'Per-flow submission budget through the abuse extension (node target only); the flow refuses to activate without abuse installed. Needs the runtime trusted-proxy boundary to key clients.',properties:{
+  client:{type:'object',additionalProperties:false,required:['limit','windowMs'],description:'Submissions admitted per client network (IPv4 address or IPv6 /64); over it a POST answers 429 with Retry-After.',properties:{limit:{type:'integer',minimum:1,maximum:100000,description:'Submissions per window.'},windowMs:{type:'integer',minimum:1000,maximum:86400000,description:'Window length in milliseconds.'}}},
+  challengeAfter:{type:'integer',minimum:1,maximum:99999,description:'After this many admitted submissions in the window, a submission must pass the operator challenge (abuse({challenge}) in host.mjs); must be below client.limit.'},
+  honeypot:{type:'string',pattern:FIELD.source,description:'Name of a hidden field humans leave empty; a submission that fills it is answered as a success and dropped. Must not be a declared field.'},
 }} as const;
 /** A mounted flow's `notify` block: an operator-named recipient (never an address in YAML) and the fields whose values the message carries. */
-const notifySchema={type:'object',additionalProperties:false,required:['recipient'],properties:{
-  recipient:{type:'string',pattern:'^[a-z][a-z0-9-]{0,63}$'},include:{type:'array',minItems:1,maxItems:32,uniqueItems:true,items:{type:'string',pattern:FIELD.source}},
+const notifySchema={type:'object',additionalProperties:false,required:['recipient'],description:'Emails each accepted submission (template forms.submission) through the mail extension, after onSubmit and before the confirmation; the flow refuses to activate without mail. A failed delivery answers 503 and the visitor may resubmit, so delivery is at least once.',properties:{
+  recipient:{type:'string',pattern:'^[a-z][a-z0-9-]{0,63}$',description:'Operator-named recipient from mail({recipients}) in host.mjs; an address never appears in YAML.'},
+  include:{type:'array',minItems:1,maxItems:32,uniqueItems:true,items:{type:'string',pattern:FIELD.source},description:'Declared fields whose values the message carries as plain text (default none).'},
 }} as const;
 export const formsConfigSchema={type:'object',additionalProperties:false,required:['flows'],properties:{
-  hooks:extensionHooksSchema(formHookContracts),
-  flows:{type:'object',maxProperties:16,propertyNames:{pattern:FLOW.source},additionalProperties:{type:'object',additionalProperties:false,required:['mount','title','submitLabel','confirmation','fields'],properties:{
-    mount:{type:'string',pattern:'^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$',maxLength:256},...flowBodyProperties,abuse:abuseSchema,notify:notifySchema,
+  hooks:{...extensionHooksSchema(formHookContracts),description:'Trusted project hooks by name ({source, export} or a bare module path). onSubmit runs for every flow; sandbox: true is refused.'},
+  flows:{type:'object',maxProperties:16,propertyNames:{pattern:FLOW.source},description:'Mounted form flows by name. Each needs a route <mount>/* with extension: forms (GET, HEAD, POST); a flow without its route, or a forms route without a flow, fails activation.',additionalProperties:{type:'object',additionalProperties:false,required:['mount','title','submitLabel','confirmation','fields'],properties:{
+    mount:{type:'string',pattern:'^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$',maxLength:256,description:'URL path the flow is served at: the form on GET and POST, the confirmation at <mount>/confirmation.'},...flowBodyProperties,abuse:abuseSchema,notify:notifySchema,
   }}
 }}} as const;
 /** The message forms contributes to mail (`contributes.mail`): `forms.submission`, sent to a flow's `notify` recipient. */

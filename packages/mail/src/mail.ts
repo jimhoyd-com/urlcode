@@ -14,8 +14,9 @@ const LOCALE = '^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$';
 export const mailConfigSchema = {
   type: 'object', additionalProperties: false,
   properties: {
-    defaultLocale: { type: 'string', minLength: 2, maxLength: 35, pattern: LOCALE },
+    defaultLocale: { type: 'string', minLength: 2, maxLength: 35, pattern: LOCALE, description: 'Language tag used when a message names no locale or one without copy (default en); the contributed English source is the last fallback.' },
     copy: {
+      description: 'Site copy overrides by locale: each language tag maps to a mail/copy/<name>.json file (inside the site) that overrides or translates contributed templates by <namespace>.<key>, keeping every {slot}. Checked at activation.',
       type: 'object', maxProperties: 32, propertyNames: { pattern: LOCALE },
       additionalProperties: { type: 'string', maxLength: 256, pattern: '^mail/copy/[A-Za-z0-9_-]{1,64}\\.json$' },
     },

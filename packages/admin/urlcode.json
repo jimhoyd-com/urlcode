@@ -49,7 +49,7 @@
     "references": [
       {
         "name": "admin extension guide",
-        "description": "Configuration and operational guidance for users, sessions and roles.",
+        "description": "Configuration and operational guidance for users, sessions and roles; ends with the generated field reference for every configuration key.",
         "path": "README.md"
       }
     ]

@@ -34,7 +34,7 @@ export default defineExtension<FormsHostOptions>({
   contributes: { mail: formsMail },
   hooks: formHookContracts,
   authoring: formsAuthoring,
-  agent: {description: 'Local, revision-pinned references for agents configuring the forms extension.', references: [{name: 'forms extension guide', description: 'Configuration and integration guidance for declarative form flows.', path: 'README.md'}]},
+  agent: {description: 'Local, revision-pinned references for agents configuring the forms extension.', references: [{name: 'forms extension guide', description: 'Configuration and integration guidance for declarative form flows; ends with the generated field reference for every configuration key.', path: 'README.md'}]},
   // The capability: the CSRF key the extension needs and an empty flows block; no form is mounted.
   scaffold() {
     return {

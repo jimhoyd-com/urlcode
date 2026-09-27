@@ -33,9 +33,11 @@
             "mount": {
               "type": "string",
               "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
-              "maxLength": 256
+              "maxLength": 256,
+              "description": "URL path of the collection's JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE)."
             },
             "fields": {
+              "description": "Declared record fields by name; a body naming any other field is refused. id, createdAt and updatedAt are reserved and store-owned.",
               "type": "object",
               "minProperties": 1,
               "maxProperties": 64,
@@ -55,10 +57,12 @@
                       "integer",
                       "number",
                       "boolean"
-                    ]
+                    ],
+                    "description": "Value type; integer must be a safe integer and number a finite number."
                   },
                   "required": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "true: every record must carry the field and PATCH cannot clear it; not combinable with default."
                   },
                   "default": {
                     "oneOf": [
@@ -72,22 +76,26 @@
                       {
                         "type": "boolean"
                       }
-                    ]
+                    ],
+                    "description": "Value stored on create when the body omits the field; it must satisfy the field's own rules."
                   },
                   "minLength": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 65536
+                    "maximum": 65536,
+                    "description": "Fewest characters of a string value."
                   },
                   "maxLength": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 65536
+                    "maximum": 65536,
+                    "description": "Most characters of a string value (default 65536); a key needs at most 128, and a sortable or filterable string field a small bound or an enum."
                   },
                   "format": {
                     "enum": [
                       "http-url"
-                    ]
+                    ],
+                    "description": "http-url: the string must be an absolute HTTP(S) URL without credentials or ASCII whitespace; required for a short-link destination."
                   },
                   "enum": {
                     "type": "array",
@@ -103,13 +111,16 @@
                           "type": "number"
                         }
                       ]
-                    }
+                    },
+                    "description": "The only values the field accepts; not for booleans."
                   },
                   "minimum": {
-                    "type": "number"
+                    "type": "number",
+                    "description": "Smallest numeric value; numbers only."
                   },
                   "maximum": {
-                    "type": "number"
+                    "type": "number",
+                    "description": "Largest numeric value; numbers only."
                   }
                 }
               }
@@ -117,24 +128,29 @@
             "maxRecords": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 10000
+              "maximum": 10000,
+              "description": "Records the collection may hold (default 1000); a create beyond it answers 409 collection_full."
             },
             "maxRecordBytes": {
               "type": "integer",
               "minimum": 256,
-              "maximum": 65536
+              "maximum": 65536,
+              "description": "Largest serialized record in bytes (default 4096); larger answers 413."
             },
             "pageSize": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200
+              "maximum": 200,
+              "description": "Records per list page, and the cap on a list request's limit (default 50)."
             },
             "readOnly": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "true: the API serves only GET and HEAD (other methods answer 405); short-link click counting still works."
             },
             "key": {
               "type": "string",
-              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+              "description": "A required string field (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner."
             },
             "increments": {
               "type": "array",
@@ -143,9 +159,11 @@
               "items": {
                 "type": "string",
                 "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-              }
+              },
+              "description": "Numeric fields with a numeric default that POST <mount>/<id>/increment/<field> raises by exactly one under the write lock, within the field's bounds."
             },
             "idempotency": {
+              "description": "Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled.",
               "type": "object",
               "additionalProperties": false,
               "required": [
@@ -155,7 +173,8 @@
                 "maxKeys": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 1000
+                  "maximum": 1000,
+                  "description": "Newest distinct keys retained, per network client; an evicted key is no longer protected."
                 }
               }
             },
@@ -166,7 +185,8 @@
               "items": {
                 "type": "string",
                 "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-              }
+              },
+              "description": "Declared fields a list request may sort by (sort=<field> or sort=-<field>)."
             },
             "filterable": {
               "type": "array",
@@ -175,26 +195,32 @@
               "items": {
                 "type": "string",
                 "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-              }
+              },
+              "description": "Declared fields a list request may filter by equality (<field>=<value>); limit, cursor and sort cannot be filterable."
             },
             "ownership": {
               "enum": [
                 "shared",
                 "owner"
-              ]
+              ],
+              "description": "shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true."
             },
             "maxRecordsPerOwner": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 10000
+              "maximum": 10000,
+              "description": "With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded."
             },
             "audit": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "true: every write is recorded in the audit log (field names and the principal, never values). Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain."
             }
           }
-        }
+        },
+        "description": "File-backed JSON collections by name, each stored as data/store/<name>.json (outside app/) and served as a bounded CRUD API at its mount."
       },
       "shortLinks": {
+        "description": "Public redirect mounts by name: GET <mount>/<key> atomically increments a counter and answers 302 to the record's stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route <mount>/* with extension: store (GET, HEAD).",
         "type": "object",
         "maxProperties": 32,
         "propertyNames": {
@@ -213,24 +239,29 @@
             "mount": {
               "type": "string",
               "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
-              "maxLength": 256
+              "maxLength": 256,
+              "description": "URL path of the redirect mount, separate from the collection's CRUD mount."
             },
             "collection": {
               "type": "string",
-              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+              "description": "A declared shared collection with a key; the key value is the path segment after the mount."
             },
             "destination": {
               "type": "string",
-              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+              "description": "A required string field with format: http-url holding the redirect target; activation refuses it otherwise."
             },
             "clicks": {
               "type": "string",
-              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+              "description": "A field listed in the collection's increments, raised by one on each GET (even when the collection is readOnly)."
             }
           }
         }
       },
       "screens": {
+        "description": "List-and-form screens by exact page path, each for one declared collection. The store hands them to ui through contributes.ui; each needs a route <path>/* with extension: ui (GET, HEAD). Ignored when ui is not installed.",
         "type": "object",
         "maxProperties": 16,
         "propertyNames": {
@@ -246,17 +277,20 @@
           "properties": {
             "collection": {
               "type": "string",
-              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+              "description": "A collection declared under collections; activation fails otherwise."
             },
             "title": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 80
+              "maxLength": 80,
+              "description": "Page title. Default: the collection name in sentence case."
             },
             "columns": {
               "type": "array",
               "minItems": 1,
               "maxItems": 64,
+              "description": "Fields shown in the list, in order: a field name, or {field, label} to set the heading. Default: every declared field. Unless the collection is readOnly, every required field without a default must be listed, or ui refuses the screen.",
               "items": {
                 "oneOf": [
                   {
@@ -272,12 +306,14 @@
                     "properties": {
                       "field": {
                         "type": "string",
-                        "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                        "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+                        "description": "A declared field of the collection."
                       },
                       "label": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 80
+                        "maxLength": 80,
+                        "description": "Column heading. Default: the field name."
                       }
                     }
                   }
@@ -327,7 +363,7 @@
     "references": [
       {
         "name": "store extension guide",
-        "description": "Configuration and data-model guidance for the store extension.",
+        "description": "Configuration and data-model guidance for the store extension; ends with the generated field reference for every configuration key.",
         "path": "README.md"
       }
     ]

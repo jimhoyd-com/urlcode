@@ -45,6 +45,13 @@ export default defineExtension<AbuseHostOptions>({
   requires: [],
   schema: abuseConfigSchema,
   authoring: abuseAuthoring,
+  agent: {
+    description: 'Local, revision-pinned references for agents configuring the abuse extension or consuming its exports.',
+    references: [
+      { name: 'abuse extension guide', description: 'Configuration and the budget, backoff and challenge exports other extensions call; ends with the generated field reference for every configuration key.', path: 'README.md' },
+      { name: 'abuse security model', description: 'Pseudonymous keys, bounded storage, fail-closed behavior and what the counters do not protect.', path: 'SECURITY.md' },
+    ],
+  },
   scaffold,
   async host(context, options) {
     let key: Uint8Array;

@@ -42,7 +42,7 @@ export default defineExtension<UiHostOptions>({
     schema: uiConfigSchema,
     hooks: uiHookContracts,
     authoring: uiAuthoring,
-    agent: {description: 'Local, revision-pinned references for agents configuring the UI extension.', references: [{name: 'UI extension guide', description: 'Configuration and theming guidance for the UI extension.', path: 'README.md'}]},
+    agent: {description: 'Local, revision-pinned references for agents configuring the UI extension.', references: [{name: 'UI extension guide', description: 'Configuration and theming guidance for the UI extension; ends with the generated field reference for every configuration key.', path: 'README.md'}]},
     scaffold,
     host(context, options) {
         const contributions = context.contributions<UiContribution>('ui');

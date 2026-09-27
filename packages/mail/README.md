@@ -171,3 +171,32 @@ HTML bodies, attachments, Reply-To, CC/BCC, several recipients, SMTP, queueing a
 `maxAttempts: 2`, bounce or complaint handling. mail logs nothing.
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `mail` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** none.
+
+### Configuration: `extensions.mail.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.mail.config.defaultLocale` | string | no | minLength: 2; maxLength: 35; pattern: "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$" | Language tag used when a message names no locale or one without copy (default en); the contributed English source is the last fallback. |
+| `extensions.mail.config.copy` | object | no | maxProperties: 32; keys: "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"; values: string (maxLength: 256; pattern: "^mail/copy/[A-Za-z0-9_-]{1,64}\\.json$") | Site copy overrides by locale: each language tag maps to a `mail/copy/<name>.json` file (inside the site) that overrides or translates contributed templates by `<namespace>.<key>`, keeping every {slot}. Checked at activation. |
+
+### Authoring surfaces and limits
+
+Every email is a template another extension contributes. Change wording or translate in `mail/copy/<locale>.json`; choose delivery in host.mjs. Never put secrets or addresses in YAML.
+
+- **defaultLocale** (configuration, `urlcode.yaml#extensions.mail.config.defaultLocale`): The locale used when a message names none or an unknown one; the contributed English source is the last fallback.
+- **copy** (copy, `mail/copy/<locale>.json`): Override or translate a contributed template by its `<namespace>.<key>`; keep every {slot}. List each file under extensions.mail.config.copy.
+- **transport** (extension, `host.mjs`): host.mjs mail({transport, from, recipients}).
+
+Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
+<!-- extension-reference:end -->

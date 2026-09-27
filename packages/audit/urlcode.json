@@ -10,7 +10,8 @@
       "retention": {
         "type": "integer",
         "minimum": 1000,
-        "maximum": 10000000
+        "maximum": 10000000,
+        "description": "How many of the newest events the log keeps (default 100000); older events are pruned as new ones arrive. Read on every activation, so removing the key returns to the default."
       }
     }
   },
@@ -33,7 +34,7 @@
     "references": [
       {
         "name": "audit extension guide",
-        "description": "Configuration, the producer contract and the query API.",
+        "description": "Configuration, the producer contract and the query API; ends with the generated field reference for every configuration key.",
         "path": "README.md"
       },
       {

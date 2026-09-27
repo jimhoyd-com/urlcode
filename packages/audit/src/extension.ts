@@ -48,7 +48,7 @@ export default defineExtension<AuditHostOptions>({
   agent: {
     description: 'Local, revision-pinned references for agents configuring or consuming the audit extension.',
     references: [
-      { name: 'audit extension guide', description: 'Configuration, the producer contract and the query API.', path: 'README.md' },
+      { name: 'audit extension guide', description: 'Configuration, the producer contract and the query API; ends with the generated field reference for every configuration key.', path: 'README.md' },
       { name: 'audit delivery guarantee', description: 'Atomic capture, at-least-once delivery stored once, fail closed at the backlog cap.', path: 'SECURITY.md' },
     ],
   },

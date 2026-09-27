@@ -475,3 +475,75 @@ These are deliberate scope choices for a first, minimal, declarative surface
 than oversights; see the package's tracked follow-up issues for status.
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** none.
+
+### Configuration: `extensions.mcp.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.mcp.config.servers` | object | no | minProperties: 1; maxProperties: 8; keys: "^[a-z][a-z0-9_-]{0,63}$" | MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route `<mount>/*` with extension: mcp (POST, HEAD; GET and DELETE too when the operator enables streaming in host.mjs). |
+| `extensions.mcp.config.servers.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$" | Exact endpoint path clients POST to; the route is `<mount>/*`, but the mount itself is the only path served (subpaths answer 404). |
+| `extensions.mcp.config.servers.*.serverName` | string | yes | minLength: 1; maxLength: 512 | Server name reported in the initialize result (serverInfo.name). |
+| `extensions.mcp.config.servers.*.serverVersion` | string | yes | minLength: 1; maxLength: 64 | Server version reported in the initialize result (serverInfo.version). |
+| `extensions.mcp.config.servers.*.instructions` | string | no | maxLength: 4096 | Optional usage instructions returned to clients in the initialize result. |
+| `extensions.mcp.config.servers.*.tools` | object | yes | minProperties: 1; maxProperties: 64; keys: "^[a-z][a-z0-9_-]{0,63}$" | Tools by protocol name (tools/list, tools/call); at least one. |
+| `extensions.mcp.config.servers.*.tools.*.title` | string | no | minLength: 1; maxLength: 256 | Human-readable display name (the MCP title field); the key stays the protocol name. |
+| `extensions.mcp.config.servers.*.tools.*.description` | string | yes | minLength: 1; maxLength: 1024 | What the tool does, shown to MCP clients in tools/list. |
+| `extensions.mcp.config.servers.*.tools.*.annotations` | object | no | unknown keys rejected | Optional MCP behavior hints, passed to clients as declared; they are advisory and grant or restrict nothing. |
+| `extensions.mcp.config.servers.*.tools.*.annotations.readOnlyHint` | boolean | no | — | Hint to clients that the tool does not modify its environment. |
+| `extensions.mcp.config.servers.*.tools.*.annotations.destructiveHint` | boolean | no | — | Hint that the tool may perform destructive updates. |
+| `extensions.mcp.config.servers.*.tools.*.annotations.idempotentHint` | boolean | no | — | Hint that repeated calls with the same arguments have no additional effect. |
+| `extensions.mcp.config.servers.*.tools.*.annotations.openWorldHint` | boolean | no | — | Hint that the tool interacts with external entities beyond the site. |
+| `extensions.mcp.config.servers.*.tools.*.inputSchema` | object | yes | — | Schema of the arguments object, in the bounded request.body.schema subset (checked at activation); a call whose arguments fail it never reaches the handler. |
+| `extensions.mcp.config.servers.*.tools.*.outputSchema` | object | no | — | Optional schema, in the same subset, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error. |
+| `extensions.mcp.config.servers.*.tools.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
+| `extensions.mcp.config.servers.*.tools.*.handler.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.mcp.config.servers.*.tools.*.handler.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.mcp.config.servers.*.tools.*.handler.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.mcp.config.servers.*.tools.*.handler.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.mcp.config.servers.*.resources` | object | no | maxProperties: 64; keys: "^[a-z][a-z0-9_-]{0,63}$" | Optional URI-addressed resources (resources/list, resources/read). |
+| `extensions.mcp.config.servers.*.resources.*.uri` | string | yes | minLength: 1; maxLength: 2048 | URI clients read the resource by (resources/read); unique within the server. |
+| `extensions.mcp.config.servers.*.resources.*.name` | string | yes | minLength: 1; maxLength: 512 | Resource name listed by resources/list. |
+| `extensions.mcp.config.servers.*.resources.*.title` | string | no | minLength: 1; maxLength: 256 | Human-readable display name (the MCP title field); the key stays the protocol name. |
+| `extensions.mcp.config.servers.*.resources.*.description` | string | no | maxLength: 1024 | What the resource holds, shown to clients. |
+| `extensions.mcp.config.servers.*.resources.*.mimeType` | string | no | minLength: 1; maxLength: 255 | MIME type advertised for the resource content. |
+| `extensions.mcp.config.servers.*.resources.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Returns the resource content: a string, or {text or blob, mimeType}. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
+| `extensions.mcp.config.servers.*.resources.*.handler.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.mcp.config.servers.*.resources.*.handler.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.mcp.config.servers.*.resources.*.handler.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.mcp.config.servers.*.resources.*.handler.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.mcp.config.servers.*.prompts` | object | no | maxProperties: 64; keys: "^[a-z][a-z0-9_-]{0,63}$" | Optional prompt templates by name (prompts/list, prompts/get). |
+| `extensions.mcp.config.servers.*.prompts.*.title` | string | no | minLength: 1; maxLength: 256 | Human-readable display name (the MCP title field); the key stays the protocol name. |
+| `extensions.mcp.config.servers.*.prompts.*.description` | string | no | maxLength: 1024 | What the prompt produces, shown to clients. |
+| `extensions.mcp.config.servers.*.prompts.*.arguments` | array | no | maxItems: 32 | Declared string arguments of the prompt template. |
+| `extensions.mcp.config.servers.*.prompts.*.arguments[].name` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]{0,63}$" | Argument name; its value is a string. |
+| `extensions.mcp.config.servers.*.prompts.*.arguments[].description` | string | no | maxLength: 1024 | What the argument means, shown to clients. |
+| `extensions.mcp.config.servers.*.prompts.*.arguments[].required` | boolean | no | — | true: prompts/get without it is refused before the handler runs. |
+| `extensions.mcp.config.servers.*.prompts.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Receives the validated string arguments and returns the prompt message content (prompts/get). Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
+| `extensions.mcp.config.servers.*.prompts.*.handler.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.mcp.config.servers.*.prompts.*.handler.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.mcp.config.servers.*.prompts.*.handler.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.mcp.config.servers.*.prompts.*.handler.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+
+### Authoring surfaces and limits
+
+Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.
+
+- **servers** (configuration, `urlcode.yaml#extensions.mcp.config.servers`): Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.
+- **tool handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler`): Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.
+- **resource handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler`): Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text\|blob, mimeType}), served over resources/read.
+- **prompt handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler`): Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.
+- **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); add GET and DELETE when the operator enables the streaming transport (sessions, progress and the server stream) in host.mjs. Add `auth: true` when tool calls require a signed-in caller.
+
+Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
+<!-- extension-reference:end -->

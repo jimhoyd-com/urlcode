@@ -287,3 +287,29 @@ untranslated keys fall back to English:
 The UX review of these screens is private maintainer material; see
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) and
 [ACCEPTANCE.md](ACCEPTANCE.md) for what shipped and what was validated.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `admin` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** requires `auth`, `ui`, `audit` (`urlcode extensions add admin` installs them too); contributes to `ui` (read only when that extension is installed).
+
+### Configuration: `extensions.admin.config`
+
+No configuration keys: declare `extensions.admin: {version: "1", config: {}}`.
+
+### Authoring surfaces and limits
+
+The administration console is part of the application, while auth keeps ownership of permissions, freshness checks, lifecycle hooks and transactional account operations, and audit keeps the log. Customize the console copy and screens before replacing behavior.
+
+- **administration copy** (copy, `ui/copy/<locale>.json`): Change console wording through the admin.* keys of the UI catalogue.
+- **administration screens** (template, `ui/templates/admin/<screen>.html`): Override one admin/* screen when its structure must change; keep permissions and mutation behavior package-owned.
+- **account lifecycle** (hook, `extensions.auth.config.hooks`): Role, registration and account-status hooks are auth's: they fire for the console and every other caller.
+
+Fast checks: `urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css`, `urlcode validate --local`, `urlcode test`.
+<!-- extension-reference:end -->

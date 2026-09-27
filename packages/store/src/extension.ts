@@ -80,7 +80,7 @@ export default defineExtension<StoreHostOptions>({
   // require ui; without it the contribution is simply never read.
   contributes: { ui: { screens: contributedScreens } },
   authoring: storeAuthoring,
-  agent: {description: 'Local, revision-pinned references for agents configuring the store extension.', references: [{name: 'store extension guide', description: 'Configuration and data-model guidance for the store extension.', path: 'README.md'}]},
+  agent: {description: 'Local, revision-pinned references for agents configuring the store extension.', references: [{name: 'store extension guide', description: 'Configuration and data-model guidance for the store extension; ends with the generated field reference for every configuration key.', path: 'README.md'}]},
   scaffold,
   example,
   host(context, options) {

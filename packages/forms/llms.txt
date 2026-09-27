@@ -27,7 +27,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `forms({csrfSecretFile})` supplies the secret another way.
 
 ## Read in this order
-- [README](README.md): activation, flow declaration, CSRF secret, the `onSubmit` hook.
+- [README](README.md): activation, flow declaration, CSRF secret, the `onSubmit` hook
+  (`extensions.forms.config.hooks.onSubmit: hooks/on-submit.mjs`, a tested declaration and module
+  under "Handling a submission"), and a generated field reference for every key at the end.
 - [SECURITY](SECURITY.md): trust boundary; what the extension does not protect.
 
 ## Do not guess

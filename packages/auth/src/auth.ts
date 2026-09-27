@@ -77,20 +77,34 @@ function withRateLimitMembers<T extends { headers: [string, string][] }>(result:
     }
     return { ...result, headers: [...result.headers.filter(([name]) => !names.has(name.toLowerCase())), ...added.map(([name, value]): [string, string] => [name, [value, ...kept.get(name) ?? []].join(', ')])] };
 }
-const velocitySchema = { type: 'object', additionalProperties: false, required: ['limit', 'windowMs'], properties: { limit: { type: 'integer', minimum: 1, maximum: 100000 }, windowMs: { type: 'integer', minimum: 1000, maximum: 86400000 } } };
+const velocitySchema = (description: string) => ({ description, type: 'object', additionalProperties: false, required: ['limit', 'windowMs'], properties: {
+    limit: { type: 'integer', minimum: 1, maximum: 100000, description: 'Requests admitted per window for one key; the next one answers 429 with Retry-After.' },
+    windowMs: { type: 'integer', minimum: 1000, maximum: 86400000, description: 'Length of the counting window in milliseconds.' },
+} });
 /**
  * `extensions.auth.config.abuse`: the budgets the abuse extension enforces for auth's entry requests (bounds match the
  * abuse extension's, which re-validates them at activation). `challengeAfter` escalates the `client` budget to the
  * operator's challenge verifier.
  */
-const abuseSchema = { type: 'object', additionalProperties: false, minProperties: 1, dependentRequired: { challengeAfter: ['client'] }, properties: {
-    client: velocitySchema, signupClient: velocitySchema, signupDomain: velocitySchema,
-    challengeAfter: { type: 'integer', minimum: 1, maximum: 99999 },
-    passwordBackoff: { type: 'object', additionalProperties: false, properties: { threshold: { type: 'integer', minimum: 1, maximum: 20 }, initialDelayMs: { type: 'integer', minimum: 100, maximum: 60000 }, maxDelayMs: { type: 'integer', minimum: 100, maximum: 86400000 }, resetAfterMs: { type: 'integer', minimum: 100, maximum: 604800000 } } },
+const abuseSchema = { description: 'Sign-in and sign-up budgets, challenge escalation and password backoff, enforced through the abuse extension. Activation refuses this block when abuse is not installed and active; client budgets need the runtime trusted-proxy boundary (503 trusted_client_required otherwise).', type: 'object', additionalProperties: false, minProperties: 1, dependentRequired: { challengeAfter: ['client'] }, properties: {
+    client: velocitySchema('Budget for every auth entry request (sign-in, sign-up, recovery, email code) per client network: an IPv4 address, or an IPv6 /64.'),
+    signupClient: velocitySchema('Additional budget for sign-up requests per client network.'),
+    signupDomain: velocitySchema('Budget for sign-up requests per email domain (the part after @).'),
+    challengeAfter: { type: 'integer', minimum: 1, maximum: 99999, description: 'Once the client budget has admitted this many requests in its window, further entry requests must pass the operator challenge (abuse({challenge}) in host.mjs; activation refuses it without one). Requires client and must be below client.limit; a passed challenge never overrides the hard budget.' },
+    passwordBackoff: { description: 'Exponential delay per email address after repeated wrong passwords at sign-in or step-up; a blocked address is refused before any password is checked. Bounds match the abuse backoff.', type: 'object', additionalProperties: false, properties: {
+        threshold: { type: 'integer', minimum: 1, maximum: 20, description: 'Failures allowed before the first delay (default 5).' },
+        initialDelayMs: { type: 'integer', minimum: 100, maximum: 60000, description: 'First delay in milliseconds; each further failure doubles it (default 1000).' },
+        maxDelayMs: { type: 'integer', minimum: 100, maximum: 86400000, description: 'Cap on the delay in milliseconds (default 900000); must be at least initialDelayMs.' },
+        resetAfterMs: { type: 'integer', minimum: 100, maximum: 604800000, description: 'Quiet period in milliseconds after which the failure count resets (default 86400000); must be at least maxDelayMs.' },
+    } },
 } };
 interface AbuseConfig { client?: { limit: number; windowMs: number }; signupClient?: { limit: number; windowMs: number }; signupDomain?: { limit: number; windowMs: number }; challengeAfter?: number; passwordBackoff?: { threshold?: number; initialDelayMs?: number; maxDelayMs?: number; resetAfterMs?: number } }
 /** The `extensions.auth.config` schema: one object, shared by the runtime registration and the extension definition. */
-export const authConfigSchema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema, abuse: abuseSchema } };
+export const authConfigSchema = { type: 'object', additionalProperties: false, properties: {
+    registration: { enum: ['open', 'invite-only', 'waitlist', 'off'], description: 'Who may create an account from the register page: anyone (open), holders of an invitation token (invite-only), a request an administrator approves (waitlist), or nobody (off, the default). Activation fails unless it equals the operator auth service\'s registration mode.' },
+    hooks: { ...hooksConfigSchema, description: 'Project lifecycle hooks by name: a trusted module reference ({source, export} or a bare path) auth calls at that point. Filters run before the change and may deny it; actions run after the commit. sandbox: true is refused.' },
+    abuse: abuseSchema,
+} };
 // `bearer` is a distinct, exclusive requirement shape: a route is either session-protected
 // (role/permission/verified/freshWithinSeconds/onDeny, checked against the signed-in
 // cookie session) or bearer-protected (checked against an operator-issued API key), never
@@ -101,8 +115,14 @@ export const authConfigSchema = { type: 'object', additionalProperties: false, p
 // A key issued with its own `quota` (urlcode#703) is counted against that budget
 // instead, on every bearer route it authenticates on; the route's applies to keys
 // without one.
-const apiKeyQuotaSchema = { type: 'object', additionalProperties: false, required: ['requests', 'window'], properties: { requests: { type: 'integer', minimum: 1, maximum: 1000000 }, window: { type: 'integer', minimum: 1, maximum: 2592000 } } };
-const bearerSchema = { type: 'object', additionalProperties: false, required: ['scopes'], properties: { scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' } }, quota: apiKeyQuotaSchema } };
+const apiKeyQuotaSchema = { description: 'Per-key budget on this route, counted by key id in the auth store; over it the request answers 429 credential_quota_exceeded. A key issued with its own quota uses that instead.', type: 'object', additionalProperties: false, required: ['requests', 'window'], properties: {
+    requests: { type: 'integer', minimum: 1, maximum: 1000000, description: 'Requests one key may make per window.' },
+    window: { type: 'integer', minimum: 1, maximum: 2592000, description: 'Window length in seconds (at most 30 days), the units of core policies.throttle.' },
+} };
+const bearerSchema = { description: 'Protect the route with operator-issued API keys (Authorization: Bearer) instead of a session. Exclusive of csrf; the session keys (role, permission, verified, freshWithinSeconds, onDeny) do not apply to a bearer caller.', type: 'object', additionalProperties: false, required: ['scopes'], properties: {
+    scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' }, description: 'Scopes the key must hold, all of them; a key missing one answers 403 insufficient_scope. An empty list admits any valid key.' },
+    quota: apiKeyQuotaSchema,
+} };
 /**
  * Reserved-namespace header (core's `extensionContextHeaderPrefix`,
  * @jimhoyd/urlcode/extensions) a bearer-protected route's own trusted
@@ -125,7 +145,15 @@ const authPrincipalHeader = `${extensionContextHeaderPrefix}auth-principal`;
  */
 export function apiKeyPrincipalId(keyId: string): string { return `apikey:${keyId}`; }
 /** The `policies.extensions.auth` schema. */
-export const authPolicySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, csrf: { enum: ['token', 'origin'] }, bearer: bearerSchema }, not: { properties: { csrf: true, bearer: true }, required: ['csrf', 'bearer'] }, minProperties: 0 };
+export const authPolicySchema = { type: 'object', additionalProperties: false, properties: {
+    role: { type: 'string', minLength: 1, maxLength: 64, description: 'The signed-in account must hold this role.' },
+    permission: { type: 'string', minLength: 1, maxLength: 128, description: 'The signed-in account must hold this permission through one of its roles, for example audit.read.' },
+    verified: { type: 'boolean', description: 'true: the account\'s email address must be verified.' },
+    freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600, description: 'The session must have authenticated within this many seconds (step-up); an older one is denied.' },
+    onDeny: { enum: [401, 403, 404, 'sign-in'], description: 'Answer to a denied request: that status with a JSON error, or sign-in to redirect a GET/HEAD to the login page (other methods then get 401/403). Default: 401 without a session, 403 with one.' },
+    csrf: { enum: ['token', 'origin'], description: 'How a session write proves same-site intent: token (default) requires auth\'s session-bound x-csrf-token header or csrf body field; origin admits same-origin provenance with the SameSite=Strict session cookie, for mounts that verify their own token or accept JSON only.' },
+    bearer: bearerSchema,
+}, not: { properties: { csrf: { description: 'Present: the exclusion applies.' }, bearer: { description: 'Present: the exclusion applies.' } }, required: ['csrf', 'bearer'] }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
 export const authAuthoring = Object.freeze({
     description: 'Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.',

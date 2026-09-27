@@ -32,7 +32,7 @@ export default defineExtension<McpHostOptions>({
   requires: [],
   schema: mcpConfigSchema,
   authoring: mcpAuthoring,
-  agent: {description: 'Local, revision-pinned references for agents configuring the MCP extension.', references: [{name: 'MCP extension guide', description: 'Configuration and deployment guidance for project-defined MCP tools.', path: 'README.md'}]},
+  agent: {description: 'Local, revision-pinned references for agents configuring the MCP extension.', references: [{name: 'MCP extension guide', description: 'Configuration and deployment guidance for project-defined MCP tools; ends with the generated field reference for every configuration key.', path: 'README.md'}]},
   scaffold,
   host(context, options) {
     return { registration: createMcpExtension({ ...options, projectSha256: context.projectSha256 }) };
