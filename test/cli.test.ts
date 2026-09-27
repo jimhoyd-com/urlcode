@@ -21,7 +21,7 @@ test('the bare agent-ready starter initializes without application routes or fix
     await initProject(target);
     assert.deepEqual(await runProjectTests(app),{ total:0,failed:0 });
     await assert.rejects(readFile(join(app,'tests','requests.json')),/ENOENT/);
-    await assert.rejects(initProject(target),/already contains .*init into a new or empty directory/);
+    await assert.rejects(initProject(target),/already holds a URLCode site \(app\/urlcode\.yaml\); init writes nothing/);
     // One site layout: the route project in app/, the operator host and the runtime pin beside it.
     assert.match(await readFile(join(target,'host.mjs'),'utf8'),/composeHost/);
     const pkg = JSON.parse(await readFile(join(target,'package.json'),'utf8'));

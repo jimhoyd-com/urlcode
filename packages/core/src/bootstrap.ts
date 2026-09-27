@@ -15,6 +15,7 @@ import type {Prerequisite} from './context.ts';
 import {HOST_FILE,PROJECT_DIRECTORY} from './addon-install.ts';
 import {readAddonCatalog} from './addon-manifest.ts';
 import {isRecord} from './object-guards.ts';
+import {enclosingProject,isFile} from './site-layout.ts';
 
 /**
  * The local agent bootstrap (#807): one read of a directory that says whether it holds a URLCode site, where its
@@ -33,6 +34,8 @@ export interface BootstrapOptions {
  origin?:string|undefined;
  /** Create a site at the directory when none is there (init). Refused inside an existing project or at an `app` directory. */
  create?:boolean|undefined;
+ /** With create: init --adopt, so a directory already holding user files becomes the site root; nothing of theirs is moved. */
+ adopt?:boolean|undefined;
 }
 export type BootstrapState='existing'|'created'|'none';
 export interface BootstrapRuntime {
@@ -58,6 +61,8 @@ export interface Bootstrap {
  state:BootstrapState;
  /** What was created (top-level names inside the site root) when state is created. */
  created?:string[];
+ /** With create and adopt: the top-level entries that were already there and were left alone (at most 20). */
+ leftAlone?:string[];
  site:null|{
   root:string;
   layout:'site'|'project';
@@ -90,7 +95,6 @@ export interface Bootstrap {
 export const bootstrapMaxCapabilities=8;
 const exampleMaxCharacters=1500;
 const exists=(path:string):Promise<boolean>=>stat(path).then(()=>true,()=>false);
-const isFile=(path:string):Promise<boolean>=>stat(path).then(info=>info.isFile(),()=>false);
 const toPosix=(path:string)=>path.split('\\').join('/');
 const sha256=(text:string|Buffer)=>createHash('sha256').update(text).digest('hex');
 const schemaFile=()=>fileURLToPath(new URL('../../../schemas/urlcode.schema.json',import.meta.url));
@@ -106,13 +110,6 @@ async function locate(directory:string):Promise<Located|undefined> {
  const parent=dirname(directory);
  if(basename(directory)===PROJECT_DIRECTORY&&(await isFile(join(parent,HOST_FILE))||await isFile(join(parent,'package.json'))))return {root:parent,layout:'site',project:directory};
  return {root:directory,layout:'project',project:directory};
-}
-/** The nearest ancestor (not the directory itself) that is a route project, as a path relative to the directory. */
-async function enclosingProject(directory:string):Promise<string|undefined> {
- for(let current=dirname(directory);;current=dirname(current)) {
-  if(await isFile(join(current,'urlcode.yaml'))||await isFile(join(current,PROJECT_DIRECTORY,'urlcode.yaml')))return toPosix(relative(directory,current));
-  if(dirname(current)===current)return undefined;
- }
 }
 async function canonical(directory:string):Promise<string> {
  const absolute=resolve(directory);
@@ -241,14 +238,24 @@ async function projectFacts(project:string):Promise<{extensions:number;bindings:
   return {extensions:Object.keys(loaded.document.extensions??{}).length,bindings};
  } catch(error) {return {error:describeError(error)};}
 }
-async function createSite(directory:string):Promise<string[]> {
+async function createSite(directory:string,adopt:boolean):Promise<{created:string[];leftAlone:string[]}> {
  if(basename(directory)===PROJECT_DIRECTORY)throw new ConfigError(`A site keeps its route project in ${PROJECT_DIRECTORY}/, so creating a site at an ${PROJECT_DIRECTORY} directory nests ${PROJECT_DIRECTORY}/${PROJECT_DIRECTORY}; name the site directory (${shellWord(dirname(directory))}) instead`,{code:'nested-site'});
  const enclosing=await enclosingProject(directory);
  if(enclosing!==undefined)throw new ConfigError(`The destination is inside an existing URLCode project (${enclosing}); bootstrap that site instead of creating one inside it`,{code:'nested-site'});
  const before=new Set(await readdir(directory).catch(()=>[] as string[]));
- const {initSite}=await import('./authoring.ts');
- await initSite(directory);
- return (await readdir(directory)).filter(name=>!before.has(name)).sort();
+ const {initSite,initListLimit}=await import('./authoring.ts');
+ const {leftAlone}=await initSite(directory,{adopt});
+ return {created:(await readdir(directory)).filter(name=>!before.has(name)).sort(),leftAlone:adopt?leftAlone.slice(0,initListLimit):[]};
+}
+/** With no site here: the create command that would succeed, or why init would refuse this directory. Read-only. */
+async function createAdvice(target:string,destination:string,invocation:string):Promise<string> {
+ const create=`${invocation} bootstrap --create ${shellWord(destination)}`;
+ if(destination!==target)return `No URLCode site here, and nothing was created. To create one, name the destination explicitly: ${create}`;
+ const {planInit,boundedList}=await import('./authoring.ts');
+ const plan=await planInit(target,{adopt:true}).catch(()=>undefined);
+ if(plan?.mode!=='adopt')return `No URLCode site here, and nothing was created. To create one, name the destination explicitly: ${create}`;
+ if(plan.refusal!==undefined)return `No URLCode site here, and nothing was created. This directory already holds ${boundedList(plan.foreign,5)}, and init would refuse to adopt it: ${plan.refusal}`;
+ return `No URLCode site here, and nothing was created. This directory already holds ${boundedList(plan.foreign,5)}, none of which collides with what init writes; to create the site around it (writing only new files, moving nothing): ${create} --adopt`;
 }
 export async function buildBootstrap(directory:string,options:BootstrapOptions={}):Promise<Bootstrap> {
  const running=await runningRuntime();
@@ -256,8 +263,8 @@ export async function buildBootstrap(directory:string,options:BootstrapOptions={
  const requested=options.capabilities??[];
  const packet=requested.length?await capabilityPacket(requested,options.target):undefined;
  const target=await canonical(directory);
- let located=await locate(target),state:BootstrapState=located?'existing':'none',created:string[]|undefined;
- if(!located&&options.create) {created=await createSite(target);located=await locate(target);state='created';}
+ let located=await locate(target),state:BootstrapState=located?'existing':'none',created:string[]|undefined,leftAlone:string[]=[];
+ if(!located&&options.create) {({created,leftAlone}=await createSite(target,options.adopt===true));located=await locate(target);state='created';}
  const invocation=await cliInvocation(target);
  if(!located) {
   const enclosing=await enclosingProject(target);
@@ -268,7 +275,7 @@ export async function buildBootstrap(directory:string,options:BootstrapOptions={
    ...(packet?{capabilities:packet}:{}),
    ...(enclosing===undefined?{}:{diagnostics:[{code:'inside-project',message:`This directory is inside a URLCode project (${enclosing}); bootstrap from that site root instead.`}]}),
    next:enclosing===undefined
-    ?[`No URLCode site here, and nothing was created. To create one, name the destination explicitly: ${invocation} bootstrap --create ${shellWord(destination)}`]
+    ?[await createAdvice(target,destination,invocation)]
     :[`Run bootstrap from the enclosing site (${enclosing}); do not create a site inside a project.`],
   };
  }
@@ -295,7 +302,7 @@ export async function buildBootstrap(directory:string,options:BootstrapOptions={
   'Check each change with commands.validate, then commands.test; commands.start serves the site.',
  ];
  return {
-  urlcode:running.version,schema:'1',kind:'bootstrap',state,...(created?{created}:{}),
+  urlcode:running.version,schema:'1',kind:'bootstrap',state,...(created?{created}:{}),...(leftAlone.length?{leftAlone}:{}),
   site:{root:located.root,layout:located.layout,project:projectRelative,projectRoot:located.project,entry,hostFile,packageJson},
   runtime,paths:await pathMapping(located),commands,
   ...(prerequisites.length?{prerequisites}:{}),

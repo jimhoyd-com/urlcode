@@ -185,3 +185,33 @@ test('MCP get_context bootstrap returns the same read-only bootstrap for the ser
  assert.equal(replies[1]!.result.isError,true);assert.match(replies[1]!.result.content[0]!.text,/only with bootstrap/);
  assert.deepEqual(await snapshot(site),before);
 });
+
+test('--create --adopt builds the site around a supplied frontend, moves nothing, and a repeat changes nothing (#814)',async t=>{
+ const root=await directory(t),site=join(root,'my frontend');
+ await mkdir(join(site,'frontend','dist'),{recursive:true});await writeFile(join(site,'frontend','dist','index.html'),'<h1>spa</h1>');
+ await mkdir(join(site,'dist'));await writeFile(join(site,'dist','app.js'),'console.log(1)');
+ const before=await snapshot(site);
+ // Inspecting names the adopting command; plain --create is refused by init and says to add --adopt.
+ const inspected=runJson(['bootstrap',site]);
+ assert.equal(inspected.state,'none');
+ assert.match(inspected.next[0]!,new RegExp(`already holds dist, frontend, none of which collides .*bootstrap --create ${shellWord(site).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')} --adopt$`));
+ const plain=run(['bootstrap',site,'--create']);
+ assert.notEqual(plain.status,0);assert.match(plain.stderr,/add --adopt/);
+ assert.deepEqual(await snapshot(site),before);
+ assert.match(run(['bootstrap',site,'--adopt']).stderr,/--adopt is only supported by init and bootstrap --create/);
+ const created=runJson(['bootstrap',site,'--create','--adopt']);
+ assert.equal(created.state,'created');assert.deepEqual(created.leftAlone,['dist','frontend']);
+ assert.ok(!created.created!.includes('frontend')&&created.created!.includes('app')&&created.created!.includes('host.mjs'));
+ assert.equal(created.site!.root,site);assert.equal(created.site!.projectRoot,join(site,'app'));
+ // The supplied directories stay where they are; the mapping says how to serve them.
+ assert.deepEqual(created.paths!.outsideProject.map(item=>item.path),['dist','frontend']);
+ assert.match(created.paths!.outsideProject[1]!.note,/build or copy it into app\/frontend and reference it as frontend/);
+ const after=await snapshot(site);
+ for(const line of before)assert.ok(after.includes(line),`changed: ${line}`);
+ for(const args of [['bootstrap',site,'--create','--adopt'],['bootstrap',site,'--create'],['bootstrap',site]]) {
+  const again=runJson(args);
+  assert.equal(again.state,'existing',args.join(' '));assert.equal(again.created,undefined);assert.equal(again.leftAlone,undefined);
+ }
+ assert.deepEqual(await snapshot(site),after);
+ await assert.rejects(stat(join(site,'app','app')));
+});
