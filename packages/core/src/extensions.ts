@@ -293,6 +293,15 @@ export interface ExtensionInstance {
    * nothing exclusive leaves it out and behaves exactly as without it.
    */
   handoff?():unknown|Promise<unknown>;
+  /**
+   * The mounts (entries of `context.mounts`) that serve nothing but the registration's `immutableAssets`: content-hashed
+   * files under `<mount><prefix>/`, and 404 for any other path. Only a registration that declares `immutableAssets`
+   * may name one, and each must be one of its own mounts; anything else refuses activation. `urlcode audit` counts
+   * GET/HEAD on such a mount as covered by the extension's own contract, labelled `extension-assets`, after probing that
+   * an unknown path under the prefix answers 404 with no Set-Cookie (docs/READINESS.md#extension-asset-mounts). It
+   * changes nothing at request time. Omitted: every mount keeps the ordinary coverage rules.
+   */
+  readonly assetMounts?:readonly string[];
   close?():void|Promise<void>;
 }
 /** Trusted operator code only. YAML declares names/configuration, never modules. */
@@ -561,7 +570,11 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
 }
-export interface ActiveExtension { instance:ExtensionInstance; registration:RuntimeExtension; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean; streams:boolean }
+export interface ActiveExtension {
+  instance:ExtensionInstance; registration:RuntimeExtension; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[]; providesPrincipal:boolean; streams:boolean;
+  /** The instance's validated `assetMounts`, each with its `<mount><prefix>/` path: what audit probes (never used to serve). */
+  assetMounts:readonly {mount:string;prefix:string}[];
+}
 /** What the runtime knows about the request when it applies the privacy floor. */
 export interface ExtensionAssetContext { method:string; path:string; prefixes:readonly string[] }
 export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; credentialHeaders:string[]; close():Promise<void> }
@@ -573,6 +586,13 @@ const authoringNamePattern=/^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,127}$/;
 const cacheHeaders=new Set(['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control']);
 const segmentPattern=/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/;
 export const immutableCacheControl='public, max-age=31536000, immutable';
+/** An instance's `assetMounts`: distinct entries of its own mounts, only under a registration that declares `immutableAssets`. */
+function declaredAssetMounts(declared:unknown,registration:RuntimeExtension,mounts:readonly string[],name:string):{mount:string;prefix:string}[] {
+  if(declared===undefined)return [];
+  assert(registration.immutableAssets!==undefined,`Extension ${name} declares assetMounts without immutableAssets`);
+  assert(Array.isArray(declared)&&declared.length<=mounts.length&&declared.every(mount=>typeof mount==='string'&&mounts.includes(mount))&&new Set(declared).size===declared.length,`Extension ${name} assetMounts must name distinct mounts of its own routes`);
+  return (declared as string[]).map(mount=>Object.freeze({mount,prefix:mount+registration.immutableAssets!.prefix+'/'}));
+}
 /** A normalized absolute path prefix: literal segments only, no dot segments, no trailing slash. */
 function validateAssetPrefix(prefix:unknown,name:string):string {
   assert(typeof prefix==='string'&&prefix.length>=2&&prefix.length<=256&&prefix.startsWith('/')&&!prefix.endsWith('/'),`Extension ${name} immutableAssets.prefix must be a normalized absolute path`);
@@ -752,10 +772,10 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       catch(error){throw extensionError(error,name,'activate');}
       finally{warnings.close();}
       const providesPrincipal=registration.providesPrincipal===true,streams=registration.streams===true;
-      if(instance&&typeof instance==='object')entries.set(name,{instance,registration,policies,assetPrefixes,providesPrincipal,streams});
+      if(instance&&typeof instance==='object')entries.set(name,{instance,registration,policies,assetPrefixes,providesPrincipal,streams,assetMounts:[]});
       assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);
       assert(!providesPrincipal||!policies.size||typeof instance.authorize==='function',`Extension ${name} declares providesPrincipal but has no authorization hook`);
-      entries.set(name,{instance,registration,policies,assetPrefixes,providesPrincipal,streams});
+      entries.set(name,{instance,registration,policies,assetPrefixes,providesPrincipal,streams,assetMounts:declaredAssetMounts(instance.assetMounts,registration,mounts,name)});
     }}catch(error){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
     return {entries,credentialHeaders:[...credentialHeaders],async close(){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
   }};

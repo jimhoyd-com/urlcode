@@ -200,8 +200,12 @@ export const budgets: Record<string, Budget> = {
     // their llms-full.txt copies. Measured on the merged branch (Node 26):
     // 844581 packed, 3349335 unpacked, 490 entries; 828 KiB leaves about
     // 3 KiB for the ~2 KiB cross-Node gzip variance noted above.
-    packed: 828 * 1024,
-    unpacked: 3280 * 1024,
+    // Raised for #816 (per-mount extension asset declarations, audit's
+    // extension-assets probe, RIM-EXT-ASSETS-001 and the READINESS/EXTENSIONS
+    // sections): measured 847255 packed and 3359276 unpacked bytes, 490
+    // entries, on Node 26.
+    packed: 832 * 1024,
+    unpacked: 3290 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

@@ -253,7 +253,11 @@ collection) reads it, without either knowing the other
 `streams: true` may return `HandlerResult.stream` instead of `body`, which the
 self-hosted server and Vercel adapter write as it is produced under operator
 stream limits and every other target refuses before serving
-([streamed responses](EXTENSIONS.md#streamed-responses)). A composition reaches
+([streamed responses](EXTENSIONS.md#streamed-responses)). A mount that serves
+only content-hashed files (ui's `/assets/ui/*`) is named in the instance's
+generic `assetMounts`, and `urlcode audit` covers it by that contract after
+probing an unknown name for 404
+([extension asset mounts](EXTENSIONS.md#extension-asset-mounts)). A composition reaches
 the add-ons it requires only through their typed, versioned exports:
 `form-records` reads `FormsExports` and `StoreExports` with `ctx.get`, never
 their configuration ([nesting](EXTENSIONS.md#nesting)).

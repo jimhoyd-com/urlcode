@@ -107,6 +107,10 @@ parameter patterns still need explicit negative fixtures to exercise them.
 
 `ready: true` requires a nonempty active project, matching expected count (when
 supplied), zero failed checks and no uncovered active route/method combinations.
+A pair counts as covered by a passing fixture or generated check, by an honored
+[`coveredElsewhere` waiver](#waive-a-method-covered-elsewhere), or, on an
+[extension asset mount](#extension-asset-mounts), by the extension's own
+contract; the last two are listed separately so a reader sees why.
 When `ready` is false, `notReadyReasons` lists each failed condition:
 `no-active-routes`, `route-count-mismatch`, `failed-checks` and
 `uncovered-route-methods` (see `uncovered` for the pairs). `unassertedCases` never
@@ -146,6 +150,39 @@ function route or a route with no fixture (those pairs stay in `uncovered`, and
 `ignoredWaivers` names the waiver). A waiver whose pair already has a passing
 fixture appears under `redundantWaivers`; it never blocks `ready`. Example:
 [examples/coverage-waiver](../examples/coverage-waiver/README.md).
+
+### Extension asset mounts
+
+An extension mount that serves only content-hashed files, such as `ui`'s
+`/assets/ui/*`, has no path a fixture can know ahead of time: the names change
+whenever the files do. The extension, not the project, declares such a mount.
+Its registration declares an [`immutableAssets`
+prefix](EXTENSIONS.md#extension-asset-mounts) and its activated instance names
+the mount in `assetMounts`, which states that the mount serves those files
+under `<mount><prefix>/` and answers 404 for any other path. No YAML key or CLI
+flag declares one.
+
+`audit` covers `GET` and `HEAD` on such a mount by that contract, and still
+checks it. For each of the two methods the route allows, it requests
+`<mount><prefix>/urlcode-audit-unknown-asset`, a name no content hash
+produces, and requires `404`, an empty `HEAD` body and no `Set-Cookie`. A 200
+(an application shell, say), any other status or a cookie fails the check, so the
+audit is not ready (`failed-checks`) and the pair stays in `uncovered`. These
+checks are numbered after every fixture case and logged with
+`source: "extension-assets"`.
+
+A pair the probe proves is listed under `extensionAssetRouteMethods` as
+`{route, method, extension, coverage: "extension-assets"}`, even when `ready`
+is true. It is not added to `coveredRouteMethods`, which counts only pairs a
+passing, asserting check covered. A fixture that names a real hashed file still
+covers its pair the ordinary way, and the pair then leaves the list.
+
+The contract covers only `GET` and `HEAD` on a declared asset mount. Every other
+method on it, every other mount of the same extension (`ui`'s screen mounts,
+for example) and every ordinary route keeps the rules above. The probe checks
+the missing-file answer; it does not check the kit's own files, their hashes or
+their cache headers, which the extension's tests own.
+`verify-deployment` does not send the probe.
 
 ## Multi-step fixtures
 
