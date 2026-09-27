@@ -35,6 +35,7 @@ urlcode validate --local --project ./orders-hook
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `headless-auth-profile` | advanced | Register, sign in, read and update a per-user profile and sign out as JSON: auth's own endpoints plus an owned store collection, no handler code | `ui`, `audit`, `mail`, `auth` and `store` extensions (`urlcode init DIR --with ui,auth,store`), `registrationMode: 'open'`, `--host-file`, `--origin` |
+| `fixed-contract-adapter` | advanced | A pre-existing JSON contract (`/api/me`, owner-scoped `/api/items`, a fixed error envelope) served by a thin operator adapter over auth's and the store's exports, with an audit of which contract parts the client must change instead (sign-in, sign-out, delete, auth's `401`/`403` bodies) | as `headless-auth-profile`, plus the README's `api-contract.mjs` module in `host.mjs` |
 | `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | `store` extension (`urlcode extensions add store`), `--host-file`, `--origin`; or initialize with `urlcode init DIR --with ui,auth,store --example` |
 | `spa-shell` | advanced | Single-page app: native page, assets and JSON API, plus an operator plugin that answers client routes at any depth with `index.html` (no native SPA fallback, [#809](https://github.com/jimhoyd-com/urlcode/issues/809)) | operator plugin in `--host-file`, self-hosted runtime |
 
@@ -145,4 +146,8 @@ runs in `packages/auth` against the real auth and store extensions composed
 through `composeHost`: its fixtures, and the signed-in flow its fixtures cannot
 express because a fixture carries no cookie between steps (register, sign in,
 profile read and update, another user refused, sign-out and the revoked session
-refused).
+refused). `fixed-contract-adapter` runs there too, with the adapter module
+taken from its README: the contract lifecycle and every error mapping, the
+adapter's activation refusals, its fixtures twice, the `headless-auth-profile`
+fixtures on the same auth database, and `urlcode test` and `audit` through
+`--host-file`.

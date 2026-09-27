@@ -379,6 +379,7 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
 | Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](../recipes/spa-shell/README.md) |
+| A pre-existing, fixed JSON API contract (`/api/login`, `/api/me`, `/api/items`, `{error: {code}}`) | no generic response rewriting: recipe `fixed-contract-adapter`, a thin operator adapter over `AuthExports` and `StoreExports` plus `site.errors`; sign-in, sign-out and CSRF stay auth's own endpoints | [fixed-contract-adapter](../recipes/fixed-contract-adapter/README.md) |
 | Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
@@ -426,6 +427,18 @@ so another user's record is a `404`. Its README states every request and
 response shape, status code, header and owner boundary, and which operator
 files hold the keys. A function that reads a session cookie, checks a password
 or compares user ids reimplements what these contracts already enforce.
+
+When the JSON contract already exists and is fixed (`POST /api/login`,
+`GET /api/me`, CRUD under `/api/items`, a `{error: {code}}` taxonomy), start
+from `urlcode recipes show fixed-contract-adapter`. Its README is a
+compatibility audit: path aliasing through an adapter mount, projection of
+non-secret account and record fields, and mapping store and body errors to the
+contract's codes are safe over `AuthExports` and `StoreExports`; sign-in and
+sign-out at contract paths, skipping CSRF or origin checks, a session in an
+`Authorization` header, the contract's body on auth's `401`/`403`, cross-owner
+access and custom password hashing are not, and the client adapts. The thin
+operator adapter it carries serves the rest. Report a remaining mismatch as a
+gap rather than writing password, session or ownership code to close it.
 
 ## Agent skills
 
@@ -649,6 +662,12 @@ that session to register the server ahead of `init`
 ([pre-session bootstrap](TOOLING.md#registering-before-init-runs-pre-session-bootstrap-542));
 otherwise run the first turn's `init` as a plain CLI call and rely on MCP from
 the next session or turn.
+If the agent's sandbox forbids writing client configuration, `init` stops with
+`init-write-denied`, names `.mcp.json` and rolls back only what it created; run
+`urlcode init <directory> --no-mcp` (or `urlcode bootstrap <directory> --create
+--no-mcp`) instead of working around the policy. The site is the same without
+`.mcp.json`, the output reports `mcpRegistration: skipped`, and the agent works
+through the CLI ([without client configuration](TOOLING.md#creating-a-site-without-client-configuration---no-mcp)).
 The optional hosted URLCode AI MCP is a separate, anonymous connection for
 version-pinned reference and shared skills, used by your agent's own model; it
 does not replace the local project server. Its endpoint is in

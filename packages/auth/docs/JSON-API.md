@@ -13,6 +13,11 @@ For a runnable, tested composition of these endpoints with a per-user
 application profile (register, sign in, profile read and update, sign out,
 another user refused), start from the
 [headless auth and profile recipe](../../../recipes/headless-auth-profile/README.md).
+A client with its own fixed contract (`/api/login`, a flat `{email, role}`, its
+own error codes) cannot be served by renaming these endpoints: the
+[fixed-contract adapter recipe](../../../recipes/fixed-contract-adapter/README.md#compatibility-audit)
+lists which mappings are safe over `AuthExports` and which the client must
+change, and why sign-in, sign-out and CSRF stay here.
 
 **This is documentation of already-shipped behavior.** Nothing here changes a
 response shape; it names what the handlers in `src/auth.ts`, `src/auth-ui.ts`,

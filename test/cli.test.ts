@@ -41,9 +41,9 @@ test('the bare agent-ready starter initializes without application routes or fix
     assert.equal(await readFile(join(target,'.mcp.json'),'utf8'),renderMcpConfig('app',{ local:true }));
   }
 });
-test('the committed starter .mcp.json equals what init generates', async () => {
+test('the starter carries no .mcp.json: init renders it, so no agent configuration ships in the package (#825)', async () => {
   const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
-  assert.equal(await readFile(join(starter,'.mcp.json'),'utf8'),renderMcpConfig('app',{ local:true }),'starters/default/.mcp.json is stale; regenerate it with npm run docs:agents and commit');
+  await assert.rejects(readFile(join(starter,'.mcp.json'),'utf8'),/ENOENT/);
   assert.ok(!renderMcpConfig('app').includes('--allow-authoring'));
   assert.ok(!renderMcpConfig('app',{ local:true }).includes('--allow-authoring'));
   assert.ok(renderMcpConfig('.',{ local:true }).includes('"@jimhoyd/urlcode"'),'npx must always name the scoped package');
