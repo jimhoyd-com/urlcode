@@ -179,7 +179,8 @@ test('#810/#811: the recipe\'s bundled fixtures run the signed-in lifecycle and 
 });
 
 test('#811, #816: urlcode test passes the lifecycle through --host-file; audit reports the recipe ready', async t => {
-    const root = await mkdtemp(join(tmpdir(), 'urlcode-headless-cli-'));
+    // Exercise file-URL decoding on every OS as well as Windows drive-letter handling in CI.
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-headless-cli space #-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'app');
     await addRecipe('headless-auth-profile', project);
@@ -188,6 +189,7 @@ test('#811, #816: urlcode test passes the lifecycle through --host-file; audit r
     const href = (specifier: string) => JSON.stringify(import.meta.resolve(specifier));
     const key = () => JSON.stringify(randomBytes(32).toString('base64'));
     await writeFile(join(root, 'host.mjs'), [
+        `import { fileURLToPath } from 'node:url';`,
         `import { composeHost } from ${href('@jimhoyd/urlcode/host')};`,
         `import audit from ${href('@jimhoyd/urlcode-audit/extension')};`,
         `import mail from ${href('@jimhoyd/urlcode-mail/extension')};`,
@@ -195,7 +197,7 @@ test('#811, #816: urlcode test passes the lifecycle through --host-file; audit r
         `import store from ${href('@jimhoyd/urlcode-store/extension')};`,
         `import auth from ${JSON.stringify(new URL('../src/extension.ts', import.meta.url).href)};`,
         `import { createAuthService } from ${JSON.stringify(new URL('../src/index.ts', import.meta.url).href)};`,
-        `const data = new URL('./data/', import.meta.url).pathname;`,
+        `const data = fileURLToPath(new URL('./data/', import.meta.url));`,
         `const service = await createAuthService({ database: data + 'auth.sqlite', encryptionKey: Buffer.from(${key()}, 'base64'), roles: { member: [], admin: ['*'] }, defaultRole: 'member', registrationMode: 'open' });`,
         `const host = await composeHost(import.meta.url, [audit({ database: data + 'audit.sqlite' }), mail({ transport: null }), ui(), auth({ service, csrfKey: Buffer.from(${key()}, 'base64') }), store({ directory: data + 'store' })]);`,
         `export default { ...host, async close() { try { await host.close?.(); } finally { service.close(); } } };`,
