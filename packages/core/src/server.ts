@@ -305,7 +305,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         });
       } else status = writeResponse(res, result, { requestId, method, enforceContentLength });
     } catch (error) {
-      status = writeError(res, error, { requestId, method, enforceContentLength, headers: current.errorHeaders(error, publicOrigin()) });
+      // Operational probes keep the text answer; every project path gets the format its route or site scope declares.
+      status = writeError(res, error, { requestId, method, enforceContentLength, headers: current.errorHeaders(error, publicOrigin()), format: trace.probe ? 'text' : current.errorFormat(error, originForm(url)) });
       if (debugErrors) {
         const failure = functionFailure(error);
         if (failure) diagnose({ event:'function_error', requestId, status, route: trace.route ?? null,

@@ -3,7 +3,7 @@ import { assert, HttpError } from './errors.ts';
 import { byteLength } from './http-response.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
-import { assertBodySchema, bodySchemaIssues, bodySchemaLine, bodySchemaJson, maxRequestBodyBytes } from './body-schema.ts';
+import { assertBodySchema, bodySchemaIssues, bodySchemaLine, bodySchemaJson, bodySchemaEnvelope, maxRequestBodyBytes } from './body-schema.ts';
 import type { BodySchema } from './body-schema.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
@@ -73,7 +73,7 @@ export function checkRequest(route: HttpRoute, body: Uint8Array, headers: Header
         if (issues.length) {
           const text = `Request body failed validation\n${issues.map(bodySchemaLine).join('\n')}`;
           // A route that declares a JSON body schema is a JSON endpoint: its 422 is always JSON, listing every issue.
-          throw new HttpError(422, text, { contentType: 'application/json', text: bodySchemaJson(issues) });
+          throw new HttpError(422, text, { contentType: 'application/json', text: bodySchemaJson(issues), envelope: bodySchemaEnvelope(issues) });
         }
       }
     }

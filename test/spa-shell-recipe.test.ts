@@ -40,14 +40,25 @@ test('spa-shell answers unseen client paths of any depth with the shell, and not
   for(const path of ['/assets/missing.js','/assets/client/route','/assets/a/b/c','/assets','/assets/']){
     const reply=await request(app,path);assert.equal(reply.status,404,path);assert.notEqual(reply.body,shell,path);
   }
-  // API: declared endpoints answer natively; everything else under the prefix is a JSON 404 for every method.
+  // API: declared endpoints answer natively; site.errors writes every runtime error under /api/* as the JSON envelope (#821).
+  const envelope=(code:string,message:string)=>JSON.stringify({error:{code,message}});
   const status=await request(app,'/api/status');assert.equal(status.status,200);assert.deepEqual(JSON.parse(status.body),{ok:true,service:'spa-shell'});
-  assert.equal((await request(app,'/api/status',{method:'POST'})).status,405,'a declared API route keeps its own method contract');
-  for(const [method,path] of [['GET','/api'],['GET','/api/'],['GET','/api/missing'],['GET','/api/a/b/c?x=1'],['HEAD','/api/missing'],['POST','/api/orders'],['DELETE','/api/orders/7'],['GET','/api/app.js']]){
+  const refused=await request(app,'/api/status',{method:'POST'});
+  assert.equal(refused.status,405,'a declared API route keeps its own method contract');assert.equal(refused.headers.allow,'GET, HEAD');
+  assert.equal(refused.headers['content-type'],'application/json; charset=utf-8');assert.equal(refused.body,envelope('METHOD_NOT_ALLOWED','Method not allowed'));
+  for(const [method,path] of [['GET','/api'],['GET','/api/'],['GET','/api/missing'],['GET','/api/a/b/c?x=1'],['HEAD','/api/missing'],['GET','/api/app.js']]){
     const reply=await request(app,path!,{method:method!});
     assert.equal(reply.status,404,`${method} ${path}`);assert.equal(reply.headers['content-type'],'application/json; charset=utf-8',`${method} ${path}`);
-    assert.equal(reply.headers['cache-control'],'no-store');assert.equal(reply.body,method==='HEAD'?'':'{"error":"Not found"}');
+    assert.equal(reply.headers['cache-control'],'no-store');assert.equal(reply.body,method==='HEAD'?'':envelope('NOT_FOUND','Not found'));
   }
+  // The catch-all matches every path, so another method on an undeclared API path is its 405, still JSON and never HTML.
+  for(const [method,path] of [['POST','/api/orders'],['DELETE','/api/orders/7']]){
+    const reply=await request(app,path!,{method:method!});
+    assert.equal(reply.status,405,`${method} ${path}`);assert.equal(reply.headers.allow,'GET, HEAD');
+    assert.equal(reply.headers['content-type'],'application/json; charset=utf-8');assert.equal(reply.body,envelope('METHOD_NOT_ALLOWED','Method not allowed'));
+  }
+  // Client paths outside /api keep the text 405.
+  assert.equal((await request(app,'/projects/42',{method:'DELETE'})).body,'Method not allowed\n');
   // File-like paths go to the mount: the file under public/, or 404; hidden names are never published.
   assert.equal((await request(app,'/robots.txt')).body,'User-agent: *\nAllow: /\n');
   assert.equal((await request(app,'/index.html')).body,shell);
@@ -107,5 +118,6 @@ test('spa-shell fixtures pass through the CLI with the README host file, and fai
   const tested=run('test','--host-file',host.path);assert.equal(tested.status,0,tested.stdout+tested.stderr);
   assert.match(tested.stdout,/"total":17,"failed":0/);
   const audited=run('audit','--expect-routes','4','--host-file',host.path);assert.equal(audited.status,0,audited.stdout+audited.stderr);
-  const bare=run('test');assert.equal(bare.status,1);assert.match(bare.stdout,/"failed":4/);
+  // Without the host file only the two client-path fixtures fail; the API's JSON errors are YAML.
+  const bare=run('test');assert.equal(bare.status,1);assert.match(bare.stdout,/"failed":2/);
 });

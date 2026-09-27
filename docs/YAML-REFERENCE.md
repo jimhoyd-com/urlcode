@@ -73,6 +73,8 @@ See [functions, inputs and methods](yaml/functions.md) and [bindings, split file
 | `routes.*.sandboxReason` | string | no | maxLength: 500 | Optional justification for this route's sandbox decision, whether sandbox is true or false: why it needs isolation, or why it is safe to trust. Never inferred or enforced; surfaced verbatim by explain/context/manifest. |
 | `routes.*.coveredElsewhere` | object | no | minProperties: 1 | Audit-only waiver: methods of this route whose normal-response fixture is provided by other tests (for example stateful create/update/delete). Each method needs a non-empty reason and must be one of the route's methods. audit lists waived pairs with their reasons under waivedRouteMethods and still requires the route to have another normally covered method; it never hides a function route that only serves errors. Project file only: there is no CLI flag. |
 | `routes.*.coveredElsewhere.*` | string | no | minLength: 1; maxLength: 500 | Why this method is tested elsewhere. |
+| `routes.*.errors` | object | no | unknown keys rejected | How this route's runtime-generated errors are written: the 405 for an undeclared method (Allow kept), 404 for a disabled route or missing asset, 410, 413, 415, 422 and gateway errors. Handler, policy and extension responses are never rewritten. Wins over site.errors. |
+| `routes.*.errors.format` | string | yes | enum: ["text","json"]; default: "text" | text (the default) sends the plain-text line, byte for byte as without this key; json sends {"error":{"code":…,"message":…}} as application/json with a code from a closed set keyed by status. HEAD still has no body. |
 | `routes.*.expires` | string | no | — | Quoted UTC timestamp (YYYY-MM-DDTHH:MM:SSZ) after which the route answers 410 Gone. |
 | `routes.*.description` | string | no | maxLength: 1024 | Free-text note for authors and tooling; it does not change how the route answers. |
 | `routes.*.parameters` | array | no | maxItems: 64 | Path, query and header inputs the route accepts, validated before the handler runs; a missing or invalid input answers 400. |
@@ -531,7 +533,7 @@ See [site conventions](yaml/site.md) for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
-| `site` | object | no | unknown keys rejected | Site conventions. Each declared key generates one native route (robots.txt, sitemap.xml, favicon.ico, .well-known/security.txt, llms.txt, 404.html); a declared route at the same path wins. Entry urlcode.yaml only. |
+| `site` | object | no | unknown keys rejected | Site conventions. Each declared key generates one native route (robots.txt, sitemap.xml, favicon.ico, .well-known/security.txt, llms.txt, 404.html); a declared route at the same path wins. errors is the exception: it generates no route and selects the JSON error format for a path scope. Entry urlcode.yaml only. |
 | `site.robots` | object | no | unknown keys rejected | Generates /robots.txt (RFC 9309). List entries are bundled agent list names or paths starting with /. |
 | `site.robots.disallow` | array | no | maxItems: 1024; uniqueItems: true | Bundled agent list names to shut out entirely, or paths starting with / that every agent is asked not to fetch. |
 | `site.robots.disallow[]` | string | no | minLength: 1; maxLength: 2048 | — |
@@ -564,6 +566,10 @@ See [site conventions](yaml/site.md) for examples.
 | `site.securityTxt.encryption[]` | string | no | minLength: 1; maxLength: 2048 | — |
 | `site.llms` | string | no | minLength: 1; maxLength: 1024 | Project-relative text file served at /llms.txt. |
 | `site.notFound` | string | no | minLength: 1; maxLength: 1024; pattern: "\\.[hH][tT][mM][lL]?$" | Project-relative .html file served with status 404 and text/html for a GET or HEAD that matches no route. Generated as a page route at /404.html, which is also the object name static hosting uses. |
+| `site.errors` | object | no | unknown keys rejected | Writes runtime-generated errors (404 for an unmatched path, 405, 413, 415, 422 and the rest) on these paths as the fixed JSON envelope instead of plain text. Generates no route. A route's own errors key wins; handler, policy and extension responses are never rewritten. Refused on static hosting. |
+| `site.errors.format` | constant | yes | const: "json" | The error representation for these paths; json is the only value, since text is already the default everywhere. |
+| `site.errors.paths` | array | yes | minItems: 1; maxItems: 64; uniqueItems: true | Exact paths, or prefixes ending in /* that also cover the prefix itself (/api/* covers /api and everything under /api/). Matched against the decoded request path, whether or not a route matches it. |
+| `site.errors.paths[]` | string | no | minLength: 1; maxLength: 2048; pattern: "^/[^\\s*?#]*$\|^/(?:[^\\s*?#]*/)?\\*$" | — |
 
 ## Extensions (top-level)
 

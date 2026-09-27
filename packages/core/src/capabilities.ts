@@ -11,7 +11,7 @@ export type CapabilityTarget = typeof capabilityTargets[number];
  * runtime policy outright, so it needs no entry in that exhaustive per-target record. */
 type PolicyCapableTarget = Exclude<CapabilityTarget, 'static'>;
 export type CapabilitySupport = PolicySupport | 'conditional' | 'unknown';
-export const capabilityNames = ['extension','policies.extensions','proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle', 'streaming'] as const;
+export const capabilityNames = ['extension','policies.extensions','proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'parameters', 'methods', 'enabled', 'expires', 'errors', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle', 'streaming'] as const;
 export type CapabilityName = typeof capabilityNames[number];
 /** The resolved operator registration set, when known (loaded via --host-file, same as `inspectExtensions`). Keyed by extension name. */
 export type ExtensionRegistry = ReadonlyMap<string, RuntimeExtension>;
@@ -62,6 +62,7 @@ const staticRefusals: Partial<Record<CapabilityName, string>> = {
   'response.headers': 'no server, so response headers cannot be added per request; set them via S3 object metadata or a CloudFront response headers policy instead',
   bindings: 'no server, so env/secret bindings cannot be resolved per request',
   streaming: 'no server, so no response can be written while it is produced',
+  errors: 'no server, so S3 and CloudFront write their own error answers; the JSON error envelope cannot be produced',
 };
 // Streamed responses (RIM-STREAM-001): written incrementally only by hosts that sit on a node:http response.
 const STREAMING_VERCEL_REASON = 'The adapter writes each chunk to the platform\'s node:http response and enforces the stream limits per instance, but whether chunks reach the client as they are written, and how long a stream may stay open, is decided by the provider (Vercel function streaming and maxDuration); provider deployment unverified.';
@@ -161,6 +162,7 @@ export function routeCapabilities(route: RouteConfig | CompiledRoute, document: 
   // Defaults are still semantics required by every route.
   result.push('methods', 'enabled');
   if (route.expires) result.push('expires');
+  if (route.errors?.format === 'json') result.push('errors');
   if (route.request?.body) result.push('request.body');
   if (Object.keys(route.response?.headers ?? {}).length) result.push('response.headers');
   if (Object.keys(route.env ?? {}).length || Object.keys(route.secrets ?? {}).length) result.push('bindings');
@@ -174,6 +176,8 @@ function analyze(document: ProjectDocument, iterable: Iterable<readonly [string,
   const routes = [...iterable];
   const extensions: ExtensionRegistry | undefined = registrations ? new Map(registrations.map(registration => [registration.name, registration])) : undefined;
   const requirements: CapabilityRequirement[] = [];
+  // site.errors is project-wide: it changes how every runtime-generated error on its paths is written, matched or not.
+  if (document.site?.errors) requirements.push({path:'(project)',capability:'errors',...decision('errors',target)});
   if (Object.keys(document.extensions??{}).length) requirements.push({path:'(project)',capability:'extension',...decision('extension',target,undefined,Object.keys(document.extensions??{}),extensions)});
   for (const [path, route] of routes) {
     const policies = effectivePolicies(document, route);
@@ -276,6 +280,9 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   methods: { kind: 'routing', summary: 'Allowed HTTP methods; defaults to GET and HEAD.', schema: ['methods'],
     constraints: ['Unique subset of GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS with at least one entry'], grants: [] },
   enabled: { kind: 'routing', summary: 'Route on/off switch; disabled routes are still validated.', schema: ['enabled'], constraints: ['Boolean; defaults to true'], grants: [] },
+  errors: { kind: 'routing', summary: 'Runtime-generated errors (405 with Allow, 404, 413, 415, 422 …) as a fixed JSON envelope instead of plain text, per route or for a site path scope.', schema: ['errors', 'site.errors'],
+    constraints: ['`format` is `text` (the default, unchanged bytes) or `json`; `site.errors` takes `format: json` and 1 to 64 exact paths or `/*` prefixes', 'A route\'s own `errors` wins over `site.errors`; an unmatched path uses the site scope, and a JSON-scoped unmatched path skips `site.notFound`', 'Body: `{"error":{"code","message"}}` with a closed code set keyed by status; a body-schema 422 adds its bounded `issues`', 'Never rewrites a handler, policy, plugin or extension response; HEAD keeps no body; security headers are unchanged', 'Refused on static hosting: no server writes the error answers'],
+    grants: [] },
   expires: { kind: 'routing', summary: 'Timestamp after which the route stops matching.', schema: ['expires'], constraints: ['UTC timestamp YYYY-MM-DDTHH:MM:SS[.mmm]Z; expired routes are still validated'], grants: [] },
   'request.body': { kind: 'request', summary: 'Request body admission limits and format.', schema: ['request.body'],
     constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return a JSON 422 listing every issue',

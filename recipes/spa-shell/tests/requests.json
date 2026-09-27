@@ -93,12 +93,17 @@
   {
     "path": "/api/status",
     "method": "POST",
-    "status": 405
+    "status": 405,
+    "expectBody": "{\"error\":{\"code\":\"METHOD_NOT_ALLOWED\",\"message\":\"Method not allowed\"}}",
+    "expectHeaders": {
+      "allow": "GET, HEAD",
+      "content-type": "application/json; charset=utf-8"
+    }
   },
   {
     "path": "/api/missing/deep?x=1",
     "status": 404,
-    "expectBody": "{\"error\":\"Not found\"}",
+    "expectBody": "{\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"Not found\"}}",
     "expectHeaders": {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store"
@@ -107,7 +112,11 @@
   {
     "path": "/api/orders",
     "method": "POST",
-    "status": 404,
-    "expectBody": "{\"error\":\"Not found\"}"
+    "status": 405,
+    "expectBody": "{\"error\":{\"code\":\"METHOD_NOT_ALLOWED\",\"message\":\"Method not allowed\"}}",
+    "expectHeaders": {
+      "allow": "GET, HEAD",
+      "content-type": "application/json; charset=utf-8"
+    }
   }
 ]

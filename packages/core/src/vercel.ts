@@ -84,7 +84,8 @@ export function createVercelHandler({ project = process.cwd(), origin, aliasOrig
     } catch (error) {
       // An activation failure is the operator's to see; a request never learns why.
       writeError(res,error instanceof HttpError ? error : new HttpError(500,'Internal server error'),{ requestId, method, enforceContentLength,
-        headers: runtime?.errorHeaders(error, resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost') ?? [] });
+        headers: runtime?.errorHeaders(error, resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost') ?? [],
+        format: runtime?.errorFormat(error, target) ?? 'text' });
       if (!(error instanceof HttpError)) throw error;
     }
   };

@@ -37,16 +37,20 @@ export function asConfigError(error: unknown): ConfigError | undefined {
   if (given && typeof given === 'object') for (const [key, value] of Object.entries(given)) if (['code', 'route', 'file', 'pointer', 'key', 'extension'].includes(key) ? typeof value === 'string' : ['line', 'column'].includes(key) && typeof value === 'number') (details as Record<string, unknown>)[key] = value;
   return new ConfigError(error.message, details, { cause: error });
 }
+export interface HttpErrorAnswer { contentType: string; text: string; envelope?: string }
 export class HttpError extends Error {
   readonly status: number;
-  /** A pre-rendered, fixed-content answer that replaces the plain-text message (used for JSON 422 bodies). */
-  readonly answer: { contentType: string; text: string } | undefined;
+  /**
+   * A pre-rendered, fixed-content answer that replaces the plain-text message (used for JSON 422 bodies). `envelope`
+   * is the same answer in the JSON error envelope, sent instead when the request's error format is `json`.
+   */
+  readonly answer: HttpErrorAnswer | undefined;
   /**
    * `options.cause` carries the operator-side reason (for example the error a
    * trusted function threw) for local diagnostics only. The response body and
    * the event log never include it; see `--debug-errors` in docs/LOCAL-DEVELOPMENT.md.
    */
-  constructor(status: number, message: string, answer?: { contentType: string; text: string }, options?: ErrorOptions) { super(message, options); this.status = status; this.answer = answer; }
+  constructor(status: number, message: string, answer?: HttpErrorAnswer, options?: ErrorOptions) { super(message, options); this.status = status; this.answer = answer; }
 }
 export function assert(condition: unknown, message: string, details?: ErrorDetails): asserts condition {
   if (!condition) throw new ConfigError(message, details);

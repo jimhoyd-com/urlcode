@@ -9,7 +9,7 @@ import { compileRoutes } from './router.ts';
 import { assert } from './errors.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import { resolveLists } from './agent-lists.ts';
-import { applySite, inlineNotFound } from './site.ts';
+import { applySite, inlineNotFound, siteErrorPaths } from './site.ts';
 import { buildManifest, renderManifest, manifestPath } from './manifest.ts';
 import type { Artifact, ArtifactParameter, ArtifactRoute } from './cloudflare.ts';
 import type { EffectivePolicies, LogFn, PolicyModule, PolicyName } from './types.ts';
@@ -125,7 +125,8 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
       ...(route.reply ? { reply:{ status:route.reply.status, headers:route.reply.headers, body:Buffer.from(route.reply.body).toString('utf8') } } : {}),
       ...(route.enabled === false ? { enabled:false } : {}),
       ...(route.expiresAt ? { expiresAt:route.expiresAt } : {}),
-      ...(route.compiledPolicies ? { policies:route.compiledPolicies } : {}) });
+      ...(route.compiledPolicies ? { policies:route.compiledPolicies } : {}),
+      ...(route.errors ? { errors:{ format:route.errors.format } } : {}) });
   }
 
   // Project-level security headers for the Worker's own 404 and error
@@ -135,7 +136,8 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
     ? { security: projectPolicies.security } : undefined;
   if (errorPolicy) registry.security.compile(errorPolicy.security, { route: { pattern: '(project)' }, shared: {}, target: 'cloudflare', document: loaded.document });
 
-  const artifact: Artifact = { format:FORMAT, version:loaded.version, routes:serialised, ...(errorPolicy ? { policies: errorPolicy } : {}), ...(notFound ? { notFound: true as const } : {}) };
+  const errorPaths = siteErrorPaths(loaded.document.site);
+  const artifact: Artifact = { format:FORMAT, version:loaded.version, routes:serialised, ...(errorPolicy ? { policies: errorPolicy } : {}), ...(notFound ? { notFound: true as const } : {}), ...(errorPaths.length ? { errorPaths } : {}) };
   await mkdir(out, { recursive:true });
   await writeFile(join(out,'validators.js'), await linkRuntime(standaloneCode.default(ajv, validators)));
   await writeFile(join(out,'artifact.js'),

@@ -6,7 +6,8 @@ key becomes one ordinary native route (`respond` or `page`) that is merged into
 the route table before compilation. Everything downstream is unchanged: the
 route appears in `urlcode routes` with `generated: "site.<key>"`, the audit
 generates fixtures for it, host policies apply to it and every deployment
-target compiles it like a route the project wrote by hand. `site` is accepted
+target compiles it like a route the project wrote by hand. The one exception
+is [`errors`](#errors-no-route), which generates no route. `site` is accepted
 only in the entry `urlcode.yaml`, not in included files.
 
 ```yaml
@@ -160,6 +161,25 @@ reads it (64 KiB cap, must decode as UTF-8) and carries it in the artifact as a
 rules as every other target. See [`docs/CLOUDFLARE.md`](CLOUDFLARE.md#sitenotfound-is-inlined).
 `favicon` and `llms` stay refused there like any other `page` route (no asset
 binding).
+
+### `errors` (no route)
+
+`site.errors` is the one key that generates no route. It selects the
+[JSON error envelope](HTTP.md#error-format) for runtime-generated errors on a
+path scope, whether a route matches or not:
+
+```yaml
+site:
+  errors:
+    format: json
+    paths: [/api/*, /status]   # a /* prefix also covers the prefix itself
+```
+
+An unmatched path in the scope answers the JSON 404 for every method, and
+skips `notFound`: an API client gets JSON, not the HTML page. A route that
+declares its own `errors` keeps it. Handler, policy and extension answers are
+never rewritten. Cloudflare carries the scope in its artifact; static hosting
+refuses it before building.
 
 ## Per-target support
 

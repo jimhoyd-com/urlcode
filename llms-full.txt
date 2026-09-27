@@ -1243,7 +1243,7 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | [Functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/functions.md) | 1. A URL that runs code; 4. Input types and constraints; 5. Methods and body validation; 6. All function argument sources |
 | [Redirects](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/redirects.md) | 2. Ordinary and permanent redirects; 3. Parameterized redirects and explicit query forwarding |
 | [Middleware](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/middleware.md) | 7. Middleware before and after a handler |
-| [Declared responses, headers and cookies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/responses.md) | 8. Native responses, headers and cookies; 9. Explicit OPTIONS response (not automatic CORS) |
+| [Declared responses, headers and cookies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/responses.md) | 8. Native responses, headers and cookies; 9. Explicit OPTIONS response (not automatic CORS); 9b. JSON errors for an API |
 | [Pages, static folders and downloads](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/assets.md) | 10. Pages, static folders, downloads and MIME |
 | [Enable, disable and expire](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/conditions.md) | 11. Enable, disable and expire |
 | [Bindings, split files and tests](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/organization.md) | 12. Environment and secret references; 13. Split files and folders; 14. Assert inputs and outputs |
@@ -1344,6 +1344,8 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.sandboxReason` | string | no | maxLength: 500 | Optional justification for this route's sandbox decision, whether sandbox is true or false: why it needs isolation, or why it is safe to trust. Never inferred or enforced; surfaced verbatim by explain/context/manifest. |
 | `routes.*.coveredElsewhere` | object | no | minProperties: 1 | Audit-only waiver: methods of this route whose normal-response fixture is provided by other tests (for example stateful create/update/delete). Each method needs a non-empty reason and must be one of the route's methods. audit lists waived pairs with their reasons under waivedRouteMethods and still requires the route to have another normally covered method; it never hides a function route that only serves errors. Project file only: there is no CLI flag. |
 | `routes.*.coveredElsewhere.*` | string | no | minLength: 1; maxLength: 500 | Why this method is tested elsewhere. |
+| `routes.*.errors` | object | no | unknown keys rejected | How this route's runtime-generated errors are written: the 405 for an undeclared method (Allow kept), 404 for a disabled route or missing asset, 410, 413, 415, 422 and gateway errors. Handler, policy and extension responses are never rewritten. Wins over site.errors. |
+| `routes.*.errors.format` | string | yes | enum: ["text","json"]; default: "text" | text (the default) sends the plain-text line, byte for byte as without this key; json sends {"error":{"code":…,"message":…}} as application/json with a code from a closed set keyed by status. HEAD still has no body. |
 | `routes.*.expires` | string | no | — | Quoted UTC timestamp (YYYY-MM-DDTHH:MM:SSZ) after which the route answers 410 Gone. |
 | `routes.*.description` | string | no | maxLength: 1024 | Free-text note for authors and tooling; it does not change how the route answers. |
 | `routes.*.parameters` | array | no | maxItems: 64 | Path, query and header inputs the route accepts, validated before the handler runs; a missing or invalid input answers 400. |
@@ -1802,7 +1804,7 @@ See [site conventions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yam
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
-| `site` | object | no | unknown keys rejected | Site conventions. Each declared key generates one native route (robots.txt, sitemap.xml, favicon.ico, .well-known/security.txt, llms.txt, 404.html); a declared route at the same path wins. Entry urlcode.yaml only. |
+| `site` | object | no | unknown keys rejected | Site conventions. Each declared key generates one native route (robots.txt, sitemap.xml, favicon.ico, .well-known/security.txt, llms.txt, 404.html); a declared route at the same path wins. errors is the exception: it generates no route and selects the JSON error format for a path scope. Entry urlcode.yaml only. |
 | `site.robots` | object | no | unknown keys rejected | Generates /robots.txt (RFC 9309). List entries are bundled agent list names or paths starting with /. |
 | `site.robots.disallow` | array | no | maxItems: 1024; uniqueItems: true | Bundled agent list names to shut out entirely, or paths starting with / that every agent is asked not to fetch. |
 | `site.robots.disallow[]` | string | no | minLength: 1; maxLength: 2048 | — |
@@ -1835,6 +1837,10 @@ See [site conventions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yam
 | `site.securityTxt.encryption[]` | string | no | minLength: 1; maxLength: 2048 | — |
 | `site.llms` | string | no | minLength: 1; maxLength: 1024 | Project-relative text file served at /llms.txt. |
 | `site.notFound` | string | no | minLength: 1; maxLength: 1024; pattern: "\\.[hH][tT][mM][lL]?$" | Project-relative .html file served with status 404 and text/html for a GET or HEAD that matches no route. Generated as a page route at /404.html, which is also the object name static hosting uses. |
+| `site.errors` | object | no | unknown keys rejected | Writes runtime-generated errors (404 for an unmatched path, 405, 413, 415, 422 and the rest) on these paths as the fixed JSON envelope instead of plain text. Generates no route. A route's own errors key wins; handler, policy and extension responses are never rewritten. Refused on static hosting. |
+| `site.errors.format` | constant | yes | const: "json" | The error representation for these paths; json is the only value, since text is already the default everywhere. |
+| `site.errors.paths` | array | yes | minItems: 1; maxItems: 64; uniqueItems: true | Exact paths, or prefixes ending in /* that also cover the prefix itself (/api/* covers /api and everything under /api/). Matched against the decoded request path, whether or not a route matches it. |
+| `site.errors.paths[]` | string | no | minLength: 1; maxLength: 2048; pattern: "^/[^\\s*?#]*$\|^/(?:[^\\s*?#]*/)?\\*$" | — |
 
 ### Extensions (top-level)
 
@@ -1896,6 +1902,12 @@ See [asset configuration](https://github.com/jimhoyd-com/urlcode/blob/main/docs/
   adding GET does not implicitly add HEAD. Wrong method returns 405 plus Allow.
 - `enabled`: false returns 404, the same as unknown paths.
 - `expires`: UTC ISO timestamp (`...ssZ` or `...ss.sssZ`); expired routes return 410.
+- `errors`: `{format: text}` (the default) or `{format: json}`. It selects how
+  this route's runtime-generated errors are written: the text line, or the fixed
+  envelope `{"error":{"code","message"}}` with a closed code set keyed by
+  status. The 405 keeps `Allow`, HEAD keeps no body and the security headers are
+  unchanged; handler, policy, plugin and extension responses are never
+  rewritten. See [error format](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#error-format).
 - `description`: optional authoring metadata.
 - `middleware`: ordered list of up to 16 `{source, export?}` modules wrapping any
   handler. See [middleware](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MIDDLEWARE.md) for the portable contract.
@@ -1918,7 +1930,11 @@ for site conventions: `robots` → `/robots.txt`, `sitemap` → `/sitemap.xml`,
 `favicon` → `/favicon.ico`, `securityTxt` → `/.well-known/security.txt` and
 `llms` → `/llms.txt`. Each is an ordinary `respond` or `page` route merged in
 before compilation and counted by `routes`/`audit`; a declared route at the same
-path wins and the generated one is logged as shadowed. Absolute URLs come from
+path wins and the generated one is logged as shadowed. `site.errors`
+(`{format: json, paths: [...]}`) generates no route: runtime-generated errors on
+those paths, matched or not, use the JSON error envelope unless the matched
+route declares its own `errors`, and an unmatched path in that scope gets the
+JSON 404 rather than a `site.notFound` page. Static hosting refuses it. Absolute URLs come from
 the operator's `--origin`; `sitemap` refuses activation without one. See
 [site conventions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SITE.md).
 
@@ -2671,6 +2687,86 @@ not replace function status/body. Asset handlers retain conditional/HEAD/range
 behavior described in [assets](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ASSETS.md). Use OPTIONS explicitly if you need a
 declared response; merely adding a header does not implement CORS preflight.
 
+### Error format
+
+The errors the runtime writes itself (the 405 for an undeclared method, the 404
+for an unmatched path, a disabled route or a missing asset, 410, the 400/413/415
+body and input refusals, a body-schema 422, and the generic 500/502/503/504) are
+a plain-text line by default: `Method not allowed\n`, `Not found\n`. A JSON API
+can ask for a fixed JSON envelope instead, without a function:
+
+```yaml
+site:
+  errors:
+    format: json
+    paths: [/api/*]          # exact paths, or prefixes ending in /*
+routes:
+  /status:
+    respond: {json: {status: ok}}
+    errors: {format: json}   # one route, outside any site scope
+  /api/legacy:
+    respond: {text: legacy}
+    errors: {format: text}   # a route's own setting wins over the scope
+```
+
+With `json`, the body is exactly one of:
+
+```json
+{"error":{"code":"METHOD_NOT_ALLOWED","message":"Method not allowed"}}
+{"error":{"code":"UNPROCESSABLE_CONTENT","message":"Request body failed validation","issues":[...]}}
+```
+
+with `Content-Type: application/json; charset=utf-8`. The message is the same
+fixed words the text line carries; it never includes request data, a thrown
+message or any other internal detail. `issues` (and `truncated`) appear only on
+the body-schema 422, bounded exactly as the [text-mode JSON 422](#body-schema-and-input-patterns).
+The code set is closed and keyed by status:
+
+| Status | `code` |
+|---|---|
+| 400 | `BAD_REQUEST` |
+| 404 | `NOT_FOUND` |
+| 405 | `METHOD_NOT_ALLOWED` |
+| 410 | `GONE` |
+| 413 | `CONTENT_TOO_LARGE` |
+| 414 | `URI_TOO_LONG` |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` |
+| 421 | `MISDIRECTED_REQUEST` |
+| 422 | `UNPROCESSABLE_CONTENT` |
+| 500 | `INTERNAL_ERROR` |
+| 502 | `BAD_GATEWAY` |
+| 503 | `SERVICE_UNAVAILABLE` |
+| 504 | `GATEWAY_TIMEOUT` |
+
+Any other status the runtime might write gets `ERROR`; the runtime generates
+none today. The envelope has no configurable fields.
+
+Which format applies:
+
+1. A matched route's own `errors.format` (`text` or `json`).
+2. Otherwise `json` when the decoded request path is inside `site.errors.paths`,
+   whether or not a route matches it. `/api/*` covers `/api`, `/api/` and
+   everything below; an exact entry covers only that path. A target that does
+   not decode (`/api/%zz`) is placed by its raw path.
+3. Otherwise `text`, byte for byte as a project without either key.
+
+What does not change: the status, `Allow` on a 405, `Cache-Control: no-store`,
+`X-Content-Type-Options: nosniff`, `X-Request-Id`, the security-profile headers
+and the HEAD rule (the JSON length is stated, no body is sent). The format
+applies only to answers the runtime writes itself. A handler's own status and
+body (`respond: {status: 404}`, a function's `Response`), a policy's answer (a
+`throttle` 429, an `agents` 403, a cache hit), an operator plugin's answer and
+an extension's answer or denial (an auth 401) are never rewritten. A
+`site.notFound` page is not served for an unmatched path in a JSON scope: an
+API client gets the JSON 404 instead of HTML. The server's own `/_urlcode/*`
+probes stay text.
+
+Targets: self-hosted, AWS and Vercel write it in the shared runtime (including
+the adapters' own body-limit 413), and the Cloudflare Worker artifact carries
+the route formats and the site scope. Static hosting has no server to write an
+error, so it refuses `errors: {format: json}` and `site.errors` before building
+(`urlcode capabilities --target static` lists `errors` as refused).
+
 ### Still outside this contract
 
 Automatic CORS/preflight policy, cookie parsing/signing, authentication
@@ -3168,7 +3264,8 @@ key becomes one ordinary native route (`respond` or `page`) that is merged into
 the route table before compilation. Everything downstream is unchanged: the
 route appears in `urlcode routes` with `generated: "site.<key>"`, the audit
 generates fixtures for it, host policies apply to it and every deployment
-target compiles it like a route the project wrote by hand. `site` is accepted
+target compiles it like a route the project wrote by hand. The one exception
+is [`errors`](#errors-no-route), which generates no route. `site` is accepted
 only in the entry `urlcode.yaml`, not in included files.
 
 ```yaml
@@ -3322,6 +3419,25 @@ reads it (64 KiB cap, must decode as UTF-8) and carries it in the artifact as a
 rules as every other target. See [`docs/CLOUDFLARE.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#sitenotfound-is-inlined).
 `favicon` and `llms` stay refused there like any other `page` route (no asset
 binding).
+
+#### `errors` (no route)
+
+`site.errors` is the one key that generates no route. It selects the
+[JSON error envelope](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#error-format) for runtime-generated errors on a
+path scope, whether a route matches or not:
+
+```yaml
+site:
+  errors:
+    format: json
+    paths: [/api/*, /status]   # a /* prefix also covers the prefix itself
+```
+
+An unmatched path in the scope answers the JSON 404 for every method, and
+skips `notFound`: an API client gets JSON, not the HTML page. A route that
+declares its own `errors` keeps it. Handler, policy and extension answers are
+never rewritten. Cloudflare carries the scope in its artifact; static hosting
+refuses it before building.
 
 ### Per-target support
 
