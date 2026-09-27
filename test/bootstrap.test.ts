@@ -33,6 +33,8 @@ async function snapshot(root:string):Promise<string[]> {
 const inertHost=(site:string)=>writeFile(join(site,'host.mjs'),'export default {plugins: [], extensions: []};');
 function run(args:string[],cwd?:string) {return spawnSync(process.execPath,['--conditions=development',cli,...args],{encoding:'utf8',...(cwd?{cwd}:{})});}
 function runJson(args:string[],cwd?:string):Bootstrap {const result=run([...args,'--json'],cwd);assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout) as Bootstrap;}
+// The emitted commands are POSIX shell text; Windows runners have no /bin/sh (the same skip as test/context-commands.test.ts).
+const posixShell=process.platform!=='win32';
 /** Runs an emitted command through a POSIX shell after its `cd`, with this checkout's CLI standing in for the site-local one. */
 function runEmitted(bootstrap:Bootstrap,name:string) {
  const command=bootstrap.commands![name]!;
@@ -77,7 +79,7 @@ test('--create with an explicit destination creates one site once; repeating it 
  assert.deepEqual(await snapshot(root),before);
  await assert.rejects(stat(join(site,'app','app')));
  // The emitted validate and test run from the site root although its path has a space.
- for(const name of ['validate','test']) {const emitted=runEmitted(first,name);assert.equal(emitted.status,0,`${name}: ${emitted.stderr}`);}
+ if(posixShell)for(const name of ['validate','test']) {const emitted=runEmitted(first,name);assert.equal(emitted.status,0,`${name}: ${emitted.stderr}`);}
 });
 
 test('creation is refused where it would nest a site: at an app directory or inside a project',async t=>{
@@ -113,9 +115,11 @@ test('an existing site is found from its root and from app/, with a supplied fro
  for(const value of [fromRoot.site!.root,fromRoot.site!.projectRoot])assert.ok(value.startsWith(site));
  // The mapping holds: a static route naming `public` validates; one naming the site-relative path does not.
  await writeFile(join(site,'app','urlcode.yaml'),'version: "1"\nroutes:\n  /public/*: {static: {directory: public, index: index.html}}\n');
- assert.equal(runEmitted(fromRoot,'validate').status,0);
+ // Checked through the emitted command where a POSIX shell exists, otherwise through the CLI with the same arguments.
+ const validate=():number|null=>posixShell?runEmitted(fromRoot,'validate').status:run(['validate','--local','--project','app','--host-file','host.mjs'],site).status;
+ assert.equal(validate(),0);
  await writeFile(join(site,'app','urlcode.yaml'),'version: "1"\nroutes:\n  /public/*: {static: {directory: app/public}}\n');
- assert.notEqual(runEmitted(fromRoot,'validate').status,0);
+ assert.notEqual(validate(),0);
  // --origin reaches the commands, quoted; a project that no longer loads is a diagnostic, not a crash.
  const withOrigin=await buildBootstrap(site,{origin:'https://example.test'});
  assert.ok(withOrigin.commands!.start!.endsWith('--origin https://example.test'));
