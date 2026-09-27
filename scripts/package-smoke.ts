@@ -39,7 +39,10 @@ try {
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   assert.ok(pack.files.some(f => f.path === 'starters/default/.github/workflows/urlcode.yml'),'The starter CI template must ship with the package');
-  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','.claude/skills/urlcode-authoring/SKILL.md','.claude/skills/urlcode-authoring/hosted-plan.mjs','.claude/skills/urlcode-operations/SKILL.md','starters/default/AGENTS.md','starters/default/.mcp.json']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
+  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','.claude/skills/urlcode-authoring/SKILL.md','.claude/skills/urlcode-authoring/hosted-plan.mjs','.claude/skills/urlcode-operations/SKILL.md','starters/default/AGENTS.md']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
+  // No MCP client configuration ships (#825): an agent sandbox refuses to unpack one, and init renders .mcp.json itself
+  // (checked below against the installed CLI's init output).
+  assert.ok(!pack.files.some(f => /(?:^|\/)\.mcp\.json$/.test(f.path)), 'The package must not ship a .mcp.json');
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
   command(npm,['install','--omit=dev','--omit=optional','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
@@ -131,6 +134,11 @@ try {
     assert.ok(existsSync(join(site,'host.mjs')) && existsSync(join(site,'package.json')));
     assert.deepEqual(JSON.parse(await readFile(join(site,'.mcp.json'),'utf8')),{ mcpServers:{ urlcode:{ command:'npx',args:['--no','--package','@jimhoyd/urlcode','urlcode','mcp','--project','app'] } } });
     command(process.execPath,[cli,'test','--project',project]);
+    // --no-mcp (#825): the same runnable site with no MCP client configuration, and the output says it was skipped.
+    const bare = join(root,'site-no-mcp');
+    assert.equal((JSON.parse(command(process.execPath,[cli,'init',bare,'--no-mcp','--json'])) as { mcpRegistration?: string }).mcpRegistration,'skipped');
+    assert.ok(!existsSync(join(bare,'.mcp.json')) && existsSync(join(bare,'app','urlcode.yaml')));
+    command(process.execPath,[cli,'test','--project',join(bare,'app')]);
     const emptyAudit=spawnSync(process.execPath,[cli,'audit','--project',project,'--expect-routes','0'],{encoding:'utf8',timeout:childTimeoutMs});
     assert.equal(emptyAudit.status,1,'A project with no active routes is intentionally not ready');
     const emptyReport=JSON.parse(emptyAudit.stdout.trim().split('\n').at(-1) ?? '') as {ready:boolean;notReadyReasons:string[]};

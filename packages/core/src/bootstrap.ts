@@ -36,6 +36,8 @@ export interface BootstrapOptions {
  create?:boolean|undefined;
  /** With create: init --adopt, so a directory already holding user files becomes the site root; nothing of theirs is moved. */
  adopt?:boolean|undefined;
+ /** With create: init --no-mcp, so no MCP client configuration (.mcp.json) is written. */
+ mcp?:boolean|undefined;
 }
 export type BootstrapState='existing'|'created'|'none';
 export interface BootstrapRuntime {
@@ -63,6 +65,9 @@ export interface Bootstrap {
  created?:string[];
  /** With create and adopt: the top-level entries that were already there and were left alone (at most 20). */
  leftAlone?:string[];
+ /** With create and mcp false (--no-mcp): no .mcp.json was written, and mcpNote says how to register separately. */
+ mcpRegistration?:'skipped';
+ mcpNote?:string;
  site:null|{
   root:string;
   layout:'site'|'project';
@@ -238,13 +243,13 @@ async function projectFacts(project:string):Promise<{extensions:number;bindings:
   return {extensions:Object.keys(loaded.document.extensions??{}).length,bindings};
  } catch(error) {return {error:describeError(error)};}
 }
-async function createSite(directory:string,adopt:boolean):Promise<{created:string[];leftAlone:string[]}> {
+async function createSite(directory:string,adopt:boolean,mcp:boolean|undefined):Promise<{created:string[];leftAlone:string[]}> {
  if(basename(directory)===PROJECT_DIRECTORY)throw new ConfigError(`A site keeps its route project in ${PROJECT_DIRECTORY}/, so creating a site at an ${PROJECT_DIRECTORY} directory nests ${PROJECT_DIRECTORY}/${PROJECT_DIRECTORY}; name the site directory (${shellWord(dirname(directory))}) instead`,{code:'nested-site'});
  const enclosing=await enclosingProject(directory);
  if(enclosing!==undefined)throw new ConfigError(`The destination is inside an existing URLCode project (${enclosing}); bootstrap that site instead of creating one inside it`,{code:'nested-site'});
  const before=new Set(await readdir(directory).catch(()=>[] as string[]));
  const {initSite,initListLimit}=await import('./authoring.ts');
- const {leftAlone}=await initSite(directory,{adopt});
+ const {leftAlone}=await initSite(directory,{adopt,mcp});
  return {created:(await readdir(directory)).filter(name=>!before.has(name)).sort(),leftAlone:adopt?leftAlone.slice(0,initListLimit):[]};
 }
 /** With no site here: the create command that would succeed, or why init would refuse this directory. Read-only. */
@@ -264,7 +269,7 @@ export async function buildBootstrap(directory:string,options:BootstrapOptions={
  const packet=requested.length?await capabilityPacket(requested,options.target):undefined;
  const target=await canonical(directory);
  let located=await locate(target),state:BootstrapState=located?'existing':'none',created:string[]|undefined,leftAlone:string[]=[];
- if(!located&&options.create) {({created,leftAlone}=await createSite(target,options.adopt===true));located=await locate(target);state='created';}
+ if(!located&&options.create) {({created,leftAlone}=await createSite(target,options.adopt===true,options.mcp));located=await locate(target);state='created';}
  const invocation=await cliInvocation(target);
  if(!located) {
   const enclosing=await enclosingProject(target);
@@ -303,6 +308,7 @@ export async function buildBootstrap(directory:string,options:BootstrapOptions={
  ];
  return {
   urlcode:running.version,schema:'1',kind:'bootstrap',state,...(created?{created}:{}),...(leftAlone.length?{leftAlone}:{}),
+  ...(created&&options.mcp===false?{mcpRegistration:'skipped' as const,mcpNote:(await import('./authoring.ts')).mcpSkippedNote}:{}),
   site:{root:located.root,layout:located.layout,project:projectRelative,projectRoot:located.project,entry,hostFile,packageJson},
   runtime,paths:await pathMapping(located),commands,
   ...(prerequisites.length?{prerequisites}:{}),

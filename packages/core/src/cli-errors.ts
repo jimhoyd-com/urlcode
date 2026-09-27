@@ -20,4 +20,4 @@ export function argumentError(code: string, message: string, optionNames: string
   return undefined;
 }
 
-export const systemErrorMessages: Record<string, string | undefined> = { EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
+export const systemErrorMessages: Record<string, string | undefined> = { EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied', EPERM:'Operation not permitted (EPERM): the operating system or a sandbox policy refused a file operation; use a location this process is allowed to write to', EROFS:'Read-only file system (EROFS): use a writable location' };

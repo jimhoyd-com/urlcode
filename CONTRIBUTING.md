@@ -65,8 +65,9 @@ tests with every new sandbox guest/host bridge. See the
 `starters/default` is the only starting point: `urlcode init` copies it from the
 installed runtime, so a new site always matches the runtime that created it.
 There is no separate template repository to keep in step.
-`starters/default/AGENTS.md` and `.mcp.json` are generated from
-`packages/core/src/agents-guide.ts` and checked by test. The Claude marketplace
+`starters/default/AGENTS.md` is generated from
+`packages/core/src/agents-guide.ts` and checked by test; the starter carries no
+`.mcp.json`, which `urlcode init` renders from the same source. The Claude marketplace
 skills are derived from `.claude/skills/`. When either source changes (including
 the capability catalog, policies or starter routes), run `npm run docs:agents`
 and commit every resulting asset; do not hand-edit a derived copy.

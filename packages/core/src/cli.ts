@@ -12,7 +12,7 @@ import type { OperatorHost } from './operator-host.ts';
 import { startServer } from './server.ts';
 import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
-import { initSite, addRedirect, boundedList, initListLimit } from './authoring.ts';
+import { initSite, addRedirect, boundedList, initListLimit, mcpSkippedNote } from './authoring.ts';
 import { initSiteWith, parseWithNames } from './init-with.ts';
 import { validateDeclaredExtensions } from './addon-install.ts';
 import { planUpgrade, upgradeSite } from './upgrade.ts';
@@ -46,10 +46,11 @@ interface HelpEntry { name: string; group: string; text: string }
 const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
 const helpEntries: HelpEntry[] = [
   { name:'init', group:'Start', text:
-`  urlcode init <directory> [--adopt] [--with ui,auth,admin [--example]] [--ack extension:id]
-    # Writes one site: app/ (the route project: urlcode.yaml), host.mjs (the operator host), package.json (exact runtime pin and npm scripts), AGENTS.md, .mcp.json, a Makefile and CI. Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
+`  urlcode init <directory> [--adopt] [--no-mcp] [--with ui,auth,admin [--example]] [--ack extension:id]
+    # Writes one site: app/ (the route project: urlcode.yaml), host.mjs (the operator host), package.json (exact runtime pin and npm scripts), AGENTS.md, .mcp.json (unless --no-mcp), a Makefile and CI. Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json keeps every key and gains only a missing runtime pin and missing scripts
     # --adopt: create the site around user files already there (for example a frontend/ or dist/ directory): only new files are written, nothing existing is changed or followed, and the entries left alone are listed. Refused, with nothing written, when an existing path collides with what init writes (app/, package.json, host.mjs, .gitignore, README.md, ...; with --with also node_modules and package-lock.json), inside an existing project or at an app/ directory
+    # --no-mcp: write no MCP client configuration (.mcp.json, the only client config init writes); the site is complete and runnable, an existing .mcp.json or .claude/ is left untouched, and the output reports mcpRegistration: skipped. Use it where a sandbox forbids writing agent configuration
     # --with: then runs \`urlcode extensions add\` for those extensions (npm install of the add-on tarballs this runtime pins); a refusal undoes the whole init
     # --example: with --with, also writes each extension's example (a Todo collection and screen, a contact form, a signed-in page); without it only the capabilities are installed
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command
@@ -201,10 +202,11 @@ const helpEntries: HelpEntry[] = [
 `  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
 ` },
   { name:'bootstrap', group:'Agent tooling', text:
-`  urlcode bootstrap [directory] [--capabilities respond,redirect,static] [--target self-hosted|cloudflare|aws|vercel|static] [--origin https://links.example] [--create [--adopt]] [--json]
+`  urlcode bootstrap [directory] [--capabilities respond,redirect,static] [--target self-hosted|cloudflare|aws|vercel|static] [--origin https://links.example] [--create [--adopt] [--no-mcp]] [--json]
     # run before the first authoring step: whether the directory (default .) holds a site, its root, route project, entry and host file, the site's pinned/installed runtime against this one, exact start/validate/test commands to run from the site root, and how YAML file references map onto the site
     # --capabilities: a bounded packet (at most 8) of this runtime's schema fragments, constraints, target support and one bundled example per named capability; unknown names and, with --target, refused ones are reported, never guessed
     # --create: only then, and only where no site or project exists, runs init at the named directory; refused inside an existing project or at an app/ directory. Without it nothing is written
+    # --no-mcp: with --create, passed to init so no .mcp.json is written; the result reports mcpRegistration: skipped
     # --adopt: with --create, passed to init so a directory already holding user files (a frontend/, say) becomes the site root; the same collision refusal applies and user files are never moved
 ` },
   { name:'context', group:'Agent tooling', text:
@@ -353,6 +355,7 @@ try {
     if (values.open && values['no-open']) throw new ConfigError('Use --open or --no-open, not both');
     if ((values.capabilities !== undefined || values.create) && command !== 'bootstrap') throw new ConfigError('--capabilities and --create are only supported by bootstrap');
     if (values.adopt && !(command === 'init' || (command === 'bootstrap' && values.create))) throw new ConfigError('--adopt is only supported by init and bootstrap --create');
+    if (values['no-mcp'] && !(command === 'init' || (command === 'bootstrap' && values.create))) throw new ConfigError('--no-mcp is only supported by init and bootstrap --create');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions and artifacts list');
@@ -432,7 +435,7 @@ try {
       if(parsed.project!==undefined)throw new ConfigError('bootstrap takes the site directory as its argument, not --project');
       if(values.create&&arg===undefined)throw new ConfigError('--create needs an explicit destination: urlcode bootstrap <directory> --create');
       const { buildBootstrap, renderBootstrap } = await import('./bootstrap.ts');
-      const bootstrap = await buildBootstrap(arg ?? '.', { capabilities:values.capabilities?.split(','), target:values.target, origin:values.origin, create:values.create, adopt:values.adopt });
+      const bootstrap = await buildBootstrap(arg ?? '.', { capabilities:values.capabilities?.split(','), target:values.target, origin:values.origin, create:values.create, adopt:values.adopt, mcp:values['no-mcp'] ? false : undefined });
       print(values.json ? JSON.stringify(bootstrap) + '\n' : renderBootstrap(bootstrap));
     }else if(command==='context'){
       if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
@@ -545,17 +548,21 @@ try {
           // An adopted directory's own entries are reported (bounded), so the caller sees exactly what init did not touch.
           const kept = (names: string[]) => adopt && names.length ? { leftAlone: names.slice(0, initListLimit), ...(names.length > initListLimit ? { leftAloneTotal: names.length } : {}) } : {};
           const keptLine = (names: string[]) => adopt && names.length ? [`Left alone: ${boundedList(names)}`] : [];
+          // --no-mcp never claims a registration: the output says it was skipped and how to register separately.
+          const mcp = values['no-mcp'] ? false : undefined;
+          const skipped = mcp === false ? { mcpRegistration:'skipped' as const, mcpNote:mcpSkippedNote } : {};
+          const skippedLine = mcp === false ? [`MCP registration skipped (--no-mcp): ${mcpSkippedNote}`] : [];
           if (values.with === undefined) {
-            const { site: created, leftAlone } = await initSite(arg, { adopt });
+            const { site: created, leftAlone } = await initSite(arg, { adopt, mcp });
             const nextSteps = [`cd ${arg}`, 'npm install', 'npm run dev'];
-            if (human) print([`Created ${created}`, ...keptLine(leftAlone), 'Next steps:', ...nextSteps.map(step => `  ${step}`)].join('\n') + '\n');
-            else print({ event:'created', path:created, ...kept(leftAlone), nextSteps });
+            if (human) print([`Created ${created}`, ...keptLine(leftAlone), ...skippedLine, 'Next steps:', ...nextSteps.map(step => `  ${step}`)].join('\n') + '\n');
+            else print({ event:'created', path:created, ...kept(leftAlone), ...skipped, nextSteps });
             break;
           }
-          const { leftAlone, ...created } = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [], example: values.example ?? false, adopt });
+          const { leftAlone, ...created } = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [], example: values.example ?? false, adopt, mcp });
           const review = `Review ${created.site}/app and pin its revision explicitly: projectSha256 ${created.projectSha256} in the reviewed --policy file, or PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
-          if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...keptLine(leftAlone), ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
-          else print({ event:'created', ...created, ...kept(leftAlone), review });
+          if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...keptLine(leftAlone), ...skippedLine, ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
+          else print({ event:'created', ...created, ...kept(leftAlone), ...skipped, review });
           break;
         }
         case 'upgrade': {

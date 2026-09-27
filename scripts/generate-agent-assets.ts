@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { loadDocument } from '../packages/core/src/config.ts';
-import { renderAgentsGuide, renderMcpConfig } from '../packages/core/src/agents-guide.ts';
+import { renderAgentsGuide } from '../packages/core/src/agents-guide.ts';
 
 const check = process.argv.includes('--check');
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -20,11 +20,11 @@ if (pluginResult.stdout) process.stdout.write(pluginResult.stdout);
 if (pluginResult.stderr) process.stderr.write(pluginResult.stderr);
 if (pluginResult.error) throw pluginResult.error;
 
-// The starter is a site: its route project is app/, which is also what its .mcp.json registers (npx form, as init writes).
+// The starter is a site whose route project is app/. It carries no .mcp.json: init renders that file (#825), and a
+// packaged copy of agent configuration is what an agent sandbox refuses to unpack.
 const routes = Object.keys((await loadDocument(fileURLToPath(new URL('app/', starter)))).routes).length;
 const files = new Map<string, string>([
   ['starters/default/AGENTS.md', renderAgentsGuide({ routes })],
-  ['starters/default/.mcp.json', renderMcpConfig('app', { local: true })],
 ]);
 const stale: string[] = [];
 for (const [path, content] of files) {
