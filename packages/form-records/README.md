@@ -73,7 +73,7 @@ routes:
 | `records.<name>` | One record flow. The name is also the form's name in CSRF tokens (`^[a-z][a-z0-9-]{0,63}$`); at most 16. |
 | `mount` | Where it is served; needs the route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own token on every POST, so auth's header token is not needed). |
 | `collection` | A store collection declared with `ownership: owner` and not `readOnly`. |
-| `form` | A forms flow body: `title`, `submitLabel`, `confirmation` (`title`, `message`, `show`), `fields`, optional `timeZone`. The same shape and rules as a flow under `extensions.forms.config.flows`, without `mount`. |
+| `form` | A forms flow body: `title`, `submitLabel`, `confirmation` (`title`, `message`, `show`), `fields`, optional `timeZone` and `success`. The same shape and rules as a flow under `extensions.forms.config.flows`, without `mount`. `success: {mode: inline, status: 200\|201}` answers a create with the saved record's confirmation instead of a 303 (a 201 also carries `Location: <mount>/<id>`); an edit answered inline is always 200, because it creates nothing. |
 | `fields` | Form field to collection field. Optional: each form field defaults to the collection field of the same name. Every form field must be mapped, two form fields cannot fill one collection field, and every required collection field without a default must be filled. |
 | `editable` | Form fields the edit page may change. Every other field is read-only after create. Empty or absent: no edit page. |
 | `editTitle` | The edit page title. Default: the form's title. |
@@ -89,10 +89,10 @@ every other problem above, with a message naming the record flow.
 
 | Path | GET / HEAD | POST |
 | --- | --- | --- |
-| `<mount>` | The empty form | Create: 303 to `<mount>/<id>`, or the form again with errors |
+| `<mount>` | The empty form | Create: 303 to `<mount>/<id>` (with `form.success` inline, the record's confirmation in the response: 201 with `Location: <mount>/<id>`, or 200), or the form again with errors |
 | `<mount>/` (with `list`) | The caller's own records, 20 per page at most (fewer when the collection's `pageSize` is smaller), in creation order, with a View link to each confirmation, an Edit link when `editable` is set, and Previous/Next page links (`?cursor=<offset>`, the store's cursor) | As `<mount>` |
 | `<mount>/<id>` | The confirmation: the form's `confirmation` with its `show` fields read from the saved record, an Edit link when `editable` is set, and a link to the list when `list` is set | 405 |
-| `<mount>/<id>/edit` | The editable fields pre-filled, the other fields as a read-only list | Partial update: 303 to `<mount>/<id>`, or the form again with errors |
+| `<mount>/<id>/edit` | The editable fields pre-filled, the other fields as a read-only list | Partial update: 303 to `<mount>/<id>` (with `form.success` inline, the record's confirmation with 200), or the form again with errors |
 
 - **Ownership.** Every request needs a principal; without one the answer is
   401 and nothing is read. A record another user created, and an id that does

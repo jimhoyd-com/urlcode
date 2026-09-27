@@ -63,6 +63,17 @@ sent with `Cache-Control: no-store` and every value is HTML-escaped before
 placeholders are substituted. Changing the CSRF secret invalidates in-flight
 handoffs along with CSRF tokens.
 
+**Inline confirmation.** A flow that declares `success: {mode: inline}` (#805)
+renders the confirmation in the successful POST response itself, with status
+200 or 201. It passes every check above first: same-origin admission, the
+bound CSRF token, the body bound, any abuse budget or challenge, and field
+validation. The response carries the same `show`-only, escaped values and
+`Cache-Control: no-store`, and no handoff cookie is sealed, so no submitted
+value reaches any later request. Unlike the redirect, a browser refresh of an
+inline confirmation re-POSTs the form; with a still-valid token that is a new
+submission, which is the same non-single-use property described under CSRF
+token binding above.
+
 An optional `onSubmit` lifecycle hook is trusted project code, exactly like a
 normal unsandboxed project function; `sandbox: true` is refused by the generic
 extension-hook contract. It should not expose submitted values, and any durable

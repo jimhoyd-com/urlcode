@@ -75,6 +75,19 @@ test('a filled honeypot is accepted with the confirmation redirect and never rea
   assert.equal(hookCalls().length, 1);
 });
 
+test('with success inline, a filled honeypot gets the fixed inline confirmation with the flow\'s status and never reaches onSubmit (#805)', async t => {
+  const where = await site(t, { contact: contact({ success: { mode: 'inline', status: 201 }, confirmation: { title: 'Thanks', message: 'Received {name}.', show: ['name'] }, abuse: { client: { limit: 5, windowMs: 3600000 }, honeypot: 'website' } }) }, { declare: ['abuse'], hook: recordingHook });
+  const { submit } = await serve(t, where, [ui(), forms({ csrfSecret }), abuse({ key: randomBytes(32) })]);
+  const bot = await submit({ ...valid, website: 'https://spam.example' });
+  assert.equal(bot.status, 201); assert.equal(bot.headers.get('location'), null);
+  const botPage = await bot.text();
+  assert.match(botPage, /<p>Received \.<\/p>/, 'the bot sees the fixed page: no submitted value is echoed');
+  assert.equal(hookCalls().length, 0);
+  const person = await submit(valid);
+  assert.equal(person.status, 201); assert.match(await person.text(), /<p>Received Ada\.<\/p>/);
+  assert.equal(hookCalls().length, 1);
+});
+
 test('activation refuses abuse that cannot be enforced: missing, off node, or a challenge without a verifier', async t => {
   const limited = contact({ abuse: { client: { limit: 5, windowMs: 3600000 } } });
   const missing = await site(t, { contact: limited });

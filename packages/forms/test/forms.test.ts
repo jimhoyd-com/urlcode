@@ -489,3 +489,69 @@ test('startup refuses a show entry that is not a declared field, or a placeholde
   }
   const {started}=await bootFlows(t,{contact:contactFlow({message:'Literal { braces } and {Upper} stay text.'})});await (await started).close();
 });
+
+// Inline success (#805): opt-in per flow; redirect-after-POST stays the default and CSRF/admission are unchanged.
+const inlineFlow=(success:Record<string,unknown>,confirmation:Record<string,unknown>={message:'We will reply to {email} about {topic}.',show:['email','topic','terms']})=>({...contactFlow(confirmation),success});
+const inlineValid={email:'person@example.test',topic:'support',terms:'true'};
+
+test('success defaults to a 303 redirect, and an explicit mode: redirect behaves the same (#805)',async t=>{
+  for(const flow of [contactFlow({message:'Reply to {email}.',show:['email']}),{...contactFlow({message:'Reply to {email}.',show:['email']}),success:{mode:'redirect'}}]){
+    const {call,submit}=await (await bootFlows(t,{contact:flow})).ready();
+    const sent=await submit('/contact',inlineValid);
+    assert.equal(sent.status,303);assert.equal(sent.headers.get('location'),'/contact/confirmation');assert.equal(await sent.text(),'');
+    assert.match(await (await call('/contact/confirmation')).text(),/Reply to person@example\.test\./);
+  }
+});
+
+test('inline 201 renders the confirmation in the POST response, escaped, no-store, with nothing carried into a later GET (#805)',async t=>{
+  const {call,cookies,submit}=await (await bootFlows(t,{contact:inlineFlow({mode:'inline',status:201})})).ready();
+  const sent=await submit('/contact',{email:hostileEmail,topic:'support',terms:'true',secret:'unlisted-private-note'});const html=await sent.text();
+  assert.equal(sent.status,201);assert.equal(sent.headers.get('location'),null,'no redirect');
+  assert.match(sent.headers.get('content-type')??'',/^text\/html/);assert.equal(sent.headers.get('cache-control'),'no-store');
+  assert.match(html,/<h1>Thank you<\/h1>/);
+  assert.match(html,/We will reply to &lt;img\/src=x\/onerror=alert\(1\)&gt;@example\.test about Support &amp; help\./);
+  assert.ok(!html.includes('<img/src'),'a shown value cannot inject markup');
+  assert.match(html,/<dt>Agree<\/dt><dd>Yes<\/dd>/);
+  assert.ok(!html.includes('unlisted-private-note')&&!html.includes('Private note'),'an unlisted field never appears');
+  assert.ok(!sent.headers.getSetCookie().some(header=>header.startsWith(`${CONFIRMATION}=`)),'no confirmation handoff is sealed');
+  assert.ok(!cookies.has(CONFIRMATION));
+  const fresh=await call('/contact');const form=await fresh.text();
+  assert.equal(fresh.status,200);assert.ok(!form.includes('example.test')&&!form.includes('onerror'),'a fresh GET shows an empty form');
+  assert.match(form,/name="email"[^>]*value=""/);
+  const confirmation=await (await call('/contact/confirmation')).text();
+  assert.ok(!confirmation.includes('example.test')&&!confirmation.includes('<dl>'),'the confirmation path only ever shows the fixed page');
+});
+
+test('inline without a status answers 200, and status 200 is accepted explicitly (#805)',async t=>{
+  for(const success of [{mode:'inline'},{mode:'inline',status:200}]){
+    const {submit}=await (await bootFlows(t,{contact:inlineFlow(success)})).ready();
+    const sent=await submit('/contact',inlineValid);
+    assert.equal(sent.status,200,JSON.stringify(success));assert.match(await sent.text(),/We will reply to person@example\.test about Support &amp; help\./);
+  }
+  const {submit}=await (await bootFlows(t,{contact:{...contactFlow({message:'Received.'}),success:{mode:'inline',status:201}}})).ready();
+  const fixed=await submit('/contact',inlineValid);assert.equal(fixed.status,201);const html=await fixed.text();
+  assert.match(html,/<p>Received\.<\/p>/);assert.ok(!html.includes('<dl>')&&!html.includes('person@example.test'),'without show the inline page is the fixed confirmation');
+});
+
+test('inline keeps 422 field errors and refuses a missing, forged or other-browser token and a cross-origin POST (#805)',async t=>{
+  const {call,cookies,submit}=await (await bootFlows(t,{contact:inlineFlow({mode:'inline',status:201})})).ready();
+  const bad=await submit('/contact',{email:'nope',topic:'other',terms:'false'});const badHtml=await bad.text();
+  assert.equal(bad.status,422);assert.match(badHtml,/must be a valid email address/);assert.match(badHtml,/is not an allowed option/);assert.ok(!badHtml.includes('We will reply'));
+  const post=(body:Record<string,string>,headers:Record<string,string>={origin})=>call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',...headers},body:new URLSearchParams(body),redirect:'manual'});
+  const html=await (await call('/contact')).text();const token=/name="csrf" value="([^"]+)"/.exec(html)![1]!;
+  assert.equal((await post(inlineValid)).status,403,'missing token');
+  assert.equal((await post({...inlineValid,csrf:`${token}x`})).status,403,'forged token');
+  assert.equal((await post({...inlineValid,csrf:token},{origin:'https://evil.example'})).status,403,'cross-origin');
+  assert.equal((await post({...inlineValid,csrf:token},{origin,cookie:`${BINDING}=${'b'.repeat(36)}`})).status,403,'a token bound to another browser');
+  assert.ok(cookies.has(BINDING));
+  assert.equal((await post({...inlineValid,csrf:token})).status,201,'the genuine token still admits');
+});
+
+test('activation refuses a status on a redirect and any success mode or status outside the bounded set (#805)',async t=>{
+  const {started}=await bootFlows(t,{contact:inlineFlow({mode:'redirect',status:201})});
+  await assert.rejects(started,/Form contact: success\.status applies only to mode inline; a redirect always answers 303/);
+  for(const success of [{mode:'inline',status:202},{mode:'inline',status:303},{mode:'inline',status:'201'},{mode:'redirect',status:303},{mode:'bogus'},{status:201},{mode:'inline',status:201,extra:true}]){
+    const {started:refused}=await bootFlows(t,{contact:inlineFlow(success)});
+    await assert.rejects(refused,JSON.stringify(success));
+  }
+});

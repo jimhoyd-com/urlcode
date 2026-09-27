@@ -92,6 +92,27 @@
                     }
                   }
                 },
+                "success": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mode"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "redirect",
+                        "inline"
+                      ]
+                    },
+                    "status": {
+                      "enum": [
+                        200,
+                        201
+                      ]
+                    }
+                  }
+                },
                 "fields": {
                   "type": "object",
                   "minProperties": 1,
@@ -336,7 +357,7 @@
       {
         "kind": "configuration",
         "name": "records",
-        "description": "Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).",
+        "description": "Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, optional `success` (`{mode: inline, status: 200|201}` answers a create or edit with the saved record's confirmation instead of a 303 to `<mount>/<id>`; an edit is always 200), fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).",
         "path": "urlcode.yaml#extensions.form-records.config.records"
       },
       {

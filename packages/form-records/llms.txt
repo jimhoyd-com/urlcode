@@ -28,6 +28,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   a principal-providing policy are refused at startup. For a per-user list,
   declare `list: { columns: [<form fields>] }` (served at `<mount>/`); do not
   write a list handler.
+- To answer the create POST with the saved record's confirmation (201 with
+  `Location: <mount>/<id>`) instead of a 303, declare
+  `form.success: {mode: inline, status: 201}`; an edit then answers 200.
 - An editable field emptied on the edit page is removed from the record; a
   required collection field refuses that with a 422.
 - Only `editable` fields change after create; a stale edit is a 412 page and
