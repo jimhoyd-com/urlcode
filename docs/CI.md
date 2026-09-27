@@ -19,8 +19,8 @@ unavailable diffs fail closed.
 | Change portfolio | Routine PR and `main` work |
 | --- | --- |
 | Prose | `plan`, `docs` and `verify-complete`; code jobs intentionally skip. The narrow allowlist is root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`, and package contributor/governance prose. |
-| Extension-only | Static checks plus the changed extension and reverse dependencies on Linux/Node 24. Unrelated core tests, examples/drills, audit, package, Action, container and reproducibility proofs skip. |
-| Runtime, shared, shipping or unknown | Static checks, Linux/Node 24 core shards, all consuming extensions and applicable root-runtime proofs. |
+| Extension-only | Static checks plus the changed extension and reverse dependencies on Linux/Node 24, and on a pull request the same suites on Windows/Node 24. Unrelated core tests, examples/drills, audit, package, Action, container and reproducibility proofs skip. |
+| Runtime, shared, shipping or unknown | Static checks, Linux/Node 24 core shards, all consuming extensions and applicable root-runtime proofs. On a pull request that also changes extension code, only those extensions and their reverse dependencies run on Windows/Node 24; an empty or unclassifiable diff runs every extension there. |
 | High-impact (pull requests only, on top of the rows above) | A Windows/Node 24 test leg and the Linux/Node 24 packed add-on integration; see [high-impact pull requests](#high-impact-pull-requests). |
 
 The prose allowlist is reviewed non-executable contributor prose, not every
@@ -40,6 +40,31 @@ with Node 24, so a version is published only after that proof passes on its
 exact commit. `build-fidelity` (`npm run ci:build-fidelity`) builds everything
 twice from clean builds and packs both with the release packer on the
 `.node-version` toolchain; the tarballs and add-on pins must be byte-identical.
+
+### Extension suites on Windows
+
+Extension (`packages/*`) suites once ran on Windows only in release coverage,
+so a Windows-only failure in a package test passed every pull request and first
+failed after merge, while publishing
+([#819](https://github.com/jimhoyd-com/urlcode/pull/819),
+[#820](https://github.com/jimhoyd-com/urlcode/issues/820)). A pull request
+whose diff changes extension code, meaning any path under an extension's
+`packages/<name>/` other than its contributor prose, therefore also runs those
+extensions and their reverse dependencies on Windows/Node 24
+([#824](https://github.com/jimhoyd-com/urlcode/issues/824)).
+`windowsWorkspacePackages` in `scripts/ci-plan.ts` selects them with the same
+dependency map as the Linux suites, but from the extension paths alone: a core
+or shared path in the same diff widens the Linux suites to every extension and
+leaves the Windows ones proportional to the extension change. A core-only
+change adds no Windows extension suites. Its Windows coverage comes from the
+high-impact core shards below and from release coverage.
+
+The Windows suites are entries of the existing `workspace-verify` matrix, not
+a separate job, so no new job can skip. `verify-complete` already requires
+`workspace-verify` to succeed on every code-lane run, and any failed Windows
+entry fails it. The plan reports the selection as `windowsWorkspacePackages`.
+Main pushes are unchanged, and exact-commit runs already cover every package on
+every OS and Node.
 
 ### High-impact pull requests
 
@@ -63,13 +88,15 @@ whose diff touches one of these areas keeps the lane above and adds two things
   shards: `node --test-shard` splits by file, so process- and
   filesystem-sensitive tests are spread across every shard. An extension-only
   high-impact change (an add-on's `package.json`, `urlcode.json` or
-  `test/cleanup.ts`) skips the core shards, so its Windows leg runs the
-  selected packages' `workspace-verify` suites instead.
+  `test/cleanup.ts`) skips the core shards. Its Windows leg is the selected
+  packages' `workspace-verify` suites, which every extension code change
+  already gets ([above](#extension-suites-on-windows)).
 - **Packed add-on integration.** `workspace-integration` runs its Linux/Node 24
   leg, the same job releases run on every OS: pack core and every add-on, add,
   serve and remove them in a site, plus the UI browser check.
 
-Docs-only and ordinary source pull requests do not get either. Main pushes are
+Docs-only and ordinary source pull requests do not get either. Ordinary
+extension code still gets its Windows `workspace-verify` suites. Main pushes are
 unchanged, and exact-commit runs already cover every OS. The plan reports
 `highImpact` and `platformLegs`; jobs receive the extra entries through the
 existing `shards`, `workspacePackages` and `workspaceIntegration*` outputs, so

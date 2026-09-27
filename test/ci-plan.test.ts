@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import {
   SHARDS, actionRelevant, buildFidelityRelevant, checksMatrix, classify,
   containerRelevant, coreChecksRelevant, diffRange, docsOnly, gate, highImpact,
-  packageSmokeRelevant, planEvent, platformLegs, shardMatrix, testMatrix, workspaceIntegrationMatrix,
-  workspacePackageMatrix, workspacePackages,
+  packageSmokeRelevant, planEvent, platformLegs, shardMatrix, testMatrix, windowsWorkspacePackages,
+  workspaceIntegrationMatrix, workspacePackageMatrix, workspacePackages,
 } from '../scripts/ci-plan.ts';
 
 test('docs lane is narrow and fails closed', () => {
@@ -116,7 +116,8 @@ test('workspace selection includes reverse dependencies and reserves integration
   assert.deepEqual(workspacePackages(['packages/abuse/src/abuse.ts']), ['abuse', 'auth', 'admin', 'forms', 'form-records']);
   assert.deepEqual(workspacePackages(['packages/mail/src/mail.ts']), ['mail', 'auth', 'admin', 'forms', 'form-records']);
   for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'audit', 'abuse', 'mail', 'auth', 'admin', 'store', 'forms', 'form-records', 'mcp']);
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 6);
+  // Six packages on the Linux leg and the same six on the Windows pull request leg (#824).
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 12);
   assert.equal(workspacePackageMatrix('pull_request', ['packages/form-records/README.md']).include[0]!.deps, 'ui audit abuse mail forms store');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/README.md']).include[0]!.deps, 'ui audit mail abuse store auth');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/store/src/screens.ts']).include.find(entry => entry.package === 'store')!.deps, 'ui audit');
@@ -161,9 +162,11 @@ test('each high-impact area adds a Windows test leg and the packed integration t
       assert.deepEqual(shards.map(({ os, node, shard }) => `${os}/${node}/${shard}`), [
         'ubuntu-latest/24/1', 'ubuntu-latest/24/2', 'ubuntu-latest/24/3', 'windows-latest/24/1', 'windows-latest/24/2', 'windows-latest/24/3',
       ], path);
-      // The rest of the routine lane is unchanged: checks and core-affecting workspace suites stay on Linux.
+      // The rest of the routine lane is unchanged: checks stay on Linux, and a core-affecting change widens
+      // only the Linux workspace suites; Windows runs just the extensions the diff's own extension paths select.
       assert.deepEqual(checksMatrix('pull_request', changed).include.map(({ os }) => os), ['ubuntu-latest'], path);
-      assert(workspacePackageMatrix('pull_request', changed).include.every(({ os }) => os === 'ubuntu-latest'), path);
+      const windows = workspacePackageMatrix('pull_request', changed).include.filter(({ os }) => os === 'windows-latest').map(entry => entry.package);
+      assert.deepEqual(windows, /^packages\/(?!core\/)/.test(path) ? workspacePackages([path]) : [], path);
     }
   }
 });
@@ -176,9 +179,40 @@ test('an extension-only high-impact change puts its Windows leg on the selected 
     assert.deepEqual(matrix.map(({ os, package: pkg }) => `${os}/${pkg}`), [...packages.map(pkg => `ubuntu-latest/${pkg}`), ...packages.map(pkg => `windows-latest/${pkg}`)], path);
     assert.deepEqual(workspaceIntegrationMatrix('pull_request', [path]).include, [{ os: 'ubuntu-latest', node: '24' }]);
   }
-  // An ordinary extension-only change keeps its Linux-only suites and no integration.
-  assert(workspacePackageMatrix('pull_request', ['packages/auth/src/auth.ts']).include.every(({ os }) => os === 'ubuntu-latest'));
+  // An ordinary extension-only change runs its suites on Windows too (#824), but no packed integration.
+  assert.deepEqual(workspacePackageMatrix('pull_request', ['packages/auth/src/auth.ts']).include.map(({ os, package: pkg }) => `${os}/${pkg}`), [
+    'ubuntu-latest/auth', 'ubuntu-latest/admin', 'windows-latest/auth', 'windows-latest/admin',
+  ]);
   assert.deepEqual(workspaceIntegrationMatrix('pull_request', ['packages/auth/src/auth.ts']).include, []);
+});
+
+test('a pull request runs the changed extensions and their dependents on Windows Node 24 (#824)', () => {
+  // The #819/#820 case: a package test that only fails on Windows.
+  const recipe = ['packages/auth/test/headless-auth-profile-recipe.test.ts'];
+  assert.deepEqual(windowsWorkspacePackages('pull_request', recipe), ['auth', 'admin']);
+  const auth = workspacePackageMatrix('pull_request', recipe).include.find(entry => entry.os === 'windows-latest' && entry.package === 'auth')!;
+  assert.deepEqual(auth, { os: 'windows-latest', node: '24', package: 'auth', deps: 'ui audit mail abuse store' });
+  // Selection comes from the extension paths alone: core or shared paths in the same diff widen Linux, not Windows.
+  const mixed = ['packages/core/src/runtime.ts', 'package-lock.json', 'packages/mcp/src/mcp.ts'];
+  assert.equal(workspacePackageMatrix('pull_request', mixed).include.filter(({ os }) => os === 'ubuntu-latest').length, 10);
+  assert.deepEqual(windowsWorkspacePackages('pull_request', mixed), ['mcp']);
+  assert.deepEqual(windowsWorkspacePackages('pull_request', ['packages/mail/src/mail.ts', 'packages/ui/src/kit.ts']), ['ui', 'mail', 'auth', 'admin', 'store', 'forms', 'form-records']);
+  // Core-only, non-package and prose-only package paths add no Windows suites.
+  for (const paths of [['packages/core/src/runtime.ts'], ['test/runtime.test.ts'], ['scripts/workspaces.ts'], ['packages/ui/CONTRIBUTING.md', 'packages/core/src/cli.ts']]) {
+    assert.deepEqual(windowsWorkspacePackages('pull_request', paths), [], paths.join());
+    assert(workspacePackageMatrix('pull_request', paths).include.every(({ os }) => os === 'ubuntu-latest'), paths.join());
+  }
+  // A package's shipped README is not admitted prose, so it counts as that extension's code.
+  assert.deepEqual(windowsWorkspacePackages('pull_request', ['packages/admin/README.md']), ['admin']);
+  // An empty or unclassifiable pull request diff fails closed to every extension.
+  for (const paths of [null, []]) assert.equal(windowsWorkspacePackages('pull_request', paths).length, 10);
+  // Only pull requests: main pushes stay Linux-only, and exact-commit coverage already runs every OS x Node.
+  for (const event of ['push', 'schedule', 'workflow_dispatch', 'merge_group']) {
+    assert.deepEqual(windowsWorkspacePackages(event, recipe), [], event);
+    assert.deepEqual(windowsWorkspacePackages(event, null), [], event);
+  }
+  assert(workspacePackageMatrix('push', recipe).include.every(({ os }) => os === 'ubuntu-latest'));
+  assert.equal(workspacePackageMatrix('workflow_dispatch', null).include.filter(({ os }) => os === 'windows-latest').length, 3 * 10);
 });
 
 test('docs-only and ordinary source pull requests keep the compact lane', () => {
@@ -187,8 +221,12 @@ test('docs-only and ordinary source pull requests keep the compact lane', () => 
     assert.deepEqual(platformLegs('pull_request', paths), []);
     assert.deepEqual(workspaceIntegrationMatrix('pull_request', paths).include, []);
     assert(shardMatrix('pull_request', paths).include.every(({ os }) => os === 'ubuntu-latest'));
-    assert(workspacePackageMatrix('pull_request', paths).include.every(({ os }) => os === 'ubuntu-latest'));
+    // Extension code in the diff still gets its Windows workspace suites (#824); nothing else goes to Windows.
+    const windows = workspacePackageMatrix('pull_request', paths).include.filter(({ os }) => os !== 'ubuntu-latest');
+    assert(windows.every(({ os, node }) => os === 'windows-latest' && node === '24'), paths.join());
+    assert.deepEqual(windows.map(entry => entry.package), windowsWorkspacePackages('pull_request', paths), paths.join());
   }
+  assert.deepEqual(windowsWorkspacePackages('pull_request', ORDINARY), ['ui', 'auth', 'admin', 'store', 'forms', 'form-records']);
 });
 
 test('unknown and shared pull request inputs fail closed to the broader selection', () => {
