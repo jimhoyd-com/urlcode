@@ -98,33 +98,60 @@ function score(candidate: Candidate, query: Query): Scored | undefined {
   return { candidate, matched, score: value };
 }
 
-/** The nearest Markdown heading starting at or before `position`. */
-function sectionAt(text: string, position: number): { title: string; index: number } | undefined {
-  let found: { title: string; index: number } | undefined;
-  for (const heading of text.matchAll(/^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/gm)) { if (heading.index > position) break; found = { title: heading[1]!, index: heading.index }; }
+export interface Heading { title: string; index: number }
+/**
+ * The ATX headings of a Markdown document, in order, found once per document. A `#` line inside a fenced code block
+ * (a shell or YAML comment) is not a heading (#826). Fences follow CommonMark: a run of at least three backticks or
+ * tildes indented at most three spaces opens one (a backtick fence's info string has no backtick); only a run of the
+ * same character, at least as long, with nothing but whitespace after it, closes it; an unclosed fence runs to the
+ * end of the document. Headings are recognised only at column 0, so an indented code block, which needs four spaces
+ * of indentation, never holds one.
+ */
+export function headingsOf(text: string): Heading[] {
+  const headings: Heading[] = [];
+  let fence: { char: string; length: number } | undefined;
+  for (let start = 0; ;) {
+    const newline = text.indexOf('\n', start), line = text.slice(start, newline < 0 ? text.length : newline);
+    const run = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fence) { if (run && run[1]![0] === fence.char && run[1]!.length >= fence.length && /^[ \t\r]*$/.test(run[2]!)) fence = undefined; }
+    else if (run && !(run[1]![0] === '`' && run[2]!.includes('`'))) fence = { char: run[1]![0]!, length: run[1]!.length };
+    else { const heading = /^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(line); if (heading) headings.push({ title: heading[1]!, index: start }); }
+    if (newline < 0) return headings;
+    start = newline + 1;
+  }
+}
+/** The nearest heading starting at or before `position`. */
+function sectionAt(headings: readonly Heading[], position: number): Heading | undefined {
+  let found: Heading | undefined;
+  for (const heading of headings) { if (heading.index > position) break; found = heading; }
   return found;
 }
 /**
  * Where an excerpt starts: an occurrence of the whole phrase when there is one, else of the rarest matched word
  * (common words such as "form" say little about where the answer is). Among the first twenty occurrences, one that
- * opens a section (in or just below a heading) or a line wins over a passing mention.
+ * opens a section (in or just below a heading) or a line wins over a passing mention. Only `headings` count as
+ * headings, so a `#` comment in a code fence opens nothing.
  */
-function focus(text: string, query: Query): number {
+function focus(text: string, query: Query, headings: readonly Heading[]): number {
   const lower = text.toLowerCase();
   const needle = query.phrase.length > 1 && lower.includes(query.phrase) ? query.phrase
     : query.words.filter(word => lower.includes(word)).sort((a, b) => occurrences(lower, a) - occurrences(lower, b) || lower.indexOf(a) - lower.indexOf(b))[0];
   if (needle === undefined) return 0;
+  const startsHeading = new Set(headings.map(heading => heading.index));
   let best = lower.indexOf(needle), bestRank = -1;
   for (let at = best, seen = 0; at >= 0 && seen < 20; at = lower.indexOf(needle, at + needle.length), seen++) {
     const lineStart = lower.lastIndexOf('\n', at - 1) + 1, line = lower.slice(lineStart, at);
-    const recentHeading = /(?:^|\n)#{1,6}[ \t][^\n]*\n(?:[ \t]*\n)?[^\n]*$/.test(lower.slice(Math.max(0, lineStart - 200), at));
-    const rank = (/^#{1,6}[ \t]/.test(line) ? 3 : 0) + (recentHeading ? 2 : 0) + (/^[\s`*_-]*$/.test(line) ? 1 : 0);
+    // A heading on the line above, or above one blank line, starting within 200 characters of this line.
+    const above = lineStart > 0 ? lower.lastIndexOf('\n', lineStart - 2) + 1 : -1;
+    const aboveBlank = above > 0 && /^[ \t]*$/.test(lower.slice(above, lineStart - 1)) ? lower.lastIndexOf('\n', above - 2) + 1 : -1;
+    const recentHeading = [above, aboveBlank].some(start => start >= 0 && start >= lineStart - 200 && startsHeading.has(start));
+    const rank = (startsHeading.has(lineStart) ? 3 : 0) + (recentHeading ? 2 : 0) + (/^[\s`*_-]*$/.test(line) ? 1 : 0);
     if (rank > bestRank) { best = at; bestRank = rank; }
   }
   return best;
 }
 function textExcerpt(text: string, query: Query): { excerpt: string; section?: string } {
-  const at = focus(text, query), heading = sectionAt(text, at);
+  const headings = headingsOf(text), at = focus(text, query, headings), heading = sectionAt(headings, at);
   // Start at the section heading when it is close, so the excerpt reads from where the reader would; else a line
   // boundary about 300 characters before the match.
   const start = heading && at - heading.index <= 600 ? heading.index : at < 300 ? 0 : text.lastIndexOf('\n', at - 300) + 1;

@@ -793,7 +793,9 @@ deterministic, local text matching; it reads these sources and nothing else:
 The answer has at most three `results` (each with at most 1800 characters of
 `excerpt`), at most five `catalog` matches, `coverage` and at most four `next`
 steps. Each result names its `source` (`core` or `installed`), `path`, the
-Markdown `section` (or JSON pointer) the excerpt comes from, for an extension
+Markdown `section` (or JSON pointer) the excerpt comes from (the nearest ATX
+heading at column 0; a `#` line inside a ```` ``` ```` or `~~~` code fence is
+code, not a heading), for an extension
 descriptor the YAML `configPath` the matched schema validates (shaped
 `extensions.<name>.config.<field>`, with `*` for a map entry), and a `next` step
 that names that one section or path to read. A query that is an add-on's name

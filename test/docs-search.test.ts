@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { searchDocs } from '../packages/core/src/agent-context.ts';
-import { coreDocs } from '../packages/core/src/docs-search.ts';
+import { coreDocs, headingsOf } from '../packages/core/src/docs-search.ts';
 import type { DocsSearch } from '../packages/core/src/docs-search.ts';
 import { renderAgentsGuide } from '../packages/core/src/agents-guide.ts';
 import { serveMcp } from '../packages/core/src/mcp.ts';
@@ -227,4 +227,59 @@ test('agent-facts rejects prose that shrinks the search back to the core corpus 
   }
   const clean = await scan('`search_docs` covers installed add-on guides; no match there is not evidence a feature is unsupported.\n');
   assert.equal(clean.status, 0, clean.stderr);
+});
+
+// #826: a `#` comment inside a fenced code block is not a Markdown heading, so it never names the section.
+test('a shell comment in a code fence is not the section of a store README match (#826)', async t => {
+  const root = await site(t, ['store', 'ui']);
+  const found = await searchDocs('maxRecordsPerOwner', { project: join(root, 'app') });
+  bounded(found);
+  const guide = found.results.find(result => result.id === 'store:README.md');
+  assert.ok(guide, 'the store guide is a result');
+  assert.notEqual(guide.section, 'or, in an existing site:');
+  const headings = headingsOf(await readFile(join(repo, 'packages/store/README.md'), 'utf8')).map(heading => heading.title);
+  assert.ok(guide.section !== undefined && headings.includes(guide.section), `${guide.section} is a real heading of the store README`);
+  assert.ok(!headings.some(title => title.startsWith('or, in an existing site')));
+});
+
+test('headings inside backtick and tilde fences are ignored, with CommonMark closing rules (#826)', () => {
+  const titles = (text: string) => headingsOf(text).map(heading => heading.title);
+  // No fences: every ATX heading at column 0, as before.
+  assert.deepEqual(titles('# One\ntext\n## Two ##\n#no\n  # indented\n### Three'), ['One', 'Two', 'Three']);
+  // Backtick and tilde fences, with info strings and up to three spaces of indentation.
+  assert.deepEqual(titles('# A\n```sh\n# comment\n```\n## B\n~~~yaml title="x"\n# yaml comment\n~~~\n## C\n   ```\n# c\n   ```\n## D'), ['A', 'B', 'C', 'D']);
+  // A heading right after the closing fence counts; a run with text after it does not close.
+  assert.deepEqual(titles('```\n# x\n```\n# After'), ['After']);
+  assert.deepEqual(titles('```\n# x\n``` not a close\n# still code\n```\n# After'), ['After']);
+  // Only the same character, at least as long, closes: a shorter run or the other character is content.
+  assert.deepEqual(titles('````md\n```\n# inner\n```\n# still inside\n````\n# Out'), ['Out']);
+  assert.deepEqual(titles('~~~\n```\n# inner\n~~~~~\n# Out'), ['Out']);
+  assert.deepEqual(titles('```\n~~~\n# inner\n```\n# Out'), ['Out']);
+  // A backtick run with a backtick in its info string is not a fence; nor is one indented four spaces.
+  assert.deepEqual(titles('``` a`b\n# Real'), ['Real']);
+  assert.deepEqual(titles('    ```\n# Real'), ['Real']);
+  // An unclosed fence runs to the end of the document.
+  assert.deepEqual(titles('# Top\n```\n# a\n## b'), ['Top']);
+  // Positions are the start of the heading line; a CRLF closing fence closes.
+  const text = 'intro\n```\r\n# x\r\n```\r\n## Real\n';
+  assert.deepEqual(headingsOf(text), [{ title: 'Real', index: text.indexOf('## Real') }]);
+});
+
+test('a fence comment above a match does not rank it as opening a section (#826)', async t => {
+  const readme = [
+    '# Probe add-on', '', '## Setup', '', '```sh', '# comment', 'widgetQuota=1 npm start', '```', '',
+    'Some prose.', '', '## Limits', '', 'Other prose.', 'Set widgetQuota to cap widgets.', '',
+  ].join('\n');
+  const copy = await mkdtemp(join(tmpdir(), 'urlcode-docs-search-fence-'));
+  t.after(() => rm(copy, { recursive: true, force: true }));
+  await cp(source('ui'), copy, { recursive: true, filter: path => !path.includes('node_modules') });
+  await writeFile(join(copy, 'README.md'), readme);
+  const root = await site(t, [], { copies: { ui: copy } });
+  const found = await searchDocs('widgetQuota', { project: join(root, 'app') });
+  const guide = found.results.find(result => result.id === 'ui:README.md');
+  assert.ok(guide, 'the copied guide is a result');
+  // Both occurrences start a line; the first sits just below `# comment`, which is code, not a heading, so the tie
+  // keeps the first occurrence, under the real Setup heading.
+  assert.equal(guide.section, 'Setup');
+  assert.match(guide.excerpt, /^## Setup/);
 });
