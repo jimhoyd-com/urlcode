@@ -17,10 +17,11 @@ where the command is documented or a workflow does so deliberately.
 | Area | Scripts |
 | --- | --- |
 | Build and package | `build.ts`, `pack-json.ts`, `package-audit.ts`, `package-smoke.ts`, `published-manifest.mjs`, `supply-chain-triage.ts` |
-| Documentation and agent resources | `build-cookbook-index.ts`, `build-llms-full.ts`, `generate-agent-assets.ts`, `generate-claude-plugin.ts`, `generate-yaml-reference.ts`, `check-guidance-claims.ts`, `check-local-links.ts`, `check-trust-model-prose.ts`, `check-version-statements.ts`, `sync-agent-lists.ts` |
+| Documentation and agent resources | `build-cookbook-index.ts`, `build-llms-full.ts`, `generate-agent-assets.ts`, `generate-claude-plugin.ts`, `generate-yaml-reference.ts`, `generate-extension-reference.ts`, `schema-descriptions.ts`, `check-guidance-claims.ts`, `check-local-links.ts`, `check-trust-model-prose.ts`, `check-version-statements.ts`, `sync-agent-lists.ts` |
 | Repository and CI checks | `check.ts`, `check-core-boundaries.ts`, `check-issue-labels.ts`, `check-workspace-links.ts`, `ci-build-fidelity.ts`, `ci-container-smoke.ts`, `ci-history.ts`, `ci-plan.ts`, `ci-report.ts`, `nul-scan.ts`, `operational-drills.ts`, `workerd-parity.ts` |
 | Add-ons (extensions and artifacts) | `create-extension.ts`, `workspaces.ts`, `build-addon-manifest.ts`, `pack-addons.ts` |
 | Release and distribution | `npm-command.ts`, `release-bump.ts`, `release-pack.ts`, `release-publish.ts`, `render-homebrew.ts` |
+| Diagnostics (manual only, never in `npm test` or required CI) | `repro/` ([#708 V8 JIT worker crash reproducers](repro/README.md)) |
 
 ## Placement and compatibility
 

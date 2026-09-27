@@ -249,15 +249,40 @@ export function workspacePackages(paths: string[] | null): readonly string[] {
   return WORKSPACE_PACKAGES.filter(pkg => selected.has(pkg));
 }
 
+const EXTENSION_PATH = /^packages\/(?:ui|audit|abuse|mail|auth|admin|store|forms|form-records|mcp)\//;
 /**
- * A high-impact extension-only change (an add-on's manifest, descriptor or
- * fixture cleanup) skips the core `verify` shards, so its Windows leg runs the
- * selected packages' own suites instead. Any other high-impact change puts the
- * Windows leg on the core shards and leaves extension suites on Linux.
+ * The extension suites a pull request also runs on Windows Node 24 (#824).
+ * Package tests used to run on Windows only in release coverage, so a Windows
+ * path bug in one (#819/#820) first failed after merge, at publish time. A pull
+ * request whose diff changes extension code (any non-prose path under an
+ * extension's `packages/<name>/`) runs those extensions and their reverse
+ * dependencies there, selected from the extension paths alone: a core or shared
+ * path in the same diff widens the Linux suites to every extension but not the
+ * Windows ones, which keeps the added legs proportional to the extension change.
+ * A core-only change adds none; its Windows coverage is the high-impact core
+ * shards. An empty or unclassifiable diff fails closed to every extension.
+ * Main pushes and exact-commit runs are unchanged: the latter already run every
+ * package on every OS and Node.
+ */
+export function windowsWorkspacePackages(event: string, paths: string[] | null): readonly string[] {
+  if (event !== 'pull_request') return [];
+  if (!paths?.length) return WORKSPACE_PACKAGES;
+  const extensionCode = paths.filter(path => EXTENSION_PATH.test(path) && !PROSE.test(path));
+  return extensionCode.length ? workspacePackages(extensionCode) : [];
+}
+
+/**
+ * The routine legs run the selected packages; a pull request adds a Windows
+ * Node 24 leg for the extensions `windowsWorkspacePackages` selects. The
+ * Windows entries live in this one `workspace-verify` matrix, so the gate's
+ * existing requirement that `workspace-verify` succeed covers every one of them.
  */
 export function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string; deps: string }[] } {
-  const legs = [...testMatrix(event, paths).include, ...(coreChecksRelevant(paths) ? [] : platformLegs(event, paths))];
-  return { include: legs.flatMap(leg => workspacePackages(paths).map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
+  const entry = (leg: { os: string; node: string }, pkg: string) => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') });
+  const routine = testMatrix(event, paths).include.flatMap(leg => workspacePackages(paths).map(pkg => entry(leg, pkg)));
+  const windows = windowsWorkspacePackages(event, paths).map(pkg => entry({ os: 'windows-latest', node: '24' }, pkg));
+  // Never a duplicate: the routine pull request leg is Linux only, and no other event adds Windows entries.
+  return { include: [...routine, ...windows] };
 }
 
 /**
@@ -325,8 +350,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const buildFidelity = buildFidelityRelevant(paths);
     const container = containerRelevant(paths);
     const packageFloorSmoke = packageFloorSmokeRelevant(paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(integrationMatrix)}\nhighImpact=${impact}\nplatformLegs=${JSON.stringify(legs)}\ncoreChecks=${coreChecks}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\npackageFloorSmoke=${packageFloorSmoke}\n`);
+    const windowsPackages = windowsWorkspacePackages(event, paths);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(integrationMatrix)}\nhighImpact=${impact}\nplatformLegs=${JSON.stringify(legs)}\nwindowsWorkspacePackages=${JSON.stringify(windowsPackages)}\ncoreChecks=${coreChecks}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\npackageFloorSmoke=${packageFloorSmoke}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
-    console.log(`CI plan: ${lane}; high-impact: ${impact}; extra platform legs: ${JSON.stringify(legs)}; packed integration: ${integration}`);
+    console.log(`CI plan: ${lane}; high-impact: ${impact}; extra platform legs: ${JSON.stringify(legs)}; Windows workspace suites: ${JSON.stringify(windowsPackages)}; packed integration: ${integration}`);
   }
 }

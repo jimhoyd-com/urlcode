@@ -44,7 +44,7 @@ export default defineExtension<MailHostOptions>({
   authoring: mailAuthoring,
   agent: {
     description: 'Local, revision-pinned references for agents configuring the mail extension.',
-    references: [{ name: 'mail extension guide', description: 'Transports, recipients, copy files and template slot kinds.', path: 'README.md' }],
+    references: [{ name: 'mail extension guide', description: 'Transports, recipients, copy files and template slot kinds; ends with the generated field reference for every configuration key.', path: 'README.md' }],
   },
   scaffold,
   host(context, options) {

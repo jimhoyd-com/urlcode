@@ -208,6 +208,86 @@ not replace function status/body. Asset handlers retain conditional/HEAD/range
 behavior described in [assets](ASSETS.md). Use OPTIONS explicitly if you need a
 declared response; merely adding a header does not implement CORS preflight.
 
+## Error format
+
+The errors the runtime writes itself (the 405 for an undeclared method, the 404
+for an unmatched path, a disabled route or a missing asset, 410, the 400/413/415
+body and input refusals, a body-schema 422, and the generic 500/502/503/504) are
+a plain-text line by default: `Method not allowed\n`, `Not found\n`. A JSON API
+can ask for a fixed JSON envelope instead, without a function:
+
+```yaml
+site:
+  errors:
+    format: json
+    paths: [/api/*]          # exact paths, or prefixes ending in /*
+routes:
+  /status:
+    respond: {json: {status: ok}}
+    errors: {format: json}   # one route, outside any site scope
+  /api/legacy:
+    respond: {text: legacy}
+    errors: {format: text}   # a route's own setting wins over the scope
+```
+
+With `json`, the body is exactly one of:
+
+```json
+{"error":{"code":"METHOD_NOT_ALLOWED","message":"Method not allowed"}}
+{"error":{"code":"UNPROCESSABLE_CONTENT","message":"Request body failed validation","issues":[...]}}
+```
+
+with `Content-Type: application/json; charset=utf-8`. The message is the same
+fixed words the text line carries; it never includes request data, a thrown
+message or any other internal detail. `issues` (and `truncated`) appear only on
+the body-schema 422, bounded exactly as the [text-mode JSON 422](#body-schema-and-input-patterns).
+The code set is closed and keyed by status:
+
+| Status | `code` |
+|---|---|
+| 400 | `BAD_REQUEST` |
+| 404 | `NOT_FOUND` |
+| 405 | `METHOD_NOT_ALLOWED` |
+| 410 | `GONE` |
+| 413 | `CONTENT_TOO_LARGE` |
+| 414 | `URI_TOO_LONG` |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` |
+| 421 | `MISDIRECTED_REQUEST` |
+| 422 | `UNPROCESSABLE_CONTENT` |
+| 500 | `INTERNAL_ERROR` |
+| 502 | `BAD_GATEWAY` |
+| 503 | `SERVICE_UNAVAILABLE` |
+| 504 | `GATEWAY_TIMEOUT` |
+
+Any other status the runtime might write gets `ERROR`; the runtime generates
+none today. The envelope has no configurable fields.
+
+Which format applies:
+
+1. A matched route's own `errors.format` (`text` or `json`).
+2. Otherwise `json` when the decoded request path is inside `site.errors.paths`,
+   whether or not a route matches it. `/api/*` covers `/api`, `/api/` and
+   everything below; an exact entry covers only that path. A target that does
+   not decode (`/api/%zz`) is placed by its raw path.
+3. Otherwise `text`, byte for byte as a project without either key.
+
+What does not change: the status, `Allow` on a 405, `Cache-Control: no-store`,
+`X-Content-Type-Options: nosniff`, `X-Request-Id`, the security-profile headers
+and the HEAD rule (the JSON length is stated, no body is sent). The format
+applies only to answers the runtime writes itself. A handler's own status and
+body (`respond: {status: 404}`, a function's `Response`), a policy's answer (a
+`throttle` 429, an `agents` 403, a cache hit), an operator plugin's answer and
+an extension's answer or denial (an auth 401) are never rewritten. A
+`site.notFound` page is not served for an unmatched path in a JSON scope: an
+API client gets the JSON 404 instead of HTML. The server's own `/_urlcode/*`
+probes stay text.
+
+Targets: self-hosted, AWS and Vercel write it in the shared runtime (including
+the adapters' own body-limit 413), and the Cloudflare Worker artifact carries
+the route formats and the site scope. Static hosting has no server to write an
+error, so it refuses `errors: {format: json}` and `site.errors` before building
+(`urlcode capabilities --target static` lists `errors` as refused).
+
 ## Still outside this contract
 
 Automatic CORS/preflight policy, cookie parsing/signing, authentication

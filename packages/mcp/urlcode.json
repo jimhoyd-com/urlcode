@@ -8,6 +8,7 @@
     "additionalProperties": false,
     "properties": {
       "servers": {
+        "description": "MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route <mount>/* with extension: mcp (POST, HEAD; GET and DELETE too when the operator enables streaming in host.mjs).",
         "type": "object",
         "minProperties": 1,
         "maxProperties": 8,
@@ -27,21 +28,25 @@
             "mount": {
               "type": "string",
               "pattern": "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$",
-              "maxLength": 256
+              "maxLength": 256,
+              "description": "Exact endpoint path clients POST to; the route is <mount>/*, but the mount itself is the only path served (subpaths answer 404)."
             },
             "serverName": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 512
+              "maxLength": 512,
+              "description": "Server name reported in the initialize result (serverInfo.name)."
             },
             "serverVersion": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 64
+              "maxLength": 64,
+              "description": "Server version reported in the initialize result (serverInfo.version)."
             },
             "instructions": {
               "type": "string",
-              "maxLength": 4096
+              "maxLength": 4096,
+              "description": "Optional usage instructions returned to clients in the initialize result."
             },
             "tools": {
               "type": "object",
@@ -62,43 +67,53 @@
                   "title": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 256
+                    "maxLength": 256,
+                    "description": "Human-readable display name (the MCP title field); the key stays the protocol name."
                   },
                   "description": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "What the tool does, shown to MCP clients in tools/list."
                   },
                   "annotations": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
                       "readOnlyHint": {
-                        "type": "boolean"
+                        "type": "boolean",
+                        "description": "Hint to clients that the tool does not modify its environment."
                       },
                       "destructiveHint": {
-                        "type": "boolean"
+                        "type": "boolean",
+                        "description": "Hint that the tool may perform destructive updates."
                       },
                       "idempotentHint": {
-                        "type": "boolean"
+                        "type": "boolean",
+                        "description": "Hint that repeated calls with the same arguments have no additional effect."
                       },
                       "openWorldHint": {
-                        "type": "boolean"
+                        "type": "boolean",
+                        "description": "Hint that the tool interacts with external entities beyond the site."
                       }
-                    }
+                    },
+                    "description": "Optional MCP behavior hints, passed to clients as declared; they are advisory and grant or restrict nothing."
                   },
                   "inputSchema": {
-                    "type": "object"
+                    "type": "object",
+                    "description": "Schema of the arguments object, in the bounded request.body.schema subset (checked at activation); a call whose arguments fail it never reaches the handler."
                   },
                   "outputSchema": {
-                    "type": "object"
+                    "type": "object",
+                    "description": "Optional schema, in the same subset, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error."
                   },
                   "handler": {
                     "oneOf": [
                       {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 1024
+                        "maxLength": 1024,
+                        "description": "Project-relative module path; its default export is the hook."
                       },
                       {
                         "type": "object",
@@ -110,26 +125,32 @@
                           "source": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 1024
+                            "maxLength": 1024,
+                            "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                           },
                           "export": {
                             "type": "string",
-                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                            "description": "Named export to call (default: the module default export)."
                           },
                           "sandbox": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                           },
                           "sandboxReason": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 512
+                            "maxLength": 512,
+                            "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                           }
                         }
                       }
-                    ]
+                    ],
+                    "description": "Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused."
                   }
                 }
-              }
+              },
+              "description": "Tools by protocol name (tools/list, tools/call); at least one."
             },
             "resources": {
               "type": "object",
@@ -149,33 +170,39 @@
                   "uri": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 2048
+                    "maxLength": 2048,
+                    "description": "URI clients read the resource by (resources/read); unique within the server."
                   },
                   "name": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 512
+                    "maxLength": 512,
+                    "description": "Resource name listed by resources/list."
                   },
                   "title": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 256
+                    "maxLength": 256,
+                    "description": "Human-readable display name (the MCP title field); the key stays the protocol name."
                   },
                   "description": {
                     "type": "string",
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "What the resource holds, shown to clients."
                   },
                   "mimeType": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 255
+                    "maxLength": 255,
+                    "description": "MIME type advertised for the resource content."
                   },
                   "handler": {
                     "oneOf": [
                       {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 1024
+                        "maxLength": 1024,
+                        "description": "Project-relative module path; its default export is the hook."
                       },
                       {
                         "type": "object",
@@ -187,26 +214,32 @@
                           "source": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 1024
+                            "maxLength": 1024,
+                            "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                           },
                           "export": {
                             "type": "string",
-                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                            "description": "Named export to call (default: the module default export)."
                           },
                           "sandbox": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                           },
                           "sandboxReason": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 512
+                            "maxLength": 512,
+                            "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                           }
                         }
                       }
-                    ]
+                    ],
+                    "description": "Returns the resource content: a string, or {text or blob, mimeType}. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused."
                   }
                 }
-              }
+              },
+              "description": "Optional URI-addressed resources (resources/list, resources/read)."
             },
             "prompts": {
               "type": "object",
@@ -224,11 +257,13 @@
                   "title": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 256
+                    "maxLength": 256,
+                    "description": "Human-readable display name (the MCP title field); the key stays the protocol name."
                   },
                   "description": {
                     "type": "string",
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "What the prompt produces, shown to clients."
                   },
                   "arguments": {
                     "type": "array",
@@ -242,24 +277,29 @@
                       "properties": {
                         "name": {
                           "type": "string",
-                          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                          "description": "Argument name; its value is a string."
                         },
                         "description": {
                           "type": "string",
-                          "maxLength": 1024
+                          "maxLength": 1024,
+                          "description": "What the argument means, shown to clients."
                         },
                         "required": {
-                          "type": "boolean"
+                          "type": "boolean",
+                          "description": "true: prompts/get without it is refused before the handler runs."
                         }
                       }
-                    }
+                    },
+                    "description": "Declared string arguments of the prompt template."
                   },
                   "handler": {
                     "oneOf": [
                       {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 1024
+                        "maxLength": 1024,
+                        "description": "Project-relative module path; its default export is the hook."
                       },
                       {
                         "type": "object",
@@ -271,26 +311,32 @@
                           "source": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 1024
+                            "maxLength": 1024,
+                            "description": "Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation."
                           },
                           "export": {
                             "type": "string",
-                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                            "description": "Named export to call (default: the module default export)."
                           },
                           "sandbox": {
-                            "type": "boolean"
+                            "type": "boolean",
+                            "description": "Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed."
                           },
                           "sandboxReason": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 512
+                            "maxLength": 512,
+                            "description": "Reviewer note recorded with a sandbox choice; it grants nothing."
                           }
                         }
                       }
-                    ]
+                    ],
+                    "description": "Receives the validated string arguments and returns the prompt message content (prompts/get). Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused."
                   }
                 }
-              }
+              },
+              "description": "Optional prompt templates by name (prompts/list, prompts/get)."
             }
           }
         }
@@ -341,7 +387,7 @@
     "references": [
       {
         "name": "MCP extension guide",
-        "description": "Configuration and deployment guidance for project-defined MCP tools.",
+        "description": "Configuration and deployment guidance for project-defined MCP tools; ends with the generated field reference for every configuration key.",
         "path": "README.md"
       }
     ]

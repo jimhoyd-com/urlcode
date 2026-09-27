@@ -194,57 +194,61 @@ interface ActiveServer {
   prompts: Map<string, ActivePrompt>;
 }
 
-const stringSchema = { type: 'string', minLength: 1, maxLength: 512 };
+const stringSchema = (description: string) => ({ type: 'string', minLength: 1, maxLength: 512, description });
 /** Optional human-readable display name on a tool, resource or prompt (the MCP `title` field). */
-const titleSchema = { type: 'string', minLength: 1, maxLength: 256 };
+const titleSchema = { type: 'string', minLength: 1, maxLength: 256, description: 'Human-readable display name (the MCP title field); the key stays the protocol name.' };
+/** A handler reference: the shared extension hook reference shape, described for its role. */
+const handlerSchema = (description: string) => ({ ...extensionHookReferenceSchema, description: `${description} Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused.` });
 /** The four MCP tool behavior hints, closed: an unknown hint or a non-boolean value is refused at validation. */
 const toolAnnotationsSchema = {
   type: 'object', additionalProperties: false,
   properties: {
-    readOnlyHint: { type: 'boolean' }, destructiveHint: { type: 'boolean' },
-    idempotentHint: { type: 'boolean' }, openWorldHint: { type: 'boolean' },
+    readOnlyHint: { type: 'boolean', description: 'Hint to clients that the tool does not modify its environment.' },
+    destructiveHint: { type: 'boolean', description: 'Hint that the tool may perform destructive updates.' },
+    idempotentHint: { type: 'boolean', description: 'Hint that repeated calls with the same arguments have no additional effect.' },
+    openWorldHint: { type: 'boolean', description: 'Hint that the tool interacts with external entities beyond the site.' },
   },
 };
 const toolConfigSchema = {
   type: 'object', additionalProperties: false, required: ['description', 'inputSchema', 'handler'],
   properties: {
     title: titleSchema,
-    description: { type: 'string', minLength: 1, maxLength: 1024 },
-    annotations: toolAnnotationsSchema,
+    description: { type: 'string', minLength: 1, maxLength: 1024, description: 'What the tool does, shown to MCP clients in tools/list.' },
+    annotations: { ...toolAnnotationsSchema, description: 'Optional MCP behavior hints, passed to clients as declared; they are advisory and grant or restrict nothing.' },
     // Loosely typed here (any JSON object); the bounded `request.body.schema`
     // subset itself is enforced strictly at activation via `assertBodySchema`,
     // the same rule a native route's `request.body.schema` is held to.
-    inputSchema: { type: 'object' },
-    outputSchema: { type: 'object' },
-    handler: extensionHookReferenceSchema,
+    inputSchema: { type: 'object', description: 'Schema of the arguments object, in the bounded request.body.schema subset (checked at activation); a call whose arguments fail it never reaches the handler.' },
+    outputSchema: { type: 'object', description: 'Optional schema, in the same subset, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error.' },
+    handler: handlerSchema('Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer.'),
   },
 };
 const resourceConfigSchema = {
   type: 'object', additionalProperties: false, required: ['uri', 'name', 'handler'],
   properties: {
-    uri: { type: 'string', minLength: 1, maxLength: 2048 },
-    name: stringSchema,
+    uri: { type: 'string', minLength: 1, maxLength: 2048, description: 'URI clients read the resource by (resources/read); unique within the server.' },
+    name: stringSchema('Resource name listed by resources/list.'),
     title: titleSchema,
-    description: { type: 'string', maxLength: 1024 },
-    mimeType: { type: 'string', minLength: 1, maxLength: 255 },
-    handler: extensionHookReferenceSchema,
+    description: { type: 'string', maxLength: 1024, description: 'What the resource holds, shown to clients.' },
+    mimeType: { type: 'string', minLength: 1, maxLength: 255, description: 'MIME type advertised for the resource content.' },
+    handler: handlerSchema('Returns the resource content: a string, or {text or blob, mimeType}.'),
   },
 };
 const promptArgumentConfigSchema = {
   type: 'object', additionalProperties: false, required: ['name'],
   properties: {
-    name: { type: 'string', pattern: ARG_NAME.source },
-    description: { type: 'string', maxLength: 1024 },
-    required: { type: 'boolean' },
+    name: { type: 'string', pattern: ARG_NAME.source, description: 'Argument name; its value is a string.' },
+    description: { type: 'string', maxLength: 1024, description: 'What the argument means, shown to clients.' },
+    required: { type: 'boolean', description: 'true: prompts/get without it is refused before the handler runs.' },
   },
 };
 const promptConfigSchema = {
   type: 'object', additionalProperties: false, required: ['handler'],
   properties: {
     title: titleSchema,
-    description: { type: 'string', maxLength: 1024 },
-    arguments: { type: 'array', maxItems: 32, items: promptArgumentConfigSchema },
-    handler: extensionHookReferenceSchema,
+    description: { type: 'string', maxLength: 1024, description: 'What the prompt produces, shown to clients.' },
+    arguments: { type: 'array', maxItems: 32, items: promptArgumentConfigSchema, description: 'Declared string arguments of the prompt template.' },
+    handler: handlerSchema('Receives the validated string arguments and returns the prompt message content (prompts/get).'),
   },
 };
 /**
@@ -256,16 +260,18 @@ export const mcpConfigSchema = {
   type: 'object', additionalProperties: false,
   properties: {
     servers: {
+      description: 'MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route <mount>/* with extension: mcp (POST, HEAD; GET and DELETE too when the operator enables streaming in host.mjs).',
       type: 'object', minProperties: 1, maxProperties: 8, propertyNames: { pattern: NAME.source },
       additionalProperties: {
         type: 'object', additionalProperties: false, required: ['mount', 'serverName', 'serverVersion', 'tools'],
         properties: {
-          mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256 },
-          serverName: stringSchema, serverVersion: { type: 'string', minLength: 1, maxLength: 64 },
-          instructions: { type: 'string', maxLength: 4096 },
-          tools: { type: 'object', minProperties: 1, maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: toolConfigSchema },
-          resources: { type: 'object', maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: resourceConfigSchema },
-          prompts: { type: 'object', maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: promptConfigSchema },
+          mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256, description: 'Exact endpoint path clients POST to; the route is <mount>/*, but the mount itself is the only path served (subpaths answer 404).' },
+          serverName: stringSchema('Server name reported in the initialize result (serverInfo.name).'),
+          serverVersion: { type: 'string', minLength: 1, maxLength: 64, description: 'Server version reported in the initialize result (serverInfo.version).' },
+          instructions: { type: 'string', maxLength: 4096, description: 'Optional usage instructions returned to clients in the initialize result.' },
+          tools: { type: 'object', minProperties: 1, maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: toolConfigSchema, description: 'Tools by protocol name (tools/list, tools/call); at least one.' },
+          resources: { type: 'object', maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: resourceConfigSchema, description: 'Optional URI-addressed resources (resources/list, resources/read).' },
+          prompts: { type: 'object', maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: promptConfigSchema, description: 'Optional prompt templates by name (prompts/list, prompts/get).' },
         },
       },
     },

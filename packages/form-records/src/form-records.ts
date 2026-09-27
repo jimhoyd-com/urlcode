@@ -54,26 +54,28 @@ export interface FormRecordsExtensionOptions {
   ui?: UiExtension;
 }
 
-const stringSchema = { type: 'string', minLength: 1, maxLength: 512 };
+const stringSchema = (description: string) => ({ type: 'string', minLength: 1, maxLength: 512, description });
 export const formRecordsConfigSchema = {
   type: 'object', additionalProperties: false, required: ['records'],
   properties: {
     records: {
+      description: 'Record flows by name. Each needs a route <mount>/* with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: {csrf: origin}; records are private to their signed-in creator.',
       type: 'object', maxProperties: 16, propertyNames: { pattern: NAME.source },
       additionalProperties: {
         type: 'object', additionalProperties: false, required: ['mount', 'collection', 'form'],
         properties: {
-          mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 128 },
-          collection: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$' },
-          form: formFlowBodySchema,
-          fields: { type: 'object', maxProperties: 32, propertyNames: { pattern: FIELD.source }, additionalProperties: { type: 'string', pattern: FIELD.source } },
-          editable: { type: 'array', maxItems: 32, uniqueItems: true, items: { type: 'string', pattern: FIELD.source } },
-          editTitle: stringSchema,
+          mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 128, description: 'URL path of the flow: <mount> is the new-record form, <mount>/<id> the saved record\'s confirmation, <mount>/<id>/edit the edit page and, with list, <mount>/ the caller\'s records.' },
+          collection: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A store collection declared with ownership: owner; each mapped form field must be type-compatible with its collection field. Activation fails otherwise.' },
+          form: { ...formFlowBodySchema, description: 'The form, in the forms flow shape without a mount (and without abuse or notify); forms renders and validates it.' },
+          fields: { type: 'object', maxProperties: 32, propertyNames: { pattern: FIELD.source }, additionalProperties: { type: 'string', pattern: FIELD.source }, description: 'Map from form field to collection field. Default: each form field to the collection field of the same name.' },
+          editable: { type: 'array', maxItems: 32, uniqueItems: true, items: { type: 'string', pattern: FIELD.source }, description: 'Form fields the edit page may change; every other field is read-only after create. Default: none, and no edit page.' },
+          editTitle: stringSchema('Title of the edit page. Default: the form\'s title.'),
           list: {
+            description: 'Adds a page at <mount>/ listing the signed-in user\'s own records (paginated; needs ui). Default: no list page.',
             type: 'object', additionalProperties: false, required: ['columns'],
             properties: {
-              title: stringSchema,
-              columns: { type: 'array', minItems: 1, maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: FIELD.source } },
+              title: stringSchema('Title of the list page. Default: Your records.'),
+              columns: { type: 'array', minItems: 1, maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: FIELD.source }, description: 'Form fields shown as columns, in this order.' },
             },
           },
         },

@@ -145,3 +145,29 @@ signal})`), and abuse wraps it with the following bounds:
 - **Durability.** The database uses WAL with `synchronous=NORMAL`, so a power loss can drop the last increments.
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `abuse` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** none.
+
+### Configuration: `extensions.abuse.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.abuse.config.maxKeys` | integer | no | minimum: 1000; maximum: 1000000 | Hard bound on stored counters across every consumer (default 100000). Each claimed scope gets an equal share, so one consumer cannot fill the table; a full table answers 503 rather than forgetting counts. |
+
+### Authoring surfaces and limits
+
+Persistent, pseudonymous counters other extensions call: request budgets, failure backoff and challenge escalation. It has no routes and no route policy; use policies.throttle for a declarative per-route budget.
+
+- **maxKeys** (configuration, `urlcode.yaml#extensions.abuse.config.maxKeys`): Hard bound on stored counters (1000..1000000, default 100000); a full table answers 503.
+
+Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`.
+<!-- extension-reference:end -->

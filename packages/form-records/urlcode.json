@@ -15,6 +15,7 @@
     ],
     "properties": {
       "records": {
+        "description": "Record flows by name. Each needs a route <mount>/* with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: {csrf: origin}; records are private to their signed-in creator.",
         "type": "object",
         "maxProperties": 16,
         "propertyNames": {
@@ -32,11 +33,13 @@
             "mount": {
               "type": "string",
               "pattern": "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$",
-              "maxLength": 128
+              "maxLength": 128,
+              "description": "URL path of the flow: <mount> is the new-record form, <mount>/<id> the saved record's confirmation, <mount>/<id>/edit the edit page and, with list, <mount>/ the caller's records."
             },
             "collection": {
               "type": "string",
-              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+              "description": "A store collection declared with ownership: owner; each mapped form field must be type-compatible with its collection field. Activation fails otherwise."
             },
             "form": {
               "type": "object",
@@ -51,16 +54,19 @@
                 "title": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 512
+                  "maxLength": 512,
+                  "description": "Page heading and title of the form."
                 },
                 "timeZone": {
                   "type": "string",
-                  "pattern": "^[A-Za-z][A-Za-z0-9_+/-]{0,63}$"
+                  "pattern": "^[A-Za-z][A-Za-z0-9_+/-]{0,63}$",
+                  "description": "IANA time zone (default UTC) that defines \"today\" for relative date bounds; refused at activation when unknown."
                 },
                 "submitLabel": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 512
+                  "maxLength": 512,
+                  "description": "Text of the submit button."
                 },
                 "confirmation": {
                   "type": "object",
@@ -69,16 +75,19 @@
                     "title",
                     "message"
                   ],
+                  "description": "The page a valid submission leads to.",
                   "properties": {
                     "title": {
                       "type": "string",
                       "minLength": 1,
-                      "maxLength": 512
+                      "maxLength": 512,
+                      "description": "Heading of the confirmation page."
                     },
                     "message": {
                       "type": "string",
                       "minLength": 1,
-                      "maxLength": 2048
+                      "maxLength": 2048,
+                      "description": "Confirmation text; a {field} placeholder is replaced by that submitted value (escaped) and must be listed in show."
                     },
                     "show": {
                       "type": "array",
@@ -88,7 +97,8 @@
                       "items": {
                         "type": "string",
                         "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                      }
+                      },
+                      "description": "Declared fields whose submitted values the confirmation may display: carried in a sealed five-minute cookie on redirect, or rendered directly inline. Nothing else is echoed."
                     }
                   }
                 },
@@ -98,18 +108,21 @@
                   "required": [
                     "mode"
                   ],
+                  "description": "What a valid POST answers: redirect (default) is a 303 to <mount>/confirmation; inline renders the confirmation in the POST response.",
                   "properties": {
                     "mode": {
                       "enum": [
                         "redirect",
                         "inline"
-                      ]
+                      ],
+                      "description": "redirect or inline."
                     },
                     "status": {
                       "enum": [
                         200,
                         201
-                      ]
+                      ],
+                      "description": "Status of the inline confirmation (default 200); refused with mode redirect."
                     }
                   }
                 },
@@ -130,7 +143,8 @@
                       "label": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 512
+                        "maxLength": 512,
+                        "description": "Visible label of the field; also names it in error messages and on the confirmation."
                       },
                       "control": {
                         "enum": [
@@ -138,7 +152,8 @@
                           "textarea",
                           "select",
                           "checkbox"
-                        ]
+                        ],
+                        "description": "HTML control (default input). select needs options; checkbox takes no type or bounds and submits true or false."
                       },
                       "type": {
                         "enum": [
@@ -149,22 +164,27 @@
                           "url",
                           "date",
                           "datetime-local"
-                        ]
+                        ],
+                        "description": "Input type for an input control (default text); decides which bounds apply and how the value is checked."
                       },
                       "required": {
-                        "type": "boolean"
+                        "type": "boolean",
+                        "description": "Fields are required unless this is false. Not allowed together with requiredWhen."
                       },
                       "minLength": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 65536
+                        "maximum": 65536,
+                        "description": "Fewest characters a text value may have; not for number, date or checkbox fields."
                       },
                       "maxLength": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 65536
+                        "maximum": 65536,
+                        "description": "Most characters a text value may have; required (and bounded) when pattern is set."
                       },
                       "minimum": {
+                        "description": "Lower bound: a number for type number; for date and datetime-local an absolute YYYY-MM-DD or YYYY-MM-DDTHH:MM value, today, or {from: today, add: <duration>} in the flow's timeZone.",
                         "anyOf": [
                           {
                             "type": "number"
@@ -185,17 +205,20 @@
                             ],
                             "properties": {
                               "from": {
-                                "const": "today"
+                                "const": "today",
+                                "description": "The flow's current date in its timeZone."
                               },
                               "add": {
                                 "type": "string",
-                                "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$"
+                                "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$",
+                                "description": "Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y."
                               }
                             }
                           }
                         ]
                       },
                       "maximum": {
+                        "description": "Upper bound, with the same forms as minimum; it must not be below minimum.",
                         "anyOf": [
                           {
                             "type": "number"
@@ -216,11 +239,13 @@
                             ],
                             "properties": {
                               "from": {
-                                "const": "today"
+                                "const": "today",
+                                "description": "The flow's current date in its timeZone."
                               },
                               "add": {
                                 "type": "string",
-                                "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$"
+                                "pattern": "^(-?)P(?=\\d)(?:(\\d{1,5})Y)?(?:(\\d{1,5})M)?(?:(\\d{1,5})D)?$",
+                                "description": "Signed ISO 8601 period of years, months and days added to today, for example P30D or -P18Y."
                               }
                             }
                           }
@@ -229,7 +254,8 @@
                       "pattern": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": 128
+                        "maxLength": 128,
+                        "description": "Regular expression the whole text value must match; checked for catastrophic backtracking at activation and requires maxLength."
                       },
                       "enum": {
                         "type": "array",
@@ -239,11 +265,13 @@
                         "items": {
                           "type": "string",
                           "maxLength": 512
-                        }
+                        },
+                        "description": "Exact values an input accepts, or the subset of a select's option values it accepts."
                       },
                       "description": {
                         "type": "string",
-                        "maxLength": 512
+                        "maxLength": 512,
+                        "description": "Help text rendered under the field."
                       },
                       "requiredWhen": {
                         "type": "object",
@@ -252,10 +280,12 @@
                           "field",
                           "in"
                         ],
+                        "description": "Makes the field required only when a sibling select or enum field was submitted once with one of the listed values, and optional otherwise. Replaces required; the sibling must not itself be conditional.",
                         "properties": {
                           "field": {
                             "type": "string",
-                            "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                            "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+                            "description": "Name of the sibling field in this flow; it needs a fixed value set (a select or an enum input)."
                           },
                           "in": {
                             "type": "array",
@@ -265,7 +295,8 @@
                             "items": {
                               "type": "string",
                               "maxLength": 512
-                            }
+                            },
+                            "description": "Values of the sibling that make this field required; each must be one the sibling accepts."
                           }
                         }
                       },
@@ -273,6 +304,7 @@
                         "type": "array",
                         "minItems": 1,
                         "maxItems": 128,
+                        "description": "Choices of a select control, in display order; only select fields take options.",
                         "items": {
                           "type": "object",
                           "additionalProperties": false,
@@ -283,19 +315,23 @@
                           "properties": {
                             "value": {
                               "type": "string",
-                              "maxLength": 512
+                              "maxLength": 512,
+                              "description": "Submitted value of the choice."
                             },
                             "label": {
                               "type": "string",
-                              "maxLength": 512
+                              "maxLength": 512,
+                              "description": "Visible text of the choice; the confirmation shows it for a shown select."
                             }
                           }
                         }
                       }
                     }
-                  }
+                  },
+                  "description": "The form's fields in display order, keyed by field name (the submitted name). A field not declared here is refused."
                 }
-              }
+              },
+              "description": "The form, in the forms flow shape without a mount (and without abuse or notify); forms renders and validates it."
             },
             "fields": {
               "type": "object",
@@ -306,7 +342,8 @@
               "additionalProperties": {
                 "type": "string",
                 "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-              }
+              },
+              "description": "Map from form field to collection field. Default: each form field to the collection field of the same name."
             },
             "editable": {
               "type": "array",
@@ -315,14 +352,17 @@
               "items": {
                 "type": "string",
                 "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-              }
+              },
+              "description": "Form fields the edit page may change; every other field is read-only after create. Default: none, and no edit page."
             },
             "editTitle": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 512
+              "maxLength": 512,
+              "description": "Title of the edit page. Default: the form's title."
             },
             "list": {
+              "description": "Adds a page at <mount>/ listing the signed-in user's own records (paginated; needs ui). Default: no list page.",
               "type": "object",
               "additionalProperties": false,
               "required": [
@@ -332,7 +372,8 @@
                 "title": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 512
+                  "maxLength": 512,
+                  "description": "Title of the list page. Default: Your records."
                 },
                 "columns": {
                   "type": "array",
@@ -342,7 +383,8 @@
                   "items": {
                     "type": "string",
                     "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                  }
+                  },
+                  "description": "Form fields shown as columns, in this order."
                 }
               }
             }
@@ -377,7 +419,7 @@
     "references": [
       {
         "name": "form-records extension guide",
-        "description": "Configuration and composition guidance for saving a form into an owned store collection.",
+        "description": "Configuration and composition guidance for saving a form into an owned store collection; ends with the generated field reference for every configuration key.",
         "path": "README.md"
       }
     ]

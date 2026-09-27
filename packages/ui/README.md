@@ -328,3 +328,128 @@ machine-readable `authoring` contract. `urlcode extensions --host-file ...
 --json` and MCP `get_extensions` expose the same contract to people and agents.
 Theme and copy edits need no framework build; use `urlcode-ui doctor` for UI
 iteration and the full project checks before handoff.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `ui` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** none.
+
+### Configuration: `extensions.ui.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.ui.config.theme` | object | no | unknown keys rejected | Brand and design tokens for every page the kit renders. Values are checked against a narrow grammar at activation, so a theme never carries CSS syntax, URLs or markup. |
+| `extensions.ui.config.theme.name` | string | no | maxLength: 80 | Brand name shown in the page header; plain text. |
+| `extensions.ui.config.theme.logo` | string | no | maxLength: 512 | Local absolute path of the header logo image, for example /public/logo.svg; no scheme, query or traversal. |
+| `extensions.ui.config.theme.favicon` | string | no | maxLength: 512 | Local absolute path of the favicon; same rules as logo. |
+| `extensions.ui.config.theme.backTo` | string | no | maxLength: 1024 | Same-site path (optional query) the header links back to, for example /; never a scheme or protocol-relative URL. |
+| `extensions.ui.config.theme.colors` | object | no | unknown keys rejected | Light-scheme colour overrides by semantic shadcn/ui token; unset tokens keep the kit defaults. |
+| `extensions.ui.config.theme.colors.background` | string | no | maxLength: 32 | Semantic colour --background: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.foreground` | string | no | maxLength: 32 | Semantic colour --foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.card` | string | no | maxLength: 32 | Semantic colour --card: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.cardForeground` | string | no | maxLength: 32 | Semantic colour --card-foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.popover` | string | no | maxLength: 32 | Semantic colour --popover: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.popoverForeground` | string | no | maxLength: 32 | Semantic colour --popover-foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.primary` | string | no | maxLength: 32 | Semantic colour --primary: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.primaryForeground` | string | no | maxLength: 32 | Semantic colour --primary-foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.secondary` | string | no | maxLength: 32 | Semantic colour --secondary: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.secondaryForeground` | string | no | maxLength: 32 | Semantic colour --secondary-foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.muted` | string | no | maxLength: 32 | Semantic colour --muted: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.mutedForeground` | string | no | maxLength: 32 | Semantic colour --muted-foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.accent` | string | no | maxLength: 32 | Semantic colour --accent: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.accentForeground` | string | no | maxLength: 32 | Semantic colour --accent-foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.destructive` | string | no | maxLength: 32 | Semantic colour --destructive: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.destructiveForeground` | string | no | maxLength: 32 | Semantic colour --destructive-foreground: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.border` | string | no | maxLength: 32 | Semantic colour --border: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.input` | string | no | maxLength: 32 | Semantic colour --input: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.ring` | string | no | maxLength: 32 | Semantic colour --ring: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark` | object | no | unknown keys rejected | Dark-scheme colour overrides, applied by media query and by the dark class. |
+| `extensions.ui.config.theme.colors.dark.background` | string | no | maxLength: 32 | Semantic colour --background in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.foreground` | string | no | maxLength: 32 | Semantic colour --foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.card` | string | no | maxLength: 32 | Semantic colour --card in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.cardForeground` | string | no | maxLength: 32 | Semantic colour --card-foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.popover` | string | no | maxLength: 32 | Semantic colour --popover in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.popoverForeground` | string | no | maxLength: 32 | Semantic colour --popover-foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.primary` | string | no | maxLength: 32 | Semantic colour --primary in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.primaryForeground` | string | no | maxLength: 32 | Semantic colour --primary-foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.secondary` | string | no | maxLength: 32 | Semantic colour --secondary in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.secondaryForeground` | string | no | maxLength: 32 | Semantic colour --secondary-foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.muted` | string | no | maxLength: 32 | Semantic colour --muted in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.mutedForeground` | string | no | maxLength: 32 | Semantic colour --muted-foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.accent` | string | no | maxLength: 32 | Semantic colour --accent in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.accentForeground` | string | no | maxLength: 32 | Semantic colour --accent-foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.destructive` | string | no | maxLength: 32 | Semantic colour --destructive in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.destructiveForeground` | string | no | maxLength: 32 | Semantic colour --destructive-foreground in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.border` | string | no | maxLength: 32 | Semantic colour --border in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.input` | string | no | maxLength: 32 | Semantic colour --input in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.colors.dark.ring` | string | no | maxLength: 32 | Semantic colour --ring in the dark scheme: an HSL triple such as "222.2 47.4% 11.2%" or six-digit hex; anything else fails activation. |
+| `extensions.ui.config.theme.radius` | string | no | maxLength: 16 | Corner radius --radius: 0 to 2rem or 0 to 32px. |
+| `extensions.ui.config.theme.font` | string | no | maxLength: 128 | Plain font-family list, for example Inter, sans-serif; no url() or escapes. |
+| `extensions.ui.config.languages` | array | no | minItems: 1; maxItems: 32; uniqueItems: true; items: string (maxLength: 35) | Language tags the site offers (default [en]); any other than en needs a copy directory with `<copy>/<tag>.json`. |
+| `extensions.ui.config.copy` | string | no | maxLength: 256 | Relative directory under ui/ holding `<locale>.json` catalogues that override or translate catalogue entries by id, for example ui/copy. |
+| `extensions.ui.config.templates` | string | no | maxLength: 256 | Relative directory under ui/ whose `<name>.html` files shadow a kit or extension template of that name, for example ui/templates. |
+| `extensions.ui.config.stylesheet` | string / object | no | one of: string (maxLength: 256); object (fields below) | Project CSS under ui/: a path is appended after the kit stylesheet; {file, replace: true} replaces it. Script, javascript:, expression() and @import are refused. |
+| `extensions.ui.config.stylesheet.file` | string | yes | maxLength: 256 | Relative path of the CSS file under ui/ (at most 512 KiB). |
+| `extensions.ui.config.stylesheet.replace` | boolean | no | — | true: serve this file instead of the kit stylesheet; default false (append). |
+
+### Project hooks: `extensions.ui.config.hooks`
+
+Trusted project filter hooks by name ({source, export} or a bare module path) that adjust a view model or the page shell before rendering; sandbox: true is refused.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.ui.config.hooks.transformView` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Filter hook: Runs before a named kit template renders and returns the view model to render. |
+| `extensions.ui.config.hooks.transformView.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.ui.config.hooks.transformView.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.ui.config.hooks.transformView.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.ui.config.hooks.transformView.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.ui.config.hooks.transformPage` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Filter hook: Runs before the shared page layout renders and may change its title, layout, navigation, account menu or flash message. |
+| `extensions.ui.config.hooks.transformPage.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.ui.config.hooks.transformPage.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.ui.config.hooks.transformPage.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.ui.config.hooks.transformPage.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+
+#### `transformView` (filter)
+
+Runs before a named kit template renders and returns the view model to render.
+
+Called as `transformView(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.template` | string | yes | — | Name of the template about to render, for example auth/sign-in. |
+| `input.view` | object | yes | — | The view model; return it, changed or not, as the model to render. |
+
+Returns an object, validated before use.
+
+#### `transformPage` (filter)
+
+Runs before the shared page layout renders and may change its title, layout, navigation, account menu or flash message.
+
+Called as `transformPage(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.page` | object | yes | — | The page options (title, layout, navigation, account menu, flash); return the options to render. |
+
+Returns an object, validated before use.
+
+### Authoring surfaces and limits
+
+Keep the site as one application: customize the installed UI in the project and keep auth/admin behavior in their packages. Use a new extension only for a capability the installed extensions do not provide.
+
+- **theme** (theme, `urlcode.yaml#extensions.ui.config.theme`): Set brand name, local assets, semantic light/dark colours, radius and font in extensions.ui.config.theme.
+- **copy** (copy, `ui/copy/<locale>.json`): Override or translate catalogue entries without copying a screen.
+- **templates** (template, `ui/templates/<name>.html`): Override only the screen or shared partial whose structure must change; doctor reports view-model drift.
+- **stylesheet** (stylesheet, `ui/extra.css`): Append project CSS after the shared stylesheet; use semantic shadcn tokens and existing ui-* component classes.
+- **transformView** (hook, `extensions.ui.config.hooks.transformView`): Add computed project data to a named view immediately before its template renders.
+- **transformPage** (hook, `extensions.ui.config.hooks.transformPage`): Customize the shared page shell, navigation, account menu and flash immediately before layout rendering.
+
+Fast checks: `urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css`, `urlcode validate --local`.
+<!-- extension-reference:end -->

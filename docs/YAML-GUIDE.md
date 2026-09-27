@@ -50,7 +50,7 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | [Functions, inputs and methods](yaml/functions.md) | 1. A URL that runs code; 4. Input types and constraints; 5. Methods and body validation; 6. All function argument sources |
 | [Redirects](yaml/redirects.md) | 2. Ordinary and permanent redirects; 3. Parameterized redirects and explicit query forwarding |
 | [Middleware](yaml/middleware.md) | 7. Middleware before and after a handler |
-| [Declared responses, headers and cookies](yaml/responses.md) | 8. Native responses, headers and cookies; 9. Explicit OPTIONS response (not automatic CORS) |
+| [Declared responses, headers and cookies](yaml/responses.md) | 8. Native responses, headers and cookies; 9. Explicit OPTIONS response (not automatic CORS); 9b. JSON errors for an API |
 | [Pages, static folders and downloads](yaml/assets.md) | 10. Pages, static folders, downloads and MIME |
 | [Enable, disable and expire](yaml/conditions.md) | 11. Enable, disable and expire |
 | [Bindings, split files and tests](yaml/organization.md) | 12. Environment and secret references; 13. Split files and folders; 14. Assert inputs and outputs |

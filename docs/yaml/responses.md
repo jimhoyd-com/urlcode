@@ -55,3 +55,32 @@ For a real API, OPTIONS and the actual methods must be handled on the same URL,
 and actual responses also need the appropriate CORS headers. Because one path
 has one handler, use a function with `[GET, HEAD, OPTIONS]` to branch on method.
 Never reflect arbitrary Origin with credentials. Automatic CORS is unsupported.
+
+## 9b. JSON errors for an API
+
+```yaml
+  /api/status:
+    respond:
+      json: {status: ok}
+    errors: {format: json}
+```
+
+A JSON client of `/api/status` that sends POST gets 405 with
+`Allow: GET, HEAD` and `{"error":{"code":"METHOD_NOT_ALLOWED","message":"Method not allowed"}}`
+as `application/json`, instead of the text line `Method not allowed`. Keep
+native `methods` and `respond`; there is no need for a function that re-implements
+method dispatch. For a whole API prefix, including paths no route declares,
+use the top-level `site.errors` scope instead of repeating the key:
+
+```yaml
+site:
+  errors:
+    format: json
+    paths: [/api/*]
+```
+
+Only errors the runtime writes itself change (405, 404, 413, 415, 422 and the
+rest); a handler's own status and body, a policy's or an extension's answer are
+never rewritten. A route's own `errors` wins over the scope. Static hosting
+refuses both. The code set and precedence are in
+[error format](../HTTP.md#error-format).

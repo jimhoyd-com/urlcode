@@ -143,16 +143,24 @@ function configSchema(): Record<string, unknown> {
     type: 'object', additionalProperties: false, required: ['mounts'],
     properties: {
       mounts: {
+        description: 'TODO: placeholder entries by name, each served at its own mount. Every property needs a description (npm run check enforces it).',
         type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' },
         additionalProperties: {
           type: 'object', additionalProperties: false, required: ['mount', 'message'],
           properties: {
-            mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256 },
-            message: { type: 'string', minLength: 1, maxLength: 512 },
+            mount: { type: 'string', pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256, description: 'URL path the entry is served at; it needs a route <mount>/* with this extension.' },
+            message: { type: 'string', minLength: 1, maxLength: 512, description: 'TODO: placeholder text the mount answers with.' },
           },
         },
       },
     },
+  };
+}
+/** The generated agent references, written into both src/extension.ts and urlcode.json; the README ends with the generated field reference. */
+function agentTooling(name: string): Record<string, unknown> {
+  return {
+    description: `Local, revision-pinned references for agents configuring the ${name} extension.`,
+    references: [{ name: `${name} extension guide`, description: 'TODO: what the README covers; ends with the generated field reference for every configuration key.', path: 'README.md' }],
   };
 }
 /** The generated authoring contract, written into both src/<name>.ts and urlcode.json. */
@@ -172,7 +180,7 @@ function authoringContract(name: string): Record<string, unknown> {
  * prepare step (which builds the add-on catalog from every urlcode.json) accepts the package before its first build.
  */
 function urlcodeJson(name: string, description: string, fork: ForkShape | undefined): string {
-  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name), schema: configSchema(), authoring: authoringContract(name) }, null, 2)}\n`;
+  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name), schema: configSchema(), authoring: authoringContract(name), agent: agentTooling(name) }, null, 2)}\n`;
 }
 
 function readmeMd(name: string, camel: string, description: string, fork: ForkShape | undefined): string {
@@ -379,6 +387,7 @@ export default defineExtension<${Name}HostOptions>({
   requires: ${JSON.stringify(requires)},
   schema: ${camel}ConfigSchema,
   authoring: ${camel}Authoring,
+  agent: ${JSON.stringify(agentTooling(name))},
   scaffold,
   host(context) {
     return { registration: create${Name}Extension({ projectSha256: context.projectSha256 }) };

@@ -1,4 +1,5 @@
 import {readFile,writeFile} from 'node:fs/promises';
+import {undescribed} from './schema-descriptions.ts';
 // The subset of JSON Schema the bundled schema uses; every field is read defensively.
 interface SchemaNode {
   $ref?: string; $defs?: Record<string, SchemaNode>; type?: string | string[]; const?: unknown; enum?: unknown[]; oneOf?: SchemaNode[];
@@ -13,29 +14,8 @@ const schema=JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json',
 // Every property the schema declares must say what it does for a request or a
 // project (#750): editors show the description on hover, schema-query and the
 // generated table below print it, and a key without one leaves authors to guess.
-// Walk every subschema keyword, so properties inside $defs, patternProperties
-// values, array items and oneOf branches are covered too. Pointers are RFC 6901.
-const MAP_KEYWORDS=['properties','patternProperties','$defs'],ONE_KEYWORDS=['items','additionalProperties','not','if','then','else','contains','propertyNames','unevaluatedProperties','unevaluatedItems'],LIST_KEYWORDS=['oneOf','anyOf','allOf','prefixItems'];
-function undescribed(node: unknown,pointer: string,missing: string[]): string[] {
-  if(!node || typeof node!=='object' || Array.isArray(node))return missing;
-  const record=node as Record<string,unknown>;
-  for(const keyword of MAP_KEYWORDS){
-    const map=record[keyword];
-    if(!map || typeof map!=='object')continue;
-    for(const [name,child] of Object.entries(map as Record<string,unknown>)){
-      const at=`${pointer}/${keyword}/${name.replaceAll('~','~0').replaceAll('/','~1')}`;
-      const description=(child as SchemaNode | undefined)?.description;
-      if(keyword!=='$defs' && (typeof description!=='string' || !description.trim()))missing.push(at);
-      undescribed(child,at,missing);
-    }
-  }
-  for(const keyword of ONE_KEYWORDS)undescribed(record[keyword],`${pointer}/${keyword}`,missing);
-  for(const keyword of LIST_KEYWORDS){
-    const list=record[keyword];
-    if(Array.isArray(list))for(const [index,child] of list.entries())undescribed(child,`${pointer}/${keyword}/${index}`,missing);
-  }
-  return missing;
-}
+// The walk (scripts/schema-descriptions.ts) is shared with the extension field
+// references (#822), so core and extension schemas are held to one rule.
 const missingDescriptions=undescribed(schema,'',[]);
 if(missingDescriptions.length)throw new Error(`${missingDescriptions.length} schema propert${missingDescriptions.length===1?'y has':'ies have'} no description in schemas/urlcode.schema.json; give each one a sentence saying what it does:\n${missingDescriptions.map(pointer=>`  ${pointer}`).join('\n')}`);
 const rows: Row[]=[];
@@ -61,7 +41,7 @@ const areas: Area[]=[
   {title:'Project entry: version, includes, shared',guide:'[organization](yaml/organization.md)',
     match:p=>p==='version'||p.startsWith('includes')||p.startsWith('shared')},
   {title:'Routes: common fields (methods, parameters, env, secrets, policies, cache)',guide:'[functions, inputs and methods](yaml/functions.md) and [bindings, split files and tests](yaml/organization.md)',
-    match:p=>p==='routes'||p==='routes.*'||/^routes\.\*\.(methods|enabled|sandbox|sandboxReason|coveredElsewhere|expires|description|parameters|env|secrets|policies|auth|cache|match|use|request|response)($|\.|\[| )/.test(p)},
+    match:p=>p==='routes'||p==='routes.*'||/^routes\.\*\.(methods|enabled|sandbox|sandboxReason|coveredElsewhere|errors|expires|description|parameters|env|secrets|policies|auth|cache|match|use|request|response)($|\.|\[| )/.test(p)},
   {title:'Handler: redirect',guide:'[redirects](yaml/redirects.md)',match:p=>/^routes\.\*\.redirect($|\.|\[| )/.test(p)},
   {title:'Handler: respond',guide:'[declared responses, headers and cookies](yaml/responses.md)',match:p=>/^routes\.\*\.respond($|\.|\[| )/.test(p)},
   {title:'Handler: function',guide:'[functions, inputs and methods](yaml/functions.md)',match:p=>/^routes\.\*\.(function|stream)($|\.|\[| )/.test(p)},

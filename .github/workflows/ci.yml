@@ -49,6 +49,9 @@ jobs:
       # `shards`, `workspacePackages` and `workspaceIntegration*` above.
       highImpact: ${{ steps.plan.outputs.highImpact }}
       platformLegs: ${{ steps.plan.outputs.platformLegs }}
+      # Diagnostics for #824: the extensions a pull request's Windows Node 24
+      # `workspace-verify` entries run. Jobs consume it through `workspacePackages`.
+      windowsWorkspacePackages: ${{ steps.plan.outputs.windowsWorkspacePackages }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -238,6 +241,13 @@ jobs:
   # them. Each job needs its own install and the root build, because a package
   # imports `@jimhoyd/urlcode`, the workspace-linked root package, through its
   # built `dist/`.
+  # Routine runs use the Linux Node 24 leg. A pull request that changes
+  # extension code also gets Windows Node 24 entries for those extensions and
+  # their reverse dependencies (#824), so a Windows-only package test failure
+  # is caught before merge instead of at release (#819/#820). They are entries
+  # of this same matrix, so `verify-complete`'s requirement that
+  # `workspace-verify` succeed covers them; there is no separate job to skip.
+  # Exact-commit runs keep every package on the full OS x Node matrix.
   workspace-verify:
     needs: plan
     if: needs.plan.outputs.lane == 'full'

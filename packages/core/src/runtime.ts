@@ -24,10 +24,10 @@ import { validatePlugins, activatePlugins, pluginsRequest, pluginsResponse, plug
 import type { Plugin } from './plugins.ts';
 import { createObserverSink } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink } from './observability.ts';
-import { applySite } from './site.ts';
+import { applySite, siteErrorPaths } from './site.ts';
 import { passkeyRpId, siteOrigins } from './site-origins.ts';
-import { cancelStream, isResponseStream } from './http-response.ts';
-import type { HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
+import { cancelStream, isResponseStream, errorScope, resolveErrorFormat, methodNotAllowed, errorEnvelope, jsonErrorType } from './http-response.ts';
+import type { ErrorFormat, HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
 import type { CompiledRoute, CompiledRouteTable, LoadedDocument, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
 import type { SecurityState } from './policies/security.ts';
 
@@ -107,6 +107,9 @@ export interface Runtime {
   readonly workers: { healthy: number; slots: number };
   metrics(): MetricsSnapshot;
   errorHeaders(error: unknown, origin: string): HeaderPair[];
+  /** How the host writes an error answer (docs/HTTP.md#error-format): the format handle() resolved when it threw the
+   * error, otherwise the one the request target resolves to (an error the host raised before or around handle()). */
+  errorFormat(error: unknown, target: string): ErrorFormat;
   requestLimit(target: string): number | undefined;
   /** A result carrying `stream` must be pulled to its end or cancelled (its iterator's `return()`); `close()` waits for it. */
   handle(request: RuntimeRequest): Promise<HandlerResult>;
@@ -162,6 +165,14 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // Which route's policy an error belongs to, so its headers follow the route
   // the request matched rather than the project default.
   const errorRoutes = new WeakMap<object, PolicyChain | null>();
+  // How each thrown error is written: the matched route's `errors.format`, else the `site.errors` scope of the path.
+  const inErrorScope = errorScope(siteErrorPaths(loaded.document.site));
+  const errorFormats = new WeakMap<object, ErrorFormat>();
+  const rawPath = (target: string): string => target.split('?')[0] ?? '';
+  const targetErrorFormat = (target: string): ErrorFormat => {
+    try { const parsed = parseTarget(target); return resolveErrorFormat(matchRoute(compiled, parsed)?.route.errors?.format, inErrorScope, parsed.path); }
+    catch { return resolveErrorFormat(undefined, inErrorScope, rawPath(target)); }
+  };
   // Only `sandbox: true` routes go through the worker/QuickJS pool
   // (docs/FUNCTION-SECURITY.md): every other function/middleware
   // route is trusted-by-default and dispatches through `trusted` below,
@@ -281,6 +292,10 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       const policy = error && typeof error === 'object' ? errorRoutes.get(error) : undefined;
       return errorHeaders(policy === undefined ? projectErrorPolicy : policy?.security ?? null, origin);
     },
+    errorFormat(error, target) {
+      const known = error && typeof error === 'object' ? errorFormats.get(error) : undefined;
+      return known ?? targetErrorFormat(target);
+    },
     requestLimit(target) {
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes ?? (match?.route.proxy||match?.route.extension?1048576:undefined);
@@ -315,12 +330,16 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       assert(typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128, 'Request id must be a non-empty string of at most 128 characters');
       active++;
       let policyReq: PolicyRequest | undefined, policy: PolicyChain | null | undefined;
+      // Until the target parses, the raw path decides the site scope; then the decoded path; then the matched route.
+      let format: ErrorFormat = resolveErrorFormat(undefined, inErrorScope, rawPath(target));
       try {
         const parsed = parseTarget(target);
         const match = matchRoute(compiled, parsed);
+        format = resolveErrorFormat(match?.route.errors?.format, inErrorScope, parsed.path);
         if (!match) {
-          // site.notFound: answer an unmatched GET/HEAD with the configured page and status 404.
-          if (notFoundPage && (method === 'GET' || method === 'HEAD')) {
+          // site.notFound: answer an unmatched GET/HEAD with the configured page and status 404. A path whose errors
+          // are JSON keeps the JSON 404: an API client asked, not a browser.
+          if (notFoundPage && format === 'text' && (method === 'GET' || method === 'HEAD')) {
             const page = await dispatch({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, requestId, signal, ...(client ? { client } : {}) }, { produced: [], abort: state.abort });
             return { ...page, status: 404 };
           }
@@ -371,7 +390,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // code before and after it via `next()`, or skip it entirely.
         const runPipeline = async (): Promise<HandlerResult> => {
         if (!route.methods.includes(method)) {
-          const refused: HandlerResult = { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
+          const refused = methodNotAllowed(route.methods, format);
           // Counted by throttle already, so it carries the budget headers and
           // the security profile like any other answer; nothing caches a 405.
           return policyReq ? await finishPolicies(policy, policyReq, refused) : refused;
@@ -422,7 +441,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           try { native = assetResponse(route, parsed.path, method, headers); }
           catch (error) {
             if (!route.middleware.length || !(error instanceof HttpError)) throw error;
-            native = {status:error.status,headers:[['content-type','text/plain; charset=utf-8'],['cache-control','no-store']],body:Buffer.from(error.message+'\n')};
+            native = format === 'json'
+              ? {status:error.status,headers:[['content-type',jsonErrorType],['cache-control','no-store']],body:Buffer.from(errorEnvelope(error.status,error.message))}
+              : {status:error.status,headers:[['content-type','text/plain; charset=utf-8'],['cache-control','no-store']],body:Buffer.from(error.message+'\n')};
           }
         }
         if (native && !route.middleware.length) return await finishResponse(native);
@@ -472,6 +493,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         if (state.produced.length) state.abort('error');
         for (const produced of state.produced) cancelStream(produced);
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
+        if (error && typeof error === 'object') errorFormats.set(error, format);
         if (policyReq) {
           // A policy may answer instead of the error (stale-if-error serving a
           // stored copy); the first fallback wins and still passes through the

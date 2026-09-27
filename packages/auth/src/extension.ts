@@ -82,7 +82,7 @@ export default defineExtension<AuthHostOptions>({
   authoring: authAuthoring,
   agent: {
     description: 'Local, revision-pinned references for agents configuring the auth extension.',
-    references: [{name: 'auth extension guide', description: 'Configuration, operator setup and route integration guidance.', path: 'README.md'}],
+    references: [{name: 'auth extension guide', description: 'Configuration, operator setup and route integration guidance; ends with the generated field reference for every configuration key.', path: 'README.md'}],
   },
   contributes: { ui: uiContribution, mail: authMail },
   // The capability: the account pages at the default /account mount (configurable: move the route), the operator service with the minimal {member, admin} role model

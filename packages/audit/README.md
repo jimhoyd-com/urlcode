@@ -170,3 +170,29 @@ auth's outbox, so they travel in the auth backup and are drained again, once,
 after a restore.
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `audit` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** none.
+
+### Configuration: `extensions.audit.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.audit.config.retention` | integer | no | minimum: 1000; maximum: 10000000 | How many of the newest events the log keeps (default 100000); older events are pruned as new ones arrive. Read on every activation, so removing the key returns to the default. |
+
+### Authoring surfaces and limits
+
+Durable, bounded audit log. It serves no routes: other extensions record into it (auth always; store collections that declare audit: true) and admin reads it. The project declares only how many events it keeps.
+
+- **retention** (configuration, `urlcode.yaml#extensions.audit.config.retention`): Newest events kept (1000..10000000, default 100000); older ones are pruned as new ones arrive.
+
+Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`.
+<!-- extension-reference:end -->

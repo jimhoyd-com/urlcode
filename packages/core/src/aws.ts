@@ -88,13 +88,13 @@ export function createLambdaHandler({ project = process.cwd(), origin, aliasOrig
 
   return async function handler(raw) {
     const requestId = randomUUID();
-    let method = 'GET', runtime: Runtime | undefined;
+    let method = 'GET', runtime: Runtime | undefined, requestTarget: string | undefined;
     try {
       runtime = await ready();
       assert(isRecord(raw), 'Lambda event must be an object');
       const event = raw as LambdaEvent; // trust boundary: the platform's event, checked field by field below
       const request = target(event);
-      method = request.method;
+      method = request.method; requestTarget = request.target;
       const { headers, counts } = requestHeaders(event);
       const limit = Math.min(maxBodyBytes, runtime.requestLimit(request.target) ?? maxBodyBytes);
       const result = await runtime.handle({ target:request.target, method, headers, headerCounts:counts, requestId,
@@ -110,7 +110,9 @@ export function createLambdaHandler({ project = process.cwd(), origin, aliasOrig
       // function log; a request only ever learns the status.
       if (!(error instanceof HttpError)) console.error(error);
       const prepared = errorResponse(error, { requestId, method,
-        headers: runtime?.errorHeaders(error, resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost') ?? [] });
+        headers: runtime?.errorHeaders(error, resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost') ?? [],
+        // No target when the event itself was unreadable: that answer stays text.
+        format: runtime && requestTarget !== undefined ? runtime.errorFormat(error, requestTarget) : 'text' });
       return respond({ ...prepared, cookies: [], body: prepared.body === undefined ? undefined : Buffer.from(prepared.body) });
     }
   };

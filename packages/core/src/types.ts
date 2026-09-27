@@ -62,7 +62,9 @@ export interface SecurityTxtConfig {
   contact: string[]; expires: string; policy?: string[]; acknowledgments?: string[];
   preferredLanguages?: string[]; canonical?: string[]; encryption?: string[];
 }
-export interface SiteConfig { robots?: RobotsConfig; sitemap?: true | SitemapConfig; favicon?: string; securityTxt?: SecurityTxtConfig; llms?: string; notFound?: string }
+/** `site.errors`: runtime-generated errors on these paths use the JSON envelope (docs/HTTP.md#error-format). Generates no route. */
+export interface SiteErrorsConfig { format: 'json'; paths: string[] }
+export interface SiteConfig { robots?: RobotsConfig; sitemap?: true | SitemapConfig; favicon?: string; securityTxt?: SecurityTxtConfig; llms?: string; notFound?: string; errors?: SiteErrorsConfig }
 /** One route as declared in YAML (plus `generated`, which site.ts stamps on the routes it adds). */
 interface ConditionalReply { redirect?: RedirectConfig; respond?: RespondSpec }
 interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMatch })[]; fallback?: ConditionalReply }
@@ -106,6 +108,9 @@ export interface RouteConfig {
   stream?: boolean;
   /** Per-method `audit` coverage waiver: method to a non-empty reason. Project file only (docs/READINESS.md). */
   coveredElsewhere?: Record<string, string>;
+  /** How this route's runtime-generated errors (405, 404, 413, 415, 422 …) are written; handler, policy and extension
+   * responses are never rewritten. Wins over a `site.errors` scope (docs/HTTP.md#error-format). */
+  errors?: { format: 'text' | 'json' };
   parameters?: ParameterConfig[]; redirect?: RedirectConfig; function?: FunctionConfig;
   env?: Record<string, EnvBinding>; secrets?: Record<string, SecretBinding>;
   page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;

@@ -728,3 +728,199 @@ the login transaction still applies with or without abuse. Provider callbacks
 and existing token redemption keep their own bound proofs.
 
 Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must pass core's [same-origin rule](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) with `whenAbsent: 'refuse'`: an `Origin` that is one of the site's origins (the canonical `--origin` or an operator `--alias-origin`); with no `Origin`, `Sec-Fetch-Site: same-origin` or `none`; with neither, a `Referer` whose origin is a site origin. A repeated provenance header, a null or foreign Origin, `Sec-Fetch-Site: cross-site`, an unparseable or foreign Referer, or no provenance at all is rejected. CSRF tokens and email links stay bound to the canonical origin. Passkey ceremonies work only on the canonical origin unless the operator sets a [shared passkey RP ID](#passkeys-and-the-relying-party-domain). Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
+
+<!-- extension-reference:start -->
+<!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
+
+## Field reference
+
+Every key `auth` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
+
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+
+**Peers.** requires `ui`, `audit`, `mail` (`urlcode extensions add auth` installs them too); uses `abuse` when installed (optional: the features that need one refuse to activate without it); contributes to `mail`, `ui` (read only when that extension is installed).
+
+### Configuration: `extensions.auth.config`
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.auth.config.registration` | string | no | enum: ["open","invite-only","waitlist","off"] | Who may create an account from the register page: anyone (open), holders of an invitation token (invite-only), a request an administrator approves (waitlist), or nobody (off, the default). Activation fails unless it equals the operator auth service's registration mode. |
+| `extensions.auth.config.abuse` | object | no | minProperties: 1; dependentRequired: {"challengeAfter":["client"]}; unknown keys rejected | Sign-in and sign-up budgets, challenge escalation and password backoff, enforced through the abuse extension. Activation refuses this block when abuse is not installed and active; client budgets need the runtime trusted-proxy boundary (503 trusted_client_required otherwise). |
+| `extensions.auth.config.abuse.client` | object | no | unknown keys rejected | Budget for every auth entry request (sign-in, sign-up, recovery, email code) per client network: an IPv4 address, or an IPv6 /64. |
+| `extensions.auth.config.abuse.client.limit` | integer | yes | minimum: 1; maximum: 100000 | Requests admitted per window for one key; the next one answers 429 with Retry-After. |
+| `extensions.auth.config.abuse.client.windowMs` | integer | yes | minimum: 1000; maximum: 86400000 | Length of the counting window in milliseconds. |
+| `extensions.auth.config.abuse.signupClient` | object | no | unknown keys rejected | Additional budget for sign-up requests per client network. |
+| `extensions.auth.config.abuse.signupClient.limit` | integer | yes | minimum: 1; maximum: 100000 | Requests admitted per window for one key; the next one answers 429 with Retry-After. |
+| `extensions.auth.config.abuse.signupClient.windowMs` | integer | yes | minimum: 1000; maximum: 86400000 | Length of the counting window in milliseconds. |
+| `extensions.auth.config.abuse.signupDomain` | object | no | unknown keys rejected | Budget for sign-up requests per email domain (the part after @). |
+| `extensions.auth.config.abuse.signupDomain.limit` | integer | yes | minimum: 1; maximum: 100000 | Requests admitted per window for one key; the next one answers 429 with Retry-After. |
+| `extensions.auth.config.abuse.signupDomain.windowMs` | integer | yes | minimum: 1000; maximum: 86400000 | Length of the counting window in milliseconds. |
+| `extensions.auth.config.abuse.challengeAfter` | integer | no | minimum: 1; maximum: 99999 | Once the client budget has admitted this many requests in its window, further entry requests must pass the operator challenge (abuse({challenge}) in host.mjs; activation refuses it without one). Requires client and must be below client.limit; a passed challenge never overrides the hard budget. |
+| `extensions.auth.config.abuse.passwordBackoff` | object | no | unknown keys rejected | Exponential delay per email address after repeated wrong passwords at sign-in or step-up; a blocked address is refused before any password is checked. Bounds match the abuse backoff. |
+| `extensions.auth.config.abuse.passwordBackoff.threshold` | integer | no | minimum: 1; maximum: 20 | Failures allowed before the first delay (default 5). |
+| `extensions.auth.config.abuse.passwordBackoff.initialDelayMs` | integer | no | minimum: 100; maximum: 60000 | First delay in milliseconds; each further failure doubles it (default 1000). |
+| `extensions.auth.config.abuse.passwordBackoff.maxDelayMs` | integer | no | minimum: 100; maximum: 86400000 | Cap on the delay in milliseconds (default 900000); must be at least initialDelayMs. |
+| `extensions.auth.config.abuse.passwordBackoff.resetAfterMs` | integer | no | minimum: 100; maximum: 604800000 | Quiet period in milliseconds after which the failure count resets (default 86400000); must be at least maxDelayMs. |
+
+### Route policy: `policies.extensions.auth`
+
+A route may write this as the `auth:` short form: `auth: true` is `{}`, and an object is the same keys.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `policies.extensions.auth.role` | string | no | minLength: 1; maxLength: 64 | The signed-in account must hold this role. |
+| `policies.extensions.auth.permission` | string | no | minLength: 1; maxLength: 128 | The signed-in account must hold this permission through one of its roles, for example audit.read. |
+| `policies.extensions.auth.verified` | boolean | no | — | true: the account's email address must be verified. |
+| `policies.extensions.auth.freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 | The session must have authenticated within this many seconds (step-up); an older one is denied. |
+| `policies.extensions.auth.onDeny` | number / string | no | enum: [401,403,404,"sign-in"] | Answer to a denied request: that status with a JSON error, or sign-in to redirect a GET/HEAD to the login page (other methods then get 401/403). Default: 401 without a session, 403 with one. |
+| `policies.extensions.auth.csrf` | string | no | enum: ["token","origin"] | How a session write proves same-site intent: token (default) requires auth's session-bound x-csrf-token header or csrf body field; origin admits same-origin provenance with the SameSite=Strict session cookie, for mounts that verify their own token or accept JSON only. |
+| `policies.extensions.auth.bearer` | object | no | unknown keys rejected | Protect the route with operator-issued API keys (Authorization: Bearer) instead of a session. Exclusive of csrf; the session keys (role, permission, verified, freshWithinSeconds, onDeny) do not apply to a bearer caller. |
+| `policies.extensions.auth.bearer.scopes` | array | yes | maxItems: 32; items: string (minLength: 1; maxLength: 128; pattern: "^[a-z][a-z0-9_.:-]*$") | Scopes the key must hold, all of them; a key missing one answers 403 insufficient_scope. An empty list admits any valid key. |
+| `policies.extensions.auth.bearer.quota` | object | no | unknown keys rejected | Per-key budget on this route, counted by key id in the auth store; over it the request answers 429 credential_quota_exceeded. A key issued with its own quota uses that instead. |
+| `policies.extensions.auth.bearer.quota.requests` | integer | yes | minimum: 1; maximum: 1000000 | Requests one key may make per window. |
+| `policies.extensions.auth.bearer.quota.window` | integer | yes | minimum: 1; maximum: 2592000 | Window length in seconds (at most 30 days), the units of core policies.throttle. |
+
+Whole-policy rules: minProperties: 0; unknown keys rejected; never together: csrf, bearer.
+
+### Project hooks: `extensions.auth.config.hooks`
+
+Project lifecycle hooks by name: a trusted module reference ({source, export} or a bare path) auth calls at that point. Filters run before the change and may deny it; actions run after the commit. sandbox: true is refused.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `extensions.auth.config.hooks.beforeRegister` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Filter hook: Runs before any path creates an account (self-service, provider sign-up, waitlist request, administrator creation, import) and may deny it. |
+| `extensions.auth.config.hooks.beforeRegister.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.auth.config.hooks.beforeRegister.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.auth.config.hooks.beforeRegister.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.auth.config.hooks.beforeRegister.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.auth.config.hooks.beforeRoleChange` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Filter hook: Runs before an account's roles change (direct, case, case approval, bulk account operation) and may deny it. |
+| `extensions.auth.config.hooks.beforeRoleChange.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.auth.config.hooks.beforeRoleChange.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.auth.config.hooks.beforeRoleChange.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.auth.config.hooks.beforeRoleChange.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.auth.config.hooks.onAccountCreated` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after an account is created, by any path. |
+| `extensions.auth.config.hooks.onAccountCreated.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.auth.config.hooks.onAccountCreated.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.auth.config.hooks.onAccountCreated.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.auth.config.hooks.onAccountCreated.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.auth.config.hooks.onAccountStatusChanged` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after an administrator locks or unlocks an account. |
+| `extensions.auth.config.hooks.onAccountStatusChanged.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.auth.config.hooks.onAccountStatusChanged.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.auth.config.hooks.onAccountStatusChanged.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.auth.config.hooks.onAccountStatusChanged.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.auth.config.hooks.onDeletionScheduled` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after an account's deletion is scheduled, by its owner (no actorId) or an administrator. |
+| `extensions.auth.config.hooks.onDeletionScheduled.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.auth.config.hooks.onDeletionScheduled.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.auth.config.hooks.onDeletionScheduled.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.auth.config.hooks.onDeletionScheduled.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+| `extensions.auth.config.hooks.onAccountDeleted` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after a scheduled deletion is purged. |
+| `extensions.auth.config.hooks.onAccountDeleted.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
+| `extensions.auth.config.hooks.onAccountDeleted.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
+| `extensions.auth.config.hooks.onAccountDeleted.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
+| `extensions.auth.config.hooks.onAccountDeleted.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
+
+#### `beforeRegister` (filter)
+
+Runs before any path creates an account (self-service, provider sign-up, waitlist request, administrator creation, import) and may deny it.
+
+Called as `beforeRegister(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.email` | string | yes | — | Normalized email address of the account to be created. |
+| `input.method` | string | yes | enum: ["password","signup","external","waitlist","invitation","administrator","import"] | The path creating the account. |
+| `input.profile` | object | no | — | Registration profile fields, when the path collects them. |
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `output.allow` | boolean | yes | — | false refuses the change with 403 and the reason. |
+| `output.reason` | string | no | — | Why the change was refused (at most 256 characters, control characters removed); returned with the 403. |
+
+#### `beforeRoleChange` (filter)
+
+Runs before an account's roles change (direct, case, case approval, bulk account operation) and may deny it.
+
+Called as `beforeRoleChange(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.accountId` | string | yes | — | Id of the account whose roles change. |
+| `input.currentRoles` | array | yes | items: string | Roles the account holds now. |
+| `input.requestedRoles` | array | yes | items: string | Roles it would hold after the change. |
+| `input.actorId` | string | yes | — | Id of the account making the change. |
+| `input.reason` | string | yes | — | The reason recorded for the change. |
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `output.allow` | boolean | yes | — | false refuses the change with 403 and the reason. |
+| `output.reason` | string | no | — | Why the change was refused (at most 256 characters, control characters removed); returned with the 403. |
+
+#### `onAccountCreated` (action)
+
+Runs after an account is created, by any path.
+
+Called as `onAccountCreated(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.accountId` | string | yes | — | Id of the new account. |
+| `input.email` | string | yes | — | Its email address. |
+| `input.method` | string | yes | enum: ["password","signup","external","waitlist","invitation","administrator","import","bootstrap"] | The path that created it. |
+| `input.actorId` | string | no | — | The administrator who created it, when one did. |
+
+Its return value is ignored.
+
+#### `onAccountStatusChanged` (action)
+
+Runs after an administrator locks or unlocks an account.
+
+Called as `onAccountStatusChanged(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.accountId` | string | yes | — | Id of the account. |
+| `input.status` | string | yes | enum: ["active","locked"] | Its new status. |
+| `input.actorId` | string | yes | — | The administrator who changed it. |
+| `input.reason` | string | yes | — | The reason recorded for the change. |
+
+Its return value is ignored.
+
+#### `onDeletionScheduled` (action)
+
+Runs after an account's deletion is scheduled, by its owner (no actorId) or an administrator.
+
+Called as `onDeletionScheduled(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.accountId` | string | yes | — | Id of the account. |
+| `input.email` | string | yes | — | Its email address. |
+| `input.deleteAfter` | integer | yes | — | When the purge becomes due, in epoch milliseconds. |
+| `input.actorId` | string | no | — | The administrator who scheduled it; absent when the owner did. |
+
+Its return value is ignored.
+
+#### `onAccountDeleted` (action)
+
+Runs after a scheduled deletion is purged.
+
+Called as `onAccountDeleted(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `input.accountId` | string | yes | — | Id of the purged account. |
+
+Its return value is ignored.
+
+### Authoring surfaces and limits
+
+Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.
+
+- **registration** (configuration, `urlcode.yaml#extensions.auth.config.registration`): Select the supported registration mode in extensions.auth.config.registration.
+- **account copy** (copy, `ui/copy/<locale>.json`): Change account-screen wording through the UI catalogue.
+- **account screens** (template, `ui/templates/auth/<screen>.html`): Override one auth/* screen when its structure must change; keep form actions and security behavior package-owned.
+- **account lifecycle** (hook, `extensions.auth.config.hooks`): Use the declared beforeRegister, beforeRoleChange, onAccountCreated, onAccountStatusChanged, onDeletionScheduled and onAccountDeleted hooks; auth fires them for every caller, its pages, administration and its CLI.
+- **abuse budgets** (configuration, `urlcode.yaml#extensions.auth.config.abuse`): Rate-limit entry requests, escalate to a challenge and back off password failures through the abuse extension.
+
+Fast checks: `urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth --copy ui/copy --templates ui/templates --stylesheet ui/extra.css`, `urlcode validate --local`, `urlcode test`.
+<!-- extension-reference:end -->

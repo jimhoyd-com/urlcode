@@ -30,7 +30,7 @@ export default defineExtension<AdminHostOptions>({
   requires: ['auth', 'ui', 'audit'],
   schema: adminConfigSchema,
   authoring: adminAuthoring,
-  agent: {description: 'Local, revision-pinned references for agents configuring the admin extension.', references: [{name: 'admin extension guide', description: 'Configuration and operational guidance for users, sessions and roles.', path: 'README.md'}]},
+  agent: {description: 'Local, revision-pinned references for agents configuring the admin extension.', references: [{name: 'admin extension guide', description: 'Configuration and operational guidance for users, sessions and roles; ends with the generated field reference for every configuration key.', path: 'README.md'}]},
   contributes: { ui: uiContribution },
   // The capability is the console itself; admin ships no example.
   scaffold() {

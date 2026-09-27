@@ -10,7 +10,8 @@
       "maxKeys": {
         "type": "integer",
         "minimum": 1000,
-        "maximum": 1000000
+        "maximum": 1000000,
+        "description": "Hard bound on stored counters across every consumer (default 100000). Each claimed scope gets an equal share, so one consumer cannot fill the table; a full table answers 503 rather than forgetting counts."
       }
     }
   },
@@ -26,6 +27,21 @@
     ],
     "fastChecks": [
       "urlcode validate --project . --host-file <host.mjs> --origin <origin>"
+    ]
+  },
+  "agent": {
+    "description": "Local, revision-pinned references for agents configuring the abuse extension or consuming its exports.",
+    "references": [
+      {
+        "name": "abuse extension guide",
+        "description": "Configuration and the budget, backoff and challenge exports other extensions call; ends with the generated field reference for every configuration key.",
+        "path": "README.md"
+      },
+      {
+        "name": "abuse security model",
+        "description": "Pseudonymous keys, bounded storage, fail-closed behavior and what the counters do not protect.",
+        "path": "SECURITY.md"
+      }
     ]
   }
 }

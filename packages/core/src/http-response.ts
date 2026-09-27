@@ -158,24 +158,71 @@ export function writeResponse(res: ResponseWriter, result: HandlerResult, option
   return prepared.status;
 }
 
+/**
+ * How a runtime-generated error is written (route `errors.format`, or `site.errors` for a path scope): `text` is the
+ * plain-text line every host has always sent; `json` is the fixed envelope below (docs/HTTP.md#error-format).
+ */
+export type ErrorFormat = 'text' | 'json';
+/** The closed set of envelope codes, keyed by the status the runtime generated. */
+export const errorCodes: Readonly<Record<number, string>> = Object.freeze({
+  400: 'BAD_REQUEST', 404: 'NOT_FOUND', 405: 'METHOD_NOT_ALLOWED', 410: 'GONE', 413: 'CONTENT_TOO_LARGE', 414: 'URI_TOO_LONG',
+  415: 'UNSUPPORTED_MEDIA_TYPE', 421: 'MISDIRECTED_REQUEST', 422: 'UNPROCESSABLE_CONTENT', 500: 'INTERNAL_ERROR', 502: 'BAD_GATEWAY',
+  503: 'SERVICE_UNAVAILABLE', 504: 'GATEWAY_TIMEOUT',
+});
+/** The envelope code for `status`; `ERROR` for a status outside the closed set (the runtime generates none today). */
+export const errorCode = (status: number): string => errorCodes[status] ?? 'ERROR';
+export const jsonErrorType = 'application/json; charset=utf-8';
+/**
+ * The fixed JSON error envelope, `{"error":{"code":…,"message":…}}`, plus the bounded `issues`/`truncated` fields for
+ * a body-schema 422 only. The message is the runtime's own fixed words, never request or operator data.
+ */
+export function errorEnvelope(status: number, message: string, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ error: { code: errorCode(status), message, ...extra } });
+}
+/**
+ * The paths a `site.errors` scope covers: each entry is an exact path, or a prefix ending in `/*` that covers the
+ * prefix itself and everything below it (`/api/*` covers `/api`, `/api/` and `/api/v1/x`), as `site.sitemap.exclude`.
+ */
+export function errorScope(paths: readonly string[] | undefined): (path: string) => boolean {
+  const rules = (paths ?? []).map(pattern => pattern.endsWith('/*') ? { prefix: pattern.slice(0, -1) } : { exact: pattern });
+  return path => rules.some(rule => rule.exact !== undefined ? rule.exact === path : path.startsWith(rule.prefix!) || path === rule.prefix!.slice(0, -1));
+}
+/** A matched route's own `errors.format` wins; otherwise a path inside the site scope is `json`; anything else is `text`. */
+export function resolveErrorFormat(declared: ErrorFormat | undefined, scope: (path: string) => boolean, path: string): ErrorFormat {
+  return declared ?? (scope(path) ? 'json' : 'text');
+}
+const encoder = new TextEncoder();
+/** The runtime's own 405 in the chosen format, always with `Allow`. The text form is the historical bytes, with no content type. */
+export function methodNotAllowed(methods: readonly string[], format: ErrorFormat): HandlerResult {
+  const allow: HeaderPair = ['allow', methods.join(', ')];
+  return format === 'json'
+    ? { status: 405, headers: [allow, ['content-type', jsonErrorType]], body: encoder.encode(errorEnvelope(405, 'Method not allowed')) }
+    : { status: 405, headers: [allow], body: encoder.encode('Method not allowed\n') };
+}
+
 // The one shape of an error answer on every host. `headers` are the policy
 // headers the host resolved for this error (security profile); they never
 // replace the fixed set below, which is what keeps an error from being cached
-// or sniffed whatever a project declares.
-export function errorResponse(error: unknown, { requestId, method, headers = [] }: ResponseOptions & { headers?: HeaderPair[] }): ErrorAnswer {
+// or sniffed whatever a project declares. `format: 'json'` swaps the text line
+// for the fixed envelope; status, fixed headers and the HEAD rule are unchanged.
+export function errorResponse(error: unknown, { requestId, method, headers = [], format = 'text' }: ResponseOptions & { headers?: HeaderPair[]; format?: ErrorFormat }): ErrorAnswer {
   const status = error instanceof HttpError ? error.status : 500;
-  const fixed: HeaderPair[] = [['content-type',error instanceof HttpError && error.answer ? error.answer.contentType : 'text/plain; charset=utf-8'],['cache-control','no-store'],['x-request-id',requestId],['x-content-type-options','nosniff']];
+  const answer = error instanceof HttpError ? error.answer : undefined;
+  // Runtime error messages are fixed words; markup characters are still
+  // stripped so the body can never be read as HTML by a client that ignores
+  // both the content type and nosniff.
+  const message = error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error';
+  const [contentType, text] = format === 'json'
+    ? [jsonErrorType, answer?.envelope ?? errorEnvelope(status, message.split('\n')[0]!)]
+    : [answer ? answer.contentType : 'text/plain; charset=utf-8', answer ? answer.text + '\n' : `${message}\n`];
+  const fixed: HeaderPair[] = [['content-type', contentType],['cache-control','no-store'],['x-request-id',requestId],['x-content-type-options','nosniff']];
   const taken = new Set(fixed.map(([key]) => key));
   const extra = headers.filter(([key]) => !taken.has(key.toLowerCase()) && !forbiddenHeaders.has(key.toLowerCase()));
-  // Runtime error messages are fixed words, and the answer is text/plain
-  // with nosniff; markup characters are still stripped so the body can never
-  // be read as HTML by a client that ignores both.
-  const text = error instanceof HttpError && error.answer ? error.answer.text + '\n' : `${error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error'}\n`;
   const body = method === 'HEAD' ? undefined : text;
   // Stated explicitly so every host agrees, as prepareResponse does for results.
   return { status, headers: [...fixed, ['content-length', String(byteLength(text))], ...extra], body };
 }
-export function writeError(res: ResponseWriter, error: unknown, options: ResponseOptions & { headers?: HeaderPair[] }): number {
+export function writeError(res: ResponseWriter, error: unknown, options: ResponseOptions & { headers?: HeaderPair[]; format?: ErrorFormat }): number {
   const prepared = errorResponse(error, options);
   if (res.headersSent) { res.destroy(); return prepared.status; }
   for (const key of res.getHeaderNames()) res.removeHeader(key);

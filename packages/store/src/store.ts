@@ -118,11 +118,13 @@ export async function lockStoreDirectory(directory: string, hooks: { beforeRecla
 
 /** The `extensions.store.config` schema: the registration and the extension definition share this one object. */
 export const storeConfigSchema = { type: 'object', additionalProperties: false, required: ['collections'], properties: {
-  collections: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema },
-  shortLinks: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: {
+  collections: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema, description: 'File-backed JSON collections by name, each stored as data/store/<name>.json (outside app/) and served as a bounded CRUD API at its mount.' },
+  shortLinks: { description: 'Public redirect mounts by name: GET <mount>/<key> atomically increments a counter and answers 302 to the record\'s stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route <mount>/* with extension: store (GET, HEAD).', type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: {
     type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
-      mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 }, collection: { type: 'string', pattern: NAME.source },
-      destination: { type: 'string', pattern: FIELD.source }, clicks: { type: 'string', pattern: FIELD.source },
+      mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256, description: 'URL path of the redirect mount, separate from the collection\'s CRUD mount.' },
+      collection: { type: 'string', pattern: NAME.source, description: 'A declared shared collection with a key; the key value is the path segment after the mount.' },
+      destination: { type: 'string', pattern: FIELD.source, description: 'A required string field with format: http-url holding the redirect target; activation refuses it otherwise.' },
+      clicks: { type: 'string', pattern: FIELD.source, description: 'A field listed in the collection\'s increments, raised by one on each GET (even when the collection is readOnly).' },
     },
   } },
   screens: screensSchema,

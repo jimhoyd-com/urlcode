@@ -599,7 +599,12 @@ An extension package default-exports a [definition](#the-extension-definition)
 from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 
 1. Declares its logical name, contract version, supported targets, exact project
-   revision pin and strict configuration/policy schemas.
+   revision pin and strict configuration/policy schemas. Give every property a
+   `description` saying what it does, including nested, map-value and hook
+   input/output properties: `get_extensions`, `search_docs` and editors show
+   it. For the first-party packages in this repository `npm run check` fails an
+   undescribed property and renders each package README's
+   [field reference](EXTENSION-REFERENCE.md) from the descriptor.
 2. Publishes every project hook through `hooks` and reuses
    `extensionHooksSchema` plus `loadExtensionHooks`; it does not implement its
    own path resolver or dynamic-import cache. If it admits an author-supplied
@@ -1284,6 +1289,12 @@ evidence that a project installed or activated it. What a project has installed
 stays a local concern: MCP `get_addon_agent_tooling`, `get_extension_artifacts`
 and, with the operator host, `get_extensions`. The descriptor does not record
 whether an extension ships an `--example`; the catalog does not either.
+
+Every first-party extension declares `agent` references, and at least one of
+them is its `README.md`, which ends with the generated
+[field reference](EXTENSION-REFERENCE.md). `npm run check` fails when an
+extension has none, or names a file its package does not ship, so an installed
+extension always appears in `get_addon_agent_tooling`.
 
 ### The site layout
 

@@ -1,8 +1,8 @@
 id: spa-shell
-description: A prebuilt single-page app whose client routes (deep links at any depth) answer index.html through a small operator plugin, while native YAML serves the shell, assets and a JSON API.
-tags: [spa, single-page, client-routing, client-side-routing, history, deep-link, fallback, shell, index.html, react, vue, frontend, static, assets, api, json, plugin, host-file]
+description: A prebuilt single-page app whose client routes (deep links at any depth) answer index.html through a small operator plugin, while native YAML serves the shell, assets and a JSON API whose errors are JSON (site.errors).
+tags: [spa, single-page, client-routing, client-side-routing, history, deep-link, fallback, shell, index.html, react, vue, frontend, static, assets, api, json, json-errors, error-format, plugin, host-file]
 complexity: advanced
-capabilities: [enabled, methods, page, respond, response.headers, static]
+capabilities: [enabled, errors, methods, page, respond, response.headers, static]
 targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: refused}
 routes: 4
 inputs:
@@ -11,7 +11,7 @@ inputs:
     description: Replace public/ with the frontend's build output; index.html is the shell and public/assets holds its scripts and styles.
   - name: host
     file: README.md
-    description: The host.mjs the operator saves outside the project; its spaShell() options name the shell file, the catch-all route and the excluded and API prefixes.
+    description: The host.mjs the operator saves outside the project; its spaShell() options name the shell file, the catch-all route and the prefixes that never get the shell.
 files: [urlcode.yaml, public/index.html, public/robots.txt, public/assets/app.js, public/assets/app.css, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
@@ -23,7 +23,7 @@ behavior:
   - GET or HEAD on an extensionless client path at any depth, with or without a query string, answers the shell as text/html with no-cache
   - POST and other methods on a client path answer 405 from the static mount, never HTML
   - a missing /assets file, or any path under /assets, answers 404, never the shell
-  - an unmatched path under /api answers {"error":"Not found"} 404 as JSON for every method; /api/status answers natively
+  - site.errors makes every runtime error under /api/* the JSON envelope; an unmatched GET or HEAD answers the NOT_FOUND 404 envelope, another method the catch-all's 405 METHOD_NOT_ALLOWED with Allow; /api/status answers natively
   - a file-like path (a dot segment or an extension) is answered by the static mount, the file or 404
   - the plugin acts only on the catch-all route, so no other route's answer, denial or error is ever rewritten into the shell
-  - without the host file every client path answers 404; the plugin needs the self-hosted runtime
+  - without the host file every client path answers 404 while the API's JSON errors still hold; the plugin needs the self-hosted runtime

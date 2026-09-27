@@ -2,8 +2,8 @@ import { parseTarget, matchRoute, contextFor, redirectLocation } from './match.t
 import type { CompiledParameter, CompiledRoutes, MatchableRoute, ParameterLocation, ParameterSchema } from './match.ts';
 import { checkRequest, decorateResponse } from './http-policy.ts';
 import type { RequestBodyPolicy } from './http-policy.ts';
-import { prepareResponse, errorResponse } from './http-response.ts';
-import type { HandlerResult, HeaderPair, ResponseBody } from './http-response.ts';
+import { prepareResponse, errorResponse, errorScope, resolveErrorFormat, methodNotAllowed } from './http-response.ts';
+import type { ErrorFormat, HandlerResult, HeaderPair, ResponseBody } from './http-response.ts';
 import { HttpError } from './errors.ts';
 // Only the two policies a Worker can carry. Both modules must stay free of
 // Node imports; the build refuses every other policy with the route named.
@@ -20,9 +20,10 @@ export interface ArtifactReply { status: number; headers: HeaderPair[]; body: st
 export interface ArtifactRoute {
   pattern: string; parts: string[]; names: string[]; methods: string[]; parameters: ArtifactParameter[]; responseHeaders: HeaderPair[];
   request?: { body?: RequestBodyPolicy }; redirect?: CompiledRedirect; reply?: ArtifactReply; enabled?: false; expiresAt?: number;
-  policies?: Record<string, unknown>;
+  policies?: Record<string, unknown>; errors?: { format: ErrorFormat };
 }
-export interface Artifact { format: number; version: string; routes: ArtifactRoute[]; policies?: { security: SecurityConfig }; notFound?: true }
+/** `errorPaths` is the validated `site.errors.paths` scope: runtime-generated errors there use the JSON envelope. */
+export interface Artifact { format: number; version: string; routes: ArtifactRoute[]; policies?: { security: SecurityConfig }; notFound?: true; errorPaths?: string[] }
 export type Validator = (value: unknown) => boolean;
 export type Validators = Record<string, Validator | undefined>;
 /** A route's compiled policy chain on this target: the same hook pairs the Node runtime holds. */
@@ -31,7 +32,7 @@ export interface WorkerPolicy { request: [PolicyModule, unknown][]; response: [P
 export interface WorkerRoute extends MatchableRoute {
   names: string[]; methods: string[]; responseHeaders: HeaderPair[]; request?: { body?: RequestBodyPolicy }; redirect?: CompiledRedirect;
   reply: { status: number; headers: HeaderPair[]; body: Uint8Array<ArrayBuffer> } | undefined; enabled?: false; expiresAt?: number;
-  middleware: never[]; policy: WorkerPolicy | null;
+  middleware: never[]; policy: WorkerPolicy | null; errors?: { format: ErrorFormat };
 }
 export interface RehydratedArtifact extends CompiledRoutes<WorkerRoute> { errorPolicy: SecurityState | null }
 // A Web-standard runtime for a compiled artifact. It shares the matching,
@@ -118,18 +119,22 @@ export function rehydrate(artifact: Artifact, validators: Validators = {}): Rehy
 
 export function createFetchHandler(artifact: Artifact, validators?: Validators): (request: Request) => Promise<Response> {
   const compiled = rehydrate(artifact, validators);
+  const inErrorScope = errorScope(artifact.errorPaths);
   return async function fetch(request: Request): Promise<Response> {
     const requestId = crypto.randomUUID();
     const method = request.method;
-    let matched: WorkerRoute | undefined, origin = 'http://localhost';
+    let matched: WorkerRoute | undefined, origin = 'http://localhost', format: ErrorFormat = 'text';
     try {
       const url = new URL(request.url);
       origin = url.origin;
+      // The same resolution as the Node runtime: raw path, then decoded path, then the matched route's own format.
+      format = resolveErrorFormat(undefined, inErrorScope, url.pathname);
       const parsed = parseTarget(url.pathname + url.search);
       let match = matchRoute(compiled, parsed), fallback = false;
+      format = resolveErrorFormat(match?.route.errors?.format, inErrorScope, parsed.path);
       // site.notFound: an unmatched GET/HEAD is answered with the inlined page
-      // (the /404.html route the build emitted) and status 404.
-      if (!match && artifact.notFound && (method === 'GET' || method === 'HEAD')) { match = matchRoute(compiled, parseTarget('/404.html')); fallback = match !== null; }
+      // (the /404.html route the build emitted) and status 404, unless the path's errors are JSON.
+      if (!match && artifact.notFound && format === 'text' && (method === 'GET' || method === 'HEAD')) { match = matchRoute(compiled, parseTarget('/404.html')); fallback = match !== null; }
       if (!match) throw new HttpError(404, 'Not found');
       const { route, path } = match;
       matched = route;
@@ -153,8 +158,7 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators):
         // The same response policy as every other host: 405 skips the route's
         // configured response headers but still gets length, nosniff and id,
         // and passes through the response-phase policies like the Node runtime.
-        return respond(prepareResponse(await finish({ status:405, headers:[['allow',route.methods.join(', ')]],
-          body: encoder.encode('Method not allowed\n') }), { requestId, method }), requestId, method);
+        return respond(prepareResponse(await finish(methodNotAllowed(route.methods, format)), { requestId, method }), requestId, method);
       }
       const body = route.request?.body
         ? await readCappedBody(request, route.request.body.maxBytes ?? 1048576)
@@ -175,7 +179,7 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators):
       // project's from the artifact: the same rule as the Node runtime.
       const state = matched ? (matched.policy?.security ?? null) : compiled.errorPolicy;
       const headers = state ? security.onResponse(state, { origin }, { status: 200, headers: [] }).headers : [];
-      const prepared = errorResponse(error, { requestId, method, headers });
+      const prepared = errorResponse(error, { requestId, method, headers, format });
       return respond({ ...prepared, cookies: [], body: prepared.body === undefined ? undefined : encoder.encode(prepared.body) }, requestId, method);
     }
   };

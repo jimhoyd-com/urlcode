@@ -64,7 +64,13 @@ but incremental delivery and the maximum open time are the provider's), and
 `refused` on AWS (payload format 2.0 has one buffered response object),
 Cloudflare and static, which therefore refuse such a project at activation or
 build rather than buffering it. An extension mount counts as `streaming` only
-when the registration is known (`--host-file`). No
+when the registration is known (`--host-file`).
+`errors` (a route's `errors: {format: json}`, or a `site.errors` path scope,
+which is reported against `(project)`; see [error format](HTTP.md#error-format))
+is `native` on self-hosted, AWS and Vercel, which all write runtime errors in
+the shared runtime, `compiled` on Cloudflare, whose artifact carries the formats,
+and `refused` on static hosting, where S3 and CloudFront write the error answers.
+`errors: {format: text}` is the default and needs nothing from a target. No
 supported entry bypasses semantic validation, required operator grants or
 deployment prerequisites.
 

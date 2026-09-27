@@ -74,10 +74,18 @@ for installation, host registration, discovery and validation. The managed
    presentation overrides under `ui/`, the project functions its lifecycle
    hooks call, and when a requirement instead needs a new extension in
    TypeScript.
+8. [Extension field references](EXTENSION-REFERENCE.md): core's field
+   reference stops at `extensions.<name>.config`, so each first-party
+   extension's package README ends with a field reference generated from its
+   `urlcode.json`: every configuration key, route-policy key and hook contract,
+   described. The page maps a capability (stored short links, a form's
+   `onSubmit` hook, per-user records) to the keys and a checked example.
 
 The root [llms.txt](../llms.txt) is a compact discovery index; the generated
 [llms-full.txt](../llms-full.txt) concatenates the authoring documents above in
-reading order for agents that want complete context in one fetch. It is a convenience,
+reading order for agents that want complete context in one fetch. Its opening
+coverage note lists what it leaves out: the add-on package READMEs and their
+field references, which `search_docs` reads for installed add-ons. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
 [URLCode AI](https://urlcode.ai/) is the optional hosted companion for

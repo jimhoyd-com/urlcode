@@ -30,6 +30,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `auth: true` on its mount sets; without it (the default) a collection is shared. An owned
   collection may add `maxRecordsPerOwner: N` (at most `maxRecords`): a principal holding N records
   gets `409 owner_quota_exceeded`; `maxRecords` still caps the whole collection.
+- Stored short links: `extensions.store.config.shortLinks.<name>: {mount, collection, destination, clicks}`
+  over a collection with a `key`, a required `format: http-url` destination field and one
+  `increments` counter, plus a route `<mount>/*: {extension: store, methods: [GET, HEAD]}`; no
+  function. See the README's "Short links" example.
 - With the server stopped, `urlcode-store reassign --directory <dir> --project <app> --from <id>
   --to <id> [--collection <name>] [--dry-run]` moves one principal's records to another (a
   rotated API key's records to its replacement); it refuses as a whole if `--to` would exceed
@@ -38,7 +42,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   the `composeHost` list; `urlcode extensions add store` writes that line.
 
 ## Read in this order
-- [README](README.md): install, scaffold, host options.
+- [README](README.md): install, scaffold, host options, short links, and a generated field reference
+  for every configuration key at the end.
 - [docs/STORE.md](../../docs/STORE.md): the full HTTP contract, limits and concurrency guarantees.
 - [SECURITY.md](SECURITY.md): trust boundary, locking, `ETag`/`If-Match`, `Idempotency-Key` scoping.
 

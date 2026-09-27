@@ -158,7 +158,8 @@
       "tags": [
         "respond",
         "get",
-        "head"
+        "head",
+        "errors"
       ],
       "description": ""
     },
