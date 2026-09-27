@@ -101,6 +101,10 @@ historical, not valid YAML guidance.
   prefix, no placeholders), a `static` route **must** end in `/*` (`/assets/*`),
   and an `extension` mount must end in a non-root `/*`. Any other route using a
   wildcard is rejected.
+- A single-page app whose client routes must answer `index.html` has no
+  native fallback: start from `urlcode recipes add spa-shell` (a root `/*`
+  static mount plus a small operator plugin in the host file, self-hosted
+  only) instead of a function per client path.
 - Bind typed inputs through `args` or context. There is no `${...}`
   interpolation anywhere in the format.
 - Create every referenced module, page and asset **before** validating. All

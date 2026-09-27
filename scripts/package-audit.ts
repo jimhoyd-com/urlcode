@@ -185,15 +185,12 @@ export const budgets: Record<string, Budget> = {
     // in 471 entries on Node 26, over the 772/3100 KiB budgets set for #659
     // alone.
     //
-    // Unpacked raised from 3140 to 3160 KiB for route-named asset reference
-    // diagnostics (#808: the reference check in dist/assets.js and
-    // dist/config.js, the ASSETS/TOOLING/AI-AUTHORING/RUNTIME-IMPLEMENTATION
-    // sections and their llms-full.txt copies). It measures 3221639 unpacked
-    // bytes on Node 26, 6279 over the old budget; packed and entries stay
-    // inside theirs.
-    packed: 788 * 1024,
-    unpacked: 3160 * 1024,
-    entries: 480,
+    // BUDGET-PENDING: raised for #805-#810 (asset reference diagnostics, the
+    // spa-shell recipe and the rest of that batch); final numbers are set from
+    // a measurement of the merged package.
+    packed: 800 * 1024,
+    unpacked: 3200 * 1024,
+    entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

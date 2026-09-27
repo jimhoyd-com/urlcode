@@ -49,7 +49,10 @@ attachment; `static` publishes a dedicated directory tree. There is no remote
 fetch/proxy, directory listing, automatic trailing-slash redirect, framework
 server, SPA fallback or runtime template evaluation. Use prebuilt assets;
 [prerendering](PRERENDER.md) is the tested recipe for building them from
-function and middleware routes.
+function and middleware routes. For a single-page app whose client routes must
+answer `index.html`, the [`spa-shell` recipe](../recipes/spa-shell/README.md)
+is the tested composition: a root `/*` static mount plus a small operator
+plugin ([#809](https://github.com/jimhoyd-com/urlcode/issues/809)).
 
 ## Complete handler options
 

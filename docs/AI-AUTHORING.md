@@ -322,6 +322,7 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects](yaml/redirects.md) |
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
+| Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](../recipes/spa-shell/README.md) |
 | Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |

@@ -26,7 +26,9 @@ All files must exist. MIME is detected by extension, not content sniffing; unkno
 extensions become application/octet-stream. `contentType` overrides detection
 without MIME parameters. An override on a static mount affects all its files.
 The download name defaults to the source basename. `index` is opt-in and only
-applies to slash-terminated requests. No automatic slash redirect or SPA fallback.
+applies to slash-terminated requests. No automatic slash redirect or SPA fallback;
+the [`spa-shell` recipe](../../recipes/spa-shell/README.md) composes one from a
+root `/*` static mount and an operator plugin.
 
 `cacheControl` is a closed enum on `page`, `download` and `static`; any other
 value fails validation. Reserve immutable caching for versioned URLs.
