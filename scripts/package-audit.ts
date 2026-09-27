@@ -209,8 +209,13 @@ export const budgets: Record<string, Budget> = {
     // SITE sections) and docs/EXTENSION-REFERENCE.md with the llms-full.txt
     // coverage note. Measured on the merged branch (Node 26): 860834 packed,
     // 3403684 unpacked, 490 entries.
-    packed: 844 * 1024,
-    unpacked: 3330 * 1024,
+    // Raised for the #825/#826/#828 batch: init --no-mcp and the EPERM/EROFS
+    // diagnostics, fence-aware docs search, and the fixed-contract-adapter
+    // recipe with its compatibility audit and llms-full.txt copy. Measured
+    // on the merged branch (Node 26): 876609 packed, 3468112 unpacked, 493
+    // entries.
+    packed: 860 * 1024,
+    unpacked: 3395 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
