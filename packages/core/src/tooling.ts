@@ -28,6 +28,8 @@ export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe,searchRecipes,listExamples,searchExamples};
 export {buildContext,renderContext,estimateTokens,documentationTokens,buildTaskContext,renderTaskContext,contextTasks} from './context.ts';
 export type {ContextOptions,ProjectContext,ContextSection,ContextTask,TaskContext,TaskShape} from './context.ts';
+export {buildBootstrap,renderBootstrap,bootstrapMaxCapabilities} from './bootstrap.ts';
+export type {Bootstrap,BootstrapOptions,BootstrapRuntime,BootstrapState,CapabilityPacketEntry} from './bootstrap.ts';
 export {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from './feature-plan.ts';
 export type {FeaturePlan,FeaturePlanOptions} from './feature-plan.ts';
 export type {RouteExplanation,ExplainedHandler,ExplainedCache,ExplainedExtensionRequirement,ExtensionProvider,TargetSupport} from './explain.ts';

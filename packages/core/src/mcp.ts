@@ -3,7 +3,8 @@ import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
 import type {ErrorObject} from 'ajv';
-import {describeError} from './errors.ts';
+import {ConfigError,describeError} from './errors.ts';
+import {buildBootstrap} from './bootstrap.ts';
 import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
 import {runProjectTests} from './project-tests.ts';
 import {loadOperatorHost} from './operator-host.ts';
@@ -37,7 +38,7 @@ const deployTargetProps={deployTarget:deployTargetEnum,target:{...deployTargetEn
 // Canonical, verb-first tool names. `legacy` names the pre-#590 name this tool answers to as well
 // (kept working, and listed in tools/list, for one release); see aliasOf/legacyNames below.
 const definitions=[
- {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order. Call this first.',properties:{...deployTargetProps,task:{enum:['redirects']},budget:{type:'integer',minimum:1}}},
+ {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order. Pass `bootstrap: true` (optionally with `capabilities`, at most 8 catalog names) for the local bootstrap instead: site and route-project roots, entry and host file, pinned/installed runtime against this one, commands to run from the site root, the site/project path mapping and a packet of this runtime\'s schema fragments and one example per named capability; it never creates a site. Call this first.',properties:{...deployTargetProps,task:{enum:['redirects']},budget:{type:'integer',minimum:1},bootstrap:{type:'boolean'},capabilities:{type:'array',items:{type:'string',maxLength:64},maxItems:8}}},
  {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{...deployTargetProps,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
  {name:'list_capabilities',legacy:'capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:deployTargetProps},
@@ -140,7 +141,11 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    // The suggested commands repeat the operator's own --host-file and project, both absolute so they run from any
    // working directory, and --origin, which also reaches site expansion (#791); a flag the operator did not give is
    // named under `prerequisites`, never guessed (#778).
-   case 'get_context':{const deployTarget=deployTargetOf(args);return typeof args.task==='string'
+   case 'get_context':{const deployTarget=deployTargetOf(args);
+    if(args.capabilities!==undefined&&args.bootstrap!==true)throw new ConfigError('capabilities applies only with bootstrap: true');
+    // The bootstrap names the site around this server's project; it is read-only here (creation is the CLI's --create).
+    if(args.bootstrap===true){if(typeof args.task==='string'||typeof args.budget==='number')throw new ConfigError('bootstrap cannot be combined with task or budget');return buildBootstrap(project,{...(Array.isArray(args.capabilities)?{capabilities:args.capabilities as string[]}:{}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(options.origin?{origin:options.origin}:{})});}
+    return typeof args.task==='string'
     ?buildTaskContext(project,args.task,{projectFlag,...operator,...(options.hostFile===undefined?{}:{host}),...(typeof args.budget==='number'?{budget:args.budget}:{})})
     :buildContext(project,{projectFlag,...operator,...(options.hostFile===undefined?{}:{host}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}

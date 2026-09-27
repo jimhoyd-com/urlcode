@@ -64,7 +64,7 @@ export function shellWord(value:string,platform:NodeJS.Platform=process.platform
 function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefined}):string {
  return `${options.hostFile===undefined?'':` --host-file ${shellWord(options.hostFile)}`}${options.origin===undefined?'':` --origin ${shellWord(options.origin)}`}`;
 }
-function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
+export function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
  const needs:Prerequisite[]=[];
  if(extensions&&options.hostFile===undefined)needs.push({flag:'--host-file',reason:'The project declares extensions; only the operator\'s host file outside the project registers them.'});
  if(extensions&&options.origin===undefined)needs.push({flag:'--origin',reason:'Extensions activate only with the canonical https origin the operator serves this project on.'});

@@ -199,6 +199,12 @@ const helpEntries: HelpEntry[] = [
   { name:'schema', group:'Agent tooling', text:
 `  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
 ` },
+  { name:'bootstrap', group:'Agent tooling', text:
+`  urlcode bootstrap [directory] [--capabilities respond,redirect,static] [--target self-hosted|cloudflare|aws|vercel|static] [--origin https://links.example] [--create] [--json]
+    # run before the first authoring step: whether the directory (default .) holds a site, its root, route project, entry and host file, the site's pinned/installed runtime against this one, exact start/validate/test commands to run from the site root, and how YAML file references map onto the site
+    # --capabilities: a bounded packet (at most 8) of this runtime's schema fragments, constraints, target support and one bundled example per named capability; unknown names and, with --target, refused ones are reported, never guessed
+    # --create: only then, and only where no site or project exists, runs init at the named directory; refused inside an existing project or at an app/ directory. Without it nothing is written
+` },
   { name:'context', group:'Agent tooling', text:
 `  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--host-file ...] [--origin https://links.example] [--budget 500] [--json] [--stats]
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
@@ -343,6 +349,7 @@ try {
     if (values.example !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--example is only supported by init --with and extensions add');
     if ((values.open || values['no-open']) && command !== 'studio') throw new ConfigError('--open and --no-open are only supported by studio');
     if (values.open && values['no-open']) throw new ConfigError('Use --open or --no-open, not both');
+    if ((values.capabilities !== undefined || values.create) && command !== 'bootstrap') throw new ConfigError('--capabilities and --create are only supported by bootstrap');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions and artifacts list');
@@ -351,7 +358,7 @@ try {
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
     if (values['passkey-rp-id'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--passkey-rp-id is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','bootstrap','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
       if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list');
@@ -418,6 +425,12 @@ try {
       serving=true;
       const stop=async()=>{try{await studio.close();}finally{await operatorHost.close?.();}};
       process.once('SIGINT',stop);process.once('SIGTERM',stop);
+    }else if(command==='bootstrap'){
+      if(parsed.project!==undefined)throw new ConfigError('bootstrap takes the site directory as its argument, not --project');
+      if(values.create&&arg===undefined)throw new ConfigError('--create needs an explicit destination: urlcode bootstrap <directory> --create');
+      const { buildBootstrap, renderBootstrap } = await import('./bootstrap.ts');
+      const bootstrap = await buildBootstrap(arg ?? '.', { capabilities:values.capabilities?.split(','), target:values.target, origin:values.origin, create:values.create });
+      print(values.json ? JSON.stringify(bootstrap) + '\n' : renderBootstrap(bootstrap));
     }else if(command==='context'){
       if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
       const { buildContext, buildTaskContext, renderContext, renderTaskContext, estimateTokens, documentationTokens } = await import('./context.ts');
