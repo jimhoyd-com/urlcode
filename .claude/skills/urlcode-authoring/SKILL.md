@@ -11,6 +11,26 @@ validates. Features outside that contract do not silently degrade — they fail
 validation. So the cost of guessing is a broken project, and the whole job here
 is to author only what the pinned revision implements and then prove it.
 
+## First step: bootstrap before authoring
+
+Before the first edit, run the bootstrap from the directory the user named and
+act on its answer rather than guessing a layout:
+
+```sh
+urlcode bootstrap [DIR] --capabilities respond,static --json
+```
+
+(MCP: `get_context` with `bootstrap: true` and `capabilities`.) Name only the
+capabilities the task needs (`urlcode capabilities` lists them); nothing is
+picked for you. Use its `site.root`, `site.entry` and `commands` (run from the
+site root after `commands.cd`); author file references by `paths.rule` (on disk
+`app/public` is `public` in YAML); author from its `capabilities.packet`
+fragments; report `capabilities.unknown`/`unsupported` and a `mismatched`
+`runtime` as gaps instead of guessing. `state: none` means no site exists and
+nothing was written: create one only where the user asked, with
+`urlcode bootstrap DIR --create` (it runs `init` there once and never nests
+`app/app`). Prefix `urlcode` as below when it is a project-local install.
+
 ## No project yet? Install the scoped package
 
 The npm package is `@jimhoyd/urlcode` — always scoped. There is no unscoped
@@ -101,6 +121,10 @@ historical, not valid YAML guidance.
   prefix, no placeholders), a `static` route **must** end in `/*` (`/assets/*`),
   and an `extension` mount must end in a non-root `/*`. Any other route using a
   wildcard is rejected.
+- A single-page app whose client routes must answer `index.html` has no
+  native fallback: start from `urlcode recipes add spa-shell` (a root `/*`
+  static mount plus a small operator plugin in the host file, self-hosted
+  only) instead of a function per client path.
 - Bind typed inputs through `args` or context. There is no `${...}`
   interpolation anywhere in the format.
 - Create every referenced module, page and asset **before** validating. All
@@ -114,6 +138,12 @@ historical, not valid YAML guidance.
   the project. Build a new extension only for a reusable capability the
   installed contracts cannot express. Extension hooks run trusted in-process
   and reject `sandbox: true` in contract v1.
+- For accounts, sign-in and a per-user profile served as JSON, start from the
+  `headless-auth-profile` recipe (`recipes show headless-auth-profile`,
+  `get_recipe`): auth's JSON endpoints under `/account/*` plus an owned store
+  collection behind `auth: true`, with its request shapes, status codes and
+  owner boundaries in its README. Never write login, cookie, password, CSRF or
+  ownership checks in a function; report what the recipe cannot express.
 - When a React frontend has `components.json`, follow the installed official
   shadcn/ui skill for component discovery, composition, accessibility and
   semantic Tailwind styling. Start with `shadcn info --json`, then use its

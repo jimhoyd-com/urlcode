@@ -17,7 +17,11 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 
 ## Start here (read only this section for a first attempt)
 
-1. Run `npx --no --package @jimhoyd/urlcode urlcode context --project DIR` (MCP `get_context`). For redirect-only work run
+1. Before writing anything, run `npx --no --package @jimhoyd/urlcode urlcode bootstrap DIR --capabilities NAME,... --json` (MCP `get_context` with `bootstrap: true`):
+   site and route-project roots, entry and host file, pinned/installed runtime against this one, exact commands to run from
+   the site root, the site/project path mapping and this runtime's schema fragments for the capabilities you name. It creates
+   nothing unless you add `--create` with an explicit DIR ([local agent bootstrap](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#local-agent-bootstrap)).
+   Then run `npx --no --package @jimhoyd/urlcode urlcode context --project DIR` (MCP `get_context`). For redirect-only work run
    `npx --no --package @jimhoyd/urlcode urlcode context --project DIR --task redirects`: supported shapes with exact YAML, gaps
    with their exact validation error, a paste-ready `starter`, and this project's own redirects.
 2. After installing `@jimhoyd/urlcode`, run `npx --no --package @jimhoyd/urlcode urlcode init .` (it works in a directory holding only `package.json`, `package-lock.json`, `node_modules`, `.git` or a pre-registered `.mcp.json` (see next paragraph), and preserves existing package metadata). It writes a bare agent-ready site: the route project `app/` (`urlcode.yaml` with no routes), `host.mjs` (the operator host), `package.json` with an exact runtime pin and npm scripts, `AGENTS.md`, local `.mcp.json` (kept as-is if one is already there), and project CI. Then run `npx --no --package @jimhoyd/urlcode urlcode validate --local` and `npx --no --package @jimhoyd/urlcode urlcode test` from the site; `--project` defaults to `app` there. `--no` refuses a registry fetch, so it always uses the installed scoped runtime.
@@ -42,6 +46,7 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 | Query-string preservation | Yes, opt-in | `redirect.query.pass` / `query.map` |
 | Method-preserving redirect | Yes | `methods` plus `status: 307` or `308` |
 | 404 for unmatched paths | Yes | `site.notFound` (project-relative `.html`) |
+| SPA fallback (client routes answer `index.html`) | Recipe, not native | [recipe `spa-shell`](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/spa-shell/README.md): root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only |
 | Host or scheme chosen from the request | No | destination is a literal absolute `https://` URL or a root-relative path; report the gap |
 
 ## Declarative-first
@@ -60,6 +65,7 @@ or bypass target limits or operator grants ([design principle](https://github.co
 | Fixed JSON/text/headers | `respond` and `response.headers` |
 | robots.txt, sitemap, favicon, security.txt | top-level `site` ([site](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SITE.md)) |
 | Sign-in, roles, protected routes | `extensions.auth` (it requires `ui`, `audit` and `mail`, which `urlcode extensions add auth` installs too), then `auth: true`; `auth: {csrf: origin}` on a store or form mount that takes writes without auth's token header ([extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#csrf-on-protected-routes-csrf-token--origin)) |
+| Headless register, sign-in, profile and sign-out JSON API | recipe `headless-auth-profile`: auth's JSON endpoints under `/account/*` plus an `ownership: owner` store collection behind `auth: true`, no handler code; its README lists every shape and status ([recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/headless-auth-profile/README.md), [auth JSON contract](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/docs/JSON-API.md)) |
 | Audit log, sign-in/form rate limits, email | `audit`, `abuse` and `mail` extensions: no routes; `audit: true` on a store collection, `extensions.auth.config.abuse` or `flows.<name>.abuse`, and the mail transport in `host.mjs` ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)) |
 | Persistence | operator-installed store extension, recipe `store-crud`, per-record ownership (`ownership: owner` on a collection behind `auth: {csrf: origin}`, [store ownership](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#per-record-ownership)); a database and filtering beyond it are gaps |
 | Stored short links (create, redirect, click count) | operator-installed store extension's `shortLinks` capability: a collection `key`, an HTTP(S) `destination` field, one `increments` counter, and a public `/go`-style redirect mount; no function needed (`urlcode docs search "shortLinks"`, MCP `search_docs`) |

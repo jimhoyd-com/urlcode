@@ -366,3 +366,45 @@ test('without a list declaration <mount>/ keeps serving the new-record form (#73
   const html = await (await alice('/onboarding/')).text();
   assert.match(html, /name="csrf"/); assert.ok(!html.includes('Listless-Q'));
 });
+
+test('with form.success inline, create answers the saved record\'s confirmation (201 with Location) and edit answers it with 200 (#805)', async t => {
+  const { browser, stored } = await boot(t, { record: { ...onboarding, form: { ...onboarding.form, success: { mode: 'inline', status: 201 } }, list: { columns: ['name'] } } });
+  const alice = browser('alice'), bob = browser('bob');
+  // CSRF and admission are unchanged: nothing is saved without a valid, browser-bound token.
+  const blank = await page(alice, '/onboarding');
+  assert.equal((await post(alice, '/onboarding', { name: 'Ada', team: 'red' })).status, 403, 'no token');
+  assert.equal((await post(bob, '/onboarding', { csrf: blank.csrf, name: 'Ada', team: 'red' })).status, 403, 'a token bound to another browser');
+  assert.equal((await post(alice, '/onboarding', { csrf: blank.csrf, name: '', team: 'red' })).status, 422);
+  const answer = await post(alice, '/onboarding', { csrf: (await page(alice, '/onboarding')).csrf, name: '<Ada>', team: 'blue', bio: 'engines' });
+  const html = await answer.text();
+  assert.equal(answer.status, 201); assert.equal(answer.headers.get('cache-control'), 'no-store');
+  const { records } = await stored(), [record] = records;
+  assert.equal(records.length, 1, 'only the admitted submission was saved');
+  assert.equal(answer.headers.get('location'), `/onboarding/${record!.id as string}`, 'a 201 names the record it created');
+  assert.match(html, /Saved &lt;Ada&gt;\./); assert.match(html, /Blue team/); assert.ok(!html.includes('<Ada>') && !html.includes('engines'));
+  assert.match(html, new RegExp(`href="/onboarding/${record!.id as string}/edit"`)); assert.match(html, /href="\/onboarding\/"/);
+  const fresh = await page(alice, '/onboarding');
+  assert.ok(!fresh.html.includes('Ada'), 'a fresh GET shows an empty form');
+  const id = record!.id as string;
+  const edit = await page(alice, `/onboarding/${id}/edit`);
+  const saved = await post(alice, edit.action, { csrf: edit.csrf, team: 'red', subscribed: 'true' });
+  assert.equal(saved.status, 200, 'an edit creates nothing, so it is never 201'); assert.equal(saved.headers.get('location'), null);
+  const savedHtml = await saved.text();
+  assert.match(savedHtml, /Red team/); assert.match(savedHtml, /Subscribe<\/dt><dd>Yes/);
+  assert.equal((await stored()).records[0]!.team, 'red');
+  assert.equal((await alice(`/onboarding/${id}`)).status, 200, 'the record confirmation stays a GET page');
+});
+
+test('with form.success inline and no status, create answers 200 without a Location (#805)', async t => {
+  const { browser, stored } = await boot(t, { record: { ...onboarding, form: { ...onboarding.form, success: { mode: 'inline' } } } });
+  const alice = browser('alice');
+  const answer = await post(alice, '/onboarding', { csrf: (await page(alice, '/onboarding')).csrf, name: 'Grace', team: 'red' });
+  assert.equal(answer.status, 200); assert.equal(answer.headers.get('location'), null);
+  assert.match(await answer.text(), /Saved Grace\./);
+  assert.equal((await stored()).records.length, 1);
+});
+
+test('activation refuses a form.success status on a redirect (#805)', async t => {
+  const { app, extensions } = await project(t, { record: { ...onboarding, form: { ...onboarding.form, success: { mode: 'redirect', status: 201 } } } });
+  await assert.rejects(createRuntime(app, { origin, extensions }), /Record onboarding: Form onboarding: success\.status applies only to mode inline/);
+});

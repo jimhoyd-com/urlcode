@@ -25,12 +25,34 @@ routes:
 ```
 
 Create all files/directories before validation or startup. Paths are relative to
-the project root. `page` sends one file inline; `download` sends one file as an
+the project root: the directory holding `urlcode.yaml` that `--project` selects,
+not the site or the working directory. In a site whose project is `app/`, a
+directory at `app/assets` is written `directory: assets`. `validate`, `test`,
+`dev`, `serve` and the MCP `validate` and `get_context` tools check every
+reference (the sitemap too, before it reads one), and a missing one fails naming the
+route, the field, its location and the reference as written, with code
+`missing-file`:
+
+```text
+urlcode.yaml:5:7: Route /assets/*: static.directory "app/assets" does not exist; asset references resolve relative to the selected project directory (the one holding urlcode.yaml), not the site or working directory; did you mean "assets"? That directory exists in this project
+```
+
+The `did you mean` part appears only when the reference starts with the
+project directory's own name and the shorter reference exists inside the
+project. The error line also carries `route`, `pointer`, `file`, `line` and
+`column`. It never prints an absolute host path. A reference that is absolute,
+contains `..` or passes through a symlink fails with code
+`invalid-file-reference` and is not echoed. That answer is the same whether or
+not anything exists at the target, so validation cannot be used to probe the
+host outside the project. `page` sends one file inline; `download` sends one file as an
 attachment; `static` publishes a dedicated directory tree. There is no remote
 fetch/proxy, directory listing, automatic trailing-slash redirect, framework
 server, SPA fallback or runtime template evaluation. Use prebuilt assets;
 [prerendering](PRERENDER.md) is the tested recipe for building them from
-function and middleware routes.
+function and middleware routes. For a single-page app whose client routes must
+answer `index.html`, the [`spa-shell` recipe](../recipes/spa-shell/README.md)
+is the tested composition: a root `/*` static mount plus a small operator
+plugin ([#809](https://github.com/jimhoyd-com/urlcode/issues/809)).
 
 ## Complete handler options
 

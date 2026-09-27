@@ -1,0 +1,113 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache"
+    }
+  },
+  {
+    "path": "/",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/projects/42/settings?tab=members",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache"
+    }
+  },
+  {
+    "path": "/a/b/c/d",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/projects/42",
+    "method": "POST",
+    "status": 405,
+    "expectHeaders": {
+      "allow": "GET, HEAD"
+    }
+  },
+  {
+    "path": "/robots.txt",
+    "status": 200,
+    "expectBody": "User-agent: *\nAllow: /\n",
+    "expectHeaders": {
+      "content-type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "path": "/robots.txt",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/missing.png",
+    "status": 404
+  },
+  {
+    "path": "/assets/app.css",
+    "status": 200,
+    "expectBody": "body { font-family: system-ui, sans-serif; margin: 2rem; }\n",
+    "expectHeaders": {
+      "content-type": "text/css; charset=utf-8",
+      "cache-control": "public, max-age=3600"
+    }
+  },
+  {
+    "path": "/assets/app.css",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/assets/missing.js",
+    "status": 404
+  },
+  {
+    "path": "/assets/client/route",
+    "status": 404
+  },
+  {
+    "path": "/api/status",
+    "status": 200,
+    "expectBody": "{\"ok\":true,\"service\":\"spa-shell\"}",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/api/status",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/api/status",
+    "method": "POST",
+    "status": 405
+  },
+  {
+    "path": "/api/missing/deep?x=1",
+    "status": 404,
+    "expectBody": "{\"error\":\"Not found\"}",
+    "expectHeaders": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/api/orders",
+    "method": "POST",
+    "status": 404,
+    "expectBody": "{\"error\":\"Not found\"}"
+  }
+]

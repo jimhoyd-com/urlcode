@@ -2,6 +2,7 @@ import {loadDocument} from './config.ts';
 import {applySite} from './site.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {compileRoutes,matchRoute,parseTarget} from './router.ts';
+import {checkAssetReferences} from './assets.ts';
 import {compilePolicies,closePolicies} from './policies.ts';
 import {analyzeCompiledCapabilities,routeCapabilities} from './capabilities.ts';
 import type {CompatibilityReport} from './capabilities.ts';
@@ -27,6 +28,8 @@ export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe,searchRecipes,listExamples,searchExamples};
 export {buildContext,renderContext,estimateTokens,documentationTokens,buildTaskContext,renderTaskContext,contextTasks} from './context.ts';
 export type {ContextOptions,ProjectContext,ContextSection,ContextTask,TaskContext,TaskShape} from './context.ts';
+export {buildBootstrap,renderBootstrap,bootstrapMaxCapabilities} from './bootstrap.ts';
+export type {Bootstrap,BootstrapOptions,BootstrapRuntime,BootstrapState,CapabilityPacketEntry} from './bootstrap.ts';
 export {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from './feature-plan.ts';
 export type {FeaturePlan,FeaturePlanOptions} from './feature-plan.ts';
 export type {RouteExplanation,ExplainedHandler,ExplainedCache,ExplainedExtensionRequirement,ExtensionProvider,TargetSupport} from './explain.ts';
@@ -40,6 +43,8 @@ export async function prepare(project:string,options:InspectOptions={}) {
  const snapshot=await prepareFunctionSnapshot(loaded),bindings:Record<string,string>=Object.create(null);
  for(const route of Object.values(loaded.routes)) {for(const ref of Object.values(route.env||{}))if(ref.env)bindings[ref.env]='validation-only';for(const ref of Object.values(route.secrets||{}))bindings[ref.secret]='validation-only';}
  const compiled=await compileRoutes(loaded,bindings,requestedPermissions(loaded,snapshot),snapshot.projectSha256),routes=routesOf(compiled);
+ // Asset references are checked where activation snapshots them, after the routes compile; no asset bytes are read.
+ await checkAssetReferences(loaded.root,routes,loaded.locations);
  const shared:PolicyShared={target:'node',routes:routes.length,log:()=>{}};
  // The same policy inventory the runtime attaches (src/runtime.ts): compiled for every route when the project declares any.
  const anyPolicy=Boolean(loaded.document.policies)||routes.some(route=>route.policies),chains=new Map<string,PolicyChain>();

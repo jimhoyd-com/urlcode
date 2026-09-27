@@ -8,7 +8,7 @@ import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
 import type { ErrorDetails } from './errors.ts';
 import { reservedResponseHeaders } from './http-policy.ts';
-import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteAuthShortForm, RouteConfig, SharedBlock } from './types.ts';
+import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteAuthShortForm, RouteConfig, SharedBlock, SourceLocation } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message and details. */
 export type ConfigWorkerResult = { value: LoadedDocument } | { error: string; details: ErrorDetails };
@@ -331,9 +331,20 @@ export async function safeFile(root: string, file: unknown): Promise<string> {
   // for what exists on the host outside the project (an MCP response is text only, mcp.ts).
   const suspicious = file.split(/[/\\]/).includes('..');
   const named = suspicious ? undefined : quotePath(file);
-  const actual = await realpath(resolve(root, file)).catch(() => { throw new ConfigError(`Referenced project file is missing${named ? `: ${named}` : ''} (paths are relative to the directory holding urlcode.yaml)`, { code: 'missing-file', file }); });
-  const rel = relative(root, actual);
-  assert(rel && rel !== '..' && !rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(rel), `File reference escapes project${named ? `: ${named}` : ''}`, { code: 'invalid-file-reference', file });
+  const inside = (actual: string): boolean => { const rel = relative(root, actual); return Boolean(rel) && rel !== '..' && !rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(rel); };
+  const actual = await realpath(resolve(root, file)).catch(async () => {
+    // The doubled-prefix mistake (`app/functions/x.mjs` for a project whose root is app/): suggest the shorter
+    // reference only when it resolves to a file inside the project, so the hint says nothing about the host.
+    const segments = file.split(/[/\\]/);
+    let hint = '';
+    if (named && segments.length > 1 && segments[0] === basename(root)) {
+      const shorter = segments.slice(1).join('/');
+      const candidate = await realpath(resolve(root, shorter)).catch(() => undefined);
+      if (candidate && inside(candidate) && (await stat(candidate)).isFile()) hint = `; did you mean ${quotePath(shorter)}? That file exists in this project`;
+    }
+    throw new ConfigError(`Referenced project file is missing${named ? `: ${named}` : ''} (paths are relative to the directory holding urlcode.yaml)${hint}`, { code: 'missing-file', file });
+  });
+  assert(inside(actual), `File reference escapes project${named ? `: ${named}` : ''}`, { code: 'invalid-file-reference', file });
   assert((await stat(actual)).isFile(), `Reference must point to a file${named ? `: ${named}` : ''}`, { code: 'invalid-file-reference', file });
   return actual;
 }
@@ -364,12 +375,12 @@ async function readConfig(file: string, budget: { remaining: number }): Promise<
  * Reads, parses and checks one configuration file; a ConfigError from either step gains the file and, where the
  * failure has a pointer, its line and column, and its message is prefixed `file:line:column:` like a compiler's.
  */
-async function located<T>(name: string, path: string, budget: { remaining: number }, check: (data: unknown) => T): Promise<T> {
+async function located<T>(name: string, path: string, budget: { remaining: number }, check: (data: unknown, locate: YamlLocator) => T): Promise<T> {
   let locate: YamlLocator | undefined;
   try {
     const parsed = await readConfig(path, budget);
     locate = parsed.locate;
-    return check(parsed.data);
+    return check(parsed.data, parsed.locate);
   } catch (error) {
     if (!(error instanceof ConfigError) || error.details.file !== undefined) throw error;
     const details = error.details;
@@ -454,6 +465,21 @@ export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>
   }
   return origins;
 }
+/**
+ * Records where each page/download/static file reference and each site file convention was written, keyed by the
+ * pointer `assetReference` (assets.ts) names it by, so a missing-file diagnostic raised after load can still say
+ * `file:line:column`. Positions only: no value is copied.
+ */
+function referenceLocations(document: ProjectDocument, file: string, locate: YamlLocator, into: Record<string, SourceLocation>): void {
+  const record = (pointer: string, key: string): void => { into[`${pointer}/${escapePointer(key)}`] = { file, ...locate(pointer, key) }; };
+  for (const [pattern, route] of Object.entries(document.routes ?? {})) {
+    const base = `/routes/${escapePointer(pattern)}`;
+    if (route.page) record(`${base}/page`, 'file');
+    if (route.download) record(`${base}/download`, 'file');
+    if (route.static) record(`${base}/static`, 'directory');
+  }
+  for (const key of ['favicon', 'llms', 'notFound'] as const) if (typeof document.site?.[key] === 'string') record('/site', key);
+}
 export async function loadDocumentInWorker(project: string, {sources=false}: {sources?: boolean}={}): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
   const root = await realpath(project).catch(() => {
@@ -465,7 +491,8 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
   });
   await lstat(resolve(root, 'urlcode.yaml')).catch(() => { throw new ConfigError(`No urlcode.yaml in ${quotePath(project)}; run urlcode init there to create a project, or pass --project <directory>`, { code: 'no-project', file: 'urlcode.yaml' }); });
   const file = await safeFile(root, 'urlcode.yaml');
-  const document = await located('urlcode.yaml', file, budget, data => validateDocument(data));
+  const locations: Record<string, SourceLocation> = {};
+  const document = await located('urlcode.yaml', file, budget, (data, locate) => { const valid = validateDocument(data); referenceLocations(valid, 'urlcode.yaml', locate, locations); return valid; });
   const routes: Record<string, RouteConfig> = Object.assign(Object.create(null) as Record<string, RouteConfig>, document.routes);
   const extensions = Object.assign(Object.create(null),document.extensions??{}) as NonNullable<ProjectDocument['extensions']>;
   const files = [file];
@@ -477,7 +504,7 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
     const path = await safeFile(root, include);
     assert(!files.includes(path), 'Duplicate include');
     files.push(path);
-    const part = await located(include, path, budget, data => validateDocument(data, document.shared ?? {}));
+    const part = await located(include, path, budget, (data, locate) => { const valid = validateDocument(data, document.shared ?? {}); referenceLocations(valid, include, locate, locations); return valid; });
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
     assert(part.shared===undefined, 'shared may only be set in the entry urlcode.yaml');
@@ -492,7 +519,7 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
   if(Object.keys(extensions).length)document.extensions=extensions;
   const routeAuth = normalizeRouteAuth(document, routes);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
-  return { root, document, routes, files, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), ...(sources ? { sources: { routes: routeFiles, extensions: extensionFiles } } : {}), version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
+  return { root, document, routes, files, locations, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), ...(sources ? { sources: { routes: routeFiles, extensions: extensionFiles } } : {}), version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
 }
 export async function loadBindings(root: string, local = false, environment: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
   const vars: Record<string, string> = {};

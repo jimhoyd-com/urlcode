@@ -3,8 +3,10 @@
 `forms` is a trusted operator-installed extension for small server-rendered,
 declarative form flows. It renders escaped fields through `urlcode-ui`, admits
 only bounded URL-encoded POST bodies, validates declared fields, returns 422
-with field errors, and redirects a valid submission to a confirmation page that
-shows only the submitted fields the flow opts in to. A flow may also declare a
+with field errors, and answers a valid submission with a confirmation that
+shows only the submitted fields the flow opts in to: by default a 303 redirect
+to a confirmation page, or, with [`success: {mode: inline}`](#success-answer-redirect-or-inline),
+the confirmation itself in the POST response. A flow may also declare a
 submission budget ([`abuse`](#submission-budgets-abuse)) and a notification
 email ([`notify`](#notifications-notify)). It is not a database or an
 arbitrary template engine.
@@ -226,6 +228,62 @@ that way. A handoff whose values exceed 2 KiB of JSON is not issued, so give
 shown free-text fields a `maxLength` well under that. `HEAD` always answers
 with the fixed form and leaves the cookie in place.
 
+## Success answer: redirect or inline
+
+By default a valid submission answers `303 See Other` to
+`<mount>/confirmation` (redirect-after-POST), so a browser refresh re-requests
+the confirmation rather than resubmitting the form. A flow can instead answer
+with the confirmation itself (#805):
+
+```yaml
+version: "1"
+extensions:
+  ui: {version: "1", config: {}}
+  forms:
+    version: "1"
+    config:
+      flows:
+        contact:
+          mount: /contact
+          title: Contact us
+          submitLabel: Send message
+          confirmation: {title: Thank you, message: "Thanks {name}, we will reply by email.", show: [name]}
+          success: {mode: inline, status: 201}
+          fields:
+            name: {label: Name, maxLength: 120}
+            email: {label: Email, type: email, maxLength: 320}
+            message: {label: Message, control: textarea, minLength: 5, maxLength: 2000}
+routes:
+  /assets/ui/*: {extension: ui}
+  /contact/*: {extension: forms, methods: [GET, HEAD, POST]}
+```
+
+| `success` | A valid POST answers |
+|---|---|
+| absent, or `{mode: redirect}` | `303` with `Location: <mount>/confirmation`; opted-in values travel in the sealed handoff cookie below |
+| `{mode: inline}` or `{mode: inline, status: 200}` | `200` with the confirmation page as the body |
+| `{mode: inline, status: 201}` | `201` with the confirmation page as the body |
+
+- **Only the response changes.** Same-origin admission, the CSRF token and
+  its binding cookie, the body bound, the abuse budget and challenge, field
+  validation (422 with field errors), `onSubmit` and `notify` all run exactly
+  as in redirect mode and in the same order, before any confirmation.
+- **The page** is the flow's `confirmation`: its title, message and the
+  `show` values, HTML-escaped with placeholders substituted after escaping,
+  exactly as the redirect confirmation renders them. It is
+  `Cache-Control: no-store`.
+- **Nothing is carried forward.** Inline mode seals no handoff cookie and
+  stores no submitted value: a fresh `GET <mount>` renders the empty form, and
+  `<mount>/confirmation` only ever shows the fixed page.
+- **A filled honeypot** gets the fixed confirmation (no submitted values) with
+  the flow's status, as the redirect mode's silent 303 does.
+- **Refresh resubmits.** A browser refresh of an inline confirmation offers to
+  POST the form again, and a new token-bearing POST is a new submission, so
+  keep `onSubmit` idempotent. Keep the default redirect unless a client needs
+  the confirmation in the POST response.
+
+Activation refuses `status` with `mode: redirect` (a redirect is always 303),
+any `status` other than 200 or 201, any other `mode`, and unknown keys.
 
 ## Submission budgets (`abuse`)
 
@@ -250,7 +308,8 @@ submissions` page (429) with `Retry-After`; when the abuse store cannot answer
 it is `503 The form could not be submitted`, never an admitted submission. A
 failed challenge re-renders the form (403) with `Complete the verification and
 submit again.`; a filled honeypot gets a silent `303` to
-`<mount>/confirmation` and nothing else happens. Budgets are keyed in abuse's
+`<mount>/confirmation` (with `success: {mode: inline}`, the fixed confirmation
+inline with the flow's status) and nothing else happens. Budgets are keyed in abuse's
 namespace `forms` with the scope `flow-` plus 24 hex characters of the flow
 name's SHA-256, and the client key is core's `clientKey`. A flow defined by
 another extension through `FormsExports` gets no abuse or notify.
@@ -269,7 +328,7 @@ flows:
 ```
 
 YAML names the recipient, never an address. Forms sends the `forms.submission`
-message after `onSubmit` and before the redirect; a delivery failure answers
+message after `onSubmit` and before the confirmation; a delivery failure answers
 503 with no confirmation, so delivery is at least once and the submitter can
 retry. With no `include` the body says that no submitted values are included.
 Each included value is capped at 1000 characters and the summary at 8000;
@@ -305,9 +364,15 @@ if (!sent.ok) return sent.response;                  // 403, 405, 413, 415 or th
   keep its sibling. `readOnly` shows other declared fields' values as a list
   above the form, and `alert`, `title`, `submitLabel` and `status` adjust the
   page.
-- `confirmationPage(values, {links})` renders the flow's confirmation from
-  values the consumer supplies (for example a saved record), with optional
-  same-site links.
+- `confirmationPage(values, {links, status})` renders the flow's confirmation
+  from values the consumer supplies (for example a saved record), with
+  optional same-site links; `status` is 200 (the default) or 201, for a
+  confirmation answered inline to a POST. It is always `no-store`.
+- `success` is the body's declared [success answer](#success-answer-redirect-or-inline)
+  after defaults, `{mode: 'redirect', status: 303}` or
+  `{mode: 'inline', status: 200 | 201}`. `define` refuses the same invalid
+  combinations activation does. Forms does not act on it for an exported
+  flow; the consumer honours it.
 
 A flow defined this way has no mount and no `onSubmit` hook: the consumer
 decides what a valid submission does. [form-records](../form-records/README.md)

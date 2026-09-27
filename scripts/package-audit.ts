@@ -184,9 +184,18 @@ export const budgets: Record<string, Budget> = {
     // (#792): together they measure 795299 packed and 3185100 unpacked bytes
     // in 471 entries on Node 26, over the 772/3100 KiB budgets set for #659
     // alone.
-    packed: 788 * 1024,
-    unpacked: 3140 * 1024,
-    entries: 480,
+    //
+    // Raised from 788 KiB packed, 3140 KiB unpacked and 480 entries for the
+    // #805-#810 batch: route-named asset reference diagnostics (#808), the
+    // local agent bootstrap (dist/bootstrap.js, CLI/MCP wiring, #807), the
+    // spa-shell (#809) and headless-auth-profile (#810) recipes, and the
+    // TOOLING/ASSETS/RECIPES/AI-AUTHORING/skill sections with their
+    // llms-full.txt copies. Measured on the merged branch (Node 26): 827444
+    // packed, 3290761 unpacked, 485 entries. 812 KiB leaves about 4 KiB for
+    // the ~2 KiB cross-Node gzip variance noted above.
+    packed: 812 * 1024,
+    unpacked: 3220 * 1024,
+    entries: 495,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

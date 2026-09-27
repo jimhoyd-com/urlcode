@@ -126,6 +126,27 @@
                 }
               }
             },
+            "success": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "redirect",
+                    "inline"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    200,
+                    201
+                  ]
+                }
+              }
+            },
             "fields": {
               "type": "object",
               "minProperties": 1,
@@ -378,7 +399,7 @@
     {
       "name": "onSubmit",
       "kind": "action",
-      "description": "Runs after the extension has admitted and validated a form submission, before the confirmation redirect. It is trusted project code and receives only declared field values.",
+      "description": "Runs after the extension has admitted and validated a form submission, before the confirmation (a redirect, or the inline page with success.mode inline). It is trusted project code and receives only declared field values.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -398,13 +419,19 @@
     }
   ],
   "authoring": {
-    "description": "Declare a bounded server-rendered form flow with fixed fields and a confirmation page that can show opted-in submitted values (confirmation.show). The forms extension owns HTML escaping, admission, CSRF and field validation; attach auth on the mount when submissions need a signed-in caller.",
+    "description": "Declare a bounded server-rendered form flow with fixed fields and a confirmation page that can show opted-in submitted values (confirmation.show), reached by a 303 redirect or, with success.mode inline, rendered in the POST response (200 or 201). The forms extension owns HTML escaping, admission, CSRF and field validation; attach auth on the mount when submissions need a signed-in caller.",
     "surfaces": [
       {
         "kind": "configuration",
         "name": "flows",
         "description": "Declare each mounted form, its bounded fields, explicit submit label and confirmation page.",
         "path": "urlcode.yaml#extensions.forms.config.flows"
+      },
+      {
+        "kind": "configuration",
+        "name": "success",
+        "description": "Optional per-flow success answer: `success: {mode: redirect}` (the default) answers a valid POST with 303 to `<mount>/confirmation`; `success: {mode: inline, status: 200|201}` renders the confirmation (title, message, opted-in `show` values, escaped) in the POST response itself, `no-store`, status 200 unless 201 is declared. `status` is refused with `mode: redirect`. CSRF, admission, validation (422) and onSubmit/notify ordering are the same in both modes.",
+        "path": "urlcode.yaml#extensions.forms.config.flows.<name>.success"
       },
       {
         "kind": "configuration",

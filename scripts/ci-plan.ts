@@ -203,7 +203,7 @@ const WORKSPACE_PACKAGES = ['ui', 'audit', 'abuse', 'mail', 'auth', 'admin', 'st
 // Cross-package `@jimhoyd/urlcode-*` build dependencies, in the build order
 // each package's own typecheck/build needs. They are transitive, because a
 // package's emitted declarations import its dependencies' declarations:
-// `auth` imports `ui`, `audit`, `mail` and `abuse`; `admin` imports `auth`
+// `auth` imports `ui`, `audit`, `mail` and `abuse` (and its recipe test `store`); `admin` imports `auth`
 // and so needs everything `auth` needs; `store` imports `ui` and `audit`;
 // `forms` imports `ui`, `abuse` and `mail`; `form-records` imports `forms`,
 // `store` and `ui` (which renders its list page), plus theirs. `ui`, `audit`,
@@ -212,8 +212,8 @@ const WORKSPACE_PACKAGES = ['ui', 'audit', 'abuse', 'mail', 'auth', 'admin', 'st
 // a package's own job now has to build its declared dependencies first.
 const WORKSPACE_DEPS: Record<string, readonly string[]> = {
   ui: [], audit: [], abuse: [], mail: [],
-  auth: ['ui', 'audit', 'mail', 'abuse'],
-  admin: ['ui', 'audit', 'mail', 'abuse', 'auth'],
+  auth: ['ui', 'audit', 'mail', 'abuse', 'store'],
+  admin: ['ui', 'audit', 'mail', 'abuse', 'store', 'auth'],
   store: ['ui', 'audit'],
   forms: ['ui', 'abuse', 'mail'],
   'form-records': ['ui', 'audit', 'abuse', 'mail', 'forms', 'store'],

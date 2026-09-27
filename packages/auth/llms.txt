@@ -55,6 +55,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `ctx.get('auth')`; they never get auth's keys, database or tokens.
 
 ## Read in this order
+- [Headless auth and profile recipe](../../recipes/headless-auth-profile/README.md): a tested, runnable
+  JSON API for register, sign-in, auth-owned and application profile, sign-out and cross-user denial,
+  with every request shape and status; `urlcode recipes show headless-auth-profile`.
+- [JSON API contract](docs/JSON-API.md): every JSON body the `/account/*` endpoints return.
 - [README](README.md): install, activation, AuthExports, hooks, operator CLI, providers.
 - [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
 - [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains.

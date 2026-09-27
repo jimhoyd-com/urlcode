@@ -1,0 +1,24 @@
+version: "1"
+routes:
+  /:
+    description: The single-page app's shell, served natively from the prebuilt build.
+    page:
+      file: public/index.html
+      cacheControl: no-cache
+  /assets/*:
+    description: The build's scripts and styles; a missing file answers 404, never the shell.
+    static:
+      directory: public/assets
+      cacheControl: public, max-age=3600
+  /api/status:
+    description: A JSON endpoint the client calls, declared with respond so no project code runs.
+    respond:
+      json: {ok: true, service: spa-shell}
+    response:
+      headers:
+        Cache-Control: no-store
+  /*:
+    description: Root-level build files such as robots.txt; the operator's spa-shell plugin answers client routes under it with the shell.
+    static:
+      directory: public
+      cacheControl: no-cache

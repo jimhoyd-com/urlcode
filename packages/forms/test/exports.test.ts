@@ -144,3 +144,19 @@ test('define() applies forms\' own cross-field rules and only() keeps requiredWh
   assert.throws(() => handle.render(request, { action: '/ok', scope: 'bad scope' }), /scope must be/);
   assert.throws(() => handle.only(['comment']).render(request, { action: '/ok', scope: 's', readOnly: { comment: 'x' } }), /read-only comment/);
 });
+
+test('a handle exposes the flow\'s success answer, and confirmationPage renders it inline with a bounded status (#805)', async t => {
+  const { forms } = await boot(t);
+  assert.deepEqual(forms.exports.define('plain', body).success, { mode: 'redirect', status: 303 }, 'redirect is the default');
+  assert.deepEqual(forms.exports.define('inline', { ...body, success: { mode: 'inline' } }).success, { mode: 'inline', status: 200 });
+  const created = forms.exports.define('created', { ...body, success: { mode: 'inline', status: 201 } });
+  assert.deepEqual(created.success, { mode: 'inline', status: 201 });
+  assert.deepEqual(created.only(['comment']).success, created.success, 'only() keeps the flow\'s success answer');
+  assert.throws(() => forms.exports.define('bad', { ...body, success: { mode: 'redirect', status: 201 } }), /success\.status applies only to mode inline/);
+  assert.throws(() => forms.exports.define('bad', { ...body, success: { mode: 'inline', status: 202 as 201 } }), /success\.status must be 200 or 201/);
+  const page = created.confirmationPage({ rating: '5' }, { status: 201 });
+  assert.equal(page.status, 201); assert.ok(page.headers.some(([name, value]) => name === 'cache-control' && value === 'no-store'));
+  assert.match(Buffer.from(page.body as Uint8Array).toString('utf8'), /Rated Great\./);
+  assert.equal(created.confirmationPage({ rating: '5' }).status, 200, 'a confirmation GET stays 200');
+  assert.throws(() => created.confirmationPage({ rating: '5' }, { status: 303 as 201 }), /confirmation status must be 200 or 201/);
+});

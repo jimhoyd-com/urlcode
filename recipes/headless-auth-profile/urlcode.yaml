@@ -1,0 +1,36 @@
+version: "1"
+extensions:
+  # auth requires ui, audit and mail. The API answers JSON; ui still needs its one asset mount below.
+  ui: {version: "1", config: {}}
+  audit: {version: "1", config: {}}
+  mail: {version: "1", config: {}}
+  auth:
+    version: "1"
+    config:
+      registration: open
+  store:
+    version: "1"
+    config:
+      collections:
+        profiles:
+          mount: /api/profile
+          ownership: owner
+          maxRecordsPerOwner: 1
+          maxRecordBytes: 4096
+          fields:
+            bio: {type: string, maxLength: 500}
+            website: {type: string, format: http-url, maxLength: 2048}
+routes:
+  /assets/ui/*:
+    description: Stylesheet and scripts of the ui kit, which auth requires; an HTML client of the same API would use them.
+    extension: ui
+    methods: [GET, HEAD]
+  /account/*:
+    description: Registration, sign-in, the signed-in account, its auth-owned profile and sign-out, answered as JSON by the operator-installed auth extension.
+    extension: auth
+    methods: [GET, HEAD, POST]
+  /api/profile/*:
+    description: The signed-in user's application profile, one record per user, kept by the operator-installed store extension and scoped to the auth session.
+    extension: store
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true

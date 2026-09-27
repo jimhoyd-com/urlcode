@@ -92,6 +92,12 @@ try {
     command(process.execPath,[cli,'validate','--local','--project',output]);
     assert.ok(existsSync(join(output,'functions','hello.js')));
     assert.ok(existsSync(join(install,'node_modules','typescript','lib','typescript.js')),'Optional TypeScript compiler was not installed');
+    // spa-shell (#809): its README host file, saved beside the added project, imports the installed package's host entry.
+    const spa = join(install,'spa');
+    command(process.execPath,[cli,'recipes','add','spa-shell','--out',spa]);
+    const spaHost = join(install,'spa-host.mjs'), spaExample = /## The host file[\s\S]*?```js\n([\s\S]*?)```/.exec(await readFile(join(spa,'README.md'),'utf8'))?.[1];
+    assert.ok(spaExample,'The spa-shell README carries its host file');await writeFile(spaHost,spaExample);
+    assert.match(command(process.execPath,[cli,'test','--project',spa,'--host-file',spaHost]),/"total":17,"failed":0/);
     const input = join(root,'redirects.csv');
     await writeFile(input,'path,url,status\n/docs,https://example.com/docs,301\n');
     const bulk = join(root,'bulk');

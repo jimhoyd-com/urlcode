@@ -6,6 +6,7 @@ import {ConfigError} from './errors.ts';
 import {applySite} from './site.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {compileRoutes} from './router.ts';
+import {checkAssetReferences} from './assets.ts';
 import {compilePolicies,closePolicies,effectivePolicies,registry} from './policies.ts';
 import {capabilityTargets,getCapabilities,normalizeCapabilityTarget,routeCapabilities} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
@@ -63,7 +64,7 @@ export function shellWord(value:string,platform:NodeJS.Platform=process.platform
 function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefined}):string {
  return `${options.hostFile===undefined?'':` --host-file ${shellWord(options.hostFile)}`}${options.origin===undefined?'':` --origin ${shellWord(options.origin)}`}`;
 }
-function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
+export function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
  const needs:Prerequisite[]=[];
  if(extensions&&options.hostFile===undefined)needs.push({flag:'--host-file',reason:'The project declares extensions; only the operator\'s host file outside the project registers them.'});
  if(extensions&&options.origin===undefined)needs.push({flag:'--origin',reason:'Extensions activate only with the canonical https origin the operator serves this project on.'});
@@ -98,6 +99,7 @@ async function compile(project:string,origin:string|undefined) {
  const snapshot=await prepareFunctionSnapshot(loaded),bindings:Record<string,string>=Object.create(null);
  for(const route of Object.values(loaded.routes)) {for(const ref of Object.values(route.env||{}))if(ref.env)bindings[ref.env]='validation-only';for(const ref of Object.values(route.secrets||{}))bindings[ref.secret]='validation-only';}
  const compiled=await compileRoutes(loaded,bindings,requestedPermissions(loaded,snapshot),snapshot.projectSha256),routes=routesOf(compiled);
+ await checkAssetReferences(loaded.root,routes,loaded.locations);
  const shared:PolicyShared={target:'node',routes:routes.length,log:()=>{}};
  try {for(const route of routes)await compilePolicies(loaded.document,route,{route,shared,target:'node',root:loaded.root});}finally{await closePolicies(shared);}
  return {loaded,compiled,routes};

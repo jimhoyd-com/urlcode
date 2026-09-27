@@ -85,7 +85,7 @@ export const formRecordsConfigSchema = {
 export const formRecordsAuthoring: ExtensionAuthoringContract = {
   description: 'Save a declared form into an owned store collection: a submission creates a record private to its signed-in creator, the confirmation page reads the saved record back, and an edit page changes only the fields listed in `editable`. forms keeps rendering, CSRF and validation; the store keeps ownership, limits and ETags. No handler code.',
   surfaces: [
-    { kind: 'configuration', name: 'records', description: 'Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).', path: 'urlcode.yaml#extensions.form-records.config.records' },
+    { kind: 'configuration', name: 'records', description: 'Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, optional `success` (`{mode: inline, status: 200|201}` answers a create or edit with the saved record\'s confirmation instead of a 303 to `<mount>/<id>`; an edit is always 200), fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).', path: 'urlcode.yaml#extensions.form-records.config.records' },
     { kind: 'extension', name: 'mount', description: 'Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller\'s own records).', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
@@ -271,7 +271,12 @@ async function create(binding: Binding, request: ExtensionRequest, method: strin
   try {
     // On create an empty input is left out (never null), so every value here is a scalar.
     const saved = await binding.records.create(request.principal, Object.fromEntries(Object.entries(values).filter((entry): entry is [string, Scalar] => entry[1] !== null)));
-    return { status: 303, headers: [['location', `${binding.mount}/${saved.record.id as string}`]] };
+    const id = saved.record.id as string, location = `${binding.mount}/${id}`;
+    const success = binding.flow.success;
+    if (success.mode === 'redirect') return { status: 303, headers: [['location', location]] };
+    // Inline (#805): the confirmation of the saved record is this response; a 201 names the record it created.
+    const answer = confirmationOf(binding, id, saved.record, success.status);
+    return success.status === 201 ? { ...answer, headers: [...answer.headers, ['location', location]] } : answer;
   } catch (error) {
     const answer = feedback(binding, error);
     if (!answer) throw error;
@@ -282,9 +287,13 @@ async function create(binding: Binding, request: ExtensionRequest, method: strin
 function show(binding: Binding, request: ExtensionRequest, method: string, id: string): HandlerResult {
   if (method !== 'GET' && method !== 'HEAD') return text(405, 'Method not allowed', [['allow', 'GET, HEAD']]);
   const { record } = binding.records.get(request.principal, id);
+  return headOnly(method, confirmationOf(binding, id, record, 200));
+}
+/** The record's confirmation, read from the saved record: its `show` fields, an Edit link with `editable`, a list link with `list`. */
+function confirmationOf(binding: Binding, id: string, record: Readonly<StoredRecord>, status: 200 | 201): HandlerResult {
   const shown = formValues(binding, record, binding.flow.confirmation.show);
   const links = [...(binding.edit ? [{ href: `${binding.mount}/${id}/edit`, label: 'Edit' }] : []), ...(binding.list ? [{ href: `${binding.mount}/`, label: binding.list.title }] : [])];
-  return headOnly(method, binding.flow.confirmationPage(shown, links.length ? { links } : {}));
+  return binding.flow.confirmationPage(shown, { ...(links.length ? { links } : {}), status });
 }
 
 /** A stored value as the list shows it: a checkbox as Yes/No, a select as its option label, anything else as text. */
@@ -344,8 +353,9 @@ async function edit(binding: Binding, request: ExtensionRequest, method: string,
   const { values, errors } = convert(binding, submitted.values, true);
   if (Object.keys(errors).length) return form.render(request, { ...rendered, values: submitted.values, errors, status: 422 });
   try {
-    await binding.records.update(request.principal, id, values, { ifMatch: `"${version[0]!}"` });
-    return { status: 303, headers: [['location', `${binding.mount}/${id}`]] };
+    const updated = await binding.records.update(request.principal, id, values, { ifMatch: `"${version[0]!}"` });
+    // An edit creates nothing, so an inline confirmation of it is always 200, whatever status the create declares.
+    return binding.flow.success.mode === 'inline' ? confirmationOf(binding, id, updated.record, 200) : { status: 303, headers: [['location', `${binding.mount}/${id}`]] };
   } catch (error) {
     if (storeFailure(error)?.status === 412) {
       // Someone changed the record since this page was rendered: nothing was saved. Show the current values and version.

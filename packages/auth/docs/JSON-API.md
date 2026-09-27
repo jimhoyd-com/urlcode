@@ -9,6 +9,11 @@ negotiation itself is `wantsJson()` in `src/auth-ui.ts`. This document is the
 stable, versioned contract for the JSON side, the counterpart to the `auth/*`
 HTML view models that `urlcode-ui doctor` checks for drift (`src/auth-templates.ts`).
 
+For a runnable, tested composition of these endpoints with a per-user
+application profile (register, sign in, profile read and update, sign out,
+another user refused), start from the
+[headless auth and profile recipe](../../../recipes/headless-auth-profile/README.md).
+
 **This is documentation of already-shipped behavior.** Nothing here changes a
 response shape; it names what the handlers in `src/auth.ts`, `src/auth-ui.ts`,
 `src/auth-flows.ts`, `src/auth-signup.ts`, `src/second-factor-flows.ts`,

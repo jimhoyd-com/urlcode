@@ -18,6 +18,7 @@ import {prepareFunctionSnapshot,requestedPermissions} from '../packages/core/src
 import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {project,request} from './helpers.ts';
+import {readmeHost} from './spa-shell-host.ts';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 
 test('local recipe catalog is defensive and rejects arbitrary paths',async()=>{
@@ -62,7 +63,9 @@ test('every recipe is found first by the words someone would search for',async()
     'cors-api':'cors preflight',                   'webhook-receiver':'webhook',
     'contact-form':'contact form',                 'authenticated-json-api':'signed-in json api',
     'protected-download':'protected download attachment','store-crud':'crud store persist',
+    'headless-auth-profile':'headless register login profile',
     'streaming-progress':'stream progress lines',
+    'spa-shell':'single-page app deep link',
   };
   for(const [name,text] of Object.entries(queries)){
     const found=await searchRecipes(text);
@@ -174,12 +177,15 @@ test('every recipe validates, passes its fixtures and audits with its declared r
   for(const recipe of await listRecipes()){
     // store-crud needs the operator-installed @jimhoyd/urlcode-store; core cannot import it, so
     // packages/store/test/store.test.ts runs its fixtures against the real extension.
-    if(recipe.id==='store-crud')continue;
+    // headless-auth-profile needs the real auth and store packages too: packages/auth/test/headless-auth-profile-recipe.test.ts.
+    if(recipe.id==='store-crud'||recipe.id==='headless-auth-profile')continue;
     let out=join(root,recipe.id);await addRecipe(recipe.id,out);
     if(recipe.id==='typescript'){await buildTypeScriptProject(out,join(root,'typescript-built'));out=join(root,'typescript-built');}
     const options: Parameters<typeof runProjectTests>[1]={};
     if(recipe.capabilities!.includes('extension')){options.extensions=[await authRegistry(out,recipe.id==='protected-download'?'downloads':'api')];options.origin='https://recipe.example.test';}
     if(recipe.capabilities!.includes('signals')||recipe.grants?.some(grant=>grant.kind==='secret'))options.permissions=await policyFor(out);
+    // spa-shell's client routes need the operator plugin from its README host file (test/spa-shell-recipe.test.ts).
+    if(recipe.id==='spa-shell')options.plugins=(await readmeHost(join(root,'spa-operator'))).default.plugins;
     assert.ok(recipe.services?.length?recipe.grants?.length:true,`${recipe.id} names a service, so it must name the grant that admits it`);
     const tested=await runProjectTests(out,options);
     if(recipe.tests?.fixtures)assert.ok(tested.total>0,`${recipe.id} declares fixtures`);

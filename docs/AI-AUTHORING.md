@@ -8,7 +8,18 @@ add one to it automatically.
 
 ## First step: one bounded query
 
-Make the first retrieval one bounded query: the MCP tool `get_context` when the
+Before the first authoring step, run `urlcode bootstrap [DIR] --capabilities
+NAME,... --json` (MCP `get_context` with `bootstrap: true`). It says whether
+`DIR` already holds a site, returns the site root, route project, entry file,
+host file and the runtime the site pins against the one answering, the exact
+commands to run from the site root, how `urlcode.yaml` file references map
+onto the site (`app/public` on disk is `public` in YAML), and for the
+capabilities you name, that runtime's schema fragments with one bundled example
+each. It never creates a site unless you add `--create` with an explicit
+destination, which runs `init` there once. See
+[local agent bootstrap](TOOLING.md#local-agent-bootstrap).
+
+Then make the next retrieval one bounded query: the MCP tool `get_context` when the
 `urlcode` server is registered, otherwise `urlcode context --project DIR` (add
 `--budget N` when context is scarce). Then retrieve only what the task needs:
 `urlcode capabilities NAME` (MCP `get_capability`) for one capability's limits,
@@ -214,7 +225,7 @@ A failed command prints one JSON line, `{"event":"error","message":...}`, with
 structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
 `invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
-`binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
+`invalid-file-reference`, `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
 `unknown-option`, `extension-activation`, `extension-registration`,
 `extension-host`, `host-load`), `file`,
 `line` and `column`, `route` (the pattern as written), `pointer` (an RFC 6901
@@ -322,6 +333,7 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects](yaml/redirects.md) |
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
+| Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](../recipes/spa-shell/README.md) |
 | Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
@@ -358,6 +370,17 @@ refuses until the operator re-runs with `--ack store:public-write`, and its
 collection stays shared. Report anything beyond that recipe (filtering, sorting,
 ownership beyond owner-only records, a database) as a gap. `urlcode context` lists the same built-ins so
 they are visible before you write code.
+
+Accounts with a per-user profile, served as a headless JSON API, need no code
+either: `urlcode recipes show headless-auth-profile` is the bounded entry
+point. Registration, sign-in, the auth-owned profile (`displayName`, `locale`)
+and sign-out are auth's own JSON endpoints under `/account/*`
+([auth JSON contract](../packages/auth/docs/JSON-API.md)); the application's
+profile fields are an `ownership: owner` store collection behind `auth: true`,
+so another user's record is a `404`. Its README states every request and
+response shape, status code, header and owner boundary, and which operator
+files hold the keys. A function that reads a session cookie, checks a password
+or compares user ids reimplements what these contracts already enforce.
 
 ## Agent skills
 

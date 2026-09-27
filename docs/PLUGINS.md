@@ -211,7 +211,10 @@ rejects the reload and the old runtime keeps serving.
 ## Sketches
 
 Both examples are sketches, not shipped code: they omit error handling,
-configuration and the store or verifier they depend on.
+configuration and the store or verifier they depend on. For a complete, tested
+plugin, see the [`spa-shell` recipe](../recipes/spa-shell/README.md): its host
+file answers a single-page app's client routes with `index.html` from a root
+`/*` static mount.
 
 ### Shared-store throttle
 

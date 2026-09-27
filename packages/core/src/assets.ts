@@ -1,12 +1,13 @@
 import { lstat, readdir, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
+import type { Stats } from 'node:fs';
 import { join, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import mime from 'mime-types';
 import { create as disposition } from 'content-disposition';
-import { assert, HttpError } from './errors.ts';
+import { assert, ConfigError, HttpError } from './errors.ts';
 import type { HeaderPair } from './http-response.ts';
-import type { Asset, AssetResult, CompiledRoute, DownloadConfig, PageConfig, StaticConfig } from './types.ts';
+import type { Asset, AssetResult, CompiledRoute, DownloadConfig, PageConfig, RouteConfig, SourceLocation, StaticConfig } from './types.ts';
 
 /** The header surface assetResponse reads for conditional and range requests. */
 interface AssetRequestHeaders { has(name: string): boolean; get(name: string): string | null | undefined }
@@ -22,7 +23,72 @@ function partsFor(value: string): string[] {
   assert(parts.every(p => p && !p.startsWith('.') && !denied.test(p) && !/[\\:\u0000-\u001f\u007f]/u.test(p)), 'Unsafe asset path; use a dedicated public asset directory');
   return parts;
 }
-export async function compileAssets(root: string, routes: CompiledRoute[]): Promise<AssetSnapshot> {
+/** The one project file or directory a page, download or static route (or a site file convention) names. */
+interface AssetReference { subject: string | undefined; field: string; pointer: string; reference: string; kind: 'file' | 'directory'; route?: string }
+type AssetRoute = Pick<RouteConfig, 'page' | 'download' | 'static' | 'generated'>;
+const escapePointer = (segment: string): string => segment.replace(/~/g, '~0').replace(/\//g, '~1');
+function assetReference(pattern: string, route: AssetRoute): AssetReference | undefined {
+  const [handler, key, config] = route.static ? ['static', 'directory', route.static.directory] as const : route.page ? ['page', 'file', route.page.file] as const : route.download ? ['download', 'file', route.download.file] as const : [];
+  if (!handler) return undefined;
+  const kind = key === 'directory' ? 'directory' : 'file';
+  // A site convention (site.favicon, site.llms, site.notFound) becomes a page route; name the key the author wrote.
+  const site = /^site\.(favicon|llms|notFound)$/.exec(route.generated ?? '')?.[1];
+  if (site) return { subject: undefined, field: `site.${site}`, pointer: `/site/${site}`, reference: config, kind };
+  return { subject: `Route ${pattern}`, field: `${handler}.${key}`, pointer: `/routes/${escapePointer(pattern)}/${handler}/${key}`, reference: config, kind, route: pattern };
+}
+/**
+ * Resolves one authored asset reference inside the project, or fails naming the route, the YAML field and its
+ * location. A reference that is absolute, climbs with `..` or passes through a symlink is refused before anything
+ * outside the project is looked at and is never echoed (#610), so the message is the same whether or not the target
+ * exists. Only an ordinary in-project reference is named when it is missing, with the resolution rule and, for the
+ * `app/app/...` mistake, the shorter reference when that one exists here. No absolute host path is ever printed.
+ */
+async function resolveReference(root: string, ref: AssetReference, locations: Record<string, SourceLocation> | undefined): Promise<string> {
+  const at = locations && Object.hasOwn(locations, ref.pointer) ? locations[ref.pointer] : undefined;
+  const where = at ? `${at.file}${at.line === undefined ? '' : `:${at.line}${at.column === undefined ? '' : `:${at.column}`}`}: ` : '';
+  const details = { route: ref.route, pointer: ref.pointer, file: at?.file, line: at?.line, column: at?.column };
+  const fail = (code: string, text: string): ConfigError => new ConfigError(`${where}${ref.subject ? `${ref.subject}: ` : ''}${text}`, { code, ...details });
+  let parts: string[];
+  try { parts = partsFor(ref.reference); } catch { throw fail('invalid-file-reference', `${ref.field} must name a ${ref.kind} inside the project: no absolute path, "..", hidden or sensitive segment (unsafe asset path; use a dedicated public asset directory)`); }
+  const named = JSON.stringify(ref.reference.length > 200 ? `${ref.reference.slice(0, 200)}...` : ref.reference);
+  // Walks parts under root without following links; undefined when a part is missing, 'link' at the first symlink.
+  const walk = async (segments: string[]): Promise<{ file: string; directory: boolean } | 'link' | undefined> => {
+    let file = root, stat: Stats | undefined;
+    for (const part of segments) {
+      file = join(file, part);
+      try { stat = await lstat(file); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return undefined; throw error; }
+      if (stat.isSymbolicLink()) return 'link';
+    }
+    return stat && { file, directory: stat.isDirectory() };
+  };
+  const found = await walk(parts);
+  if (found === 'link') throw fail('invalid-file-reference', `${ref.field} passes through a symlink; asset symlinks are forbidden, so point it at a real ${ref.kind} inside the project`);
+  if (!found) {
+    // The doubled-prefix mistake: a site-relative `app/assets` for a project whose root is app/.
+    let hint = '';
+    if (parts.length > 1 && parts[0] === basename(root)) {
+      const shorter = await walk(parts.slice(1)).catch(() => undefined);
+      if (shorter && shorter !== 'link' && shorter.directory === (ref.kind === 'directory')) hint = `; did you mean ${JSON.stringify(parts.slice(1).join('/'))}? That ${ref.kind} exists in this project`;
+    }
+    throw fail('missing-file', `${ref.field} ${named} does not exist; asset references resolve relative to the selected project directory (the one holding urlcode.yaml), not the site or working directory${hint}`);
+  }
+  if (found.directory !== (ref.kind === 'directory')) throw fail('invalid-file-reference', `${ref.field} ${named} is ${found.directory ? 'a directory' : 'not a directory'}; ${ref.kind === 'directory' ? 'static serves a directory' : 'page and download serve one file'}`);
+  return found.file;
+}
+/** Resolves one route's page/download/static reference inside the project, failing as `resolveReference` does. */
+export async function checkAssetReference(root: string, pattern: string, route: AssetRoute, locations?: Record<string, SourceLocation>): Promise<string> {
+  const ref = assetReference(pattern, route);
+  assert(ref, 'Route has no asset reference');
+  return resolveReference(root, ref, locations);
+}
+/** Checks every page/download/static reference without reading asset bytes (validate, inspect and context). */
+export async function checkAssetReferences(root: string, routes: Iterable<CompiledRoute>, locations?: Record<string, SourceLocation>): Promise<void> {
+  for (const route of routes) {
+    const ref = assetReference(route.pattern, route);
+    if (ref) await resolveReference(root, ref, locations);
+  }
+}
+export async function compileAssets(root: string, routes: CompiledRoute[], locations?: Record<string, SourceLocation>): Promise<AssetSnapshot> {
   const cache = new Map<string, { body: Buffer; modified: string }>(), watch: string[] = [], digest = createHash('sha256'); let bytes = 0, entries = 0;
   async function checked(relative: string): Promise<string> {
     let file = root;
@@ -64,14 +130,15 @@ export async function compileAssets(root: string, routes: CompiledRoute[]): Prom
   }
   for (const route of routes) {
     const config = route.static;
+    const ref = assetReference(route.pattern, route);
+    if (!ref) continue;
+    const resolved = await resolveReference(root, ref, locations);
     if (!config) {
-      const file = route.page || route.download;
-      if (!file) continue;
-      watch.push(await checked(file.file)); route.asset = await read(file.file,file,Boolean(route.download)); continue;
+      const file = (route.page || route.download)!;
+      watch.push(resolved); route.asset = await read(file.file,file,Boolean(route.download)); continue;
     }
     const mount = config; // a const the hoisted walk() below sees as narrowed
-    const dir = await checked(mount.directory); watch.push(dir);
-    assert((await lstat(dir)).isDirectory(), 'Static directory must exist');
+    const dir = resolved; watch.push(dir);
     const files = new Map<string, Asset>();
     async function walk(relative: string, key = '', depth = 0): Promise<void> {
       assert(depth <= 20, 'Asset directory depth exceeded');
