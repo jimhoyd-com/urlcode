@@ -57,8 +57,9 @@ test('an empty or missing destination is initialized exactly as before, with not
  // The same files, byte for byte, whatever the starting point: --adopt on an empty directory changes nothing.
  await mkdir(join(root,'adopt-empty'));
  await initSite(join(root,'adopt-empty'),{adopt:true});
- // Paths, modes and content without mtimes; package.json is named after its directory, so it is left out.
- const relative=async(dir:string)=>(await snapshot(dir)).map(line=>line.slice(dir.length).split(' ')).filter(fields=>fields[0]!=='/package.json').map(fields=>fields.length===5?[fields[0],fields[1],fields[2],fields[4]].join(' '):fields.join(' '));
+ // Paths, modes and content without mtimes; package.json is named after its directory, so it is left out
+ // (the snapshot's paths use the platform separator: \\ on Windows).
+ const relative=async(dir:string)=>(await snapshot(dir)).map(line=>line.slice(dir.length).split(' ')).filter(fields=>!/^[\\/]package\.json$/.test(fields[0]!)).map(fields=>fields.length===5?[fields[0],fields[1],fields[2],fields[4]].join(' '):fields.join(' '));
  assert.deepEqual(await relative(join(root,'adopt-empty')),await relative(join(root,'empty')));
 });
 
