@@ -1,5 +1,5 @@
-import { cp, readdir, mkdir, mkdtemp, rename, rm, readFile, writeFile, open } from 'node:fs/promises';
-import { resolve, dirname, join } from 'node:path';
+import { readdir, mkdir, mkdtemp, rename, rm, readFile, writeFile, open, lstat, stat } from 'node:fs/promises';
+import { basename, resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { parseDocument } from 'yaml';
@@ -12,6 +12,7 @@ import type { LoadedDocument } from './types.ts';
 import { projectScripts } from './context.ts';
 import { runningCoreVersion } from './version.ts';
 import { HOST_FILE, PROJECT_DIRECTORY, renderInitialHost } from './addon-install.ts';
+import { enclosingProject, isFile } from './site-layout.ts';
 
 /**
  * Points the copied starter's version-bearing references at the release of the runtime running init: the
@@ -53,70 +54,167 @@ function sitePackageJson(existing: string | undefined, directory: string, versio
 }
 
 // Agents install the runtime before they can read its docs, so `init .` has to work after `npm init` and `npm install`.
-// A directory is accepted in place only when it holds nothing but what npm and git create, plus a pre-registered
-// `.mcp.json` (see below): anything else is user work this command must never merge into.
+// A directory holding nothing but what npm and git create, plus a pre-registered `.mcp.json` (see below), is initialized
+// in place: its package.json gains the runtime pin and missing scripts. Anything else is user work: init refuses it
+// unless the caller passes --adopt, and then writes only new files beside it and never changes an existing one.
 const inPlaceEntries = new Set(['package.json', 'package-lock.json', 'node_modules', '.git', mcpConfigFile]);
-interface ExistingDirectory { entries: Set<string>; packageJson: string | undefined }
-async function inspectExisting(target: string): Promise<ExistingDirectory | undefined> {
-  let names: string[];
-  try { names = await readdir(target); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
-  const unmergeable = names.filter(name => !inPlaceEntries.has(name));
-  assert(!unmergeable.length, `Directory already contains ${unmergeable.slice(0, 5).join(', ')}; init into a new or empty directory, or one holding only package.json, package-lock.json, node_modules or .git`);
-  const packageJson = names.includes('package.json') ? await readFile(join(target, 'package.json'), 'utf8') : undefined;
-  if (packageJson !== undefined) { try { JSON.parse(packageJson); } catch { assert(false, 'Existing package.json is not valid JSON'); } }
-  return { entries: new Set(names), packageJson };
+/** At most this many paths in a refusal or a left-alone report; the rest are counted. */
+export const initListLimit = 20;
+export function boundedList(paths: readonly string[], limit = initListLimit): string {
+  return paths.length <= limit ? paths.join(', ') : `${paths.slice(0, limit).join(', ')} and ${paths.length - limit} more`;
+}
+export interface InitOptions {
+  /**
+   * `--adopt`: create the site around user files already in the destination. Refused when anything there collides
+   * with what init writes; otherwise only new files are written and every existing entry is left exactly as it is.
+   */
+  adopt?: boolean | undefined;
+  /** npm runs after init (`init --with`), so node_modules and package-lock.json are part of what an adopting init writes. */
+  installs?: boolean | undefined;
+}
+interface PlannedFile { path: string; source?: string; mode: number }
+export interface InitPlan {
+  /** The absolute destination. */
+  target: string;
+  /** `new` (nothing there), `in-place` (only npm/git entries) or `adopt` (user entries, which need --adopt). */
+  mode: 'new' | 'in-place' | 'adopt';
+  /** Top-level names in the destination before init, sorted. */
+  existing: string[];
+  /** Top-level names other than those npm and git create. */
+  foreign: string[];
+  /** Destination-relative POSIX paths an adopting init would have to write or write into, sorted. */
+  collisions: string[];
+  /** Why init refuses this destination with these options; undefined when it would proceed. */
+  refusal: string | undefined;
+}
+const starterDirectory = (): string => fileURLToPath(new URL('../../../starters/default/', import.meta.url));
+/** The starter's files as site-relative POSIX paths: every file init copies, in a stable order. */
+async function starterFiles(): Promise<PlannedFile[]> {
+  const files: PlannedFile[] = [];
+  const walk = async (directory: string, prefix: string): Promise<void> => {
+    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
+      if (!prefix && (entry.name === '.gitignore' || entry.name === 'AGENTS.md' || entry.name === mcpConfigFile)) continue;
+      const source = join(directory, entry.name), path = prefix + (!prefix && entry.name === 'gitignore.template' ? '.gitignore' : entry.name);
+      if (entry.isDirectory()) await walk(source, `${path}/`);
+      else files.push({ path, source, mode: (await stat(source)).mode & 0o777 });
+    }
+  };
+  await walk(starterDirectory(), '');
+  return files;
+}
+const lstatOrUndefined = (path: string) => lstat(path).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return undefined; throw error; });
+/**
+ * What an adopting init would collide with: an existing path it writes, an existing non-directory (a file or a
+ * symlink, which is never followed) where it needs a directory, and anything at all at a path it owns whole.
+ */
+async function findCollisions(target: string, files: readonly string[], whole: readonly string[]): Promise<string[]> {
+  const found = new Set<string>();
+  for (const path of whole) if (await lstatOrUndefined(join(target, path))) found.add(path);
+  for (const path of files) {
+    if (whole.some(owned => path === owned || path.startsWith(`${owned}/`))) continue;
+    const segments = path.split('/');
+    let clear = true;
+    for (let index = 1; index < segments.length && clear; index += 1) {
+      const directory = segments.slice(0, index).join('/'), info = await lstatOrUndefined(join(target, ...segments.slice(0, index)));
+      if (!info) { clear = false; break; }
+      if (!info.isDirectory()) { found.add(directory); clear = false; }
+    }
+    if (clear && await lstatOrUndefined(join(target, ...segments))) found.add(path);
+  }
+  return [...found].sort();
+}
+/**
+ * Read-only: what `urlcode init` would do at a destination with these options, and why it would refuse. Writes
+ * nothing; `bootstrap` uses it to name the exact next command.
+ */
+export async function planInit(destination: string, options: InitOptions = {}): Promise<InitPlan & { files: PlannedFile[] }> {
+  const target = resolve(destination);
+  let names: string[] | undefined;
+  try { names = (await readdir(target)).sort(); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const existing = names ?? [], foreign = existing.filter(name => !inPlaceEntries.has(name));
+  const mode = names === undefined ? 'new' : foreign.length ? 'adopt' : 'in-place';
+  const files = await starterFiles();
+  files.push({ path: HOST_FILE, mode: 0o600 }, { path: 'AGENTS.md', mode: 0o644 });
+  // .mcp.json registers the read-only server for repository-aware agents. A file already there (for example
+  // `urlcode mcp print-config` run before the agent's session started) is kept exactly as written.
+  if (!existing.includes(mcpConfigFile)) files.push({ path: mcpConfigFile, mode: 0o644 });
+  // In place, npm's package.json gains the pin and scripts; adopting, it would be an existing file init changes.
+  if (mode !== 'in-place' || !existing.includes('package.json')) files.push({ path: 'package.json', mode: 0o644 });
+  const collisions = mode === 'adopt' ? await findCollisions(target, files.map(file => file.path), [PROJECT_DIRECTORY, ...(options.installs ? ['node_modules', 'package-lock.json'] : [])]) : [];
+  const site = mode !== 'adopt' ? undefined : await isFile(join(target, PROJECT_DIRECTORY, 'urlcode.yaml')) ? `${PROJECT_DIRECTORY}/urlcode.yaml` : await isFile(join(target, 'urlcode.yaml')) ? 'urlcode.yaml' : undefined;
+  const enclosing = options.adopt ? await enclosingProject(target) : undefined;
+  let refusal: string | undefined;
+  if (site !== undefined) refusal = `Directory already holds a URLCode site (${site}); init writes nothing into an existing site. Run urlcode bootstrap on it instead`;
+  else if (mode === 'adopt' && !options.adopt) refusal = `Directory already contains ${boundedList(foreign, 5)}; ${collisions.length
+    ? `init into a new or empty directory, or one holding only package.json, package-lock.json, node_modules or .git. --adopt would not help here: init writes ${boundedList(collisions)}, which ${collisions.length === 1 ? 'is' : 'are'} already there`
+    : 'nothing there collides with what init writes, so add --adopt to create the site around it (init then writes only new files and leaves every existing entry as it is), or init into a new or empty directory'}`;
+  else if (options.adopt && basename(target) === PROJECT_DIRECTORY) refusal = `A site keeps its route project in ${PROJECT_DIRECTORY}/, so adopting an ${PROJECT_DIRECTORY} directory nests ${PROJECT_DIRECTORY}/${PROJECT_DIRECTORY}; name its parent instead`;
+  else if (enclosing !== undefined) refusal = `The destination is inside an existing URLCode project (${enclosing}); init --adopt does not create a site inside another`;
+  else if (collisions.length) refusal = `init --adopt refuses ${boundedList(collisions)}: init writes ${collisions.length === 1 ? 'that path, and it is' : 'those paths, and they are'} already in the directory (init never overwrites, never writes into an existing app/ and never follows a symlink). Nothing was changed; move ${collisions.length === 1 ? 'it' : 'them'} aside or init into a new directory`;
+  return { target, mode, existing, foreign, collisions, refusal, files };
 }
 /** Undoes an init: a new directory is deleted, an adopted one loses only what init created and gets its package.json back. */
 export interface InitUndo { (): Promise<void> }
 /**
  * `urlcode init <directory>`: one site layout, always. The route project lives in `app/`; `host.mjs` (the
  * operator host, initially with no extensions), `package.json` (exact runtime pin and scripts), AGENTS.md,
- * .mcp.json, the Makefile and the CI workflow sit beside it. Returns the site directory and an undo for callers
- * that continue (init --with).
+ * .mcp.json, the Makefile and the CI workflow sit beside it. Returns the site directory, the top-level entries it
+ * left alone and an undo for callers that continue (init --with).
  */
-export async function initSite(destination: string): Promise<{ site: string; undo: InitUndo }> {
-  const target = resolve(destination);
+export async function initSite(destination: string, options: InitOptions = {}): Promise<{ site: string; undo: InitUndo; leftAlone: string[] }> {
+  const plan = await planInit(destination, options), { target } = plan;
+  assert(plan.refusal === undefined, plan.refusal ?? '');
+  const packageJson = plan.mode === 'in-place' && plan.existing.includes('package.json') ? await readFile(join(target, 'package.json'), 'utf8') : undefined;
+  if (packageJson !== undefined) { try { JSON.parse(packageJson); } catch { assert(false, 'Existing package.json is not valid JSON'); } }
   await mkdir(dirname(target), { recursive: true });
-  const existing = await inspectExisting(target);
   // A new directory is reserved exclusively before copying; an existing one is only ever added to.
-  if (!existing) await mkdir(target);
+  if (plan.mode === 'new') await mkdir(target);
+  const existing = new Set(plan.existing), created: string[] = [];
   const undo: InitUndo = async () => {
-    if (!existing) { await rm(target, { recursive: true, force: true }); return; }
+    if (plan.mode === 'new') { await rm(target, { recursive: true, force: true }); return; }
     // Remove only what this run created and put package.json back; the user's own files are never touched.
-    for (const name of await readdir(target)) if (!existing.entries.has(name)) await rm(join(target, name), { recursive: true, force: true });
-    if (existing.packageJson !== undefined) await writeFile(join(target, 'package.json'), existing.packageJson);
+    for (const path of [...created].reverse()) await rm(path, { recursive: true, force: true });
+    for (const name of await readdir(target)) if (!existing.has(name)) await rm(join(target, name), { recursive: true, force: true });
+    if (packageJson !== undefined) await writeFile(join(target, 'package.json'), packageJson);
+  };
+  // Parent directories are created one level at a time; an existing one is used only when it is a real directory.
+  const directoryFor = async (segments: readonly string[]): Promise<void> => {
+    for (let index = 1; index < segments.length; index += 1) {
+      const directory = join(target, ...segments.slice(0, index)), info = await lstatOrUndefined(directory);
+      if (info) { assert(info.isDirectory(), `${segments.slice(0, index).join('/')} changed during init; nothing of yours was overwritten`); continue; }
+      await mkdir(directory); created.push(directory);
+    }
+  };
+  const exclusive = async (path: string, content: string | Buffer, mode: number): Promise<void> => {
+    const segments = path.split('/'), absolute = join(target, ...segments);
+    await directoryFor(segments);
+    // `wx` fails on anything already there, a symlink included, so an existing entry is never written through.
+    const file = await open(absolute, 'wx', mode);
+    created.push(absolute);
+    try { await file.writeFile(content); } finally { await file.close(); }
   };
   try {
-    const source = fileURLToPath(new URL('../../../starters/default/', import.meta.url));
-    for (const file of await readdir(source)) {
-      if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
-      await cp(join(source, file), join(target, file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });
-    }
     const version = await runningCoreVersion();
-    for (const file of stampedStarterFiles) {
-      const path = join(target, file), original = await readFile(path, 'utf8'), stamped = stampStarterText(original, version);
-      if (stamped !== original) await writeFile(path, stamped);
+    const generated = new Map<string, PlannedFile>();
+    for (const file of plan.files) {
+      if (!file.source) { generated.set(file.path, file); continue; }
+      const content = await readFile(file.source);
+      await exclusive(file.path, stampedStarterFiles.includes(file.path) ? stampStarterText(content.toString('utf8'), version) : content, file.mode);
     }
-    const project = join(target, PROJECT_DIRECTORY);
-    const routes = Object.keys((await loadDocument(project)).routes).length;
-    const exclusive = async (name: string, content: string, mode = 0o644): Promise<void> => {
-      const file = await open(join(target, name), 'wx', mode);
-      try { await file.writeFile(content); } finally { await file.close(); }
-    };
-    await exclusive(HOST_FILE, renderInitialHost(), 0o600);
+    const routes = Object.keys((await loadDocument(join(target, PROJECT_DIRECTORY))).routes).length;
+    const write = async (path: string, content: string): Promise<void> => { const file = generated.get(path); if (file) await exclusive(path, content, file.mode); };
+    await write(HOST_FILE, renderInitialHost());
     // AGENTS.md is generated from the installed runtime's capability catalog so it names only what this version
     // implements; the starter carries a committed copy for clones, kept identical by test.
-    await exclusive('AGENTS.md', renderAgentsGuide({ routes }));
-    // .mcp.json registers the read-only server for repository-aware agents. A file already there (for example
-    // `urlcode mcp print-config` run before the agent's session started) is kept exactly as written.
-    if (!existing?.entries.has(mcpConfigFile)) await exclusive(mcpConfigFile, renderMcpConfig(PROJECT_DIRECTORY, { local: true }));
-    const manifest = sitePackageJson(existing?.packageJson, target, version, routes);
-    if (existing?.packageJson !== undefined) await writeFile(join(target, 'package.json'), manifest);
-    else await exclusive('package.json', manifest);
+    await write('AGENTS.md', renderAgentsGuide({ routes }));
+    await write(mcpConfigFile, renderMcpConfig(PROJECT_DIRECTORY, { local: true }));
+    const manifest = sitePackageJson(packageJson, target, version, routes);
+    if (packageJson !== undefined) await writeFile(join(target, 'package.json'), manifest);
+    else await write('package.json', manifest);
   } catch (error) { await undo(); throw error; }
-  return { site: target, undo };
+  return { site: target, undo, leftAlone: plan.existing.filter(name => packageJson === undefined || name !== 'package.json') };
 }
-export async function initProject(destination: string): Promise<string> { return (await initSite(destination)).site; }
+export async function initProject(destination: string, options: InitOptions = {}): Promise<string> { return (await initSite(destination, options)).site; }
 export async function addRedirect(project: string, destination: string, alias?: string | undefined): Promise<string> {
   const loaded = await loadDocument(project);
   const slug = alias || randomBytes(6).toString('base64url');

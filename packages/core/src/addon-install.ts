@@ -365,6 +365,11 @@ export interface AddOptions {
   retry?: ((acknowledgements: readonly string[]) => string) | undefined;
   /** Test/offline seam: an already-read manifest. */
   manifest?: AddonManifest | undefined;
+  /**
+   * Top-level site entries `init --adopt` found and must leave alone: a scaffold file under one of them is refused
+   * before any scaffold file is written (the caller then undoes the whole init).
+   */
+  preserve?: readonly string[] | undefined;
 }
 export interface AddResult { added: string[]; alreadyInstalled: string[]; projectSha256: string | undefined; env: Record<string, string>; notes: string[]; keptFiles: string[]; development: boolean; examples: string[] }
 
@@ -472,7 +477,11 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         assert((scaffold.acknowledged ?? []).every(id => acknowledgements.includes(id) && id.startsWith(`${name}:`)), `${name} scaffold may only acknowledge ${name}:<id> values the operator passed`);
         assert((scaffold.routeNotes ?? []).every(note => typeof note === 'string' && note.length <= 300 && !/[\r\n]/.test(note)), `${name} routeNotes must be single-line strings`);
         for (const route of Object.keys(scaffold.routes)) assert(!Object.hasOwn(loaded.routes, route) && !scaffolds.some(other => Object.hasOwn(other.result.routes, route)), `${name} adds route ${route}, which the project already has`);
-        for (const file of scaffold.files ?? []) { if (file.content instanceof Uint8Array) secrets.push(file.content); scaffoldPath(site.site, file.path); }
+        for (const file of scaffold.files ?? []) {
+          if (file.content instanceof Uint8Array) secrets.push(file.content);
+          const top = relative(site.site, scaffoldPath(site.site, file.path)).split(sep)[0]!;
+          assert(!options.preserve?.includes(top), `${name} would write ${file.path}, but ${top} was already in the adopted directory; init --adopt never writes into an existing entry. Nothing was changed`);
+        }
         scaffolds.push({ name, result: scaffold });
       }
       assert(!options.example || result.examples.length > 0, `--example has no effect: ${newExtensions.join(', ')} ${newExtensions.length === 1 ? 'ships' : 'ship'} no example`);

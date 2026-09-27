@@ -166,7 +166,7 @@ checks. Build output remains an explicit separate build API/CLI operation.
 ## Local agent bootstrap
 
 `urlcode bootstrap [DIR] [--capabilities NAME,...] [--target T] [--origin URL]
-[--create] [--json]` is the one call an agent makes before its first authoring
+[--create [--adopt]] [--json]` is the one call an agent makes before its first authoring
 step (#807). It composes `init`, the command quoting `context` uses, the
 capability catalog and `urlcode schema`; it is not another manual. It works
 with no network, hosted service or MCP, runs no project or host code, and
@@ -175,7 +175,8 @@ directory. The result (YAML, or JSON with `--json`) has these keys:
 
 - `state`: `existing` (a site or project is there), `none` (nothing is, and
   nothing was created) or `created`, with `created` listing the top-level
-  names init wrote.
+  names init wrote and, with `--adopt`, `leftAlone` listing (at most 20) the
+  top-level entries that were already there.
 - `site`: `root` (absolute), `layout` (`site` for the `app/` + `host.mjs`
   layout init writes, `project` for a bare directory holding `urlcode.yaml`),
   `project` (site-relative: `app` or `.`), `projectRoot`, `entry`
@@ -215,11 +216,21 @@ directory. The result (YAML, or JSON with `--json`) has these keys:
   from one revision never describe a site pinned to another.
 - `diagnostics` (only when present): `project-invalid` when `urlcode.yaml`
   does not load, `inside-project` when `DIR` is inside a route project.
-- `next`: the first steps in order.
+- `next`: the first steps in order. With no site in a directory that holds
+  your own files, the first step is the exact `--create --adopt` command when
+  nothing there collides with what init writes, or init's refusal (with the
+  colliding paths) when something does.
 
 `--create` needs an explicit `DIR` and acts only when `state` would be `none`:
 it runs `urlcode init DIR` (so the same in-place rules apply, and a directory
 holding user files is refused with every file kept), then reports the new site.
+`--create --adopt` runs `urlcode init DIR --adopt` instead, for a directory that
+already holds your files, such as a built `frontend/` or `dist/`: the site is
+written around them, they are never moved, overwritten or read through a
+symlink, and a collision is refused with nothing written (see
+[adopting a directory](STARTERS.md#adopting-a-directory-that-already-holds-files)).
+Those directories then appear under `paths.outsideProject`: YAML cannot reach
+them until you build or copy their output into `app/`.
 Run again, it finds the site and writes nothing. It is refused at a directory
 named `app` (init would write `app/app`) and anywhere inside an existing route
 project. MCP `get_context` with `bootstrap: true` (and optional `capabilities`
