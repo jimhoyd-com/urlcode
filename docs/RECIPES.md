@@ -35,6 +35,7 @@ urlcode validate --local --project ./orders-hook
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | `store` extension (`urlcode extensions add store`), `--host-file`, `--origin`; or initialize with `urlcode init DIR --with ui,auth,store --example` |
+| `spa-shell` | advanced | Single-page app: native page, assets and JSON API, plus an operator plugin that answers client routes at any depth with `index.html` (no native SPA fallback, [#809](https://github.com/jimhoyd-com/urlcode/issues/809)) | operator plugin in `--host-file`, self-hosted runtime |
 
 Each recipe contains a README, `tests/requests.json` and editable files.
 Replace example destinations and review the resulting files before use. The
@@ -135,4 +136,7 @@ building the TypeScript recipe, with a fixture registry for the authenticated
 ones, the generated policy for the contact form and the webhook receiver, and
 the webhook fixtures' test key in the process environment). `store-crud` runs against the
 real `storeExtension` from `packages/store` with a temporary data directory, and a
-separate test drives its full lifecycle across a restart.
+separate test drives its full lifecycle across a restart. `spa-shell` runs with the
+plugin from its README host file, and `test/spa-shell-recipe.test.ts` drives it
+over HTTP: unseen deep paths, methods, excluded prefixes, a protected catch-all
+and a shell outside the project.

@@ -184,9 +184,16 @@ export const budgets: Record<string, Budget> = {
     // (#792): together they measure 795299 packed and 3185100 unpacked bytes
     // in 471 entries on Node 26, over the 772/3100 KiB budgets set for #659
     // alone.
-    packed: 788 * 1024,
-    unpacked: 3140 * 1024,
-    entries: 480,
+    //
+    // Raised to 792 KiB packed, 3160 KiB unpacked and 490 entries for the
+    // spa-shell recipe (#809: eight recipe files, its RECIPES/ASSETS/PLUGINS/
+    // AI-AUTHORING links and their llms-full.txt copies). With it the package
+    // measures 806790 packed and 3224860 unpacked bytes in 479 entries on
+    // Node 26: 122 bytes under the old packed budget, inside the ~2 KiB
+    // cross-Node gzip variance, and 9500 bytes over the old unpacked one.
+    packed: 792 * 1024,
+    unpacked: 3160 * 1024,
+    entries: 490,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

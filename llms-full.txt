@@ -817,6 +817,7 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/redirects.md) |
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/redirects.md) |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SITE.md) |
+| Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/spa-shell/README.md) |
 | Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/assets.md) |
@@ -2768,7 +2769,10 @@ attachment; `static` publishes a dedicated directory tree. There is no remote
 fetch/proxy, directory listing, automatic trailing-slash redirect, framework
 server, SPA fallback or runtime template evaluation. Use prebuilt assets;
 [prerendering](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PRERENDER.md) is the tested recipe for building them from
-function and middleware routes.
+function and middleware routes. For a single-page app whose client routes must
+answer `index.html`, the [`spa-shell` recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/spa-shell/README.md)
+is the tested composition: a root `/*` static mount plus a small operator
+plugin ([#809](https://github.com/jimhoyd-com/urlcode/issues/809)).
 
 ### Complete handler options
 
