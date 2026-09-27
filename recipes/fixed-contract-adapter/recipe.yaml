@@ -1,0 +1,45 @@
+id: fixed-contract-adapter
+description: Serves a pre-existing JSON API contract (GET /api/me, owner-scoped /api/items, a fixed error envelope) through a thin operator adapter over the auth and store exports, and lists which contract parts the client must change instead.
+tags: [contract, existing, fixed, frozen, legacy, adapter, compatibility, compatible, migrate, migration, login, me, items, owner, ownership, json, api, extension, auth, store, csrf, errors, "401", "404"]
+complexity: advanced
+capabilities: [enabled, errors, extension, methods, policies.extensions]
+targets: {self-hosted: conditional, aws: conditional, vercel: conditional, cloudflare: refused, static: refused}
+routes: 5
+services:
+  - name: auth extension
+    description: The operator-installed auth extension with its ui, audit and mail requirements, registered in host.mjs; its operator service runs with registrationMode open. Auth itself runs only on the self-hosted Node runtime.
+  - name: store extension
+    description: The operator-installed store extension with a data directory outside the project, one server process per directory.
+  - name: api-contract adapter
+    description: The operator's local api-contract.mjs module from the README, beside host.mjs and registered after auth and store; it reads only AuthExports and StoreExports and runs on Node only.
+grants:
+  - kind: extension
+    description: The host registers the projectSha256 the operator reviewed (PROJECT_SHA256 or the --policy revision); every edit, including a new contract field, needs review and a new pin.
+  - kind: origin
+    description: The canonical origin passed as --origin; every write must carry it as Origin, with auth's session-bound CSRF token.
+inputs:
+  - name: contract fields
+    file: urlcode.yaml
+    description: The item fields under extensions.store.config.collections.items.fields and the ones the contract exposes, extensions.api-contract.config.items.fields.
+  - name: contract paths
+    file: urlcode.yaml
+    description: extensions.api-contract.config.me and items.mount, each with its own route carrying auth true.
+  - name: registration mode
+    file: urlcode.yaml
+    description: extensions.auth.config.registration, which must equal the operator service's registrationMode.
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode extensions --project . --host-file /operator/host.mjs
+    - PROJECT_SHA256=<reviewed revision> urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - PROJECT_SHA256=<reviewed revision> urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - PROJECT_SHA256=<reviewed revision> urlcode audit --project . --expect-routes 5 --host-file /operator/host.mjs --origin https://api.example.com
+behavior:
+  - GET /api/me answers 200 {email, role} for the session, with the session-bound CSRF token in the X-CSRF-Token response header
+  - GET, POST and PATCH on /api/items list, create, read and update only the caller's items as {id, title, done}
+  - another user's item answers 404 NOT_FOUND on the contract and the native store mount, exactly like a missing id
+  - store and body refusals answer the contract envelope {error {code, message}} with VALIDATION_FAILED, NOT_FOUND, CONFLICT or UNSUPPORTED_MEDIA_TYPE
+  - DELETE /api/items/<id> and unmatched /api paths answer the runtime's JSON 405 and 404 envelopes; delete through the native /store/items mount
+  - sign-in and sign-out stay auth's own /account/login and /account/logout with its CSRF token; signed-out and revoked sessions answer auth's 401
+  - every signed-in write needs the site Origin and the X-CSRF-Token auth returned, otherwise 403

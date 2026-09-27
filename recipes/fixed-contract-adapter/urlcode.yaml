@@ -1,0 +1,58 @@
+version: "1"
+site:
+  # Errors the runtime writes itself under /api (an unmatched path, an undeclared method) use the same
+  # {error: {code, message}} envelope the adapter answers with. Auth's own 401 and 403 are never rewritten.
+  errors:
+    format: json
+    paths: [/api/*]
+extensions:
+  # auth requires ui, audit and mail. The API answers JSON; ui still needs its one asset mount below.
+  ui: {version: "1", config: {}}
+  audit: {version: "1", config: {}}
+  mail: {version: "1", config: {}}
+  auth:
+    version: "1"
+    config:
+      registration: open
+  store:
+    version: "1"
+    config:
+      collections:
+        items:
+          mount: /store/items
+          ownership: owner
+          maxRecordsPerOwner: 100
+          maxRecordBytes: 4096
+          fields:
+            title: {type: string, required: true, minLength: 1, maxLength: 200}
+            done: {type: boolean, default: false}
+  # The operator's local adapter module (api-contract.mjs beside host.mjs), not a package.
+  api-contract:
+    version: "1"
+    config:
+      me: /api/me
+      items: {mount: /api/items, collection: items, fields: [title, done]}
+routes:
+  /assets/ui/*:
+    description: Stylesheet and scripts of the ui kit, which auth requires; an HTML client of the same site would use them.
+    extension: ui
+    methods: [GET, HEAD]
+  /account/*:
+    description: Registration, sign-in, CSRF tokens and sign-out, answered as JSON by the operator-installed auth extension. The fixed-contract client signs in and out here.
+    extension: auth
+    methods: [GET, HEAD, POST]
+  /store/items/*:
+    description: The store's native owner-scoped CRUD API over the same records the contract serves, including DELETE.
+    extension: store
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true
+  /api/me/*:
+    description: The fixed contract's signed-in account as {email, role}, projected from auth's account by the operator's adapter.
+    extension: api-contract
+    methods: [GET, HEAD]
+    auth: true
+  /api/items/*:
+    description: The fixed contract's owner-scoped items as {id, title, done}, served by the operator's adapter through the store's records export.
+    extension: api-contract
+    methods: [GET, HEAD, POST, PATCH]
+    auth: true

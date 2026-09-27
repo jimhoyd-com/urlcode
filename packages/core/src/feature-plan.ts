@@ -35,6 +35,7 @@ const recipeTerms:Record<string,readonly string[]>={
  'authenticated-json-api':['auth','authenticated','account','sign','signed','private','protected'],
  'store-crud':['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'],
  'headless-auth-profile':['headless','login','logout','signin','signout','session','sessions','profile','profiles','account','accounts','password'],
+ 'fixed-contract-adapter':['existing','contract','contracts','fixed','frozen','legacy','preexisting','pre-existing','adapter','adapt','compatible','compatibility','taxonomy'],
 };
 const extensionReason:Record<string,string>={
  ui:'Presentation is an operator-installed extension; its registered authoring surfaces govern project-owned UI customization.',
@@ -48,6 +49,7 @@ const outline:Record<string,{kind:string;note:string}>={
  'contact-form':{kind:'contact endpoint',note:'The bundled recipe declares one POST JSON endpoint: request.body.schema validates the fields, respond answers 202 and a revision-pinned signal notifies a hook; no function, and no browser form flow.'},
  'authenticated-json-api':{kind:'protected endpoint',note:'The bundled recipe protects a function route through the auth extension policy; the project declares the requirement but never loads the package.'},
  'store-crud':{kind:'durable collection',note:'The bundled recipe declares a collection and an extension mount; CRUD behavior belongs to the registered store extension, not a generated handler.'},
+ 'fixed-contract-adapter':{kind:'fixed-contract JSON API',note:'The bundled recipe audits which path, field and error mappings are safe over the auth and store exports and serves them through a thin operator adapter module in the host; sign-in, sign-out, CSRF and auth\'s 401/403 bodies stay auth\'s, so a fixed contract that needs them at its own paths is a client change or a gap, never password, session or ownership code.'},
  'headless-auth-profile':{kind:'account and profile JSON API',note:'The bundled recipe composes auth\'s JSON endpoints (register, login, account, profile, logout) with an owned store collection behind auth: true; sessions, CSRF and ownership stay in the extensions, and no function reads a cookie or compares user ids.'},
 };
 type Recipe=Awaited<ReturnType<typeof listRecipes>>[number];
