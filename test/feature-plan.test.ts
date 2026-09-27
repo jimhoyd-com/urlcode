@@ -71,6 +71,19 @@ test('feature planning for a signed webhook names secret bindings and trusted no
  assert.ok(!plan.applicable.recipes.some(recipe=>recipe.name==='authenticated-json-api'));
 });
 
+test('feature planning steers an existing fixed API contract to the adapter recipe and its audit, not new auth code (#828)',async t=>{
+ const root=await project(t,{});
+ const plan=await planFeature(root,'existing API contract login /api/login');
+ assert.equal(plan.applicable.recipes[0]?.name,'fixed-contract-adapter');
+ assert.deepEqual(plan.applicable.recipes[0]!.matched,['existing','api','contract','login']);
+ assert.ok(plan.applicable.recipes.some(recipe=>recipe.name==='headless-auth-profile'),'the native contract stays in view');
+ assert.match(plan.outline[0]!.note,/auth's/);assert.match(plan.outline[0]!.note,/never password, session or ownership code/);
+ assert.deepEqual(plan.extensions.required.map(item=>item.name),['auth','store']);
+ assert.ok(!plan.applicable.capabilities.some(item=>item.name==='function'));
+ // A plain JSON endpoint goal is not a fixed contract.
+ assert.equal((await planFeature(root,'POST /signup validates email and name and returns 202')).applicable.recipes[0]?.name,'json-endpoint');
+});
+
 test('feature planning bounds adversarial goal text before any output is constructed',async t=>{
  const root=await project(t,{});
  const plan=await planFeature(root,`${'contact '.repeat(60)}`);

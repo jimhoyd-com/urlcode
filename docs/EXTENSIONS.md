@@ -470,7 +470,11 @@ for a bearer key issued to act for a user, `apikey:<key id>` for any other
 bearer key) and `store` the first consumer. An extension that needs more than
 the id (roles, permissions, freshness, the verified email) asks auth itself:
 `ctx.get<AuthExports>('auth').account(request)` returns the signed-in
-account, with `has(permission)`, or `null`; admin reads it this way. The core
+account, with `has(permission)`, or `null`; admin reads it this way, and so
+does the operator module in the
+[fixed-contract-adapter](../recipes/fixed-contract-adapter/README.md) recipe,
+which serves a pre-existing JSON contract over `AuthExports` and `StoreExports`
+and lists the contract mappings those exports cannot make safely. The core
 fixture `test/extension-principal.test.ts` proves the seam with a synthetic,
 non-auth provider. Extensions are trusted in-process code, so this contract
 fails closed on mistakes and misconfiguration; it is not a sandbox between

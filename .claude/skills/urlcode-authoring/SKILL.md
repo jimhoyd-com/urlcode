@@ -181,6 +181,12 @@ historical, not valid YAML guidance.
   collection behind `auth: true`, with its request shapes, status codes and
   owner boundaries in its README. Never write login, cookie, password, CSRF or
   ownership checks in a function; report what the recipe cannot express.
+- For a pre-existing JSON contract with fixed paths, fields and error codes
+  (`/api/login`, `/api/me`, `{error: {code}}`), start from the
+  `fixed-contract-adapter` recipe: its README audits which path, field and
+  error mappings are safe over `AuthExports` and `StoreExports` and which the
+  client must change (sign-in, sign-out and CSRF stay auth's), and carries the
+  thin operator adapter that serves the rest.
 - When a React frontend has `components.json`, follow the installed official
   shadcn/ui skill for component discovery, composition, accessibility and
   semantic Tailwind styling. Start with `shadcn info --json`, then use its

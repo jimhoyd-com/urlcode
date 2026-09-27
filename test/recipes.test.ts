@@ -64,6 +64,7 @@ test('every recipe is found first by the words someone would search for',async()
     'contact-form':'contact form',                 'authenticated-json-api':'signed-in json api',
     'protected-download':'protected download attachment','store-crud':'crud store persist',
     'headless-auth-profile':'headless register login profile',
+    'fixed-contract-adapter':'existing contract adapter',
     'streaming-progress':'stream progress lines',
     'spa-shell':'single-page app deep link',
   };
@@ -177,8 +178,9 @@ test('every recipe validates, passes its fixtures and audits with its declared r
   for(const recipe of await listRecipes()){
     // store-crud needs the operator-installed @jimhoyd/urlcode-store; core cannot import it, so
     // packages/store/test/store.test.ts runs its fixtures against the real extension.
-    // headless-auth-profile needs the real auth and store packages too: packages/auth/test/headless-auth-profile-recipe.test.ts.
-    if(recipe.id==='store-crud'||recipe.id==='headless-auth-profile')continue;
+    // headless-auth-profile needs the real auth and store packages too: packages/auth/test/headless-auth-profile-recipe.test.ts,
+    // and fixed-contract-adapter also its README's operator adapter module: packages/auth/test/fixed-contract-adapter-recipe.test.ts.
+    if(recipe.id==='store-crud'||recipe.id==='headless-auth-profile'||recipe.id==='fixed-contract-adapter')continue;
     let out=join(root,recipe.id);await addRecipe(recipe.id,out);
     if(recipe.id==='typescript'){await buildTypeScriptProject(out,join(root,'typescript-built'));out=join(root,'typescript-built');}
     const options: Parameters<typeof runProjectTests>[1]={};
