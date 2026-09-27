@@ -8,7 +8,18 @@ add one to it automatically.
 
 ## First step: one bounded query
 
-Make the first retrieval one bounded query: the MCP tool `get_context` when the
+Before the first authoring step, run `urlcode bootstrap [DIR] --capabilities
+NAME,... --json` (MCP `get_context` with `bootstrap: true`). It says whether
+`DIR` already holds a site, returns the site root, route project, entry file,
+host file and the runtime the site pins against the one answering, the exact
+commands to run from the site root, how `urlcode.yaml` file references map
+onto the site (`app/public` on disk is `public` in YAML), and for the
+capabilities you name, that runtime's schema fragments with one bundled example
+each. It never creates a site unless you add `--create` with an explicit
+destination, which runs `init` there once. See
+[local agent bootstrap](TOOLING.md#local-agent-bootstrap).
+
+Then make the next retrieval one bounded query: the MCP tool `get_context` when the
 `urlcode` server is registered, otherwise `urlcode context --project DIR` (add
 `--budget N` when context is scarce). Then retrieve only what the task needs:
 `urlcode capabilities NAME` (MCP `get_capability`) for one capability's limits,

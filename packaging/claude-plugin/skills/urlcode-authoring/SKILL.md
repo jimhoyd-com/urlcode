@@ -11,6 +11,26 @@ validates. Features outside that contract do not silently degrade — they fail
 validation. So the cost of guessing is a broken project, and the whole job here
 is to author only what the pinned revision implements and then prove it.
 
+## First step: bootstrap before authoring
+
+Before the first edit, run the bootstrap from the directory the user named and
+act on its answer rather than guessing a layout:
+
+```sh
+urlcode bootstrap [DIR] --capabilities respond,static --json
+```
+
+(MCP: `get_context` with `bootstrap: true` and `capabilities`.) Name only the
+capabilities the task needs (`urlcode capabilities` lists them); nothing is
+picked for you. Use its `site.root`, `site.entry` and `commands` (run from the
+site root after `commands.cd`); author file references by `paths.rule` (on disk
+`app/public` is `public` in YAML); author from its `capabilities.packet`
+fragments; report `capabilities.unknown`/`unsupported` and a `mismatched`
+`runtime` as gaps instead of guessing. `state: none` means no site exists and
+nothing was written: create one only where the user asked, with
+`urlcode bootstrap DIR --create` (it runs `init` there once and never nests
+`app/app`). Prefix `urlcode` as below when it is a project-local install.
+
 ## No project yet? Install the scoped package
 
 The npm package is `@jimhoyd/urlcode` — always scoped. There is no unscoped

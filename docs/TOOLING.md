@@ -80,6 +80,9 @@ The tooling API consolidates authoring operations without starting a runtime:
   below); `host` is an operator host the caller already loaded, used in place
   of `hostFile` and left for the caller to close; `renderContext` produces the YAML rendering and `estimateTokens`
   the characters-per-token estimate the budget uses.
+- `buildBootstrap(directory, {capabilities?, target?, origin?, create?})` returns
+  the [local agent bootstrap](#local-agent-bootstrap) and `renderBootstrap` its
+  YAML rendering.
 
 ## Project context
 
@@ -156,6 +159,69 @@ stores. The result contains no raw compiled route, binding values or source text
 Inspection is not deployment readiness: missing operator grants, live service
 availability, asset snapshot activation and provider behavior require their own
 checks. Build output remains an explicit separate build API/CLI operation.
+
+## Local agent bootstrap
+
+`urlcode bootstrap [DIR] [--capabilities NAME,...] [--target T] [--origin URL]
+[--create] [--json]` is the one call an agent makes before its first authoring
+step (#807). It composes `init`, the command quoting `context` uses, the
+capability catalog and `urlcode schema`; it is not another manual. It works
+with no network, hosted service or MCP, runs no project or host code, and
+writes nothing unless `--create` is given. `DIR` defaults to the working
+directory. The result (YAML, or JSON with `--json`) has these keys:
+
+- `state`: `existing` (a site or project is there), `none` (nothing is, and
+  nothing was created) or `created`, with `created` listing the top-level
+  names init wrote.
+- `site`: `root` (absolute), `layout` (`site` for the `app/` + `host.mjs`
+  layout init writes, `project` for a bare directory holding `urlcode.yaml`),
+  `project` (site-relative: `app` or `.`), `projectRoot`, `entry`
+  (`app/urlcode.yaml`), `hostFile` (`host.mjs` or null) and `packageJson`. Run
+  from the site root or from its `app/`, the answer is the same. `null` when
+  `state` is `none`.
+- `runtime`: the `running` runtime's version and the SHA-256 of its
+  `schemas/urlcode.schema.json`, the site's `pinned` requirement, the
+  `installed` copy in the site's `node_modules` (version and schema digest)
+  and a `status`: `matched`, `mismatched` or `unverified` (nothing site-local
+  to compare). It never upgrades or installs anything.
+- `paths`: the file-reference `rule` (every path in `urlcode.yaml` is relative
+  to the route project root and stays inside it), a concrete `example` taken
+  from the project's own first directory (`app/public` on disk is `public` in
+  YAML) and `outsideProject`: site directories YAML cannot reach, such as a
+  supplied `frontend/`, each with the move that makes it servable. Only paths
+  inside the site are named.
+- `commands`: `cd` (the quoted site root), `install` when the pinned runtime
+  is not installed yet, then `start`, `dev`, `validate`, `test` and `context`,
+  each runnable from the site root with the site-local invocation
+  (`npx --no --package @jimhoyd/urlcode urlcode` when the site's
+  `package.json` declares the runtime), `--project app --host-file host.mjs`,
+  and `--origin` only when you gave one. Paths are shell-quoted as in
+  [Project context](#project-context).
+- `prerequisites` (only when needed): the operator flags those commands still
+  need, as `context` reports them.
+- `capabilities` (only with `--capabilities`): at most eight catalog names,
+  each delivered as its summary, constraints, operator grants, resolved schema
+  fragments (identical to `urlcode schema PATH` from the same runtime), target
+  support (with reasons for `--target`) and the shortest bundled route that uses
+  it, recipes first. Names not in the catalog are listed under `unknown` (an
+  add-on name says to install and inspect that extension instead), and with
+  `--target` a capability the target refuses or cannot decide is listed under
+  `unsupported`. Nothing is selected from a task description: name the
+  capabilities yourself (`urlcode capabilities` lists them). When `runtime`
+  is `mismatched` the packet is withheld and `withheld` says why, so fragments
+  from one revision never describe a site pinned to another.
+- `diagnostics` (only when present): `project-invalid` when `urlcode.yaml`
+  does not load, `inside-project` when `DIR` is inside a route project.
+- `next`: the first steps in order.
+
+`--create` needs an explicit `DIR` and acts only when `state` would be `none`:
+it runs `urlcode init DIR` (so the same in-place rules apply, and a directory
+holding user files is refused with every file kept), then reports the new site.
+Run again, it finds the site and writes nothing. It is refused at a directory
+named `app` (init would write `app/app`) and anywhere inside an existing route
+project. MCP `get_context` with `bootstrap: true` (and optional `capabilities`
+and `deployTarget`) returns the same object for the server's site; it never
+creates one.
 
 ## Feature planning
 

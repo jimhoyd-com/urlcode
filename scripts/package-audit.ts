@@ -184,8 +184,18 @@ export const budgets: Record<string, Budget> = {
     // (#792): together they measure 795299 packed and 3185100 unpacked bytes
     // in 471 entries on Node 26, over the 772/3100 KiB budgets set for #659
     // alone.
-    packed: 788 * 1024,
-    unpacked: 3140 * 1024,
+    //
+    // Packed raised from 788 to 800 KiB for the local agent bootstrap (#807:
+    // dist/bootstrap.js with its declarations, the CLI/MCP wiring, the "Local
+    // agent bootstrap" section of docs/TOOLING.md and the skill, llms.txt and
+    // AI-AUTHORING first-step updates with their llms-full.txt copy). It
+    // measures 808293-812652 packed bytes on Node 26 (the higher figure after a
+    // full verify), up to 5740 over the old budget; 800 KiB keeps the ~2 KiB
+    // cross-Node gzip variance noted above. Unpacked it measures 3226821-3246389
+    // bytes, up to 31029 over (about 20 KiB of it the module with its source
+    // comments), so unpacked is raised from 3140 to 3180 KiB.
+    packed: 800 * 1024,
+    unpacked: 3180 * 1024,
     entries: 480,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
