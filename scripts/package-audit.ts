@@ -204,8 +204,13 @@ export const budgets: Record<string, Budget> = {
     // extension-assets probe, RIM-EXT-ASSETS-001 and the READINESS/EXTENSIONS
     // sections): measured 847255 packed and 3359276 unpacked bytes, 490
     // entries, on Node 26.
-    packed: 832 * 1024,
-    unpacked: 3290 * 1024,
+    // Raised for the #708/#821/#822/#823/#824 batch: the declarative JSON
+    // error format (http-response, capabilities, schema, HTTP/SPECIFICATION/
+    // SITE sections) and docs/EXTENSION-REFERENCE.md with the llms-full.txt
+    // coverage note. Measured on the merged branch (Node 26): 860834 packed,
+    // 3403684 unpacked, 490 entries.
+    packed: 844 * 1024,
+    unpacked: 3330 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -260,7 +265,8 @@ export const budgets: Record<string, Budget> = {
     // update and the records export's paginated list (#738: dist/collection.js,
     // dist/records.js and their declarations, and the README contract) take the
     // packed tarball from 40915 to 42040 bytes, just over the old 40 KiB.
-    packed: 50 * 1024,
+    // #822 generated field reference in the README (measured 56504 packed).
+    packed: 58 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -282,16 +288,19 @@ export const budgets: Record<string, Budget> = {
     // Raised to 50 KiB packed and 190 KiB unpacked for audited writes (the
     // collection outbox and its producer, with declarations and the
     // README/SECURITY contract): 46693 packed and 177677 unpacked bytes.
-    unpacked: 190 * 1024,
+    // #822 generated field reference in the README (measured 220290 unpacked).
+    unpacked: 225 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-forms': {
-    packed: 45 * 1024,
+    // #822 generated field reference in the README (measured 49761 packed).
+    packed: 52 * 1024,
     // Raised from 140 KiB for per-flow abuse budgets and mail notifications
     // (the contributed template, their declarations and README/SECURITY
     // contract): 148862 unpacked bytes.
-    unpacked: 160 * 1024,
+    // #822 generated field reference in the README (measured 196778 unpacked).
+    unpacked: 200 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
@@ -300,15 +309,18 @@ export const budgets: Record<string, Budget> = {
   // packed and 77778 unpacked bytes in 12 files.
   '@jimhoyd/urlcode-form-records': {
     packed: 30 * 1024,
-    unpacked: 100 * 1024,
+    // #822 generated field reference in the README (measured 115346 unpacked).
+    unpacked: 118 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   // Unpacked raised from 140 KiB for the opt-in streaming transport (#659):
   // dist/sessions.{js,d.ts} and the README section took it to 151597 bytes.
   '@jimhoyd/urlcode-mcp': {
-    packed: 45 * 1024,
-    unpacked: 160 * 1024,
+    // #822 generated field reference in the README (measured 45653 packed).
+    packed: 47 * 1024,
+    // #822 generated field reference in the README (measured 177930 unpacked).
+    unpacked: 180 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
