@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The activated instance declares its asset mount (`/assets/ui/*`) in core's `assetMounts` (#816), so `urlcode audit` covers that mount's `GET`/`HEAD` as `extension-assets` after an unknown name under `/assets/ui/static/` answers 404 with no cookie. A site composing `ui` no longer needs a fixture for hashed file names it cannot know to reach `ready`. Screen mounts are not declared and keep ordinary fixture coverage.
+
 The served kit follows the newest live activation (#777): a hot reload's retired runtime closing no longer switches the kit off for the replacement (every ui-rendered page answered 500 after a reload), and a failed reload's close restores the serving activation's kit.
 
 - A ui template namespace now belongs to its contributor (#753). core's `ctx.contributions('ui')` hands each value as `{from, value}` with the contributing extension's name; at host composition ui refuses a `templates` entry whose `name` is not `from` (`ui template namespace "<name>" is contributed by extension "<from>": ...`) and any template or view model key outside `<from>/` (`ui template "<key>" is contributed by extension "<from>" outside its namespace: ...`). `urlcode-ui --extensions` applies the same check against each package definition's name. `createUiExtension({screens})` takes `UiScreenContribution` entries (`{from, source}`), and a screen path two extensions claim names both. Operator-supplied `ui({extensions})` in host.mjs is not checked.

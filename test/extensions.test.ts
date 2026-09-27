@@ -17,6 +17,7 @@ import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import type {ProjectDocument} from '../packages/core/src/types.ts';
 import {inspectExtensions,describeExtensions,validateProject} from '../packages/core/src/tooling.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
+import {auditProject} from '../packages/core/src/readiness.ts';
 import {Readable,Writable} from 'node:stream';
 const origin='https://extensions.example.test';
 const declarations={demo:{version:'1',config:{label:'hello'}}};
@@ -549,6 +550,62 @@ test('immutable asset prefixes are validated and belong to the operator registra
   assert.equal(await inspectExtensionRevision(root),pinned);
   assert.equal((await runtime.handle({target:'/demo/hashed/app.abc123.css',method:'GET'})).headers.find(([name])=>name==='cache-control')?.[1],'public, max-age=31536000, immutable');
   assert.equal((await runtime.handle({target:'/demo/static/app.abc123.css',method:'GET'})).headers.find(([name])=>name==='cache-control')?.[1],'no-store');
+});
+// #816: an extension declares which of its mounts serve only its immutable assets; audit covers GET/HEAD there by that
+// contract, labelled, once an unknown name under the prefix answers 404 with no cookie. Other mounts keep today's rules.
+const assetOnly={extension:'demo',methods:['GET','HEAD']};
+async function assetMountRegistration(root:string,unknown:{status:number;cookie?:boolean},assetMounts?:(mounts:readonly string[])=>readonly string[],extra:Partial<RuntimeExtension>={}):Promise<RuntimeExtension>{return registration(root,{immutableAssets:{prefix:'/static'},activate(_config,context){return{
+  ...(assetMounts?{assetMounts:assetMounts(context.mounts)}:{}),
+  handle(req){
+    if(req.path==='/demo/static/app.abc123.css')return{status:200,headers:assetHeaders,body:req.method==='HEAD'?undefined:'css'};
+    if(req.mount==='/pages'&&req.path==='/pages')return{status:200,headers:[['content-type','text/html']],body:req.method==='HEAD'?undefined:'<p>page</p>'};
+    return{status:unknown.status,headers:[['content-type','text/plain'],...(unknown.cookie?[['set-cookie','tracked=1'] as [string,string]]:[])],body:req.method==='HEAD'?undefined:'Not found'};
+  },
+};},...extra});}
+test('audit covers a declared extension asset mount by its contract, labelled extension-assets, and probes it (#816)',async t=>{
+  const root=await project(t,{'/demo/*':assetOnly,'/pages/*':{...assetOnly,methods:['GET','HEAD']}},{},{extensions:declarations});
+  const app=await startServer({project:root,origin,port:0,extensions:[await assetMountRegistration(root,{status:404},()=>['/demo'])],log:()=>{}});t.after(()=>app.close());
+  const events:Record<string,unknown>[]=[];
+  const report=await auditProject(app,{log:event=>events.push(event)});
+  assert.deepEqual(report.extensionAssetRouteMethods,[{route:'/demo/*',method:'GET',extension:'demo',coverage:'extension-assets'},{route:'/demo/*',method:'HEAD',extension:'demo',coverage:'extension-assets'}]);
+  // The extension's other mount is not an asset mount: without fixtures it stays uncovered, exactly as before.
+  assert.deepEqual(report.uncovered,[{route:'/pages/*',method:'GET'},{route:'/pages/*',method:'HEAD'}]);
+  assert.equal(report.failed,0);assert.equal(report.coveredRouteMethods,0);assert.deepEqual(report.notReadyReasons,['uncovered-route-methods']);
+  const probes=events.filter(event=>event.source==='extension-assets');
+  assert.deepEqual(probes.map(event=>[event.pass,event.status,event.expectedStatus]),[[true,404,404],[true,404,404]]);
+  // With the page mount's fixtures the project is ready; the asset pairs stay labelled rather than counted as fixture-covered.
+  await mkdir(join(root,'tests'),{recursive:true});
+  await writeFile(join(root,'tests/requests.json'),JSON.stringify([{path:'/pages',status:200,expectBody:'<p>page</p>'},{path:'/pages',method:'HEAD',status:200,expectBody:''}]));
+  const ready=await auditProject(app);
+  assert.equal(ready.ready,true,JSON.stringify(ready.uncovered));assert.equal(ready.coveredRouteMethods,2);assert.equal(ready.extensionAssetRouteMethods.length,2);
+  // A fixture that names a real hashed file covers its pair the ordinary way, and the label then lists only the rest.
+  await writeFile(join(root,'tests/requests.json'),JSON.stringify([{path:'/pages',status:200,expectBody:'<p>page</p>'},{path:'/pages',method:'HEAD',status:200,expectBody:''},{path:'/demo/static/app.abc123.css',status:200,expectBody:'css'}]));
+  assert.deepEqual((await auditProject(app)).extensionAssetRouteMethods.map(pair=>pair.method),['HEAD']);
+});
+test('audit fails an extension asset mount whose unknown path answers 200 or sets a cookie, and covers nothing without the declaration (#816)',async t=>{
+  for(const unknown of [{status:200},{status:404,cookie:true}]){
+    const root=await project(t,{'/demo/*':assetOnly},{},{extensions:declarations});
+    const app=await startServer({project:root,origin,port:0,extensions:[await assetMountRegistration(root,unknown,mounts=>mounts)],log:()=>{}});t.after(()=>app.close());
+    const report=await auditProject(app);
+    assert.equal(report.ready,false,JSON.stringify(unknown));assert.equal(report.failed,2);
+    assert.deepEqual(report.notReadyReasons,['failed-checks','uncovered-route-methods']);
+    assert.deepEqual(report.extensionAssetRouteMethods,[]);assert.deepEqual(report.uncovered,[{route:'/demo/*',method:'GET'},{route:'/demo/*',method:'HEAD'}]);
+  }
+  // An extension that declares no asset mount keeps today's rules: its mount needs fixtures and is never probed.
+  const root=await project(t,{'/demo/*':assetOnly},{},{extensions:declarations});
+  const plain=await startServer({project:root,origin,port:0,extensions:[await assetMountRegistration(root,{status:404})],log:()=>{}});t.after(()=>plain.close());
+  const report=await auditProject(plain);
+  assert.equal(report.checks,0);assert.deepEqual(report.extensionAssetRouteMethods,[]);assert.equal(report.uncovered.length,2);
+});
+test('assetMounts must name the extension own mounts under a declared immutableAssets prefix (#816)',async t=>{
+  const root=await project(t,{'/demo/*':assetOnly},{},{extensions:declarations});
+  const {immutableAssets:_declared,...undeclared}=await assetMountRegistration(root,{status:404},mounts=>mounts);
+  await assert.rejects(createRuntime(root,{origin,extensions:[undeclared]}),/demo declares assetMounts without immutableAssets/);
+  for(const named of [['/other'],['/demo','/demo'],['/demo/*'],'/demo',[42]])
+    await assert.rejects(createRuntime(root,{origin,extensions:[await assetMountRegistration(root,{status:404},()=>named as readonly string[])]}),/demo assetMounts must name distinct mounts of its own routes/,JSON.stringify(named));
+  // The declaration only affects audit: the request path still answers exactly what the extension returns.
+  const runtime=await createRuntime(root,{origin,extensions:[await assetMountRegistration(root,{status:404},mounts=>mounts)]});t.after(()=>runtime.close());
+  assert.equal((await runtime.handle({target:'/demo/static/nope',method:'GET'})).status,404);
 });
 test('ExtensionActivation.root is the resolved project directory, independent of process.cwd()',async t=>{
   const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});

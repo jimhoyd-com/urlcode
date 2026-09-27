@@ -202,6 +202,13 @@ routes:
 
 Hashed assets are served under `/assets/ui/static/` and declared as `immutableAssets`, so the runtime answers them with `Cache-Control: public, max-age=31536000, immutable`.
 
+A fixture cannot know those hashed names, so `ui` declares `/assets/ui/*` an
+asset mount (`assetMounts`). `urlcode audit` then requests an unknown name
+under `/assets/ui/static/`, expects `404` with no cookie, and lists the mount's
+`GET` and `HEAD` under `extensionAssetRouteMethods` rather than `uncovered`
+([extension asset mounts](../../docs/READINESS.md#extension-asset-mounts)).
+Screen mounts are not asset mounts and still need fixtures.
+
 The `ui` extension needs exactly one such asset mount, besides any screen
 mounts; with none it refuses to activate (`ui extension needs exactly one route
 mount`), because every page it renders links the stylesheet and scripts under

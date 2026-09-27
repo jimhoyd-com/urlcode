@@ -178,7 +178,7 @@ test('#810/#811: the recipe\'s bundled fixtures run the signed-in lifecycle and 
     assert.deepEqual(await runProjectTests(project, { extensions, origin }), tested);
 });
 
-test('#811: urlcode test passes the lifecycle through --host-file; audit covers every auth and store method, not the hashed ui assets', async t => {
+test('#811, #816: urlcode test passes the lifecycle through --host-file; audit reports the recipe ready', async t => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-headless-cli-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'app');
@@ -203,22 +203,25 @@ test('#811: urlcode test passes the lifecycle through --host-file; audit covers 
     await mkdir(join(root, 'data'));
     const cli = fileURLToPath(new URL('./cli.js', import.meta.resolve('@jimhoyd/urlcode')));
     const env = { ...process.env, PROJECT_SHA256: await inspectExtensionRevision(project) };
-    const run = (command: string) => new Promise<{ code: number | null; stdout: string; stderr: string }>(done => {
-        execFile(process.execPath, [cli, command, '--project', project, '--host-file', join(root, 'host.mjs'), '--origin', origin], { encoding: 'utf8', timeout: 120000, env }, (error, stdout, stderr) => done({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }));
+    const run = (command: string, ...extra: string[]) => new Promise<{ code: number | null; stdout: string; stderr: string }>(done => {
+        execFile(process.execPath, [cli, command, '--project', project, ...extra, '--host-file', join(root, 'host.mjs'), '--origin', origin], { encoding: 'utf8', timeout: 120000, env }, (error, stdout, stderr) => done({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }));
     });
     const tested = await run('test');
     assert.equal(tested.code, 0, tested.stdout + tested.stderr);
     const result = JSON.parse(tested.stdout.trim().split('\n').at(-1)!) as { total: number; failed: number };
     assert.ok(result.total >= 50); assert.equal(result.failed, 0);
-    // The jar made every /account and /api/profile method provable; the ui mount serves only content-hashed file names,
-    // which a fixture cannot name ahead of time, so audit still reports those two pairs and the recipe does not list audit.
-    const audited = await run('audit');
-    assert.ok(audited.stdout.trim(), audited.stderr);
-    const report = JSON.parse(audited.stdout.trim().split('\n').at(-1)!) as { ready: boolean; failed: number; uncovered: { route: string; method: string }[]; unassertedCases: number[] };
+    // The jar made every /account and /api/profile method provable. The ui mount serves only content-hashed file names,
+    // which no fixture can name; ui declares it an asset mount, so audit probes an unknown name there (404, no cookie)
+    // and lists its GET/HEAD under extensionAssetRouteMethods instead of uncovered.
+    const audited = await run('audit', '--expect-routes', '3');
+    assert.equal(audited.code, 0, audited.stdout + audited.stderr);
+    const report = JSON.parse(audited.stdout.trim().split('\n').at(-1)!) as { ready: boolean; failed: number; notReadyReasons: string[]; uncovered: { route: string; method: string }[]; unassertedCases: number[]; extensionAssetRouteMethods: { route: string; method: string; extension: string; coverage: string }[] };
     assert.equal(report.failed, 0, audited.stdout);
     assert.deepEqual(report.unassertedCases, []);
-    assert.deepEqual(report.uncovered, [{ route: '/assets/ui/*', method: 'GET' }, { route: '/assets/ui/*', method: 'HEAD' }]);
-    assert.equal(report.ready, false);
+    assert.deepEqual(report.uncovered, []);
+    assert.deepEqual(report.extensionAssetRouteMethods, [{ route: '/assets/ui/*', method: 'GET', extension: 'ui', coverage: 'extension-assets' }, { route: '/assets/ui/*', method: 'HEAD', extension: 'ui', coverage: 'extension-assets' }]);
+    assert.deepEqual(report.notReadyReasons, []);
+    assert.equal(report.ready, true);
     // Nothing the jar held is printed: no session cookie value, in either command's output.
     assert.doesNotMatch(tested.stdout + tested.stderr + audited.stdout + audited.stderr, /__Host-urlcode-session=/);
 });
