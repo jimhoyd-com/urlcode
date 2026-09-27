@@ -193,9 +193,16 @@ export const budgets: Record<string, Budget> = {
     // llms-full.txt copies. Measured on the merged branch (Node 26): 827444
     // packed, 3290761 unpacked, 485 entries. 812 KiB leaves about 4 KiB for
     // the ~2 KiB cross-Node gzip variance noted above.
-    packed: 812 * 1024,
-    unpacked: 3220 * 1024,
-    entries: 495,
+    // Raised again for the #806/#811/#812/#814 batch: the cookie jar and
+    // fixture redaction (dist/cookie-jar.js, readiness), init --adopt
+    // (planInit, site-layout), the hosted-assisted skill helper shipped in the
+    // package, and the READINESS/STARTERS/TOOLING/AI-AUTHORING sections with
+    // their llms-full.txt copies. Measured on the merged branch (Node 26):
+    // 844581 packed, 3349335 unpacked, 490 entries; 828 KiB leaves about
+    // 3 KiB for the ~2 KiB cross-Node gzip variance noted above.
+    packed: 828 * 1024,
+    unpacked: 3280 * 1024,
+    entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
