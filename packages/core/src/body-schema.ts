@@ -157,7 +157,13 @@ export const bodySchemaLine = (issue: BodySchemaIssue): string => `${issue.point
 const maxIssueBytes = 4096;
 /** Renders the JSON answer: never more than `maxIssueBytes`, dropping trailing issues and saying so. */
 export function bodySchemaJson(issues: BodySchemaIssue[]): string {
-  const shape = (list: BodySchemaIssue[], truncated: boolean): string => JSON.stringify({ error: 'body_validation_failed', message: 'Request body failed validation', ...(truncated ? { truncated } : {}), issues: list });
+  return bounded(issues, (list, truncated) => JSON.stringify({ error: 'body_validation_failed', message: 'Request body failed validation', ...(truncated ? { truncated } : {}), issues: list }));
+}
+/** The same answer in the JSON error envelope (`errors.format: json`), bounded the same way. */
+export function bodySchemaEnvelope(issues: BodySchemaIssue[]): string {
+  return bounded(issues, (list, truncated) => JSON.stringify({ error: { code: 'UNPROCESSABLE_CONTENT', message: 'Request body failed validation', ...(truncated ? { truncated } : {}), issues: list } }));
+}
+function bounded(issues: BodySchemaIssue[], shape: (list: BodySchemaIssue[], truncated: boolean) => string): string {
   let list = issues, text = shape(list, false);
   while (new TextEncoder().encode(text).length > maxIssueBytes && list.length) { list = list.slice(0, -1); text = shape(list, true); }
   return text;

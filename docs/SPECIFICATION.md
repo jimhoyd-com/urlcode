@@ -43,6 +43,12 @@ See [asset configuration](ASSETS.md) for file handlers. Optional properties:
   adding GET does not implicitly add HEAD. Wrong method returns 405 plus Allow.
 - `enabled`: false returns 404, the same as unknown paths.
 - `expires`: UTC ISO timestamp (`...ssZ` or `...ss.sssZ`); expired routes return 410.
+- `errors`: `{format: text}` (the default) or `{format: json}`. It selects how
+  this route's runtime-generated errors are written: the text line, or the fixed
+  envelope `{"error":{"code","message"}}` with a closed code set keyed by
+  status. The 405 keeps `Allow`, HEAD keeps no body and the security headers are
+  unchanged; handler, policy, plugin and extension responses are never
+  rewritten. See [error format](HTTP.md#error-format).
 - `description`: optional authoring metadata.
 - `middleware`: ordered list of up to 16 `{source, export?}` modules wrapping any
   handler. See [middleware](MIDDLEWARE.md) for the portable contract.
@@ -65,7 +71,11 @@ for site conventions: `robots` → `/robots.txt`, `sitemap` → `/sitemap.xml`,
 `favicon` → `/favicon.ico`, `securityTxt` → `/.well-known/security.txt` and
 `llms` → `/llms.txt`. Each is an ordinary `respond` or `page` route merged in
 before compilation and counted by `routes`/`audit`; a declared route at the same
-path wins and the generated one is logged as shadowed. Absolute URLs come from
+path wins and the generated one is logged as shadowed. `site.errors`
+(`{format: json, paths: [...]}`) generates no route: runtime-generated errors on
+those paths, matched or not, use the JSON error envelope unless the matched
+route declares its own `errors`, and an unmatched path in that scope gets the
+JSON 404 rather than a `site.notFound` page. Static hosting refuses it. Absolute URLs come from
 the operator's `--origin`; `sitemap` refuses activation without one. See
 [site conventions](SITE.md).
 

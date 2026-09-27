@@ -1,4 +1,9 @@
 version: "1"
+# Runtime-generated errors under /api (an unmatched path's 404, the catch-all's 405) are the JSON envelope, not text.
+site:
+  errors:
+    format: json
+    paths: [/api/*]
 routes:
   /:
     description: The single-page app's shell, served natively from the prebuilt build.

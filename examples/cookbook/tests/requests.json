@@ -784,5 +784,15 @@
     "status": 200,
     "method": "HEAD",
     "expectBody": ""
+  },
+  {
+    "path": "/status",
+    "method": "POST",
+    "status": 405,
+    "expectBody": "{\"error\":{\"code\":\"METHOD_NOT_ALLOWED\",\"message\":\"Method not allowed\"}}",
+    "expectHeaders": {
+      "allow": "GET, HEAD",
+      "content-type": "application/json; charset=utf-8"
+    }
   }
 ]

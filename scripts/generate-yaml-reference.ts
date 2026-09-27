@@ -61,7 +61,7 @@ const areas: Area[]=[
   {title:'Project entry: version, includes, shared',guide:'[organization](yaml/organization.md)',
     match:p=>p==='version'||p.startsWith('includes')||p.startsWith('shared')},
   {title:'Routes: common fields (methods, parameters, env, secrets, policies, cache)',guide:'[functions, inputs and methods](yaml/functions.md) and [bindings, split files and tests](yaml/organization.md)',
-    match:p=>p==='routes'||p==='routes.*'||/^routes\.\*\.(methods|enabled|sandbox|sandboxReason|coveredElsewhere|expires|description|parameters|env|secrets|policies|auth|cache|match|use|request|response)($|\.|\[| )/.test(p)},
+    match:p=>p==='routes'||p==='routes.*'||/^routes\.\*\.(methods|enabled|sandbox|sandboxReason|coveredElsewhere|errors|expires|description|parameters|env|secrets|policies|auth|cache|match|use|request|response)($|\.|\[| )/.test(p)},
   {title:'Handler: redirect',guide:'[redirects](yaml/redirects.md)',match:p=>/^routes\.\*\.redirect($|\.|\[| )/.test(p)},
   {title:'Handler: respond',guide:'[declared responses, headers and cookies](yaml/responses.md)',match:p=>/^routes\.\*\.respond($|\.|\[| )/.test(p)},
   {title:'Handler: function',guide:'[functions, inputs and methods](yaml/functions.md)',match:p=>/^routes\.\*\.(function|stream)($|\.|\[| )/.test(p)},

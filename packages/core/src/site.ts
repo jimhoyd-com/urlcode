@@ -8,7 +8,9 @@ import type { LoadedDocument, LogFn, ProjectDocument, RobotsConfig, RouteConfig,
 
 interface SiteOptions { origin?: string | undefined; log?: LogFn; routes?: Record<string, RouteConfig>; locations?: Record<string, SourceLocation> | undefined }
 interface SiteContext { origin: string | undefined; log: LogFn; locations?: Record<string, SourceLocation> | undefined }
-type SiteKey = keyof SiteConfig;
+// `site.errors` is the one site key that generates no route: it selects how runtime-generated errors on a path
+// scope are written (docs/HTTP.md#error-format) and is read by the runtime, not expanded here.
+type SiteKey = Exclude<keyof SiteConfig, 'errors'>;
 
 // Site conventions: the optional top-level `site` block. Every key generates
 // one ordinary native route (`respond` or `page`) that is merged into the
@@ -219,7 +221,8 @@ export async function expandSite(document: ProjectDocument, root: string, { orig
   };
   const isSiteKey = (key: string): key is SiteKey => Object.hasOwn(builders, key);
   for (const key of Object.keys(site)) {
-    if (!isSiteKey(key)) throw new ConfigError(`site.${key} is not a known site convention (${Object.keys(builders).join(', ')})`);
+    if (key === 'errors') { siteErrorPaths(site); continue; }
+    if (!isSiteKey(key)) throw new ConfigError(`site.${key} is not a known site convention (${[...Object.keys(builders), 'errors'].join(', ')})`);
     const declared: unknown = site[key]; // the schema admits no null or false here; an undeclared key still reads as off
     if (declared === undefined || declared === null || declared === false) continue;
     const path = generatedPaths[key];
@@ -228,6 +231,17 @@ export async function expandSite(document: ProjectDocument, root: string, { orig
     log({ event:'site', key, path, status:'generated' });
   }
   return generated;
+}
+
+const errorPath = /^\/[^\s*?#]*$|^\/(?:[^\s*?#]*\/)?\*$/u;
+/** The validated `site.errors` path list, empty when the key is absent; each entry is an exact path or a `/*` prefix. */
+export function siteErrorPaths(site: SiteConfig | undefined): string[] {
+  const errors = site?.errors;
+  if (errors === undefined) return [];
+  assert(errors && typeof errors === 'object' && errors.format === 'json', 'site.errors.format must be json');
+  assert(Array.isArray(errors.paths) && errors.paths.length > 0 && errors.paths.length <= 64, 'site.errors.paths must list 1 to 64 paths');
+  for (const path of errors.paths) assert(typeof path === 'string' && path.length <= 2048 && errorPath.test(path) && !/[\x00-\x1f\x7f]/u.test(path), `site.errors.paths entry ${JSON.stringify(path)} must be an exact path or a prefix ending in /*`);
+  return [...errors.paths];
 }
 
 // Merges the generated routes into a loaded project in place and returns them.

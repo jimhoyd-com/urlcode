@@ -7,8 +7,8 @@ the app's `index.html` so the router can take over. URLCode has no native SPA
 fallback ([assets](../../docs/ASSETS.md)), and no YAML route can answer a
 `page` at any depth. This recipe is the tested composition for it
 ([#809](https://github.com/jimhoyd-com/urlcode/issues/809)): native YAML for
-everything it can express, plus one small operator plugin for the one thing it
-cannot.
+everything it can express, including the API's JSON errors (`site.errors`),
+plus one small operator plugin for the one thing it cannot: the shell.
 
 Save [the host file](#the-host-file) outside the project, then run:
 
@@ -29,10 +29,12 @@ project directory with `--project app --host-file host.mjs`.
 | `/` | `page` (YAML) | the shell, `no-cache` |
 | `/assets/app.js` | `static` on `/assets/*` (YAML) | the file, cached one hour; missing files 404 |
 | `/api/status` | `respond` (YAML) | `{"ok":true,"service":"spa-shell"}`, `no-store` |
+| `/api/status`, POST | `methods` (YAML) and `site.errors` | 405 with `Allow: GET, HEAD` and the JSON error envelope |
 | `/robots.txt`, `/index.html` | `static` on `/*` (YAML) | the file under `public/`; missing files 404 |
 | `/projects/42/settings?tab=members`, GET or HEAD | the `spa-shell` plugin on the `/*` route | the shell, `text/html`, `no-cache` |
 | `/projects/42`, POST (any method but GET/HEAD) | `static` on `/*` (YAML) | 405 with `Allow: GET, HEAD` |
-| `/api/anything-else`, any method | the plugin | `{"error":"Not found"}` 404 JSON, `no-store` |
+| `/api/anything-else`, GET or HEAD | `static` on `/*` (YAML) and `site.errors` | `{"error":{"code":"NOT_FOUND","message":"Not found"}}` 404 JSON, `no-store` |
+| `/api/anything-else`, other methods | `static` on `/*` (YAML) and `site.errors` | 405 with `Allow: GET, HEAD`, JSON envelope `METHOD_NOT_ALLOWED` |
 | `/assets`, `/assets/client/route` | `static` (YAML) | 404, never the shell |
 
 The `/*` static mount is what lets the runtime match an unseen path of any
@@ -41,13 +43,18 @@ depth; on its own it answers 404 for a path with no file. The plugin's
 shell for an extensionless GET or HEAD. It returns nothing for everything
 else, so the mount answers natively. A path with a dot segment or an extension
 in its last segment (`/missing.png`, `/.env`) is a file request: the mount
-serves the file or answers 404. The API prefix is the one place the plugin
-answers something other than the shell, because an API client expects JSON,
-not HTML, for a path no route declares.
+serves the file or answers 404. The plugin leaves `/api` alone (it is in
+`exclude`), so the mount answers there too, and `site.errors` makes every
+error the runtime writes under `/api/*` the fixed JSON envelope instead of a
+text line ([error format](../../docs/HTTP.md#error-format)). An API client gets
+JSON, never HTML, for a path no route declares. Because `/*` matches every
+path, a method other than GET or HEAD on an undeclared API path is the mount's
+405 (with `Allow`), not a 404.
 
-The plugin never reads or rewrites a response. Every other route's answer,
-including a 405, a validation error, a policy denial and an extension's 401,
-is written exactly as the runtime produced it. When the `/*` route itself is
+The plugin never reads or rewrites a response, and neither does `site.errors`:
+it only chooses how the runtime writes its own errors. Every other route's
+answer, including a policy denial and an extension's 401, is written exactly as
+it was produced. When the `/*` route itself is
 protected (`auth: true`), plugins run after authorization, so a denied client
 path gets the denial, not the shell.
 
@@ -67,9 +74,8 @@ import {composeHost} from '@jimhoyd/urlcode/host';
 const under = (path, prefix) => path === prefix || path.startsWith(prefix + '/');
 // A segment starting with a dot, or a last segment with an extension, names a file: the mount answers it.
 const fileLike = path => {const parts = path.split('/'); return parts.some(part => part.startsWith('.')) || parts.at(-1).includes('.');};
-const notFound = Buffer.from('{"error":"Not found"}');
 
-export function spaShell({route = '/*', shell = 'public/index.html', exclude = ['/assets'], api = ['/api']} = {}) {
+export function spaShell({route = '/*', shell = 'public/index.html', exclude = ['/assets', '/api']} = {}) {
   let body;
   return {
     name: 'spa-shell', version: '1', targets: ['node'],
@@ -82,8 +88,6 @@ export function spaShell({route = '/*', shell = 'public/index.html', exclude = [
     onRequest(request) {
       // Only the catch-all mount: every other route, and every denial, answers natively.
       if (request.route !== route) return undefined;
-      if (api.some(prefix => under(request.path, prefix)))
-        return {status: 404, headers: [['content-type', 'application/json; charset=utf-8'], ['cache-control', 'no-store']], body: notFound};
       // Other methods, excluded prefixes and file-like paths fall through to the mount: 405, the file or 404.
       if (request.method !== 'GET' && request.method !== 'HEAD') return undefined;
       if (exclude.some(prefix => under(request.path, prefix)) || fileLike(request.path)) return undefined;
@@ -103,10 +107,9 @@ export default await composeHost(import.meta.url, [], {plugins: [spaShell()]});
 - `route`: the catch-all static route; activation refuses when the project has
   no static route by that name.
 - `exclude`: prefixes that never get the shell (the mount answers: the file,
-  404 or 405). Add every namespace that is not a client route.
-- `api`: prefixes whose unmatched paths answer the JSON 404 for any method.
-  Declare the real endpoints under it in YAML; they match before the
-  catch-all.
+  404 or 405). Add every namespace that is not a client route. Declare the
+  real API endpoints in YAML; they match before the catch-all. List an API
+  prefix in `site.errors.paths` as well, so its errors are JSON.
 
 ## Replacing the fixture frontend
 
@@ -121,7 +124,8 @@ or functions when the answer must be computed per request.
 - The plugin needs the self-hosted Node runtime. The project alone reports
   AWS and Vercel as compatible, but without the plugin every client path is a
   404; the Cloudflare Worker takes no plugins, and the static export has no
-  runtime at all.
+  runtime at all. The API's JSON errors are YAML (`site.errors`), so they hold
+  with or without the host file.
 - A shell answer from the plugin short-circuits the `/*` route's own request
   policies (`throttle`, `agents`, `cache`), because unprotected-route plugins
   run before them ([ordering](../../docs/PLUGINS.md#ordering)). Put policies you

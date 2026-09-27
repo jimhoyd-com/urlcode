@@ -2,6 +2,8 @@ version: "1"
 routes:
   /status:
     respond: {json: {ok: true, service: cookbook}}
+    # The runtime's own errors for this route (here the 405 for POST) are the JSON envelope, with Allow kept.
+    errors: {format: json}
   /notice:
     respond: {text: Temporarily unavailable, status: 503}
     response:
