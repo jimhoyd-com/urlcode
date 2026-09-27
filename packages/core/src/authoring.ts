@@ -1,3 +1,4 @@
+import type { FileHandle } from 'node:fs/promises';
 import { readdir, mkdir, mkdtemp, rename, rm, readFile, writeFile, open, lstat, stat } from 'node:fs/promises';
 import { basename, resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +8,7 @@ import { loadDocument, validateDocument } from './config.ts';
 import { renderAgentsGuide, renderMcpConfig, mcpConfigFile } from './agents-guide.ts';
 import { compileRoutes } from './router.ts';
 import { prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
-import { assert } from './errors.ts';
+import { assert, ConfigError } from './errors.ts';
 import type { LoadedDocument } from './types.ts';
 import { projectScripts } from './context.ts';
 import { runningCoreVersion } from './version.ts';
@@ -71,6 +72,36 @@ export interface InitOptions {
   adopt?: boolean | undefined;
   /** npm runs after init (`init --with`), so node_modules and package-lock.json are part of what an adopting init writes. */
   installs?: boolean | undefined;
+  /**
+   * `--no-mcp` (`mcp: false`): write no MCP client configuration. `.mcp.json` is the only client or agent
+   * configuration file init writes (AGENTS.md is guidance any agent may read, not a client setting); without it the
+   * site is complete and runnable, and an existing `.mcp.json` or `.claude/` is left exactly as it is. Default true.
+   */
+  mcp?: boolean | undefined;
+}
+/**
+ * Files init writes that an MCP client or coding agent loads as its own configuration. An agent sandbox commonly
+ * forbids writing them, so a refused write names `--no-mcp` rather than any way around the policy.
+ */
+const clientConfigFiles: readonly string[] = [mcpConfigFile];
+/** What `--no-mcp` output says instead of claiming a registration. */
+export const mcpSkippedNote = `no ${mcpConfigFile} was written, so no MCP client has the urlcode server from this site; register it with your client separately (urlcode mcp print-config prints the configuration) or work without MCP`;
+/** Refusals from the operating system or a sandbox policy, as opposed to a missing path or an existing entry. */
+const deniedCodes: Record<string, string> = { EPERM: 'operation not permitted', EACCES: 'permission denied', EROFS: 'read-only file system' };
+/**
+ * A bounded diagnostic for a write the operating system or a sandbox refused: the operation, the destination-relative
+ * POSIX path (never an absolute host path) and the one supported next step. Never suggests changing permissions or
+ * disabling a sandbox; other errors are returned unchanged.
+ */
+export function initWriteError(error: unknown, operation: 'creating' | 'writing', path: string): unknown {
+  const code = typeof error === 'object' && error !== null && typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : undefined;
+  const reason = code === undefined ? undefined : deniedCodes[code];
+  if (reason === undefined) return error;
+  const shown = path === '' ? 'the destination directory' : path;
+  const next = clientConfigFiles.includes(path)
+    ? `${path} is MCP client configuration, which this environment does not allow init to write; rerun with --no-mcp to create the site without it (register the server with your client separately, see urlcode mcp print-config)`
+    : 'choose a destination this process is allowed to write to';
+  return new ConfigError(`init could not finish ${operation} ${shown}: the operating system or a sandbox policy refused it (${code}, ${reason}). ${path === '' ? 'Nothing was written into it' : 'Everything this run created was removed and existing files were left as they were'}; ${next}`, { code: 'init-write-denied', file: path === '' ? '.' : path }, { cause: error });
 }
 interface PlannedFile { path: string; source?: string; mode: number }
 export interface InitPlan {
@@ -137,7 +168,7 @@ export async function planInit(destination: string, options: InitOptions = {}): 
   files.push({ path: HOST_FILE, mode: 0o600 }, { path: 'AGENTS.md', mode: 0o644 });
   // .mcp.json registers the read-only server for repository-aware agents. A file already there (for example
   // `urlcode mcp print-config` run before the agent's session started) is kept exactly as written.
-  if (!existing.includes(mcpConfigFile)) files.push({ path: mcpConfigFile, mode: 0o644 });
+  if (options.mcp !== false && !existing.includes(mcpConfigFile)) files.push({ path: mcpConfigFile, mode: 0o644 });
   // In place, npm's package.json gains the pin and scripts; adopting, it would be an existing file init changes.
   if (mode !== 'in-place' || !existing.includes('package.json')) files.push({ path: 'package.json', mode: 0o644 });
   const collisions = mode === 'adopt' ? await findCollisions(target, files.map(file => file.path), [PROJECT_DIRECTORY, ...(options.installs ? ['node_modules', 'package-lock.json'] : [])]) : [];
@@ -158,7 +189,7 @@ export interface InitUndo { (): Promise<void> }
 /**
  * `urlcode init <directory>`: one site layout, always. The route project lives in `app/`; `host.mjs` (the
  * operator host, initially with no extensions), `package.json` (exact runtime pin and scripts), AGENTS.md,
- * .mcp.json, the Makefile and the CI workflow sit beside it. Returns the site directory, the top-level entries it
+ * .mcp.json (unless `mcp: false`), the Makefile and the CI workflow sit beside it. Returns the site directory, the top-level entries it
  * left alone and an undo for callers that continue (init --with).
  */
 export async function initSite(destination: string, options: InitOptions = {}): Promise<{ site: string; undo: InitUndo; leftAlone: string[] }> {
@@ -166,32 +197,39 @@ export async function initSite(destination: string, options: InitOptions = {}): 
   assert(plan.refusal === undefined, plan.refusal ?? '');
   const packageJson = plan.mode === 'in-place' && plan.existing.includes('package.json') ? await readFile(join(target, 'package.json'), 'utf8') : undefined;
   if (packageJson !== undefined) { try { JSON.parse(packageJson); } catch { assert(false, 'Existing package.json is not valid JSON'); } }
-  await mkdir(dirname(target), { recursive: true });
-  // A new directory is reserved exclusively before copying; an existing one is only ever added to.
-  if (plan.mode === 'new') await mkdir(target);
+  // Nothing exists yet to roll back: a refused parent or destination is reported without an absolute path.
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    // A new directory is reserved exclusively before copying; an existing one is only ever added to.
+    if (plan.mode === 'new') await mkdir(target);
+  } catch (error) { throw initWriteError(error, 'creating', ''); }
   const existing = new Set(plan.existing), created: string[] = [];
+  // Set once the existing package.json is rewritten: until then the user's file is untouched and undo leaves it be.
+  let manifestWritten = false;
   const undo: InitUndo = async () => {
     if (plan.mode === 'new') { await rm(target, { recursive: true, force: true }); return; }
     // Remove only what this run created and put package.json back; the user's own files are never touched.
     for (const path of [...created].reverse()) await rm(path, { recursive: true, force: true });
     for (const name of await readdir(target)) if (!existing.has(name)) await rm(join(target, name), { recursive: true, force: true });
-    if (packageJson !== undefined) await writeFile(join(target, 'package.json'), packageJson);
+    if (manifestWritten && packageJson !== undefined) await writeFile(join(target, 'package.json'), packageJson);
   };
   // Parent directories are created one level at a time; an existing one is used only when it is a real directory.
   const directoryFor = async (segments: readonly string[]): Promise<void> => {
     for (let index = 1; index < segments.length; index += 1) {
       const directory = join(target, ...segments.slice(0, index)), info = await lstatOrUndefined(directory);
       if (info) { assert(info.isDirectory(), `${segments.slice(0, index).join('/')} changed during init; nothing of yours was overwritten`); continue; }
-      await mkdir(directory); created.push(directory);
+      try { await mkdir(directory); } catch (error) { throw initWriteError(error, 'creating', segments.slice(0, index).join('/')); }
+      created.push(directory);
     }
   };
   const exclusive = async (path: string, content: string | Buffer, mode: number): Promise<void> => {
     const segments = path.split('/'), absolute = join(target, ...segments);
     await directoryFor(segments);
     // `wx` fails on anything already there, a symlink included, so an existing entry is never written through.
-    const file = await open(absolute, 'wx', mode);
+    let file: FileHandle;
+    try { file = await open(absolute, 'wx', mode); } catch (error) { throw initWriteError(error, 'writing', path); }
     created.push(absolute);
-    try { await file.writeFile(content); } finally { await file.close(); }
+    try { await file.writeFile(content); } catch (error) { throw initWriteError(error, 'writing', path); } finally { await file.close(); }
   };
   try {
     const version = await runningCoreVersion();
@@ -209,7 +247,7 @@ export async function initSite(destination: string, options: InitOptions = {}): 
     await write('AGENTS.md', renderAgentsGuide({ routes }));
     await write(mcpConfigFile, renderMcpConfig(PROJECT_DIRECTORY, { local: true }));
     const manifest = sitePackageJson(packageJson, target, version, routes);
-    if (packageJson !== undefined) await writeFile(join(target, 'package.json'), manifest);
+    if (packageJson !== undefined) { manifestWritten = true; await writeFile(join(target, 'package.json'), manifest).catch((error: unknown) => { throw initWriteError(error, 'writing', 'package.json'); }); }
     else await write('package.json', manifest);
   } catch (error) { await undo(); throw error; }
   return { site: target, undo, leftAlone: plan.existing.filter(name => packageJson === undefined || name !== 'package.json') };

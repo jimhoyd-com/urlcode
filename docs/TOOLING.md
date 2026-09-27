@@ -166,7 +166,7 @@ checks. Build output remains an explicit separate build API/CLI operation.
 ## Local agent bootstrap
 
 `urlcode bootstrap [DIR] [--capabilities NAME,...] [--target T] [--origin URL]
-[--create [--adopt]] [--json]` is the one call an agent makes before its first authoring
+[--create [--adopt] [--no-mcp]] [--json]` is the one call an agent makes before its first authoring
 step (#807). It composes `init`, the command quoting `context` uses, the
 capability catalog and `urlcode schema`; it is not another manual. It works
 with no network, hosted service or MCP, runs no project or host code, and
@@ -176,7 +176,9 @@ directory. The result (YAML, or JSON with `--json`) has these keys:
 - `state`: `existing` (a site or project is there), `none` (nothing is, and
   nothing was created) or `created`, with `created` listing the top-level
   names init wrote and, with `--adopt`, `leftAlone` listing (at most 20) the
-  top-level entries that were already there.
+  top-level entries that were already there. With `--no-mcp`, init writes no
+  `.mcp.json` and the result adds `mcpRegistration: skipped` and an `mcpNote`
+  ([without client configuration](#creating-a-site-without-client-configuration---no-mcp)).
 - `site`: `root` (absolute), `layout` (`site` for the `app/` + `host.mjs`
   layout init writes, `project` for a bare directory holding `urlcode.yaml`),
   `project` (site-relative: `app` or `.`), `projectRoot`, `entry`
@@ -822,6 +824,37 @@ register the same command in their own configuration:
 An existing `.mcp.json` is never overwritten. The file registers
 the read-only server only: `--allow-authoring` (and `--host-file`) are operator
 choices added by hand, never by `init` or by an agent.
+
+### Creating a site without client configuration (`--no-mcp`)
+
+Some agent sandboxes forbid writing MCP or agent client configuration.
+`urlcode init <directory> --no-mcp` (and `urlcode bootstrap <directory>
+--create --no-mcp`, alone or with `--adopt`) creates the same runnable site
+without `.mcp.json`. That is the only client configuration file `init` writes:
+`AGENTS.md` is plain guidance any agent may read and is still written, and the
+CI workflow under `.github/` is not client configuration. An existing
+`.mcp.json` or `.claude/` directory is left exactly as it is. The output never
+claims a registration: the JSON `created` event (and the bootstrap packet) carry
+`"mcpRegistration": "skipped"` and an `mcpNote`, and the terminal output prints
+an `MCP registration skipped (--no-mcp)` line. Register the server with your
+client separately (`urlcode mcp print-config` prints the configuration) or work
+through the CLI. The default `init` still writes `.mcp.json`.
+
+If the operating system or a sandbox refuses a write (`EPERM`, `EACCES` or
+`EROFS`), `init` removes only what that run created, leaves every existing file
+as it was, and reports the operation and the destination-relative path with
+the error code `init-write-denied`, for example:
+
+```text
+init could not finish writing .mcp.json: the operating system or a sandbox policy refused it (EPERM, operation not permitted). Everything this run created was removed and existing files were left as they were; .mcp.json is MCP client configuration, which this environment does not allow init to write; rerun with --no-mcp to create the site without it (register the server with your client separately, see urlcode mcp print-config)
+```
+
+A refused write to any other file suggests a destination the process may write
+to instead. Neither message suggests changing permissions or disabling a
+sandbox: respect the policy and use `--no-mcp` or another directory. The
+package itself ships no `.mcp.json` (the starter's is rendered by `init`), so
+installing or unpacking it under a protected agent-configuration path does not
+trip that policy.
 
 The command is the same for every client: the pinned local runtime, started
 from the site root. The site pins the runtime in its `package.json`, so the

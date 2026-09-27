@@ -1158,6 +1158,12 @@ that session to register the server ahead of `init`
 ([pre-session bootstrap](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#registering-before-init-runs-pre-session-bootstrap-542));
 otherwise run the first turn's `init` as a plain CLI call and rely on MCP from
 the next session or turn.
+If the agent's sandbox forbids writing client configuration, `init` stops with
+`init-write-denied`, names `.mcp.json` and rolls back only what it created; run
+`urlcode init <directory> --no-mcp` (or `urlcode bootstrap <directory> --create
+--no-mcp`) instead of working around the policy. The site is the same without
+`.mcp.json`, the output reports `mcpRegistration: skipped`, and the agent works
+through the CLI ([without client configuration](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#creating-a-site-without-client-configuration---no-mcp)).
 The optional hosted URLCode AI MCP is a separate, anonymous connection for
 version-pinned reference and shared skills, used by your agent's own model; it
 does not replace the local project server. Its endpoint is in

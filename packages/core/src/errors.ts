@@ -107,7 +107,7 @@ export function hostLoadError(error: unknown): ConfigError {
 export function errorFields(details: ErrorDetails): ErrorDetails {
   return Object.fromEntries(Object.entries(details).filter(([, value]) => value !== undefined)) as ErrorDetails;
 }
-const systemMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
+const systemMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied', EPERM:'Operation not permitted (EPERM): the operating system or a sandbox policy refused a file operation; use a location this process is allowed to write to', EROFS:'Read-only file system (EROFS): use a writable location' };
 /**
  * The message the CLI prints for a failed command: URLCode's own validation
  * and HTTP errors verbatim, well-known system error codes as a fixed sentence,
