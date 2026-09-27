@@ -6,6 +6,7 @@ import {ConfigError} from './errors.ts';
 import {applySite} from './site.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {compileRoutes} from './router.ts';
+import {checkAssetReferences} from './assets.ts';
 import {compilePolicies,closePolicies,effectivePolicies,registry} from './policies.ts';
 import {capabilityTargets,getCapabilities,normalizeCapabilityTarget,routeCapabilities} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
@@ -98,6 +99,7 @@ async function compile(project:string,origin:string|undefined) {
  const snapshot=await prepareFunctionSnapshot(loaded),bindings:Record<string,string>=Object.create(null);
  for(const route of Object.values(loaded.routes)) {for(const ref of Object.values(route.env||{}))if(ref.env)bindings[ref.env]='validation-only';for(const ref of Object.values(route.secrets||{}))bindings[ref.secret]='validation-only';}
  const compiled=await compileRoutes(loaded,bindings,requestedPermissions(loaded,snapshot),snapshot.projectSha256),routes=routesOf(compiled);
+ await checkAssetReferences(loaded.root,routes,loaded.locations);
  const shared:PolicyShared={target:'node',routes:routes.length,log:()=>{}};
  try {for(const route of routes)await compilePolicies(loaded.document,route,{route,shared,target:'node',root:loaded.root});}finally{await closePolicies(shared);}
  return {loaded,compiled,routes};
