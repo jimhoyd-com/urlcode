@@ -94,6 +94,7 @@ npx urlcode extensions --project app          # prints "Project revision: <sha25
 export PROJECT_SHA256=<the reviewed revision>
 npx urlcode validate --local --host-file host.mjs --origin https://api.example.com
 npx urlcode test --host-file host.mjs --origin https://api.example.com
+npx urlcode audit --expect-routes 3 --host-file host.mjs --origin https://api.example.com
 npx urlcode serve --host-file host.mjs --origin https://api.example.com
 ```
 
@@ -176,10 +177,13 @@ printed in a failure or report. `packages/auth/test/headless-auth-profile-recipe
 runs these fixtures through `urlcode test --host-file` against the real
 extensions composed as above, and keeps a direct client test of the same flow.
 
-`urlcode audit` now covers every `/account/*` and `/api/profile/*` method from
-these fixtures, but it still reports two pairs uncovered: `GET` and `HEAD` on
-`/assets/ui/*`. That mount serves only content-hashed file names, which a
-fixture cannot know ahead of time, so the recipe does not list `audit`.
+`urlcode audit --expect-routes 3` reports the recipe ready. These fixtures
+cover every `/account/*` and `/api/profile/*` method. `/assets/ui/*` serves
+only content-hashed file names, which no fixture can know ahead of time; ui
+declares it an asset mount, so audit asks it for an unknown name, expects 404
+with no cookie, and lists its `GET` and `HEAD` under
+`extensionAssetRouteMethods` (see
+[extension asset mounts](../../docs/READINESS.md#extension-asset-mounts)).
 
 ## Limits
 

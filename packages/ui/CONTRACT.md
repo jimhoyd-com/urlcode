@@ -110,7 +110,10 @@ beside it and without changing the exports above:
   exactly one route mount`), whether or not the site renders HTML: an extension
   that requires `ui` renders its pages to non-JSON clients with links under it,
   so a JSON-only site keeps the mount, which serves only `GET`/`HEAD` of the
-  hashed kit files and `404` otherwise (#812); `loadProjectUi`;
+  hashed kit files and `404` otherwise (#812). The instance names that mount,
+  and only that mount, in `assetMounts`, so `urlcode audit` covers its
+  `GET`/`HEAD` as `extension-assets` after probing an unknown name for `404`
+  with no cookie; screen mounts still need fixtures (#816); `loadProjectUi`;
   and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
   Configured copy, template and stylesheet paths must begin with `ui/` and
   resolve inside that dedicated presentation directory, which cannot itself

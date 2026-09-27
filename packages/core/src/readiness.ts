@@ -48,7 +48,18 @@ export type Fixture = RequestCase | StepsFixture;
 export const isStepsFixture = (fixture: Fixture): fixture is StepsFixture => 'steps' in fixture;
 const isRestartable = (app: AuditableApp): app is RestartableApp => typeof (app as Partial<RestartableApp>).restart === 'function';
 const isRestart = (step: RequestCase | RestartStep): step is RestartStep => 'restart' in step;
-export interface ProjectPlan { inventory: RouteInventory[]; cases: RequestCase[]; resolve: (path: string) => string | undefined }
+/**
+ * An active extension mount whose instance declared it an asset mount (`ExtensionInstance.assetMounts`): audit sends
+ * GET/HEAD to `probe`, an unknown path under the mount's immutable-asset prefix, instead of needing a fixture.
+ */
+export interface ExtensionAssetMount { route: string; extension: string; probe: string }
+export interface ProjectPlan {
+  inventory: RouteInventory[]; cases: RequestCase[]; resolve: (path: string) => string | undefined;
+  /** Absent or empty: no extension declared an asset mount, and every route keeps the ordinary coverage rules. */
+  extensionAssets?: ExtensionAssetMount[];
+}
+/** The path audit asks an extension asset mount for: never a content-hashed name, so it must not exist. */
+export const unknownAssetName = 'urlcode-audit-unknown-asset';
 /**
  * `captured` holds values from a step's `capture` and `setCookies` the response's Set-Cookie lines; callers use them
  * for substitution and the cookie jar only, and never print them.
@@ -130,6 +141,12 @@ interface AuditReport {
   ignoredWaivers: { route: string; method: string; reason: string }[];
   /** Waivers whose pair already has a passing normal-response fixture: remove them. Never blocks `ready`. */
   redundantWaivers: { route: string; method: string; reason: string }[];
+  /**
+   * GET/HEAD pairs on an extension's declared asset mount that no fixture covers, excused by the extension's own
+   * contract (`coverage: 'extension-assets'`) because the probe of an unknown path under the mount answered 404 with
+   * no Set-Cookie. Shown even when `ready`. A failed probe is a failed check and leaves the pair in `uncovered`.
+   */
+  extensionAssetRouteMethods: { route: string; method: string; extension: string; coverage: 'extension-assets' }[];
   policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
   /** Non-blocking `audit` observations, e.g. a route that looks webhook-shaped
    * but declares neither `sandbox: true` nor `sandboxReason`. Never affects `ready`. */
@@ -164,7 +181,8 @@ function routeAdvisories(route: CompiledRoute): string[] {
   }
   return advisories;
 }
-export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPlan {
+/** `extensionAssets` maps a route pattern to the extension and `<mount><prefix>/` of a declared asset mount (runtime.ts). */
+export function projectPlan(compiled: CompiledRoutes<CompiledRoute>, extensionAssets: ReadonlyMap<string, { extension: string; prefix: string }> = new Map()): ProjectPlan {
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
   const inventory: RouteInventory[] = routes.map(route => { const advisories = routeAdvisories(route); return { path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
@@ -201,7 +219,11 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
       cases.push(test);
     }
   }
-  return {inventory,cases,resolve:path => matchRoute(compiled,parseTarget(path))?.route.pattern};
+  const assets: ExtensionAssetMount[] = inventory.flatMap(entry => {
+    const declared = entry.state === 'active' ? extensionAssets.get(entry.path) : undefined;
+    return declared ? [{route:entry.path,extension:declared.extension,probe:declared.prefix + unknownAssetName}] : [];
+  });
+  return {inventory,cases,resolve:path => matchRoute(compiled,parseTarget(path))?.route.pattern,...(assets.length ? {extensionAssets:assets} : {})};
 }
 // Bounds for ordered fixtures. A fixture file is data a project author (or an agent) wrote;
 // none of these limits is a security boundary, they keep a mistake from becoming an unbounded run.
@@ -481,12 +503,13 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   const plan=app.testPlan(), fixtures=await readFixtures(app.root,true);
   const metadata=new Map(plan.inventory.map(r=>[r.path,r]));
   const covered=new Set<string>(), unassertedCases: number[]=[];let passed=0,failed=0,checks=0;
-  const agent=new Agent({keepAlive:true,maxSockets:1});
+  const agent=new Agent({keepAlive:true,maxSockets:1}),assetProven=new Map<string,string>();
   // One accounting for generated cases and fixture steps, single or ordered: a step counts as
   // a check, and covers a route/method only when it passes and asserts the response. Coverage
   // uses the route the substituted path actually matched.
-  const record=(n: number,test: RequestCase,result: HitResult,source: 'generated'|'fixture'): void=>{
-    checks++;const method=test.method || 'GET';
+  let lastCase=plan.cases.length;
+  const record=(n: number,test: RequestCase,result: HitResult,source: 'generated'|'fixture'|'extension-assets'): void=>{
+    checks++;lastCase=Math.max(lastCase,n);const method=test.method || 'GET';
     let route: string|undefined;try {route=plan.resolve(test.path);} catch { /* Invalid-path negative fixture. */ }
     const meta=route===undefined?undefined:metadata.get(route);
     // Error-only fixtures cannot prove a function's normal path works.
@@ -500,8 +523,23 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
     for (const [i,test] of plan.cases.entries()) record(i+1,test,await hit(app,test,agent),'generated');
     const restart=isRestartable(app)?()=>app.restart():undefined;
     await runFixtures(fixtures,{app,agent,restart},step=>record(step.case,step.test,step.result,'fixture'),plan.cases.length+1);
+    // An extension asset mount serves only content-hashed names no fixture can know. Its own contract covers GET/HEAD
+    // once an unknown name under the prefix is shown to answer 404, with an empty HEAD body and no cookie. Numbered
+    // after the fixtures, so adding the probe never renumbers a fixture case.
+    for(const asset of plan.extensionAssets ?? [])for(const method of metadata.get(asset.route)?.methods.filter(m=>m==='GET'||m==='HEAD') ?? []){
+      const test: RequestCase={path:asset.probe,method,status:404,...(method==='HEAD'?{expectBody:''}:{})};
+      const sent=await hit(app,test,agent);
+      const result: HitResult=sent.pass && sent.setCookies?.length ? {...sent,pass:false,error:'set-cookie'} : sent;
+      record(lastCase+1,test,result,'extension-assets');
+      if(result.pass)assetProven.set(JSON.stringify([asset.route,method]),asset.extension);
+    }
   } finally {agent.destroy();}
-  const missing=plan.inventory.filter(r=>r.state==='active').flatMap(r=>r.methods.filter(m=>!covered.has(JSON.stringify([r.path,m]))).map(method=>({route:r.path,method})));
+  const extensionAssetRouteMethods: AuditReport['extensionAssetRouteMethods']=[];
+  const missing=plan.inventory.filter(r=>r.state==='active').flatMap(r=>r.methods.filter(m=>!covered.has(JSON.stringify([r.path,m]))).map(method=>({route:r.path,method}))).filter(({route,method})=>{
+    const extension=assetProven.get(JSON.stringify([route,method]));
+    if(extension!==undefined)extensionAssetRouteMethods.push({route,method,extension,coverage:'extension-assets'});
+    return extension===undefined;
+  });
   const waivedRouteMethods: AuditReport['waivedRouteMethods']=[],ignoredWaivers: AuditReport['ignoredWaivers']=[],redundantWaivers: AuditReport['redundantWaivers']=[];
   const uncovered=missing.filter(({route,method})=>{
     const reason=metadata.get(route)?.coveredElsewhere?.[method];
@@ -519,7 +557,7 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
   const notReadyReasons=[...(counts.active>0?[]:['no-active-routes']),...(countMatches?[]:['route-count-mismatch']),...(failed?['failed-checks']:[]),...(uncovered.length?['uncovered-route-methods']:[])];
-  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,waivedRouteMethods,ignoredWaivers,redundantWaivers,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
+  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,waivedRouteMethods,ignoredWaivers,redundantWaivers,extensionAssetRouteMethods,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

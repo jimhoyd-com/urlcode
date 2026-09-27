@@ -297,7 +297,11 @@ collection) reads it, without either knowing the other
 `streams: true` may return `HandlerResult.stream` instead of `body`, which the
 self-hosted server and Vercel adapter write as it is produced under operator
 stream limits and every other target refuses before serving
-([streamed responses](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#streamed-responses)). A composition reaches
+([streamed responses](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#streamed-responses)). A mount that serves
+only content-hashed files (ui's `/assets/ui/*`) is named in the instance's
+generic `assetMounts`, and `urlcode audit` covers it by that contract after
+probing an unknown name for 404
+([extension asset mounts](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#extension-asset-mounts)). A composition reaches
 the add-ons it requires only through their typed, versioned exports:
 `form-records` reads `FormsExports` and `StoreExports` with `ctx.get`, never
 their configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)).
@@ -3941,7 +3945,9 @@ that fails a condition, including a cookie added by a later response hook,
 stays no-store. The extension owns the content-hashed filename: a file under
 the prefix must change its name when its bytes change, because clients never
 revalidate it. The prefix belongs to the operator registration, not to the
-pinned project revision. While any extension is active, the runtime withholds
+pinned project revision. A mount that serves nothing but these files can say
+so for `urlcode audit` ([extension asset mounts](#extension-asset-mounts)).
+While any extension is active, the runtime withholds
 Cookie and Authorization plus every extension's declared credential headers
 from all application guest requests and mapped parameters, on every route,
 including routes that never name an extension. A project with no active
@@ -4271,6 +4277,29 @@ const registration: RuntimeExtension = {
   operator option that leaves `streams` unset for AWS. On Vercel delivery is
   `delegated`: the adapter writes each chunk, the provider's function
   streaming and duration limit decide the rest.
+
+#### Extension asset mounts
+
+A registration that declares `immutableAssets: {prefix}` (see [the cache
+exception](#wrapping-a-route-extension-middleware)) may also say which of its
+mounts serve nothing else. The activated instance returns
+`assetMounts: ['/assets/ui']`: entries of `context.mounts` whose route serves
+only content-hashed files under `<mount><prefix>/`, and 404 for any other path.
+`ui` names its one asset mount there and leaves its screen mounts out.
+
+- Activation is refused, naming the extension, when an instance declares
+  `assetMounts` without `immutableAssets`, or names anything but distinct
+  mounts of its own routes.
+- It changes nothing at request time: the caching rules above apply the same
+  with or without it.
+- `urlcode audit` counts `GET` and `HEAD` on such a mount as covered by the
+  extension's own contract, labelled `extension-assets`, after checking that an
+  unknown name under the prefix answers 404 with no cookie. A mount left out
+  keeps the ordinary fixture coverage rules
+  ([extension asset mounts](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#extension-asset-mounts)).
+
+Declare a mount only when the promise holds for every path under it: the probe
+checks one unknown name, not the extension's routing.
 
 #### Activation warnings
 

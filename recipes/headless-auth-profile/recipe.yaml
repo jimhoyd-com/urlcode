@@ -29,6 +29,7 @@ tests:
     - urlcode extensions --project .
     - PROJECT_SHA256=<reviewed revision> urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com
     - PROJECT_SHA256=<reviewed revision> urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - PROJECT_SHA256=<reviewed revision> urlcode audit --project . --expect-routes 3 --host-file /operator/host.mjs --origin https://api.example.com
 behavior:
   - GET /account/csrf answers 200 {csrf} and binds it to a flow cookie; POST /account/register answers 201 {user, csrf} with a session cookie
   - POST /account/login answers 200 {user, csrf} with a new session; wrong credentials answer 401

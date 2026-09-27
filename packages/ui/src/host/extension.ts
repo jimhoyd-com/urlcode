@@ -211,6 +211,9 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
             live.push(mine); kit = mine;
             const byPath = new Map(mine.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
             return {
+                // The one non-screen mount serves only the kit's content-hashed files and 404 for anything else, so audit
+                // covers it by this contract after probing an unknown name; screen mounts keep ordinary fixture coverage.
+                assetMounts: [mount],
                 handle(request: ExtensionRequest): HandlerResult {
                     const screen = request.mount !== null ? screens.get(request.mount) : undefined;
                     if (screen) {
