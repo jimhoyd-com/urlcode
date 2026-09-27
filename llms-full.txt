@@ -590,6 +590,43 @@ add-on installed comes from `get_addon_agent_tooling`,
 Follow [organization and readability practices](https://github.com/jimhoyd-com/urlcode/blob/main/docs/BEST-PRACTICES.md): preserve local
 conventions, use clear names, keep middleware focused and avoid needless layers.
 
+### Hosted-assisted authoring (opt-in)
+
+Local-only authoring, as described above, is the default and complete: it
+needs no network or hosted service. When the user explicitly asks for it, the
+`urlcode-authoring` skill has a hosted-assisted mode that asks
+[URLCode AI](https://urlcode.ai/) for a bounded, version-matched authoring kit
+before any YAML is written (#806):
+
+1. Run `urlcode bootstrap` first, as in local-only mode, and take the site's
+   runtime version from its `runtime` block.
+2. Call the hosted `urlcode_task_plan` tool with its one argument, `task`: the
+   requirements in plain words, at most 512 characters, led by the capability
+   names given to bootstrap. Nothing else leaves the machine: no secrets, file
+   contents, paths or project. The runtime version is not sent, because the
+   tool accepts only `task`; the agent compares it with the kit's
+   `kit.runtime.version` instead.
+3. Prefer a registered hosted MCP server ([setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp)).
+   Without one, where network use is allowed, the skill runs the bounded HTTP
+   fallback shipped beside its `SKILL.md`, `hosted-plan.mjs`: one MCP
+   `initialize`, `notifications/initialized` and `tools/call` exchange with
+   `https://api.urlcode.ai/mcp`, a 20-second deadline and a 1 MiB reply cap,
+   printing one JSON result. Exit 0 (`hostedGuidance: used`) is the only
+   outcome in which hosted guidance was used. Exit 3 is a runtime mismatch
+   with the kit withheld; 1 is unavailable (unreachable, timeout, HTTP,
+   JSON-RPC, tool error or malformed reply); 2 is refused input, with nothing
+   sent.
+4. On a mismatch the agent reports both versions and continues local-only. It
+   neither mixes references from two runtimes nor upgrades the site to match.
+5. With a matching kit the agent adapts `kit.reference`, authors from
+   `kit.capabilities` and `kit.schema`, prefers declarative features and
+   fetches only what `kit.omitted` names. Hosted `urlcode_yaml_validate` is
+   advisory: local `validate`, `test` and `audit` decide, and independent
+   acceptance tests stay separate from the kit's reference-only fixtures.
+
+The agent reports which mode ran. When the hosted service was unavailable it
+says so, and it never claims hosted guidance it did not receive.
+
 ### Generated project guide and agent skill
 
 A project created with `urlcode init` contains an `AGENTS.md` generated from the

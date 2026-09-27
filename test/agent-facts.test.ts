@@ -23,7 +23,7 @@ test('the agent-facts inventory is derived from the implementation and the prose
 test('the retired hosted AI token and hosted LLM-tool claims cannot reappear in agent-visible prose (#756)',async t=>{
  const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
  assert.equal(inventory.status,0,inventory.stderr);
- assert.deepEqual(JSON.parse(inventory.stdout).hostedAi,{endpoint:'https://urlcode.ai/mcp',authentication:'none',hostedModelTools:false,retiredCredentials:['URLCODE_AI_TOKEN']});
+ assert.deepEqual(JSON.parse(inventory.stdout).hostedAi,{endpoint:'https://api.urlcode.ai/mcp',authentication:'none',hostedModelTools:false,retiredCredentials:['URLCODE_AI_TOKEN']});
  const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const scan=async(text:string)=>{const file=join(dir,'SKILL.md');await writeFile(file,text);return spawnSync(process.execPath,[script,'--files',file],{encoding:'utf8',timeout:30000});};
  for(const [text,fact] of [

@@ -78,10 +78,11 @@ const mcpRegistration = { projectFile: mcpConfigFile, readBy: ['Claude Code'], c
 // fixture the prose is checked against instead of another prose copy. The
 // service removed bearer authentication (urlcode-ai#82) and hosted model
 // execution (urlcode-ai#84): it serves anonymous, version-pinned reference and
-// skill tooling that the caller's own model uses. Change this only when the
+// skill tooling that the caller's own model uses. The endpoint is the one its
+// own agent guide (https://urlcode.ai/llms.txt) names. Change this only when the
 // service's contract changes.
 const hostedAi = {
-  endpoint: 'https://urlcode.ai/mcp',
+  endpoint: 'https://api.urlcode.ai/mcp',
   authentication: 'none',
   hostedModelTools: false,
   retiredCredentials: ['URLCODE_AI_TOKEN'],

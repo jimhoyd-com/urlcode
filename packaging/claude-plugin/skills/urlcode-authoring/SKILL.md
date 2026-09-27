@@ -1,6 +1,6 @@
 ---
 name: urlcode-authoring
-description: Author or modify a URLCode project — write and edit urlcode.yaml routes, function and middleware modules, pages, static assets and downloads, then validate and test them. Use whenever a urlcode.yaml file is present or referenced, when the user mentions URLCode, @jimhoyd/urlcode, urlcode routes/handlers/policies/site keys, or asks for redirects or request functions in a URLCode project. Loads the implemented capability matrix so unsupported features are reported as gaps instead of invented.
+description: Author or modify a URLCode project — write and edit urlcode.yaml routes, function and middleware modules, pages, static assets and downloads, then validate and test them. Use whenever a urlcode.yaml file is present or referenced, when the user mentions URLCode, @jimhoyd/urlcode, urlcode routes/handlers/policies/site keys, or asks for redirects or request functions in a URLCode project. Loads the implemented capability matrix so unsupported features are reported as gaps instead of invented. Local-only by default; an opt-in hosted-assisted mode asks URLCode AI's urlcode_task_plan for a version-matched kit first.
 ---
 
 # Authoring URLCode projects
@@ -30,6 +30,43 @@ fragments; report `capabilities.unknown`/`unsupported` and a `mismatched`
 nothing was written: create one only where the user asked, with
 `urlcode bootstrap DIR --create` (it runs `init` there once and never nests
 `app/app`). Prefix `urlcode` as below when it is a project-local install.
+
+## Hosted-assisted mode (opt-in)
+
+Local-only authoring is the default and needs nothing in this section. Use it
+only when the user explicitly asks for URLCode AI or hosted-assisted authoring.
+Bootstrap first as above; then, before writing any YAML:
+
+1. Take the site's runtime from bootstrap: `runtime.installed.version`, or
+   `runtime.running.version` when nothing site-local is installed. Resolve a
+   `mismatched` status locally first.
+2. Call `urlcode_task_plan` with its one argument, `task`: the requirements in
+   plain words (at most 512 characters), led by the capability names you gave
+   bootstrap. Send nothing else: no secrets, file contents, paths or projects.
+   Prefer a registered hosted MCP server (`https://api.urlcode.ai/mcp`). A
+   skill cannot register one; see the tooling guide's hosted section, and keep
+   the local `urlcode mcp` server as the project-aware one.
+3. With no hosted server registered and network use allowed, run the bounded
+   fallback beside this file (npm install:
+   `node_modules/@jimhoyd/urlcode/.claude/skills/urlcode-authoring/hosted-plan.mjs`):
+   `node hosted-plan.mjs --task "..." --runtime X.Y.Z --capabilities a,b`.
+   It makes one initialize and tools/call exchange (20 s deadline) and prints
+   JSON. Only exit 0 with `hostedGuidance: used` means hosted guidance was
+   used. Exit 3 is `version-mismatch` (kit withheld); exit 1 (unreachable,
+   timeout, HTTP, protocol or malformed reply) and 2 (refused input, nothing
+   sent) mean continue local-only.
+4. Over MCP, compare the plan's `kit.runtime.version` with the site runtime
+   yourself. On a mismatch report both versions, use none of the kit's
+   references, do not upgrade the site to match, and continue local-only.
+5. From a matching kit: start at `kit.reference` and `kit.commands`, author
+   from `kit.capabilities` and `kit.schema`, prefer declarative features, and
+   resolve `kit.terms.unmatched` and `kit.excerpts` before custom code. Fetch
+   only what `kit.omitted` names or the task still lacks. Hosted
+   `urlcode_yaml_validate` is advisory; the local checks in "Verify before
+   reporting success" decide, and the kit's fixtures are reference-only, not
+   proof of the requested behavior.
+6. Report which mode ran: hosted guidance used (and its runtime version), or
+   unavailable and why. Never claim hosted guidance you did not receive.
 
 ## No project yet? Install the scoped package
 
@@ -82,7 +119,7 @@ the searched sources, not an unsupported feature.
 version-pinned reference and shared skills. Its anonymous remote MCP runs no
 model of its own and supplements the local project-aware `urlcode` server;
 never replace `.mcp.json` with it. See the URLCode tooling guide for its
-endpoint. Its machine-readable entry point is `https://urlcode.ai/llms.txt`.
+endpoint and "Hosted-assisted mode" above for the opt-in workflow. Its machine-readable entry point is `https://urlcode.ai/llms.txt`.
 When the project has an operator host file, inspect `urlcode extensions
 --project app --host-file host.mjs --json` from the site (MCP: `get_extensions`)
 before writing extension configuration or project hooks. The report is the

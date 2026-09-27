@@ -31,11 +31,14 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
    fallback when those do not: only then, locate the one matching heading (never the whole file) — a
    source checkout also has the matching page directly under `docs/`.
 4. Hosted reference and skills are optional: connect a compatible HTTP MCP
-   client to `https://urlcode.ai/mcp`, which needs no key and runs no model of
+   client to `https://api.urlcode.ai/mcp`, which needs no key and runs no model of
    its own. Keep `urlcode mcp` registered for project-aware inspection and
    validation. Start with the
    hosted [agent guide](https://urlcode.ai/llms.txt), then see
    [hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp).
+   Only when the user asks for it, the authoring skill's
+   [hosted-assisted mode](https://github.com/jimhoyd-com/urlcode/blob/main/docs/AI-AUTHORING.md#hosted-assisted-authoring-opt-in)
+   calls `urlcode_task_plan` before writing YAML, then verifies locally.
 
 | Shape | Supported? | Use |
 |---|---|---|
