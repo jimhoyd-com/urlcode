@@ -68,7 +68,9 @@ site, with the npm scripts `dev`, `start`, `validate`, `test`, `routes` and
 install` yourself after `init`.
 
 Initialization refuses an existing destination except for a directory containing
-only `package.json`, `package-lock.json`, `node_modules`, or `.git`. Existing
+only `package.json`, `package-lock.json`, `node_modules`, or `.git` (or, with
+`--adopt`, one whose files do not collide with the site; see
+[below](#adopting-a-directory-that-already-holds-files)). Existing
 package metadata is preserved: when that `package.json` already depends on
 `@jimhoyd/urlcode`, init only adds whichever of those scripts are missing (and
 replaces the placeholder `test` script `npm init` writes), because a bare
@@ -78,6 +80,39 @@ context` and MCP `get_context` print commands in that form when the project, or
 a directory above it, declares the dependency. Keep secrets out of Git and use external operator
 policy for bindings. See [readiness](READINESS.md) and
 [function security](FUNCTION-SECURITY.md).
+
+## Adopting a directory that already holds files
+
+A directory that already holds your work, such as a built `frontend/` or
+`dist/`, is refused by a plain `urlcode init`, which names `--adopt` when it
+would succeed. `urlcode init DIR --adopt` (or `urlcode bootstrap DIR --create
+--adopt`) writes the site around those files:
+
+- It works out everything init would write first: the starter files, `app/`,
+  `host.mjs`, `package.json`, `AGENTS.md`, `.mcp.json` (kept as-is if one is
+  there) and, with `--with`, npm's `node_modules` and `package-lock.json`.
+- If anything already exists at one of those paths, if a file (or any symlink)
+  sits where init needs a directory, or if anything is at `app`, it refuses,
+  lists the colliding paths relative to `DIR`, and changes nothing. When
+  adopting, an existing `package.json` is a collision: init merges into one
+  only in a directory that holds nothing but npm and Git files.
+- Otherwise it writes only new files, each with exclusive creation, so it never
+  overwrites and never writes through a symlink. It adds files to an existing
+  real directory it shares with you (for example `.github/workflows/urlcode.yml`
+  beside your own workflows) and reports the top-level entries it left alone.
+- It is refused at a directory named `app` and inside an existing URLCode
+  project. A directory that already holds a site is recognized and refused
+  with nothing written, so running init again changes nothing (`bootstrap
+  --create --adopt` reports the existing site instead).
+- An add-on's own files (`--with`) are known only once npm has installed it:
+  one that would land in an entry you already had (a `data/` directory, say)
+  refuses the add-on and undoes the whole init.
+
+Adoption does not move your files into the site. `app/` is the route project
+and YAML file references stay inside it, so build or copy the frontend's output
+into `app/` (for example `app/frontend`) and declare a `static` route for it;
+`urlcode bootstrap` lists such directories under `paths.outsideProject` with
+that step.
 
 ## Extended sites
 

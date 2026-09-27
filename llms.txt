@@ -21,6 +21,8 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
    site and route-project roots, entry and host file, pinned/installed runtime against this one, exact commands to run from
    the site root, the site/project path mapping and this runtime's schema fragments for the capabilities you name. It creates
    nothing unless you add `--create` with an explicit DIR ([local agent bootstrap](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#local-agent-bootstrap)).
+   If DIR already holds your files (a built `frontend/`, say), add `--adopt` too: the site is written around them, nothing is
+   moved or overwritten, and any collision is refused with the paths listed. Then copy or build the frontend into `app/`.
    Then run `npx --no --package @jimhoyd/urlcode urlcode context --project DIR` (MCP `get_context`). For redirect-only work run
    `npx --no --package @jimhoyd/urlcode urlcode context --project DIR --task redirects`: supported shapes with exact YAML, gaps
    with their exact validation error, a paste-ready `starter`, and this project's own redirects.
@@ -36,6 +38,9 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
    validation. Start with the
    hosted [agent guide](https://urlcode.ai/llms.txt), then see
    [hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp).
+   Only when the user asks for it, the authoring skill's
+   [hosted-assisted mode](https://github.com/jimhoyd-com/urlcode/blob/main/docs/AI-AUTHORING.md#hosted-assisted-authoring-opt-in)
+   calls `urlcode_task_plan` before writing YAML, then verifies locally.
 
 | Shape | Supported? | Use |
 |---|---|---|

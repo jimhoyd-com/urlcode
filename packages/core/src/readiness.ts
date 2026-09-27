@@ -10,6 +10,7 @@ import { assert, ConfigError } from './errors.ts';
 import type { ErrorDetails } from './errors.ts';
 import { compileTrustedProxies } from './client-address.ts';
 import { isRecord } from './object-guards.ts';
+import { CookieJar, cookieNames, jarScope } from './cookie-jar.ts';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.ts';
 import { runCompliance } from './compliance.ts';
 import { handlerNames as handlers } from './types.ts';
@@ -34,8 +35,11 @@ export interface RequestCase {
   /** Only inside `steps`: values kept from this step's response for later steps' `{{name}}` references. */
   capture?: Record<string, CaptureSpec> | undefined;
 }
-/** Where a captured value comes from: a dotted path into a JSON response body, or one response header. */
-type CaptureSpec = { json: string } | { header: string };
+/**
+ * Where a captured value comes from: a dotted path into a JSON response body, one single-valued response header, or
+ * the value the fixture's cookie jar holds for a cookie name after this step's response.
+ */
+type CaptureSpec = { json: string } | { header: string } | { cookie: string };
 /** A step that closes and restarts the runtime on the same project and data directory. */
 interface RestartStep { restart: true }
 /** An ordered fixture: requests that share captured values, optionally with restarts between them. */
@@ -45,8 +49,11 @@ export const isStepsFixture = (fixture: Fixture): fixture is StepsFixture => 'st
 const isRestartable = (app: AuditableApp): app is RestartableApp => typeof (app as Partial<RestartableApp>).restart === 'function';
 const isRestart = (step: RequestCase | RestartStep): step is RestartStep => 'restart' in step;
 export interface ProjectPlan { inventory: RouteInventory[]; cases: RequestCase[]; resolve: (path: string) => string | undefined }
-/** `captured` holds values from a step's `capture`; callers use it for substitution only and never print it. */
-interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string>; mismatches?: Mismatch[] }
+/**
+ * `captured` holds values from a step's `capture` and `setCookies` the response's Set-Cookie lines; callers use them
+ * for substitution and the cookie jar only, and never print them.
+ */
+interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string>; setCookies?: string[]; mismatches?: Mismatch[] }
 /**
  * One failed assertion of a fixture: what it expected and what the response had, each cut to MAX_SHOWN characters
  * (from just before `firstDifference`, the first differing character index, when that is further in).
@@ -68,13 +75,15 @@ function mismatches(test: RequestCase, status: number, headers: IncomingMessage[
   return found;
 }
 /**
- * Puts `{{name}}` back wherever a value captured earlier in the fixture appears, then shortens each string, so a
- * failure report never prints a captured value, even in part.
+ * Puts `{{name}}` back wherever a value captured earlier in the fixture appears, and `<cookie NAME>` wherever a cookie
+ * value a response set appears, then shortens each string, so a failure report never prints either, even in part.
  */
-function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: Map<string, string>): R {
+function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: ReadonlyMap<string, string>, cookies: ReadonlyMap<string, string> = new Map()): R {
   const list = result.mismatches;
   if (!list) return result;
-  const redact = (text: string): string => { for (const [name, captured] of values) text = text.split(captured).join(`{{${name}}}`); return text; };
+  // Longest first, so a value that contains another is replaced whole.
+  const secrets = [...[...values].map(([name, value]) => [value, `{{${name}}}`]), ...[...cookies].map(([value, name]) => [value, `<cookie ${name}>`])].sort((a, b) => b[0]!.length - a[0]!.length);
+  const redact = (text: string): string => { for (const [secret, placeholder] of secrets) text = text.split(secret!).join(placeholder); return text; };
   return { ...result, mismatches: list.map(item => {
     if (typeof item.expected !== 'string' || typeof item.actual !== 'string') return { ...item, expected: typeof item.expected === 'string' ? shown(redact(item.expected)) : item.expected, actual: typeof item.actual === 'string' ? shown(redact(item.actual)) : item.actual };
     const expected = redact(item.expected), actual = redact(item.actual);
@@ -88,7 +97,11 @@ function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: Map
 }
 export interface BenchmarkTarget { protocol: string; hostname: string; port: number | string; /** The Host header value: the host, plus the port when it is not the scheme's default. */ authority: string }
 /** A started server as the audit and benchmark see it. structural: the real type is startServer's result in src/server.ts. */
-export interface AuditableApp { address: AddressInfo; root: string; testPlan(): ProjectPlan & { policies?: Record<string, PolicyInventory> } }
+export interface AuditableApp {
+  address: AddressInfo; root: string; testPlan(): ProjectPlan & { policies?: Record<string, PolicyInventory> };
+  /** The site origin the runtime serves (its `--origin`, else its own address): the origin fixture cookie jars are clients of. */
+  readonly origin?: string | undefined;
+}
 /** An app that can also close and restart itself on the same project and data directory (fixture `restart` steps). */
 export interface RestartableApp extends AuditableApp { restart(): Promise<void> }
 export type { ComplianceOptions, ComplianceReport } from './compliance.ts';
@@ -193,7 +206,7 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
 // Bounds for ordered fixtures. A fixture file is data a project author (or an agent) wrote;
 // none of these limits is a security boundary, they keep a mistake from becoming an unbounded run.
 const MAX_STEPS = 50, MAX_RESTARTS = 5, MAX_TOTAL_RESTARTS = 20, MAX_CAPTURES = 16, MAX_CAPTURE_BYTES = 4096, MAX_CAPTURE_BODY = 1024 * 1024;
-const nameShape = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/, pathShape = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/, control = /[\x00-\x1f\x7f]/;
+const nameShape = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/, cookieShape = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,128}$/, pathShape = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/, control = /[\x00-\x1f\x7f]/;
 const templates = (text: string): string[] => [...text.matchAll(/\{\{([A-Za-z_][A-Za-z0-9_]{0,31})\}\}/g)].map(m => m[1] ?? '');
 const templated = (test: RequestCase): string[] => [test.path, test.body, test.expectBody, ...Object.values(test.headers ?? {}), ...Object.values(test.expectHeaders ?? {})].filter((v): v is string => v !== undefined);
 function checkCase(test: unknown, inSteps: boolean): asserts test is RequestCase {
@@ -210,9 +223,10 @@ function checkCase(test: unknown, inSteps: boolean): asserts test is RequestCase
     assert(isRecord(test.capture) && Object.keys(test.capture).length <= MAX_CAPTURES, `capture must be a mapping of at most ${MAX_CAPTURES} names`);
     for (const [name,spec] of Object.entries(test.capture)) {
       assert(nameShape.test(name), 'Capture names use letters, digits and underscores (at most 32, not starting with a digit)');
-      assert(isRecord(spec) && Object.keys(spec).length === 1, 'A capture is exactly one of {json: "a.b.0.c"} or {header: "name"}');
+      assert(isRecord(spec) && Object.keys(spec).length === 1, 'A capture is exactly one of {json: "a.b.0.c"}, {header: "name"} or {cookie: "name"}');
       if (typeof spec.json === 'string') assert(spec.json.length <= 256 && pathShape.test(spec.json), 'Capture json path is dotted keys and array indexes, such as items.0.id');
-      else assert(typeof spec.header === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(spec.header), 'A capture is exactly one of {json: "a.b.0.c"} or {header: "name"}');
+      else if (typeof spec.cookie === 'string') assert(cookieShape.test(spec.cookie), 'A cookie capture names one cookie, such as {cookie: "session"}');
+      else assert(typeof spec.header === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(spec.header) && spec.header.toLowerCase() !== 'set-cookie', 'A capture is exactly one of {json: "a.b.0.c"}, {header: "name"} (a single-valued header, not set-cookie) or {cookie: "name"}');
     }
   }
 }
@@ -335,32 +349,66 @@ function resolveStep(test: RequestCase, values: Map<string,string>): RequestCase
   if (path === undefined || !path.startsWith('/') || path.startsWith('//') || /[\r\n]/.test(path) || headers === null || expectHeaders === null || (test.body !== undefined && body === undefined) || (test.expectBody !== undefined && expectBody === undefined)) return undefined;
   return { ...test, path, headers, body, expectHeaders, expectBody };
 }
-/** Runs every fixture in file order. A step after a failed step in the same fixture is reported failed with error `skipped` and never sent, so a broken chain cannot pass. */
+/**
+ * The origin a fixture's cookie jar is a client of: the deployment under verification, or the site origin the local
+ * runtime serves (its `--origin`, else its own loopback address).
+ */
+const fixtureScope = (host: FixtureHost) => host.target ? jarScope(`${host.target.protocol}//${host.target.authority}`) : jarScope(host.app.origin ?? `http://127.0.0.1:${host.app.address.port}`);
+/** The Set-Cookie values of a single-request fixture's response, which no jar keeps, still never print. */
+function responseCookies(lines: readonly string[] = []): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const line of lines) { const pair = line.split(';', 1)[0] ?? '', at = pair.indexOf('='), value = at < 0 ? '' : pair.slice(at + 1).trim(); if (value) values.set(value, pair.slice(0, at).trim()); }
+  return values;
+}
+/**
+ * Runs every fixture in file order. A step after a failed step in the same fixture is reported failed with error
+ * `skipped` and never sent, so a broken chain cannot pass. Each `steps` fixture has its own cookie jar, created empty
+ * when the fixture starts and dropped when it ends: its steps send the cookies earlier steps' responses set, and no
+ * other fixture or run ever sees them. A restart keeps the jar (the client outlives a server restart).
+ */
 export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit: (step: FixtureStep) => void | Promise<void>, firstCase = 1): Promise<void> {
   let n = firstCase;
   for (const [f,fixture] of fixtures.entries()) {
-    if (!isStepsFixture(fixture)) { await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:presented(await hit(host.app,fixture,host.agent,host.target),new Map())}); continue; }
+    if (!isStepsFixture(fixture)) {
+      const {setCookies, ...result} = await hit(host.app,fixture,host.agent,host.target);
+      await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:presented(result,new Map(),responseCookies(setCookies))}); continue;
+    }
     if (fixture.steps.some(isRestart) && host.restart === undefined) {
       const reason = 'contains a restart step, which needs a runtime this host can close and restart';
       assert(host.skipped !== undefined, `Fixture ${f+1} ${reason}`);
       host.skipped(f+1,reason); continue;
     }
-    const values = new Map<string,string>(); let broken = false;
+    const values = new Map<string,string>(), jar = new CookieJar(fixtureScope(host)); let broken = false;
     for (const step of fixture.steps) {
       if (isRestart(step)) { if (!broken) { try { await host.restart?.(); } catch { broken = true; } } continue; }
       const resolved = broken ? undefined : resolveStep(step,values);
       let result: HitResult = {pass:false,status:0,durationMs:0,error:'skipped'};
       if (resolved) {
-        const sent = await hit(host.app,resolved,host.agent,host.target);
-        if (sent.pass) for (const [name,value] of Object.entries(sent.captured ?? {})) values.set(name,value);
-        const {captured: _kept, ...visible} = sent; result = presented(visible,values);
+        // An explicit Cookie header is sent as written; the jar adds only the cookies it does not name.
+        const explicit = Object.entries(resolved.headers ?? {}).find(([name]) => name.toLowerCase() === 'cookie')?.[1];
+        const stored = jar.send(resolved.path, cookieNames(explicit ?? '')).map(({name,value}) => `${name}=${value}`);
+        const sent = await hit(host.app,resolved,host.agent,host.target,stored.length ? [...(explicit ? [explicit] : []),...stored].join('; ') : undefined);
+        jar.store(sent.setCookies ?? [],resolved.path);
+        const {captured: kept, setCookies: _stored, ...response} = sent;
+        let captured = kept, visible: HitResult = response;
+        // A cookie capture reads the jar after this response, as the next request to this path would send it.
+        for (const [name,spec] of Object.entries(resolved.capture ?? {})) {
+          if (!visible.pass || !('cookie' in spec)) continue;
+          const value = jar.send(resolved.path).find(cookie => cookie.name === spec.cookie)?.value;
+          if (value === undefined || !acceptable(value)) { visible = {...visible,pass:false,error:'capture'}; captured = undefined; break; }
+          (captured ??= {})[name] = value;
+        }
+        if (visible.pass) for (const [name,value] of Object.entries(captured ?? {})) values.set(name,value);
+        result = presented(visible,values,jar.values());
       } else if (!broken) result = {pass:false,status:0,durationMs:0,error:'unresolved'};
       if (!result.pass) broken = true;
       await visit({case:n++,fixture:f+1,test:resolved ?? step,original:step,result});
     }
   }
 }
-function extract(spec: CaptureSpec, headers: IncomingMessage['headers'], body: Buffer): string | undefined {
+const acceptable = (text: string): boolean => text.length > 0 && Buffer.byteLength(text) <= MAX_CAPTURE_BYTES && !control.test(text);
+/** A json or header capture; cookie captures read the jar in runFixtures. */
+function extract(spec: { json: string } | { header: string }, headers: IncomingMessage['headers'], body: Buffer): string | undefined {
   let value: unknown;
   if ('header' in spec) value = headers[spec.header.toLowerCase()];
   else {
@@ -373,7 +421,7 @@ function extract(spec: CaptureSpec, headers: IncomingMessage['headers'], body: B
     }
   }
   const text = typeof value === 'string' ? value : (typeof value === 'number' && Number.isFinite(value)) || typeof value === 'boolean' ? String(value) : undefined;
-  return text !== undefined && text.length > 0 && Buffer.byteLength(text) <= MAX_CAPTURE_BYTES && !control.test(text) ? text : undefined;
+  return text !== undefined && acceptable(text) ? text : undefined;
 }
 export function benchmarkTarget(value: string): BenchmarkTarget {
   let url: URL;
@@ -382,29 +430,31 @@ export function benchmarkTarget(value: string): BenchmarkTarget {
     'Target must be a bare HTTP(S) origin without path or credentials');
   return {protocol:url.protocol,hostname:url.hostname,port:url.port || (url.protocol==='https:'?443:80),authority:url.host};
 }
-export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: BenchmarkTarget): Promise<HitResult> {
+/** `cookie`, when given, replaces the case's own Cookie header: the fixture runner's merge of it with the jar. */
+export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: BenchmarkTarget,cookie?: string): Promise<HitResult> {
   return new Promise(resolve => {
     const began=performance.now();
     const fail=()=>resolve({pass:false,status:0,durationMs:performance.now()-began,error:'transport'});
     let req: ClientRequest|undefined;
     try {
       const send=target?.protocol==='https:' ? secureRequest : request;
+      const own=cookie===undefined ? test.headers || {} : {...Object.fromEntries(Object.entries(test.headers || {}).filter(([name])=>name.toLowerCase()!=='cookie')),cookie};
       const options: RequestOptions=target
-        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.authority,'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000}
-        : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:{'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000};
+        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.authority,'user-agent':probeAgent,...own},agent,timeout:10000}
+        : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:{'user-agent':probeAgent,...own},agent,timeout:10000};
       req=send(options,(res: IncomingMessage)=>{
         let size=0;const chunks: Buffer[]=[];
         res.on('data',(chunk: Buffer)=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined || (test.capture && size<=MAX_CAPTURE_BODY))chunks.push(chunk);});
         res.on('error',fail);
         res.on('end',()=>{
-          const status=res.statusCode ?? 0,durationMs=performance.now()-began,body=Buffer.concat(chunks);
+          const status=res.statusCode ?? 0,durationMs=performance.now()-began,body=Buffer.concat(chunks),setCookies=res.headers['set-cookie'] ?? [];
           let pass=status===test.status && Object.entries(test.expectHeaders || {}).every(([k,v])=>res.headers[k.toLowerCase()]===v) && (test.expectBody===undefined || body.toString()===test.expectBody);
-          if(!pass)return resolve({status,durationMs,pass,mismatches:mismatches(test,status,res.headers,body)});
-          if(!test.capture)return resolve({status,durationMs,pass});
+          if(!pass)return resolve({status,durationMs,pass,setCookies,mismatches:mismatches(test,status,res.headers,body)});
+          if(!test.capture)return resolve({status,durationMs,pass,setCookies});
           // Values are kept only for later steps; a missing one fails the step without saying what the response held.
           const captured: Record<string,string>={};
-          for(const [name,spec] of Object.entries(test.capture)){const value=extract(spec,res.headers,body);if(value===undefined){pass=false;break;}captured[name]=value;}
-          resolve(pass?{status,durationMs,pass,captured}:{status,durationMs,pass,error:'capture'});
+          for(const [name,spec] of Object.entries(test.capture)){if('cookie' in spec)continue;const value=extract(spec,res.headers,body);if(value===undefined){pass=false;break;}captured[name]=value;}
+          resolve(pass?{status,durationMs,pass,captured,setCookies}:{status,durationMs,pass,setCookies,error:'capture'});
         });
       });
       req.on('error',fail);req.on('timeout',()=>req?.destroy(new Error('Timeout')));req.end(test.body);

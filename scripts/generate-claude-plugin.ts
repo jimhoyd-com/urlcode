@@ -4,8 +4,9 @@
 // directly. The plugin copy exists only so the same revision can also be
 // installed from a marketplace, so a stale copy is a correctness bug and fails
 // npm run check.
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const check = process.argv.includes('--check');
 const root = new URL('../', import.meta.url);
@@ -41,6 +42,15 @@ const description = 'Authoring and operating URLCode projects: the implemented Y
 const files: Record<string, string> = {};
 for (const [name, skill] of skillNames.map((name, i) => [name, skills[i]!] as const))
   files[`packaging/claude-plugin/skills/${name}/SKILL.md`] = skill;
+// A skill's supporting files (the authoring skill's hosted-plan.mjs fallback,
+// #806) ship beside its SKILL.md, so the marketplace copy carries them too.
+for (const name of skillNames) {
+  const dir = fileURLToPath(new URL(`.claude/skills/${name}/`, root));
+  for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+    const path = relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/');
+    if (entry.isFile() && path !== 'SKILL.md') files[`packaging/claude-plugin/skills/${name}/${path}`] = await readFile(join(dir, path), 'utf8');
+  }
+}
 files['packaging/claude-plugin/.claude-plugin/plugin.json'] = `${JSON.stringify({
   name: 'urlcode',
   description,

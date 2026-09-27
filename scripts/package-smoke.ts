@@ -39,7 +39,7 @@ try {
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   assert.ok(pack.files.some(f => f.path === 'starters/default/.github/workflows/urlcode.yml'),'The starter CI template must ship with the package');
-  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','.claude/skills/urlcode-authoring/SKILL.md','.claude/skills/urlcode-operations/SKILL.md','starters/default/AGENTS.md','starters/default/.mcp.json']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
+  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','.claude/skills/urlcode-authoring/SKILL.md','.claude/skills/urlcode-authoring/hosted-plan.mjs','.claude/skills/urlcode-operations/SKILL.md','starters/default/AGENTS.md','starters/default/.mcp.json']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
   command(npm,['install','--omit=dev','--omit=optional','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);

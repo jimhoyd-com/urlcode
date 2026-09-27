@@ -59,7 +59,7 @@
     "capture": {
       "type": "object",
       "maxProperties": 16,
-      "description": "Values kept from this step's response for later steps' {{name}} references: {\"json\": \"items.0.id\"} or {\"header\": \"location\"}.",
+      "description": "Values kept from this step's response for later steps' {{name}} references: {\"json\": \"items.0.id\"}, {\"header\": \"location\"} (one single-valued header, never set-cookie) or {\"cookie\": \"session\"} (the value the fixture's cookie jar holds for that cookie after this response).",
       "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,31}$" },
       "additionalProperties": {
         "type": "object",
@@ -67,7 +67,8 @@
         "maxProperties": 1,
         "properties": {
           "json": { "type": "string", "maxLength": 256 },
-          "header": { "type": "string", "maxLength": 64 }
+          "header": { "type": "string", "maxLength": 64 },
+          "cookie": { "type": "string", "maxLength": 128 }
         },
         "additionalProperties": false
       }
@@ -78,7 +79,7 @@
       "properties": {
         "path": { "$ref": "#/$defs/path" },
         "method": { "$ref": "#/$defs/method" },
-        "headers": { "$ref": "#/$defs/headers", "description": "Request headers." },
+        "headers": { "$ref": "#/$defs/headers", "description": "Request headers. The fixture's cookie jar adds the cookies earlier steps' responses set; an explicit cookie header is sent as written and the jar adds only the cookies it does not name." },
         "body": { "$ref": "#/$defs/body" },
         "status": { "$ref": "#/$defs/status" },
         "expectHeaders": { "$ref": "#/$defs/expectHeaders" },
