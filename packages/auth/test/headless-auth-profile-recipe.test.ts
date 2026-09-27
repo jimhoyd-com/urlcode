@@ -6,10 +6,11 @@ import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { addRecipe, runProjectTests, startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
@@ -165,9 +166,59 @@ test('#810: register, sign in, read and update both profiles, sign out, and neve
     assert.deepEqual((await ada.call('GET', '/api/profile')).json, { items: [], total: 0 });
 });
 
-test('#810: the recipe\'s bundled fixtures pass against the composed host', async t => {
+test('#810/#811: the recipe\'s bundled fixtures run the signed-in lifecycle and run again against the same database', async t => {
     const { project, extensions } = await site(t);
-    const tested = await runProjectTests(project, { extensions, origin });
-    assert.ok(tested.total >= 10, 'every fixture ran');
-    assert.equal(tested.failed, 0, JSON.stringify(tested));
+    const fixtures = JSON.parse(await readFile(join(project, 'tests/requests.json'), 'utf8')) as { steps?: { capture?: Record<string, { cookie?: string }> }[] }[];
+    assert.ok(fixtures.some(fixture => fixture.steps?.some(step => Object.values(step.capture ?? {}).some(spec => spec.cookie === '__Host-urlcode-session'))), 'the lifecycle keeps the session cookie to replay it after sign-out');
+    const events: object[] = [];
+    const tested = await runProjectTests(project, { extensions, origin, log: event => events.push(event) });
+    assert.ok(tested.total >= 50, 'every fixture and step ran');
+    assert.equal(tested.failed, 0, JSON.stringify(events));
+    // The lifecycle signs in after registering and deletes the record it made, so a second run on the same operator database passes too.
+    assert.deepEqual(await runProjectTests(project, { extensions, origin }), tested);
+});
+
+test('#811: urlcode test passes the lifecycle through --host-file; audit covers every auth and store method, not the hashed ui assets', async t => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-headless-cli-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const project = join(root, 'app');
+    await addRecipe('headless-auth-profile', project);
+    // The operator's host.mjs, as the README lists it, with the service and keys it would read from data/ made here.
+    // The keys stay the same across the two commands, as an operator's do: the second run reopens the same database.
+    const href = (specifier: string) => JSON.stringify(import.meta.resolve(specifier));
+    const key = () => JSON.stringify(randomBytes(32).toString('base64'));
+    await writeFile(join(root, 'host.mjs'), [
+        `import { composeHost } from ${href('@jimhoyd/urlcode/host')};`,
+        `import audit from ${href('@jimhoyd/urlcode-audit/extension')};`,
+        `import mail from ${href('@jimhoyd/urlcode-mail/extension')};`,
+        `import ui from ${href('@jimhoyd/urlcode-ui/extension')};`,
+        `import store from ${href('@jimhoyd/urlcode-store/extension')};`,
+        `import auth from ${JSON.stringify(new URL('../src/extension.ts', import.meta.url).href)};`,
+        `import { createAuthService } from ${JSON.stringify(new URL('../src/index.ts', import.meta.url).href)};`,
+        `const data = new URL('./data/', import.meta.url).pathname;`,
+        `const service = await createAuthService({ database: data + 'auth.sqlite', encryptionKey: Buffer.from(${key()}, 'base64'), roles: { member: [], admin: ['*'] }, defaultRole: 'member', registrationMode: 'open' });`,
+        `const host = await composeHost(import.meta.url, [audit({ database: data + 'audit.sqlite' }), mail({ transport: null }), ui(), auth({ service, csrfKey: Buffer.from(${key()}, 'base64') }), store({ directory: data + 'store' })]);`,
+        `export default { ...host, async close() { try { await host.close?.(); } finally { service.close(); } } };`,
+    ].join('\n') + '\n');
+    await mkdir(join(root, 'data'));
+    const cli = fileURLToPath(new URL('./cli.js', import.meta.resolve('@jimhoyd/urlcode')));
+    const env = { ...process.env, PROJECT_SHA256: await inspectExtensionRevision(project) };
+    const run = (command: string) => new Promise<{ code: number | null; stdout: string; stderr: string }>(done => {
+        execFile(process.execPath, [cli, command, '--project', project, '--host-file', join(root, 'host.mjs'), '--origin', origin], { encoding: 'utf8', timeout: 120000, env }, (error, stdout, stderr) => done({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }));
+    });
+    const tested = await run('test');
+    assert.equal(tested.code, 0, tested.stdout + tested.stderr);
+    const result = JSON.parse(tested.stdout.trim().split('\n').at(-1)!) as { total: number; failed: number };
+    assert.ok(result.total >= 50); assert.equal(result.failed, 0);
+    // The jar made every /account and /api/profile method provable; the ui mount serves only content-hashed file names,
+    // which a fixture cannot name ahead of time, so audit still reports those two pairs and the recipe does not list audit.
+    const audited = await run('audit');
+    assert.ok(audited.stdout.trim(), audited.stderr);
+    const report = JSON.parse(audited.stdout.trim().split('\n').at(-1)!) as { ready: boolean; failed: number; uncovered: { route: string; method: string }[]; unassertedCases: number[] };
+    assert.equal(report.failed, 0, audited.stdout);
+    assert.deepEqual(report.unassertedCases, []);
+    assert.deepEqual(report.uncovered, [{ route: '/assets/ui/*', method: 'GET' }, { route: '/assets/ui/*', method: 'HEAD' }]);
+    assert.equal(report.ready, false);
+    // Nothing the jar held is printed: no session cookie value, in either command's output.
+    assert.doesNotMatch(tested.stdout + tested.stderr + audited.stdout + audited.stderr, /__Host-urlcode-session=/);
 });

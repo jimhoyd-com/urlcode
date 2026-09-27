@@ -202,6 +202,17 @@ routes:
 
 Hashed assets are served under `/assets/ui/static/` and declared as `immutableAssets`, so the runtime answers them with `Cache-Control: public, max-age=31536000, immutable`.
 
+The `ui` extension needs exactly one such asset mount, besides any screen
+mounts; with none it refuses to activate (`ui extension needs exactly one route
+mount`), because every page it renders links the stylesheet and scripts under
+it. So a site that only serves JSON still declares the route once it installs an
+extension that requires `ui`, such as auth, admin or forms: those extensions
+render their own pages to any client that does not ask for JSON
+([#812](https://github.com/jimhoyd-com/urlcode/issues/812),
+[`recipes/headless-auth-profile`](../../recipes/headless-auth-profile/README.md#why-a-json-only-site-mounts-ui)).
+The mount is harmless: it answers `GET` and `HEAD` for the kit's hashed files
+only, `404` for any other path, and sets no cookie and keeps no state.
+
 ```js
 // host.mjs (trusted operator code, outside app/)
 import { composeHost } from '@jimhoyd/urlcode/host';
