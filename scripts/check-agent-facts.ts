@@ -56,7 +56,7 @@ for (const [pkg, file] of [['auth', 'packages/auth/src/auth-ui.ts'], ['admin', '
 // Scaffold ordering: extensions are added in the order their declared requirements give, never the order a user
 // names them in (init --with and extensions add share addon-install.ts).
 const addonInstall = await read('packages/core/src/addon-install.ts');
-const withIsUnordered = /withRequirements\(manifest, requested\)/.test(addonInstall) && /orderByRequires\(/.test(addonInstall);
+const withIsUnordered = /withRequirements\(manifest, (?:requested|names)\)/.test(addonInstall) && /orderByRequires\(/.test(addonInstall);
 if (!withIsUnordered) sourceProblems.push('packages/core/src/addon-install.ts: requirement ordering not found; update this check with the new ordering semantics');
 
 // Store short links: the store's machine-readable authoring contract.

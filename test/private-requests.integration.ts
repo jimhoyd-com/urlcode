@@ -79,6 +79,13 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   // Setup is safe to re-run and keeps the same accounts.
   assert.deepEqual((JSON.parse(npm(t, site, ['run', '-s', 'setup']).stdout.trim().split('\n').at(-1)!) as { users: unknown }).users, users);
 
+  // The adapter is an independent package (#844): found by its descriptor, checked statically without host code.
+  const listed = urlcode(t, site, ['extensions', 'list', '--strict', '--json']);
+  assert.equal(listed.status, 0, listed.stdout + listed.stderr);
+  assert.deepEqual((JSON.parse(listed.stdout) as { addons: { name: string; package: string; independent?: boolean }[] }).addons.map(item => [item.name, item.package, item.independent]), [['better-auth', '@example/urlcode-better-auth', true]]);
+  const staticCheck = urlcode(t, site, ['validate', '--project', 'app']);
+  assert.equal(staticCheck.status, 0, staticCheck.stdout + staticCheck.stderr);
+
   const inventory = JSON.parse(npm(t, site, ['run', '-s', 'inventory']).stdout) as { provider: Record<string, { version: string; integrity: string }>; plugins: string[]; endpoints: { path: string | null; served: boolean }[]; servedMatchesOperatorList: boolean };
   assert.equal(inventory.provider['better-auth']?.version, '1.7.6');
   assert.match(inventory.provider['better-auth']!.integrity, /^sha512-/);

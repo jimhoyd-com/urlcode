@@ -27,8 +27,9 @@ interface CoreBoundaryProblem {
 // reviewing that the new loader cannot reach packages/<extension>.
 const runtimeModuleLoaders = new Set([
   'packages/core/src/compliance.ts: pathToFileURL(path).href',
-  // `extensions add|remove` resolve the site's installed add-on (never this repository's packages/) to call its scaffold.
-  'packages/core/src/addon-install.ts: `${addonPackage(name)}/extension`',
+  // `extensions add|remove` resolve the site's installed add-on (never this repository's packages/) to call its scaffold:
+  // a released one by its catalog package, an independent one by the package its descriptor was found in (#844).
+  'packages/core/src/addon-install.ts: `${pkg}/extension`',
   'packages/core/src/addon-install.ts: pathToFileURL(path).href',
   "packages/core/src/extensions.ts: pathToFileURL(modulePath).href+'?urlcode-extension-hook-epoch='+epoch",
   'packages/core/src/operator-host.ts: pathToFileURL(path).href',

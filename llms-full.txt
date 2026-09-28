@@ -5181,6 +5181,7 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 | --- | --- |
 | `urlcode extensions available` / `urlcode artifacts available` | Lists the add-ons of that kind the running core pins, with their requirements |
 | `urlcode extensions add <name>… [--example]` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires; for extensions, the capability only unless `--example` also writes each one's demo |
+| `urlcode extensions add <package spec or tarball>…` | Adds an [independent extension package](#independent-extension-packages) the operator chose, outside core's catalog |
 | `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
 | `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins |
 
@@ -5289,6 +5290,37 @@ not migrated: if an extension's schema changed, validation names the field.
 Add-on command-line tools are ordinary npm bins once installed in the site, for
 example `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`
 or `npx urlcode-ui doctor --project app`.
+
+#### Independent extension packages
+
+An extension does not have to be released with core (#844). Any npm package
+that carries a valid `urlcode.json` extension descriptor at its root and a
+`./extension` entry default-exporting `defineExtension(...)` can be added by
+its npm spec or a local tarball:
+
+```sh
+urlcode extensions add ./example-urlcode-greeting-2.3.4.tgz
+urlcode extensions add @example/urlcode-greeting@2.3.4
+```
+
+npm installs it with `--ignore-scripts --save-exact` and records its sha512
+integrity in `package-lock.json`; that lock entry, not core's catalog, is its
+pin. Core then reads the descriptor, never the package name, to learn which
+extension it provides, and wires it exactly like a released one: the
+`extensions.<name>` block, its scaffold's routes and files, and one
+`import <name> from '<package>/extension'` line in `host.mjs`. `list`
+reports it as independent (`locked by npm integrity`, or `linked, not
+locked` for a `file:` directory), static `validate` checks its declaration
+against its descriptor's schemas, and `remove` takes it out by name.
+
+`add` refuses a package with no valid extension descriptor, a descriptor of
+kind `artifact`, a name that a first-party add-on of this core already has,
+a `@jimhoyd/urlcode*` package (those install from core's pins), two installed
+packages providing the same name, and an independent extension whose
+`requires` are not installed. Artifacts stay catalog-only. Installing a
+package runs no lifecycle script, but its `./extension` entry is trusted
+operator code once `host.mjs` imports it: review it like any other code you
+deploy.
 
 #### Nesting
 

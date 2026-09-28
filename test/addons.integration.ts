@@ -15,6 +15,10 @@ import { packAddons } from '../scripts/pack-addons.ts';
 import type { PackedAddons } from '../scripts/pack-addons.ts';
 
 const cli = join(repositoryRoot, 'dist', 'cli.js');
+/** npm's own CLI under this Node when a script started the test, so no shell is needed on Windows. */
+const npmRun = (args: string[], cwd: string) => process.env.npm_execpath
+  ? spawnSync(process.execPath, [process.env.npm_execpath, ...args], { cwd, encoding: 'utf8' })
+  : spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, { cwd, encoding: 'utf8', shell: process.platform === 'win32' });
 
 let packed: Promise<PackedAddons> | undefined;
 /** Packs once per run: core and every add-on, with an addons.json pinning the add-on tarballs by sha512. */
@@ -272,4 +276,31 @@ test('the order extensions are named in never changes the site', { timeout: 6000
   assert.equal(first.status, 0, first.stderr); assert.equal(second.status, 0, second.stderr);
   assert.equal(await readFile(join(one.dir, 'host.mjs'), 'utf8'), await readFile(join(two.dir, 'host.mjs'), 'utf8'));
   assert.equal(await readFile(join(one.dir, 'app', 'urlcode.yaml'), 'utf8'), await readFile(join(two.dir, 'app', 'urlcode.yaml'), 'utf8'));
+});
+
+// #844: an extension package outside @jimhoyd, packed to a local tarball, installs through the same command as a
+// released one. npm locks its sha512 integrity; core finds it by its urlcode.json descriptor, not its name.
+test('an independent extension package installs from a pinned local tarball, validates, serves and removes', { timeout: 900000 }, async t => {
+  const { root, dir } = await site(t);
+  const packed = npmRun(['pack', '--silent', '--pack-destination', root, join(repositoryRoot, 'test', 'fixtures', 'addons', 'greeting')], root);
+  assert.equal(packed.status, 0, packed.stderr);
+  const tarball = join(root, packed.stdout.trim().split('\n').at(-1)!);
+  const added = await urlcode(t, dir, ['extensions', 'add', tarball]);
+  assert.equal(added.status, 0, added.stdout + added.stderr);
+  const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string };
+  assert.deepEqual(result.added, ['greeting']);
+  const lock = JSON.parse(await readFile(join(dir, 'package-lock.json'), 'utf8')) as { packages: Record<string, { integrity?: string; version?: string }> };
+  assert.match(lock.packages['node_modules/@example/urlcode-greeting']?.integrity ?? '', /^sha512-/);
+  const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
+  assert.equal(listed.status, 0, listed.stdout + listed.stderr);
+  const report = JSON.parse(listed.stdout) as { addons: { name: string; package: string; independent?: boolean; pinned: boolean; version: string }[] };
+  assert.deepEqual(report.addons.map(item => [item.name, item.package, item.independent, item.pinned, item.version]), [['greeting', '@example/urlcode-greeting', true, true, '2.3.4']]);
+  assert.equal((await urlcode(t, dir, ['validate', '--project', 'app'])).status, 0);
+  const env = { PROJECT_SHA256: result.projectSha256 };
+  // The operator host imports the package's own ./extension entry and activates it.
+  const activated = await urlcode(t, dir, ['validate', '--local', '--project', 'app', '--host-file', 'host.mjs', '--origin', 'https://site.example'], env);
+  assert.equal(activated.status, 0, activated.stdout + activated.stderr);
+  const removed = await urlcode(t, dir, ['extensions', 'remove', 'greeting']);
+  assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+  assert.doesNotMatch(await readFile(join(dir, 'host.mjs'), 'utf8'), /urlcode-greeting/);
 });

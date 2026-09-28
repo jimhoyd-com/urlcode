@@ -158,11 +158,11 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'extensions', group:'Extensions', text:
 `  urlcode extensions available [--json]
-  urlcode extensions add <name> [<name>…] [--example] [--ack extension:id] [--site directory]
+  urlcode extensions add <name|package spec|tarball> […] [--example] [--ack extension:id] [--site directory]
   urlcode extensions remove <name> [--site directory]
   urlcode extensions list [--strict] [--json] [--site directory]
   urlcode extensions [--project directory] [--host-file operator/host.mjs] [--json]  # without a subcommand: registered contracts and schemas; executes trusted host code, activates nothing
-    # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
+    # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json), or an operator's independent package (npm spec or local tarball carrying a urlcode.json descriptor, pinned by its package-lock sha512); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
     # add installs the capability only (no sample endpoints); --example also writes each added extension's example, for example store's /api/todos collection or forms' /contact flow
     # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
     # list --strict exits 1 on a pin mismatch, a nested copy or drift between package.json, app/urlcode.yaml and host.mjs; an extension neither declared nor imported is a library install, still pin-checked, not drift

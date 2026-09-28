@@ -56,25 +56,25 @@ export function hostIdentifier(name: string): string {
   const camel = name.replace(/-([a-z0-9])/g, (_, letter: string) => letter.toUpperCase());
   return reserved.has(camel) ? `${camel}Extension` : camel;
 }
-const importLine = (name: string): string => `import ${hostIdentifier(name)} from '${addonPackage(name)}/extension';`;
+const importLine = (name: string, pkg = addonPackage(name)): string => `import ${hostIdentifier(name)} from '${pkg}/extension';`;
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export function hostWithExtension(text: string, name: string): string {
+export function hostWithExtension(text: string, name: string, pkg = addonPackage(name)): string {
   const lines = text.split('\n'), id = hostIdentifier(name);
-  if (lines.includes(importLine(name))) return text;
+  if (lines.includes(importLine(name, pkg))) return text;
   const opener = lines.indexOf(hostOpener);
   const closer = opener < 0 ? -1 : lines.findIndex((line, index) => index > opener && /^\](?:\)|,)/.test(line));
-  if (opener < 0 || closer < 0) throw new ConfigError(`${HOST_FILE} no longer has the \`${hostOpener}\` … \`]);\` list; add these two lines yourself:\n  ${importLine(name)}\n    ${id}(),`);
+  if (opener < 0 || closer < 0) throw new ConfigError(`${HOST_FILE} no longer has the \`${hostOpener}\` … \`]);\` list; add these two lines yourself:\n  ${importLine(name, pkg)}\n    ${id}(),`);
   lines.splice(closer, 0, `  ${id}(),`);
   const lastImport = lines.reduce((last, line, index) => line.startsWith('import ') && index < opener ? index : last, -1);
-  lines.splice(lastImport + 1, 0, importLine(name));
+  lines.splice(lastImport + 1, 0, importLine(name, pkg));
   return lines.join('\n');
 }
-export function hostWithoutExtension(text: string, name: string): string {
+export function hostWithoutExtension(text: string, name: string, pkg = addonPackage(name)): string {
   const lines = text.split('\n'), id = hostIdentifier(name);
-  const imports = lines.flatMap((line, index) => line === importLine(name) ? [index] : []);
+  const imports = lines.flatMap((line, index) => line === importLine(name, pkg) ? [index] : []);
   const calls = lines.flatMap((line, index) => new RegExp(`^\\s*${escape(id)}\\(.*\\),?\\s*$`).test(line) ? [index] : []);
-  if (imports.length !== 1 || calls.length !== 1) throw new ConfigError(`${HOST_FILE} does not have exactly one \`${importLine(name)}\` line and one single-line \`${id}(…),\` entry; remove ${name} from ${HOST_FILE} yourself, then run this command again`);
+  if (imports.length !== 1 || calls.length !== 1) throw new ConfigError(`${HOST_FILE} does not have exactly one \`${importLine(name, pkg)}\` line and one single-line \`${id}(…),\` entry; remove ${name} from ${HOST_FILE} yourself, then run this command again`);
   return lines.filter((_, index) => index !== imports[0] && index !== calls[0]).join('\n');
 }
 
@@ -260,18 +260,52 @@ export async function assertInertArtifacts(site: string, lock: Record<string, Lo
   }
 }
 
-async function loadDefinition(site: string, name: string): Promise<ExtensionDefinition<unknown>> {
+async function loadDefinition(site: string, name: string, pkg = addonPackage(name)): Promise<ExtensionDefinition<unknown>> {
   let path: string;
-  try { path = createRequire(join(site, 'package.json')).resolve(`${addonPackage(name)}/extension`); }
-  catch { throw new ConfigError(`${addonPackage(name)} is installed but has no ./extension entry`); }
+  try { path = createRequire(join(site, 'package.json')).resolve(`${pkg}/extension`); }
+  catch { throw new ConfigError(`${pkg} is installed but has no ./extension entry`); }
   const module = await import(pathToFileURL(path).href) as { default?: DefinedExtension<unknown> };
   const definition = module.default?.definition;
-  assert(definition && definition.name === name, `${addonPackage(name)}/extension must default-export defineExtension({name: '${name}', …})`);
+  assert(definition && definition.name === name, `${pkg}/extension must default-export defineExtension({name: '${name}', …})`);
   return definition;
 }
+/**
+ * One installed add-on package, found by the `urlcode.json` descriptor at its package root rather than by its name
+ * (#844): `catalog` is true for a package core's own manifest pins; any other package is independent, installed by the
+ * operator and checked against npm's own lock integrity.
+ */
+export interface InstalledProvider { name: string; package: string; descriptor: AddonDescriptor; catalog: boolean }
+/** Every direct dependency of the site that carries an add-on descriptor, by logical name. Reads data only; imports nothing. */
+export async function installedProviders(site: string, manifest?: AddonManifest): Promise<{ providers: Map<string, InstalledProvider>; problems: string[] }> {
+  const providers = new Map<string, InstalledProvider>(), problems: string[] = [];
+  let pkg: PackageJson;
+  try { pkg = await readJson<PackageJson>(join(site, 'package.json')); } catch (error) { if (isCode(error, 'ENOENT')) return { providers, problems }; throw error; }
+  for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) {
+    const path = join(site, 'node_modules', dependency, 'urlcode.json');
+    let descriptor: AddonDescriptor;
+    try { descriptor = parseDescriptor(await readJson(path), path); }
+    catch (error) { if (isCode(error, 'ENOENT') || isCode(error, 'ENOTDIR')) continue; problems.push(error instanceof Error ? error.message : String(error)); continue; }
+    const other = providers.get(descriptor.name);
+    if (other) { problems.push(`${dependency} and ${other.package} both provide the ${descriptor.kind} ${descriptor.name}; keep one`); continue; }
+    providers.set(descriptor.name, { name: descriptor.name, package: dependency, descriptor, catalog: manifest?.addons[descriptor.name]?.package === dependency });
+  }
+  return { providers, problems };
+}
+/** The descriptor of the package providing `name`: a site dependency that carries it, else the first-party install location. */
 export async function readInstalledDescriptor(site: string, name: string): Promise<AddonDescriptor | undefined> {
+  const provided = (await installedProviders(site)).providers.get(name);
+  if (provided) return provided.descriptor;
   const path = join(site, 'node_modules', addonPackage(name), 'urlcode.json');
   try { return parseDescriptor(await readJson(path), path); } catch (error) { if (isCode(error, 'ENOENT')) return undefined; throw error; }
+}
+/** An operator's npm package spec (a registry name, `name@version` or a local tarball path) rather than a catalog name. */
+export const isPackageSpec = (value: string): boolean => !addonNamePattern.test(value) && value.length <= 1024 && !/[\s\0]/.test(value) && !value.startsWith('-');
+/** Why an independent package's lock entry is not a verified install, or undefined when npm recorded its integrity. */
+function independentLockProblem(lock: Record<string, LockEntry>, pkg: string): string | undefined {
+  const entry = lock[`node_modules/${pkg}`];
+  if (!entry) return `${pkg} is not in package-lock.json`;
+  if (entry.link) return undefined;
+  return typeof entry.integrity === 'string' && entry.integrity.startsWith('sha512-') ? undefined : `${pkg} has no sha512 integrity in package-lock.json`;
 }
 
 function scaffoldPath(site: string, path: string): string {
@@ -397,12 +431,14 @@ export function withExample(name: string, capability: ScaffoldResult, example: S
  * in dependency order, each exactly once at the top level of the site.
  */
 export async function addAddons(directory: string, kind: AddonKind, requested: readonly string[], options: AddOptions = {}): Promise<AddResult> {
-  assert(requested.length > 0 && requested.every(name => addonNamePattern.test(name)), `Name at least one ${kind}`);
+  assert(requested.length > 0 && requested.every(name => addonNamePattern.test(name) || kind === 'extension' && isPackageSpec(name)), `Name at least one ${kind}${kind === 'extension' ? ', or an npm package spec or local tarball of an independent extension' : ''}`);
   const site = await openSite(directory), manifest = options.manifest ?? await readAddonManifest();
+  // Catalog names install from core's pins; anything else is the operator's own package, found by its descriptor (#844).
+  const specs = requested.filter(isPackageSpec), names = requested.filter(name => !isPackageSpec(name));
   const acknowledgements = [...new Set(options.acknowledgements ?? [])].sort();
   assert(!options.example || kind === 'extension', '--example is only supported by extensions add; artifacts are inert data');
   assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
-  for (const name of requested) {
+  for (const name of names) {
     const pin = manifest.addons[name];
     if (!pin || pin.kind !== kind) {
       const valid = Object.entries(manifest.addons).filter(([, item]) => item.kind === kind).map(([key]) => key).sort();
@@ -411,10 +447,10 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   }
   const pkg = await readJson<PackageJson>(site.packageFile);
   const before = new Set(managedNames(manifest, pkg));
-  const wanted = withRequirements(manifest, requested);
+  const wanted = withRequirements(manifest, names);
   const toAdd = wanted.filter(name => !before.has(name) || pkg.dependencies?.[manifest.addons[name]!.package] !== manifest.addons[name]!.url);
   const result: AddResult = { added: [], alreadyInstalled: wanted.filter(name => !toAdd.includes(name)), projectSha256: undefined, env: {}, notes: [], keptFiles: [], development: isDevelopmentManifest(manifest), examples: [] };
-  if (!toAdd.length) {
+  if (!toAdd.length && !specs.length) {
     assert(acknowledgements.length === 0, `--ack ${acknowledgements.join(', ')} has no effect: ${requested.join(', ')} is already installed`);
     assert(!options.example, `--example has no effect: ${requested.join(', ')} is already installed; an example is written only when an extension is added`);
     return result;
@@ -430,6 +466,31 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     await writeFile(site.packageFile, renderJson(pkg));
     installing = true;
     await runNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund'], site.site);
+    // Independent packages: npm resolves and locks each spec exactly as given; no install script runs.
+    const independent = new Map<string, string>();
+    if (specs.length) {
+      const prior = { ...(await readJson<PackageJson>(site.packageFile)).dependencies };
+      await runNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', ...specs], site.site);
+      const now = (await readJson<PackageJson>(site.packageFile)).dependencies ?? {};
+      const changed = Object.keys(now).filter(dependency => prior[dependency] !== now[dependency]).sort();
+      assert(changed.length, `${specs.join(', ')} ${specs.length === 1 ? 'is' : 'are'} already installed; nothing to do`);
+      const locked = await lockPackages(site.site);
+      for (const dependency of changed) {
+        const path = join(site.site, 'node_modules', dependency, 'urlcode.json');
+        let descriptor: AddonDescriptor;
+        try { descriptor = parseDescriptor(await readJson(path), path); }
+        catch (error) { throw new ConfigError(`Refusing ${dependency}: it carries no valid urlcode.json extension descriptor (${error instanceof Error ? error.message : String(error)})`); }
+        assert(descriptor.kind === 'extension', `Refusing ${dependency}: its descriptor declares an ${descriptor.kind}; independent packages may provide extensions only`);
+        assert(!dependency.startsWith('@jimhoyd/urlcode'), `Refusing ${dependency}: first-party packages install from core's pins with \`urlcode extensions add ${descriptor.name}\``);
+        assert(!manifest.addons[descriptor.name], `Refusing ${dependency}: it names itself ${descriptor.name}, which is a first-party ${manifest.addons[descriptor.name]?.kind} released with this core`);
+        const lockProblem = independentLockProblem(locked, dependency);
+        if (lockProblem) throw new ConfigError(`Refusing ${dependency}: ${lockProblem}`);
+        independent.set(descriptor.name, dependency);
+      }
+      const { providers, problems } = await installedProviders(site.site, manifest);
+      assert(!problems.length, `Refusing ${specs.join(', ')}: ${problems.join('; ')}`);
+      for (const name of independent.keys()) for (const requirement of providers.get(name)!.descriptor.requires) assert(providers.has(requirement), `${name} requires ${requirement}, which is not installed; add it first`);
+    }
     const lock = await lockPackages(site.site);
     for (const name of toAdd) { const problem = pinProblem(lock, manifest.addons[name]!); if (problem) throw new ConfigError(`Refusing ${name}: ${problem}`); }
     const nested = nestedCopies(lock);
@@ -443,11 +504,13 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       assert(!extra.length, `Refusing ${artifacts.join(', ')}: npm install also added ${extra.join(', ')} to package-lock.json, which no artifact accounts for; artifacts never pull anything in. If your own package.json changes added them, run npm install first, then add the artifact again`);
     }
 
-    const newExtensions = toAdd.filter(name => manifest.addons[name]!.kind === 'extension');
+    const newExtensions = [...toAdd.filter(name => manifest.addons[name]!.kind === 'extension'), ...independent.keys()];
+    const packageOf = (name: string): string => independent.get(name) ?? addonPackage(name);
     if (newExtensions.length) {
-      const installed = [...new Set([...managedNames(manifest, pkg, 'extension')])].sort();
+      const { providers } = await installedProviders(site.site, manifest);
+      const installed = [...providers.values()].filter(provider => provider.descriptor.kind === 'extension').map(provider => provider.name).sort();
       const definitions = new Map<string, ExtensionDefinition<unknown>>();
-      for (const name of newExtensions) definitions.set(name, await loadDefinition(site.site, name));
+      for (const name of newExtensions) definitions.set(name, await loadDefinition(site.site, name, packageOf(name)));
       // Within the new set, an extension follows the ones it requires and the ones it uses.
       const ordered = orderByRequires(newExtensions.map(name => ({ name, requires: [...(definitions.get(name)!.requires ?? []), ...(definitions.get(name)!.uses ?? [])].filter(requirement => newExtensions.includes(requirement)) })), (item, requirement) => `${item.name} requires ${requirement}`);
       const loaded = await loadDocument(site.project);
@@ -517,12 +580,12 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       validateDocument(doc.toJS());
       await writeFile(yamlFile, checkedYamlEdit(original, doc.toJS(), edits));
       let host = await readFile(site.hostFile, 'utf8');
-      for (const { name } of scaffolds) host = hostWithExtension(host, name);
+      for (const { name } of scaffolds) host = hostWithExtension(host, name, packageOf(name));
       await writeFile(site.hostFile, host);
       await loadDocument(site.project);
       result.projectSha256 = await inspectExtensionRevision(site.project);
     }
-    result.added = toAdd;
+    result.added = [...toAdd, ...independent.keys()];
     return result;
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
   finally { for (const secret of secrets) secret.fill(0); }
@@ -555,13 +618,19 @@ async function extensionUses(project: string, name: string): Promise<string[]> {
  */
 export async function removeAddon(directory: string, kind: AddonKind, name: string, { manifest: given }: { manifest?: AddonManifest } = {}): Promise<RemoveResult> {
   const site = await openSite(directory), manifest = given ?? await readAddonManifest();
-  const pin = manifest.addons[name];
   const pkg = await readJson<PackageJson>(site.packageFile);
-  assert(pin && pin.kind === kind && Object.hasOwn(pkg.dependencies ?? {}, pin.package), `${name} is not an installed ${kind}`);
-  const dependants = managedNames(manifest, pkg).filter(other => manifest.addons[other]!.requires.includes(name));
+  // Catalog add-ons by core's pin, independent ones by their descriptor (#844).
+  const { providers } = await installedProviders(site.site, manifest);
+  const provider = providers.get(name), catalogPin = manifest.addons[name];
+  const packageName = catalogPin && Object.hasOwn(pkg.dependencies ?? {}, catalogPin.package) ? catalogPin.package : provider?.package;
+  assert(packageName && (catalogPin?.kind ?? provider?.descriptor.kind) === kind && Object.hasOwn(pkg.dependencies ?? {}, packageName), `${name} is not an installed ${kind}`);
+  // A catalog add-on's edges come from core's signed pin; an independent one's from its own descriptor.
+  const edges = (other: InstalledProvider): { requires: readonly string[]; uses: readonly string[] } => { const signed = other.catalog ? manifest.addons[other.name] : undefined; return { requires: signed?.requires ?? other.descriptor.requires, uses: signed?.uses ?? other.descriptor.uses ?? [] }; };
+  const others = [...providers.values()].filter(other => other.name !== name);
+  const dependants = others.filter(other => edges(other).requires.includes(name)).map(other => other.name).sort();
   assert(!dependants.length, `${dependants.join(', ')} require${dependants.length === 1 ? 's' : ''} ${name}; remove ${dependants.length === 1 ? 'it' : 'them'} first`);
   // An add-on that only uses this one keeps working without it, except the features that need it.
-  const notes = managedNames(manifest, pkg).filter(other => manifest.addons[other]!.uses?.includes(name)).map(other => `${other} uses ${name}; features of ${other} that need ${name} will refuse to activate`);
+  const notes = others.filter(other => edges(other).uses.includes(name)).map(other => other.name).sort().map(other => `${other} uses ${name}; features of ${other} that need ${name} will refuse to activate`);
   const yamlFile = join(site.project, 'urlcode.yaml'), routesFile = join(site.project, 'routes', `${name}.yaml`);
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile]);
   const tree = await dependencyTree(site.site);
@@ -571,7 +640,7 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
     if (kind === 'extension') {
       const uses = await extensionUses(site.project, name);
       assert(!uses.length, `The project still uses ${name} in ${uses.join(', ')}; change those first`);
-      const definition = await loadDefinition(site.site, name).catch(() => undefined);
+      const definition = await loadDefinition(site.site, name, packageName).catch(() => undefined);
       const original = await readFile(yamlFile, 'utf8'), doc = parseDocument(original), edits: ((text: string) => string)[] = [];
       doc.deleteIn(['extensions', name]);
       edits.push(text => yamlDelete(text, ['extensions', name]));
@@ -582,15 +651,15 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
       if (Array.isArray(doc.toJS().includes) && (doc.toJS().includes as unknown[]).length === 0) doc.delete('includes');
       await writeFile(yamlFile, checkedYamlEdit(original, doc.toJS(), edits));
       await rm(routesFile, { force: true });
-      await writeFile(site.hostFile, hostWithoutExtension(await readFile(site.hostFile, 'utf8'), name));
+      await writeFile(site.hostFile, hostWithoutExtension(await readFile(site.hostFile, 'utf8'), name, packageName));
       await loadDocument(site.project);
       if (definition?.scaffold) {
         // The files its scaffold would write are listed, never deleted; a scaffold that refuses without its acknowledgement lists none.
-        const preview = await (async () => definition.scaffold!({ site: site.site, project: site.project, installed: managedNames(manifest, pkg, 'extension'), acknowledgements: [] }))().catch(() => undefined);
+        const preview = await (async () => definition.scaffold!({ site: site.site, project: site.project, installed: [...providers.keys()].filter(other => providers.get(other)!.descriptor.kind === 'extension').sort(), acknowledgements: [] }))().catch(() => undefined);
         for (const file of preview?.files ?? []) { if (file.content instanceof Uint8Array) file.content.fill(0); if (await exists(join(site.site, file.path))) kept.push(file.path); }
       }
     }
-    delete pkg.dependencies![pin.package];
+    delete pkg.dependencies![packageName];
     await writeFile(site.packageFile, renderJson(pkg));
     installing = true;
     await runNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund'], site.site);
@@ -604,7 +673,9 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
  * dependency (#718); its pin and nested copies are still checked, but it has no declaration to drift. `artifact`: inert data.
  */
 export type AddonMode = 'extension' | 'library' | 'artifact';
-export interface ListedAddon { name: string; kind: AddonKind; mode: AddonMode; package: string; version: string | null; pinned: boolean; declared: boolean; hosted: boolean; description: string; requires: string[]; descriptor?: AddonDescriptor | undefined; problems: string[] }
+export interface ListedAddon { name: string; kind: AddonKind; mode: AddonMode; package: string; version: string | null; pinned: boolean; declared: boolean; hosted: boolean; description: string; requires: string[]; descriptor?: AddonDescriptor | undefined; problems: string[];
+  /** True for an operator-installed package outside core's catalog, verified by npm's lock integrity (#844). */
+  independent?: boolean }
 export interface AddonReport { site: string; core: string; development: boolean; addons: ListedAddon[]; unmanaged: string[]; problems: string[] }
 /**
  * `urlcode extensions list` / `urlcode artifacts list`: what is installed, whether each matches core's pin, and any
@@ -642,6 +713,23 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
     report.problems.push(...problems.map(problem => `${name}: ${problem}`));
   }
   if (kind === 'extension') {
+    // Independent extension packages (#844): verified by npm's lock integrity rather than core's pin.
+    const { providers, problems: providerProblems } = await installedProviders(site.site, manifest);
+    report.problems.push(...providerProblems);
+    for (const provider of [...providers.values()].filter(item => !item.catalog && item.descriptor.kind === 'extension')) {
+      const { name, package: packageName, descriptor } = provider, problems: string[] = [];
+      const lockProblem = independentLockProblem(lock, packageName);
+      if (lockProblem) problems.push(lockProblem);
+      const isDeclared = Object.hasOwn(declared, name), hosted = host.split('\n').includes(importLine(name, packageName));
+      const mode: AddonMode = isDeclared || hosted || host.includes(`${packageName}/extension`) ? 'extension' : 'library';
+      if (mode === 'extension') {
+        if (!isDeclared) problems.push(`${PROJECT_DIRECTORY}/urlcode.yaml does not declare extensions.${name}`);
+        if (!hosted) problems.push(`${HOST_FILE} does not import ${packageName}/extension`);
+      }
+      for (const requirement of descriptor.requires) if (!providers.has(requirement)) problems.push(`requires ${requirement}, which is not installed`);
+      report.addons.push({ name, kind, mode, package: packageName, version: lock[`node_modules/${packageName}`]?.version ?? null, pinned: lockProblem === undefined && !lock[`node_modules/${packageName}`]?.link, declared: isDeclared, hosted, description: descriptor.description, requires: descriptor.requires, descriptor, problems, independent: true });
+      report.problems.push(...problems.map(problem => `${name}: ${problem}`));
+    }
     for (const name of Object.keys(declared)) if (!report.addons.some(item => item.name === name)) report.problems.push(`${PROJECT_DIRECTORY}/urlcode.yaml declares extensions.${name}, but no installed extension provides it${host.includes(name) ? ' (it may be wired by hand in host.mjs)' : ''}`);
     for (const nested of nestedCopies(lock)) report.problems.push(`nested copy ${nested}: every add-on must resolve once, at the top level`);
   }
@@ -657,14 +745,15 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
 export async function validateDeclaredExtensions(project: string): Promise<string[]> {
   const loaded = await loadDocument(project), declared = loaded.document.extensions ?? {};
   if (!Object.keys(declared).length) return [];
-  const site = dirname(loaded.root), problems: string[] = [];
+  const site = dirname(loaded.root);
+  const { providers, problems } = await installedProviders(site);
   const ajv = new Ajv.default({ strict: false, allErrors: true });
   // Policies are reported like the runtime reports them (the first violation per route, located where the author
   // wrote it, `auth` for the `auth:` short form), which needs the failing schema node for key suggestions.
   const policyAjv = new Ajv.default({ strict: false, allErrors: false, verbose: true });
   for (const [name, declaration] of Object.entries(declared)) {
-    const descriptor = await readInstalledDescriptor(site, name).catch(() => undefined);
-    if (!descriptor || descriptor.kind !== 'extension' || !descriptor.schema) { problems.push(`extensions.${name}: ${addonPackage(name)} is not installed in ${site}; run \`urlcode extensions add ${name}\` or npm ci`); continue; }
+    const descriptor = providers.get(name)?.descriptor ?? await readInstalledDescriptor(site, name).catch(() => undefined);
+    if (!descriptor || descriptor.kind !== 'extension' || !descriptor.schema) { problems.push(`extensions.${name}: no package installed in ${site} provides the extension ${name}; add it with \`urlcode extensions add <name or package>\`, or run npm ci`); continue; }
     const validate = ajv.compile(descriptor.schema);
     if (!validate(declaration.config)) problems.push(`extensions.${name}.config: ${ajv.errorsText(validate.errors)}`);
     const policyValidator = descriptor.policySchema ? policyAjv.compile(descriptor.policySchema) : emptyPolicyOnly;

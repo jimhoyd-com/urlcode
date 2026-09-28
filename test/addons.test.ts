@@ -220,6 +220,55 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   assert.ok((await readFile(log, 'utf8')).split('\n').filter(Boolean).every(line => JSON.parse(line).includes('--ignore-scripts')), 'npm never runs lifecycle scripts');
 });
 
+test('an independent extension package installs by spec, is found by its descriptor, and removes (#844)', async t => {
+  const dir = await site(t), m = manifest();
+  const log = join(dir, 'npm.log'); process.env.FAKE_NPM_LOG = log;
+  t.after(() => { delete process.env.FAKE_NPM_LOG; });
+  const copy = async (change: (descriptor: Record<string, unknown>) => void): Promise<string> => {
+    const target = await mkdtemp(join(tmpdir(), 'urlcode-independent-')); t.after(() => rm(target, { recursive: true, force: true }));
+    await cp(join(fixtures, 'greeting'), target, { recursive: true });
+    const descriptor = JSON.parse(await readFile(join(target, 'urlcode.json'), 'utf8')) as Record<string, unknown>;
+    change(descriptor);
+    await writeFile(join(target, 'urlcode.json'), JSON.stringify(descriptor));
+    return target;
+  };
+  // Refused before anything is wired: a first-party name, an artifact descriptor, and no descriptor at all.
+  const before = await readFile(join(dir, 'package.json'), 'utf8');
+  await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.name = 'alpha'; })], { manifest: m }), /names itself alpha, which is a first-party extension released with this core/);
+  await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.kind = 'artifact'; delete descriptor.schema; })], { manifest: m }), /independent packages may provide extensions only/);
+  const bare = await copy(() => undefined); await rm(join(bare, 'urlcode.json'));
+  await assert.rejects(addAddons(dir, 'extension', [bare], { manifest: m }), /carries no valid urlcode\.json extension descriptor/);
+  assert.equal(await readFile(join(dir, 'package.json'), 'utf8'), before, 'every refusal rolls package.json back');
+  await assert.rejects(addAddons(dir, 'artifact', [join(fixtures, 'greeting')], { manifest: m }), /Name at least one artifact$/);
+
+  const added = await addAddons(dir, 'extension', [join(fixtures, 'greeting')], { manifest: m });
+  assert.deepEqual(added.added, ['greeting']);
+  assert.match(added.projectSha256 ?? '', /^[a-f0-9]{64}$/);
+  const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
+  assert.equal(pkg.dependencies['@example/urlcode-greeting'], `file:${join(fixtures, 'greeting')}`);
+  const loaded = await loadDocument(join(dir, 'app'));
+  assert.deepEqual(loaded.document.extensions, { greeting: { version: '1', config: { text: 'hi' } } });
+  assert.deepEqual(loaded.document.includes, ['routes/greeting.yaml']);
+  assert.match(await readFile(join(dir, 'host.mjs'), 'utf8'), /import greeting from '@example\/urlcode-greeting\/extension';/);
+  await assert.rejects(addAddons(dir, 'extension', [join(fixtures, 'greeting')], { manifest: m }), /already installed; nothing to do/);
+
+  const report = await listAddons(dir, 'extension', { manifest: m });
+  assert.deepEqual(report.problems, []);
+  assert.deepEqual(report.addons.map(item => [item.name, item.package, item.independent, item.pinned, item.declared, item.hosted]), [['greeting', '@example/urlcode-greeting', true, false, true, true]], 'a linked directory is installed but not locked by integrity');
+  assert.deepEqual(await validateDeclaredExtensions(join(dir, 'app')), []);
+  const yaml = join(dir, 'app', 'urlcode.yaml');
+  await writeFile(yaml, (await readFile(yaml, 'utf8')).replace('text: hi', 'text: 5'));
+  assert.match((await validateDeclaredExtensions(join(dir, 'app'))).join('\n'), /extensions\.greeting\.config: data\/text must be string/);
+  await writeFile(yaml, (await readFile(yaml, 'utf8')).replace('text: 5', 'text: hi'));
+
+  const removed = await removeAddon(dir, 'extension', 'greeting', { manifest: m });
+  assert.equal(removed.removed, 'greeting');
+  assert.equal(await readFile(join(dir, 'host.mjs'), 'utf8'), renderInitialHost());
+  assert.equal((JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies['@example/urlcode-greeting'], undefined);
+  assert.match((await validateDeclaredExtensions(join(dir, 'app'))).join('\n'), /^$/);
+  assert.ok((await readFile(log, 'utf8')).split('\n').filter(Boolean).every(line => JSON.parse(line).includes('--ignore-scripts')), 'npm never runs lifecycle scripts');
+});
+
 test('extensions add installs the capability only; --example adds the example on top (#711)', async t => {
   const m = manifest();
   const blank = await site(t);

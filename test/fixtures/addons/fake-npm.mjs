@@ -7,7 +7,7 @@
 // command before it touches anything; $FAKE_NPM_FAIL_AFTER fails it after it has changed node_modules and the lock,
 // as a real npm can. `view` answers from $FAKE_NPM_VIEW (JSON).
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const args = process.argv.slice(2), cwd = process.cwd();
 if (process.env.FAKE_NPM_LOG) appendFileSync(process.env.FAKE_NPM_LOG, JSON.stringify(args) + '\n');
@@ -32,10 +32,20 @@ if (args[0] === 'ci') {
 }
 if (args[0] !== 'install') process.exit(0);
 const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'));
+// `install [flags] <spec>…` saves each spec first, as npm --save-exact does: a local directory becomes `file:<path>`.
+for (const spec of args.slice(1).filter(arg => !arg.startsWith('-'))) {
+  const from = resolve(cwd, spec.startsWith('file:') ? spec.slice(5) : spec);
+  if (!existsSync(join(from, 'package.json'))) { process.stderr.write(`fake npm: cannot install ${spec}\n`); process.exit(1); }
+  pkg.dependencies = { ...pkg.dependencies, [JSON.parse(readFileSync(join(from, 'package.json'), 'utf8')).name]: `file:${from}` };
+  writeFileSync(join(cwd, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
+}
 const scope = join(cwd, 'node_modules', '@jimhoyd');
 mkdirSync(scope, { recursive: true });
 const source = (name, spec) => spec.startsWith('file:') ? spec.slice(5) : inRegistry(name, spec);
 for (const name of readdirSync(scope)) { rmSync(join(scope, name), { recursive: true, force: true }); }
+// Links outside @jimhoyd that the site no longer depends on are pruned too.
+for (const entry of readdirSync(join(cwd, 'node_modules')).filter(name => name.startsWith('@') && name !== '@jimhoyd'))
+  for (const name of readdirSync(join(cwd, 'node_modules', entry))) if (!Object.hasOwn(pkg.dependencies ?? {}, `${entry}/${name}`)) rmSync(join(cwd, 'node_modules', entry, name), { recursive: true, force: true });
 for (const [name, spec] of Object.entries(pkg.dependencies ?? {})) if (!source(name, spec) && registry) { process.stderr.write(`fake npm: no ${name}@${spec}\n`); process.exit(1); }
 const packages = { '': { name: pkg.name, dependencies: pkg.dependencies } };
 const dependencyFields = ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'bin'];
