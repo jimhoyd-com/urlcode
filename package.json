@@ -154,6 +154,7 @@
     "release:publish": "node scripts/release-publish.ts",
     "build:addons": "node scripts/workspaces.ts run build && node scripts/build-addon-manifest.ts && node scripts/generate-extension-reference.ts",
     "test:addons": "node --test test/addons.integration.ts",
+    "test:proof": "node --test test/private-requests.integration.ts",
     "verify:addons": "npm run build && node scripts/workspaces.ts run build && npm run audit:packages && npm run test:addons"
   },
   "repository": {

@@ -4305,6 +4305,18 @@ with a synthetic, non-first-party provider; naming the specific store, mail,
 audit and abuse operations an application can reach this way is a later,
 separate decision for each package.
 
+`urlcode explain` and `urlcode report` show the capabilities a registration
+declares on every route that names it (`handler receives
+context.capabilities.<name>: ...`). They do not enumerate what an extension
+serves below its own mount: the mount's handler carries
+`subpaths: provider-defined, not enumerated or inspected by URLCode`, so a
+review never implies those endpoints were checked. The
+[embedded Better Auth proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) (#843) uses
+this seam with an upstream provider: an operator adapter mounts Better Auth's
+own handler, turns its verified session into the request principal, and hands
+application routes the user id as a capability. The proof lists the provider's
+served endpoints with its own probe, outside URLCode's review facts.
+
 #### Request context: route env and request id
 
 Every `ExtensionRequest` carries two more generic fields, whether it reaches an
