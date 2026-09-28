@@ -64,7 +64,7 @@ function compiledRedirect(redirect: RedirectConfig): CompiledRedirect {
   const { pass: _pass, ...query } = redirect.query;
   return { ...redirect, query };
 }
-export async function compileRoutes(loaded: LoadedDocument, bindings: Record<string, string | undefined>, permissions: BindingPermissions = {}, projectSha256?: string, extensions?: readonly Pick<RuntimeExtension,'name'|'cacheSensitive'>[]): Promise<CompiledRouteTable> {
+export async function compileRoutes(loaded: LoadedDocument, bindings: Record<string, string | undefined>, permissions: BindingPermissions = {}, projectSha256?: string, extensions?: readonly Pick<RuntimeExtension,'name'|'cacheSensitive'|'capabilities'>[]): Promise<CompiledRouteTable> {
   const deadline=performance.now()+10000;
   let processed=0;
   const exact = new Map<string, CompiledRoute>(), dynamic: CompiledRoute[] = [], mounts: CompiledRoute[] = [], modules = new Map<string, true>();
@@ -105,6 +105,13 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       }
       if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or secrets');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
       const extensionPolicyNames = Object.keys(effectiveExtensionPolicies(loaded.document,config));
+      // RIM-EXT-CAPABILITY-001: a live, per-invocation capability object cannot cross the sandbox worker boundary
+      // (only the RIM-EXT-CONTEXT-001 header projection can), so a sandboxed route naming a capability-declaring
+      // extension refuses before serving, the same way stream-in-sandbox does above.
+      if (config.sandbox === true && extensions) {
+        const capable = extensionPolicyNames.find(name => (extensions.find(entry => entry.name === name)?.capabilities ?? []).length > 0);
+        assert(!capable, `${pattern}: sandbox: true cannot be combined with extension "${capable}"'s request-bound capabilities; a sandboxed route always answers with a whole buffered response and cannot receive a host-backed object`, { code: 'capability-in-sandbox' });
+      }
       // Name the condition that actually made the route confidential, so an author knows which declaration to change (#725).
       const sensitivePolicies = extensionPolicyNames.filter(name => isSensitiveExtensionPolicy([name],extensions));
       const confidential = config.match || config.conditional ? 'conditional routing'

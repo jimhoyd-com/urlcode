@@ -211,6 +211,16 @@ export interface ExtensionPrincipalInput { id:string }
 /** The frozen principal core carries on a request: the provider's `id`, and `provider`, the extension name core stamped (never the provider's choice). */
 export interface ExtensionPrincipal { readonly id:string; readonly provider:string }
 export const principalIdPattern=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+/**
+ * What core hands an `ExtensionInstance.provide()` call (RIM-EXT-CAPABILITY-001): the immutable facts of the one
+ * request asking for a bound capability object, so a provider can scope what it returns to this invocation alone
+ * and never retain it past the call. `principal` is exactly the same frozen value the route's `ExtensionRequest`
+ * carries (`null` when unset); `signal` is the same per-request `AbortSignal` a trusted route's own
+ * `FunctionContext.signal` receives, absent for a `sandbox: true` route (capabilities are refused there before
+ * serving; see `RIM-EXT-CAPABILITY-001`). A provider must not cache or reuse this object beyond the `provide()`
+ * call it was given to, and must not derive authority from anything but `principal`.
+ */
+export interface InvocationContext { readonly requestId:string; readonly route:{readonly pattern:string}; readonly principal:ExtensionPrincipal|null; readonly signal?:AbortSignal }
 /** Validates a principal a provider passed to `setPrincipal` and freezes it with core's `provider` stamp. */
 export function validatePrincipal(value:unknown,provider:string):ExtensionPrincipal {
   assert(value!==null&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value) as object|null),`Extension ${provider} set an invalid principal: expected a plain object`);
@@ -293,6 +303,17 @@ export interface ExtensionInstance {
    * nothing exclusive leaves it out and behaves exactly as without it.
    */
   handoff?():unknown|Promise<unknown>;
+  /**
+   * Returns the request-bound object for `capability` (RIM-EXT-CAPABILITY-001), called at most once per declared
+   * name per request, only for a `capability` this instance's registration listed in `RuntimeExtension.capabilities`,
+   * only for a route whose effective `policies.extensions` names this extension, and only on a route that is not
+   * `sandbox: true`. `invocation` is this call's own `InvocationContext`; the returned value (or resolved value) is
+   * bound into that one request's `context.capabilities.<this extension's name>.<capability>` and must not be
+   * retained, mutated by, or shared with another request. `undefined` means this invocation gets nothing under that
+   * name (for example, an anonymous request for a capability that requires a principal) — it is not an error and
+   * never fails the request. An extension with no declared `capabilities` never needs this method.
+   */
+  provide?(capability:string,invocation:InvocationContext):unknown|Promise<unknown>;
   /**
    * The mounts (entries of `context.mounts`) that serve nothing but the registration's `immutableAssets`: content-hashed
    * files under `<mount><prefix>/`, and 404 for any other path. Only a registration that declares `immutableAssets`
@@ -444,6 +465,20 @@ export interface RuntimeExtension {
    * refuses a declared registration that sets it on any other target, before activation.
    */
   streams?:boolean;
+  /**
+   * The names of the request-bound capabilities (RIM-EXT-CAPABILITY-001) this registration's active instance can
+   * `provide()`: an ordinary trusted `function`/`middleware` route whose effective `policies.extensions` names this
+   * extension may receive a live, per-invocation object under `context.capabilities.<this extension's name>.<capability>`,
+   * built by calling the instance's `provide(capability, invocation)` once per declared name, per request. Omitted
+   * or empty: this extension offers nothing beyond `policies.extensions` gating and its own mount, exactly as
+   * before. Each name follows the same lowercase pattern as an extension name, at most 32 per registration, each
+   * once. A `sandbox: true` route refuses activation before serving if it names an extension that declares any
+   * capability here: a live bound object cannot cross the sandbox worker boundary (RIM-EXT-CONTEXT-001's header
+   * channel remains the only sandbox-reachable projection). Declaring a name here is a pure availability signal;
+   * whether a given invocation actually receives an object is `provide()`'s own decision (returning `undefined`
+   * refuses that one call, for example an anonymous request a capability requires a principal for).
+   */
+  capabilities?:readonly string[];
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
 /**
@@ -683,6 +718,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(registration.version==='1'&&typeof registration.activate==='function','Invalid extension version or activation hook');
     assert(registration.providesPrincipal===undefined||typeof registration.providesPrincipal==='boolean','Invalid extension providesPrincipal');
     assert(registration.streams===undefined||typeof registration.streams==='boolean','Invalid extension streams');
+    assert(registration.capabilities===undefined||(Array.isArray(registration.capabilities)&&registration.capabilities.length<=32&&registration.capabilities.every(name=>typeof name==='string'&&namePattern.test(name))&&new Set(registration.capabilities).size===registration.capabilities.length),'Invalid extension capabilities');
     assert(Array.isArray(registration.targets)&&registration.targets.every(target=>['node','aws','vercel'].includes(target)),'Extension targets must be node, aws or vercel');
     assert(typeof registration.projectSha256==='string'&&/^[a-f0-9]{64}$/.test(registration.projectSha256),'Extension requires an explicit operator revision pin');
     const hookNames=new Set<string>();
