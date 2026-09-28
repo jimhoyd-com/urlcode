@@ -67,11 +67,7 @@ option or `URLCODE_ALIAS_ORIGINS` (comma-separated `https:` origins, at most
 and an invalid entry fails activation. See
 [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
 
-The handler also accepts a `passkeyRpId` option or `URLCODE_PASSKEY_RP_ID`
-(validated at activation like `--passkey-rp-id`) for an operator's own
-extension that runs WebAuthn ceremonies. No first-party extension uses it, and
-a follow-up removes it. The first-party `auth` extension is Node only and
-refused on this target.
+The first-party `auth` extension is Node only and refused on this target.
 
 ## Limits worth knowing before you deploy
 

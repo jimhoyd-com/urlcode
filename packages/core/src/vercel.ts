@@ -1,7 +1,7 @@
 import type { RuntimeExtension } from './extensions.ts';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { activateNativeOnly, lazyRuntime, resolveAliasOrigins, resolveOrigin, resolvePasskeyRpId } from './adapters.ts';
+import { activateNativeOnly, lazyRuntime, resolveAliasOrigins, resolveOrigin } from './adapters.ts';
 import type { Environment } from './adapters.ts';
 import type { HostPlugin, Runtime } from './runtime.ts';
 import { writeResponse, writeError } from './http-response.ts';
@@ -15,7 +15,7 @@ import { assert, HttpError } from './errors.ts';
 // 22.13.0-22.14.x false-positive ERR_HTTP_CONTENT_LENGTH_MISMATCH crash.
 const enforceContentLength = contentLengthEnforcementIsSafe();
 
-export interface VercelHandlerOptions { project?: string | undefined; origin?: string | undefined; aliasOrigins?: readonly string[] | undefined; passkeyRpId?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined;
+export interface VercelHandlerOptions { project?: string | undefined; origin?: string | undefined; aliasOrigins?: readonly string[] | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined;
   /** Limits for streamed extension responses on this function instance (docs/OPERATIONS.md#streamed-responses); each
    * given value replaces its default. The provider's own function duration limit still applies on top. */
   streams?: Partial<StreamLimits> | undefined }
@@ -53,11 +53,11 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
 // Builds a Vercel Node function handler. The runtime is created once per
 // instance and reused across warm invocations; a failed activation is not
 // cached, so a fixed deployment recovers without a code change.
-export function createVercelHandler({ project = process.cwd(), origin, aliasOrigins, passkeyRpId, environment = process.env,
+export function createVercelHandler({ project = process.cwd(), origin, aliasOrigins, environment = process.env,
   maxBodyBytes = 1048576, plugins, extensions, streams: streamLimits }: VercelHandlerOptions = {}): VercelHandler {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
   const streams = new StreamHost(streamLimits);
-  const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'vercel', plugins, extensions, origin:resolveOrigin(origin,environment,platformOrigins), aliasOrigins:resolveAliasOrigins(aliasOrigins,environment), passkeyRpId:resolvePasskeyRpId(passkeyRpId,environment) }));
+  const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'vercel', plugins, extensions, origin:resolveOrigin(origin,environment,platformOrigins), aliasOrigins:resolveAliasOrigins(aliasOrigins,environment) }));
 
   return async function handler(req,res) {
     const requestId = randomUUID();

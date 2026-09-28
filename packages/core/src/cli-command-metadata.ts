@@ -8,7 +8,7 @@ export const hostFileCommands = ['serve','dev','validate','test','routes','audit
 // The inspection commands and the MCP server take it too: a verified policy pins their host to its reviewed revision,
 // their emitted commands repeat it, and the MCP runners forward it (#834). None of them creates or changes a grant.
 export const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment','report','studio','explain','context','plan-feature','review','bootstrap','mcp'] as const;
-// Commands that activate the project locally and so accept the operator's `--alias-origin` list and `--passkey-rp-id`.
+// Commands that activate the project locally and so accept the operator's `--alias-origin`.
 export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit','benchmark'] as const;
 
 /** The one CLI-wide allowlist passed to Node's argument parser. */
@@ -23,7 +23,7 @@ export const commandOptions = {
   'headers-timeout-ms':{type:'string'}, 'request-timeout-ms':{type:'string'}, 'keep-alive-timeout-ms':{type:'string'},
   'max-streams':{type:'string'}, 'stream-idle-timeout-ms':{type:'string'}, 'stream-max-duration-ms':{type:'string'}, 'stream-max-bytes':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
-  budget:{type:'string'}, task:{type:'string'}, capabilities:{type:'string'}, create:{type:'boolean'}, adopt:{type:'boolean'}, 'no-mcp':{type:'boolean'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, 'alias-origin':{ type:'string', multiple:true }, 'passkey-rp-id':{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' }, global:{ type:'boolean' }, version:{ type:'boolean', short:'v' },
+  budget:{type:'string'}, task:{type:'string'}, capabilities:{type:'string'}, create:{type:'boolean'}, adopt:{type:'boolean'}, 'no-mcp':{type:'boolean'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, 'alias-origin':{ type:'string', multiple:true }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' }, global:{ type:'boolean' }, version:{ type:'boolean', short:'v' },
 } as const;
 
 export type CliValues = ReturnType<typeof parseArgs<{ options: typeof commandOptions; allowPositionals: true }>>['values'];
