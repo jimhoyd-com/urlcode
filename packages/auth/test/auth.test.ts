@@ -15,20 +15,34 @@ const origin = 'http://localhost:8123';
 const secret = 's'.repeat(40);
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
+/**
+ * One unwind stack per test: node:test runs separate after hooks in registration order, which would remove the
+ * directory while the server still holds its SQLite file (EBUSY on Windows). Every closer runs, newest first.
+ */
+function cleanup(t: test.TestContext): (close: () => unknown) => void {
+  const closers: (() => unknown)[] = [];
+  t.after(async () => {
+    const errors: unknown[] = [];
+    while (closers.length) try { await closers.pop()!(); } catch (error) { errors.push(error); }
+    if (errors.length) throw new AggregateError(errors, 'Test cleanup failed');
+  });
+  return close => { closers.push(close); };
+}
 /** A project with a Better Auth mount and one protected function route that echoes its identity. */
 async function project(t: test.TestContext) {
-  const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const defer = cleanup(t);
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-')); defer(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const app = join(root, 'app'); await mkdir(join(app, 'functions'), { recursive: true });
   await writeFile(join(app, 'functions', 'me.mjs'), 'export default (request, context) => Response.json({ identity: context.capabilities?.auth?.identity ?? null, cookie: request.headers.get("cookie") });\n');
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: {} } }, routes: {
     '/api/auth/*': { extension: 'auth', methods: ['GET', 'POST'] },
     '/me': { methods: ['GET', 'POST'], auth: true, function: { source: 'functions/me.mjs' } },
   } }));
-  return { root, app, database: join(root, 'auth.sqlite'), projectSha256: await inspectExtensionRevision(app) };
+  return { root, app, defer, database: join(root, 'auth.sqlite'), projectSha256: await inspectExtensionRevision(app) };
 }
-async function serve(t: test.TestContext, at: Awaited<ReturnType<typeof project>>, settings: { signUp?: boolean } = {}) {
+async function serve(at: Awaited<ReturnType<typeof project>>, settings: { signUp?: boolean } = {}) {
   const server = await startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, ...settings })] });
-  t.after(() => server.close());
+  at.defer(() => server.close());
   const base = `http://127.0.0.1:${server.address.port}`;
   const jar = new Map<string, string>();
   const call = async (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) => {
@@ -42,8 +56,10 @@ async function serve(t: test.TestContext, at: Awaited<ReturnType<typeof project>
 }
 async function withUser(at: Awaited<ReturnType<typeof project>>): Promise<string> {
   const options = betterAuthOptions({ database: at.database, secret }, origin, '/api/auth', true);
-  await migrate(options);
-  return (await betterAuth(options).api.signUpEmail({ body: { email: 'ann@example.test', password: 'ann-local-password', name: 'Ann' } })).user.id;
+  try {
+    await migrate(options);
+    return (await betterAuth(options).api.signUpEmail({ body: { email: 'ann@example.test', password: 'ann-local-password', name: 'Ann' } })).user.id;
+  } finally { (options.database as { close(): void }).close(); }
 }
 
 test('activation refuses until Better Auth\'s tables exist', async t => {
@@ -55,7 +71,7 @@ test('activation refuses until Better Auth\'s tables exist', async t => {
 
 test('a protected route sees the verified user id, never the session cookie, and sign-out ends it', async t => {
   const at = await project(t), userId = await withUser(at);
-  const { call, jar } = await serve(t, at);
+  const { call, jar } = await serve(at);
   assert.deepEqual(await (await call('/me')).json(), { error: 'authentication_required' });
   assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'wrong-password' } })).status, 401);
   assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
@@ -72,24 +88,24 @@ test('a protected route sees the verified user id, never the session cookie, and
 
 test('only allowlisted Better Auth paths answer; sign-up is off unless the operator enables it', async t => {
   const at = await project(t); await withUser(at);
-  const { call } = await serve(t, at);
+  const { call } = await serve(at);
   for (const path of ['/api/auth/callback/github', '/api/auth/reset-password/token', '/api/auth/update-user', '/api/auth/delete-user']) assert.equal((await call(path)).status, 404, path);
   assert.equal((await call('/api/auth/sign-up/email', { method: 'POST', body: { email: 'bob@example.test', password: 'bob-local-password', name: 'Bob' } })).status, 404);
   assert.equal((await call('/api/auth/ok')).status, 200);
-  const open = await serve(t, at, { signUp: true });
+  const open = await serve(at, { signUp: true });
   assert.equal((await open.call('/api/auth/sign-up/email', { method: 'POST', body: { email: 'bob@example.test', password: 'bob-local-password', name: 'Bob' } })).status, 200);
 });
 
 test('sign-in is throttled per admitted client address, whatever forwarding header a client sends', async t => {
   const at = await project(t); await withUser(at);
-  const { call } = await serve(t, at);
+  const { call } = await serve(at);
   const statuses: number[] = [];
   for (let attempt = 0; attempt < 12; attempt++) statuses.push((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'guess' }, headers: { 'x-forwarded-for': `203.0.113.${attempt}`, 'x-urlcode-client-address': `203.0.113.${attempt}` } })).status);
   assert.ok(statuses.includes(429), statuses.join(','));
 });
 
 test('the scaffold writes the mount and a private secret; host() reads it; the CLI migrates and creates a user', async t => {
-  const site = await mkdtemp(join(tmpdir(), 'urlcode-auth-site-')); t.after(() => rm(site, { recursive: true, force: true }));
+  const site = await mkdtemp(join(tmpdir(), 'urlcode-auth-site-')); t.after(() => rm(site, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const scaffold = await extension.definition.scaffold!({ site, project: join(site, 'app'), installed: ['auth'], acknowledgements: [] });
   assert.deepEqual(Object.keys(scaffold.routes), ['/api/auth/*']);
   const file = scaffold.files![0]!;
