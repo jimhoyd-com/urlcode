@@ -8,6 +8,7 @@ import {buildBootstrap} from './bootstrap.ts';
 import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
 import {runProjectTests} from './project-tests.ts';
 import {loadOperatorHost} from './operator-host.ts';
+import {loadOperatorPolicy} from './policy.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,authoringAnnotations,callAuthoringTool} from './mcp-authoring.ts';
@@ -76,7 +77,7 @@ const aliasOf=Object.fromEntries(Object.entries(legacyNames).map(([canonical,leg
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 // run_tests executes the project's code, so it is not a read tool: it is offered only under the operator's
 // --allow-authoring flag, alongside the authoring tools, and annotated as able to do anything Node can (#590).
-const runTestsDefinition={name:'run_tests',description:'Run this project\'s request fixtures (tests/requests.json) in-process against a temporary local server instance, the same behavior `urlcode test` uses. This EXECUTES the project\'s trusted function and middleware modules and its registered extensions with full Node access, so they may write or delete files, spawn processes or reach the network; the scratch data directory it creates and removes afterward is not confinement. Routes that declare `sandbox: true` still run in their isolated sandbox. Offered only when the operator starts the server with --allow-authoring. Bindings that need an operator-granted policy still fail as usual; this tool accepts no --policy file.',properties:{}};
+const runTestsDefinition={name:'run_tests',description:'Run this project\'s request fixtures (tests/requests.json) in-process against a temporary local server instance, the same behavior `urlcode test` uses. This EXECUTES the project\'s trusted function and middleware modules and its registered extensions with full Node access, so they may write or delete files, spawn processes or reach the network; the scratch data directory it creates and removes afterward is not confinement. Routes that declare `sandbox: true` still run in their isolated sandbox. Offered only when the operator starts the server with --allow-authoring. Bindings are granted only by the policy the operator passed to the server with --policy; without one, bindings that need a grant fail as usual. No tool argument can name, create or change a policy.',properties:{}};
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
 const ajv=new Ajv({strict:false,allErrors:true});
 // A -32602 message an agent can act on: the offending argument by name, and
@@ -106,7 +107,7 @@ export const mcpToolInventory:{readonly read:readonly string[];readonly hostFile
 export const canonicalMcpToolNames:readonly string[]=[...definitions.map(def=>def.name),hostDefinition.name];
 const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[tool.name,{tool,validate:ajv.compile(tool.inputSchema)}]));
 /** `allowAuthoring` and `hostFile` are set only by the `--allow-authoring` and `--host-file` command-line flags; tool arguments and the environment never enable them. */
-export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean;hostFile?:string}
+export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean;hostFile?:string;policy?:string}
 /** Operator selects the only project root. Read tools have no path, credential, write or execution authority; authoring tools write inside that root only, and `run_tests` (also authoring-gated) executes the project's trusted code. */
 export async function serveMcp(options:McpOptions):Promise<void> {
  // `mcp print-config` registers the site's app/ before `urlcode init` creates it (#542): a project directory that does
@@ -117,9 +118,12 @@ export async function serveMcp(options:McpOptions):Promise<void> {
   const absolute=resolve(options.project);return join(await realpath(dirname(absolute)),basename(absolute));
  }),input=options.input??process.stdin,output=options.output??process.stdout;
  const authoring=options.allowAuthoring===true,tools=[...readTools,...(options.hostFile===undefined?[]:[hostTool]),...(authoring?authoringTools:[])],names=new Set(tools.map(tool=>tool.name));
- const host=await loadOperatorHost(options.hostFile,project);
+ // The operator's reviewed policy is verified once, here: it pins the host to its revision, grants run_tests its
+ // bindings and goes to the runners unchanged. No tool argument names, creates or edits a policy (#834).
+ const policy=await loadOperatorPolicy(options.policy,project);
+ const host=await loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256});
  // Only what the operator put on the command line: the runners and get_context's commands repeat these, nothing else.
- const operator={...(options.hostFile===undefined?{}:{hostFile:resolve(options.hostFile)}),...(options.origin?{origin:options.origin}:{})};
+ const operator={...(options.hostFile===undefined?{}:{hostFile:resolve(options.hostFile)}),...(options.origin?{origin:options.origin}:{}),...(options.policy===undefined?{}:{policy:resolve(options.policy)})};
  // get_context's commands name the project absolutely, like the host file: the client's working directory is the one
  // the server was started in (the site root for `--project app`), not the project, so a relative `.` there would name
  // the site and put its host.mjs inside the "project" (#790).
@@ -144,14 +148,14 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_context':{const deployTarget=deployTargetOf(args);
     if(args.capabilities!==undefined&&args.bootstrap!==true)throw new ConfigError('capabilities applies only with bootstrap: true');
     // The bootstrap names the site around this server's project; it is read-only here (creation is the CLI's --create).
-    if(args.bootstrap===true){if(typeof args.task==='string'||typeof args.budget==='number')throw new ConfigError('bootstrap cannot be combined with task or budget');return buildBootstrap(project,{...(Array.isArray(args.capabilities)?{capabilities:args.capabilities as string[]}:{}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(options.origin?{origin:options.origin}:{})});}
+    if(args.bootstrap===true){if(typeof args.task==='string'||typeof args.budget==='number')throw new ConfigError('bootstrap cannot be combined with task or budget');return buildBootstrap(project,{...(Array.isArray(args.capabilities)?{capabilities:args.capabilities as string[]}:{}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(options.origin?{origin:options.origin}:{}),...(operator.policy===undefined?{}:{policy:operator.policy})});}
     return typeof args.task==='string'
     ?buildTaskContext(project,args.task,{projectFlag,...operator,...(options.hostFile===undefined?{}:{host}),...(typeof args.budget==='number'?{budget:args.budget}:{})})
     :buildContext(project,{projectFlag,...operator,...(options.hostFile===undefined?{}:{host}),...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
    // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
-   case 'run_tests':{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:host.extensions,log:(event:object)=>{events.push(event);}});return {...result,events};}
+   case 'run_tests':{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:host.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,events};}
    case 'list_capabilities':return getCapabilities(deployTargetOf(args));
    case 'get_capability':return getCapability(args.name as string);
    case 'get_schema':return getSchemaFragment(args.path as string);

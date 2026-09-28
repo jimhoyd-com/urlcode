@@ -5,7 +5,7 @@ import {readConversionInput} from './interchange-cli.ts';
 interface Options {
   json?:boolean|undefined;project:string;out?:string|undefined;format?:string|undefined;input?:string|undefined;
   target?:string|undefined;origin?:string|undefined;'dry-run'?:boolean|undefined;
-  'timeout-ms'?:string|undefined;release?:string|undefined;'git-commit'?:string|undefined;'allow-authoring'?:boolean|undefined;'host-file'?:string|undefined;
+  'timeout-ms'?:string|undefined;release?:string|undefined;'git-commit'?:string|undefined;'allow-authoring'?:boolean|undefined;'host-file'?:string|undefined;policy?:string|undefined;
   global?:boolean|undefined;
 }
 export async function runEcosystemCommand(command:string,args:string[],options:Options,print:(value:unknown)=>unknown):Promise<void> {
@@ -93,7 +93,7 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
       assert(args.length===0,'Unexpected MCP arguments');
       const {serveMcp}=await import('./mcp.ts');
       // The flags reach the server from parsed argv only; no tool argument or environment variable can set them.
-      await serveMcp({project:options.project,...(options.origin===undefined?{}:{origin:options.origin}),...(options['allow-authoring']?{allowAuthoring:true}:{}),...(options['host-file']===undefined?{}:{hostFile:options['host-file']})});
+      await serveMcp({project:options.project,...(options.origin===undefined?{}:{origin:options.origin}),...(options['allow-authoring']?{allowAuthoring:true}:{}),...(options['host-file']===undefined?{}:{hostFile:options['host-file']}),...(options.policy===undefined?{}:{policy:options.policy})});
     }
   }else assert(false,'Unknown ecosystem command');
 }

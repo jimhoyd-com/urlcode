@@ -181,7 +181,7 @@ const helpEntries: HelpEntry[] = [
     # artifacts are inert data add-ons (JSON schemas, example configuration) with the same shape, release and pinning as extensions; they never execute and are never wired into host.mjs
 ` },
   { name:'explain', group:'Agent tooling', text:
-`  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+`  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--policy /absolute/policy.json] [--json]
     # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
 ` },
   { name:'manifest', group:'Agent tooling', text:
@@ -191,7 +191,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode docs search <text> [--project DIR] [--json]  # same as MCP search_docs: at most three bounded excerpts from the core agent docs and the site's installed, pin-verified add-on guides and urlcode.json schemas, with what was and was not searched; instead of grepping llms-full.txt
 ` },
   { name:'mcp', group:'Agent tooling', text:
-`  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...] [--origin https://links.example]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools and runners that execute project code, host file adds get_extensions
+`  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...] [--origin https://links.example] [--policy /absolute/policy.json]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools and runners that execute project code, host file adds get_extensions
   urlcode mcp print-config [project] [--global]  # prints the .mcp.json JSON for a client to register BEFORE running init (pre-session bootstrap, #542); write it into an empty directory before starting an agent session there so MCP tools are loaded on that session's first turn. --global emits the bare 'urlcode' command for a global install; default is the portable 'npx --no --package' form. 'urlcode init' keeps a .mcp.json written this way as-is
 ` },
   { name:'capabilities', group:'Agent tooling', text:
@@ -202,7 +202,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
 ` },
   { name:'bootstrap', group:'Agent tooling', text:
-`  urlcode bootstrap [directory] [--capabilities respond,redirect,static] [--target self-hosted|cloudflare|aws|vercel|static] [--origin https://links.example] [--create [--adopt] [--no-mcp]] [--json]
+`  urlcode bootstrap [directory] [--capabilities respond,redirect,static] [--target self-hosted|cloudflare|aws|vercel|static] [--origin https://links.example] [--policy /absolute/policy.json] [--create [--adopt] [--no-mcp]] [--json]
     # run before the first authoring step: whether the directory (default .) holds a site, its root, route project, entry and host file, the site's pinned/installed runtime against this one, exact start/validate/test commands to run from the site root, and how YAML file references map onto the site
     # --capabilities: a bounded packet (at most 8) of this runtime's schema fragments, constraints, target support and one bundled example per named capability; unknown names and, with --target, refused ones are reported, never guessed
     # --create: only then, and only where no site or project exists, runs init at the named directory; refused inside an existing project or at an app/ directory. Without it nothing is written
@@ -210,11 +210,11 @@ const helpEntries: HelpEntry[] = [
     # --adopt: with --create, passed to init so a directory already holding user files (a frontend/, say) becomes the site root; the same collision refusal applies and user files are never moved
 ` },
   { name:'context', group:'Agent tooling', text:
-`  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--host-file ...] [--origin https://links.example] [--budget 500] [--json] [--stats]
+`  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--host-file ...] [--origin https://links.example] [--policy /absolute/policy.json] [--budget 500] [--json] [--stats]
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
 ` },
   { name:'plan-feature', group:'Agent tooling', text:
-`  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--origin https://links.example] [--json]
+`  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--origin https://links.example] [--policy /absolute/policy.json] [--json]
     # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
 ` },
   { name:'fixtures', group:'Agent tooling', text:
@@ -226,7 +226,7 @@ const helpEntries: HelpEntry[] = [
     # route, capability, trusted/sandboxed code seam and newly requested operator grant changes, by name only (no values); a directory is read with its includes (each route names its file), a file as text; always exits 0
 ` },
   { name:'review', group:'Agent tooling', text:
-`  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+`  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--policy /absolute/policy.json] [--json]
     # opt-in read-only static review for avoidable plumbing; host file registrations sharpen extension-alternative findings (registered/revision-pinned), never required
 ` },
 ];
@@ -435,7 +435,7 @@ try {
       if(parsed.project!==undefined)throw new ConfigError('bootstrap takes the site directory as its argument, not --project');
       if(values.create&&arg===undefined)throw new ConfigError('--create needs an explicit destination: urlcode bootstrap <directory> --create');
       const { buildBootstrap, renderBootstrap } = await import('./bootstrap.ts');
-      const bootstrap = await buildBootstrap(arg ?? '.', { capabilities:values.capabilities?.split(','), target:values.target, origin:values.origin, create:values.create, adopt:values.adopt, mcp:values['no-mcp'] ? false : undefined });
+      const bootstrap = await buildBootstrap(arg ?? '.', { capabilities:values.capabilities?.split(','), target:values.target, origin:values.origin, create:values.create, adopt:values.adopt, mcp:values['no-mcp'] ? false : undefined, policy:values.policy });
       print(values.json ? JSON.stringify(bootstrap) + '\n' : renderBootstrap(bootstrap));
     }else if(command==='context'){
       if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
@@ -444,10 +444,10 @@ try {
       let text: string;
       if (values.task !== undefined) {
         if (values.target !== undefined) throw new ConfigError('--task cannot be combined with --target');
-        const task = await buildTaskContext(values.project, values.task, { hostFile:values['host-file'], origin:values.origin, ...budget });
+        const task = await buildTaskContext(values.project, values.task, { hostFile:values['host-file'], origin:values.origin, policy:values.policy, ...budget });
         text = values.json ? JSON.stringify(task) + '\n' : renderTaskContext(task);
       } else {
-        const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], origin:values.origin, ...budget });
+        const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], origin:values.origin, policy:values.policy, ...budget });
         text = values.json ? JSON.stringify(context) + '\n' : renderContext(context);
       }
       print(text);

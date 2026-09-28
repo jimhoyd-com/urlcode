@@ -279,4 +279,22 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
     assert.equal(script.status, 200);
     assert.match(await script.text(), /\/api\/auth/);
   });
+
+  // The connected authoring workflow (#834): the operator starts the MCP server with the same host, origin and
+  // reviewed policy; its runners validate and test the site with no PROJECT_SHA256 export. They pass the child only
+  // PATH, so they use the site's own data/, which is why this runs after the HTTP scenario.
+  await t.test('the authoring MCP runners validate and test with the operator policy', async () => {
+    const messages = [
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'proof', version: '1' } } },
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      ...['run_validate', 'run_test'].map((name, index) => ({ jsonrpc: '2.0', id: index + 2, method: 'tools/call', params: { name, arguments: {} } })),
+    ];
+    const { PROJECT_SHA256: _pin, ...ambient } = process.env;
+    const mcp = spawnSync(process.execPath, [join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), 'mcp', '--allow-authoring', ...documented], { cwd: site, input: messages.map(message => JSON.stringify(message)).join('\n') + '\n', encoding: 'utf8', timeout: 300000, env: { ...ambient, SITE_ORIGIN: 'http://localhost:4180' } });
+    const replies = mcp.stdout.trim().split('\n').map(line => JSON.parse(line) as { id: number; result: { content: { text: string }[] } });
+    const result = (id: number) => JSON.parse(replies.find(reply => reply.id === id)!.result.content[0]!.text) as { exitCode: number; stdout: string; stderr: string };
+    assert.equal(result(2).exitCode, 0, result(2).stderr);
+    assert.equal(result(3).exitCode, 0, result(3).stderr);
+    assert.match(result(3).stdout, /"failed":0/);
+  });
 });

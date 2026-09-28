@@ -4,7 +4,7 @@ import {stringify} from 'yaml';
 import {loadDocument} from './config.ts';
 import {ConfigError} from './errors.ts';
 import {applySite} from './site.ts';
-import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
+import {loadOperatorPolicy,prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {compileRoutes} from './router.ts';
 import {checkAssetReferences} from './assets.ts';
 import {compilePolicies,closePolicies,effectivePolicies,registry} from './policies.ts';
@@ -24,6 +24,8 @@ export interface ContextOptions {
  host?:OperatorHost|undefined;
  /** The canonical origin the operator supplied (`--origin`); the emitted commands carry it. Never guessed. */
  origin?:string|undefined;
+ /** The operator's reviewed policy file (`--policy`): it pins the host to its revision and the emitted commands carry it. Never created or changed. */
+ policy?:string|undefined;
  /** Estimated token budget; sections are dropped in a fixed order until the YAML rendering fits. */
  budget?:number|undefined;
  /** What `--project` should say in the emitted commands (shell-quoted on output); defaults to the project argument itself. Name the project as the caller's working directory reaches it: the commands carry no directory change. */
@@ -61,14 +63,19 @@ export function shellWord(value:string,platform:NodeJS.Platform=process.platform
  * The operator flags the caller supplied, appended to every command that activates the project (validate, test,
  * audit, routes). Only values the operator gave are repeated: a missing one is named in `prerequisites`, never invented.
  */
-function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefined}):string {
- return `${options.hostFile===undefined?'':` --host-file ${shellWord(options.hostFile)}`}${options.origin===undefined?'':` --origin ${shellWord(options.origin)}`}`;
+function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefined;policy?:string|undefined}):string {
+ return `${options.hostFile===undefined?'':` --host-file ${shellWord(options.hostFile)}`}${options.origin===undefined?'':` --origin ${shellWord(options.origin)}`}${options.policy===undefined?'':` --policy ${shellWord(options.policy)}`}`;
 }
-export function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
+/** The operator host for an inspection, pinned to the reviewed policy's revision when the operator gave one (#834). */
+export async function inspectionHost(project:string,options:{hostFile?:string|undefined;policy?:string|undefined}):Promise<OperatorHost> {
+ const policy=await loadOperatorPolicy(options.policy,project);
+ return loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256});
+}
+export function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined;policy?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
  const needs:Prerequisite[]=[];
  if(extensions&&options.hostFile===undefined)needs.push({flag:'--host-file',reason:'The project declares extensions; only the operator\'s host file outside the project registers them.'});
  if(extensions&&options.origin===undefined)needs.push({flag:'--origin',reason:'Extensions activate only with the canonical https origin the operator serves this project on.'});
- if(bindings)needs.push({flag:'--policy',reason:'Routes request env or secret bindings; only the operator\'s policy pinned to this project revision grants them.'});
+ if(bindings&&options.policy===undefined)needs.push({flag:'--policy',reason:'Routes request env or secret bindings; only the operator\'s policy pinned to this project revision grants them.'});
  return needs;
 }
 /** Characters divided by four, rounded up: an estimate, not a tokenizer. */
@@ -142,7 +149,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
  const budget=options.budget;
  if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
  const selected:CapabilityTarget[]=options.target===undefined?[...capabilityTargets]:[normalizeCapabilityTarget(options.target)];
- const owned=options.host===undefined,host=options.host??await loadOperatorHost(options.hostFile,project);
+ const owned=options.host===undefined,host=options.host??await inspectionHost(project,options);
  try {
   const {loaded,compiled,routes}=await compile(project,options.origin),document=loaded.document;
   const handlers:Record<string,number>={},policyCounts:Record<string,number>={},used=new Set<CapabilityName>();
@@ -289,7 +296,7 @@ export function renderTaskContext(context:TaskContext):string {return stringify(
  * One bounded call for a task: fixed guidance plus this project's facts for that task. Same compiler as buildContext;
  * a directory without urlcode.yaml still gets the guidance, any other load failure propagates.
  */
-export async function buildTaskContext(project:string,task:string,options:{budget?:number|undefined;hostFile?:string|undefined;host?:OperatorHost|undefined;origin?:string|undefined;projectFlag?:string|undefined}={}):Promise<TaskContext> {
+export async function buildTaskContext(project:string,task:string,options:{budget?:number|undefined;hostFile?:string|undefined;host?:OperatorHost|undefined;origin?:string|undefined;policy?:string|undefined;projectFlag?:string|undefined}={}):Promise<TaskContext> {
  if(!(contextTasks as readonly string[]).includes(task))throw new ConfigError(`Unknown context task; use one of: ${contextTasks.join(', ')}`,{code:'invalid-option-value'});
  const budget=options.budget;
  if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
@@ -297,7 +304,7 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape})),starter:redirectStarter()};
  const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
  if(exists) {
-  const owned=options.host===undefined,host=options.host??await loadOperatorHost(options.hostFile,project);
+  const owned=options.host===undefined,host=options.host??await inspectionHost(project,options);
   try {
    const {loaded,compiled,routes}=await compile(project,options.origin);
    context.project={entry:'urlcode.yaml',routes:compiled.count,redirects:routes.filter(route=>route.redirect).map(route=>({path:route.pattern,status:route.redirect!.status??302,url:route.redirect!.url})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0).slice(0,20),site:sorted(Object.keys(loaded.document.site??{}))};

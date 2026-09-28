@@ -87,14 +87,19 @@ The tooling API consolidates authoring operations without starting a runtime:
 ## Project context
 
 `urlcode context [--project DIR] [--target T] [--host-file F] [--origin URL]
-[--budget N] [--json] [--stats]` emits one deterministic YAML document (JSON with
+[--policy F] [--budget N] [--json] [--stats]` emits one deterministic YAML document (JSON with
 `--json`) derived only from the compiled project and the capability catalog,
 never from prose. It uses the same loader and semantic compiler as
 `inspectProject`: no binding values, guest execution, environment reads or
 network. `--origin` reaches site expansion exactly as it does for `validate`,
 so a project that declares `site.sitemap` compiles with it; without it the
 command fails naming `--origin` as the missing prerequisite, and no origin is
-guessed. Keys always appear in this order:
+guessed. `--policy` names the operator's reviewed policy file: it pins the host
+file to that policy's `projectSha256` (so no `PROJECT_SHA256` export is needed),
+the emitted commands repeat it, and `--policy` leaves `prerequisites`. The same
+flag does the same for `bootstrap`, `explain`, `review`, `plan-feature` and
+`mcp`. Reading it grants nothing new and never changes the file (#834). Keys
+always appear in this order:
 
 - `urlcode` (package version) and `schema` (`"1"`).
 - `project`: entry file, route count, handlers used with counts, extensions
@@ -166,7 +171,7 @@ checks. Build output remains an explicit separate build API/CLI operation.
 ## Local agent bootstrap
 
 `urlcode bootstrap [DIR] [--capabilities NAME,...] [--target T] [--origin URL]
-[--create [--adopt] [--no-mcp]] [--json]` is the one call an agent makes before its first authoring
+[--policy F] [--create [--adopt] [--no-mcp]] [--json]` is the one call an agent makes before its first authoring
 step (#807). It composes `init`, the command quoting `context` uses, the
 capability catalog and `urlcode schema`; it is not another manual. It works
 with no network, hosted service or MCP, runs no project or host code, and
@@ -298,7 +303,7 @@ assistant file-write, guest-execution, deployment or network authority.
 
 ## Project review
 
-`urlcode review [--project DIR] [--target T] [--host-file F] [--json]` (MCP
+`urlcode review [--project DIR] [--target T] [--host-file F] [--policy F] [--json]` (MCP
 `review {deployTarget?}`, still reachable as `review_project` for one release)
 is an opt-in, read-only static review of the
 compiled project plus its own `function`/`middleware` source, for the narrow,
@@ -639,7 +644,7 @@ more project loads.
 
 ## Explain and manifest
 
-`urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--json]`
+`urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--policy F] [--json]`
 prints what `explainRoute` returns: one route in detail, or without a path a
 one-line-per-route table (methods, handler, state, execution mode, middleware
 count, policies, cache outcome and target support). `--target` narrows the support columns to
@@ -1018,17 +1023,20 @@ What it can do, all inside the selected project root (resolved with realpath):
   `urlcode test` and `urlcode audit` against the project with a minimal
   environment (`PATH` only), a two-minute deadline and stdout/stderr each capped
   at 32 KiB. They repeat exactly the operator flags the server itself received:
-  `--host-file` (as an absolute path) and `--origin`. Besides `PATH`, the only
+  `--host-file` and `--policy` (as absolute paths) and `--origin`. Besides `PATH`, the only
   environment variable a runner passes is `PROJECT_SHA256`, and only with a host
   file and when the server's own value is a well-formed 64-hex revision: it is
   the revision pin the server already loaded its own (composed) host under, not
   a credential. No other variable goes along, no tool argument can add a flag,
   and no grant is created or changed. The host file is operator-supplied trusted code: the
   child imports it, so its code (and every extension's `host()` hook and
-  activation) runs with full Node access. `urlcode mcp` accepts no `--policy`,
-  so the runners never pass one; bindings that need an operator-granted policy
-  fail as they do without one (`get_context` names `--policy` under
-  `prerequisites`). Without `--host-file` a project that declares extensions
+  activation) runs with full Node access. The operator's `--policy` is read and
+  verified once when the server starts: it pins the host to its reviewed
+  revision (no `PROJECT_SHA256` needed) and the runners forward the same file.
+  No tool argument can name, create or change a policy, and editing the project
+  still invalidates it until the operator reviews and replaces the file. Without
+  one, bindings that need an operator grant fail as they do on the CLI
+  (`get_context` names `--policy` under `prerequisites`). Without `--host-file` a project that declares extensions
   fails validation as it does on the CLI without one. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
   `truncated`. All three activate the local runtime, so they execute the
   project's trusted code under the same rules as the CLI: `run_validate`
@@ -1048,8 +1056,8 @@ What it can do, all inside the selected project root (resolved with realpath):
   `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`,
   `openWorldHint: true`; without
   the flag it is absent and a call to it is refused with a hint naming
-  `--allow-authoring`. It accepts no `--policy` file, so bindings that need an
-  operator-granted policy fail as they do without one.
+  `--allow-authoring`. Its bindings come from the operator's `--policy`, as
+  for the runners; without one, bindings that need a grant fail as usual.
 
 `create_route`, `add_recipe` and `scaffold_feature` return `validation`, the
 `validateProject` verdict of the project after the operation, computed with the

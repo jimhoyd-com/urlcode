@@ -65,6 +65,15 @@ npm run audit     # every route and method covered
 npm start         # http://localhost:4180
 ```
 
+An authoring agent gets the same context from the operator's flags, with no
+`PROJECT_SHA256` export: `npx urlcode bootstrap --policy operator/policy.json
+--origin http://localhost:4180` prints complete commands, and the MCP server
+started as below validates, tests and audits through its runners:
+
+```sh
+npx urlcode mcp --project app --allow-authoring --host-file host.mjs --origin http://localhost:4180 --policy operator/policy.json
+```
+
 Sign in as `ann@example.test` / `ann-local-demo-password`,
 `bob@example.test` / `bob-local-demo-password` or the reviewer
 `rita@example.test` / `rita-local-demo-password`. They are synthetic local
@@ -102,9 +111,8 @@ directory and exercises every success and failure case over HTTP:
 - `npm test` and `npm run audit` sign in and create records in the same
   `data/` directory the site serves. Point `PRIVATE_REQUESTS_DATA` at another
   directory, and run `npm run setup` there, to keep them apart.
-- The authoring MCP server accepts no `--policy`, so its `run_validate` and
-  `run_test` tools refuse this site's `APP_DATABASE` binding. Its read-only
-  tools work.
+- The authoring MCP runners pass their child process only `PATH`, so they
+  always use the site's own `data/`, whatever `PRIVATE_REQUESTS_DATA` says.
 - The approval transition is one conditional SQL statement. Transactions
   across several records, idempotent retries and audit evidence belong to
   [#835](https://github.com/jimhoyd-com/urlcode/issues/835).

@@ -110,7 +110,7 @@ test('an existing site is found from its root and from app/, with a supplied fro
  assert.deepEqual(fromRoot.paths!.example,{onDisk:'app/public',yaml:'public',declaration:'/public/*: {static: {directory: public}}'});
  assert.match(fromRoot.paths!.rule,/relative to the route project root app\//);
  assert.deepEqual(fromRoot.paths!.outsideProject.map(item=>item.path),['frontend']);
- assert.match(fromRoot.paths!.outsideProject[0]!.note,/into app\/frontend and reference it as frontend/);
+ assert.match(fromRoot.paths!.outsideProject[0]!.note,/into app\/frontend and reference them as frontend; operator code, credentials and data stay outside/);
  // Nothing outside the site is named.
  for(const value of [fromRoot.site!.root,fromRoot.site!.projectRoot])assert.ok(value.startsWith(site));
  // The mapping holds: a static route naming `public` validates; one naming the site-relative path does not.
@@ -205,7 +205,7 @@ test('--create --adopt builds the site around a supplied frontend, moves nothing
  assert.equal(created.site!.root,site);assert.equal(created.site!.projectRoot,join(site,'app'));
  // The supplied directories stay where they are; the mapping says how to serve them.
  assert.deepEqual(created.paths!.outsideProject.map(item=>item.path),['dist','frontend']);
- assert.match(created.paths!.outsideProject[1]!.note,/build or copy it into app\/frontend and reference it as frontend/);
+ assert.match(created.paths!.outsideProject[1]!.note,/build or copy those into app\/frontend and reference them as frontend/);
  const after=await snapshot(site);
  for(const line of before)assert.ok(after.includes(line),`changed: ${line}`);
  for(const args of [['bootstrap',site,'--create','--adopt'],['bootstrap',site,'--create'],['bootstrap',site]]) {

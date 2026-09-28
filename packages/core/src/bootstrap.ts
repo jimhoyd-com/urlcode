@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {readFile,readdir,realpath,stat} from 'node:fs/promises';
-import {basename,dirname,join,relative,resolve} from 'node:path';
+import {basename,dirname,isAbsolute,join,relative,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {stringify} from 'yaml';
 import {loadDocument,parseYaml} from './config.ts';
@@ -32,6 +32,8 @@ export interface BootstrapOptions {
  target?:string|undefined;
  /** The operator's canonical origin; repeated in the emitted commands, never guessed. */
  origin?:string|undefined;
+ /** The operator's reviewed policy file (`--policy`), as the caller's working directory reaches it; repeated in the emitted commands, never created. */
+ policy?:string|undefined;
  /** Create a site at the directory when none is there (init). Refused inside an existing project or at an `app` directory. */
  create?:boolean|undefined;
  /** With create: init --adopt, so a directory already holding user files becomes the site root; nothing of theirs is moved. */
@@ -101,6 +103,8 @@ export const bootstrapMaxCapabilities=8;
 const exampleMaxCharacters=1500;
 const exists=(path:string):Promise<boolean>=>stat(path).then(()=>true,()=>false);
 const toPosix=(path:string)=>path.split('\\').join('/');
+/** `path` as a command run from `root` names it: relative inside the site, absolute outside it. */
+const sitePath=(root:string,path:string)=>{const inside=relative(root,path);return inside&&!inside.startsWith('..')&&!isAbsolute(inside)?toPosix(inside):path;};
 const sha256=(text:string|Buffer)=>createHash('sha256').update(text).digest('hex');
 const schemaFile=()=>fileURLToPath(new URL('../../../schemas/urlcode.schema.json',import.meta.url));
 async function runningRuntime():Promise<{version:string;schemaSha256:string}> {
@@ -149,8 +153,9 @@ async function siteRuntime(root:string,running:{version:string;schemaSha256:stri
   :{running,installed,pinned,status:'mismatched',note:`The site pins ${pinned}, but ${running.version} answered. Install the pinned runtime (commands.install) and bootstrap again with it.`};
  return {running,installed,pinned,status:'unverified',note:`The site requires ${pinned}, a range, and has not installed it; install it and bootstrap again with the installed runtime to compare contracts.`};
 }
-// Directories npm, git, editors and init itself put in a site: never application content YAML could need.
-const siteInfrastructure=new Set([PROJECT_DIRECTORY,'node_modules','.git','.github']);
+// Directories npm, git, editors and init itself put in a site: never application content YAML could need. `data/`
+// holds the operator's local state (databases, keys; init's .gitignore excludes it) and must never be served.
+const siteInfrastructure=new Set([PROJECT_DIRECTORY,'node_modules','.git','.github','data']);
 async function pathMapping(located:Located):Promise<NonNullable<Bootstrap['paths']>> {
  const projectRelative=toPosix(relative(located.root,located.project))||'.';
  const prefix=projectRelative==='.'?'':`${projectRelative}/`;
@@ -159,7 +164,7 @@ async function pathMapping(located:Located):Promise<NonNullable<Bootstrap['paths
  const outsideProject:{path:string;note:string}[]=[];
  if(located.layout==='site') {
   const names=(await readdir(located.root,{withFileTypes:true})).filter(entry=>entry.isDirectory()&&!entry.name.startsWith('.')&&!siteInfrastructure.has(entry.name)).map(entry=>entry.name).sort();
-  for(const name of names.slice(0,20))outsideProject.push({path:name,note:`Outside the route project, so urlcode.yaml cannot reference it. To serve it, build or copy it into ${prefix}${name} and reference it as ${name}.`});
+  for(const name of names.slice(0,20))outsideProject.push({path:name,note:`Outside the route project, so urlcode.yaml cannot reference it. If it holds files the site should serve (a frontend build, say), build or copy those into ${prefix}${name} and reference them as ${name}; operator code, credentials and data stay outside the project.`});
  }
  return {
   rule:`Every file reference in urlcode.yaml (includes, page.file, download.file, static.directory, function and middleware source, site.notFound, tests/requests.json) is relative to the route project root ${prefix||'./'}, not to the site root, and must stay inside it.`,
@@ -167,10 +172,10 @@ async function pathMapping(located:Located):Promise<NonNullable<Bootstrap['paths
   outsideProject,
  };
 }
-async function commandsFor(located:Located,hostFile:string|null,origin:string|undefined,installNeeded:boolean):Promise<Record<string,string>> {
+async function commandsFor(located:Located,hostFile:string|null,origin:string|undefined,policy:string|undefined,installNeeded:boolean):Promise<Record<string,string>> {
  const cli=await cliInvocation(located.root);
  const project=toPosix(relative(located.root,located.project))||'.';
- const flags=`--project ${shellWord(project)}${hostFile===null?'':` --host-file ${shellWord(hostFile)}`}${origin===undefined?'':` --origin ${shellWord(origin)}`}`;
+ const flags=`--project ${shellWord(project)}${hostFile===null?'':` --host-file ${shellWord(hostFile)}`}${origin===undefined?'':` --origin ${shellWord(origin)}`}${policy===undefined?'':` --policy ${shellWord(policy)}`}`;
  return {
   cd:`cd ${shellWord(located.root)}`,
   ...(installNeeded?{install:'npm install'}:{}),
@@ -291,11 +296,13 @@ export async function buildBootstrap(directory:string,options:BootstrapOptions={
  const facts=await projectFacts(located.project);
  const diagnostics:{code:string;message:string}[]=[];
  if('error' in facts)diagnostics.push({code:'project-invalid',message:facts.error});
- const prerequisites='error' in facts?[]:prerequisitesFor({hostFile:hostFile??undefined,origin:options.origin},facts.extensions,facts.bindings);
+ // Commands run from the site root, so a policy inside the site is named relative to it and one outside absolutely.
+ const policy=options.policy===undefined?undefined:sitePath(located.root,resolve(options.policy));
+ const prerequisites='error' in facts?[]:prerequisitesFor({hostFile:hostFile??undefined,origin:options.origin,policy},facts.extensions,facts.bindings);
  const capabilities=packet&&runtime.status==='mismatched'
   ?{requested:packet.requested,packet:[],unknown:packet.unknown,unsupported:packet.unsupported,withheld:'The running runtime does not match the site\'s; its schema fragments could describe a different contract. Bootstrap again with the site\'s runtime.'}
   :packet;
- const commands=await commandsFor(located,hostFile,options.origin,installNeeded);
+ const commands=await commandsFor(located,hostFile,options.origin,policy,installNeeded);
  const projectRelative=toPosix(relative(located.root,located.project))||'.';
  const entry=projectRelative==='.'?'urlcode.yaml':`${projectRelative}/urlcode.yaml`;
  const next=[

@@ -7,7 +7,8 @@ test('CLI command metadata keeps external-code and policy commands explicit', ()
   assert(hostFileCommands.includes('mcp'));
   assert(hostFileCommands.includes('serve'));
   assert(policyCommands.includes('serve'));
-  assert(!(policyCommands as readonly string[]).includes('mcp'));
+  // The MCP server takes the operator's reviewed policy at startup and forwards it to its runners (#834).
+  assert(policyCommands.includes('mcp'));
   assert(hostFileCommands.includes('extensions'));
   for (const option of ['host-file', 'policy', 'site', 'strict', 'ack', 'help', 'version']) assert(Object.hasOwn(commandOptions, option), option);
   // The removed release and manifest flags stay removed; --project has no fixed default (the CLI picks app/ or .).
