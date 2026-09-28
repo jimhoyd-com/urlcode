@@ -21,7 +21,7 @@ const origin = 'https://abuse.example.test';
 
 /** A second extension that only knows AbuseExports v1: one budget, one admit per POST. */
 const consumer = defineExtension({
-  name: 'consumer', description: 'Synthetic AbuseExports consumer for tests', requires: ['abuse'],
+  name: 'consumer', description: 'Synthetic AbuseExports consumer for tests', targets: ['node'], requires: ['abuse'],
   schema: { type: 'object', additionalProperties: false, properties: {} },
   host(context) {
     const exports = context.get<AbuseExports>('abuse');

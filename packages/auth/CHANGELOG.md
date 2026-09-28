@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The definition declares its deployment targets (node), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
+
 - Rebuilt on Better Auth 1.7.6 (#841, #843). Accounts, passwords, sessions and their SQLite tables are Better Auth's;
   the extension serves an allowlist of its endpoints on one mount, gates `auth: true` routes with a verified session
   and same-origin unsafe methods, and hands route code the user id as `context.capabilities.auth.identity`.

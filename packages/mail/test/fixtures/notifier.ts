@@ -16,6 +16,7 @@ export default defineExtension<Record<string, never>>({
   name: 'notifier',
   description: 'Test fixture: sends one contributed template through mail.',
   requires: ['mail'],
+  targets: ['node'],
   contributes: { mail: notifierMail },
   schema,
   host(context) {

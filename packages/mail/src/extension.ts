@@ -38,6 +38,7 @@ function scaffold(): ScaffoldResult {
 
 export default defineExtension<MailHostOptions>({
   name: 'mail',
+  targets: ['node', 'aws', 'vercel'],
   description: 'Plain-text transactional email: templates contributed by other extensions, one operator transport.',
   requires: [],
   schema: mailConfigSchema,

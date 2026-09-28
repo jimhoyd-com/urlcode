@@ -149,7 +149,7 @@ test('composeHost refuses a mail namespace that is not its contributor\'s own na
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: {}, routes: {} }));
   withSha(t, await inspectExtensionRevision(project));
   const copycat = defineExtension<Record<string, never>>({
-    name: 'copycat', description: 'Contributes a namespace that is already taken.', contributes: { mail: notifierMail },
+    name: 'copycat', description: 'Contributes a namespace that is already taken.', targets: ['node'], contributes: { mail: notifierMail },
     schema: { type: 'object' }, host: context => ({ registration: { name: 'copycat', version: '1', projectSha256: context.projectSha256, targets: ['node'], schema: { type: 'object' }, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } }),
   });
   // copycat reuses notifier's contribution, namespace and all: core stamps it `from: 'copycat'`, so mail refuses it

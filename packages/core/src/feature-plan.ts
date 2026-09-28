@@ -3,6 +3,7 @@ import {getCapabilities,normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {listRecipes,runsProjectCode} from './recipes.ts';
 import {describeInstalledArtifacts} from './addon-install.ts';
+import {declaredExtensionTargets,readAddonCatalog} from './addon-manifest.ts';
 import type {RuntimeExtension} from './extensions.ts';
 
 /** The planner is deliberately a small, local projection. It never treats goal
@@ -93,19 +94,24 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  if(goalTerms.some(term=>['form','flow','workflow','multistep','multi-step','wizard'].includes(term))&&registrations.has('forms'))wanted.add('forms');
  if(recipeGoalTerms.some(term=>['auth','authenticated','account','sign','signed','private','protected'].includes(term)))wanted.add('auth');
  if(goalTerms.some(term=>['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'].includes(term)))wanted.add('store');
+ let declaredTargets=new Map<string,string[]>();
+ try {declaredTargets=declaredExtensionTargets(await readAddonCatalog());} catch {/* a core without its catalog (an unbuilt checkout) plans from registrations alone */}
  let artifacts:Awaited<ReturnType<typeof describeInstalledArtifacts>>['artifacts']=[];
  try {artifacts=(await describeInstalledArtifacts(project)).artifacts;} catch {/* no site is an ordinary absence, never a reason to read elsewhere */}
  const declared=new Set(context.project.extensions);
  const required=[...wanted].sort().map(name=>{
   const registration=registrations.get(name), artifact=artifacts.find(item=>item.name===name);
-  const supported=target!=='static'&&registration?.targets.includes(target==='self-hosted'?'node':target);
-  return {name,reason:extensionReason[name]??'This feature needs an operator-registered extension contract.',declared:declared.has(name),registered:Boolean(registration),target:registration?(supported?'supported':'refused'):'unknown',artifact:artifact?.status??'none'} as const;
+  // The registration decides; without one, the release descriptor's declared targets can still refuse (never confirm) a target.
+  const internal=target==='self-hosted'?'node':target, catalogTargets=declaredTargets.get(name);
+  const verdict=registration?(target!=='static'&&registration.targets.includes(internal as never)?'supported':'refused')
+   :catalogTargets&&!catalogTargets.includes(internal)?'refused':'unknown';
+  return {name,reason:extensionReason[name]??'This feature needs an operator-registered extension contract.',declared:declared.has(name),registered:Boolean(registration),target:verdict,artifact:artifact?.status??'none'} as const;
  });
  const unsupported:FeaturePlan['unsupported']=[];
  if(goalTerms.some(term=>['flow','workflow','multistep','multi-step','wizard'].includes(term))&&!registrations.has('forms'))unsupported.push({requirement:'Declarative form flow',reason:'No already-registered forms extension contract is available, and no bundled core capability or recipe declares multi-step form state, transitions, or submission orchestration. Keep that application behavior focused, or define it as an extension boundary.'});
  if(goalTerms.some(term=>['idempotent','idempotency'].includes(term)))unsupported.push({requirement:'Idempotent mutation',reason:'The core capability catalog has no idempotent mutation primitive. Require an installed extension contract that exposes it, or keep the idempotency key and mutation logic in application code.'});
  for(const capability of capabilities){const row=rows.get(capability);if(row?.targets[target]?.support==='refused')unsupported.push({requirement:capability,reason:row.targets[target]!.reason});}
- for(const extension of required)if(extension.target==='refused')unsupported.push({requirement:`${extension.name} extension on ${target}`,reason:'The already-registered extension does not declare support for this target.'});
+ for(const extension of required)if(extension.target==='refused')unsupported.push({requirement:`${extension.name} extension on ${target}`,reason:extension.registered?'The already-registered extension does not declare support for this target.':'The extension does not declare support for this target (the targets in its release descriptor).'});
  const applicationCode:FeaturePlan['applicationCode']=[];
  if(signatureGoal)applicationCode.push({requirement:'Signature verification',reason:'YAML cannot compute an HMAC. Keep the route trusted (the default) and verify the signature in a small function with node:crypto (createHmac, timingSafeEqual), reading the key from a secrets: {KEY: {secret: NAME}} binding that an operator grants with --policy; declare the header parameters and request.body.schema so the function only checks the signature. A sandbox: true route has no crypto API and cannot verify it. See the webhook-receiver recipe.'});
  if(recipes.some(recipe=>recipe.name==='contact-form'))applicationCode.push({requirement:'Product-specific form presentation and submission rules',reason:'The contact recipe covers a bounded JSON endpoint and optional signal only; it does not generate browser UI or business workflow code.'});

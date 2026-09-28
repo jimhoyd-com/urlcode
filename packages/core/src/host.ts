@@ -88,6 +88,7 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
       assert(result && typeof result === 'object' && result.registration?.name === name, `${name} host() must return {registration} for extension ${name}`);
       assert(result.registration.projectSha256 === projectSha256, `${name} host() must register the reviewed project revision it was given as context.projectSha256`);
       assert(JSON.stringify(result.registration.schema) === JSON.stringify(definition.schema), `${name} registers a configuration schema that differs from its definition`);
+      assert(Array.isArray(result.registration.targets) && Array.isArray(definition.targets) && JSON.stringify([...result.registration.targets].sort()) === JSON.stringify([...definition.targets].sort()), `${name} registers targets that differ from its definition's targets`);
       hosted.push({ name, result });
       exported.set(name, result.exports);
     }

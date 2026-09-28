@@ -411,7 +411,7 @@ test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and
   // host() sees only the revision in its context: no policy grants, no file path.
   await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
 const data=${JSON.stringify(data)};
-const demo={definition:{name:'demo',schema:data.schema,host(context){
+const demo={definition:{name:'demo',targets:data.targets,schema:data.schema,host(context){
   if(Object.keys(context).sort().join()!=='contributions,get,projectSha256,site')throw new Error('unexpected host context '+Object.keys(context));
   return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned '+context.projectSha256};}};}}};
 }},options:{}};

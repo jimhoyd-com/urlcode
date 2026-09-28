@@ -3,6 +3,9 @@
   "name": "audit",
   "description": "Durable, bounded audit log other extensions record privileged actions into",
   "requires": [],
+  "targets": [
+    "node"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

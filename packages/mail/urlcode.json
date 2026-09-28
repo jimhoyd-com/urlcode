@@ -3,6 +3,11 @@
   "name": "mail",
   "description": "Plain-text transactional email: templates contributed by other extensions, one operator transport.",
   "requires": [],
+  "targets": [
+    "node",
+    "aws",
+    "vercel"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

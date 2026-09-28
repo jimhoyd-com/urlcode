@@ -41,6 +41,7 @@ function scaffold(): ScaffoldResult {
 
 export default defineExtension<AbuseHostOptions>({
   name: 'abuse',
+  targets: ['node'],
   description: 'Persistent, pseudonymous rate limits, failure backoff and challenge escalation for extensions',
   requires: [],
   schema: abuseConfigSchema,

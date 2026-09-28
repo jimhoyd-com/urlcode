@@ -28,6 +28,7 @@ function scaffold(): ScaffoldResult {
 
 export default defineExtension<McpHostOptions>({
   name: 'mcp',
+  targets: ['node', 'aws', 'vercel'],
   description: 'Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers',
   requires: [],
   schema: mcpConfigSchema,

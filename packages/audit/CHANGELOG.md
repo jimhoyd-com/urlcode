@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The definition declares its deployment targets (node), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
+
 First release: the audit log leaves `@jimhoyd/urlcode-auth` and becomes its own
 extension, `audit`, which auth requires. It serves no routes and shares
 `AuditExports` (contract version 1): `validate`, `record`, `attach`, `flush` and

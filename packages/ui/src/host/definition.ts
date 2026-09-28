@@ -38,6 +38,7 @@ export interface UiHostOptions {
 
 export default defineExtension<UiHostOptions>({
     name: 'ui',
+    targets: ['node', 'aws', 'vercel'],
     description: 'Shared presentation kit: theme, copy, templates and the data screens other extensions contribute, for every extension page.',
     schema: uiConfigSchema,
     hooks: uiHookContracts,

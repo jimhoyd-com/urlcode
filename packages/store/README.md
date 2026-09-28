@@ -96,6 +96,13 @@ is inserted into the store database's outbox table in the same transaction as
 the record and drained by audit while the host runs; when 1000 events wait
 undelivered the next write answers `503 audit_backlog` and changes nothing. See [audited writes](../../docs/STORE.md#audited-writes).
 
+Back the database up while the server serves with
+`urlcode-store backup --database <absolute store.sqlite> --destination <absolute new file>`:
+an online copy through SQLite's backup API (Node 22.16 or newer) that refuses an
+existing destination, is written `0600` and is checked as a store database of the
+same schema version before it appears. To restore, stop the server and put the
+copy in place. See [backups](../../docs/STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee).
+
 Another extension that requires the store reaches declared collections through
 its typed export, `StoreExports` (`ctx.get('store')`): `create`, `get`, a
 partial `update` (which clears a field given `null`, like `PATCH`) and a

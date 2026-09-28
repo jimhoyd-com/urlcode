@@ -40,7 +40,7 @@ const schema = {type: 'object', properties: {realm: {type: 'string'}}, required:
 const policySchema = {type: 'object', properties: {}, additionalProperties: false}; // auth: true is {}
 const token = process.env.API_DEMO_TOKEN; // "demo-token" reproduces tests/requests.json
 const demoAuth = defineExtension({
-  name: 'auth', description: 'Demo bearer-token check; a protocol example, not authentication.', schema, policySchema,
+  name: 'auth', description: 'Demo bearer-token check; a protocol example, not authentication.', targets: ['node', 'aws', 'vercel'], schema, policySchema,
   host({projectSha256}) { // the reviewed revision, never recomputed from the project
     return {registration: {
       name: 'auth', version: '1', projectSha256, targets: ['node', 'aws', 'vercel'], schema, policySchema,

@@ -56,6 +56,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
 
 export default defineExtension<FormRecordsHostOptions>({
   name: 'form-records',
+  targets: ['node'],
   description: 'Saves a declared form into an owned store collection, with a confirmation page and an edit page limited to declared fields.',
   requires: ['forms', 'store', 'ui'],
   schema: formRecordsConfigSchema,

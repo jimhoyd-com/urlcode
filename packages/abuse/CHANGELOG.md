@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The definition declares its deployment targets (node), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
+
 - New add-on: the persistent, pseudonymous abuse counters that used to live inside auth, now available to any
   extension through `AbuseExports` v1.
   - **Namespaces, budgets and backoffs:** namespaced fixed-window budgets with atomic `admit`, a Retry-After, and

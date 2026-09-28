@@ -31,6 +31,18 @@ test('feature planning marks unavailable targets and unsupported workflow requir
  assert.ok(plan.extensions.required.find(item=>item.name==='store')?.target==='refused');
 });
 
+test('without a host file, feature planning refuses a target the extension\'s release descriptor does not declare (#859)',async t=>{
+ const root=await project(t,{});
+ const aws=await planFeature(root,'durable persisted record',{target:'aws'});
+ const store=aws.extensions.required.find(item=>item.name==='store')!;
+ assert.deepEqual([store.registered,store.target],[false,'refused'],'the store declares only node');
+ assert.ok(aws.unsupported.some(item=>item.requirement==='store extension on aws'&&/release descriptor/.test(item.reason)));
+ assert.ok(aws.applicable.recipes.some(recipe=>recipe.name==='store-crud'));
+ // The descriptor can refuse but never confirm: on node the answer still waits for the pinned registration.
+ const node=await planFeature(root,'durable persisted record');
+ assert.equal(node.extensions.required.find(item=>item.name==='store')!.target,'unknown');
+});
+
 test('feature planning discovers forms only from an already-loaded registration',async t=>{
  const root=await project(t,{});
  const plan=await planFeature(root,'multi-step contact form workflow',{extensions:[extension('forms')]});

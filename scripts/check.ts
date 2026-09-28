@@ -2,6 +2,8 @@ import { readdir, readFile, lstat } from 'node:fs/promises';
 import { recipeNames } from '../packages/core/src/recipes.ts';
 import { exampleNames } from '../packages/core/src/examples.ts';
 import { readMetadata, deriveMetadata, derivedDifferences, commandProblems } from '../packages/core/src/catalog.ts';
+import { declaredExtensionTargets, parseAddonCatalog } from '../packages/core/src/addon-manifest.ts';
+import { addonCatalog } from './build-addon-manifest.ts';
 import { execFile } from 'node:child_process';
 import { stripTypeScriptTypes } from 'node:module';
 import { availableParallelism } from 'node:os';
@@ -59,6 +61,9 @@ async function closure(file: string): Promise<void> {
 await closure(resolve('packages/core/src/cloudflare.ts'));
 // Recipe and example metadata: schema-valid, complete, and its derived fields
 // (capabilities, targets, routes) equal to what the capability preflight says.
+// Every extension's declared targets, from the committed descriptors (no build needed), so a recipe using an
+// extension cannot claim a target that extension refuses.
+const declaredTargets = declaredExtensionTargets(parseAddonCatalog(JSON.parse(await addonCatalog()), 'committed add-on descriptors'));
 async function checkCatalog(kind: 'recipe'|'example', directory: string, names: readonly string[]): Promise<number> {
   const present = (await readdir(directory, { withFileTypes:true })).filter(e => e.isDirectory()).map(e => e.name).sort();
   const listed = [...names].sort();
@@ -77,7 +82,7 @@ async function checkCatalog(kind: 'recipe'|'example', directory: string, names: 
       if (metadata.capabilities || metadata.targets || metadata.routes !== undefined) { console.error(`${root}${kind}.yaml is not runnable and must not carry derived fields`); process.exit(1); }
       continue;
     }
-    const problems = derivedDifferences(metadata, await deriveMetadata(root));
+    const problems = derivedDifferences(metadata, await deriveMetadata(root, declaredTargets));
     if (problems.length) { console.error(`${root}${kind}.yaml disagrees with the capability preflight:\n  ${problems.join('\n  ')}`); process.exit(1); }
   }
   return names.length;

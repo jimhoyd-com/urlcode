@@ -68,6 +68,12 @@ export interface AddonDescriptor {
    * add-on graph: unlike `requires`, the target need not be installed.
    */
   contributes?: string[];
+  /**
+   * An extension's declared deployment targets (`ExtensionDefinition.targets`), in `extensionTargetNames` order. Its
+   * registration refuses every other target at activation, so the capability preflight reads them to refuse a
+   * project that uses the extension on such a target before any host file is loaded. Absent for an artifact.
+   */
+  targets?: ExtensionTarget[];
   schema?: object;
   policySchema?: object;
   hooks?: ExtensionHookContract[];
@@ -78,6 +84,18 @@ export interface AddonDescriptor {
 }
 
 export const addonNamePattern = /^[a-z][a-z0-9-]{0,63}$/;
+/**
+ * The deployment targets an extension can declare (`ExtensionDefinition.targets`, `RuntimeExtension.targets`). A
+ * Worker (cloudflare) and static hosting run no extension, so neither can be declared.
+ */
+export const extensionTargetNames = ['node', 'aws', 'vercel'] as const;
+export type ExtensionTarget = typeof extensionTargetNames[number];
+/** A non-empty list of distinct extension targets, in `extensionTargetNames` order. */
+export function isExtensionTargets(value: unknown): value is ExtensionTarget[] {
+  return Array.isArray(value) && value.length > 0 && new Set(value).size === value.length
+    && value.every(item => (extensionTargetNames as readonly unknown[]).includes(item))
+    && value.every((item, index) => index === 0 || extensionTargetNames.indexOf(value[index - 1] as ExtensionTarget) < extensionTargetNames.indexOf(item as ExtensionTarget));
+}
 export const addonPackage = (name: string): string => `@jimhoyd/urlcode-${name}`;
 const integrityPattern = /^sha512-[A-Za-z0-9+/]{86}==$/;
 const releaseUrl = /^https:\/\/github\.com\/jimhoyd-com\/urlcode\/releases\/download\/v[0-9A-Za-z.-]+\/[A-Za-z0-9._-]+\.tgz$/;
@@ -157,21 +175,27 @@ export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   if (raw.agent !== undefined) assertAgentTooling(raw.agent, source);
   if (raw.kind === 'artifact') {
     assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.contributes === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension contract`);
+    assert(raw.targets === undefined, `${source}: an artifact descriptor declares no targets`);
     if (raw.documents !== undefined) assertDocuments(raw.documents, source);
-  } else assert(isRecord(raw.schema) && raw.documents === undefined, `${source}: an extension descriptor needs its configuration schema and lists no documents`);
+  } else {
+    assert(isRecord(raw.schema) && raw.documents === undefined, `${source}: an extension descriptor needs its configuration schema and lists no documents`);
+    assert(isExtensionTargets(raw.targets), `${source}: an extension descriptor needs targets, a non-empty list of ${extensionTargetNames.join(', ')} in that order`);
+  }
   return (Array.isArray(raw.uses) ? { ...raw, uses: [...raw.uses as string[]].sort() } : raw) as unknown as AddonDescriptor;
 }
 
 /**
  * The release-wide add-on agent catalog (#721): `addon-catalog.json`, shipped next to `addons.json` in core's `dist/`.
  * Every add-on of this core's release, from its signed `urlcode.json` descriptor: name, package, version, kind,
- * description, requirements, an artifact's `documents` (path and media type, never contents) and, when the descriptor
+ * description, requirements, an extension's `targets`, an artifact's `documents` (path and media type, never contents) and, when the descriptor
  * declares it, its agent tooling (reference and document `path`s are relative to that add-on's package). Discovery metadata only: listing an add-on here is not evidence that a project installed
  * or activated it; installed components are the local MCP's concern (`get_extensions`, `get_extension_artifacts`,
  * `get_addon_agent_tooling`). Reading it imports no add-on, fetches nothing and activates nothing.
  */
 export interface AddonCatalogEntry {
   name: string; kind: AddonKind; package: string; version: string; description: string; requires: string[]; uses?: string[];
+  /** An extension's declared deployment targets (#859), in `extensionTargetNames` order; absent for an artifact. */
+  targets?: ExtensionTarget[];
   /** An artifact's standard documents (#857): path and media type only, never contents, at most `MAX_ARTIFACT_DOCUMENTS`. */
   documents?: ArtifactDocument[];
   agent?: AddonAgentTooling;
@@ -183,6 +207,7 @@ export interface AddonCatalogSource { descriptor: unknown; package: string; vers
 const entryOf = (descriptor: AddonDescriptor, pkg: string, version: string): AddonCatalogEntry => ({
   name: descriptor.name, kind: descriptor.kind, package: pkg, version, description: descriptor.description, requires: [...descriptor.requires],
   ...(descriptor.uses?.length ? { uses: [...descriptor.uses] } : {}),
+  ...(descriptor.targets ? { targets: [...descriptor.targets] } : {}),
   ...(descriptor.documents?.length ? { documents: descriptor.documents.map(({ path, mediaType }) => ({ path, mediaType })) } : {}),
   ...(descriptor.agent ? { agent: { description: descriptor.agent.description, references: descriptor.agent.references.map(({ name, description, path }) => ({ name, description, path })) } } : {}),
 });
@@ -210,13 +235,14 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
   assert(isRecord(raw) && raw.format === 1 && raw.scope === 'release' && typeof raw.version === 'string' && Array.isArray(raw.addons), `${source} is not an add-on catalog`);
   const addons = raw.addons.map((value: unknown) => {
     assert(isRecord(value) && typeof value.name === 'string' && addonNamePattern.test(value.name), `${source}: invalid add-on entry`);
-    const { name, kind, package: pkg, version, description, requires, uses, documents, agent } = value;
+    const { name, kind, package: pkg, version, description, requires, uses, targets, documents, agent } = value;
     assert((kind === 'extension' || kind === 'artifact') && pkg === addonPackage(name) && typeof version === 'string' && typeof description === 'string'
       && Array.isArray(requires) && requires.every(item => typeof item === 'string' && addonNamePattern.test(item)), `${source}: ${name} is malformed`);
     assert(uses === undefined || Array.isArray(uses) && uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== name && !requires.includes(item)), `${source}: ${name} has malformed uses`);
     if (agent !== undefined) assertAgentTooling(agent, `${source}: ${name}`);
     if (documents !== undefined) { assert(kind === 'artifact', `${source}: ${name} is an extension, which lists no documents`); assertDocuments(documents, `${source}: ${name}`); }
-    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}) }, pkg, version);
+    assert(kind === 'extension' ? isExtensionTargets(targets) : targets === undefined, `${source}: ${name} has malformed targets`);
+    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(kind === 'extension' ? { targets: targets as ExtensionTarget[] } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}) }, pkg, version);
   });
   return checkCatalog({ format: 1, scope: 'release', version: raw.version, addons }, source);
 }
@@ -233,4 +259,9 @@ export async function readAddonCatalog(file?: string | URL): Promise<AddonCatalo
     return parseAddonCatalog(JSON.parse(text), String(candidate));
   }
   throw new ConfigError('This core has no add-on catalog (dist/addon-catalog.json). A released core always has one; in a source checkout run `npm run build` first');
+}
+
+/** Each extension's declared targets from a catalog, keyed by name: what the capability preflight reads without a host file. */
+export function declaredExtensionTargets(catalog: AddonCatalog): Map<string, ExtensionTarget[]> {
+  return new Map(catalog.addons.filter(entry => entry.targets).map(entry => [entry.name, [...entry.targets!]]));
 }

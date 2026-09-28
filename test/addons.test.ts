@@ -113,8 +113,8 @@ test('composeHost stamps every contribution with its contributor\'s name, frozen
   let received: { first: readonly unknown[]; second: readonly unknown[]; other: readonly unknown[]; none: readonly unknown[] } | undefined;
   const shared = { from: 'receiver', namespace: 'receiver' };
   // Two providers (and one contributing elsewhere) to one receiver: a second provider, not just a first-party pair.
-  const provider = (name: string, contributes: Record<string, unknown>): ExtensionEntry => ({ options: {}, definition: { name, description: name, schema, contributes, host: context => ({ registration: registration(name, context.projectSha256) }) } });
-  const receiver: ExtensionEntry = { options: {}, definition: { name: 'receiver', description: 'receiver', schema, host(context) {
+  const provider = (name: string, contributes: Record<string, unknown>): ExtensionEntry => ({ options: {}, definition: { name, description: name, targets: ['node'], schema, contributes, host: context => ({ registration: registration(name, context.projectSha256) }) } });
+  const receiver: ExtensionEntry = { options: {}, definition: { name: 'receiver', description: 'receiver', targets: ['node'], schema, host(context) {
     const first = context.contributions('receiver'), second = context.contributions('receiver');
     received = { first, second, other: context.contributions('other'), none: context.contributions('nobody') };
     return { registration: registration('receiver', context.projectSha256) };
@@ -235,7 +235,7 @@ test('an independent extension package installs by spec, is found by its descrip
   // Refused before anything is wired: a first-party name, an artifact descriptor, and no descriptor at all.
   const before = await readFile(join(dir, 'package.json'), 'utf8');
   await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.name = 'alpha'; })], { manifest: m }), /names itself alpha, which is a first-party extension released with this core/);
-  await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.kind = 'artifact'; delete descriptor.schema; })], { manifest: m }), /its descriptor declares an artifact; add it with `urlcode artifacts add`/);
+  await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.kind = 'artifact'; delete descriptor.schema; delete descriptor.targets; })], { manifest: m }), /its descriptor declares an artifact; add it with `urlcode artifacts add`/);
   const bare = await copy(() => undefined); await rm(join(bare, 'urlcode.json'));
   await assert.rejects(addAddons(dir, 'extension', [bare], { manifest: m }), /carries no valid urlcode\.json extension descriptor/);
   assert.equal(await readFile(join(dir, 'package.json'), 'utf8'), before, 'every refusal rolls package.json back');

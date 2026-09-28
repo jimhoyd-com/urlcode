@@ -900,11 +900,28 @@ answers `503 audit_backlog` and changes nothing until audit catches up. Turning
   last-write-wins for `PUT`/`PATCH`.
 - This is durable local state, not a distributed exactly-once or
   external-delivery guarantee.
-- Backups are the operator's. Either stop the server and copy `store.sqlite`
-  (the last connection to close folds the write-ahead log into it), or take a
-  consistent copy while it serves through SQLite's online backup API (for
-  example `sqlite3 data/store.sqlite ".backup /backups/store.sqlite"`, or
-  `backup()` from `node:sqlite`). Copying the file with ordinary tools while the
+- Backups are the operator's. `urlcode-store backup` takes one while the
+  server serves:
+
+  ```sh
+  npx urlcode-store backup --database /srv/site/data/store.sqlite \
+    --destination /srv/backups/store-2026-09-28.sqlite
+  ```
+
+  It copies through SQLite's online backup API (`backup()` from `node:sqlite`,
+  Node 22.16 or newer), so every committed write, including those still in the
+  write-ahead log, is in the copy, and the server keeps serving meanwhile. Both
+  paths are absolute. It refuses a source that is not a private store database
+  of a schema this release understands, and a destination that already exists;
+  it writes the copy `0600` in a private temporary directory beside the
+  destination, checks that it opens with the store's `application_id`, the
+  source's `user_version` and a clean `integrity_check`, and only then links it
+  into place. It prints `{format, schemaVersion, bytes, destination}`. Keep
+  backups outside `app/` and off the host. To restore, stop the server, put the
+  copy in place as the database (mode `0600`) and start it again; a release
+  older than the copy's `schemaVersion` refuses it. Stopping the server and
+  copying `store.sqlite` also works (the last connection to close folds the
+  write-ahead log into it), but copying the file with ordinary tools while the
   server runs is not a consistent backup.
 
 Errors never contain record values, SQL or filesystem paths.

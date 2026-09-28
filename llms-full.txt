@@ -4791,7 +4791,7 @@ const authoring = {
     description: 'Plain text returned by the greeting mount.' }],
 };
 export default defineExtension({
-  name: 'greeting', description: 'A minimal external greeting extension.',
+  name: 'greeting', description: 'A minimal external greeting extension.', targets: ['node'],
   schema, authoring,
   host({ projectSha256 }) {
     return { registration: {
@@ -4935,12 +4935,17 @@ URLCode ships two kinds of add-on with one shape:
 | Commands | `urlcode extensions …` | `urlcode artifacts …` |
 
 Every add-on is an npm-packable workspace carrying a static `urlcode.json`
-descriptor: `{kind, name, description, requires, contributes?, schema?,
+descriptor: `{kind, name, description, requires, contributes?, targets, schema?,
 policySchema?, hooks?, authoring?}`. For an extension the descriptor is written from its
 `defineExtension` definition by `npm run build:addons` (including
 `contributes`, the sorted names of the extensions it hands a value to), and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
-contracts without running any of its code. An artifact descriptor carries only
+contracts without running any of its code. `targets` is required for an
+extension: the deployment targets (`node`, `aws`, `vercel`, in that order) its
+definition declares. `composeHost` refuses a `host()` whose registration
+declares different targets, and the capability preflight reads the descriptor's
+`targets` so a recipe or project that uses the extension on a target it does not
+declare is `refused` there, before any host file is loaded (#859). An artifact descriptor carries only
 `kind`, `name`, `description`, `requires` and, optionally, `agent` and the
 [`documents`](#artifact-documents) it ships.
 
@@ -4969,7 +4974,8 @@ running core pins.
 Beside `addons.json`, core's `dist/` carries `addon-catalog.json`: agent
 discovery metadata for every extension and artifact of the same release, built
 from each add-on's `urlcode.json` descriptor. Each entry has the add-on's
-`name`, `kind`, `package`, `version`, `description`, `requires`, for an
+`name`, `kind`, `package`, `version`, `description`, `requires`, an
+extension's `targets`, for an
 artifact that lists them its [`documents`](#artifact-documents) (each `path`
 and `mediaType` only, never contents, at most 32) and, when the descriptor
 declares one, its `agent` block (a description and references whose `path` is

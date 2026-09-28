@@ -46,7 +46,7 @@ const pin = 'b'.repeat(64);
 const schema = { type: 'object' };
 function synthetic(name: string, edges: { requires?: string[]; uses?: string[] } = {}, read: (ctx: HostContext) => unknown = () => undefined) {
   return defineExtension({
-    name, description: `Synthetic ${name}`, schema, ...edges,
+    name, description: `Synthetic ${name}`, targets: ['node'], schema, ...edges,
     host(ctx) {
       const seen = read(ctx);
       return { registration: { name, version: '1' as const, projectSha256: ctx.projectSha256, targets: ['node' as const], schema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) }, exports: { from: name, seen } };
@@ -67,6 +67,14 @@ test('a used extension that is installed is hosted first and read through get', 
   // The second composition of the same consumer: without its producer.
   const alone = await composed(t, [consumer()]);
   assert.deepEqual(alone.extensions!.map(item => item.name), ['consumer']);
+});
+
+test('an extension registers exactly the targets its definition declares, which urlcode.json carries (#859)', async t => {
+  const wide = defineExtension({ name: 'wide', description: 'Synthetic wide', targets: ['node', 'aws'], schema,
+    host: ctx => ({ registration: { name: 'wide', version: '1' as const, projectSha256: ctx.projectSha256, targets: ['node' as const], schema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } }) });
+  await assert.rejects(composed(t, [wide()]), /wide registers targets that differ from its definition's targets/);
+  const base = { description: 'Synthetic', schema, host: () => { throw new Error('unused'); } };
+  for (const targets of [[], ['node', 'node'], ['cloudflare']]) assert.throws(() => defineExtension({ ...base, name: 'bad', targets: targets as never }), /targets must list node, aws, vercel once each/);
 });
 
 test('get returns the producer exports when present and undefined when absent', async t => {
@@ -92,7 +100,7 @@ test('a cycle through uses among installed extensions is refused; an absent used
 });
 
 test('defineExtension refuses a uses entry that is invalid, repeated, itself or also required', () => {
-  const base = { description: 'Synthetic', schema, host: () => { throw new Error('unused'); } };
+  const base = { description: 'Synthetic', targets: ['node' as const], schema, host: () => { throw new Error('unused'); } };
   assert.throws(() => defineExtension({ ...base, name: 'both', requires: ['x'], uses: ['x'] }), /Extension both lists x in both requires and uses/);
   assert.throws(() => defineExtension({ ...base, name: 'self', uses: ['self'] }), /Extension self uses must list other extension names once each/);
   assert.throws(() => defineExtension({ ...base, name: 'twice', uses: ['x', 'x'] }), /uses must list other extension names once each/);

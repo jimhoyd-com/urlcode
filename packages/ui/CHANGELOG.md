@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The definition declares its deployment targets (node, aws, vercel), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
+
 The activated instance declares its asset mount (`/assets/ui/*`) in core's `assetMounts` (#816), so `urlcode audit` covers that mount's `GET`/`HEAD` as `extension-assets` after an unknown name under `/assets/ui/static/` answers 404 with no cookie. A site composing `ui` no longer needs a fixture for hashed file names it cannot know to reach `ready`. Screen mounts are not declared and keep ordinary fixture coverage.
 
 The served kit follows the newest live activation (#777): a hot reload's retired runtime closing no longer switches the kit off for the replacement (every ui-rendered page answered 500 after a reload), and a failed reload's close restores the serving activation's kit.

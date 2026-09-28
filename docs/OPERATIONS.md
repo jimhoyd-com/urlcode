@@ -300,7 +300,8 @@ link store, and the `urlcode-dynamic-link` extension package that replaced it
 has been retired and unpublished. Stored short links are served by the
 operator-installed `store` extension's `extensions.store.config.shortLinks`
 ([data store](STORE.md)), whose records live in the store's SQLite database:
-back it up with the rest of the store ([backups](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee)).
+back it up with the rest of the store (`urlcode-store backup`, safe while the
+server runs; see [backups](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee)).
 
 ### Streamed responses
 
