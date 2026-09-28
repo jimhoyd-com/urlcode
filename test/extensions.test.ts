@@ -443,8 +443,13 @@ export default await composeHost(import.meta.url,[demo]);
     assert.match(error.message,new RegExp(`^The extension host is pinned by --policy: the policy is pinned to project revision ${'c'.repeat(64)}, but the project is now revision ${revision}`));
   });
   await t.test('commands without --policy support do not derive a pin',()=>{
-    const out=spawnSync(process.execPath,[cli,'explain','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
+    const out=spawnSync(process.execPath,[cli,'extensions','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
     assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+  });
+  // The inspection commands take the reviewed policy too (#834).
+  await t.test('explain derives the pin from a verified --policy',()=>{
+    const out=spawnSync(process.execPath,[cli,'explain','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
+    assert.equal(out.status,0,out.stderr);
   });
   await t.test('the project YAML cannot supply the pin',async()=>{
     const pinned=await project(t,{'/demo/*':mount},{},{extensions:declarations,projectSha256:revision} as Parameters<typeof project>[3]);

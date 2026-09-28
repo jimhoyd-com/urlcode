@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { functionFile } from './config.ts';
 import { collectFunctionSources, collectTrustedSources, routeFunctions } from './function-sources.ts';
 import type { FunctionDefinition, FunctionRoute, FunctionSources } from './function-sources.ts';
-import { assert, revisionPinHint, routeError } from './errors.ts';
+import { assert, ConfigError, revisionPinHint, routeError } from './errors.ts';
 import type { LoadedDocument } from './types.ts';
 
 interface EgressGrants { proxy?:string[]; signals?:string[] }
@@ -88,11 +88,16 @@ export function validatePolicy(value: unknown): OperatorPolicy {
 }
 export async function loadOperatorPolicy(file: string | undefined, project: string): Promise<OperatorPolicy | undefined> {
   if (!file) return undefined;
-  const root = await realpath(project), path = await realpath(file);
+  const root = await realpath(project);
+  const path = await realpath(file).catch((error: NodeJS.ErrnoException) => { throw error.code === 'ENOENT' ? new ConfigError(`Operator policy file ${file} does not exist; save the reviewed output of \`urlcode permissions\` there`, { code: 'policy-missing' }) : error; });
   const rel = relative(root,path);
   assert(isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep), 'Operator policy must be outside the application project');
   assert((await stat(path)).size <= 65536, 'Policy exceeds 64 KiB');
-  return validatePolicy(JSON.parse(await readFile(path,'utf8')));
+  const text = await readFile(path,'utf8');
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); }
+  catch { throw new ConfigError(`Operator policy file ${file} ${text.trim() ? 'is not valid JSON' : 'is empty'}; save the reviewed output of \`urlcode permissions\` there`, { code: 'policy-invalid' }); }
+  return validatePolicy(parsed);
 }
 export function requestedPermissions(loaded: LoadedDocument, snapshot: { projectSha256: string }): OperatorPolicy {
   return {version:1,projectSha256:snapshot.projectSha256,routes:Object.fromEntries(Object.entries(loaded.routes).flatMap(([path,route]): [string, RouteGrant][] => {

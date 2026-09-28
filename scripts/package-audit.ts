@@ -221,8 +221,13 @@ export const budgets: Record<string, Budget> = {
     // the EXTENSIONS.md "Request-bound capabilities" section with its
     // llms-full.txt copy; no new recipe or schema field). Measured on Node 26:
     // 885375 packed / 3525136 unpacked bytes, 499 entries.
+    // Raised for #843/#834: explain's provider-defined subpath and capability
+    // facts, --policy on bootstrap/context/explain/review/plan-feature/mcp with
+    // the MCP runner forwarding and named policy-file errors, and their
+    // TOOLING/EXTENSIONS sections with llms-full.txt copies. Measured on Node
+    // 26: 887241 packed / 3532433 unpacked bytes, 499 entries.
     packed: 870 * 1024,
-    unpacked: 3445 * 1024,
+    unpacked: 3460 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
