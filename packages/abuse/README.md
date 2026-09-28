@@ -11,8 +11,8 @@ needs any of these:
 - **Failure backoff**: exponential blocking after repeated failures, such as wrong passwords.
 - **Challenge escalation**: a human-verification widget once a budget passes a threshold.
 
-The consumers are auth (`extensions.auth.config.abuse`) and forms (a flow's `abuse`). Installing abuse does nothing
-until one of them declares budgets.
+The first-party consumer is forms (a flow's `abuse`). Installing abuse does nothing until a consumer declares
+budgets.
 
 This extension is trusted operator code (not sandboxed) that runs in the host process, like every other package
 under `packages/`. It is released with core and installed into a site with `urlcode extensions add abuse`.

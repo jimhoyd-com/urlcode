@@ -2,7 +2,7 @@
 
 Extensions are trusted operator modules, separate from a project's own
 `function`/`middleware` code. The first-party extensions (`ui`, `audit`,
-`abuse`, `mail`, `auth`, `admin`, `store`, `forms`, `form-records`, `mcp`) are workspace packages in this repository
+`abuse`, `mail`, `auth`, `store`, `forms`, `form-records`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
 a package: the operator's `host.mjs` does that (see
@@ -21,8 +21,8 @@ bounded collections as a CRUD API from an operator-owned directory. See
 Three extensions serve no route and exist for other extensions to use through
 their typed exports:
 
-- `audit` is the durable audit log. A producer (auth, and every store
-  collection with `audit: true`) writes each event into its own outbox in the
+- `audit` is the durable audit log. A producer (every store collection with
+  `audit: true`) writes each event into its own outbox in the
   same transaction as the change it records, and audit drains the outboxes
   into one bounded SQLite log ([audit log](#audit-log)).
 - `abuse` holds keyed budgets, password-style backoff, an optional challenge
@@ -36,8 +36,8 @@ The `forms` extension is the browser-flow counterpart: it renders bounded
 declared fields through the `ui` kit, validates URL-encoded submissions with
 its host-supplied CSRF secret, and redirects a successful submission to a
 confirmation page that shows only the submitted fields the flow opts in to. It is a trusted operator extension, needs `ui`, and
-may be mounted with `auth: {csrf: origin}`, never `auth: true`: it verifies its own token, and auth's default
-token mode would refuse every form POST with 403 because a plain HTML form sends no `x-csrf-token` header. A flow may declare a
+may be mounted behind `auth: true` when submissions need a signed-in caller: auth then admits only a
+verified session and a same-origin POST, and forms still verifies its own token. A flow may declare a
 submission budget (`abuse`, when the abuse extension is installed) and a notification (`notify`, through mail). Its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
 
@@ -72,14 +72,14 @@ extensions:
     version: "1"
     config: {}
 routes:
-  /auth/*:
+  /api/auth/*:
     extension: auth
-    methods: [GET, HEAD, POST]
+    methods: [GET, POST]
   /private:
     respond: {text: Private}
     policies:
       extensions:
-        auth: {signedIn: true}
+        auth: {}
 ```
 
 ## Protecting a route: the `auth` short form
@@ -92,7 +92,7 @@ route:
 routes:
   /account:
     respond: {text: Account}
-    auth: {role: member}          # or `auth: true` for any signed-in principal
+    auth: true                    # any signed-in user
   /docs:
     respond: {text: Docs}
     auth: {required: false}       # documents intent; emits no requirement
@@ -106,13 +106,25 @@ hash covers it.
 
 Core owns only that mapping and `required`. Every other key belongs to the auth
 extension: the core schema accepts `true` or any object here, and the installed
-extension's own `policySchema` decides which keys and values are valid (today
-`role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny`, `csrf` and
-`bearer`; `urlcode extensions --json` prints the authoritative shape). A new auth policy
-key therefore ships with the auth package, not with core. Loading fails, naming
-the route, when `auth` is neither `true` nor an object, when `required` is not a
-boolean, when `auth` appears without an `extensions.auth` declaration, next to
-`policies.extensions.auth`, or next to `policies.extensions: false`.
+extension's own `policySchema` decides which keys and values are valid. The
+first-party `auth` policy is closed and empty, so `auth: true` is its only
+meaningful form (`urlcode extensions --json` prints the authoritative shape).
+A new auth policy key would ship with the auth package, not with core. Loading
+fails, naming the route, when `auth` is neither `true` nor an object, when
+`required` is not a boolean, when `auth` appears without an `extensions.auth`
+declaration, next to `policies.extensions.auth`, or next to
+`policies.extensions: false`.
+
+A route protected this way answers `401 {"error":"authentication_required"}`
+without a session Better Auth verifies from the request's cookie, and
+`403 {"error":"cross_origin_refused"}` for a `POST`, `PUT`, `PATCH` or `DELETE`
+that core's [same-origin rule](#site-origins-and-same-origin-checks) (with
+`whenAbsent: 'refuse'`) does not admit. There is no token mode and no
+per-route CSRF option: a mount that verifies its own token (forms,
+form-records) or accepts JSON only (a store collection) uses the same
+`auth: true`. Identity is not permission: roles, ownership and approvals are
+application data keyed by the user id (see the
+[auth package](../packages/auth/README.md)).
 
 The auth policy schema is applied at validate time as well as at startup:
 `urlcode validate` checks it against the installed package's `urlcode.json`
@@ -123,101 +135,13 @@ the `auth` key the author wrote, not at the `policies.extensions.auth` it
 expands to:
 
 ```text
-Invalid extension policy at route /api/items, auth.bearer.quota.requests (minimum): must be >= 1
-Invalid extension policy at route /a, auth (additionalProperties): unknown key "roles"; did you mean "role"? (run urlcode extensions --json for its policy schema)
+Invalid extension policy at route /a, auth (additionalProperties): unknown key "role" (run urlcode extensions --json for its policy schema)
 ```
 
-The error details carry the matching pointer
-(`/routes/~1api~1items/auth/bearer/quota/requests`). Keys written beside
-`required: false` emit no requirement but are still checked, so a typo there
-does not wait until the route is switched back on.
-
-### CSRF on protected routes: `csrf: token | origin`
-
-On a session-protected route auth verifies CSRF for every write (any method
-other than `GET` and `HEAD`). The default, `csrf: token`, asks for auth's
-session-bound token: the `x-csrf-token` header, or a `csrf` body field when
-the header is absent, so a plain HTML form auth renders can post it.
-`auth.csrf.token(request)` in `AuthExports` gives another extension the value to
-embed.
-
-`csrf: origin` drops the token and admits a write on same-origin provenance
-alone: core's [same-origin rule](#site-origins-and-same-origin-checks) with
-`whenAbsent: 'refuse'` (a repeated `Origin`, `Sec-Fetch-Site` or `Referer`,
-or `Sec-Fetch-Site: cross-site`, refuses; then a site `Origin`; with no
-`Origin`, `Sec-Fetch-Site: same-origin` or `none`; with neither, a `Referer`
-whose origin is a site origin; no provenance at all refuses) plus the
-`SameSite=Strict` `__Host-` session cookie.
-Use it only on a mount that verifies its own token (forms, form-records) or
-that accepts JSON only (a store collection):
-
-```yaml
-routes:
-  /api/todos/*:
-    extension: store
-    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
-    auth: {csrf: origin}
-  /todo-form/*:
-    extension: form-records
-    methods: [GET, HEAD, POST]
-    auth: {csrf: origin}
-```
-
-`csrf` is a session key: it cannot sit beside `bearer`.
-
-### Bearer/API-key routes
-
-`bearer` protects a route with an operator-issued API key instead of a
-signed-in session, and is exclusive of the session keys above (a route uses
-one or the other, never both):
-
-```yaml
-routes:
-  /api/items:
-    respond: {text: '[]'}
-    auth: {bearer: {scopes: [items.read]}}
-```
-
-The extension checks the `Authorization: Bearer <key>` header against a
-credential store an operator manages outside route YAML (the same
-`AuthService` object that owns sessions, via `service.issueApiKey`/
-`listApiKeys`/`revokeApiKey`, or the `urlcode-auth api-key-issue`/
-`api-key-list`/`api-key-revoke` CLI commands — see
-[packages/auth/README.md](../packages/auth/README.md#bearerapi-key-authentication)).
-A missing or malformed header is a 401 with no `WWW-Authenticate` error
-parameter; an unknown, wrong, expired or revoked key is a 401 with
-`error="invalid_token"`; a valid key missing a scope the route requires is a
-403 with `error="insufficient_scope"`. On success, the verified key's
-id/name/scopes (never the raw key) are written into the reserved
-`x-urlcode-context-auth-principal` header, base64-encoded JSON, so the
-route's own `function`/`middleware` can read who authenticated directly off
-its `Request` object — see [handing data forward into a protected route's own
-context](#handing-data-forward-into-a-protected-routes-own-context). Auth also
-sets the core [request principal](#request-principal), which is what an owned
-store collection scopes records by: `apikey:<key id>` for a service key, the
-user's id for a key the operator issued with `userId` (it acts for that user,
-so records survive rotating the key, but only within its own scopes; locking
-or deleting the user disables it), and the signed-in user's id for a
-session-protected route. See
-[keys that act for a user](../packages/auth/README.md#keys-that-act-for-a-user).
-
-`bearer.quota: {requests, window}` adds a budget per credential: `requests`
-per `window` seconds for each key, counted by key id in the auth store once
-the key has authenticated and covers the route's scopes. The request that
-would exceed it is a 429 with `Retry-After` and
-`RateLimit-Policy`/`RateLimit` fields under the policy name `credential`,
-before the handler runs. A key issued with its own `quota` is counted against
-that budget instead of the route's, on every bearer route. An allowed response
-reports the counted budget in the same `credential` fields, added by the
-extension's `middleware()` hook; like every response of an auth-protected
-route it is `Cache-Control: no-store`. On a route that also declares core
-throttle, both the allowed response and the 429 carry the `credential` and
-throttle's `default` policy in the same fields. Counting is a fixed window, durable across restarts
-and shared by processes on one host (not across hosts); a store failure is a
-503, never an uncounted pass. Core [throttle](policies/throttle.md), which runs
-before auth and partitions by client, remains the guard against
-unauthenticated floods — declare both. Details in
-[packages/auth/README.md](../packages/auth/README.md#per-credential-quota).
+The error details carry the matching JSON pointer, under
+`/routes/<escaped path>/auth`. Keys
+written beside `required: false` emit no requirement but are still checked, so
+a typo there does not wait until the route is switched back on.
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
@@ -267,7 +191,7 @@ same way, located at the route's `policies.extensions.<name>` (or at its `auth`
 key when it was written with the [`auth` short form](#protecting-a-route-the-auth-short-form)):
 
 ```text
-Invalid extension policy at route /private, policies.extensions.auth.role (type): must be string (run urlcode extensions --json for its policy schema)
+Invalid extension policy at route /private, policies.extensions.auth (additionalProperties): unknown key "role" (run urlcode extensions --json for its policy schema)
 ```
 
 The policy checked is the route's effective one: project and profile
@@ -278,9 +202,9 @@ rather than on the route. A route that names an extension declaring no
 
 When a value can take more than one shape (a `oneOf`, such as a `true` or
 object value), core and extension errors report the deepest failure in the
-shape that was tried, not the first alternative. So `auth: {freshWithinSeconds: 0}`
-names `auth.freshWithinSeconds (minimum)`, reported by the auth extension's
-policy schema, rather than saying `auth` must be `true`.
+shape that was tried, not the first alternative. So `auth: {role: admin}`
+names the unknown key `role`, reported by the auth extension's policy schema,
+rather than saying `auth` must be `true`.
 
 For extension-protected routes, agents/throttle run before authorization and
 cache access happens only after authorization. This part is unconditional:
@@ -308,7 +232,7 @@ is sensitive (or leaves the field unset); one `cacheSensitive: false`
 extension cannot relax a route that also names a sensitive one. This can
 only relax the no-store floor a generic extension would otherwise inherit —
 it has no effect on `authorize()`, which runs the same way regardless, and
-`auth`/`admin`-style extensions gating real access must leave it at the
+`auth`-style extensions gating real access must leave it at the
 default.
 
 The refusal names the reason, so the declaration to change is obvious: a
@@ -402,7 +326,7 @@ the runtime strips it from every inbound request's headers before any
 extension or guest code observes them, so a client can never inject or spoof
 a value there. A hook can then write into it on `request.headers` (the
 per-request `ExtensionRequest.headers` clone) —
-`request.headers.set('x-urlcode-context-auth-principal', ...)` — and the
+`request.headers.set('x-urlcode-context-<extension>-<name>', ...)` — and the
 value carries forward into the guest-facing headers a route's own
 `function`/`middleware` receives on its `Request` object. It stops there: a
 `proxy` route can never opt this namespace into `requestHeaders`/
@@ -415,45 +339,9 @@ written there. It is not a credential channel:
 the withheld headers above (`cookie`, `authorization` and any declared
 credential header, whenever an extension is active) are stripped from that guest-facing projection exactly as
 before, and an extension must never write a raw session or bearer credential
-into this namespace — only a derived, non-secret value. `packages/auth`'s
-`bearer` requirement uses it to expose the verified API key's id, name and
-scopes (base64-encoded JSON) to the route's own handler; see
-[bearer/API-key routes](#bearerapi-key-routes).
-
-### Session identity in functions
-
-On a route protected by a session `auth:` policy, auth writes the signed-in
-user's opaque id to `x-urlcode-context-auth-session` after authorization,
-the applicable CSRF/origin checks and setting the request principal succeed.
-The value is a plain id, not JSON: it contains no email, roles, session token
-or other credential. Bearer routes do not set this header, including keys
-that act for a user; their existing bearer context is unchanged.
-
-A trusted Node function can use the auth package's accessor:
-
-```js
-import {sessionUserId} from '@jimhoyd/urlcode-auth';
-
-export default function handler(request) {
-  const userId = sessionUserId(request);
-  if (userId === null) return Response.json({error: 'authentication_required'}, {status: 401});
-  return Response.json({userId});
-}
-```
-
-`sessionUserId(request)` returns the bounded opaque id or `null` when the
-header is absent or invalid. It reads derived context; it does not authenticate
-an arbitrary `Request` constructed outside URLCode. The guarantee depends on
-core stripping inbound reserved headers and auth authorizing the route.
-Business authorization still belongs to the application.
-
-Keep each application path, method and body limit in its own YAML function
-route with `auth: true`. The same derived header reaches a `sandbox: true`
-function, which can read it with project-local pure code; this does
-not grant sandboxed code npm imports or filesystem access. Native account
-endpoints continue to own sign-in, CSRF and sign-out. The
-[authenticated-handlers recipe](../recipes/authenticated-handlers/README.md)
-provides the native auth setup and ordinary function routes.
+into this namespace — only a derived, non-secret value. No first-party
+extension writes it today: `auth` hands the verified user id to route code
+through a [request-bound capability](#request-bound-capabilities) instead.
 
 ### Request principal
 
@@ -490,24 +378,18 @@ for.
   channel above does not set it. A later `authorize()`, every `middleware()`
   and the mount's own `handle()` on the same route read `request.principal`.
   The principal object does not reach a route's own `function`/`middleware`
-  guest code; auth separately exposes the derived session id through the
-  [reserved header](#session-identity-in-functions).
+  guest code; auth separately hands that code the user id through its
+  `identity` [capability](#request-bound-capabilities).
 - **Knowing at startup.** The activation context carries `principalMounts`:
   the subset of `mounts` whose route names a principal-providing extension in
   its policies. An extension that needs a principal refuses to activate a mount
   missing from it (fail closed), and still refuses a request whose principal is
   `null`, because a provider may allow a request without setting one.
 
-`auth` is the first-party provider (the signed-in user's id for a session or
-for a bearer key issued to act for a user, `apikey:<key id>` for any other
-bearer key) and `store` the first consumer. An extension that needs more than
-the id (roles, permissions, freshness, the verified email) asks auth itself:
-`ctx.get<AuthExports>('auth').account(request)` returns the signed-in
-account, with `has(permission)`, or `null`; admin reads it this way, and so
-does the operator module in the
-[fixed-contract-adapter](../recipes/fixed-contract-adapter/README.md) recipe,
-which serves a pre-existing JSON contract over `AuthExports` and `StoreExports`
-and lists the contract mappings those exports cannot make safely. The core
+`auth` is the first-party provider (the id of the user Better Auth verified
+for the request's session) and `store` and `form-records` the consumers. Auth
+exports nothing else to other extensions: it has no roles or permissions, and
+an application keeps those as its own data keyed by the user id. The core
 fixture `test/extension-principal.test.ts` proves the seam with a synthetic,
 non-auth provider. Extensions are trusted in-process code, so this contract
 fails closed on mistakes and misconfiguration; it is not a sandbox between
@@ -515,10 +397,11 @@ extensions.
 
 ### Request-bound capabilities
 
-An ordinary `function`/`middleware` route's own guest code can call very
-little today: static imports of a package's pure types and helpers, and the
-one derived value the [reserved header channel](#session-identity-in-functions)
-carries forward. Everything else an extension exports — a store collection
+Without this mechanism an ordinary `function`/`middleware` route's own guest
+code can call very little: static imports of a package's pure types and
+helpers, and any derived value an extension writes into the
+[reserved header channel](#handing-data-forward-into-a-protected-routes-own-context).
+Everything else an extension exports — a store collection
 scoped to the caller, a declared form flow, a templated email — exists only as
 a live object passed between extensions through `HostContext.get`, never
 reachable from a route's own handler. **Request-bound capabilities**
@@ -559,14 +442,14 @@ per-invocation object from that extension, in `context.capabilities`.
   everything else that extension already gates on this route — it is not a
   side door around it.
 
-This closes the gap the identity slice (`sessionUserId`,
-[session identity](#session-identity-in-functions)) opened but could not
-generalize: that channel only carries a bounded, precomputed string written
-before the handler runs. A capability is a live call bound to the actual
-invocation, for extensions whose facades cannot be reduced to one header
-value. The core fixture `test/extension-capability.test.ts` proves the seam
-with a synthetic, non-first-party provider; naming the specific store, mail,
-audit and abuse operations an application can reach this way is a later,
+The header channel only carries a bounded, precomputed string written before
+the handler runs; a capability is a live value bound to the actual
+invocation. The first-party `auth` extension declares one capability,
+`identity`: on a route with `auth: true` the handler reads the verified user
+id as `context.capabilities.auth.identity.userId`, and a `sandbox: true` route
+cannot name `auth`. The core fixture `test/extension-capability.test.ts` proves
+the seam with a synthetic, non-first-party provider; naming the specific store,
+mail, audit and abuse operations an application can reach this way is a later,
 separate decision for each package.
 
 `urlcode explain` and `urlcode report` show the capabilities a registration
@@ -575,11 +458,12 @@ context.capabilities.<name>: ...`). They do not enumerate what an extension
 serves below its own mount: the mount's handler carries
 `subpaths: provider-defined, not enumerated or inspected by URLCode`, so a
 review never implies those endpoints were checked. The
-[embedded Better Auth proof](../proofs/private-requests/README.md) (#843) uses
-this seam with an upstream provider: an operator adapter mounts Better Auth's
-own handler, turns its verified session into the request principal, and hands
-application routes the user id as a capability. The proof lists the provider's
-served endpoints with its own probe, outside URLCode's review facts.
+[embedded Better Auth proof](../proofs/private-requests/README.md) (#843) is
+an end-to-end application on this seam: the first-party `auth` extension
+mounts Better Auth's own handler, turns its verified session into the request
+principal, and hands application routes the user id as a capability. The proof
+lists the provider's served endpoints with its own probe, outside URLCode's
+review facts.
 
 ### Request context: route env and request id
 
@@ -645,25 +529,32 @@ Projects select those declared hooks in the extension's own configuration:
 
 ```yaml
 extensions:
-  auth:
+  ui:
     version: "1"
     config:
       hooks:
-        beforeRegister:
-          source: ./hooks/registration-rule.mjs
+        transformView:
+          source: ./hooks/transform-ui-view.mjs
           export: default
-        onAccountCreated:
-          source: ./hooks/on-account-created.mjs
+  forms:
+    version: "1"
+    config:
+      hooks:
+        onSubmit: ./hooks/on-submit.mjs
+      flows:
+        contact:
+          mount: /contact
+          title: Contact us
+          submitLabel: Send message
+          confirmation: {title: Thank you, message: We received your message.}
+          fields:
+            message: {label: Message, control: textarea, maxLength: 2000}
 ```
 
-with `beforeRegister` called before any path creates an account, given a
-typed `{email, method, profile?}` input and returning a typed verdict
-(`{allow: true}` or `{allow: false, reason}`), and `onAccountCreated` called
-after, for side effects such as provisioning a workspace. Auth's full set
-(`beforeRegister`, `beforeRoleChange`, `onAccountCreated`,
-`onAccountStatusChanged`, `onDeletionScheduled`, `onAccountDeleted`) is fired
-by the auth service for every caller, including the administration console
-and the operator CLI; see [composing a site](COMPOSING-A-SITE.md#project-functions-lifecycle-hooks). Hook names and lifecycle timing remain the
+with `transformView` a filter that returns the view model a `ui` template
+renders, and forms' `onSubmit` an action called with the validated
+`{flow, values}` of a submission, after admission and CSRF, for side effects
+such as writing to another system. Hook names and lifecycle timing remain the
 extension's domain, while their declaration, loading and discovery are shared.
 
 Hooks are first-party project code and run trusted in-process by default, with
@@ -680,7 +571,7 @@ changes; use this hook for project-specific computed view data that those
 declarative layers cannot express. It also exposes `transformPage`, called
 before the shared layout renders. It receives the editable title, layout,
 navigation, account menu and flash message and returns those page fields. This
-lets a product join auth/admin screens to its own shell without replacing their
+lets a product join extension screens (forms, store lists) to its own shell without replacing their
 security or workflow behavior. Both filters are synchronous and trusted.
 
 ## Building an extension
@@ -948,8 +839,8 @@ delivery context): make the newest live activation current and, when it
 closes, fall back to the previous live one rather than to nothing, so a failed
 reload's close cannot switch off the runtime that is still serving. The store
 adopts the hand-off for its directory lock
-([single-writer lock and reload](STORE.md#single-writer-lock-and-reload)); ui,
-auth and mail keep their current activation that way.
+([single-writer lock and reload](STORE.md#single-writer-lock-and-reload)); ui
+and mail keep their current activation that way.
 
 ### Site origins and same-origin checks
 
@@ -980,7 +871,8 @@ An extension's activation context carries both:
   (It is optional in the type only so a hand-built activation in a test still
   means the canonical origin alone; the runtime always sets it.)
 - `passkeyRpId`: present only when the operator set a
-  [shared passkey relying-party domain](#shared-passkey-relying-party-domain).
+  [shared passkey relying-party domain](#shared-passkey-relying-party-domain),
+  which no first-party extension reads.
 - `warn`: the [activation warning](#activation-warnings) channel.
 
 `isSiteOrigin(context, value)` is the one match for a single origin value: the
@@ -1001,26 +893,22 @@ applies decides:
 6. none of them: `whenAbsent`.
 
 `whenAbsent: 'refuse'` is for an endpoint that takes a form post or relies on
-cookies: `auth`, `admin` and `forms` use it. `whenAbsent: 'admit'` is only for
+cookies: `auth` (for unsafe methods on a protected route) and `forms` use it. `whenAbsent: 'admit'` is only for
 an endpoint that accepts JSON exclusively, which a cross-site browser cannot
 send without a preflight the runtime never grants, while non-browser clients
 (curl, MCP clients, API keys) send no provenance header: `store` and `mcp` use
-it. The rule is admission only: a cookie-bound write still needs its CSRF
-token, unless the route opts into [`csrf: origin`](#csrf-on-protected-routes-csrf-token--origin).
-Auth's CSRF check additionally requires a single `x-csrf-token` (or a body
-`csrf` field) bound to the session. On a loopback bind the server's
+it. The rule is admission only: forms still requires its own CSRF token, and
+Better Auth applies its own origin checks on its mount. On a loopback bind the server's
 [host admission](OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
 alias authority too.
 
 #### Shared passkey relying-party domain
 
-A passkey (WebAuthn credential) is bound to one relying-party ID, a domain.
-By default an extension that runs passkey ceremonies uses the canonical host as
-the RP ID and accepts a ceremony only from the canonical origin, so alias
-origins do not get passkeys. An operator whose origins share a registrable
-domain (`app.site.example` and `www.site.example` under `site.example`) can opt
-in to one shared RP ID (issue #729). It is operator configuration, never project
-YAML:
+Core still accepts one generic operator option for an extension that runs
+WebAuthn ceremonies: a shared relying-party (RP) ID, so a passkey works on
+every site origin under one registrable domain (issue #729). **No first-party
+extension uses it**: `auth` serves no passkeys, and the option is due to be
+removed. It is operator configuration, never project YAML:
 
 | Where | How |
 |---|---|
@@ -1028,40 +916,13 @@ YAML:
 | `createRuntime`, `startServer`, `runProjectTests` | `passkeyRpId: 'site.example'` |
 | AWS and Vercel handlers | the `passkeyRpId` handler option, otherwise `URLCODE_PASSKEY_RP_ID` |
 
-Core validates it together with the origins and refuses to start with a
-`ConfigError` (code `invalid-passkey-rp-id`) unless it is:
-
-- a lowercase ASCII DNS name (punycode for an international name) with no
-  scheme, port, path, wildcard or trailing dot, and at most 253 characters;
-- not an IP address, and not a single label: `localhost` is accepted only when
-  the canonical origin's host is `localhost`;
-- not one of the common public suffixes core lists (`co.uk`, `com.au`,
-  `github.io`, `vercel.app` and similar; `passkeyPublicSuffixes` in
-  `packages/core/src/site-origins.ts`);
-- the host of the canonical origin and of every alias origin, or a parent domain
-  of each at a label boundary (`site.example` covers `www.site.example`, never
-  `mysite.example` or `site.example.evil.example`). An alias on another domain,
-  or on `127.0.0.1`, cannot share an RP ID, so it is refused rather than left
-  without passkeys.
-
-Node carries no Public Suffix List and core does not ship one, so the public
-suffix check is deliberately short. Browsers enforce the full list themselves
-and refuse a ceremony whose RP ID is a public suffix, so a suffix missing from
-core's list fails closed in the browser, not open.
-
-The activation context then carries `passkeyRpId`. An extension that runs
-ceremonies uses it as the RP ID and may accept any entry of `origins` as the
-ceremony's client origin; without it, it keeps its default. First-party `auth`
-does exactly that ([auth README](../packages/auth/README.md#passkeys-and-the-relying-party-domain)).
-
-> **Changing the RP ID invalidates existing passkeys.** A credential registered
-> under `app.site.example` cannot be used under `site.example`, or the other
-> way round. Setting, changing or removing `--passkey-rp-id` makes every passkey
-> registered under the previous RP ID stop working; users must sign in another
-> way and register a new passkey. Decide on the RP ID before users enrol.
-> First-party `auth` records each new passkey's RP ID and reports stranded
-> passkeys at startup as an [activation warning](#activation-warnings), with
-> counts only ([auth README](../packages/auth/README.md#passkeys-and-the-relying-party-domain)).
+Core refuses to start with a `ConfigError` (code `invalid-passkey-rp-id`)
+unless the value is a lowercase DNS name, not an IP address, a single label
+(except `localhost` on a `localhost` origin) or a listed public suffix
+(`passkeyPublicSuffixes` in `packages/core/src/site-origins.ts`), and is the
+host of the canonical origin and of every alias origin or a parent domain of
+each at a label boundary. The activation context then carries `passkeyRpId`
+for an external extension to read.
 
 Every extension also follows the
 [generic add-on authoring rules](#generic-add-on-authoring-rules).
@@ -1072,7 +933,6 @@ capability; put a demo in the definition's optional `example`, which core writes
 only with `--example`. They modify it through declared configuration,
 presentation layers and hooks. A fork is reserved for changing behavior the
 extension has not exposed; that is evidence for a new declarative field or hook.
-See [Composing a site](COMPOSING-A-SITE.md) for the complete ui/auth/admin example.
 
 ## Generic add-on authoring rules
 
@@ -1340,9 +1200,8 @@ check it against core's pin.
 
 The first-party add-ons are:
 
-- Extensions: `ui`, `auth` (requires `ui`), `admin` (requires `auth` and `ui`),
-  `forms` (requires `ui`), `store`, `form-records` (requires `forms` and
-  `store`), `mcp`.
+- Extensions: `ui`, `audit`, `abuse`, `mail`, `auth`, `forms` (requires `ui`),
+  `store`, `form-records` (requires `forms`, `store` and `ui`), `mcp`.
 - Artifacts: `store-schema`, the `store` extension's configuration schema and an
   example configuration. Its schema is generated from the store extension's
   definition by `npm run build:addons`, so the two cannot drift.
@@ -1420,22 +1279,20 @@ one entry:
 
 ```js
 import { composeHost } from '@jimhoyd/urlcode/host';
-import audit from '@jimhoyd/urlcode-audit/extension';
-import mail from '@jimhoyd/urlcode-mail/extension';
 import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
+import store from '@jimhoyd/urlcode-store/extension';
 
 export default await composeHost(import.meta.url, [
-  audit(),
-  mail(),
   ui(),
   auth(),
+  store(),
 ]);
 ```
 
-That is the host after `urlcode extensions add ui auth`, which also installs
-`audit` and `mail` because auth requires them. Operator options go inside the
-call, for example `mail({transport: sesTransport({region}), from})`. The
+That is the host after `urlcode extensions add ui auth store`. Operator options
+go inside the call, for example `auth({signUp: true})` or
+`mail({transport: sesTransport({region}), from})`. The
 generated npm scripts run from the site directory (`urlcode dev --project app
 --host-file host.mjs`, and the same for `serve`, `validate`, `test`, `routes`
 and `audit`). Run from a site root, CLI commands default `--project` to `app`,
@@ -1500,10 +1357,9 @@ command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
 on `/api/todos` (and, with `ui`, its `/todos` screen; per-user `ownership: owner`
-when `auth` is installed), forms' `/contact` flow,
-auth's signed-in `/private` page and form-records' signed-in `/todo-form`
-(which needs `auth` and saves into the store example's `todos`); ui, admin and
-mcp ship none.
+when `auth` is installed), forms' `/contact` flow and form-records' signed-in
+`/todo-form` (which needs `auth` and saves into the store example's `todos`);
+ui, auth and mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
 the `store` example without `auth` would expose public write on its collection. The refusal
@@ -1557,8 +1413,7 @@ reports the current and target versions and changes nothing. Configuration is
 not migrated: if an extension's schema changed, validation names the field.
 
 Add-on command-line tools are ordinary npm bins once installed in the site, for
-example `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`
-or `npx urlcode-ui doctor --project app`.
+example `npx urlcode-auth migrate` or `npx urlcode-ui doctor --project app`.
 
 ### Independent extension packages
 
@@ -1598,8 +1453,7 @@ Each extension declares what it needs:
 | Extension | `requires` | `uses` (optional) | Contributes to |
 |---|---|---|---|
 | `ui`, `audit`, `abuse`, `mail`, `mcp` | none | none | |
-| `auth` | `ui`, `audit`, `mail` | `abuse` | `ui`, `mail` |
-| `admin` | `auth`, `ui`, `audit` | | `ui` |
+| `auth` | none | none | |
 | `store` | none | `audit` | `ui` |
 | `forms` | `ui` | `abuse`, `mail` | `mail` |
 | `form-records` | `forms`, `store`, `ui` | | |
@@ -1622,9 +1476,10 @@ does not matter. They close in reverse order.
 
 A contribution is an optional edge too: an extension may contribute to one it
 does not require, and the value is simply unused when the target is not
-installed. Auth and admin pass templates and copy catalogues to `ui` through
-`contributes.ui`, which `ui` collects with `ctx.contributions('ui')`; auth and
-forms pass message templates to `mail` the same way. The store does not
+installed. Forms passes its message templates to `mail` through
+`contributes.mail`, which `mail` collects with `ctx.contributions('mail')`; `ui`
+accepts templates and copy catalogues through `contributes.ui` the same way,
+though no first-party extension contributes templates to it today. The store does not
 require `ui`, but contributes `screens`, a source ui calls at activation to
 receive generic descriptions of the CRUD screens declared under
 `extensions.store.config.screens`, so ui never reads the store's
@@ -1650,20 +1505,21 @@ configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
   accepts a `templates` entry only when its `name` is `from` and every
   template or view-model key is `<from>/…`; `mail` accepts a contribution only
   when its `namespace` is `from`. Both errors name the claimed namespace and
-  the contributing extension, for example `Mail namespace "auth" is
+  the contributing extension, for example `Mail namespace "forms" is
   contributed by extension "notifier": an extension contributes mail templates
   only under its own name`. ui's contributed screens are keyed by route path,
   not by extension name, so ui uses `from` only to name both contributors when
   two claim one path.
 
-Exports are typed and versioned (`version: 1`, plus `active`):
+Exports are typed and versioned (`version: 1`, plus `active`). `auth`
+exports nothing to other extensions; it reaches them only through the
+[request principal](#request-principal):
 
 | Export | From | Read by |
 |---|---|---|
-| `AuthExports` | `auth` | `admin`: the signed-in account and its permissions (`account(request)`), a CSRF token, account URLs and the administration API. Never a key, a database handle or a raw token. |
-| `AuditExports` | `audit` | producers (`attach` an outbox, `validate` an event) and readers (`query`, `record`); admin's audit screens |
-| `AbuseExports` | `abuse` | auth and forms: `namespace(name)` for budgets, backoff, the challenge and the honeypot |
-| `MailExports` | `mail` | auth and forms: `send()` a contributed template; `available` says whether a transport is set |
+| `AuditExports` | `audit` | producers (`attach` an outbox, `validate` an event; the store's audited collections) and readers (`query`, `record`) |
+| `AbuseExports` | `abuse` | forms: `namespace(name)` for budgets, backoff, the challenge and the honeypot |
+| `MailExports` | `mail` | forms: `send()` a contributed template; `available` says whether a transport is set |
 | `FormsExports`, `StoreExports` | `forms`, `store` | `form-records`: a flow renderer and validator, and an ownership-honouring records API |
 
 Two copies of one extension cannot exist in a site, so duplicate-instance bugs
@@ -1674,15 +1530,16 @@ cannot happen.
 
 The `audit` extension keeps the one durable log of privileged actions. Its
 guarantee: an event is written into the producer's own outbox in the same
-transaction as the change it records (auth's SQLite `auth_audit_outbox`, the
-`audit` array of an audited store collection's data file), so a change and its
+transaction as the change it records (the `audit` array of an audited store
+collection's data file), so a change and its
 event are stored together or not at all. Audit drains every attached outbox
 into `data/audit.sqlite` while the host runs, at least once and deduplicated by
 event id, so nothing is lost across a crash. A producer fails closed: when its
-outbox reaches its cap (10000 for auth, 1000 per store collection) the write
-answers 503 until audit catches up. The log keeps the newest `retention`
+outbox reaches its cap (`auditOutboxLimits`: 1000 per store collection) the
+write answers 503 until audit catches up. The log keeps the newest `retention`
 events (default 100000). Events carry names, ids and field names, never
-submitted values or secrets. See the [audit package](../packages/audit/README.md)
+submitted values or secrets. Operators read the log with `urlcode-audit list`.
+See the [audit package](../packages/audit/README.md)
 and its [security notes](../packages/audit/SECURITY.md).
 
 ### Abuse protection
@@ -1692,10 +1549,9 @@ Two different tools limit request rates, and they are not interchangeable:
 - The core [`throttle` policy](policies/throttle.md) is YAML on any route: a
   fixed per-client budget on a bounded in-memory table, the same on every
   target, reset on restart.
-- The `abuse` extension is for other extensions' own flows: sign-in and
-  sign-up budgets and password backoff in auth
-  (`extensions.auth.config.abuse`), submission budgets in forms
-  (`flows.<name>.abuse`). Its counters are keyed by an HMAC of the client
+- The `abuse` extension is for other extensions' own flows: today the
+  submission budgets in forms (`flows.<name>.abuse`). Auth does not use it;
+  Better Auth's own rate limiter guards sign-in. Its counters are keyed by an HMAC of the client
   address or account (`data/abuse.key`), persist in `data/abuse.sqlite`, are
   bounded by `maxKeys` (503 when full) and can escalate to a challenge
   provider. It is Node-only.

@@ -94,8 +94,8 @@ function headersFor(state: ThrottleState, { remaining, reset }: Budget): HeaderP
 }
 
 // RateLimit-Policy and RateLimit are structured-field lists whose members
-// are named policies, so another producer's policy on the same response (the
-// auth extension's "credential" quota on its 429, #701) is kept: every prior
+// are named policies, so another producer's policy on the same response (#701)
+// is kept: every prior
 // field line of that name is folded into one comma-joined list and this
 // policy's member appended. Only a member already named "default" (this
 // policy's own) is dropped, so the field never carries it twice.

@@ -42,12 +42,10 @@ routes:
 adjusts them for one route. Two route-level short forms exist. `auth`
 expands to `policies.extensions.auth` when the project declares an auth
 [extension](EXTENSIONS.md), carrying the same keys minus `required`;
-`required: false` documents the intent and emits no policy. It accepts
-`required`, `role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny`
-and `bearer` and nothing else — `role` is singular, and there is no `roles`.
-`bearer: {scopes: [...]}` protects the route with an API key instead of a
-session and is exclusive of the other keys (see
-[extensions](EXTENSIONS.md#bearerapi-key-routes)). Like
+`required: false` documents the intent and emits no policy. The installed
+extension's policy schema decides which other keys are accepted: the
+first-party `auth` accepts none, so write `auth: true`
+([auth](../packages/auth/README.md#protect-a-route)). Like
 `cache` below, it is refused rather than silently ignored in three cases: when
 the project declares no `extensions.auth`, when the route also sets
 `policies.extensions.auth` (use one form), and when the route sets

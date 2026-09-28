@@ -1,4 +1,4 @@
-// The mail contract every consumer (auth, forms, operators) builds against. Consumers import these with
+// The mail contract every consumer (such as forms, or operators) builds against. Consumers import these with
 // `import type` only, so installing mail is never a runtime dependency of a package that merely uses it.
 
 /**

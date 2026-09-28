@@ -131,7 +131,8 @@ integration (`npm run test:addons`: pack core and every add-on, pin them by
 sha512, create a site and add, serve and remove every extension); missing
 workspace outputs fail. The same job then runs the embedded Better Auth proof
 (`npm run test:proof`, [#843](https://github.com/jimhoyd-com/urlcode/issues/843)):
-it packs core, installs `better-auth` into a copy of
+it packs core and the add-ons, installs core and `@jimhoyd/urlcode-auth` at
+core's pins into a copy of
 [`proofs/private-requests`](../proofs/private-requests/README.md) and exercises
 it over HTTP, so it needs the npm registry like the add-on suite. A change under
 `proofs/` or to that test is high-impact and selects this job.
@@ -150,7 +151,7 @@ stack: Node runs separate `t.after()` hooks in registration order, so an earlier
 directory-removal hook would run while those later resources are still open.
 Filesystem retries cannot repair that ordering.
 
-Auth/admin suites use a five-minute test-file timeout; store uses two minutes.
+The store, audit and form-records suites use a two-minute test-file timeout.
 Keep large suites split into focused files so a file can finish within its budget
 on supported CI runners, with fixtures isolated between files. Platform-sensitive Windows coverage is Node 24
 in the cross-workspace integration and in the Windows leg of a

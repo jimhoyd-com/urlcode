@@ -22,7 +22,7 @@ subscriber or cloud host routinely holds a whole /64, so keying single IPv6
 addresses would let it rotate addresses for fresh budgets and churn the
 bounded counter table. The consequence is that callers sharing one IPv6 /64
 share one client budget. The /64 prefix is fixed. The auth package's
-per-client budgets group addresses the same way.
+sign-in rate limiter groups addresses the same way.
 
 A request whose client cannot be resolved (an adapter without a peer, an
 embedding caller that passes none) shares one bucket rather than being exempt,

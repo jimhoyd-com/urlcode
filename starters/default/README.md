@@ -26,15 +26,14 @@ from the site directory:
 
 ```sh
 npx urlcode extensions available
-npx urlcode extensions add ui auth --example   # --example adds working demos, such as a signed-in /private page
-npx urlcode extensions remove auth
+npx urlcode extensions add ui auth store --example   # --example adds working demos, such as a per-user /api/todos collection
+npx urlcode extensions remove store
 npx urlcode upgrade --check
 ```
 
-`extensions add` installs only the capability (for example auth's `/account/*`
-pages, with no page of yours protected yet), plus every extension it requires:
-auth brings `audit` (its log of privileged actions) and `mail` (the messages
-it sends; set a transport in `host.mjs` before going live). `--example` also writes each added
+`extensions add` installs only the capability (for example auth's Better Auth
+mount at `/api/auth/*`, with no route of yours protected yet), plus every
+extension it requires; auth requires no other extension. `--example` also writes each added
 extension's demo, such as store's `/api/todos` collection and `/todos` screen (per-user when auth
 is installed) or
 forms' `/contact` flow.

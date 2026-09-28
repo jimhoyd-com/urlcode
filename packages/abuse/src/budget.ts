@@ -1,5 +1,5 @@
-// Spec validation for budgets and backoffs: the bounds auth's password and velocity policy held, now owned here so
-// every consumer (auth, forms) is re-validated at its own activation.
+// Spec validation for budgets and backoffs, owned here so every consumer (such as forms) is re-validated at its own
+// activation.
 import { AbuseError } from './types.ts';
 import type { AbuseBackoffSpec, AbuseBudgetSpec } from './types.ts';
 import { SCOPE } from './keys.ts';

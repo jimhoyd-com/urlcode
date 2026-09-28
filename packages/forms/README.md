@@ -38,13 +38,10 @@ bytes. `forms` receives the shared `ui` kit from the host. See
 [add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
 site layout and commands.
 
-Declare the UI and a form mount in the project. Add `auth: {csrf: origin}` to
-compose the flow with the auth extension; policy authorization runs before the
-form handler. Do not use `auth: true` on a form mount: its token mode reads the
-form's `csrf` field, finds forms' own token rather than auth's, and answers 403
-to every POST. `csrf: origin` is the right auth key here: forms verifies its
-own token on every POST, which a plain HTML form can send, while auth's default
-token would need a header forms does not send. The supplied `onSubmit` hook is trusted project code, runs only after
+Declare the UI and a form mount in the project. Add `auth: true` to compose
+the flow with the auth extension; policy authorization (a signed-in session,
+and same-origin provenance for the POST) runs before the form handler, which
+still verifies its own CSRF token on every POST. The supplied `onSubmit` hook is trusted project code, runs only after
 CSRF and field validation, and should make external effects idempotent.
 
 ```yaml
@@ -526,7 +523,7 @@ Declare a bounded server-rendered form flow with fixed fields and a confirmation
 - **abuse** (configuration, `urlcode.yaml#extensions.forms.config.flows.<name>.abuse`): Optional per-flow rate limit through the abuse extension (node only): `abuse: {client: {limit, windowMs}, challengeAfter?, honeypot?}`. Over the limit a POST gets 429 with Retry-After; above challengeAfter it must pass the operator's challenge (abuse({challenge}) in host.mjs); a filled honeypot field is accepted silently and dropped.
 - **notify** (configuration, `urlcode.yaml#extensions.forms.config.flows.<name>.notify`): Optional per-flow email through the mail extension: `notify: {recipient, include?}` sends forms.submission to the operator-named recipient (mail({recipients}) in host.mjs) after onSubmit, with the include fields as plain text. A failed delivery answers 503 and the visitor may resubmit, so delivery is at least once.
 - **onSubmit** (hook, `urlcode.yaml#extensions.forms.config.hooks.onSubmit`): Optional trusted project action, called only after successful form validation and CSRF admission. It is not sandboxed and must keep external effects idempotent.
-- **mount** (extension, `urlcode.yaml`): Mount each flow as `/contact/*` with GET, HEAD and POST. Add `auth: {csrf: origin}` (never `auth: true`) when the form is for signed-in callers.
+- **mount** (extension, `urlcode.yaml`): Mount each flow as `/contact/*` with GET, HEAD and POST. Add `auth: true` when the form is for signed-in callers.
 
 Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
 <!-- extension-reference:end -->

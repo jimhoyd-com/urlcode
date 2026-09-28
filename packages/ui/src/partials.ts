@@ -69,7 +69,7 @@ export const kitTemplates: Readonly<Record<string, ShippedTemplate>> = Object.fr
     },
     empty: {
         source: `{{!-- viewModel: empty@1 --}}<div class="ui-empty" data-slot="empty"><header data-slot="empty-header"><p class="ui-empty-title" data-slot="empty-title">{{#if emptyTitle}}{{emptyTitle}}{{else}}{{t "ui.empty.title"}}{{/if}}</p>{{#if emptyMessage}}<p class="ui-muted" data-slot="empty-description">{{emptyMessage}}</p>{{/if}}</header>{{#if actionHref}}<div data-slot="empty-content"><a class="ui-button ui-button-secondary" data-slot="button" href="{{href actionHref}}">{{actionLabel}}</a></div>{{/if}}</div>`,
-        sample: { emptyTitle: null, emptyMessage: 'Add a passkey to sign in without a password.', actionHref: '/account/passkeys/new', actionLabel: 'Add a passkey' },
+        sample: { emptyTitle: null, emptyMessage: 'Add a note to get started.', actionHref: '/notes/new', actionLabel: 'Add a note' },
     },
     pagination: {
         source: `{{!-- viewModel: pagination@1 --}}<nav class="ui-pagination" aria-label="Pagination">{{#if previousHref}}<a class="ui-button ui-button-ghost" href="{{href previousHref}}" rel="prev">{{t "ui.pagination.previous"}}</a>{{/if}}<span class="ui-muted">{{t "ui.pagination.page" page=page pages=pages}}</span>{{#if nextHref}}<a class="ui-button ui-button-ghost" href="{{href nextHref}}" rel="next">{{t "ui.pagination.next"}}</a>{{/if}}</nav>`,

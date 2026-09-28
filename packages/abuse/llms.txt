@@ -8,8 +8,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.abuse: { version: "1", config: { maxKeys?: 1000..1000000 } }`. The default `maxKeys` is 100000.
-- The budgets themselves live in the consumer's YAML: `extensions.auth.config.abuse`, and
-  `flows.<name>.abuse` in forms.
+- The budgets themselves live in the consumer's YAML: `flows.<name>.abuse` in forms.
 - The challenge verifier (for example `createTurnstileChallenge`) is host.mjs code, never YAML.
 
 ## Read in this order

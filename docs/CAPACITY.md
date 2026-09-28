@@ -121,7 +121,7 @@ Each bound refuses rather than growing without limit:
 | Resource | Bound | When full |
 |---|---|---|
 | Audit log | keeps the newest `extensions.audit.config.retention` events (default 100,000; 1,000 to 10,000,000) | older events are pruned |
-| Audit outboxes | 10,000 undelivered events in auth's outbox; 1,000 per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
+| Audit outboxes | 1,000 undelivered events per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
 | Abuse counters | `extensions.abuse.config.maxKeys` keyed rows (default 100,000), each claimed scope at most an equal share | a new key answers 503; expired rows are swept |
 | Mail deliveries | `maxConcurrent` in flight across every consumer (default 8, 1 to 64), `deadlineMs` per message (default 5,000 ms, 1,000 to 30,000) | `send()` refuses `busy` at once |
 | Mail development outbox | 100 messages by default (at most 1,000), 32,768 bytes per message | the next message is refused |

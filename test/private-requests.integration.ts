@@ -1,8 +1,9 @@
-// The #843 proof end to end with real npm: pack this checkout's core as a release does, install it with the
-// pinned Better Auth into a copy of proofs/private-requests, run the site's own scripts, and exercise the served
-// application over HTTP. It needs the npm registry for better-auth and esbuild; run after `npm run build`
-// (npm run test:proof); like the other packaging tests it packs the built core with --ignore-scripts. The test acts as the evaluator: it writes the operator policy from `urlcode permissions`
-// explicitly, the step a person performs after review.
+// The #843 proof end to end with real npm: pack this checkout's core and add-ons as a release does, install core and
+// @jimhoyd/urlcode-auth (Better Auth) into a copy of proofs/private-requests, run the site's own scripts, and exercise
+// the served application over HTTP. It needs the npm registry for better-auth and esbuild; run after `npm run build`
+// and the add-on builds (npm run test:proof); like the other packaging tests it packs with --ignore-scripts. The test
+// acts as the evaluator: it writes the operator policy from `urlcode permissions` explicitly, the step a person
+// performs after review.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -11,6 +12,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
+import { packAddons } from '../scripts/pack-addons.ts';
 import { repositoryRoot } from '../scripts/workspaces.ts';
 
 const proof = join(repositoryRoot, 'proofs', 'private-requests');
@@ -63,14 +65,19 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
     if (errors.length) throw new AggregateError(errors, 'Proof cleanup failed');
   });
   closers.push(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
-  const packed = npm(t, repositoryRoot, ['pack', '--ignore-scripts', '--silent', '--pack-destination', root]);
-  assert.equal(packed.status, 0, packed.stderr);
-  const tarball = join(root, packed.stdout.trim().split('\n').at(-1)!);
+  // Core and the auth extension exactly as a release packs them; `manifest` pins each add-on tarball by sha512.
+  const packed = await packAddons(join(root, 'packed'));
+  const addons = { URLCODE_ADDONS: packed.manifest };
   const site = join(root, 'site');
   await cp(proof, site, { recursive: true, filter: source => !/[/\\](node_modules|data)$/.test(source) && !source.endsWith('policy.json') && !source.endsWith(join('assets', 'app.js')) });
+  // The committed site links the in-repository auth package; the copy depends on the packed tarballs at core's pins.
+  const manifestFile = join(site, 'package.json'), pkg = JSON.parse(await readFile(manifestFile, 'utf8')) as { dependencies: Record<string, string> };
+  pkg.dependencies['@jimhoyd/urlcode'] = `file:${packed.core}`;
+  pkg.dependencies['@jimhoyd/urlcode-auth'] = `file:${packed.tarballs.auth!}`;
+  await writeFile(manifestFile, JSON.stringify(pkg, null, 2) + '\n');
 
   // Installation and build may use the network; nothing after them does.
-  assert.equal(npm(t, site, ['install', '--no-audit', '--no-fund', tarball]).status, 0);
+  assert.equal(npm(t, site, ['install', '--no-audit', '--no-fund']).status, 0);
   assert.equal(npm(t, site, ['run', 'build']).status, 0);
   const setup = npm(t, site, ['run', '-s', 'setup']);
   assert.equal(setup.status, 0, setup.stderr);
@@ -79,10 +86,13 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   // Setup is safe to re-run and keeps the same accounts.
   assert.deepEqual((JSON.parse(npm(t, site, ['run', '-s', 'setup']).stdout.trim().split('\n').at(-1)!) as { users: unknown }).users, users);
 
-  // The adapter is an independent package (#844): found by its descriptor, checked statically without host code.
-  const listed = urlcode(t, site, ['extensions', 'list', '--strict', '--json']);
+  // Auth is the first-party catalog extension, installed at core's pin, declared and hosted; checked statically
+  // without host code.
+  const listed = urlcode(t, site, ['extensions', 'list', '--strict', '--json'], addons);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
-  assert.deepEqual((JSON.parse(listed.stdout) as { addons: { name: string; package: string; independent?: boolean }[] }).addons.map(item => [item.name, item.package, item.independent]), [['better-auth', '@example/urlcode-better-auth', true]]);
+  const extensions = JSON.parse(listed.stdout) as { addons: { name: string; package: string; independent?: boolean; pinned: boolean; problems: string[] }[]; problems: string[] };
+  assert.deepEqual(extensions.addons.map(item => [item.name, item.package, item.independent ?? false, item.pinned, item.problems]), [['auth', '@jimhoyd/urlcode-auth', false, true, []]]);
+  assert.deepEqual(extensions.problems, []);
   const staticCheck = urlcode(t, site, ['validate', '--project', 'app']);
   assert.equal(staticCheck.status, 0, staticCheck.stdout + staticCheck.stderr);
 
@@ -111,17 +121,17 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   // Review facts: the capability a protected handler receives, and the provider mount's unlisted subpaths.
   const reviewEnv = { ...env, PROJECT_SHA256: (JSON.parse(proposal.stdout) as { projectSha256: string }).projectSha256 };
   const protectedRoute = urlcode(t, site, ['explain', '/api/requests', '--project', 'app', '--host-file', 'host.mjs'], reviewEnv);
-  assert.match(protectedRoute.stdout, /handler receives context\.capabilities\.better-auth: identity/);
+  assert.match(protectedRoute.stdout, /handler receives context\.capabilities\.auth: identity/);
   const mount = urlcode(t, site, ['explain', '/api/auth/sign-in/email', '--project', 'app', '--host-file', 'host.mjs'], reviewEnv);
   assert.match(mount.stdout, /"subpaths":"provider-defined, not enumerated or inspected by URLCode"/);
 
   await t.test('provider and target misconfiguration refuses before serving', async () => {
     const empty = join(root, 'empty-data');
     const refusals: [string, Record<string, string>, RegExp][] = [
-      ['no secret', { PRIVATE_REQUESTS_DATA: empty }, /No Better Auth secret/],
-      ['uninitialized schema', { PRIVATE_REQUESTS_DATA: empty, BETTER_AUTH_SECRET: 'b'.repeat(43), APP_DATABASE: join(root, 'unused.db') }, /schema is not initialized/],
-      ['origin mismatch', { SITE_ORIGIN: 'http://localhost:1' }, /differs from the operator origin/],
+      ['no secret', { PRIVATE_REQUESTS_DATA: empty }, /auth secret .*is missing/],
+      ['uninitialized schema', { PRIVATE_REQUESTS_DATA: empty, BETTER_AUTH_SECRET: 'b'.repeat(43), APP_DATABASE: join(root, 'unused.db') }, /Better Auth's tables are not initialized/],
     ];
+    // There is no origin to mismatch: the extension builds Better Auth's baseURL from the operator's --origin.
     for (const [name, extra, message] of refusals) {
       const refused = urlcode(t, site, ['validate', '--local', ...approved], { ...env, ...extra });
       assert.notEqual(refused.status, 0, name);
@@ -136,7 +146,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
       assert.match(stale.stdout + stale.stderr, /revision|projectSha256|pin/i);
       // A live capability object cannot cross into the sandbox: refused at compile time, not degraded.
       await writeFile(join(site, 'app', 'functions', 'sandboxed.mjs'), 'export default (_request, context) => Response.json({ capabilities: Object.keys(context.capabilities ?? {}) });\n');
-      await writeFile(yamlFile, yaml + '  /api/sandboxed:\n    methods: [GET]\n    policies: {extensions: {better-auth: {}}}\n    sandbox: true\n    function: {source: functions/sandboxed.mjs}\n');
+      await writeFile(yamlFile, yaml + '  /api/sandboxed:\n    methods: [GET]\n    auth: true\n    sandbox: true\n    function: {source: functions/sandboxed.mjs}\n');
       const sandboxProposal = urlcode(t, site, ['permissions', '--project', 'app']);
       assert.equal(sandboxProposal.status, 0, sandboxProposal.stdout + sandboxProposal.stderr);
       await writeFile(policy, sandboxProposal.stdout);
@@ -185,7 +195,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
     assert.deepEqual((await ann('/api/me')).json, { userId: users['ann@example.test'], reviewer: false });
     assert.deepEqual((await rita('/api/me')).json, { userId: users['rita@example.test'], reviewer: true });
     // A client cannot claim another identity through the reserved context namespace.
-    assert.equal(((await ann('/api/me', { headers: { 'x-urlcode-context-better-auth': users['rita@example.test']! } })).json as { userId: string }).userId, users['ann@example.test']);
+    assert.equal(((await ann('/api/me', { headers: { 'x-urlcode-context-auth': users['rita@example.test']! } })).json as { userId: string }).userId, users['ann@example.test']);
   });
 
   let annRequest = '';
@@ -274,7 +284,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
     const statuses: number[] = [];
     for (let attempt = 0; attempt < 12; attempt++) statuses.push(await signIn(attacker, 'rita@example.test', 'guess'));
     assert.ok(statuses.includes(429), statuses.join(','));
-    // A spoofed forwarding header does not buy a fresh bucket: the adapter supplies the admitted address.
+    // A spoofed forwarding header does not buy a fresh bucket: the mount supplies the admitted address.
     assert.equal((await attacker('/api/auth/sign-in/email', { method: 'POST', body: { email: 'rita@example.test', password: 'guess' }, headers: { 'x-forwarded-for': '203.0.113.7', 'x-urlcode-client-address': '203.0.113.7' } })).status, 429);
   });
 

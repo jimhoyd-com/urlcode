@@ -311,10 +311,11 @@ This is how a route behind a cookie session (`auth: true`) is covered: sign in
 within the fixture, then assert the protected responses. `audit` counts those
 steps like any other, so a signed-in step that passes and asserts a body or
 header covers its route and method.
-[`recipes/headless-auth-profile`](../recipes/headless-auth-profile/README.md)
-tests a whole cookie-session lifecycle this way: CSRF token, registration and
-sign-in, a signed-in profile, another user refused, sign-out, and the revoked
-session cookie replayed and refused.
+[`proofs/private-requests/app/tests/requests.json`](../proofs/private-requests/app/tests/requests.json)
+tests a whole cookie-session lifecycle this way: Better Auth sign-in, signed-in
+reads and writes, a permission the user lacks refused, sign-out and the old
+session cookie replayed and refused, and another user refused the first
+user's record.
 
 ## Benchmark your actual project
 

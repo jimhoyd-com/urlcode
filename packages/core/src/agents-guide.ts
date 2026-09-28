@@ -79,7 +79,7 @@ Never recreate these in a function; report a missing capability.
 
 Treat routes, extensions and UI as one application with different owners. Use
 published surfaces in order: configuration/theme/copy, smallest template, CSS,
-then a declared hook. Keep auth/admin security and workflows package-owned; add
+then a declared hook. Keep each extension's security and workflows package-owned; add
 an extension only for a reusable missing capability. Use the official shadcn/ui
 skill only in a React frontend with \`components.json\`; start with \`shadcn info
 --json\`. Do not put React components in the server renderer.
@@ -111,8 +111,8 @@ After a real attempt, draft evidence-backed feedback: category, sanitized YAML, 
 - Never create operator grants. Request a named binding; the operator grants it
   outside the project, pinned to the revision.
 - Keep keys, tokens and credentials out of project files and commit messages.
-- Protect a route with \`auth: true\`/\`auth: { role: admin }\` where an \`auth\`
-  extension is declared; \`cache\` likewise expands to \`policies.cache\`.
+- Protect a route with \`auth: true\` (its code reads \`context.capabilities.auth.identity.userId\`;
+  roles are application data); \`cache\` likewise expands to \`policies.cache\`.
 - Local checks are not deployment, soak or independent security evidence.
 
 The installed package ships the same loop at \`${skillPath}\` inside

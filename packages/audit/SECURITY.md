@@ -15,8 +15,8 @@ be atomic across two SQLite files in WAL mode. Given a producer that follows the
 contract in the [README](README.md#being-a-producer):
 
 1. **Atomic capture.** A producer change commits if and only if its audit
-   events are committed in the same storage transaction (auth: the same SQLite
-   `BEGIN IMMEDIATE`; store: the same atomic file replace).
+   events are committed in the same storage transaction (store: the same atomic
+   file replace).
 2. **Durable delivery, stored once.** Every captured event reaches
    `audit.sqlite` at least once. Ingest is `INSERT OR IGNORE` keyed on the
    producer-assigned event `id`, so it is stored exactly once. A crash at any
@@ -25,18 +25,18 @@ contract in the [README](README.md#being-a-producer):
    pruned by retention could be stored again if its ack was lost. That needs
    about `retention` newer events between the ingest and the redelivery, and it
    is accepted.
-3. **Fail closed on backlog.** Each producer caps its outbox (auth 10000
-   events; store 1000 per collection; `auditOutboxLimits`). At the cap a new
+3. **Fail closed on backlog.** Each producer caps its outbox (store 1000 events
+   per collection; `auditOutboxLimits`). At the cap a new
    auditable change is refused with 503 `audit_backlog` and not applied. When
    audit is down, privileged actions stop; they never go unaudited.
 4. **Bounded visibility lag.** When healthy, the lag is one drain round: a
    notify from the producer's commit, or a 1 s poll at worst. A reader that
-   needs completeness, such as an admin export, calls `flush()` first. It
+   needs completeness, such as an export, calls `flush()` first. It
    resolves once every event pending at call time is stored, and fails with 503
    (`audit_flush_timeout` after 2000 ms, or `audit_unavailable` when a producer
    was stopped).
 5. **Disclosures without a producer transaction.** An action that changes no
-   producer data, such as an admin audit export, calls `await record([event])`
+   producer data, such as an audit export, calls `await record([event])`
    before it releases anything. `record` resolves only after a durable commit
    (`synchronous=FULL`). If it rejects, the action answers 503 and releases
    nothing.
@@ -59,7 +59,7 @@ Retention is a capacity bound, not a legal retention policy: export what you
 must keep before it ages out.
 
 Retention is one count across every producer, so any producer's events can
-age out another's, including auth's privileged events. A producer must not
+age out another's. A producer must not
 record events that clients can cause without credentials: the store audits
 only collections behind a principal-providing policy and never audits a
 short-link click. Size `retention` for the busiest audited traffic.
@@ -75,24 +75,23 @@ short-link click. Size `retention` for the busiest audited traffic.
   symlink, a hard-linked file, a file with any group or other permission bit, a
   database inside `app/` or a database of another application is refused.
 - The host refuses an unpatched SQLite (older than 3.44.6, 3.50.7 or 3.51.3 in
-  their lines), the same rule auth applies.
+  their lines).
 
 ## What the log contains
 
 Producers decide the content. The contract forbids secrets and submitted values
 in `metadata` (field names only); `actor` and `subject` are identifiers, never
-an email address: auth's `registration.duplicate` names the existing account or
-waitlist request, and `registration.invited` a one-way pseudonym of the
-invitation. Account ids and reasons still relate to people, so treat the log as
+an email address; the store records the request principal (the signed-in
+user id) as `actor`. Account ids and reasons still relate to people, so treat the log as
 personal data: keep `data/` private and grant `audit.read`/`audit.export` only
 to roles that need them.
-Audit enforces no permission itself; its readers (admin) check them.
+Audit enforces no permission itself; its readers check them.
 
 ## Backup
 
 `urlcode-audit backup` takes a consistent online snapshot into a new private
 file outside the project; `restore` writes only a new path. Back audit up after
-auth, so undelivered events travel in auth's outbox.
+the producers' data, so undelivered events travel in their outboxes.
 
 Passing tests does not establish independent security assessment, hostile
 multi-tenant readiness, production abuse resistance, or delivery guarantees

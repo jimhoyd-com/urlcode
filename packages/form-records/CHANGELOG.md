@@ -4,7 +4,7 @@
 
 - Inline confirmation (#805): a record flow whose `form` declares `success: {mode: inline, status: 200|201}` answers a successful create with the saved record's confirmation (its `show` fields read back from the store, the Edit and list links) in the POST response instead of a 303 to `<mount>/<id>`; a 201 also carries `Location: <mount>/<id>`. An inline edit answers the updated record's confirmation with 200. forms' CSRF, admission and 422 handling, and the store's ownership, limits and If-Match, are unchanged. Without `success`, nothing changes.
 
-- The `--example` route uses `auth: {csrf: origin}`, so a signed-in HTML form POST passes auth (forms checks its own token), and activation no longer depends on the YAML order of `forms` and `store`: the runtime activates them first. Records saved into an `audit: true` collection are audited with the signed-in user as actor.
+- The `--example` route uses `auth: true`, and activation no longer depends on the YAML order of `forms` and `store`: the runtime activates them first. Records saved into an `audit: true` collection are audited with the signed-in user as actor.
 
 - Clearing an optional field on the edit page, and an optional per-user list
   page (#738). An editable field emptied on the edit page is now removed from

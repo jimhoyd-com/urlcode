@@ -170,23 +170,23 @@ historical, not valid YAML guidance.
 - Treat core, installed extensions and product UI as one application with
   different owners. Follow an extension's published `authoring` surfaces in
   this order: configuration; theme and copy; component or template override;
-  project CSS; declared trusted hook. Keep auth/admin security and workflow
-  behavior in their packages and keep only the product-specific difference in
+  project CSS; declared trusted hook. Keep each extension's security and workflow
+  behavior in its package and keep only the product-specific difference in
   the project. Build a new extension only for a reusable capability the
   installed contracts cannot express. Extension hooks run trusted in-process
   and reject `sandbox: true` in contract v1.
-- For accounts, sign-in and a per-user profile served as JSON, start from the
-  `headless-auth-profile` recipe (`recipes show headless-auth-profile`,
-  `get_recipe`): auth's JSON endpoints under `/account/*` plus an owned store
-  collection behind `auth: true`, with its request shapes, status codes and
-  owner boundaries in its README. Never write login, cookie, password, CSRF or
-  ownership checks in a function; report what the recipe cannot express.
-- For a pre-existing JSON contract with fixed paths, fields and error codes
-  (`/api/login`, `/api/me`, `{error: {code}}`), start from the
-  `fixed-contract-adapter` recipe: its README audits which path, field and
-  error mappings are safe over `AuthExports` and `StoreExports` and which the
-  client must change (sign-in, sign-out and CSRF stay auth's), and carries the
-  thin operator adapter that serves the rest.
+- For accounts and sign-in, install the `auth` extension: Better Auth serves
+  sign-in, sign-out and sessions on its mount (conventionally `/api/auth/*`),
+  and the browser uses Better Auth's own client. Protect a route with
+  `auth: true`; its function reads the signed-in user id from
+  `context.capabilities.auth.identity.userId` (never a cookie or header), and a
+  `sandbox: true` route cannot name auth. Roles, ownership and approvals are
+  application data keyed by that id; per-user records are an `ownership: owner`
+  store collection behind `auth: true`. The `authenticated-json-api` recipe
+  and the end-to-end application in `proofs/private-requests` show the shape.
+  Never write login, cookie, password or session checks in a function; report
+  what auth cannot express (it has no account pages, email flows, passkeys,
+  two-factor or API keys).
 - When a React frontend has `components.json`, follow the installed official
   shadcn/ui skill for component discovery, composition, accessibility and
   semantic Tailwind styling. Start with `shadcn info --json`, then use its

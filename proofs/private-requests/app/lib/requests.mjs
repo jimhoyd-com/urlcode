@@ -31,9 +31,9 @@ export function database(path) {
   return db;
 }
 
-/** The verified caller from the better-auth capability, never from the request. */
+/** The verified caller from the auth extension's identity capability, never from the request. */
 export function caller(context) {
-  return context.capabilities?.['better-auth']?.identity?.userId ?? null;
+  return context.capabilities?.auth?.identity?.userId ?? null;
 }
 
 export function isReviewer(db, userId) {

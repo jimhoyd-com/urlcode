@@ -202,9 +202,9 @@ export async function reviewProject(project: string, options: InspectOptions = {
         note: authDeclared
           ? authStatus?.registered
             ? authStatus.revisionPinned
-              ? 'auth is registered and revision-pinned to this project; hand-built cookies still need a human decision.'
-              : 'auth is registered but not revision-pinned to this project\'s current revision; hand-built cookies still need a human decision.'
-            : 'auth owns sessions once registered; hand-built cookies still need a human decision.'
+              ? 'auth is registered and revision-pinned to this project: Better Auth owns sessions and cookies, so protect the route with auth: true and read context.capabilities.auth.identity.userId; hand-built cookies still need a human decision.'
+              : 'auth is registered but not revision-pinned to this project\'s current revision; once it is, Better Auth owns sessions and the route reads context.capabilities.auth.identity.userId behind auth: true. Hand-built cookies still need a human decision.'
+            : 'auth owns sessions through Better Auth once registered; protect the route with auth: true and read context.capabilities.auth.identity.userId. Hand-built cookies still need a human decision.'
           : 'No session extension declared; needs human review (rotation, invalidation).',
       });
     }

@@ -23,7 +23,7 @@ export function compareCatalogues(source: Catalogue, translation: Catalogue): { 
 /**
  * Merges English catalogues from the kit and from extensions into presentation defaults; a key may be registered once.
  * Each source is bounded on its own (`catalogueLimits.sourceKeys`) and the merge as a whole (`catalogueLimits.keys`),
- * so a host can register the kit's, auth's and admin's catalogues side by side.
+ * so a host can register the kit's catalogue and extensions' catalogues side by side.
  */
 export function mergeCatalogues(sources: readonly Catalogue[]): Catalogue {
     if (!Array.isArray(sources) || sources.length > 16) throw new Error('Too many catalogue sources');

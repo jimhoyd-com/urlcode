@@ -14,17 +14,18 @@ before promising a deployment. Stored short links have no dedicated package;
 a project declares a collection through the `store` extension instead (see
 [docs/STORE.md](docs/STORE.md)).
 
-Auth, admin, UI, store and forms are optional packages, developed in this
+Auth, UI, store and forms are optional packages, developed in this
 repository under `packages/` and released independently. Middleware is not a
-package: per-route `middleware:` is native to core. Auth/admin already
-render through the shared UI kit when configured. Core includes scaffolding,
+package: per-route `middleware:` is native to core. Auth is a thin adapter
+over [Better Auth](https://better-auth.com/) (#841); URLCode's own account
+system and the `admin` console were removed rather than kept beside it. Core includes scaffolding,
 searchable recipes/examples, compact context, schema queries, a semantic manifest,
 and MCP inspection with separately enabled authoring. These are implemented,
 not future phases. See [the framework](docs/FRAMEWORK.md).
 
 ## Next work
 
-Auth, admin and UI are workspace packages here, released from this repository;
+Auth and UI are workspace packages here, released from this repository;
 the migration is complete and its historical plan is retained privately. The separate
 middleware package was withdrawn rather than migrated
 ([the decision](docs/OPEN-DECISIONS.md#accepted-middleware-withdrawn-rather-than-consolidated)).
@@ -47,8 +48,8 @@ the GitHub Releases page, not in this page.
    verification remain distinct from source implementation and local tests.
    [Issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) and
    [production readiness](docs/RELEASE-OPERATIONS.md#production-readiness) retain those gates; a stable
-   release or green CI does not close them. Live Google/Apple/SES checks remain
-   explicitly deferred. [Issue 185](https://github.com/jimhoyd-com/urlcode/issues/185)
+   release or green CI does not close them. Live SES checks remain explicitly
+   deferred. [Issue 185](https://github.com/jimhoyd-com/urlcode/issues/185)
    (CI lane measurement and release validation) and
    [issue 202](https://github.com/jimhoyd-com/urlcode/issues/202) (Windows auth
    worker startup timeout) are also still open.

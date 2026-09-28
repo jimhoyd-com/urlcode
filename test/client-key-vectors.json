@@ -1,5 +1,5 @@
 {
-  "description": "Rate-limit client identity (#547). Core's clientKey (packages/core/src/client-address.ts) and auth's clientKey (packages/auth/src/client-key.ts) must both map every input to its expected key; null means not an address.",
+  "description": "Rate-limit client identity (#547). Core's clientKey (packages/core/src/client-address.ts), which the auth extension also uses for its rate limiter, must map every input to its expected key; null means not an address.",
   "vectors": [
     ["203.0.113.5", "203.0.113.5"],
     ["203.0.113.5:8080", "203.0.113.5"],

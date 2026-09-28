@@ -25,7 +25,7 @@ required. The extension refuses to register without one.
 - **Private files.** The database must be a regular file with one link. On POSIX it is created mode 0600 and
   refused if group or other permission bits are set; the scaffolded key is written mode 0600. Windows uses ACLs:
   these POSIX mode checks do not apply, and the operator must restrict access to the database and key directory.
-  The extension does not validate Windows ACLs. SQLite builds without the fixes auth also requires are refused.
+  The extension does not validate Windows ACLs. SQLite builds without the security fixes URLCode's SQLite stores require are refused.
 - **Bounded challenge verification.** The wrapper enforces these limits on any provider:
   - token shape;
   - an IP client;
@@ -47,7 +47,7 @@ required. The extension refuses to register without one.
 - **The counters are per database file.** Several processes on one host share them through SQLite. Separate hosts
   with separate files do not.
 - **Consumers own their semantics.** Abuse cannot tell whether a caller counts the right value, answers 503 on a
-  throw, or verifies the challenge it asked for. Auth and forms carry their own tests for that.
+  throw, or verifies the challenge it asked for. forms carries its own tests for that.
 - **The bounds are not a DDoS defense.** They limit per-value abuse inside an extension. Volumetric protection
   belongs in front of the process.
 

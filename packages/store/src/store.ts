@@ -200,7 +200,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       for (const collection of collections) if (collection.spec.ownership === 'owner' && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: ownership: owner needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
       // Audit retention is shared with auth's privileged events, so writes nobody has to authenticate for must not
       // be able to fill it: an audited collection is only served where a request can carry a principal.
-      for (const collection of collections) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: {csrf: origin})`);
+      for (const collection of collections) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
       for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount)) throw new Error(`Mount ${mount} has no collection or short link declared`);
       await mkdir(directory, { recursive: true, mode: 0o700 });
       if (!(await stat(directory)).isDirectory()) throw new Error('Store directory is not a directory');

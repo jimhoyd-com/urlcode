@@ -15,7 +15,7 @@ export const auditConfigSchema = {
 } as const;
 
 export const auditAuthoring: ExtensionAuthoringContract = {
-  description: 'Durable, bounded audit log. It serves no routes: other extensions record into it (auth always; store collections that declare audit: true) and admin reads it. The project declares only how many events it keeps.',
+  description: 'Durable, bounded audit log. It serves no routes: other extensions record into it (store collections that declare audit: true) and operators read it with urlcode-audit list. The project declares only how many events it keeps.',
   surfaces: [
     { kind: 'configuration', name: 'retention', description: 'Newest events kept (1000..10000000, default 100000); older ones are pruned as new ones arrive.', path: 'urlcode.yaml#extensions.audit.config.retention' },
   ],

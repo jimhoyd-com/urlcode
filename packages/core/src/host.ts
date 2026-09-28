@@ -31,7 +31,7 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
 /**
  * Builds the operator host from host.mjs's list of extensions:
  *
- *   export default await composeHost(import.meta.url, [audit(), mail(), ui(), auth(), admin()]);
+ *   export default await composeHost(import.meta.url, [audit(), mail(), ui(), auth()]);
  *
  * It reads the reviewed project revision once (the verified `--policy` revision when a CLI command was given both
  * `--policy` and `--host-file`, otherwise `PROJECT_SHA256`; both present and different refuses), passes it to every

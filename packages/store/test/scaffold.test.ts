@@ -47,10 +47,10 @@ test('the example returns the todos collection and its route, and validates with
   assert.ok(result.notes?.length);
 });
 
-test('scaffold protects the JSON mount with auth: {csrf: origin} when auth is installed, and needs no acknowledgement', async () => {
+test('scaffold protects the JSON mount with auth: true when auth is installed, and needs no acknowledgement', async () => {
   const result = await scaffold({ installed: ['auth', 'store', 'ui'], acknowledgements: [] });
   // The API takes JSON only, so auth admits its writes on same-origin provenance rather than a token header (decision 0.1).
-  assert.deepEqual((result.routes['/api/todos/*'] as { auth?: unknown }).auth, { csrf: 'origin' });
+  assert.deepEqual((result.routes['/api/todos/*'] as { auth?: unknown }).auth, true);
   // Behind auth the example collection is per-user (#331): the safer pattern to copy.
   assert.equal((result.config as { collections: { todos: { ownership?: string } } }).collections.todos.ownership, 'owner');
   assert.ok(result.notes!.some(note => note.includes('ownership: owner')));

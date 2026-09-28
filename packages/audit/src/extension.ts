@@ -2,7 +2,7 @@
 // activates through `composeHost`:
 //
 //   import audit from '@jimhoyd/urlcode-audit/extension';
-//   export default await composeHost(import.meta.url, [audit(), mail(), ui(), auth()]);
+//   export default await composeHost(import.meta.url, [audit(), store()]);
 //
 // Other extensions read its exports (AuditExports v1) through ctx.get('audit'). It serves no routes.
 import { mkdir } from 'node:fs/promises';
@@ -33,9 +33,9 @@ function scaffold(): ScaffoldResult {
     config: { retention: DEFAULT_RETENTION },
     routes: {},
     notes: [
-      'audit keeps the newest 100000 events in data/audit.sqlite (config.retention). It serves no routes: auth records every privileged action into it, and so does each store collection that declares audit: true.',
-      'Back it up with `npx urlcode-audit backup` (JSON {"database","destination","projectRoot"} on stdin) after the auth backup, so undrained events travel in the auth backup.',
-      "admin's Audit screen reads it. Grant audit.read (view) and audit.export (export) to the roles that may see it.",
+      'audit keeps the newest 100000 events in data/audit.sqlite (config.retention). It serves no routes: each store collection that declares audit: true records into it.',
+      'Back it up with `npx urlcode-audit backup` (JSON {"database","destination","projectRoot"} on stdin).',
+      'Read it with `npx urlcode-audit list`.',
     ],
   };
 }

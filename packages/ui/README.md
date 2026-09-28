@@ -1,7 +1,7 @@
 # URLCode UI
 
-Shared presentation for URLCode extensions (auth, admin) and for operator builds beside core. Apache-2.0.
-No production dependencies or auth/runtime imports.
+Shared presentation for URLCode extensions (forms, form-records, the store's screens) and for operator builds beside core. Apache-2.0.
+No production dependencies or runtime imports.
 
 ## Install
 
@@ -38,18 +38,18 @@ const html=renderDocument({
 });
 ```
 
-Shared form fragments live here too, so auth and admin render the same shape:
+Shared form fragments live here too, so extensions render the same shape:
 
 ```ts
 import {postForm,hiddenField,withDeadline} from '@jimhoyd/urlcode-ui';
-const form=postForm({action:'/auth/revoke-session',csrf,fields:hiddenField('sessionId',id),label:'Revoke this session',destructive:true});
-const result=await withDeadline(signal=>store.revoke(id,{signal}),5000,'Revoking timed out');
+const form=postForm({action:'/notes/delete',csrf,fields:hiddenField('noteId',id),label:'Delete this note',destructive:true});
+const result=await withDeadline(signal=>notes.delete(id,{signal}),5000,'Deleting timed out');
 ```
 
 The consuming application owns form actions, CSRF, validation and authorization.
 Never pass untrusted HTML as trustedContent. See SECURITY.md and CONTRACT.md.
 
-## Core without auth or admin
+## Core without other extensions
 
 An operator build can render a page with this package, write the resulting HTML to
 `public/welcome.html`, then use an ordinary URLCode page route:
@@ -62,12 +62,13 @@ routes:
       file: public/welcome.html
 ```
 
-This requires no auth/admin import or extension registry. Rendering inside a trusted
+This requires no extension import or extension registry. Rendering inside a trusted
 operator extension is also possible; project code never gains host module loading.
 Core's redirect-only runtime does not acquire a mandatory dependency on this package.
 
-For local review of unreleased changes, build from source as described under
-Install and install the archive into a consumer before installing auth and admin.
+To review local changes, build from source as described under Install and
+install that archive into a consumer before installing the extensions that
+require it.
 
 ## Tailwind and shadcn styling
 
@@ -79,7 +80,7 @@ twice; `typecheck` and `build` still compile it themselves when run on their own
 The shipped stylesheet contains shadcn token/primitive adapters and responsive
 layout patterns. See THIRD_PARTY_NOTICES.md for upstream source and MIT attribution.
 The default entry point stays dependency-free; Tailwind is a build dependency.
-Auth and admin screens remain in their own packages.
+An extension's screens remain in its own package.
 The kit's own stylesheet (`kitCss`, served through `kitAssets` and the `ui`
 extension) compiles from `styles/kit.css` the same way, so both stylesheets
 come from a Tailwind source of truth instead of one generated and one
@@ -101,7 +102,7 @@ return new Response(renderDocument({title:'Home',trustedContent,style:{nonce},th
 ```
 
 The nonce must be fresh and unpredictable for every response. `theme` is only needed for the
-appearance toggle. Pages from `createKit` (and so the `ui` extension, auth and admin) already
+appearance toggle. Pages from `createKit` (and so the `ui` extension and the extensions it renders for) already
 link a hashed stylesheet and send their own nonce CSP, so they need none of this.
 
 ## Data-bound screens
@@ -179,7 +180,7 @@ the Node-only `./host` entry so the main entry stays dependency-free.
 The shipped component anatomy also carries stable semantic `data-slot` hooks
 (`card-*`, `field-*`, `button`, `alert-*`, `table-*`, `empty-*`, dropdown and
 sidebar slots). Prefer those hooks and the existing theme variables when adding
-project CSS; do not copy an auth/admin workflow merely to restyle it.
+project CSS; do not copy an extension's workflow merely to restyle it.
 
 ```yaml
 extensions:
@@ -213,26 +214,21 @@ The `ui` extension needs exactly one such asset mount, besides any screen
 mounts; with none it refuses to activate (`ui extension needs exactly one route
 mount`), because every page it renders links the stylesheet and scripts under
 it. So a site that only serves JSON still declares the route once it installs an
-extension that requires `ui`, such as auth, admin or forms: those extensions
-render their own pages to any client that does not ask for JSON
-([#812](https://github.com/jimhoyd-com/urlcode/issues/812),
-[`recipes/headless-auth-profile`](../../recipes/headless-auth-profile/README.md#why-a-json-only-site-mounts-ui)).
+extension that requires `ui`, such as forms or form-records: those extensions
+render their own pages
+([#812](https://github.com/jimhoyd-com/urlcode/issues/812)).
 The mount is harmless: it answers `GET` and `HEAD` for the kit's hashed files
 only, `404` for any other path, and sets no cookie and keeps no state.
 
 ```js
 // host.mjs (trusted operator code, outside app/)
 import { composeHost } from '@jimhoyd/urlcode/host';
-import audit from '@jimhoyd/urlcode-audit/extension';
-import mail from '@jimhoyd/urlcode-mail/extension';
 import ui from '@jimhoyd/urlcode-ui/extension';
-import auth from '@jimhoyd/urlcode-auth/extension';
+import forms from '@jimhoyd/urlcode-forms/extension';
 
 export default await composeHost(import.meta.url, [
-  audit(),
-  mail(),
   ui(),      // or ui({ theme, sources, extensions })
-  auth(),    // requires ui, audit and mail
+  forms(),   // requires ui
 ]);
 ```
 
@@ -248,7 +244,7 @@ and registers the copy and templates every installed extension contributes
 through its definition's `contributes.ui` (`{sources, templates}`). A template
 namespace belongs to the extension that contributes it: core stamps every
 contribution with its contributor's name, and ui refuses at host composition a
-namespace whose `name` is another extension's (`ui template namespace "auth" is
+namespace whose `name` is another extension's (`ui template namespace "notes" is
 contributed by extension "demo": an extension contributes ui templates only
 under its own name`) or a template outside `<name>/` (`ui template "layout" is
 contributed by extension "demo" outside its namespace: name it demo/<template>`).
@@ -258,7 +254,8 @@ writes the `extensions.ui` block with a starter theme named after the site, the
 `/assets/ui/*` route and `ui/copy/`, `ui/templates/` and `ui/extra.css`
 placeholders beside the host; core orders `ui` before the extensions that
 require it. Its `urlcode-ui doctor` and `eject` hints pass `--extensions` for
-every installed extension package whose definition contributes ui templates. Auth and admin render through this kit and receive it from the host.
+every installed extension package whose definition contributes ui templates. No first-party extension contributes templates today; an
+extension that does renders through this kit and receives it from the host.
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
 `options.layout: 'application'` makes the kit render the console shell itself
@@ -266,7 +263,7 @@ An extension that adopts the kit renders with `ui.kit.render(name, view, context
 `title`, `nav` and `menu`, so a console passes data rather than markup and the
 navigation appears exactly once,
 `nav` items may carry an `icon`, and `scripts` takes kit script names beside
-the extension's own `{ src: '/account/static/passkeys.js', integrity?, async? }`
+the extension's own `{ src: '/notes/static/editor.js', integrity?, async? }`
 served under its mount; every script carries the page nonce and loads with
 `defer`, or `async` when the entry says so. An extension script may also be an
 absolute `https:` URL whose origin the same page lists in `csp.script` (a
@@ -291,7 +288,7 @@ translation coverage; `urlcode-ui copy --missing fr` prints the keys a language
 lacks with the English text as a skeleton; `urlcode-ui preview card` renders a
 sample page.
 The CLI is this kit alone until it is told which packages ship the other
-namespaces: `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` adds
+namespaces: `--extensions <package>,<package>` adds
 them, on every command. Each package's `./extension` entry is resolved from
 `--project` with Node package resolution, and the CLI reads the namespace from
 its definition's `contributes.ui` (the templates, their view model versions,
@@ -299,13 +296,13 @@ the English catalogue and a sample per template); a package that is not
 installed there, has no `./extension` entry or contributes no ui templates is
 skipped with a note, so a command still runs. The site's `host.mjs` is never imported: it builds services and
 reads secrets at its top level, and a read-only `list` or `doctor` must not run
-it. With the packages named, `list` and `doctor` cover `auth/*` and `admin/*`
-too, a project override of an extension template is checked against the shipped
-view model it has to keep up with, `eject auth/sign-in` copies one, `preview`
-renders the extension's own sample, and `copy --missing` offers the copy ids
-those screens use. Adding `ui` together with `auth` and `admin` (for example
-`urlcode init <site> --with ui,auth,admin`) prints the commands with the flag
-already set, run from the site as `npx urlcode-ui …`. This package depends on neither peer: the operator names
+it. With the packages named, `list` and `doctor` cover their `<name>/*`
+templates too, a project override of an extension template is checked against
+the shipped view model it has to keep up with, `eject <name>/<template>` copies
+one, `preview` renders the extension's own sample, and `copy --missing` offers
+the copy ids those screens use. Adding `ui` together with such an extension
+prints the commands with the flag already set, run from the site as
+`npx urlcode-ui …`. This package depends on none of them: the operator names
 them. A template cannot change which steps a flow has, what a form
 validates, what gets escaped or what a page sends in headers, and cannot add a
 script. See CONTRACT.md for the full list and SECURITY.md for the boundary.
@@ -313,13 +310,13 @@ script. See CONTRACT.md for the full list and SECURITY.md for the boundary.
 `transformView` is the executable escape hatch after those declarative layers.
 It receives `{template, view}` immediately before a template renders and must
 synchronously return the view object to render. It can add computed project data
-to auth/admin/UI views without forking a package. It runs as trusted project code
+to extension and UI views without forking a package. It runs as trusted project code
 with full Node access; extension hook contract v1 rejects `sandbox: true`.
 
 `transformPage` is the shell-level companion. It receives `{page}` immediately
 before the shared layout renders and may synchronously return the page's
-`title`, `layout`, `nav`, `menu` and `flash` fields. Use it to join account and
-administration screens to product navigation without copying their templates or
+`title`, `layout`, `nav`, `menu` and `flash` fields. Use it to join an extension's
+screens to product navigation without copying their templates or
 security behavior. Headers, scripts, CSP, presentation context and rendered
 content remain renderer-owned.
 
@@ -423,7 +420,7 @@ Called as `transformView(input, context)`; `context` carries `requestId` and the
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
-| `input.template` | string | yes | — | Name of the template about to render, for example auth/sign-in. |
+| `input.template` | string | yes | — | Name of the template about to render, for example layout. |
 | `input.view` | object | yes | — | The view model; return it, changed or not, as the model to render. |
 
 Returns an object, validated before use.
@@ -442,7 +439,7 @@ Returns an object, validated before use.
 
 ### Authoring surfaces and limits
 
-Keep the site as one application: customize the installed UI in the project and keep auth/admin behavior in their packages. Use a new extension only for a capability the installed extensions do not provide.
+Keep the site as one application: customize the installed UI in the project and keep each extension's behavior in its package. Use a new extension only for a capability the installed extensions do not provide.
 
 - **theme** (theme, `urlcode.yaml#extensions.ui.config.theme`): Set brand name, local assets, semantic light/dark colours, radius and font in extensions.ui.config.theme.
 - **copy** (copy, `ui/copy/<locale>.json`): Override or translate catalogue entries without copying a screen.
@@ -451,5 +448,5 @@ Keep the site as one application: customize the installed UI in the project and 
 - **transformView** (hook, `extensions.ui.config.hooks.transformView`): Add computed project data to a named view immediately before its template renders.
 - **transformPage** (hook, `extensions.ui.config.hooks.transformPage`): Customize the shared page shell, navigation, account menu and flash immediately before layout rendering.
 
-Fast checks: `urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css`, `urlcode validate --local`.
+Fast checks: `urlcode-ui doctor --project . --copy ui/copy --templates ui/templates --stylesheet ui/extra.css`, `urlcode validate --local`.
 <!-- extension-reference:end -->

@@ -131,11 +131,11 @@ private fork or privileged capability. If an application needs something the
 runtime cannot express, that is a gap in the public contract to close in the
 open, not a reason for a special path. See the [roadmap](../ROADMAP.md).
 
-An application remains one product even when core, UI, auth, admin and other
+An application remains one product even when core, UI, auth and other
 extensions have separate package ownership. A product change should customize
 the installed contracts and keep only its distinct behavior and presentation in
-the project. It should not copy an authentication flow, administration console
-or framework component merely to change its appearance.
+the project. It should not copy an authentication flow or framework component
+merely to change its appearance.
 
 Extensions publish their supported authoring surfaces for people and agents to
 discover: configuration first, then theme/copy, component or template overrides,
@@ -163,12 +163,15 @@ model to write B-tree traversal; it writes `SELECT * FROM customers WHERE id = ?
 and the database owns the machinery. One level up, a route should read
 
 ```yaml
-/admin:
-  auth: { role: admin }
-  function: { source: functions/admin.mjs }
+/api/review:
+  methods: [POST]
+  auth: true
+  function: { source: functions/review.mjs }
 ```
 
-and the runtime should own how. The agent describes what; URLCode owns how.
+and the runtime should own how: sign-in, the session and the origin check are
+the extension's, and `functions/review.mjs` holds only the application's own
+rule, such as whether this user is a reviewer. The agent describes what; URLCode owns how.
 YAML is not the innovation and neither is the runtime. The innovation is a
 small, deterministic vocabulary that is optimized for two readers at once: the
 person who opens `urlcode.yaml`, and the agent that writes it.

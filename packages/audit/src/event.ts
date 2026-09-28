@@ -1,5 +1,5 @@
-// Pure validation of what producers write and what readers ask for. No I/O: auth's store worker imports it at
-// runtime to validate an event before it persists it to its outbox, so no invalid event ever reaches a drain.
+// Pure validation of what producers write and what readers ask for. No I/O: a producer can import it at runtime
+// to validate an event before it persists it to its outbox, so no invalid event ever reaches a drain.
 import { AuditError } from './types.ts';
 import type { AuditEvent, AuditQuery, AuditValue } from './types.ts';
 

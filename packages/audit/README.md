@@ -7,17 +7,15 @@ shares `AuditExports` (contract version 1) with the extensions that read it
 through `ctx.get('audit')`:
 
 - **Producers** keep a transactional outbox of audit events next to their own
-  data and let audit drain it: auth (always) and store collections that declare
-  `audit: true`.
+  data and let audit drain it: store collections that declare `audit: true`.
 - **Direct recorders** call `record()` for an action that changes no producer
-  data, such as an admin audit export, before they release anything.
-- **Readers** call `query()`: admin's Audit screen and export, and
-  `npx urlcode-audit list`.
+  data, such as an export of the log, before they release anything.
+- **Readers** call `query()`, such as `npx urlcode-audit list`.
 
 The delivery guarantee is normative and lives in [SECURITY.md](SECURITY.md).
 It is trusted operator code that runs in the host process, like every other
 package under `packages/`. Released with core and installed with
-`urlcode extensions add audit` (auth pulls it in, because auth requires it).
+`urlcode extensions add audit`.
 
 ## Declare it
 
@@ -54,8 +52,8 @@ export default await composeHost(import.meta.url, [audit()]);
 | `onDeliveryError(source, error)` | one line on stderr | Called when a drain round fails (it retries) or when audit stops draining a producer that broke the contract. |
 
 Audit targets Node only (`node:sqlite`); other targets are refused before
-serving. The SQLite linked into Node must carry the fixes auth also requires
-(3.44.6, 3.50.7, 3.51.3 or newer).
+serving. The SQLite linked into Node must carry the security fixes URLCode's
+SQLite stores require (3.44.6, 3.50.7, 3.51.3 or newer).
 
 ## The exports
 
@@ -101,8 +99,8 @@ no update or delete.
 `query({source, actor, subject, action, actionPrefix, from, to, after, limit, order})`
 matches every given filter:
 
-- `actionPrefix: 'admin'` matches `admin` and every action starting `admin.`,
-  but not `administrator` or `admin_x`.
+- `actionPrefix: 'store.record'` matches `store.record` and every action
+  starting `store.record.`, but not `store.records` or `store.record_x`.
 - `from` and `to` are inclusive bounds on `at`.
 - `limit` is 1..100 (default 50); a larger value is refused, not capped.
 - `order` is `asc` (ingest order, default) or `desc` (newest first).
@@ -120,8 +118,7 @@ A producer owns atomic capture; audit owns delivery.
    there is no exports object, such as a worker) **before** writing it, so no
    invalid event reaches the outbox.
 2. Write the event into your outbox in the **same** transaction as the change it
-   describes. At your cap (`auditOutboxLimits`: auth 10000 events, store 1000
-   per collection) refuse the change with `new AuditError(503, 'audit_backlog')`
+   describes. At your cap (`auditOutboxLimits`: store 1000 events per collection) refuse the change with `new AuditError(503, 'audit_backlog')`
    or your own error with that status and code, and apply nothing.
 3. Attach once from `host()`:
    `const attachment = audit.attach({source, peek, ack})`. `peek(limit)` returns
@@ -165,9 +162,9 @@ echo '{"backup":"/abs/backups/audit.sqlite","destination":"/abs/restore/audit.sq
 - `restore` copies a backup to a new isolated path only. Stop the host, then
   move it into place yourself.
 
-Back audit up **after** auth: events auth has not delivered yet are still in
-auth's outbox, so they travel in the auth backup and are drained again, once,
-after a restore.
+Back audit up **after** the producers' data (the store directory): events a
+producer has not delivered yet are still in its outbox, so they travel in its
+backup and are drained again, once, after a restore.
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 
@@ -190,7 +187,7 @@ Every key `audit` accepts, rendered from this package's `urlcode.json` (the sche
 
 ### Authoring surfaces and limits
 
-Durable, bounded audit log. It serves no routes: other extensions record into it (auth always; store collections that declare audit: true) and admin reads it. The project declares only how many events it keeps.
+Durable, bounded audit log. It serves no routes: other extensions record into it (store collections that declare audit: true) and operators read it with urlcode-audit list. The project declares only how many events it keeps.
 
 - **retention** (configuration, `urlcode.yaml#extensions.audit.config.retention`): Newest events kept (1000..10000000, default 100000); older ones are pruned as new ones arrive.
 

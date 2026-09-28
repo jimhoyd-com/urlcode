@@ -23,7 +23,7 @@ top-level `policies` (project defaults), `profiles.<name>` (a reusable named
 set), or a route's own `policies` (an override). Every policy is off until
 declared. See [policies](POLICIES.md).
 
-An **extension** is a trusted, operator-installed module — `auth`, `admin`,
+An **extension** is a trusted, operator-installed module — `auth`,
 `store`, `forms`, `ui` — that a project *references* by logical name under
 `extensions:` and either mounts directly (`extension: auth`) or requires on
 its own route with the `auth` short form. The project YAML never names an

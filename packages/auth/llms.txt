@@ -1,78 +1,18 @@
 # URLCode auth
 
-> Operator-installed authentication extension for URLCode. Accounts, sessions,
-> roles and an account page for a `urlcode.yaml` project. Node with a patched
-> SQLite build; released with core, pending independent review. Apache-2.0.
->
-> Install core from npm, then run `npx urlcode init my-site --with ui,auth --example`, or
-> `npx urlcode extensions add auth` in an existing site (it adds `ui`, `audit` and `mail` too). Without `--example`
-> only `/account/*`, the operator service (roles member/admin) and keys are written; `--example`
-> adds a signed-in `/private` page.
+> Operator-installed authentication: one Better Auth instance on one mount (`extension: auth`); routes declare
+> `auth: true` and their functions read `context.capabilities.auth.identity.userId`. Released with core and installed
+> with `urlcode extensions add auth`. Apache-2.0.
 
-Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
-
-## What a project declares (YAML only; never packages, code or credentials)
-- `extensions.auth: { version: "1", config: { registration: "off" | "open" | ... } }`
-- A mount: `/account/*: { extension: auth, methods: [GET, HEAD, POST] }`
-- Protection: `auth: true` (`policies.extensions.auth: {}`) on any route that needs a session; keys
-  `role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny`, `csrf` (`token` default, or `origin`
-  on a mount that verifies its own token or takes JSON only) and `bearer`
-- Budgets: `extensions.auth.config.abuse: {client, signupClient, signupDomain, challengeAfter, passwordBackoff}`
-  needs the abuse extension installed (auth `uses` it)
-- Hooks: `extensions.auth.config.hooks` with `beforeRegister`, `beforeRoleChange`, `onAccountCreated`,
-  `onAccountStatusChanged`, `onDeletionScheduled`, `onAccountDeleted`; fired for every path, the CLI included
-- Machine/agent protection: `auth: {bearer: {scopes: [...]}}` on a route instead
-  of a session (an operator-issued API key checked against `Authorization:
-  Bearer <key>`; issued/listed/revoked outside route YAML via `service.issueApiKey`
-  or the `urlcode-auth api-key-issue` CLI). Exclusive of role/permission/verified/
-  freshWithinSeconds/onDeny. The verified key's id/name/scopes (never the raw key)
-  are exposed to the route's own function/middleware context as base64-encoded
-  JSON on the reserved `x-urlcode-context-auth-principal` request header
-  (urlcode#618).
-- Per-key budget: `auth: {bearer: {scopes: [...], quota: {requests: 1000, window: 3600}}}`
-  (window in seconds). Counted by key id in the auth SQLite store (fixed window,
-  durable, shared by processes on one host, not across hosts); over budget is 429
-  with `Retry-After` and `RateLimit-Policy`/`RateLimit` (policy `credential`)
-  before the handler; a store failure is 503. Keep core `policies.throttle` for
-  per-client limits and unauthenticated floods (urlcode#572). A key issued with
-  its own `quota` (`issueApiKey({name, scopes, quota})`, or `quota` in the
-  `api-key-issue` JSON) is counted against that instead of the route's quota, on
-  every bearer route; allowed responses carry the `credential` RateLimit fields
-  too, always `Cache-Control: no-store` (urlcode#703).
-- A key issued with `userId` (`issueApiKey({name, scopes, userId})`, or `userId`
-  in the `api-key-issue` JSON; must be an active account) acts for that user:
-  the request principal is the user id, so owned store records belong to the
-  user and survive key rotation. It still acts only within its own scopes.
-  Locking or deleting the user disables it (urlcode#732). Keys without `userId`
-  keep the `apikey:<key id>` principal.
-- The operator lists `auth()` (OIDC providers and passkeys go in `auth({...})`) in the
-  site's `host.mjs` `composeHost` list; the scaffold writes that line, `operator-service.mjs`
-  and `data/encryption.key`/`data/csrf.key`. Email delivery is the mail extension's transport
-  (`mail({transport, from})`), never an auth option. Serve with `--host-file host.mjs --origin https://...`
-- Auth requires `ui`, `audit` and `mail` and uses `abuse`; the runtime activates them in host order,
-  whatever order `urlcode.yaml` declares them in. Screens are `auth/*` kit templates contributed to `ui`.
-- Other extensions read `AuthExports` v1 (`account(request)`, `csrf`, `urls`, `administration`) with
-  `ctx.get('auth')`; they never get auth's keys, database or tokens.
+## What a project declares (YAML only; never secrets or Better Auth options)
+- `extensions.auth: { version: "1", config: {} }` and one mount such as `/api/auth/*` with `methods: [GET, POST]`.
+- `auth: true` on each route that requires a signed-in user.
 
 ## Read in this order
-- [Headless auth and profile recipe](../../recipes/headless-auth-profile/README.md): a tested, runnable
-  JSON API for register, sign-in, auth-owned and application profile, sign-out and cross-user denial,
-  with every request shape and status; `urlcode recipes show headless-auth-profile`.
-- [Fixed-contract adapter recipe](../../recipes/fixed-contract-adapter/README.md): serving a
-  pre-existing JSON contract (`/api/me`, owner-scoped items, fixed error codes) through `AuthExports`
-  and `StoreExports`, and which contract parts (sign-in, sign-out, CSRF, `401`/`403` bodies) stay auth's.
-- [JSON API contract](docs/JSON-API.md): every JSON body the `/account/*` endpoints return.
-- [README](README.md): install, activation, AuthExports, hooks, operator CLI, providers.
-- [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
-- [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains.
-  The original design spike is private maintainer material.
-- [Acceptance](ACCEPTANCE.md), [recovery drill](RECOVERY-DRILL.md): evidence records.
+- [README](README.md): adding it, protecting routes, the browser client, operator options and what is not included.
+- [SECURITY](SECURITY.md): what Better Auth owns and what the mount and route gate enforce.
 
 ## Do not guess
-- No login forms, cookies or password checks in project `function`/`middleware`
-  routes; declare the policy. Those routes run trusted and in-process, but hold
-  no auth authority of their own.
-- `registration` starts off. First administrator: `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"` with JSON on stdin.
-- `inspectExtensionRevision(project)` prints the SHA-256 to pin; inspecting grants nothing.
-- Roles are operator configuration; assigning them is an administrative transaction.
-- Google/Apple adapters and mail's SES transport exist but are unverified against live providers.
+- There are no roles, account pages, passkeys, OIDC, API keys or recovery; keep permissions in the application.
+- A `sandbox: true` route cannot use `auth` (the identity capability cannot enter the sandbox).
+- Better Auth's tables must exist (`npx urlcode-auth migrate`) or activation refuses.

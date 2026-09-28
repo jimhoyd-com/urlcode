@@ -12,7 +12,7 @@ import type { AbuseAdmission } from './types.ts';
 import type { NormalBackoff } from './budget.ts';
 import { backoffDelay } from './budget.ts';
 
-/** SQLite releases carrying the fixes auth also requires. */
+/** SQLite releases carrying the security fixes URLCode's SQLite stores require. */
 export function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
 
 /** `scope` is `<namespace>/<scope>`: the plain names a consumer chose, never a counted value. */

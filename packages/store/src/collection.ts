@@ -500,7 +500,7 @@ export class Collection {
    * public create/update/delete/increment surface, not as disabling the redirect's own click
    * count. It intentionally skips `writable()` and takes no Idempotency-Key — the short-link GET
    * that drives it isn't itself idempotency-scoped. It is never audited: anyone can drive it without credentials or
-   * a budget, and audit's retention is shared with auth's privileged events, which a flood of clicks would prune.
+   * a budget, and audit's retention is shared with every producer's events, which a flood of clicks would prune.
    */
   recordClick(id: string, field: string): Promise<StoredRecord> {
     // Short links need a key, which an owned collection refuses; this stays unreachable for owned records.

@@ -1,5 +1,5 @@
-// Contributed templates, site copy overrides and rendering. Generalized from auth's email copy to
-// '<namespace>.<key>' templates whose slots carry a kind mail enforces.
+// Contributed templates, site copy overrides and rendering. '<namespace>.<key>'
+// templates whose slots carry a kind mail enforces.
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { MailError } from './types.ts';

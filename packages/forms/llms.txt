@@ -15,8 +15,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - `extensions.ui: { version: "1", config: {} }` (required; declaration order does not matter)
 - `extensions.forms: { version: "1", config: { flows: { <name>: { mount, fields, ... } } } }`
 - A mount for each flow, e.g. `/contact: { extension: forms, methods: [GET, HEAD, POST] }`
-- `auth: {csrf: origin}` on a flow's route to require a session before the form handler runs (never `auth: true`:
-  its token mode refuses every form POST with 403)
+- `auth: true` on a flow's route to require a session before the form handler runs (forms still checks its own
+  CSRF token)
 - `flows.<name>.success: {mode: inline, status: 200|201}` to render the confirmation in the POST response instead of
   the default 303 redirect (`status` only with `inline`; defaults to 200)
 - `flows.<name>.abuse: {client: {limit, windowMs}, challengeAfter?, honeypot?}` (needs the abuse extension; node only)

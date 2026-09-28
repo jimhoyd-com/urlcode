@@ -10,8 +10,6 @@
   },
   "include": [
     "action/comment.mjs",
-    "packages/admin/scripts",
-    "packages/auth/scripts",
     "packages/ui/scripts"
   ]
 }

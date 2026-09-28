@@ -74,12 +74,11 @@ origins, at most 16). Extensions' same-origin checks admit them beside the
 canonical origin; generated URLs keep the canonical one. An invalid entry fails
 activation. See [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
 
-A shared passkey relying-party domain for those origins goes in the
-`passkeyRpId` handler option or `URLCODE_PASSKEY_RP_ID`; it is validated at
-activation like `--passkey-rp-id`, and changing it makes existing passkeys stop
-working. The first-party `auth` extension is Node only, so this matters here
-only to an operator's own extension that runs WebAuthn ceremonies. See
-[shared passkey relying-party domain](EXTENSIONS.md#shared-passkey-relying-party-domain).
+The handler also accepts a `passkeyRpId` option or `URLCODE_PASSKEY_RP_ID`
+(validated at activation like `--passkey-rp-id`) for an operator's own
+extension that runs WebAuthn ceremonies. No first-party extension uses it, and
+a follow-up removes it. The first-party `auth` extension is Node only and
+refused on this target.
 
 ## What this adapter does not do
 

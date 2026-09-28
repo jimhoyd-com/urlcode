@@ -29,7 +29,7 @@ when the site lacks them.
 ```yaml
 extensions:
   ui: { version: "1", config: {} }
-  auth: { version: "1", config: { … } }        # or any other principal provider
+  auth: { version: "1", config: {} }           # or any other principal provider
   forms: { version: "1", config: { flows: {} } }
   store:
     version: "1"
@@ -64,14 +64,14 @@ extensions:
           editTitle: Edit your profile
           list: { title: Your profiles, columns: [name, team] }   # optional
 routes:
-  /api/profiles/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: { csrf: origin } }
-  /onboarding/*: { extension: form-records, methods: [GET, HEAD, POST], auth: { csrf: origin } }
+  /api/profiles/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true }
+  /onboarding/*: { extension: form-records, methods: [GET, HEAD, POST], auth: true }
 ```
 
 | Key | Meaning |
 | --- | --- |
 | `records.<name>` | One record flow. The name is also the form's name in CSRF tokens (`^[a-z][a-z0-9-]{0,63}$`); at most 16. |
-| `mount` | Where it is served; needs the route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own token on every POST, so auth's header token is not needed). |
+| `mount` | Where it is served; needs the route `<mount>/*` with `extension: form-records`, methods GET, HEAD and POST, and a principal-providing policy such as `auth: true` (forms verifies its own CSRF token on every POST). |
 | `collection` | A store collection declared with `ownership: owner` and not `readOnly`. |
 | `form` | A forms flow body: `title`, `submitLabel`, `confirmation` (`title`, `message`, `show`), `fields`, optional `timeZone` and `success`. The same shape and rules as a flow under `extensions.forms.config.flows`, without `mount`. `success: {mode: inline, status: 200\|201}` answers a create with the saved record's confirmation instead of a 303 (a 201 also carries `Location: <mount>/<id>`); an edit answered inline is always 200, because it creates nothing. |
 | `fields` | Form field to collection field. Optional: each form field defaults to the collection field of the same name. Every form field must be mapped, two form fields cannot fill one collection field, and every required collection field without a default must be filled. |
@@ -144,7 +144,7 @@ urlcode extensions add auth form-records --example
 
 The capability adds `records: {}` and mounts nothing. `--example` needs `auth`
 (installed, or added in the same command), because records are private to
-their creator: it declares a `todo` record flow on `/todo-form` (`auth: {csrf: origin}`)
+their creator: it declares a `todo` record flow on `/todo-form` (`auth: true`)
 that saves into the store example's `todos` collection (`ownership: owner`),
 shows the saved todo, and lets its owner tick `done` while the title stays
 read-only. form-records writes only its own configuration block, so the
@@ -191,7 +191,7 @@ Every key `form-records` accepts, rendered from this package's `urlcode.json` (t
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
-| `extensions.form-records.config.records` | object | yes | maxProperties: 16; keys: "^[a-z][a-z0-9-]{0,63}$" | Record flows by name. Each needs a route `<mount>/*` with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: {csrf: origin}; records are private to their signed-in creator. |
+| `extensions.form-records.config.records` | object | yes | maxProperties: 16; keys: "^[a-z][a-z0-9-]{0,63}$" | Record flows by name. Each needs a route `<mount>/*` with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: true; records are private to their signed-in creator. |
 | `extensions.form-records.config.records.*.mount` | string | yes | maxLength: 128; pattern: "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$" | URL path of the flow: `<mount>` is the new-record form, `<mount>/<id>` the saved record's confirmation, `<mount>/<id>/edit` the edit page and, with list, `<mount>/` the caller's records. |
 | `extensions.form-records.config.records.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A store collection declared with ownership: owner; each mapped form field must be type-compatible with its collection field. Activation fails otherwise. |
 | `extensions.form-records.config.records.*.form` | object | yes | unknown keys rejected | The form, in the forms flow shape without a mount (and without abuse or notify); forms renders and validates it. |
@@ -239,7 +239,7 @@ Every key `form-records` accepts, rendered from this package's `urlcode.json` (t
 Save a declared form into an owned store collection: a submission creates a record private to its signed-in creator, the confirmation page reads the saved record back, and an edit page changes only the fields listed in `editable`. forms keeps rendering, CSRF and validation; the store keeps ownership, limits and ETags. No handler code.
 
 - **records** (configuration, `urlcode.yaml#extensions.form-records.config.records`): Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, optional `success` (`{mode: inline, status: 200\|201}` answers a create or edit with the saved record's confirmation instead of a 303 to `<mount>/<id>`; an edit is always 200), fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).
-- **mount** (extension, `urlcode.yaml`): Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records).
+- **mount** (extension, `urlcode.yaml`): Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records).
 
 Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
 <!-- extension-reference:end -->

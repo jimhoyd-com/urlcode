@@ -61,7 +61,7 @@ test('a blank install declares no record flow and no route (#711)', async () => 
 test('--example needs auth, and then mounts a signed-in todo form', async () => {
   assert.throws(() => formRecords.definition.example!(request('/srv/site', ['form-records', 'forms', 'store', 'ui'])), /needs auth/);
   const example = await formRecords.definition.example!(request('/srv/site', ['auth', 'form-records', 'forms', 'store', 'ui']));
-  assert.deepEqual(example.routes, { '/todo-form/*': { extension: 'form-records', methods: ['GET', 'HEAD', 'POST'], auth: { csrf: 'origin' } } }, 'forms checks its own token, so auth admits on origin (decision 0.1)');
+  assert.deepEqual(example.routes, { '/todo-form/*': { extension: 'form-records', methods: ['GET', 'HEAD', 'POST'], auth: true } }, 'forms checks its own token, and auth admits same-origin writes (decision 0.1)');
   assert.deepEqual(Object.keys((example.config as { records: object }).records), ['todo']);
   assert.ok(example.notes!.every(note => !note.includes('\n')));
 });

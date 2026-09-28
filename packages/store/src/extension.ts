@@ -34,9 +34,9 @@ function scaffold(): ScaffoldResult {
 
 /**
  * `--example`: a `todos` collection on `/api/todos`. When auth is installed (added in the same command or already
- * present) the mount carries `auth: {csrf: origin}` and the collection is per-user (`ownership: owner`, #331): each
- * signed-in user sees and changes only their own todos. The API takes JSON only, so auth admits its writes on
- * same-origin provenance and the session cookie rather than a session-bound token header. Without auth it stays a
+ * present) the mount carries `auth: true` and the collection is per-user (`ownership: owner`, #331): each
+ * signed-in user sees and changes only their own todos. auth admits writes with Better Auth's session cookie and
+ * same-origin provenance. Without auth it stays a
  * shared collection and needs `--ack store:public-write`. When ui is installed too, the store also declares its
  * `/todos` screen and the `extension: ui` route that serves it: the screen integration belongs to the store, not to
  * ui. When audit is installed, every write to the collection is recorded in the audit log (`audit: true`).
@@ -53,14 +53,14 @@ function example(request: ScaffoldRequest): ScaffoldResult {
       ...(withAudit ? { audit: true } : {}),
     } }, ...(withUi ? { screens: { [todosScreen]: { collection: 'todos', title: 'Todos' } } } : {}) },
     routes: {
-      '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...(withAuth ? { auth: { csrf: 'origin' } } : {}) },
+      '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...(withAuth ? { auth: true } : {}) },
       // The store's screen is served by ui's kit; the store contributes its description (contributes.ui.screens). It
-      // is GET and HEAD only, so it keeps auth's default token CSRF.
+      // is GET and HEAD only.
       ...(withUi ? { [`${todosScreen}/*`]: { extension: 'ui', methods: ['GET', 'HEAD'], ...(withAuth ? { auth: true } : {}) } } : {}),
     },
     ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
     notes: [
-      withAuth ? 'store serves /api/todos to signed-in callers only (auth: {csrf: origin} on the mount: JSON writes are admitted on same-origin provenance and the session cookie), and each user sees and changes only their own todos (ownership: owner).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: {csrf: origin}` on the mount to protect it.',
+      withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount: writes are admitted with the session cookie and same-origin provenance), and each user sees and changes only their own todos (ownership: owner).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
       'Records live in data/store/todos.json, outside app/; back up data/ like any operator data. Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
       ...(withAudit ? ['Every create, change and delete on the todos collection is recorded in the audit log (audit: true): field names and the signed-in user, never values. When the audit log falls 1000 events behind, writes answer 503 until it catches up.'] : []),
       ...(withUi ? [`Open ${todosScreen}: a list and form for the todos collection, declared in extensions.store.config.screens and rendered by ui.${withAuth ? ' It shows each signed-in user only their own todos.' : ' Everyone who can reach it sees and edits every todo.'}`] : []),

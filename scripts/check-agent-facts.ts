@@ -23,7 +23,7 @@
 // be non-empty. A bare marker is itself a failure, so an exemption always says
 // why the sentence is right despite reading like a contradiction. Changelogs
 // are skipped: they describe past releases by design.
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { mcpToolInventory } from '../packages/core/src/mcp.ts';
@@ -35,7 +35,6 @@ import { mcpConfigFile } from '../packages/core/src/agents-guide.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
-const exists = (path: string) => stat(new URL(path, root)).then(() => true, () => false);
 
 // ---------------------------------------------------------------------------
 // 1. The inventory, derived from implementation sources.
@@ -46,12 +45,6 @@ const sourceProblems: string[] = [];
 // Add-ons: every extension and artifact the release packs, from the one list (scripts/workspaces.ts).
 const builtBundles = (await addons()).map(addon => addon.name);
 if (!builtBundles.length) sourceProblems.push('scripts/workspaces.ts: found no add-ons; update this check with the new shape');
-
-// UI integration: auth and admin each own a module rendering through the kit.
-const kitAdopters: string[] = [];
-for (const [pkg, file] of [['auth', 'packages/auth/src/auth-ui.ts'], ['admin', 'packages/admin/src/admin-ui.ts']] as const) {
-  if ((await exists(file)) && /from '@jimhoyd\/urlcode-ui'/.test(await read(file))) kitAdopters.push(pkg);
-}
 
 // Scaffold ordering: extensions are added in the order their declared requirements give, never the order a user
 // names them in (init --with and extensions add share addon-install.ts).
@@ -102,7 +95,6 @@ const inventory = {
   signalsSkipOnlyHeadAndProbes,
   docsSearch,
   extensionBundles: builtBundles,
-  kitAdopters,
   scaffoldWithUnordered: withIsUnordered,
   mcpTools: { read: mcpToolInventory.read.length, hostFile: mcpToolInventory.hostFile.length, authoring: mcpToolInventory.authoring.length },
   storeShortLinks,
@@ -154,13 +146,6 @@ for (const bundle of builtBundles) {
   });
 }
 
-if (kitAdopters.length) {
-  claims.push({
-    fact: `kitAdopters = ${kitAdopters.join(', ')}`,
-    test: sentence => /\b(?:auth|admin)\b[^.]{0,60}\bcurrently\s+use\s+(?:the\s+)?(?:shared\s+)?primitives\b/i.test(sentence)
-      ? `says auth/admin still use the primitives, but ${kitAdopters.map(name => `packages/${name}/src/${name}-ui.ts`).join(' and ')} render through the kit` : undefined,
-  });
-}
 
 if (withIsUnordered) {
   claims.push({

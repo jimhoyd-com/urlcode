@@ -19,7 +19,10 @@ urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --ori
 
 ## The host file
 
-A real deployment registers the `urlcode-auth` package. The minimal shape below
+A real deployment installs the `auth` extension (`urlcode extensions add auth`),
+which serves Better Auth on its own mount and admits a request only with a
+verified session; see [the auth package](../../packages/auth/README.md). The
+minimal shape below
 accepts one bearer token read from the operator's environment, so the bundled
 fixtures pass; it is a protocol example, not deployable authentication. Keep it
 outside the project directory: `--host-file` refuses a path inside it.
@@ -34,7 +37,7 @@ Like every add-on's host, it never computes the project revision itself.
 import {composeHost} from '@jimhoyd/urlcode/host';
 import {defineExtension} from '@jimhoyd/urlcode/extensions';
 const schema = {type: 'object', properties: {realm: {type: 'string'}}, required: ['realm'], additionalProperties: false};
-const policySchema = {type: 'object', properties: {role: {type: 'string'}}, additionalProperties: false};
+const policySchema = {type: 'object', properties: {}, additionalProperties: false}; // auth: true is {}
 const token = process.env.API_DEMO_TOKEN; // "demo-token" reproduces tests/requests.json
 const demoAuth = defineExtension({
   name: 'auth', description: 'Demo bearer-token check; a protocol example, not authentication.', schema, policySchema,
@@ -82,9 +85,13 @@ alone lets a hot reload carry the pin it started with forward to the edited
 project, for development only (#777; see
 [the revision pin](../../docs/EXTENSIONS.md#the-revision-pin)).
 
-Use `auth: {role: member}` on a route to require a role; the installed
-extension validates those keys against its policy schema; the change needs a
-new review and pin like any other. See [extensions](../../docs/EXTENSIONS.md).
+`auth: true` is the whole requirement: the auth policy has no role or
+permission keys. With the real extension the function reads the signed-in user
+id from `context.capabilities.auth.identity.userId` (declare nothing more), and
+roles, ownership and approvals are application data keyed by that id. The demo
+host above provides no such capability. See [extensions](../../docs/EXTENSIONS.md)
+and the end-to-end application in
+[`proofs/private-requests`](../../proofs/private-requests/README.md).
 
 Edit `functions/profile.mjs` to return real data. Cloudflare refuses extensions;
 functions need the self-hosted runtime.
