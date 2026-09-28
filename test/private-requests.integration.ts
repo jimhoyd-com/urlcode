@@ -14,14 +14,17 @@ import type { TestContext } from 'node:test';
 import { repositoryRoot } from '../scripts/workspaces.ts';
 
 const proof = join(repositoryRoot, 'proofs', 'private-requests');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+// npm's own CLI under this Node, as `npm run test:proof` provides it: no shell, so Windows needs no npm.cmd quoting.
+const npmCli = process.env.npm_execpath;
+const npmCommand = npmCli ? process.execPath : process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 interface Run { status: number | null; stdout: string; stderr: string }
 function run(t: TestContext, cwd: string, command: string, args: string[], env: Record<string, string> = {}): Run {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', timeout: 600000, env: { ...process.env, ...env }, shell: process.platform === 'win32' });
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', timeout: 600000, env: { ...process.env, ...env }, shell: command === 'npm.cmd' });
   t.diagnostic(`${command} ${args.join(' ')} -> ${result.status}`);
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
+const npm = (t: TestContext, cwd: string, args: string[], env: Record<string, string> = {}): Run => run(t, cwd, npmCommand, npmCli ? [npmCli, ...args] : args, env);
 const urlcode = (t: TestContext, site: string, args: string[], env: Record<string, string> = {}): Run => run(t, site, process.execPath, [join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), ...args], env);
 const freePort = (): Promise<number> => new Promise((resolve, reject) => {
   const server = createServer().listen(0, '127.0.0.1', () => { const { port } = server.address() as { port: number }; server.close(() => resolve(port)); }).on('error', reject);
@@ -51,24 +54,32 @@ const signIn = async (client: ReturnType<typeof browser>, email: string, passwor
 
 test('private-requests: packed consumer, upstream auth, owner-private records and reviewer approval', { timeout: 1200000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-proof-'));
-  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
-  const packed = run(t, repositoryRoot, npm, ['pack', '--ignore-scripts', '--silent', '--pack-destination', root]);
+  // One unwind stack: node:test runs separate after hooks in registration order, which would remove the site while
+  // the server still holds its SQLite files (EBUSY on Windows). Every closer is attempted, newest first.
+  const closers: (() => unknown)[] = [];
+  t.after(async () => {
+    const errors: unknown[] = [];
+    while (closers.length) try { await closers.pop()!(); } catch (error) { errors.push(error); }
+    if (errors.length) throw new AggregateError(errors, 'Proof cleanup failed');
+  });
+  closers.push(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
+  const packed = npm(t, repositoryRoot, ['pack', '--ignore-scripts', '--silent', '--pack-destination', root]);
   assert.equal(packed.status, 0, packed.stderr);
   const tarball = join(root, packed.stdout.trim().split('\n').at(-1)!);
   const site = join(root, 'site');
   await cp(proof, site, { recursive: true, filter: source => !/[/\\](node_modules|data)$/.test(source) && !source.endsWith('policy.json') && !source.endsWith(join('assets', 'app.js')) });
 
   // Installation and build may use the network; nothing after them does.
-  assert.equal(run(t, site, npm, ['install', '--no-audit', '--no-fund', tarball]).status, 0);
-  assert.equal(run(t, site, npm, ['run', 'build']).status, 0);
-  const setup = run(t, site, npm, ['run', '-s', 'setup']);
+  assert.equal(npm(t, site, ['install', '--no-audit', '--no-fund', tarball]).status, 0);
+  assert.equal(npm(t, site, ['run', 'build']).status, 0);
+  const setup = npm(t, site, ['run', '-s', 'setup']);
   assert.equal(setup.status, 0, setup.stderr);
   const users = (JSON.parse(setup.stdout.trim().split('\n').at(-1)!) as { users: Record<string, string> }).users;
   assert.equal(Object.keys(users).length, 3);
   // Setup is safe to re-run and keeps the same accounts.
-  assert.deepEqual((JSON.parse(run(t, site, npm, ['run', '-s', 'setup']).stdout.trim().split('\n').at(-1)!) as { users: unknown }).users, users);
+  assert.deepEqual((JSON.parse(npm(t, site, ['run', '-s', 'setup']).stdout.trim().split('\n').at(-1)!) as { users: unknown }).users, users);
 
-  const inventory = JSON.parse(run(t, site, npm, ['run', '-s', 'inventory']).stdout) as { provider: Record<string, { version: string; integrity: string }>; plugins: string[]; endpoints: { path: string | null; served: boolean }[]; servedMatchesOperatorList: boolean };
+  const inventory = JSON.parse(npm(t, site, ['run', '-s', 'inventory']).stdout) as { provider: Record<string, { version: string; integrity: string }>; plugins: string[]; endpoints: { path: string | null; served: boolean }[]; servedMatchesOperatorList: boolean };
   assert.equal(inventory.provider['better-auth']?.version, '1.7.6');
   assert.match(inventory.provider['better-auth']!.integrity, /^sha512-/);
   assert.deepEqual(inventory.plugins, []);
@@ -134,7 +145,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
 
   // The declarative fixtures, signed-in steps included, run on their own synthetic data at the documented origin.
   const fixtureEnv = { PRIVATE_REQUESTS_DATA: join(root, 'fixture-data'), SITE_ORIGIN: 'http://localhost:4180' };
-  assert.equal(run(t, site, npm, ['run', '-s', 'setup'], fixtureEnv).status, 0);
+  assert.equal(npm(t, site, ['run', '-s', 'setup'], fixtureEnv).status, 0);
   const documented = ['--project', 'app', '--host-file', 'host.mjs', '--origin', 'http://localhost:4180', '--policy', policy];
   const fixtures = urlcode(t, site, ['test', ...documented], fixtureEnv);
   assert.equal(fixtures.status, 0, fixtures.stdout + fixtures.stderr);
@@ -147,7 +158,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   server.stdout.on('data', chunk => { output += chunk; });
   server.stderr.on('data', chunk => { output += chunk; });
   const exited = new Promise(resolve => server.once('exit', resolve));
-  t.after(async () => { server.kill(); await exited; });
+  closers.push(async () => { if (server.exitCode === null && server.signalCode === null) server.kill(); await exited; });
   for (let attempt = 0; ; attempt++) {
     if (await fetch(`${origin}/_urlcode/ready`).then(response => response.ok, () => false)) break;
     assert.ok(attempt < 100 && server.exitCode === null, `server did not start: ${output}`);
