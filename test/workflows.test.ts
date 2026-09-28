@@ -19,8 +19,30 @@ function job(workflow: Workflow, name: string): Job {
   return found;
 }
 
-test('the repository has exactly four workflows: ci.yml, publish.yml, release.yml and the manual #708 reproducer', async () => {
-  assert.deepEqual((await readdir(directory)).sort(), ['ci.yml', 'publish.yml', 'release.yml', 'v8-jit-repro.yml']);
+test('the repository has exactly five workflows: ci.yml, publish.yml, release.yml, the manual #708 reproducer and workerd parity', async () => {
+  assert.deepEqual((await readdir(directory)).sort(), ['ci.yml', 'publish.yml', 'release.yml', 'v8-jit-repro.yml', 'workerd-parity.yml']);
+});
+
+// #868: the workerd parity run needs the network, so it stays opt-in like the #708 reproducer. It never runs on a push
+// or pull request, cannot write, is called by no other workflow, pins Wrangler, and cannot pass on a SKIP.
+test('workerd-parity.yml is manually dispatched only, read-only, pins Wrangler and fails instead of skipping', async () => {
+  const parity = await load('workerd-parity.yml');
+  assert.deepEqual(Object.keys(parity.on), ['workflow_dispatch']);
+  assert.deepEqual(parity.permissions, { contents: 'read' });
+  for (const name of ['ci.yml', 'publish.yml', 'release.yml']) assert.doesNotMatch(await readFile(join(directory, name), 'utf8'), /workerd-parity/);
+  const inputs = (parity.on.workflow_dispatch as { inputs: Record<string, { default: string }> }).inputs;
+  assert.match(inputs.wrangler!.default, /^\d+\.\d+\.\d+$/, 'an exact Wrangler version, not latest');
+  const steps = job(parity, 'parity').steps ?? [];
+  const run = steps.find(step => step.run === 'npm run test:workerd');
+  assert(run, 'runs npm run test:workerd, which builds first');
+  assert.equal(run.env?.WORKERD_PARITY_REQUIRED, '1');
+  assert.equal(run.env?.WRANGLER_VERSION, '${{ inputs.wrangler }}');
+  assert.doesNotMatch(await readFile(join(directory, 'workerd-parity.yml'), 'utf8'), /continue-on-error|\|\| *true|retry/i);
+});
+
+test('npm run test:workerd builds dist/ before it compares (#868: a stale build once passed every case)', async () => {
+  const { scripts } = JSON.parse(await readFile('package.json', 'utf8')) as { scripts: Record<string, string> };
+  assert.match(scripts['test:workerd']!, /^npm run build && node scripts\/workerd-parity\.ts$/);
 });
 
 // #708: a diagnostic that must stay opt-in. It never runs on a push or pull request, cannot write, is called by no
