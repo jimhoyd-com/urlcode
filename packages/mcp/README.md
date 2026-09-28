@@ -4,12 +4,14 @@ Operator-installed declarative [MCP](https://modelcontextprotocol.io) (Model
 Context Protocol) tool server for URLCode. Declare bounded tools — a name, a
 description, a `request.body.schema`-shaped input schema and a trusted
 project handler — plus optional bounded `resources` and `prompts`, and mount
-the server; the extension owns JSON-RPC 2.0 framing, protocol version
-negotiation, request-id handling, cursor pagination and
-`initialize`/`ping`/`tools/list`/`tools/call`/`resources/list`/`resources/read`/`prompts/list`/`prompts/get`
-dispatch. Project YAML never carries JSON-RPC mechanics or a transport
-choice; the optional streaming transport (sessions, SSE progress and the
-server stream) is an operator opt-in in `host.mjs`.
+the server. The protocol is the official MCP TypeScript SDK's
+(`@modelcontextprotocol/server`, pinned in `package.json`; #846): JSON-RPC
+over Streamable HTTP, version negotiation, request ids and errors. This
+package owns what the YAML declares: the tool, resource and prompt sets,
+their argument and output checks, the trusted handler calls and the failure
+messages callers see. Project YAML never carries JSON-RPC mechanics or a
+transport choice; streamed progress replies are an operator opt-in in
+`host.mjs`.
 
 Released as a tarball on core's GitHub Release, at core's version, and pinned
 by sha512 in core's `dist/addons.json`; only core is on npm. See
@@ -77,9 +79,8 @@ as `mount` declares it.
 
 A server's `tools`, `resources` and `prompts` maps are each independently
 bounded (at most 64 entries per map, at most 8 servers per extension
-instance); `tools/list`, `resources/list` and `prompts/list` each page at 20
-entries per response, encoding an opaque `cursor`/`nextCursor` — a client
-must treat the cursor as opaque and never construct one itself.
+instance); `tools/list`, `resources/list` and `prompts/list` return every
+entry in one response.
 
 `inputSchema` (and the optional `outputSchema` below) is the same bounded
 JSON Schema subset `request.body.schema` accepts (`type`, `properties`,
@@ -240,113 +241,40 @@ urlcode serve --project app --host-file host.mjs \
   --policy /etc/urlcode/policy.json --origin https://site.example
 ```
 
-## Streaming transport (operator opt-in)
+## Streaming progress (operator opt-in)
 
-The optional parts of the MCP Streamable HTTP transport are an operator
-choice in `host.mjs`, never project YAML. They are off by default; with them
-off the extension answers exactly as described above on every target.
+The server is stateless: every POST is answered on its own, with no
+`Mcp-Session-Id` and no server-initiated GET stream (`GET` and `DELETE`
+answer `405`). Replies are Server-Sent Events, as the Streamable HTTP
+transport allows, so clients must send
+`Accept: application/json, text/event-stream`.
+
+Whether an SSE reply is passed through as it is produced is an operator
+choice in `host.mjs`, never project YAML:
 
 ```js
 // host.mjs
-export default await composeHost(import.meta.url, [
-  mcp({ streaming: true }),
-  // or with bounded overrides:
-  // mcp({ streaming: { maxSessions: 200, sessionIdleTimeoutMs: 600000, keepAliveMs: 10000, replayMaxEvents: 32, replayMaxBytes: 32768 } }),
-]);
+export default await composeHost(import.meta.url, [mcp({ streaming: true })]);
 ```
 
-| Option | Default | Range | Meaning |
-|---|---|---|---|
-| `maxSessions` | `1000` | 1–100000 | Sessions kept at once. `initialize` beyond it evicts the least recently used session (its open GET stream ends, its in-flight calls are aborted). |
-| `sessionIdleTimeoutMs` | `1800000` (30 min) | 1000–86400000 | A session with no request, and no open GET stream, for this long is forgotten. |
-| `keepAliveMs` | `15000` | 100–600000 | Interval of the `: ping` SSE comment on an open stream. Must be below `sessionIdleTimeoutMs`, and should be below the server's `--stream-idle-timeout-ms` (default 30000), or the server ends a quiet stream. |
-| `replayMaxEvents` | `64` | 1–10000 | Server-initiated events a session keeps for `Last-Event-ID` replay. |
-| `replayMaxBytes` | `65536` | 1024–16777216 | Bytes of those events a session keeps; a single larger event is not sent. |
+- **Off (the default).** The reply is read whole and returned buffered, on
+  every target (node, aws, vercel). A tool's `context.progress` does
+  nothing.
+- **On.** The registration declares `streams: true`
+  ([streamed responses](../../docs/EXTENSIONS.md#streamed-responses)), so core
+  refuses it on `aws` before activation; the self-hosted server and Vercel
+  deliver it. A `tools/call` whose `params._meta.progressToken` is set gets
+  its `notifications/progress` messages, from
+  `context.progress(progress, total?, message?)`, before its result. The
+  server's stream limits (`--max-streams`, `--stream-idle-timeout-ms`,
+  `--stream-max-duration-ms`, `--stream-max-bytes`;
+  [operations](../../docs/OPERATIONS.md#streamed-responses)) bound every
+  streamed reply.
 
-With streaming on, the registration declares `streams: true`
-([streamed responses](../../docs/EXTENSIONS.md#streamed-responses)), so the
-site must be served by the self-hosted server: core refuses the registration
-on `aws` (and there is no `cloudflare` target for extensions) before
-activation, and the extension refuses `vercel` at activation, because its
-function instances do not share the in-memory session table. Leave streaming
-off to deploy the same project to AWS or Vercel. The server's stream limits
-(`--max-streams`, `--stream-idle-timeout-ms`, `--stream-max-duration-ms`,
-`--stream-max-bytes`; [operations](../../docs/OPERATIONS.md#streamed-responses))
-bound every SSE response, and each open GET stream counts against
-`--max-streams`.
-
-The mount must also accept the extra methods:
-
-```yaml
-routes:
-  /mcp/*:
-    extension: mcp
-    methods: [GET, POST, DELETE, HEAD]
-```
-
-What changes when it is on:
-
-- **Sessions.** A successful `initialize` answers with an `Mcp-Session-Id`
-  header: 32 random bytes as base64url (43 visible-ASCII characters). Every
-  later request, notification, GET and DELETE must carry it. A request
-  without it (other than `initialize`) answers `400`; an unknown, ended,
-  expired or evicted id answers `404`, which tells the client to
-  re-initialize. `DELETE` with the header ends the session (`204`), ends its
-  GET stream and aborts its in-flight calls. When the mount runs behind a
-  principal-providing extension (for example `auth`), a session is bound to
-  the principal that created it; the same id presented by another principal,
-  or by an anonymous caller, answers `404` exactly like an unknown id. On an
-  unauthenticated mount the id itself is the only credential, so treat it as
-  a bearer secret and keep the mount on HTTPS.
-- **Sessions live in memory only.** The table belongs to one extension
-  instance in one process. A restart, a redeploy or a dev reload forgets
-  every session, so a client's next request answers `404` and it
-  re-initializes; nothing is persisted and there is no sharing between
-  processes or replicas (pin a client to one process, for example with
-  sticky routing, if you run several).
-- **Progress over SSE.** A `tools/call` whose `params._meta.progressToken`
-  is a string or integer, sent with an `Accept` that includes
-  `text/event-stream`, is answered as an SSE stream
-  (`Content-Type: text/event-stream`): zero or more
-  `notifications/progress` messages, then the JSON-RPC response, then the
-  end of the stream. Every other request keeps the plain JSON reply. A tool
-  handler reports progress with `context.progress(progress, total?, message?)`;
-  a value that does not increase is dropped, as the progress utility
-  requires, and values reported faster than the client reads are coalesced
-  to the latest one. Without a token or an SSE `Accept`, `progress` does
-  nothing. A POST stream carries no event ids and cannot be resumed.
-- **Cancellation.** Every handler receives `context.signal`. It aborts when
-  the client disconnects (including closing a POST SSE stream), when the
-  client sends `notifications/cancelled` naming the request's id in the same
-  session, when the session ends, or at a server stream limit or shutdown. A
-  handler should stop when it fires. A cancelled call's response is still
-  sent if the handler returns one; the client ignores it.
-- **The GET stream.** `GET` on the mount with `Accept: text/event-stream`
-  and the session header opens the session's stream for server-initiated
-  messages (`406` without that `Accept`). It sends `: ping` keep-alive
-  comments every `keepAliveMs`, and every message event has an `id`: a
-  per-session integer counting from 1, consecutive, so a client can see a
-  gap. The session keeps the newest `replayMaxEvents` events (within
-  `replayMaxBytes`). A reconnect with `Last-Event-ID: <n>` replays the kept
-  events after `n` in order, then continues live; `Last-Event-ID: 0` replays
-  everything kept. When some events after `n` were already dropped from the
-  buffer, the reconnect replays only what is still kept, and the jump in ids
-  shows what was lost. A `Last-Event-ID` that is not an id this session
-  issued answers `400`. A GET without `Last-Event-ID` starts with the events
-  not yet handed to an earlier stream. The server ends a stream at
-  `--stream-max-duration-ms`; a client reconnects with `Last-Event-ID` as it
-  would after any drop.
-- **One GET stream per session.** A second GET for the same session
-  replaces the open one, which ends cleanly; each message is sent on one
-  stream only, as the transport requires. Replacing, rather than refusing
-  with `409`, means a client whose connection died silently can always
-  reconnect.
-- **What is sent on it.** No declared feature of this package sends a
-  server-initiated message yet: tool, resource and prompt sets are fixed for
-  an activation, so `listChanged` stays `false`. The stream, its ids and
-  replay are the plumbing such messages will use.
-- `HEAD` stays `200` with no body, and any other method answers `405` with
-  `Allow: GET, POST, DELETE`.
+Every handler receives `context.signal`. It aborts when the client
+disconnects or the SDK cancels the request; a handler should stop when it
+fires. A `notifications/cancelled` arrives as its own stateless POST, so it
+cannot reach a call another request is running.
 
 ## Protecting a mount
 
@@ -356,44 +284,30 @@ extension has no identity or authorization model of its own.
 
 ## What this implements
 
-- JSON-RPC 2.0 request/response framing over HTTP POST, with the exact
-  client-supplied `id` (any JSON-RPC-legal string, integer, or `null`)
-  echoed back verbatim — never a substitute id generated internally. This is
-  the specific bug the evidence behind this package's issue reported in a
-  hand-written implementation.
-- Protocol version negotiation on `initialize` for MCP revisions
-  `2025-11-25` (preferred), `2025-06-18`, `2025-03-26` and `2024-11-05`: the
-  client's requested `protocolVersion` is echoed back when supported,
-  otherwise `2025-11-25` is returned, per the MCP specification's negotiation
-  flow. Behavior varies by revision in one place only: under `2025-11-25`
-  (read from each request's `MCP-Protocol-Version` header, with or without
-  a session), `tools/call` arguments that fail the declared
-  `inputSchema` answer a tool execution error (`isError: true`, the schema
-  issues as text) instead of `-32602`, as that revision's tools
-  specification requires so the model can correct its arguments. Every
-  schema the server advertises carries no `$schema` and is valid under the
-  JSON Schema 2020-12 default dialect `2025-11-25` establishes.
+- The protocol through the official SDK: JSON-RPC 2.0 over Streamable HTTP
+  POST with SSE replies, the exact client `id` echoed back, `initialize`
+  negotiation for the revisions the pinned SDK supports (currently
+  `2025-11-25` back to `2024-11-05`), the `MCP-Protocol-Version` header
+  (an unsupported one answers `400`), notifications (`202`), `ping`, and the
+  standard error codes: `-32700` parse error and `-32600` invalid request
+  (HTTP `400`), `-32601` method not found, `-32602` invalid params (an unknown
+  tool, prompt or resource, or prompt arguments that fail their declaration),
+  `-32603` internal error. A body over 256 KiB answers `413`, a non-JSON
+  media type `415`, and a request that does not accept both JSON and SSE
+  `406`.
 - `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`,
-  `resources/read`, `prompts/list`, `prompts/get`, and the
-  `notifications/initialized` notification (accepted, produces no response —
-  a notification, any message with no `id`, never gets one, matching plain
-  JSON-RPC 2.0). `initialize` advertises the `resources`/`prompts`
-  capabilities only when the server declares at least one of that primitive.
-- `tools/list`, `resources/list` and `prompts/list` cursor pagination
-  (`params.cursor` in, `result.nextCursor` out when more entries remain), a
-  stable 20-entries-per-page slice over each map sorted by name. An
-  unrecognized or malformed cursor answers `-32602 Invalid params`.
+  `resources/read`, `prompts/list` and `prompts/get`. `initialize`
+  advertises the `resources`/`prompts` capabilities only when the server
+  declares at least one of that primitive. Lists return every declared entry
+  (no pagination).
+- Tool arguments that fail the declared `inputSchema` answer a tool
+  execution error (`isError: true`, the schema issues as text) so the model
+  can correct them, under every revision; the handler never runs.
 - Tool `outputSchema` / `structuredContent`, validated against the same
   bounded schema subset as `inputSchema` (see "Declare a server" above).
 - Optional `title` on tools, resources and prompts, and optional tool
   `annotations` (the four boolean behavior hints), echoed in the list
-  responses (see "Declare a server" above).
-- The `MCP-Protocol-Version` request header on every message after
-  `initialize` (requests and notifications): a supported revision is
-  accepted, a missing header is treated as `2025-03-26` (the Streamable HTTP
-  transport's rule for older clients), and any other value answers HTTP
-  `400` before dispatch. `initialize` itself negotiates from
-  `params.protocolVersion` and ignores the header.
+  responses.
 - `Origin` validation against DNS rebinding, as the Streamable HTTP transport
   requires: a request whose `Origin` header is present and is not one of the
   site's origins, the canonical `--origin` or an operator `--alias-origin`
@@ -401,74 +315,38 @@ extension has no identity or authorization model of its own.
   [site origins](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks)),
   answers HTTP `403` before its body is parsed, as does `Sec-Fetch-Site:
   cross-site` or a duplicated provenance header. A request with no provenance
-  header (non-browser MCP clients send none) is admitted. The alias list is
-  site-wide and operator-set; there is no per-server or YAML allowlist.
-- Standard JSON-RPC error codes: `-32700` parse error, `-32600` invalid
-  request (including a rejected batch array), `-32601` method not found,
-  `-32602` invalid params (unknown tool/prompt name, a schema-failing
-  arguments object before `2025-11-25` or for a prompt, a non-object
-  `arguments`, or an invalid pagination cursor), `-32603` reserved for
-  an unexpected internal failure (including a thrown resource/prompt handler
-  and a tool result that fails its own declared `outputSchema`), `-32002`
-  resource not found.
+  header (non-browser MCP clients send none) is admitted.
 - Host-owned error behavior: a thrown tool/resource/prompt handler error is
   reported to the MCP caller as a generic failure and to the operator, via
-  `onToolError`, with the real error and which server/hook/kind it came from
-  — the extension makes no logging decision of its own beyond that callback.
+  `onToolError`, with the real error and which server/hook/kind it came from.
 - Caller-facing tool execution errors: a tool handler that throws
   `McpToolError` answers `isError: true` with its own bounded message (and
   `structuredContent` from its `data` when that conforms to the declared
   `outputSchema`).
 - Host-owned usage observation: `onToolCall` reports every handler
   invocation's outcome, duration and request id, success or failure.
-- Handler request context: `handler(input, { env, requestId, server, tool, kind })`,
-  with `env` from the mount route's operator-granted `env` block (plus
-  `signal`, and `progress` for a tool, when the operator enables streaming).
-- The optional Streamable HTTP transport parts, when the operator enables
-  `streaming`: `Mcp-Session-Id` sessions, SSE progress replies to
-  `tools/call`, cancellation, and the per-session GET stream with keep-alive
-  and bounded `Last-Event-ID` replay (see "Streaming transport" above).
+- Handler request context: `handler(input, { env, requestId, server, tool, kind, signal })`,
+  with `env` from the mount route's operator-granted `env` block, and
+  `progress` on a tool (see "Streaming progress" above).
 
-## What this does not implement (v1)
+## What this does not implement
 
-- Streaming on AWS or Vercel: the streaming transport needs the self-hosted
-  server (see "Streaming transport" above). Without `streaming` a GET answers
-  `405`, the specification's own guidance when a server does not offer that
-  stream, and no session id is issued.
-- Resuming a POST SSE stream: its events carry no id, so a dropped progress
-  stream is not replayed; the call is cancelled instead. Only the GET stream
-  replays.
-- The `2025-11-25` SSE polling behavior (priming an empty event with an id
-  and closing the connection so the client polls): streams stay open with
-  keep-alive comments instead.
-- Persisted or shared sessions: sessions live in one process's memory and a
-  restart forgets them (the client re-initializes after a `404`).
-- JSON-RPC batching (arrays of requests); the 2025-06-18 MCP revision removed
-  batching from the specification entirely, and this extension refuses a
-  batch outright for every protocol revision it negotiates — a confirmed
-  scope decision, re-checked against the current specification, not an
-  unaddressed gap.
-- Resource templates (`resources/templates/list`, parameterized `uriTemplate`
-  resources) and resource/prompt subscriptions
-  (`resources/subscribe`, `notifications/*/list_changed`) — every declared
-  resource is a fixed `uri`, and the tool/resource/prompt sets are static for
-  the life of an activation, so `listChanged` is always `false`.
+- Sessions, the server-initiated GET stream and `Last-Event-ID` replay: the
+  server is stateless, so there is nothing to resume and nothing is kept
+  between requests.
+- Streaming on AWS: core refuses a streaming registration there; leave
+  `streaming` off to deploy the same project to AWS.
+- Resource templates and resource/prompt subscriptions — every declared
+  resource is a fixed `uri`, and the sets are static for the life of an
+  activation, so `listChanged` is always `false`.
 - Environment-dependent tool, resource or prompt schemas (for example an
   `enum` filled from an env binding). Declined by design: the schemas a
-  client sees are part of the reviewed, revision-pinned project, and letting
-  them vary with the deployment environment would mean the reviewed revision
-  no longer determines what the server advertises or accepts. Declare the
+  client sees are part of the reviewed, revision-pinned project. Declare the
   schema in YAML and have the handler check `context.env` at call time.
 - OAuth/bearer authorization flows defined by the MCP authorization spec;
-  protect a mount with the `auth` extension instead, the same as any other
-  extension route.
-- The optional `2025-11-25` additions: `icons` on tools, resources, prompts
-  and `serverInfo`, `serverInfo.description`/`websiteUrl`, the experimental
-  `tasks` utility (no `tasks` capability is advertised and no tool declares
-  `execution.taskSupport`, so every call runs synchronously), and the
-  client-side elicitation and sampling changes, which need server-initiated
-  requests this server does not send (the GET stream carries only
-  notifications, and the server never waits for a client response).
+  protect a mount with a principal-providing extension instead, the same as
+  any other extension route.
+- Server-initiated requests (elicitation, sampling) and the `tasks` utility.
 
 These are deliberate scope choices for a first, minimal, declarative surface
 ("MCP over HTTP becomes declarative", not a full-featured MCP server) rather
@@ -491,7 +369,7 @@ Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
-| `extensions.mcp.config.servers` | object | no | minProperties: 1; maxProperties: 8; keys: "^[a-z][a-z0-9_-]{0,63}$" | MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route `<mount>/*` with extension: mcp (POST, HEAD; GET and DELETE too when the operator enables streaming in host.mjs). |
+| `extensions.mcp.config.servers` | object | no | minProperties: 1; maxProperties: 8; keys: "^[a-z][a-z0-9_-]{0,63}$" | MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route `<mount>/*` with extension: mcp (POST, and HEAD). |
 | `extensions.mcp.config.servers.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$" | Exact endpoint path clients POST to; the route is `<mount>/*`, but the mount itself is the only path served (subpaths answer 404). |
 | `extensions.mcp.config.servers.*.serverName` | string | yes | minLength: 1; maxLength: 512 | Server name reported in the initialize result (serverInfo.name). |
 | `extensions.mcp.config.servers.*.serverVersion` | string | yes | minLength: 1; maxLength: 64 | Server version reported in the initialize result (serverInfo.version). |
@@ -543,7 +421,7 @@ Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: name
 - **tool handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler`): Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.
 - **resource handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler`): Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text\|blob, mimeType}), served over resources/read.
 - **prompt handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler`): Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.
-- **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); add GET and DELETE when the operator enables the streaming transport (sessions, progress and the server stream) in host.mjs. Add `auth: true` when tool calls require a signed-in caller.
+- **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller.
 
 Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
 <!-- extension-reference:end -->

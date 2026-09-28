@@ -8,7 +8,7 @@
     "additionalProperties": false,
     "properties": {
       "servers": {
-        "description": "MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route <mount>/* with extension: mcp (POST, HEAD; GET and DELETE too when the operator enables streaming in host.mjs).",
+        "description": "MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route <mount>/* with extension: mcp (POST, and HEAD).",
         "type": "object",
         "minProperties": 1,
         "maxProperties": 8,
@@ -373,7 +373,7 @@
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Mount each server at its declared path with POST (and HEAD); add GET and DELETE when the operator enables the streaming transport (sessions, progress and the server stream) in host.mjs. Add `auth: true` when tool calls require a signed-in caller.",
+        "description": "Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller.",
         "path": "urlcode.yaml"
       }
     ],

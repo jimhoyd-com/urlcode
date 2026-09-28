@@ -1,47 +1,13 @@
-import { extensionHookContext, extensionHookReferenceSchema, ExtensionHttpError, isSameOriginRequest, jsonResponse, loadExtensionHooks, readBody } from '@jimhoyd/urlcode/extensions';
+import { extensionHookContext, extensionHookReferenceSchema, isSameOriginRequest, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { assertBodySchema, bodySchemaIssues, bodySchemaLine } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
-import { acceptsEventStream, lastEventIdOf, McpSessionRegistry, ownerOf, progressStream, requestSession, resolveStreamingOptions } from './sessions.ts';
-import type { McpSession, McpStreamingOptions, ProgressFn, ResolvedStreamingOptions } from './sessions.ts';
-export type { McpStreamingOptions } from './sessions.ts';
+import { createMcpHandler, ProtocolError, ProtocolErrorCode, Server } from '@modelcontextprotocol/server';
 
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 const ARG_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+/** The largest request body the SDK handler reads. */
 const MAX_BODY = 256 * 1024;
-/** Page size for `tools/list`, `resources/list` and `prompts/list` cursor pagination. */
-const PAGE_SIZE = 20;
-/**
- * Supported MCP protocol revisions, most preferred first. `initialize`
- * echoes the client's requested revision back when it is one of these;
- * otherwise it answers with the first (our default), exactly as the MCP
- * specification's negotiation flow expects — the client then decides whether
- * to proceed or disconnect. The bounded surface here (`initialize`, `ping`,
- * `tools/list`, `tools/call`, `resources/list`, `resources/read`,
- * `prompts/list`, `prompts/get`) behaves the same under every one of them
- * with a single exception, gated on the request's `MCP-Protocol-Version`
- * (see `TOOL_INPUT_ERRORS_AS_RESULTS`): from 2025-11-25, `tools/call`
- * arguments that fail the declared `inputSchema` answer a tool execution
- * error (`isError: true`) rather than a `-32602` protocol error. The other
- * 2025-11-25 additions (icons, tasks, `Implementation.description`, URL
- * elicitation, sampling tools, authorization discovery, SSE polling) are
- * optional features this server does not offer, and every schema it
- * advertises is valid under the JSON Schema 2020-12 default dialect that
- * revision establishes. JSON-RPC batching (arrays of requests) is
- * refused for every supported revision, including the two that predate the
- * 2025-06-18 revision's removal of batching from the specification: the
- * bounded declarative surface this extension serves has no use for a client
- * that requires batched delivery, so this is a confirmed scope decision, not
- * an unaddressed gap.
- */
-export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const;
-/**
- * The first revision whose tools specification classifies input validation
- * failures as tool execution errors (SEP-1303), so the model can read them
- * and retry. Earlier revisions list "invalid arguments" as a protocol error.
- */
-const TOOL_INPUT_ERRORS_AS_RESULTS = '2025-11-25';
-export const JSONRPC_VERSION = '2.0' as const;
 
 /**
  * Upper bound, in characters, on the caller-facing text of an `McpToolError`
@@ -75,10 +41,6 @@ function isMcpToolError(value: unknown): value is McpToolError {
 function boundedText(text: string): string {
   return text.length <= MAX_TOOL_ERROR_TEXT ? text : `${text.slice(0, MAX_TOOL_ERROR_TEXT - 1)}\u2026`;
 }
-
-export type JsonRpcId = string | number | null;
-interface JsonRpcMessage { id?: JsonRpcId; method: string; params?: unknown }
-interface JsonRpcError { code: number; message: string; data?: unknown }
 
 /**
  * MCP tool behavior hints, echoed verbatim in `tools/list`. They are advisory
@@ -148,14 +110,13 @@ export interface McpExtensionOptions {
    */
   onToolCall?: (info: McpToolCallInfo) => void;
   /**
-   * The optional parts of the MCP Streamable HTTP transport (issue #659): `Mcp-Session-Id` sessions, SSE replies
-   * with progress for a `tools/call` that carries `_meta.progressToken`, and the per-session GET stream with
-   * `Last-Event-ID` replay. Off by default, and then the extension behaves exactly as before on every target. On
-   * (`true`, or an options object with bounded overrides), the registration declares `streams: true`, so core
-   * refuses it on aws and cloudflare, and activation refuses vercel, whose function instances do not share the
-   * in-memory session table. See packages/mcp/README.md "Streaming transport".
+   * Pass Server-Sent Events replies through as they are produced, so a `tools/call` that carries
+   * `_meta.progressToken` delivers `notifications/progress` before its result. Off by default: the reply is read
+   * whole and returned buffered (progress then arrives together with the result), which every target serves. On,
+   * the registration declares `streams: true`, so core refuses it on aws and cloudflare before activation. The
+   * protocol is stateless either way: there are no sessions and no server-initiated stream.
    */
-  streaming?: boolean | McpStreamingOptions;
+  streaming?: boolean;
 }
 export type McpHandlerKind = 'tool' | 'resource' | 'prompt';
 export type McpCallOutcome = 'success' | 'tool_error' | 'error';
@@ -167,22 +128,16 @@ export interface McpToolCallInfo { server: string; tool: string; kind: McpHandle
  */
 export interface McpHandlerContext extends ExtensionHookContext {
   server: string; tool: string; kind: McpHandlerKind;
+  /** Aborted when the client disconnects or the SDK cancels this request. A long-running handler should stop when it fires. */
+  signal: AbortSignal;
   /**
-   * Only when the operator enabled `streaming`: aborted when the client disconnects, sends
-   * `notifications/cancelled` for this request, or its session ends (and at a server stream limit or shutdown).
-   * A long-running handler should stop when it fires.
-   */
-  signal?: AbortSignal;
-  /**
-   * Only on a tool handler, and only when the operator enabled `streaming`: reports progress
-   * (`progress` must increase; `total` and `message` are optional). It sends `notifications/progress` when the
-   * call carries `_meta.progressToken` and accepts `text/event-stream`, and does nothing otherwise.
+   * Only on a tool handler: reports progress (`progress` must increase; `total` and `message` are optional). It
+   * sends `notifications/progress` when the call carries `_meta.progressToken`, and does nothing otherwise.
    */
   progress?: ProgressFn;
 }
-/** What a handler invocation receives beyond the generic context when streaming is enabled. */
-interface InvocationExtras { signal?: AbortSignal; progress?: ProgressFn }
-const noProgress: ProgressFn = () => {};
+/** Reports progress for the current tool call. */
+export type ProgressFn = (progress: number, total?: number, message?: string) => void;
 type McpHandler = (input: unknown, context: McpHandlerContext) => unknown;
 interface ActiveTool { spec: McpToolSpec; call: McpHandler }
 interface ActiveResource { spec: McpResourceSpec; call: McpHandler }
@@ -260,7 +215,7 @@ export const mcpConfigSchema = {
   type: 'object', additionalProperties: false,
   properties: {
     servers: {
-      description: 'MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route <mount>/* with extension: mcp (POST, HEAD; GET and DELETE too when the operator enables streaming in host.mjs).',
+      description: 'MCP servers by name. Omitted (the scaffold default): nothing is mounted. Each needs a route <mount>/* with extension: mcp (POST, and HEAD).',
       type: 'object', minProperties: 1, maxProperties: 8, propertyNames: { pattern: NAME.source },
       additionalProperties: {
         type: 'object', additionalProperties: false, required: ['mount', 'serverName', 'serverVersion', 'tools'],
@@ -284,87 +239,13 @@ export const mcpAuthoring: ExtensionAuthoringContract = {
     { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
     { kind: 'hook', name: 'resource handler', description: 'Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text|blob, mimeType}), served over resources/read.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler' },
     { kind: 'hook', name: 'prompt handler', description: 'Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler' },
-    { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD); add GET and DELETE when the operator enables the streaming transport (sessions, progress and the server stream) in host.mjs. Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
+    { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
-const own = (value: Record<string, unknown>, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
-function isJsonRpcId(value: unknown): value is JsonRpcId { return value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)); }
-/** Structural validation only (jsonrpc/method/id/params shape); `undefined` means the envelope itself is malformed. */
-function parseEnvelope(value: unknown): JsonRpcMessage | undefined {
-  if (!isRecord(value)) return undefined;
-  if (value.jsonrpc !== JSONRPC_VERSION) return undefined;
-  if (typeof value.method !== 'string' || value.method.length === 0 || value.method.length > 128) return undefined;
-  if (own(value, 'id') && !isJsonRpcId(value.id)) return undefined;
-  if (own(value, 'params') && !(isRecord(value.params) || Array.isArray(value.params))) return undefined;
-  const message: JsonRpcMessage = { method: value.method };
-  if (own(value, 'id')) message.id = value.id as JsonRpcId;
-  if (own(value, 'params')) message.params = value.params;
-  return message;
-}
-function textError(status: number, message: string): HandlerResult { return { status, headers: [['content-type', 'text/plain; charset=utf-8']], body: message }; }
-function rpc(status: number, id: JsonRpcId, body: { result: unknown } | { error: JsonRpcError }): HandlerResult {
-  return jsonResponse(status, { jsonrpc: JSONRPC_VERSION, id, ...body });
-}
-/**
- * The revision the Streamable HTTP transport says a server assumes when a
- * non-`initialize` request carries no `MCP-Protocol-Version` header (for
- * clients that predate the header). It is itself one of the supported
- * revisions, so a missing header is always accepted.
- */
-const DEFAULT_HEADER_PROTOCOL_VERSION = '2025-03-26';
-/**
- * The revision a non-`initialize` request was sent under: its
- * `MCP-Protocol-Version` header, or the transport's assumed default when it
- * has none. The header is read per request, with or without a streaming
- * session, so it is the negotiated revision as far as a single request is
- * concerned.
- */
-function requestProtocolVersion(request: ExtensionRequest): string {
-  return request.headers.get('mcp-protocol-version') ?? DEFAULT_HEADER_PROTOCOL_VERSION;
-}
-/** `true` when a non-`initialize` request's revision (see `requestProtocolVersion`) is a supported one. */
-function supportedProtocolVersionHeader(request: ExtensionRequest): boolean {
-  return (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requestProtocolVersion(request));
-}
-function negotiateProtocolVersion(params: unknown): string {
-  const requested = isRecord(params) && typeof params.protocolVersion === 'string' ? params.protocolVersion : undefined;
-  return requested && (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requested) ? requested : SUPPORTED_PROTOCOL_VERSIONS[0];
-}
-function toolContent(value: unknown): { content: [{ type: 'text'; text: string }]; isError: boolean } {
-  return { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }], isError: false };
-}
-
-// --- Cursor pagination (tools/list, resources/list, prompts/list) ---------
-// `cursor`/`nextCursor` are spec-opaque strings: a client must treat them as
-// tokens, never construct or parse one itself. This bounded implementation
-// encodes "resume at this entry's sort key" as base64url; entries are sorted
-// by name so the page boundary is stable across requests even though the
-// underlying config is an unordered object.
-function encodeCursor(key: string): string { return Buffer.from(key, 'utf8').toString('base64url'); }
-function decodeCursor(cursor: string): string | undefined {
-  try { return Buffer.from(cursor, 'base64url').toString('utf8'); } catch { return undefined; }
-}
-function sortedEntries<T>(map: Map<string, T>): [string, T][] { return [...map.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)); }
-interface Page<T> { page: [string, T][]; nextCursor?: string }
-/** Slices a sorted entry list into one page starting at `cursor` (if given); `undefined` cursor starts at the top. */
-function paginate<T>(sorted: [string, T][], cursor: unknown): Page<T> | { error: JsonRpcError } {
-  let startIndex = 0;
-  if (cursor !== undefined) {
-    if (typeof cursor !== 'string') return { error: { code: -32602, message: 'Invalid params: cursor must be a string' } };
-    const decoded = decodeCursor(cursor);
-    const index = decoded === undefined ? -1 : sorted.findIndex(([key]) => key === decoded);
-    if (index === -1) return { error: { code: -32602, message: 'Invalid params: cursor is invalid or expired' } };
-    startIndex = index;
-  }
-  const page = sorted.slice(startIndex, startIndex + PAGE_SIZE);
-  const nextIndex = startIndex + PAGE_SIZE;
-  return nextIndex < sorted.length ? { page, nextCursor: encodeCursor(sorted[nextIndex]![0]) } : { page };
-}
-
-function resourceContent(uri: string, defaultMimeType: string | undefined, value: unknown): { uri: string; mimeType?: string; text?: string; blob?: string } {
+type ResourceContent = { uri: string; mimeType?: string; text: string } | { uri: string; mimeType?: string; blob: string };
+function resourceContent(uri: string, defaultMimeType: string | undefined, value: unknown): ResourceContent {
   const mimeTypeOf = (candidate: unknown): string | undefined => (typeof candidate === 'string' ? candidate : defaultMimeType);
   if (typeof value === 'string') return { uri, ...(defaultMimeType ? { mimeType: defaultMimeType } : {}), text: value };
   if (isRecord(value) && typeof value.text === 'string') { const mimeType = mimeTypeOf(value.mimeType); return { uri, ...(mimeType ? { mimeType } : {}), text: value.text }; }
@@ -402,189 +283,164 @@ function promptArgumentsSchema(args: readonly McpPromptArgumentSpec[] | undefine
   return { type: 'object', properties, ...(required.length ? { required } : {}), additionalProperties: false };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
+function textError(status: number, message: string): HandlerResult { return { status, headers: [['content-type', 'text/plain; charset=utf-8']], body: message }; }
+function toolContent(value: unknown): { content: [{ type: 'text'; text: string }]; isError: boolean } {
+  return { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }], isError: false };
+}
+const invalid = (message: string, data?: unknown): ProtocolError => new ProtocolError(ProtocolErrorCode.InvalidParams, message, data);
+
 /**
- * Dispatches one already-envelope-validated JSON-RPC message against a single
- * activated MCP server. Returns the JSON-RPC `result` or `error` payload;
- * the caller (`handle` below) decides whether a response is even sent (a
- * notification, i.e. a message with no `id`, never gets one).
+ * One SDK server for one HTTP request (the SDK serves every request statelessly). The official SDK owns the
+ * protocol: JSON-RPC parsing, lifecycle and version negotiation, notifications and errors (#846). These handlers own
+ * the declared behavior: argument and output checks, trusted handler calls, the generic failure messages and the
+ * host's onToolCall/onToolError reports.
  */
-async function dispatch(server: ActiveServer, method: string, params: unknown, options: McpExtensionOptions, request: ExtensionRequest, extras?: InvocationExtras): Promise<{ result: unknown } | { error: JsonRpcError }> {
+function serverFor(server: ActiveServer, options: McpExtensionOptions, request: ExtensionRequest, streaming: boolean): Server {
   const { onToolError, onToolCall } = options;
+  const sdk = new Server({ name: server.spec.serverName, version: server.spec.serverVersion }, {
+    capabilities: {
+      tools: { listChanged: false },
+      ...(server.resources.size > 0 ? { resources: { listChanged: false } } : {}),
+      ...(server.prompts.size > 0 ? { prompts: { listChanged: false } } : {}),
+    },
+    ...(server.spec.instructions === undefined ? {} : { instructions: server.spec.instructions }),
+  });
   /** Starts one handler invocation: the context it receives and the `onToolCall` report for its outcome. */
-  const invocation = (kind: McpHandlerKind, tool: string) => {
+  const invocation = (kind: McpHandlerKind, tool: string, signal: AbortSignal, progress?: ProgressFn) => {
     const started = performance.now();
     const context: McpHandlerContext = {
       ...extensionHookContext(request), server: server.name, tool, kind,
-      ...(extras?.signal ? { signal: extras.signal } : {}),
-      ...(extras && kind === 'tool' ? { progress: extras.progress ?? noProgress } : {}),
+      signal: request.signal ? AbortSignal.any([signal, request.signal]) : signal,
+      ...(kind === 'tool' ? { progress: progress ?? (() => {}) } : {}),
     };
     const report = (outcome: McpCallOutcome): void => {
       try { onToolCall?.({ server: server.name, tool, kind, outcome, durationMs: Math.round((performance.now() - started) * 100) / 100, requestId: request.requestId }); } catch { /* host callback errors are never allowed to reach the caller */ }
     };
     return { context, report };
   };
-  if (method === 'initialize') {
-    // listChanged stays false with streaming on: the declared sets are fixed for an activation.
-    return { result: {
-      protocolVersion: negotiateProtocolVersion(params),
-      capabilities: {
-        tools: { listChanged: false },
-        ...(server.resources.size > 0 ? { resources: { listChanged: false } } : {}),
-        ...(server.prompts.size > 0 ? { prompts: { listChanged: false } } : {}),
-      },
-      serverInfo: { name: server.spec.serverName, version: server.spec.serverVersion },
-      ...(server.spec.instructions === undefined ? {} : { instructions: server.spec.instructions }),
-    } };
-  }
-  if (method === 'ping') return { result: {} };
+  const observe = (error: unknown, tool: string, kind: McpHandlerKind): void => {
+    try { onToolError?.(error, { server: server.name, tool, kind }); } catch { /* host callback errors are never allowed to reach the caller */ }
+  };
 
-  if (method === 'tools/list') {
-    const paged = paginate(sortedEntries(server.tools), isRecord(params) ? params.cursor : undefined);
-    if ('error' in paged) return paged;
-    const tools = paged.page.map(([name, tool]) => ({
-      name, ...(tool.spec.title ? { title: tool.spec.title } : {}),
-      description: tool.spec.description, inputSchema: tool.spec.inputSchema,
-      ...(tool.spec.outputSchema ? { outputSchema: tool.spec.outputSchema } : {}),
-      ...(tool.spec.annotations ? { annotations: tool.spec.annotations } : {}),
-    }));
-    return { result: { tools, ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}) } };
-  }
-  if (method === 'tools/call') {
-    if (!isRecord(params) || typeof params.name !== 'string') return { error: { code: -32602, message: 'Invalid params: tools/call requires a string "name"' } };
-    const tool = server.tools.get(params.name);
-    if (!tool) return { error: { code: -32602, message: `Unknown tool: ${params.name}` } };
-    const args = own(params, 'arguments') ? params.arguments : {};
-    if (!isRecord(args)) return { error: { code: -32602, message: 'Invalid params: "arguments" must be an object' } };
+  sdk.setRequestHandler('tools/list', () => ({ tools: [...server.tools].map(([name, tool]) => ({
+    name, ...(tool.spec.title ? { title: tool.spec.title } : {}),
+    description: tool.spec.description, inputSchema: tool.spec.inputSchema as { type: 'object' },
+    ...(tool.spec.outputSchema ? { outputSchema: tool.spec.outputSchema as { type: 'object' } } : {}),
+    ...(tool.spec.annotations ? { annotations: tool.spec.annotations } : {}),
+  })) }));
+  sdk.setRequestHandler('tools/call', async (call, ctx) => {
+    const name = call.params.name, tool = server.tools.get(name);
+    if (!tool) throw invalid(`Unknown tool: ${name}`);
+    const args = call.params.arguments ?? {};
     const issues = bodySchemaIssues(tool.spec.inputSchema, args);
-    if (issues.length) {
-      const lines = issues.map(bodySchemaLine);
-      // 2025-11-25 (SEP-1303): an input validation failure is a tool execution error the model can
-      // act on; earlier revisions keep the -32602 protocol error. The handler never runs either way.
-      // Revisions are ISO dates, so string order is chronological order.
-      if (requestProtocolVersion(request) >= TOOL_INPUT_ERRORS_AS_RESULTS) {
-        return { result: { content: [{ type: 'text', text: boundedText(`Invalid arguments for tool ${params.name}: ${lines.join('; ')}`) }], isError: true } };
-      }
-      return { error: { code: -32602, message: 'Invalid params: arguments failed the declared input schema', data: { issues: lines } } };
-    }
-    const { context, report } = invocation('tool', params.name);
-    const fail = (error: unknown): { result: unknown } => {
-      try { onToolError?.(error, { server: server.name, tool: params.name as string, kind: 'tool' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+    // An input validation failure is a tool execution error the model can act on (SEP-1303); the handler never runs.
+    if (issues.length) return { content: [{ type: 'text' as const, text: boundedText(`Invalid arguments for tool ${name}: ${issues.map(bodySchemaLine).join('; ')}`) }], isError: true };
+    const token = call.params._meta?.progressToken;
+    const progress: ProgressFn | undefined = streaming && token !== undefined
+      ? (value, total, message) => { void ctx.mcpReq.notify({ method: 'notifications/progress', params: { progressToken: token, progress: value, ...(total === undefined ? {} : { total }), ...(message === undefined ? {} : { message }) } }).catch(() => undefined); }
+      : undefined;
+    const { context, report } = invocation('tool', name, ctx.mcpReq.signal, progress);
+    const fail = (error: unknown) => {
+      observe(error, name, 'tool');
       report('error');
-      return { result: { content: [{ type: 'text', text: 'The tool could not complete the request.' }], isError: true } };
+      return { content: [{ type: 'text' as const, text: 'The tool could not complete the request.' }], isError: true };
     };
-    /** A handler-chosen, caller-facing failure: its own (bounded) message, never the generic one. */
-    const toolError = (error: McpToolError): { result: unknown } => {
+    try {
+      const value = await tool.call(args, context);
+      if (!tool.spec.outputSchema) { report('success'); return toolContent(value); }
+      // Output schema declared: the MCP tools specification requires structuredContent conforming to it; a
+      // non-conforming handler result is a server-side contract violation, answered like a thrown handler error.
+      if (!isRecord(value)) return fail(new Error('tool handler result is not an object, but the tool declares an outputSchema'));
+      const outputIssues = bodySchemaIssues(tool.spec.outputSchema, value);
+      if (outputIssues.length) return fail(new Error(`tool handler result failed its declared outputSchema: ${outputIssues.map(bodySchemaLine).join('; ')}`));
+      report('success');
+      return { content: [{ type: 'text' as const, text: JSON.stringify(value) }], structuredContent: value, isError: false };
+    } catch (error) {
+      if (!isMcpToolError(error)) return fail(error);
+      // A handler-chosen, caller-facing failure: its own (bounded) message, never the generic one.
       let structuredContent: Record<string, unknown> | undefined;
       if (error.data !== undefined && tool.spec.outputSchema) {
         const dataIssues = isRecord(error.data) ? bodySchemaIssues(tool.spec.outputSchema, error.data) : [];
         if (isRecord(error.data) && !dataIssues.length) structuredContent = error.data;
-        else try { onToolError?.(new Error(`McpToolError data failed the tool's declared outputSchema and was not returned: ${dataIssues.map(bodySchemaLine).join('; ') || 'not an object'}`), { server: server.name, tool: params.name as string, kind: 'tool' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+        else observe(new Error(`McpToolError data failed the tool's declared outputSchema and was not returned: ${dataIssues.map(bodySchemaLine).join('; ') || 'not an object'}`), name, 'tool');
       }
       report('tool_error');
-      return { result: { content: [{ type: 'text', text: boundedText(String(error.message)) }], ...(structuredContent ? { structuredContent } : {}), isError: true } };
-    };
-    try {
-      const value = await tool.call(args, context);
-      if (!tool.spec.outputSchema) { const result = toolContent(value); report('success'); return { result }; }
-      // Output schema declared: the MCP tools specification requires the server to provide
-      // structuredContent conforming to it; a non-conforming handler result is a server-side
-      // contract violation, reported to the caller exactly like a thrown handler error.
-      if (!isRecord(value)) return fail(new Error('tool handler result is not an object, but the tool declares an outputSchema'));
-      const outputIssues = bodySchemaIssues(tool.spec.outputSchema, value);
-      if (outputIssues.length) return fail(new Error(`tool handler result failed its declared outputSchema: ${outputIssues.map(bodySchemaLine).join('; ')}`));
-      const result = { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value, isError: false };
-      report('success');
-      return { result };
-    } catch (error) { return isMcpToolError(error) ? toolError(error) : fail(error); }
-  }
+      return { content: [{ type: 'text' as const, text: boundedText(String(error.message)) }], ...(structuredContent ? { structuredContent } : {}), isError: true };
+    }
+  });
 
-  if (method === 'resources/list') {
-    const paged = paginate(sortedEntries(server.resources), isRecord(params) ? params.cursor : undefined);
-    if ('error' in paged) return paged;
-    const resources = paged.page.map(([, resource]) => ({
+  if (server.resources.size > 0) {
+    sdk.setRequestHandler('resources/list', () => ({ resources: [...server.resources.values()].map(resource => ({
       uri: resource.spec.uri, name: resource.spec.name,
       ...(resource.spec.title ? { title: resource.spec.title } : {}),
       ...(resource.spec.description ? { description: resource.spec.description } : {}),
       ...(resource.spec.mimeType ? { mimeType: resource.spec.mimeType } : {}),
-    }));
-    return { result: { resources, ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}) } };
-  }
-  if (method === 'resources/read') {
-    if (!isRecord(params) || typeof params.uri !== 'string') return { error: { code: -32602, message: 'Invalid params: resources/read requires a string "uri"' } };
-    const id = server.resourcesByUri.get(params.uri);
-    const resource = id === undefined ? undefined : server.resources.get(id);
-    if (!resource) return { error: { code: -32002, message: 'Resource not found', data: { uri: params.uri } } };
-    const { context, report } = invocation('resource', id!);
-    try {
-      const value = await resource.call({}, context);
-      const result = { contents: [resourceContent(params.uri, resource.spec.mimeType, value)] };
-      report('success');
-      return { result };
-    } catch (error) {
-      try { onToolError?.(error, { server: server.name, tool: id!, kind: 'resource' }); } catch { /* host callback errors are never allowed to reach the caller */ }
-      report('error');
-      return { error: { code: -32603, message: 'The resource could not be read.' } };
-    }
+    })) }));
+    sdk.setRequestHandler('resources/read', async (read, ctx) => {
+      const uri = read.params.uri, id = server.resourcesByUri.get(uri), resource = id === undefined ? undefined : server.resources.get(id);
+      if (!resource) throw invalid('Resource not found', { uri });
+      const { context, report } = invocation('resource', id!, ctx.mcpReq.signal);
+      try {
+        const contents = [resourceContent(uri, resource.spec.mimeType, await resource.call({}, context))];
+        report('success');
+        return { contents };
+      } catch (error) {
+        observe(error, id!, 'resource');
+        report('error');
+        throw new ProtocolError(ProtocolErrorCode.InternalError, 'The resource could not be read.');
+      }
+    });
   }
 
-  if (method === 'prompts/list') {
-    const paged = paginate(sortedEntries(server.prompts), isRecord(params) ? params.cursor : undefined);
-    if ('error' in paged) return paged;
-    const prompts = paged.page.map(([name, prompt]) => ({
+  if (server.prompts.size > 0) {
+    sdk.setRequestHandler('prompts/list', () => ({ prompts: [...server.prompts].map(([name, prompt]) => ({
       name,
       ...(prompt.spec.title ? { title: prompt.spec.title } : {}),
       ...(prompt.spec.description ? { description: prompt.spec.description } : {}),
       ...(prompt.spec.arguments && prompt.spec.arguments.length ? { arguments: prompt.spec.arguments.map(argument => ({
         name: argument.name, ...(argument.description ? { description: argument.description } : {}), ...(argument.required !== undefined ? { required: argument.required } : {}),
       })) } : {}),
-    }));
-    return { result: { prompts, ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}) } };
+    })) }));
+    sdk.setRequestHandler('prompts/get', async (get, ctx) => {
+      const name = get.params.name, prompt = server.prompts.get(name);
+      if (!prompt) throw invalid(`Unknown prompt: ${name}`);
+      const args = get.params.arguments ?? {};
+      const issues = bodySchemaIssues(prompt.argumentsSchema, args);
+      if (issues.length) throw invalid('Invalid params: arguments failed the declared prompt arguments', { issues: issues.map(bodySchemaLine) });
+      const { context, report } = invocation('prompt', name, ctx.mcpReq.signal);
+      try {
+        const messages = promptMessages(await prompt.call(args, context));
+        report('success');
+        return { ...(prompt.spec.description ? { description: prompt.spec.description } : {}), messages };
+      } catch (error) {
+        observe(error, name, 'prompt');
+        report('error');
+        throw new ProtocolError(ProtocolErrorCode.InternalError, 'The prompt could not be generated.');
+      }
+    });
   }
-  if (method === 'prompts/get') {
-    if (!isRecord(params) || typeof params.name !== 'string') return { error: { code: -32602, message: 'Invalid params: prompts/get requires a string "name"' } };
-    const prompt = server.prompts.get(params.name);
-    if (!prompt) return { error: { code: -32602, message: `Unknown prompt: ${params.name}` } };
-    const args = own(params, 'arguments') ? params.arguments : {};
-    if (!isRecord(args)) return { error: { code: -32602, message: 'Invalid params: "arguments" must be an object' } };
-    const issues = bodySchemaIssues(prompt.argumentsSchema, args);
-    if (issues.length) return { error: { code: -32602, message: 'Invalid params: arguments failed the declared prompt arguments', data: { issues: issues.map(bodySchemaLine) } } };
-    const { context, report } = invocation('prompt', params.name);
-    try {
-      const value = await prompt.call(args, context);
-      const result = { ...(prompt.spec.description ? { description: prompt.spec.description } : {}), messages: promptMessages(value) };
-      report('success');
-      return { result };
-    } catch (error) {
-      try { onToolError?.(error, { server: server.name, tool: params.name, kind: 'prompt' }); } catch { /* host callback errors are never allowed to reach the caller */ }
-      report('error');
-      return { error: { code: -32603, message: 'The prompt could not be generated.' } };
-    }
-  }
-
-  return { error: { code: -32601, message: `Method not found: ${method}` } };
+  return sdk;
 }
 
-/**
- * The session table of a registration's latest activation. Internal: nothing in this package sends a
- * server-initiated message yet, so this is the plumbing's only trigger, used by the tests. Not exported from the
- * package entry points.
- */
-const activeSessions = new WeakMap<RuntimeExtension, McpSessionRegistry>();
-export function mcpSessionRegistry(registration: RuntimeExtension): McpSessionRegistry | undefined { return activeSessions.get(registration); }
-/** The JSON-RPC ids of requests in flight are compared by their JSON text, so `1` and `"1"` stay distinct. */
-const inflightKey = (id: unknown): string => JSON.stringify(id);
+/** Reads a Response body stream as byte chunks for a streamed extension result. */
+async function* chunks(body: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader();
+  try { for (;;) { const { done, value } = await reader.read(); if (done) return; yield value; } }
+  finally { reader.releaseLock(); }
+}
 
 /** Creates the MCP registration. See docs/EXTENSIONS.md and packages/mcp/README.md. */
 export function createMcpExtension(options: McpExtensionOptions): RuntimeExtension {
   if (!/^[a-f0-9]{64}$/.test(options.projectSha256)) throw new Error('mcp extension requires an explicit operator revision pin');
-  const streaming: ResolvedStreamingOptions | undefined = resolveStreamingOptions(options.streaming);
-  const registration: RuntimeExtension = {
+  if (options.streaming !== undefined && typeof options.streaming !== 'boolean') throw new Error('mcp streaming must be true or false');
+  const streaming = options.streaming === true;
+  return {
     name: 'mcp', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'],
     // Declared only when the operator opted in: core then refuses aws (and cloudflare) before activation.
     ...(streaming ? { streams: true } : {}),
     schema: mcpConfigSchema, authoring: mcpAuthoring,
     async activate(raw, context): Promise<ExtensionInstance> {
-      if (streaming && context.target !== 'node') throw new Error(`mcp streaming keeps sessions in this process's memory, which target ${context.target} does not share between function instances; enable streaming on the self-hosted server only, or leave it off`);
       const config = raw as unknown as McpConfig;
       const byMount = new Map<string, ActiveServer>();
       for (const [name, spec] of Object.entries(config.servers ?? {})) {
@@ -593,7 +449,6 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         if (clash) throw new Error(`MCP servers ${clash.name} and ${name} share mount ${spec.mount}`);
         const contracts: ExtensionHookContract[] = [];
         const hooksConfig: Record<string, ExtensionHookConfig> = {};
-
         for (const [toolName, tool] of Object.entries(spec.tools)) {
           try { assertBodySchema(tool.inputSchema); }
           catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} inputSchema: ${(error as Error).message}`, { cause: error }); }
@@ -603,15 +458,11 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
             catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} outputSchema: ${(error as Error).message}`, { cause: error }); }
             if (tool.outputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} outputSchema must declare type: object (MCP structuredContent is always an object)`);
           }
-          // The Ajv input schema loadExtensionHooks compiles against is deliberately permissive
-          // (any object): the real, bounded validation of a call's arguments happens per-request via
-          // bodySchemaIssues against the tool's own declared inputSchema, with structured JSON-RPC
-          // -32602 detail — reusing the same request.body.schema machinery a native route uses,
-          // rather than a second, less precise validator here.
+          // The hook contract's schema is deliberately permissive (any object): each call's arguments are checked
+          // against the tool's own declared inputSchema, with the same request.body.schema rules a native route uses.
           contracts.push({ name: `tool:${toolName}`, kind: 'action', description: tool.description, inputSchema: { type: 'object' } });
           hooksConfig[`tool:${toolName}`] = tool.handler;
         }
-
         const resourcesByUri = new Map<string, string>();
         for (const [resourceId, resource] of Object.entries(spec.resources ?? {})) {
           const clashUri = resourcesByUri.get(resource.uri);
@@ -620,7 +471,6 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           contracts.push({ name: `resource:${resourceId}`, kind: 'action', description: resource.description ?? resource.name, inputSchema: { type: 'object' } });
           hooksConfig[`resource:${resourceId}`] = resource.handler;
         }
-
         for (const [promptId, prompt] of Object.entries(spec.prompts ?? {})) {
           const seen = new Set<string>();
           for (const argument of prompt.arguments ?? []) {
@@ -630,7 +480,6 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           contracts.push({ name: `prompt:${promptId}`, kind: 'action', description: prompt.description ?? promptId, inputSchema: { type: 'object' } });
           hooksConfig[`prompt:${promptId}`] = prompt.handler;
         }
-
         const handlers = await loadExtensionHooks<string, McpHandlerContext>(hooksConfig, contracts, context);
         const tools = new Map<string, ActiveTool>(Object.entries(spec.tools).map(([toolName, tool]) => [toolName, { spec: tool, call: handlers[`tool:${toolName}`]! }]));
         const resources = new Map<string, ActiveResource>(Object.entries(spec.resources ?? {}).map(([resourceId, resource]) => [resourceId, { spec: resource, call: handlers[`resource:${resourceId}`]! }]));
@@ -638,106 +487,28 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         byMount.set(spec.mount, { name, spec, tools, resources, resourcesByUri, prompts });
       }
       for (const mount of context.mounts) if (!byMount.has(mount)) throw new Error(`MCP mount ${mount} has no server declared`);
-      const sessions = streaming ? new McpSessionRegistry(streaming) : undefined;
-      if (sessions) activeSessions.set(registration, sessions);
-      /** GET: the session's stream for server-initiated messages (streaming only). */
-      const openServerStream = (request: ExtensionRequest): HandlerResult => {
-        if (!acceptsEventStream(request)) return textError(406, 'The MCP GET stream requires Accept: text/event-stream');
-        if (!supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
-        const found = requestSession(sessions!, request);
-        if ('refusal' in found) return found.refusal;
-        const lastEventId = lastEventIdOf(request, found.session);
-        if (lastEventId === null) return textError(400, 'Invalid Last-Event-ID');
-        const signal = request.signal ?? new AbortController().signal;
-        return { status: 200, headers: [['content-type', 'text/event-stream']], stream: sessions!.openStream(found.session, lastEventId, signal) };
-      };
-      /** DELETE: the client ends its session (streaming only). */
-      const endSession = (request: ExtensionRequest): HandlerResult => {
-        if (!supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
-        const found = requestSession(sessions!, request);
-        if ('refusal' in found) return found.refusal;
-        sessions!.terminate(found.session.id);
-        return { status: 204, headers: [] };
-      };
       return {
-        close() { sessions?.close(); if (activeSessions.get(registration) === sessions) activeSessions.delete(registration); },
         async handle(request: ExtensionRequest): Promise<HandlerResult> {
           const server = request.mount === null ? undefined : byMount.get(request.mount);
           if (!server || request.path !== request.mount) return textError(404, 'Not found');
-          // DNS-rebinding defense the Streamable HTTP transport requires: core's same-origin rule, the one
-          // forms and store use. A present Origin must be one of the site's origins (canonical or an
-          // operator alias origin); a request with no provenance header at all (non-browser MCP clients
+          // DNS-rebinding defense the Streamable HTTP transport requires: core's same-origin rule. A present Origin
+          // must be one of the site's origins; a request with no provenance header at all (non-browser MCP clients
           // send none) is admitted, since the endpoint takes application/json only. Refused before parsing.
           if (!isSameOriginRequest(request, context, { whenAbsent: 'admit' })) return textError(403, 'Forbidden');
           if (request.method === 'HEAD') return { status: 200, headers: [] };
-          if (sessions && request.method === 'GET') return openServerStream(request);
-          if (sessions && request.method === 'DELETE') return endSession(request);
-          // Without the operator's `streaming` option there is no GET stream for server-initiated messages and no
-          // session to end, and the specification's own guidance for a server without that stream is exactly
-          // this: refuse with 405.
-          if (request.method !== 'POST') return { status: 405, headers: [['allow', sessions ? 'GET, POST, DELETE' : 'POST']], body: 'Method not allowed' };
-          // Core's bounded reader: size and media type answer as HTTP errors; any other refusal (bad encoding,
-          // invalid JSON, a duplicate key, nesting too deep, a duplicated Content-Type) is a JSON-RPC parse error.
-          let parsed: unknown;
-          try { const body = readBody(request, { accept: ['json'], maxBytes: MAX_BODY }); parsed = body.kind === 'json' ? body.value : undefined; }
-          catch (error) {
-            if (!(error instanceof ExtensionHttpError)) throw error;
-            if (error.status === 413) return textError(413, 'Request body is too large');
-            if (error.status === 415) return textError(415, 'MCP requests require application/json');
-            return rpc(200, null, { error: { code: -32700, message: 'Parse error' } });
-          }
-          if (Array.isArray(parsed)) return rpc(200, null, { error: { code: -32600, message: 'JSON-RPC batching is not supported' } });
-          const message = parseEnvelope(parsed);
-          if (!message) return rpc(200, null, { error: { code: -32600, message: 'Invalid Request' } });
-          // Every message after initialize (requests and notifications alike) carries the negotiated
-          // revision in MCP-Protocol-Version; an unsupported one is refused with 400, as the
-          // 2025-06-18 and 2025-11-25 transports specify. initialize itself negotiates from params.protocolVersion.
-          if (message.method !== 'initialize' && !supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
-          const isNotification = !own(message as unknown as Record<string, unknown>, 'id');
-          if (!sessions) {
-            if (isNotification) return { status: 202, headers: [] };
-            return rpc(200, message.id as JsonRpcId, await dispatch(server, message.method, message.params, options, request));
-          }
-          // Streaming on: every message but initialize names its session (400 without one, 404 for an unknown one).
-          let session: McpSession | undefined;
-          if (message.method !== 'initialize') {
-            const found = requestSession(sessions, request);
-            if ('refusal' in found) return found.refusal;
-            session = found.session;
-          }
-          if (isNotification) {
-            if (message.method === 'notifications/cancelled' && session && isRecord(message.params) && own(message.params, 'requestId')) {
-              session.inflight.get(inflightKey(message.params.requestId))?.abort('cancelled');
-            }
-            return { status: 202, headers: [] };
-          }
-          const id = message.id as JsonRpcId;
-          if (message.method === 'initialize') {
-            const outcome = await dispatch(server, message.method, message.params, options, request);
-            const created = sessions.create(ownerOf(request));
-            const response = rpc(200, id, outcome);
-            return { ...response, headers: [...response.headers, ['mcp-session-id', created.id]] };
-          }
-          const live = session!;
-          const cancel = new AbortController();
-          const signal = AbortSignal.any([cancel.signal, live.ended.signal, ...(request.signal ? [request.signal] : [])]);
-          const key = inflightKey(id);
-          live.inflight.set(key, cancel);
-          const settle = (): void => { if (live.inflight.get(key) === cancel) live.inflight.delete(key); };
-          const meta = isRecord(message.params) && isRecord(message.params._meta) ? message.params._meta : undefined;
-          const progressToken = meta && (typeof meta.progressToken === 'string' || (typeof meta.progressToken === 'number' && Number.isInteger(meta.progressToken))) ? meta.progressToken : undefined;
-          if (message.method === 'tools/call' && progressToken !== undefined && acceptsEventStream(request)) {
-            const stream = progressStream({ signal, keepAliveMs: streaming!.keepAliveMs, progressToken, run: async progress => {
-              try { return { jsonrpc: JSONRPC_VERSION, id, ...await dispatch(server, message.method, message.params, options, request, { signal, progress }) }; }
-              finally { settle(); }
-            } });
-            return { status: 200, headers: [['content-type', 'text/event-stream']], stream };
-          }
-          try { return rpc(200, id, await dispatch(server, message.method, message.params, options, request, { signal })); }
-          finally { settle(); }
+          // The official SDK serves the request: it answers the JSON-RPC exchange (and 405 to GET/DELETE, which a
+          // stateless server has no use for) from a fresh server bound to this one request.
+          const url = new URL(request.path, context.origin);
+          url.search = request.query.toString();
+          const init: RequestInit = { method: request.method, headers: request.headers, ...(request.signal ? { signal: request.signal } : {}) };
+          if (request.method !== 'GET' && request.method !== 'DELETE') init.body = Buffer.from(request.body);
+          const handler = createMcpHandler(() => serverFor(server, options, request, streaming), { maxRequestBodySize: MAX_BODY });
+          const response = await handler.fetch(new Request(url, init));
+          const headers: [string, string][] = [...response.headers].filter(([name]) => name !== 'content-length');
+          if (streaming && response.body && response.headers.get('content-type')?.startsWith('text/event-stream')) return { status: response.status, headers, stream: chunks(response.body) };
+          return { status: response.status, headers, body: new Uint8Array(await response.arrayBuffer()) };
         },
       };
     },
   };
-  return registration;
 }
