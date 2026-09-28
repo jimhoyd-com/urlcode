@@ -6,8 +6,8 @@ import {errorRules} from '../packages/core/src/explain-error-rules.ts';
 import {explainError,listAgentCatalog} from '../packages/core/src/agent-context.ts';
 import {planFeature} from '../packages/core/src/feature-plan.ts';
 
-// Tool names this package tells an agent to call next must be canonical tools that core's
-// `urlcode mcp` defines, never a pre-#590 legacy alias that disappears when aliases are removed (#681).
+// Tool names this package tells an agent to call next must be tools core's `urlcode mcp` lists; the pre-#590
+// aliases are gone, so every read tool is canonical (#681).
 const canonical=new Set(canonicalMcpToolNames);
 const legacy=new Set(mcpToolInventory.read.filter(name=>!canonical.has(name)));
 
@@ -18,8 +18,8 @@ function assertCanonical(names:readonly string[],where:string):void {
  }
 }
 
-test('the canonical tool list excludes every legacy alias and includes the host-file tool',()=>{
- assert.ok(legacy.has('capabilities'));
+test('every read tool is canonical and the list includes the host-file tool',()=>{
+ assert.equal(legacy.size,0);assert.ok(!canonical.has('capabilities'));
  assert.ok(canonical.has('list_capabilities'));
  assert.ok(canonical.has('get_extensions'));
 });

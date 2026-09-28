@@ -304,7 +304,7 @@ assistant file-write, guest-execution, deployment or network authority.
 ## Project review
 
 `urlcode review [--project DIR] [--target T] [--host-file F] [--policy F] [--json]` (MCP
-`review {deployTarget?}`, still reachable as `review_project` for one release)
+`review {deployTarget?}`)
 is an opt-in, read-only static review of the
 compiled project plus its own `function`/`middleware` source, for the narrow,
 agent-facing question "which of this generated code looks like avoidable
@@ -687,16 +687,13 @@ after `explain_error` (see [fixture suggestions](#fixture-suggestions) and
 [YAML change summaries](#yaml-change-summaries)). None of them executes project
 code: running `tests/requests.json` executes the project's trusted functions,
 middleware and extensions, so `run_tests` is offered only in
-[authoring mode](#authoring-mode). `tools/list` additionally lists the
-pre-#590 name of every renamed tool (`capabilities`, `import_preview`,
-`export_preview`, `recipes_list`, `recipes_show`, `review_project`) as a
-working, deprecated alias of its canonical tool — same input schema, same
-handler, own "Deprecated alias for ..." description — kept for one release so
-an already-configured client is not broken by the rename. `inspect`,
+[authoring mode](#authoring-mode). The pre-#590 tool names (`capabilities`,
+`import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
+`review_project`) and the old `target` spelling of `deployTarget` are gone:
+calling one is an unknown tool or an unknown argument. `inspect`,
 `list_capabilities`, `get_context`, `plan_feature` and `review` accept a
-`deployTarget` argument (self-hosted/cloudflare/aws/vercel/static); their old
-`target` argument name still works but is deprecated, kept distinct from
-`explain`'s unrelated `target` (the path it explains). Every successful
+`deployTarget` argument (self-hosted/cloudflare/aws/vercel/static), distinct
+from `explain`'s unrelated `target` (the path it explains). Every successful
 `tools/call` reply also carries `structuredContent` mirroring the JSON already
 in its text content, for a client that reads structured results directly. The skill,
 documentation and example tools read only a fixed package-owned manifest, plus, for `search_docs`, the
@@ -771,7 +768,7 @@ paths and conflicts) and returns `matched` (the family, or `null`), `guidance`,
 `nextTools` and, for a schema or extension configuration error, the decoded
 `location`. `plan_feature` lists `get_extensions` in
 `next` only when a host file is loaded. Tools named in `nextTools` and `next`
-are always canonical names, never a deprecated alias.
+are always tool names this server lists.
 
 ## Bounded documentation search
 
@@ -995,8 +992,8 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty-five read
-tools above (thirty-six with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds seven tools to the twenty-nine read
+tools above (thirty with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 
