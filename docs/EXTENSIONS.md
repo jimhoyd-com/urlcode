@@ -1191,9 +1191,11 @@ running core pins.
 Beside `addons.json`, core's `dist/` carries `addon-catalog.json`: agent
 discovery metadata for every extension and artifact of the same release, built
 from each add-on's `urlcode.json` descriptor. Each entry has the add-on's
-`name`, `kind`, `package`, `version`, `description`, `requires` and, when the
-descriptor declares one, its `agent` block (a description and references whose
-`path` is relative to that add-on's package):
+`name`, `kind`, `package`, `version`, `description`, `requires`, for an
+artifact that lists them its [`documents`](#artifact-documents) (each `path`
+and `mediaType` only, never contents, at most 32) and, when the descriptor
+declares one, its `agent` block (a description and references whose `path` is
+relative to that add-on's package):
 
 ```json
 {
@@ -1208,6 +1210,7 @@ descriptor declares one, its `agent` block (a description and references whose
       "version": "<core version>",
       "description": "…",
       "requires": [],
+      "documents": [{ "path": "schemas/config.json", "mediaType": "application/schema+json" }, "…"],
       "agent": { "description": "…", "references": [{ "name": "configuration schema", "description": "…", "path": "schemas/config.json" }] }
     }
   ]
@@ -1222,8 +1225,10 @@ build refuses a core tarball whose catalog differs from the descriptors inside
 the add-on tarballs it pins. `readAddonCatalog()` (`@jimhoyd/urlcode` and
 `@jimhoyd/urlcode/agent-context`) and MCP `get_release_addon_catalog` return it;
 reading it imports, downloads, installs and activates nothing, so a hosted
-authoring service can present every add-on's agent metadata from its pinned
-core without installing the add-ons.
+authoring service can present every add-on's agent metadata, and which standard
+documents each artifact ships, from its pinned core without installing the
+add-ons. Reading a document's contents still needs the installed artifact
+(`urlcode artifacts inspect`).
 
 The catalog is release-wide discovery. An add-on appearing in it is not
 evidence that a project installed or activated it. What a project has installed
@@ -1419,7 +1424,12 @@ against its descriptor's schemas, and `remove` takes it out by name.
 kind `artifact`, a name that a first-party add-on of this core already has,
 a `@jimhoyd/urlcode*` package (those install from core's pins), two installed
 packages providing the same name, and an independent extension whose
-`requires` are not installed. Installing a
+`requires` are not installed. When two installed packages still provide one
+name (for example after editing `package.json` by hand), the first by package
+name is kept and the problem is reported once: by `extensions list` when the
+package set aside is an extension, by `artifacts list` when it is an artifact.
+An unreadable descriptor is reported by the list of the kind it claims, or by
+`extensions list` when it claims none. Installing a
 package runs no lifecycle script, but its `./extension` entry is trusted
 operator code once `host.mjs` imports it: review it like any other code you
 deploy.
@@ -1729,11 +1739,24 @@ for each one:
 - `sha256` and `bytes` of the file as installed;
 - `refs`: every `$ref` in an OpenAPI or JSON Schema document resolved inside
   the package, as `{at, ref, target}` with `at` the JSON pointer of the object
-  carrying it and `target` `<package path>#<JSON pointer>`. A same-document
-  `#/…` pointer and a relative file reference are resolved against the
-  referring file's location in the package (a `$id` base is not applied); a
-  package file reached only through a reference appears under
+  carrying it and `target` `<package path>#<JSON pointer>`. A relative
+  reference resolves against its base: the referring file's location in the
+  package, or the `$id` of the nearest enclosing schema that declares one
+  (JSON Schema documents and OpenAPI 3.1 Schema Objects; Swagger 2.0 and
+  OpenAPI 3.0 schemas have no `$id`). A relative `$id` keeps the base inside
+  the package, and one that would leave it makes every reference relative to
+  it a `path-escape`; an absolute `$id` makes the references relative to it
+  remote, so they are reported and never fetched. A reference to a schema
+  resource the same file identifies (the file itself, or an embedded schema's
+  `$id`) resolves to that subschema, and a same-document `#/…` pointer to the
+  enclosing resource. A plain-name `$id` such as `#pet` is an anchor and sets no
+  base. A package file reached only through a reference appears under
   `referencedFiles` with its own digest and references;
+- only positions that can hold a reference are read: a `$ref` or `$id` inside
+  instance data (JSON Schema `const`, `enum`, `default`, `example` and
+  `examples`; an OpenAPI `example`, an Example Object's `value`, or a Swagger
+  2.0 response's `examples`) is data, not a reference. A property, definition
+  or component that is merely named like one of those keywords is still read;
 - `diagnostics`, each with a `code`, `severity`, the `at` pointer and the
   `ref` as written: `remote-ref` (warning: a reference with a scheme or
   authority, listed and never fetched), `unsupported-ref` (warning: a

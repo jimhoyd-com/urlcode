@@ -82,7 +82,74 @@ const utf8 = new TextDecoder('utf-8', { fatal: true });
 const refKind = (mediaType: ArtifactMediaType | null): boolean => mediaType === null || mediaType === 'application/vnd.oai.openapi' || mediaType === 'application/vnd.oai.openapi+json' || mediaType === 'application/schema+json';
 
 interface Occurrence { file: string; at: string; ref: string; target?: { file: string; pointer: string } }
-interface Loaded { record: InspectedFile; data?: unknown; follows: boolean }
+/**
+ * How a value is read while looking for references (#857): only positions that can hold a reference are walked, so a
+ * `$ref` or `$id` key inside example, default, const or enum data is data, not a reference. `schema` is a JSON Schema
+ * object; `openapi` any other OpenAPI object; a `-map` mode is a map whose keys are names and whose values have the
+ * element mode; `example` is an OpenAPI Example Object, whose `value` is data.
+ */
+type Mode = 'schema' | 'schema-map' | 'openapi' | 'openapi-map' | 'examples-map' | 'example';
+/** `swagger-2` and `openapi-3.0` schemas have no `$id`, and Swagger 2.0's response `examples` is data, not Example Objects. */
+type Dialect = 'swagger-2' | 'openapi-3.0' | 'current';
+/**
+ * The base a relative reference resolves against: a path inside the package (the file itself, or a relative `$id`), a
+ * remote URI (an absolute `$id`, whose relative references are therefore remote too) or a refused `$id`.
+ */
+type Base = { kind: 'local'; path: string } | { kind: 'remote'; uri: string } | { kind: 'refused'; code: 'path-escape' | 'unresolved-ref'; message: string };
+interface Found { at: string; ref: string; base: Base; resource: string; mode: Mode }
+interface Loaded { record: InspectedFile; data?: unknown; follows: boolean; mode?: Mode; dialect?: Dialect }
+
+/** JSON Schema keywords whose values are instance data, never subschemas. */
+const dataKeywords = new Set(['const', 'enum', 'default', 'example', 'examples']);
+/** JSON Schema keywords whose values map names to subschemas. */
+const schemaMaps = new Set(['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas', 'dependencies']);
+/** OpenAPI fields whose values map names (paths, status codes, media types, component names) to OpenAPI objects. */
+const openapiMaps = new Set(['paths', 'webhooks', 'callbacks', 'responses', 'content', 'headers', 'links', 'encoding', 'variables', 'securitySchemes', 'requestBodies', 'parameters', 'pathItems']);
+const elementMode = (mode: Mode): Mode => mode === 'schema-map' ? 'schema' : mode === 'openapi-map' ? 'openapi' : mode === 'examples-map' ? 'example' : mode;
+/** The mode of `key`'s value inside an object read in `mode`, or null when that value is data and is not walked. */
+function childMode(mode: Mode, key: string, value: unknown, dialect: Dialect): Mode | null {
+  switch (mode) {
+    case 'schema': return dataKeywords.has(key) ? null : schemaMaps.has(key) ? 'schema-map' : 'schema';
+    case 'example': return key === 'value' ? null : 'openapi';
+    case 'openapi':
+      if (key === 'example') return null;
+      if (key === 'examples') return Array.isArray(value) || dialect === 'swagger-2' ? null : 'examples-map';
+      if (key === 'schema') return 'schema';
+      if (key === 'schemas' || key === 'definitions') return 'schema-map';
+      return openapiMaps.has(key) ? 'openapi-map' : 'openapi';
+    default: return elementMode(mode);
+  }
+}
+const absoluteUri = (uri: string): boolean => /^[A-Za-z][A-Za-z0-9+.-]*:/.test(uri) || uri.startsWith('//');
+const directoryOf = (path: string): string => path.endsWith('/') ? path.slice(0, -1) || '.' : posix.dirname(path);
+/** Where the fragment-free URI reference `uri` points from `base`; a local base never yields a path outside the package. */
+function resolveUri(base: Base, uri: string): Base {
+  if (absoluteUri(uri)) {
+    try { return { kind: 'remote', uri: new URL(uri, base.kind === 'remote' ? base.uri : undefined).href }; } catch { return { kind: 'remote', uri }; }
+  }
+  if (base.kind === 'refused') return base;
+  if (base.kind === 'remote') {
+    try { return { kind: 'remote', uri: new URL(uri, base.uri).href }; } catch { return { kind: 'refused', code: 'unresolved-ref', message: `the reference cannot be resolved against the $id base ${clip(base.uri)}` }; }
+  }
+  let path: string;
+  try { path = decodeURIComponent(uri); } catch { return { kind: 'refused', code: 'unresolved-ref', message: 'the reference is not a valid URI reference' }; }
+  const escape: Base = { kind: 'refused', code: 'path-escape', message: 'the reference leaves the package directory; it was not read' };
+  if (path.includes('\\') || path.includes('\0') || path.startsWith('/')) return escape;
+  const joined = posix.normalize(posix.join(directoryOf(base.path), path));
+  return joined === '..' || joined.startsWith('../') ? escape : { kind: 'local', path: joined };
+}
+/** The base a schema's `$id` sets, or undefined when it sets none (not a string, empty, or a plain-name anchor such as `#pet`). */
+function rebase(base: Base, id: string): Base | undefined {
+  const hash = id.indexOf('#');
+  if (hash >= 0 && hash < id.length - 1) return undefined;
+  const uri = hash < 0 ? id : id.slice(0, hash);
+  if (uri === '') return undefined;
+  const next = resolveUri(base, uri);
+  if (next.kind !== 'refused' || base.kind === 'refused') return next;
+  return { ...next, message: `the enclosing $id ${clip(uri)} ${next.code === 'path-escape' ? 'leaves the package directory' : 'is not a usable URI reference'}; references relative to it were not read` };
+}
+const baseKey = (base: Base): string | undefined => base.kind === 'local' ? `package:${base.path}` : base.kind === 'remote' ? base.uri : undefined;
+const dialectOf = (openapi: string | undefined): Dialect | undefined => openapi === undefined ? undefined : /^2(?:\.|$)/.test(openapi) ? 'swagger-2' : /^3\.0(?:\.|$)/.test(openapi) ? 'openapi-3.0' : 'current';
 
 /** Whether an RFC 6901 pointer names a value inside parsed JSON/YAML data. */
 function pointerExists(data: unknown, pointer: string): boolean {
@@ -97,29 +164,51 @@ function pointerExists(data: unknown, pointer: string): boolean {
   return true;
 }
 
-/** Every `$ref` string in `data` with the pointer of the object carrying it, in document order, bounded by nesting depth. */
-function collectRefs(data: unknown, maxNesting: number): { refs: { at: string; ref: string }[]; tooDeep: boolean } {
-  const refs: { at: string; ref: string }[] = [], stack: { value: unknown; at: string; depth: number }[] = [{ value: data, at: '', depth: 0 }];
+/**
+ * Every `$ref` string in `data` that sits where a reference can, in document order and bounded by nesting depth, with
+ * the pointer of the object carrying it, its base and the schema resource enclosing it; plus each schema resource the
+ * file identifies (the file's own path, and the `$id` of every current-dialect schema), keyed by resolved URI.
+ */
+function collectRefs(data: unknown, file: string, mode: Mode, dialect: Dialect, maxNesting: number): { refs: Found[]; resources: Map<string, string>; tooDeep: boolean } {
+  const refs: Found[] = [], resources = new Map<string, string>([[`package:${file}`, '']]);
+  const stack: { value: unknown; at: string; depth: number; mode: Mode; base: Base; resource: string }[] = [{ value: data, at: '', depth: 0, mode, base: { kind: 'local', path: file }, resource: '' }];
   let tooDeep = false;
   while (stack.length) {
-    const { value, at, depth } = stack.pop()!;
+    const item = stack.pop()!;
+    const { value, at, depth } = item;
+    let { base, resource } = item;
     if (typeof value !== 'object' || value === null) continue;
     if (depth > maxNesting) { tooDeep = true; continue; }
-    const children: { value: unknown; at: string; depth: number }[] = [];
-    if (Array.isArray(value)) value.forEach((item, index) => children.push({ value: item, at: `${at}/${index}`, depth: depth + 1 }));
-    else for (const [key, item] of Object.entries(value)) {
-      if (key === '$ref' && typeof item === 'string') refs.push({ at, ref: item });
-      else children.push({ value: item, at: `${at}/${escapePointer(key)}`, depth: depth + 1 });
+    const children: typeof stack = [];
+    if (Array.isArray(value)) value.forEach((child, index) => children.push({ value: child, at: `${at}/${index}`, depth: depth + 1, mode: elementMode(item.mode), base, resource }));
+    else {
+      const object = value as Record<string, unknown>, map = item.mode.endsWith('-map');
+      if (item.mode === 'schema' && dialect === 'current' && typeof object.$id === 'string') {
+        const next = rebase(base, object.$id);
+        if (next) {
+          base = next; resource = at;
+          const key = baseKey(next);
+          if (key !== undefined && !resources.has(key)) resources.set(key, at);
+        }
+      }
+      for (const [key, child] of Object.entries(object)) {
+        if (!map && key === '$ref' && typeof child === 'string') { refs.push({ at, ref: child, base, resource, mode: item.mode }); continue; }
+        const next = childMode(item.mode, key, child, dialect);
+        if (next) children.push({ value: child, at: `${at}/${escapePointer(key)}`, depth: depth + 1, mode: next, base, resource });
+      }
     }
     stack.push(...children.reverse());
   }
-  return { refs, tooDeep };
+  return { refs, resources, tooDeep };
 }
 
 /**
  * Inspects the listed `documents` of the package at `directory`, offline. Relative `$ref`s in OpenAPI and JSON Schema
- * documents are resolved against the referring file's location inside the package (a `$id` base is not applied);
- * any reference with a scheme or authority is reported and never fetched.
+ * documents are resolved against the enclosing base: the referring file's location inside the package, or the `$id`
+ * of an enclosing current-dialect schema (a relative `$id` stays inside the package; an absolute remote one makes the
+ * references relative to it remote). A reference to a schema resource the same file identifies resolves there; any
+ * other reference that is remote is reported and never fetched. `$ref` keys inside example, default, const and enum
+ * data are data, not references.
  */
 export async function inspectArtifactDocuments(directory: string, documents: readonly ArtifactDocument[], limits = artifactInspectionLimits): Promise<{ documents: InspectedFile[]; referencedFiles: InspectedFile[] }> {
   const root = await realpath(directory);
@@ -196,7 +285,11 @@ export async function inspectArtifactDocuments(directory: string, documents: rea
       record.kind = openapi !== undefined ? 'openapi' : schema !== undefined ? 'json-schema' : json ? 'json' : 'yaml';
       record.version = openapi !== undefined ? clip(openapi) : schema === undefined ? null : clip(schema);
     } else record.kind = json ? 'json' : 'yaml';
-    return remember(path, record, refKind(declared), data);
+    const item = remember(path, record, refKind(declared), data);
+    // A plain JSON/YAML file reached through a reference takes its mode and dialect from the first reference to it.
+    if (record.kind === 'openapi') { item.mode = 'openapi'; item.dialect = dialectOf(openapi) ?? 'current'; }
+    else if (record.kind === 'json-schema') { item.mode = 'schema'; item.dialect = 'current'; }
+    return item;
   };
 
   const occurrences: Occurrence[] = [];
@@ -208,9 +301,9 @@ export async function inspectArtifactDocuments(directory: string, documents: rea
   // Breadth first over files: each file's references are classified once; a relative one may add a file to read.
   for (let index = 0; index < queue.length; index++) {
     const file = queue[index]!, item = loaded.get(file)!;
-    const { refs, tooDeep } = collectRefs(item.data, limits.maxNesting);
+    const { refs, resources, tooDeep } = collectRefs(item.data, file, item.mode ?? 'schema', item.dialect ?? 'current', limits.maxNesting);
     if (tooDeep) diagnose(item.record, { code: 'limit', severity: 'error', message: `${file} nests deeper than ${limits.maxNesting} levels; deeper references were not examined` });
-    for (const { at, ref } of refs) {
+    for (const { at, ref, base, resource, mode } of refs) {
       if (refCount >= limits.maxRefs) {
         if (!refLimitReported) diagnose(item.record, { code: 'limit', severity: 'error', message: `more than ${limits.maxRefs} references; the rest were not examined` });
         refLimitReported = true;
@@ -220,17 +313,20 @@ export async function inspectArtifactDocuments(directory: string, documents: rea
       const occurrence: Occurrence = { file, at, ref };
       occurrences.push(occurrence);
       const fail = (code: DiagnosticCode, severity: 'error' | 'warning', message: string): void => diagnose(item.record, { code, severity, at, ref, message });
-      if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(ref) || ref.startsWith('//')) { fail('remote-ref', 'warning', 'remote reference: listed, never fetched'); continue; }
       const hash = ref.indexOf('#'), pathPart = hash < 0 ? ref : ref.slice(0, hash), fragment = hash < 0 ? '' : ref.slice(hash + 1);
-      let pointer: string, relativePath: string;
-      try { pointer = decodeURIComponent(fragment); relativePath = decodeURIComponent(pathPart); }
-      catch { fail('unresolved-ref', 'error', 'the reference is not a valid URI reference'); continue; }
+      // Where the reference points: a schema resource of this file (a fragment-only reference means the enclosing
+      // one), else a URI resolved against the enclosing base, which is the file itself unless a `$id` set another.
+      const location = pathPart === '' ? undefined : resolveUri(base, pathPart);
+      const embedded = location === undefined ? resource : resources.get(baseKey(location) ?? '');
+      if (embedded === undefined && location?.kind === 'remote') { fail('remote-ref', 'warning', absoluteUri(pathPart) ? 'remote reference: listed, never fetched' : `resolves against a remote $id base to ${clip(location.uri)}: listed, never fetched`); continue; }
+      if (embedded === undefined && location?.kind === 'refused') { fail(location.code, 'error', location.message); continue; }
+      let pointer: string;
+      try { pointer = decodeURIComponent(fragment); } catch { fail('unresolved-ref', 'error', 'the reference is not a valid URI reference'); continue; }
       if (pointer !== '' && !pointer.startsWith('/')) { fail('unsupported-ref', 'warning', 'a plain-name fragment ($anchor) is not resolved; use a JSON pointer'); continue; }
       let target = file;
-      if (relativePath !== '') {
-        if (relativePath.includes('\\') || relativePath.includes('\0') || relativePath.startsWith('/')) { fail('path-escape', 'error', 'the reference leaves the package directory; it was not read'); continue; }
-        const joined = posix.normalize(posix.join(posix.dirname(file), relativePath));
-        if (joined === '..' || joined.startsWith('../')) { fail('path-escape', 'error', 'the reference leaves the package directory; it was not read'); continue; }
+      if (embedded !== undefined) pointer = embedded + pointer;
+      else if (location?.kind === 'local') {
+        const joined = location.path;
         if (!packageDataPath.test(joined) || !/\.(?:json|ya?ml)$/.test(joined)) { fail('unresolved-ref', 'error', `${joined} is not a JSON or YAML file path inside the package`); continue; }
         const before = item.record.diagnostics.length;
         const reached = await load(joined, null, item.record);
@@ -243,6 +339,8 @@ export async function inspectArtifactDocuments(directory: string, documents: rea
           if (reached?.record.sha256 && !records.has(joined)) records.set(joined, reached.record);
           continue;
         }
+        reached.mode ??= mode === 'schema' ? 'schema' : 'openapi';
+        reached.dialect ??= item.dialect ?? 'current';
         if (!records.has(joined)) { records.set(joined, reached.record); if (!queue.includes(joined)) queue.push(joined); }
         target = joined;
       }

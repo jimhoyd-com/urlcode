@@ -64,7 +64,8 @@ The tooling API consolidates authoring operations without starting a runtime:
 - `readAddonCatalog()` (from `@jimhoyd/urlcode/agent-context` and
   `@jimhoyd/urlcode`) returns the release-wide add-on agent catalog, MCP
   `get_release_addon_catalog`: each add-on's package, version, description,
-  `requires` and descriptor agent references, read from core's own
+  `requires`, an artifact's listed documents (path and media type only) and
+  descriptor agent references, read from core's own
   `dist/addon-catalog.json` without importing or installing any add-on.
 - `inspectExtensions({project, hostFile?})` reports each operator-registered
   extension's name, contract version, targets, credential headers, configuration
@@ -712,7 +713,8 @@ behavior or reaching into `dist/agent-context.js`; see
 [TypeScript](TYPESCRIPT.md).
 `get_release_addon_catalog` returns the release-wide add-on catalog shipped in
 core's `dist/addon-catalog.json`: every extension and artifact of this core's
-release with its package, version, description, `requires` and, when its
+release with its package, version, description, `requires`, an artifact's
+listed `documents` (path and media type, never contents) and, when its
 descriptor declares one, its agent references (each `path` is relative to that
 add-on's package). It is [release-wide discovery](EXTENSIONS.md#the-release-wide-agent-catalog),
 not evidence that the project installed or activated an add-on; installed
