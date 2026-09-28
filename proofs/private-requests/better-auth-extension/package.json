@@ -1,0 +1,10 @@
+{
+  "name": "@example/urlcode-better-auth",
+  "version": "0.1.0",
+  "description": "Operator adapter: serves an operator-configured Better Auth instance as a URLCode extension (#843 proof).",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": { "./extension": "./extension.mjs" },
+  "peerDependencies": { "@jimhoyd/urlcode": "*", "better-auth": "1.7.6" }
+}

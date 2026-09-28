@@ -28,7 +28,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       return undefined;
     }
     case 'add': {
-      if (!names.length) throw new ConfigError(`Use urlcode ${command} add <name> [<name>…]${kind === 'extension' ? ' [--example] [--ack <extension>:<id>]' : ''} [--site directory]`);
+      if (!names.length) throw new ConfigError(`Use urlcode ${command} add <name> [<name>…]${kind === 'extension' ? ' (a released name, or an npm package spec or local tarball of an independent extension) [--example] [--ack <extension>:<id>]' : ''} [--site directory]`);
       const result = await addAddons(site, kind, names, { acknowledgements: values.ack, example: values.example });
       print(values.json ? { event: `${kind}s-added`, ...result } : [
         result.added.length ? `Added ${result.added.join(', ')}${result.development ? ' (development install from local sources, not pinned)' : ''}.` : `${names.join(', ')} already installed; nothing to do.`,
@@ -57,7 +57,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       if (values.json) print(report);
       else print([
         `${command === 'extensions' ? 'Extensions' : 'Artifacts'} in ${report.site} (core ${report.core}${report.development ? ', development manifest' : ''}):`,
-        ...(report.addons.length ? report.addons.map(item => `  ${item.name} ${item.version ?? '(not installed)'} ${item.pinned ? 'pinned' : 'NOT PINNED'}${item.mode === 'library' ? ' (library: not declared or imported as an extension)' : ''}${item.problems.length ? ` — ${item.problems.length} problem(s)` : ''}`) : ['  none']),
+        ...(report.addons.length ? report.addons.map(item => `  ${item.name} ${item.version ?? '(not installed)'} ${item.independent ? `${item.package}, independent, ${item.pinned ? 'locked by npm integrity' : 'linked, not locked'}` : item.pinned ? 'pinned' : 'NOT PINNED'}${item.mode === 'library' ? ' (library: not declared or imported as an extension)' : ''}${item.problems.length ? ` — ${item.problems.length} problem(s)` : ''}`) : ['  none']),
         ...report.unmanaged.map(name => `  ${name}: not released with this core (unmanaged)`),
         ...report.problems.map(problem => `Problem: ${problem}`),
       ].join('\n') + '\n');

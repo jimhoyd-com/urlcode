@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
-import { clientAddressHeader } from './better-auth-extension.mjs';
+import { clientAddressHeader } from '@example/urlcode-better-auth/extension';
 
 export const basePath = '/api/auth';
 /**

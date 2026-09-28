@@ -16,6 +16,7 @@
     "start": "urlcode serve --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4180 --port 4180"
   },
   "dependencies": {
+    "@example/urlcode-better-auth": "file:./better-auth-extension",
     "better-auth": "1.7.6"
   },
   "devDependencies": {

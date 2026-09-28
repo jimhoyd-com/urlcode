@@ -16,7 +16,7 @@ const withoutBody = new Set(['GET', 'HEAD']);
 /** Refuses before serving when the pinned Better Auth instance cannot be what the declared mount serves. */
 async function checkInstance(auth, paths, activation) {
   const options = auth?.options;
-  if (!options || typeof auth.handler !== 'function' || typeof auth.api?.getSession !== 'function') throw new Error('better-auth: host.mjs must pass the Better Auth instance as betterAuthExtension({auth, paths})');
+  if (!options || typeof auth.handler !== 'function' || typeof auth.api?.getSession !== 'function') throw new Error('better-auth: host.mjs must pass the Better Auth instance as betterAuth({auth, paths})');
   if (!paths.size || [...paths].some(path => typeof path !== 'string' || !/^\/[a-z0-9/-]+$/.test(path))) throw new Error('better-auth: paths must list the exact Better Auth paths the mount serves, for example /sign-in/email');
   if (activation.mounts.length !== 1) throw new Error(`better-auth: declare exactly one extension: better-auth mount; found ${activation.mounts.length}`);
   const [mount] = activation.mounts;

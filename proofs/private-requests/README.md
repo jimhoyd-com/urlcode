@@ -23,7 +23,7 @@ business rule. It is not a starter, a supported extension or a release claim.
 
 | Path | Owner | What it is |
 |---|---|---|
-| `operator/better-auth-extension.mjs` | operator | The adapter: one mount, one principal gate, one capability |
+| `better-auth-extension/` | operator | The adapter as an independent package, `@example/urlcode-better-auth`: one mount, one principal gate, one capability, and its `urlcode.json` descriptor |
 | `operator/auth.mjs` | operator | Better Auth options: secret, database, enabled endpoints |
 | `host.mjs` | operator | Builds the instance and composes the host |
 | `scripts/setup.mjs` | operator | Forward schema setup and synthetic accounts |
@@ -31,6 +31,14 @@ business rule. It is not a starter, a supported extension or a release claim.
 | `app/urlcode.yaml` | application | Every route, input bound and protection |
 | `app/functions/*.mjs`, `app/lib/requests.mjs` | application | The business rules and parameterized SQL |
 | `client/main.js`, `app/public/` | application | The frontend and its Better Auth client |
+
+The adapter is an ordinary npm package outside the first-party namespace
+(#844). The site depends on it with `file:./better-auth-extension`; core finds
+it by its `urlcode.json` descriptor, so `urlcode extensions list` reports it
+as an independent extension and `urlcode validate --project app` checks the
+declaration against its schemas without loading any host code. A packed
+tarball of it installs with `urlcode extensions add ./<tarball>`, which npm
+locks by sha512.
 
 Provider settings never appear in `app/urlcode.yaml`. The application database
 path reaches the functions only through an `APP_DATABASE` binding, which the

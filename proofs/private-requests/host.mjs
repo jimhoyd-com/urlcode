@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { composeHost } from '@jimhoyd/urlcode/host';
 import { createAuth, dataDirectory, enabledPaths } from './operator/auth.mjs';
-import betterAuthExtension from './operator/better-auth-extension.mjs';
+import betterAuth from '@example/urlcode-better-auth/extension';
 
 const site = fileURLToPath(new URL('.', import.meta.url));
 // Must equal the --origin the CLI is given; the adapter refuses to activate otherwise.
@@ -13,5 +13,5 @@ const origin = process.env.SITE_ORIGIN ?? 'http://localhost:4180';
 process.env.APP_DATABASE ??= join(dataDirectory(site), 'app.db');
 
 export default await composeHost(import.meta.url, [
-  betterAuthExtension({ auth: createAuth({ site, origin }), paths: enabledPaths }),
+  betterAuth({ auth: createAuth({ site, origin }), paths: enabledPaths }),
 ]);
