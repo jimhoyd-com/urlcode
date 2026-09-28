@@ -39,8 +39,10 @@ async function boot(t: test.TestContext, options: Omit<McpExtensionOptions, 'pro
   t.after(() => app.close());
   let id = 0;
   return async (method: string, params: unknown) => {
-    const response = await fetch(`http://127.0.0.1:${app.address.port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }) });
-    return { requestId: response.headers.get('x-request-id')!, json: await response.json() as { result?: Record<string, unknown>; error?: { code: number } } };
+    const response = await fetch(`http://127.0.0.1:${app.address.port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }) });
+    // The SDK answers as Server-Sent Events; the JSON-RPC response is the last message event.
+    const data = (await response.text()).split('\n').filter(line => line.startsWith('data: ')).at(-1)!.slice(6);
+    return { requestId: response.headers.get('x-request-id')!, json: JSON.parse(data) as { result?: Record<string, unknown>; error?: { code: number } } };
   };
 }
 
@@ -49,7 +51,8 @@ test('a tool handler receives the granted route env, the response request id and
   const { requestId, json } = await call('tools/call', { name: 'record', arguments: { message: 'hi' } });
   const payload = JSON.parse((json.result!.content as { text: string }[])[0]!.text) as { input: unknown; context: Record<string, unknown>; frozen: boolean };
   assert.deepEqual(payload.input, { message: 'hi' }, 'the first argument is unchanged: the validated arguments');
-  assert.deepEqual(payload.context, { requestId, env: { SKILLS: 'alpha,beta', REGION: 'eu-west-1' }, server: 'main', tool: 'record', kind: 'tool' });
+  // signal is an AbortSignal (JSON {}); progress is a function (omitted by JSON).
+  assert.deepEqual(payload.context, { requestId, env: { SKILLS: 'alpha,beta', REGION: 'eu-west-1' }, server: 'main', tool: 'record', kind: 'tool', signal: {} });
   assert.equal(payload.frozen, true);
 });
 

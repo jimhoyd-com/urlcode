@@ -53,19 +53,15 @@ The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
 server: named tools with a description, a `request.body.schema`-shaped input
 schema (validated with the exact same bounded validator, reused rather than
 reimplemented) and a trusted project handler loaded the same way as other
-extension hooks. The extension owns JSON-RPC 2.0 framing, protocol version
-negotiation, exact request-id round-tripping and
-`initialize`/`ping`/`tools/list`/`tools/call` dispatch and error codes, and
-it refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks)) and an unsupported `MCP-Protocol-Version`
-(400) before dispatch; project YAML never carries JSON-RPC mechanics. Clients
-connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
-mounted with `auth: true`. The optional Streamable HTTP transport parts
-(`Mcp-Session-Id` sessions, SSE progress for `tools/call`, cancellation and
-the GET stream with `Last-Event-ID` replay) are an operator opt-in,
-`mcp({ streaming: true })`, off by default; on, the registration declares
-[`streams: true`](#streamed-responses), so it serves on the self-hosted server
-only, and its sessions live in memory and do not survive a restart. See the
-[mcp package](../packages/mcp/README.md).
+extension hooks. The official MCP SDK serves the protocol statelessly (JSON-RPC
+over Streamable HTTP, version negotiation, request ids and error codes; #846),
+and the extension refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks))
+before the SDK reads anything; project YAML never carries JSON-RPC mechanics.
+Clients connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
+mounted behind a principal-providing extension. Streamed progress replies are an
+operator opt-in, `mcp({ streaming: true })`, off by default; on, the registration
+declares [`streams: true`](#streamed-responses), so aws refuses it. There are no
+sessions. See the [mcp package](../packages/mcp/README.md).
 
 A project declares versioned configuration and exclusive route mounts:
 

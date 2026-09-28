@@ -12,6 +12,16 @@ import type { McpServerSpec, McpToolCallInfo } from '../src/index.ts';
 const origin = 'https://mcp.example.test';
 type OnToolError = (error: unknown, info: { server: string; tool: string; kind: 'tool' | 'resource' | 'prompt' }) => void;
 
+/**
+ * The SDK answers a 2025-era POST as Server-Sent Events: the JSON-RPC response is the stream's last message event.
+ * Tests assert on that message, so it comes back as a JSON Response with the original status and headers.
+ */
+async function jsonReply(response: Response): Promise<Response> {
+  if (!response.headers.get('content-type')?.startsWith('text/event-stream')) return response;
+  const events = (await response.text()).split('\n').filter(line => line.startsWith('data: ')).map(line => line.slice(6));
+  const headers = new Headers(response.headers);headers.set('content-type', 'application/json');
+  return new Response(events.at(-1) ?? '', { status: response.status, headers });
+}
 /** Boots a server for one project directory, whose files a caller writes before calling `start()`. */
 async function project(t: test.TestContext, aliasOrigins?: string[]) {
   const root = await mkdtemp(join(tmpdir(), 'mcp-test-')); t.after(() => rm(root, { recursive: true, force: true }));
@@ -23,9 +33,9 @@ async function project(t: test.TestContext, aliasOrigins?: string[]) {
     const projectSha256 = await inspectExtensionRevision(dir);
     const app = await startServer({ project: dir, origin, ...(aliasOrigins ? { aliasOrigins } : {}), port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}), ...(onToolCall ? { onToolCall } : {}) })] });
     t.after(() => app.close());
-    const call = (body: unknown, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}${spec.mount}`, {
-      method: 'POST', body: JSON.stringify(body), ...init, headers: { 'content-type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
-    });
+    const call = async (body: unknown, init: RequestInit = {}) => jsonReply(await fetch(`http://127.0.0.1:${app.address.port}${spec.mount}`, {
+      method: 'POST', body: JSON.stringify(body), ...init, headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(init.headers as Record<string, string> | undefined) },
+    }));
     return { call, port: app.address.port };
   };
   return { dir, write, start };
@@ -59,7 +69,7 @@ test('initialize round-trips the requested protocol version and the exact client
 
 test('initialize falls back to the default supported protocol version for an unrecognized request', async t => {
   const { call } = await boot(t);
-  const response = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '1999-01-01' } });
+  const response = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '1999-01-01', capabilities: {}, clientInfo: { name: 'test-client', version: '0.0.1' } } });
   const json = await response.json() as { result: { protocolVersion: string } };
   assert.equal(json.result.protocolVersion, '2025-11-25');
 });
@@ -74,7 +84,7 @@ test('initialize negotiates 2025-11-25 when requested and still echoes every old
   }
 });
 
-test('tools/call arguments that fail the input schema answer a tool execution error under 2025-11-25 and a -32602 protocol error under older revisions', async t => {
+test('tools/call arguments that fail the input schema answer a tool execution error under every revision (SEP-1303)', async t => {
   const calls: string[] = [];
   const p = await project(t);
   await p.write('echo.mjs', 'export default function echo(input) { return { echoed: input.message }; }\n');
@@ -95,9 +105,9 @@ test('tools/call arguments that fail the input schema answer a tool execution er
 
   for (const version of ['2025-06-18', '2025-03-26', '2024-11-05', undefined]) {
     const older = await call(invalid, version ? { headers: { 'mcp-protocol-version': version } } : {});
-    const olderJson = await older.json() as { error: { code: number; data: { issues: string[] } } };
-    assert.equal(olderJson.error.code, -32602, `revision ${version ?? '(no header)'}`);
-    assert.ok(olderJson.error.data.issues.some(issue => issue.includes('missing required property message')));
+    const olderJson = await older.json() as { result: { isError: boolean; content: { text: string }[] } };
+    assert.equal(olderJson.result.isError, true, `revision ${version ?? '(no header)'}`);
+    assert.match(olderJson.result.content[0]!.text, /missing required property message/);
   }
 
   // Protocol errors stay protocol errors under 2025-11-25: an unknown tool and a malformed arguments value.
@@ -148,14 +158,6 @@ test('tools/call runs the declared trusted handler and wraps its return value as
   assert.deepEqual(JSON.parse(json.result.content[0]!.text), { echoed: 'hello there' });
 });
 
-test('tools/call answers -32602 with structured issues for arguments that fail the declared input schema, reusing request.body.schema wording', async t => {
-  const { call } = await boot(t);
-  const response = await call({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'echo', arguments: {} } });
-  const json = await response.json() as { error: { code: number; message: string; data: { issues: string[] } } };
-  assert.equal(json.error.code, -32602);
-  assert.ok(json.error.data.issues.some(issue => issue.includes('missing required property message')), JSON.stringify(json.error.data.issues));
-});
-
 test('tools/call answers -32602 for an unknown tool name', async t => {
   const { call } = await boot(t);
   const response = await call({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'does-not-exist', arguments: {} } });
@@ -179,26 +181,18 @@ test('a thrown handler error becomes a tool result with isError true and a fixed
   assert.match((seen[0]!.error as Error).message, /internal detail/);
 });
 
-test('protocol-level failures: parse error, invalid envelope, batching and unknown method', async t => {
+// The SDK owns the JSON-RPC envelope (#846): malformed input is an HTTP 400 with the JSON-RPC error, before any handler.
+test('protocol-level failures: parse error, invalid envelope and unknown method', async t => {
   const { port } = await boot(t);
-  const raw = (body: string) => fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+  const raw = async (body: string) => jsonReply(await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body }));
   const parseError = await raw('{not json');
-  assert.equal(parseError.status, 200);
-  assert.deepEqual(await parseError.json(), { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
-  // Core's reader refuses a duplicate key and deep nesting before parsing; both are parse errors here.
-  for (const body of ['{"jsonrpc":"2.0","id":1,"id":2,"method":"ping"}', `{"jsonrpc":"2.0","id":1,"method":"ping","params":{"a":${'['.repeat(40)}${']'.repeat(40)}}}`])
-    assert.deepEqual(await (await raw(body)).json(), { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, body.slice(0, 40));
-
+  assert.equal(parseError.status, 400);
+  assert.equal((await parseError.json() as { error: { code: number } }).error.code, -32700);
   const notAnEnvelope = await raw(JSON.stringify({ jsonrpc: '1.0', id: 1, method: 'ping' }));
-  assert.deepEqual(await notAnEnvelope.json(), { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } });
-
-  const batch = await raw(JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'ping' }]));
-  const batchJson = await batch.json() as { error: { code: number } };
-  assert.equal(batchJson.error.code, -32600);
-
+  assert.equal(notAnEnvelope.status, 400);
+  assert.equal((await notAnEnvelope.json() as { error: { code: number } }).error.code, -32600);
   const unknownMethod = await raw(JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'not/a/real/method' }));
-  const unknownJson = await unknownMethod.json() as { error: { code: number } };
-  assert.equal(unknownJson.error.code, -32601);
+  assert.equal((await unknownMethod.json() as { error: { code: number } }).error.code, -32601);
 });
 
 test('transport-level rules: JSON content type required, GET refused, oversized body refused, unknown sub-path 404s', async t => {
@@ -228,33 +222,21 @@ test('transport-level rules: JSON content type required, GET refused, oversized 
 
 test('initialize only advertises resources/prompts capabilities when the server declares at least one of them', async t => {
   const { call } = await boot(t);
-  const response = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+  const response = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test-client', version: '0.0.1' } } });
   const json = await response.json() as { result: { capabilities: Record<string, unknown> } };
   assert.deepEqual(Object.keys(json.result.capabilities).sort(), ['tools']);
 });
 
-test('tools/list paginates a bounded tool set with an opaque cursor, sorted by name, and covers every tool exactly once', async t => {
+test('tools/list returns every declared tool in one list (no pagination)', async t => {
   const p = await project(t);
   await p.write('echo.mjs', 'export default function echo() { return "ok"; }\n');
   const names = Array.from({ length: 25 }, (_, index) => `tool-${String(index).padStart(2, '0')}`);
   const tools = Object.fromEntries(names.map(name => [name, { description: `Tool ${name}`, inputSchema: { type: 'object' as const, additionalProperties: false }, handler: './echo.mjs' }]));
-  const { call } = await p.start({ mount: '/mcp', serverName: 'paged', serverVersion: '1.0.0', tools });
-
-  const first = await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-  const firstJson = await first.json() as { result: { tools: { name: string }[]; nextCursor?: string } };
-  assert.equal(firstJson.result.tools.length, 20);
-  assert.ok(firstJson.result.nextCursor, 'a 25-tool list must not fit on one 20-entry page');
-  assert.deepEqual(firstJson.result.tools.map(tool => tool.name), [...names].sort().slice(0, 20));
-
-  const second = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: { cursor: firstJson.result.nextCursor } });
-  const secondJson = await second.json() as { result: { tools: { name: string }[]; nextCursor?: string } };
-  assert.equal(secondJson.result.tools.length, 5);
-  assert.equal(secondJson.result.nextCursor, undefined, 'the last page carries no nextCursor');
-  assert.deepEqual([...firstJson.result.tools, ...secondJson.result.tools].map(tool => tool.name).sort(), [...names].sort());
-
-  const badCursor = await call({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: { cursor: 'not-a-real-cursor' } });
-  const badCursorJson = await badCursor.json() as { error: { code: number } };
-  assert.equal(badCursorJson.error.code, -32602);
+  const { call } = await p.start({ mount: '/mcp', serverName: 'listed', serverVersion: '1.0.0', tools });
+  const listed = await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+  const json = await listed.json() as { result: { tools: { name: string }[]; nextCursor?: string } };
+  assert.deepEqual(json.result.tools.map(tool => tool.name).sort(), [...names].sort());
+  assert.equal(json.result.nextCursor, undefined);
 });
 
 test('a tool with a declared outputSchema returns structuredContent, validated against that schema', async t => {
@@ -304,7 +286,7 @@ test('resources/list and resources/read serve declared bounded resources, includ
     },
   }, (_error, info) => seen.push({ info }));
 
-  const init = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+  const init = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test-client', version: '0.0.1' } } });
   const initJson = await init.json() as { result: { capabilities: Record<string, unknown> } };
   assert.ok('resources' in initJson.result.capabilities);
   assert.equal('prompts' in initJson.result.capabilities, false);
@@ -324,7 +306,8 @@ test('resources/list and resources/read serve declared bounded resources, includ
 
   const notFound = await call({ jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'app:///nope' } });
   const notFoundJson = await notFound.json() as { error: { code: number; data: { uri: string } } };
-  assert.equal(notFoundJson.error.code, -32002);
+  // The SDK answers a missing resource with -32602, as the current specification requires (it used to be -32002).
+  assert.equal(notFoundJson.error.code, -32602);
   assert.equal(notFoundJson.error.data.uri, 'app:///nope');
 
   const broken = await call({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'app:///broken' } });
@@ -438,7 +421,7 @@ test('MCP-Protocol-Version: an unsupported header on a non-initialize message is
   }
 
   // initialize negotiates from params.protocolVersion, before any revision exists to put in the header.
-  const initialize = await call({ jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, { headers: { 'mcp-protocol-version': '1999-01-01' } });
+  const initialize = await call({ jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test-client', version: '0.0.1' } } }, { headers: { 'mcp-protocol-version': '1999-01-01' } });
   assert.equal(initialize.status, 200);
   assert.equal((await initialize.json() as { result: { protocolVersion: string } }).result.protocolVersion, '2025-06-18');
 });

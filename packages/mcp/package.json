@@ -44,9 +44,13 @@
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
     "@types/node": "26.6.2",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "@modelcontextprotocol/client": "2.1.0"
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": "0.6.5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.1.0"
   }
 }
