@@ -128,8 +128,14 @@ directory and exercises every success and failure case over HTTP:
   directory, and run `npm run setup` there, to keep them apart.
 - The authoring MCP runners pass their child process only `PATH`, so they
   always use the site's own `data/`, whatever `PRIVATE_REQUESTS_DATA` says.
-- The approval transition is one conditional SQL statement. Transactions
-  across several records, idempotent retries and audit evidence belong to
-  [#835](https://github.com/jimhoyd-com/urlcode/issues/835).
+- The approval transition is one conditional SQL statement. The store now
+  declares the same transition (a `by: others` transition with
+  `transitionOnly` state, idempotent retries and audit evidence;
+  [store transitions](../../docs/STORE.md#conditional-transitions-and-result-aware-retries)),
+  but this proof keeps its own tables: the store has no reviewer role, so a
+  reviewer could neither read another owner's request nor list pending ones
+  across owners, and the transition's route would admit every signed-in user.
+  Moving only the approval would split one application's data across two
+  databases and add code rather than remove it.
 - A trusted route's grant digest covers its entry file, not
   `app/lib/requests.mjs`. `urlcode report` still lists that file as changed code.

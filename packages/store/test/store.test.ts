@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { startServer, addRecipe, runProjectTests } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { storeExtension } from '../src/index.ts';
-import { STORE_APPLICATION_ID } from '../src/index.ts';
+import { STORE_APPLICATION_ID, STORE_SCHEMA_VERSION } from '../src/index.ts';
 import { cleanup } from './cleanup.ts';
 import { records, seed } from './rows.ts';
 
@@ -192,20 +192,26 @@ test('keeps declared keys, increments and idempotency claims durable for short l
   assert.equal(redirect.status, 302); assert.equal(redirect.headers.get('location'), 'https://example.test/landing');
   assert.equal((await call('/go/missing', { redirect: 'manual' })).status, 404);
   const delivered = await Promise.all([0, 1].map(() => call(`/api/todos/${first.id}/increment/clicks`, { method: 'POST', headers: { 'idempotency-key': 'webhook-42' } })));
-  assert.deepEqual(delivered.map(response => response.status).sort(), [200, 409], 'concurrent delivery decisions claim one durable key');
+  assert.deepEqual(delivered.map(response => response.status), [200, 200], 'concurrent deliveries with one key both answer 200');
+  assert.deepEqual(delivered.map(response => response.headers.get('idempotency-replayed')).sort(), ['true', null].sort(), 'but exactly one ran; the other replayed it');
   assert.equal(((await (await call(`/api/todos/${first.id}`)).json()) as { clicks: number }).clicks, 2, 'one redirect plus one accepted increment');
   await stop();
   const again = await restart();
   const increment = (key: string) => fetch(`http://127.0.0.1:${again.address.port}/api/todos/${first.id}/increment/clicks`, { method: 'POST', headers: { 'idempotency-key': key } });
   const duplicate = await increment('webhook-42');
-  assert.equal(duplicate.status, 409, 'a retained idempotency claim survives restart');
+  assert.equal(duplicate.status, 200, 'a retained idempotency claim survives restart');
+  assert.equal(duplicate.headers.get('idempotency-replayed'), 'true');
+  assert.equal(((await duplicate.json()) as { clicks: number }).clicks, 2, 'the replay counted nothing');
   assert.equal((await increment('webhook-43')).status, 200);
   assert.equal((await increment('webhook-44')).status, 200);
-  assert.equal((await increment('webhook-42')).status, 200, 'the oldest key is predictably evicted at maxKeys');
+  const evicted = await increment('webhook-42');
+  assert.equal(evicted.headers.get('idempotency-replayed'), null, 'the oldest key is predictably evicted at maxKeys');
+  assert.equal(((await evicted.json()) as { clicks: number }).clicks, 5, 'so the retry ran again');
   const deleted = await fetch(`http://127.0.0.1:${again.address.port}/api/todos/${first.id}`, { method: 'DELETE', headers: { 'idempotency-key': 'delete-1' } });
   assert.equal(deleted.status, 204);
   const deletedAgain = await fetch(`http://127.0.0.1:${again.address.port}/api/todos/${first.id}`, { method: 'DELETE', headers: { 'idempotency-key': 'delete-1' } });
-  assert.equal(deletedAgain.status, 409, 'a retained duplicate is deterministic even after its record was deleted');
+  assert.equal(deletedAgain.status, 204, 'a retried delete replays its 204 even though the record is gone');
+  assert.equal(deletedAgain.headers.get('idempotency-replayed'), 'true');
 });
 
 test('persists across restart in one private database file and refuses data the declaration does not admit', async t => {
@@ -239,7 +245,7 @@ test('refuses a file that is not a store database, or a store schema newer than 
   await assert.rejects(env.start(), /Not a store database/);
   const newer = await privateDatabase();
   newer.exec(`CREATE TABLE later(x); PRAGMA application_id=${STORE_APPLICATION_ID}; PRAGMA user_version=99;`); newer.close();
-  await assert.rejects(env.start(), /schema version 99; this release supports up to 1/);
+  await assert.rejects(env.start(), new RegExp(`schema version 99; this release supports up to ${STORE_SCHEMA_VERSION}`));
 });
 
 test('short-link destination must be required at config time, and legacy data missing it 404s without counting a click (#469)', async t => {
@@ -330,7 +336,9 @@ test('idempotency keys are scoped per network client, not shared across every ca
   const post = (client: string | null) => instance.handle({ method: 'POST', target: '/api/todos', path: '/api/todos', query: new URLSearchParams(), headers: new Headers({ 'content-type': 'application/json', 'idempotency-key': 'shared-key' }), headerCounts: { 'content-type': 1, 'idempotency-key': 1 }, body: new TextEncoder().encode(JSON.stringify({ title: 'x' })), origin, route: '/api/todos/*', mount: '/api/todos', client, requestId: 'test-request', env: {} });
   assert.equal((await post('203.0.113.5')).status, 201);
   assert.equal((await post('198.51.100.7')).status, 201, 'a different client choosing the same Idempotency-Key does not collide with the first');
-  assert.equal((await post('203.0.113.5')).status, 409, 'the same client reusing the key is still rejected');
+  const again = await post('203.0.113.5');
+  assert.equal(again.status, 201);
+  assert.equal(again.headers.find(([name]) => name === 'idempotency-replayed')?.[1], 'true', 'the same client reusing the key gets its first answer replayed');
 });
 
 test('refuses a database inside the project, unknown mounts and missing collections', async t => {

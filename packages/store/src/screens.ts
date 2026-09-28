@@ -50,6 +50,8 @@ export function storeScreens(config: unknown): Record<string, StoreScreen> {
   for (const [path, screen] of Object.entries(screens)) {
     if (!Object.hasOwn(collections, screen.collection)) throw new Error(`Screen ${path}: collection ${screen.collection} is not declared in extensions.store.config.collections`);
     const spec = collections[screen.collection]!;
+    // ui's form would offer fields only a transition may change, and has no transition controls: refused, not half-served.
+    if (Object.values(spec.fields ?? {}).some(field => field.transitionOnly)) throw new Error(`Screen ${path}: collection ${screen.collection} declares transitionOnly fields, which screens do not support yet`);
     result[path] = {
       title: screen.title ?? label(screen.collection),
       collection: { mount: spec.mount, fields: spec.fields, ...(spec.readOnly !== undefined ? { readOnly: spec.readOnly } : {}), ...(spec.sortable ? { sortable: spec.sortable } : {}), ...(spec.filterable ? { filterable: spec.filterable } : {}) },

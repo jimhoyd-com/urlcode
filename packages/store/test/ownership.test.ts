@@ -148,9 +148,15 @@ test('a collection holding owned records refuses to activate as shared, and a ma
 test('idempotency keys are scoped per principal on an owned collection', async t => {
   const { as } = await running(t);
   const post = (who: string) => as(who)('/api/notes', { method: 'POST', headers: { ...json, 'idempotency-key': 'same-key' }, body: JSON.stringify({ title: who }) });
-  assert.equal((await post('alice')).status, 201);
-  assert.equal((await post('bob')).status, 201, 'bob is not told alice used this key');
-  assert.equal((await post('alice')).status, 409);
+  const first = await post('alice');
+  assert.equal(first.status, 201);
+  const bob = await post('bob');
+  assert.equal(bob.status, 201, 'bob is not told alice used this key');
+  assert.equal(bob.headers.get('idempotency-replayed'), null, 'and his request ran');
+  const again = await post('alice');
+  assert.equal(again.status, 201);
+  assert.equal(again.headers.get('idempotency-replayed'), 'true');
+  assert.equal(((await again.json()) as { id: string }).id, ((await first.json()) as { id: string }).id, 'alice gets her own record back');
 });
 
 test('shared collections are unchanged: every caller sees every record and nothing is stamped', async t => {

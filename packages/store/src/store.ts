@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
-import type { CollectionAuditor, CollectionSpec, StoredRecord } from './collection.ts';
+import type { CollectionAuditor, CollectionSpec, Retry, StoredRecord, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
 import { openStoreDatabase } from './database.ts';
 import type { StoreDatabase } from './database.ts';
@@ -161,13 +161,24 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         shortByMount.set(link.mount, { collection, destination: link.destination, clicks: link.clicks });
       }
       for (const collection of collections) if (!context.mounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: route ${collection.spec.mount}/* with extension: store is not declared`);
+      // A `by: others` transition is served on its own mount, so the operator guards who may run it with that route's
+      // policy, separately from the collection's. The store has no roles: the route is the only gate.
+      const transitionByMount = new Map<string, TransitionMount>();
+      for (const collection of collections) for (const [name, transition] of Object.entries(collection.spec.transitions)) {
+        if (transition.mount === undefined) continue;
+        const where = `Collection ${collection.name}: transition ${name}`;
+        if (byMount.has(transition.mount) || shortByMount.has(transition.mount) || transitionByMount.has(transition.mount)) throw new Error(`${where}: mount ${transition.mount} conflicts with another store mount`);
+        if (!context.mounts.includes(transition.mount)) throw new Error(`${where}: route ${transition.mount}/* with extension: store is not declared`);
+        if (!(context.principalMounts ?? []).includes(transition.mount)) throw new Error(`${where}: by: others needs route ${transition.mount}/* guarded by a principal-providing policy (for example auth: true)`);
+        transitionByMount.set(transition.mount, { collection, name });
+      }
       // Fail closed at startup: an owned collection is only served on a mount where a request can carry a principal.
       const principalMounts = context.principalMounts ?? [];
       for (const collection of collections) if (collection.spec.ownership === 'owner' && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: ownership: owner needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
       // Audit retention is shared with auth's privileged events, so writes nobody has to authenticate for must not
       // be able to fill it: an audited collection is only served where a request can carry a principal.
       for (const collection of collections) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
-      for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount)) throw new Error(`Mount ${mount} has no collection or short link declared`);
+      for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount) && !transitionByMount.has(mount)) throw new Error(`Mount ${mount} has no collection, transition or short link declared`);
       const held = await acquire();
       let pending: number;
       try {
@@ -180,7 +191,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       if (pending > 0) attachment?.notify();
       let closed = false;
       return {
-        handle: request => dispatch(byMount, shortByMount, context, request),
+        handle: request => dispatch({ byMount, shortByMount, transitionByMount }, context, request),
         async close() {
           if (closed) return;
           closed = true;
@@ -205,6 +216,8 @@ function opener(database: string): Connection {
 }
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
 interface ShortLink { collection: Collection; destination: string; clicks: string }
+interface TransitionMount { collection: Collection; name: string }
+interface Mounts { byMount: Map<string, Collection>; shortByMount: Map<string, ShortLink>; transitionByMount: Map<string, TransitionMount> }
 
 /** Store's own wording for the codes it has always answered; any other refusal keeps core's code and fixed message. */
 const bodyMessages: Readonly<Record<string, string>> = { unsupported_media_type: 'Send Content-Type: application/json', invalid_json: 'Body is not valid JSON' };
@@ -220,64 +233,109 @@ function bodyOf(request: ExtensionRequest, collection: Collection): unknown {
     throw new StoreError(error.status, error.code, bodyMessages[error.code] ?? error.message);
   }
 }
+/** A JSON value with object keys sorted at every depth: two bodies that differ only in key order fingerprint alike. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
 /**
- * Scoped by caller: the header's raw value is hashed together with `request.client` (the
- * network client the runtime attributes the request to, or a fixed marker when unknown) into one
- * fixed-length opaque key, so two callers who happen to choose the same `Idempotency-Key` string
- * cannot collide — one could otherwise be served the other's cached response. An unauthenticated
- * mount has no stronger caller identity than the network client to scope by; document that limit
- * where the mount is declared, not here.
+ * The request's `Idempotency-Key` scoped to its caller (#835), or `undefined` without the header. The raw value is hashed
+ * with the caller's scope into one fixed-length opaque key: the request principal when there is one (so a signed-in
+ * caller's retry replays from another network address, and another principal's identical key never collides), or the
+ * network client the runtime attributed the request to (a fixed marker when unknown) when there is none. An
+ * unauthenticated mount has no stronger caller identity than that to scope by. A key on a collection without
+ * `idempotency` is a 400 here, before the body is read. `retryOf` adds the request fingerprint: the method, the path
+ * and the canonical JSON body (empty when the request has none); `If-Match` is not part of it.
  */
-function idempotencyKey(request: ExtensionRequest, owner?: string): string | undefined {
+function retryKey(request: ExtensionRequest, collection: Collection): string | undefined {
   const key = request.headers.get('idempotency-key');
   if (key === null) return undefined;
   if ((request.headerCounts['idempotency-key'] ?? 1) !== 1 || key.length < 1 || key.length > 128 || /[\u0000-\u001f\u007f]/.test(key)) throw new StoreError(400, 'invalid_idempotency_key', 'Idempotency-Key must be one header value no longer than 128 characters');
-  // On an owned collection the principal is part of the scope too, so one owner's key never collides with another's.
-  return createHash('sha256').update(`${request.client ?? '<unknown>'}\u0000${key}${owner === undefined ? '' : `\u0000${owner}`}`).digest('hex');
+  collection.idempotencyConfig(key);
+  const principal = request.principal?.id;
+  const scope = principal === undefined ? `client\u0000${request.client ?? '<unknown>'}` : `principal\u0000${principal}`;
+  return hash(`${scope}\u0000${key}`);
+}
+const hash = (text: string): string => createHash('sha256').update(text).digest('hex');
+/** The `Retry` for a scoped key (see `retryKey`) and the request it arrived with. */
+function retryOf(request: ExtensionRequest, key: string | undefined, body?: unknown): Retry | undefined {
+  return key === undefined ? undefined : { key, fingerprint: hash(`${request.method.toUpperCase()}\u0000${request.path}\u0000${body === undefined ? '' : canonical(body)}`) };
 }
 /** A bare `If-Match` value (this store never emits a weak or list-form ETag, so it only accepts
  * exactly one strong quoted value); `undefined` for an absent header, `null` for a malformed one. */
-function ifMatch(request: ExtensionRequest): string | undefined | null {
+function ifMatch(request: ExtensionRequest): string | undefined {
   const value = request.headers.get('if-match');
   if (value === null) return undefined;
-  if ((request.headerCounts['if-match'] ?? 1) !== 1 || !/^"[0-9a-f]{32}"$/.test(value)) return null;
+  if ((request.headerCounts['if-match'] ?? 1) !== 1 || !/^"[0-9a-f]{32}"$/.test(value)) throw new StoreError(400, 'invalid_if_match', 'If-Match must be one strong quoted ETag this store issued');
   return value;
 }
-async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<string, ShortLink>, site: Pick<ExtensionActivation, 'origin' | 'origins'>, request: ExtensionRequest): Promise<HandlerResult> {
-  const short = request.mount === null ? undefined : shortByMount.get(request.mount);
+/** The answer to a write: its status, the record with its ETag (a create adds `Location`), and whether it was replayed. */
+function written(outcome: Written, location?: string): HandlerResult {
+  const replayed: [string, string][] = outcome.replayed ? [['idempotency-replayed', 'true']] : [];
+  if (outcome.record === undefined) return { status: outcome.status, headers: [['cache-control', 'no-store'], ...replayed] };
+  const record = outcome.record;
+  return json(outcome.status, view(record), [...(location === undefined ? [] : [['location', `${location}/${record.id as string}`] as [string, string]]), ['etag', etagOf(record)], ...replayed]);
+}
+/** A transition takes no body: its effect is declared, and the caller supplies only the record, `If-Match` and the key. */
+function noBody(request: ExtensionRequest): void {
+  if (request.body.byteLength > 0) throw new StoreError(400, 'body_not_allowed', 'A transition takes no request body');
+}
+async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin' | 'origins'>, request: ExtensionRequest): Promise<HandlerResult> {
+  const short = request.mount === null ? undefined : mounts.shortByMount.get(request.mount);
   if (short) return dispatchShortLink(short, request);
-  const collection = request.mount === null ? undefined : byMount.get(request.mount);
+  const transition = request.mount === null ? undefined : mounts.transitionByMount.get(request.mount);
+  const collection = transition?.collection ?? (request.mount === null ? undefined : mounts.byMount.get(request.mount));
   if (!collection || request.mount === null) return failure(new StoreError(404, 'not_found', 'No such collection'));
   const rest = request.path.slice(request.mount.length).replace(/^\/+/, '');
   const method = request.method.toUpperCase(), write = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
   const allowed = (methods: string): [string, string][] => [['allow', methods]];
+  const principal = request.principal?.id, actor = principal ?? 'anonymous';
   // An owned collection is scoped to the request principal (core's RIM-EXT-PRINCIPAL-001, set by the route's
   // principal-providing policy). Without one, nothing is served: never a fallback to the shared view.
-  const owner = collection.spec.ownership === 'owner' ? request.principal?.id : undefined, actor = request.principal?.id ?? 'anonymous';
+  const owner = collection.spec.ownership === 'owner' ? principal : undefined;
   if (collection.spec.ownership === 'owner' && owner === undefined) return failure(new StoreError(401, 'principal_required', 'Sign in to use this collection'));
   try {
     // Core's same-origin rule with `whenAbsent: 'admit'`: this write API takes application/json only, which a
     // cross-site form cannot send, and non-browser clients (curl, API keys) send no provenance header at all.
     if (write && !isSameOriginRequest(request, site, { whenAbsent: 'admit' })) throw new StoreError(403, 'forbidden_origin', 'Cross-origin writes are refused');
+    if (transition) {
+      // A transition's own mount serves exactly `POST <mount>/<id>`.
+      if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
+      if (method !== 'POST') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('POST'));
+      noBody(request);
+      const match = ifMatch(request);
+      return written(collection.transition(rest, transition.name, retryOf(request, retryKey(request, collection)), match, principal, actor));
+    }
     if (rest === '') {
-      if (method === 'GET' || method === 'HEAD') {
-        return json(200, listView(collection.list(request.query, owner)));
+      if (method === 'GET' || method === 'HEAD') return json(200, listView(collection.list(request.query, owner)));
+      if (method === 'POST') {
+        const key = retryKey(request, collection), body = bodyOf(request, collection);
+        return written(collection.create(body, retryOf(request, key, body), owner, actor), request.mount);
       }
-      if (method === 'POST') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = collection.create(bodyOf(request, collection), key, owner, actor); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`], ['etag', etagOf(record)]]); }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
     }
     const increment = rest.match(/^([0-9a-f-]{36})\/increment\/([a-z][A-Za-z0-9_]*)$/);
-    if (increment && method === 'POST') return json(200, view(collection.increment(increment[1]!, increment[2]!, idempotencyKey(request, owner), owner, actor)));
+    if (increment && method === 'POST') return written(collection.increment(increment[1]!, increment[2]!, retryOf(request, retryKey(request, collection)), owner, actor));
+    const named = rest.match(/^([0-9a-f-]{36})\/([a-z][a-z0-9_-]{0,63})$/);
+    // Only transitions served on the collection mount; a `by: others` one answers only on its own mount.
+    if (named && UUID.test(named[1]!) && Object.hasOwn(collection.spec.transitions, named[2]!) && collection.spec.transitions[named[2]!]!.mount === undefined) {
+      if (method !== 'POST') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('POST'));
+      noBody(request);
+      const match = ifMatch(request);
+      return written(collection.transition(named[1]!, named[2]!, retryOf(request, retryKey(request, collection)), match, principal, actor));
+    }
     if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
     if (method === 'GET' || method === 'HEAD') { const record = collection.get(rest, owner); return json(200, view(record), [['etag', etagOf(record)]]); }
     const match = ifMatch(request);
-    if (match === null) throw new StoreError(400, 'invalid_if_match', 'If-Match must be one strong quoted ETag this store issued');
-    if (method === 'PUT') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = collection.update(rest, bodyOf(request, collection), true, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
-    if (method === 'PATCH') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = collection.update(rest, bodyOf(request, collection), false, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
-    if (method === 'DELETE') { collection.remove(rest, idempotencyKey(request, owner), match, owner, actor); return { status: 204, headers: [['cache-control', 'no-store']] }; }
+    if (method === 'PUT' || method === 'PATCH') {
+      const key = retryKey(request, collection), body = bodyOf(request, collection);
+      return written(collection.update(rest, body, method === 'PUT', retryOf(request, key, body), match, owner, actor));
+    }
+    if (method === 'DELETE') return written(collection.remove(rest, retryOf(request, retryKey(request, collection)), match, owner, actor));
     return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, PUT, PATCH, DELETE'));
   } catch (error) {
-    if (error instanceof StoreError) return failure(error, error.status === 405 ? allowed(collection.spec.readOnly ? 'GET, HEAD' : 'GET, HEAD, POST, PUT, PATCH, DELETE') : []);
+    if (error instanceof StoreError) return failure(error, error.status === 405 ? allowed(transition ? 'POST' : collection.spec.readOnly ? 'GET, HEAD' : 'GET, HEAD, POST, PUT, PATCH, DELETE') : []);
     return failure(new StoreError(500, 'internal_error', 'The store failed to handle this request')); // never echo the cause
   }
 }

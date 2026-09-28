@@ -114,7 +114,9 @@ test('every write kind emits one event naming the changed fields only; an idempo
   assert.equal(created.status, 201);
   const { id } = await created.json() as { id: string };
   const replay = await call('/api/notes', { method: 'POST', who: 'alice', headers: { 'idempotency-key': 'create-1' }, body: { code: 'first', destination: 'https://example.test/one', title: secret } });
-  assert.equal(replay.status, 409, 'the replay is refused');
+  assert.equal(replay.status, 201, 'the retry replays the first answer');
+  assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+  assert.equal(((await replay.json()) as { id: string }).id, id, 'and names the same record');
   let etag = created.headers.get('etag')!;
   const put = await call(`/api/notes/${id}`, { method: 'PUT', who: 'bob', headers: { 'if-match': etag }, body: { code: 'first', destination: 'https://example.test/two', title: secret } });
   assert.equal(put.status, 200); etag = put.headers.get('etag')!;
