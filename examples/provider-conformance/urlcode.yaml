@@ -30,5 +30,6 @@ routes:
   /urlcode-conformance/body:
     methods: [POST]
     request:
-      body: {maxBytes: 32}
+      body:
+        POST: {maxBytes: 32}
     respond: {text: accepted}

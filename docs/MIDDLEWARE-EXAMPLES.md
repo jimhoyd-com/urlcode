@@ -38,7 +38,7 @@ than that subset are listed at the end.
 | A/B bucket | `bucket.mjs` | Vercel and Cloudflare A/B examples | Cookie parsing, `set-cookie`, replacing a native redirect |
 | Locale redirect | `locale.mjs` | Next.js i18n middleware | `accept-language` ranking, allowlisted languages, `vary` |
 | Referer allowlist | `referer.mjs` | Hotlink protection rules | Gating a native download without reading it |
-| Body handoff | `body.mjs` | `express-validator`, Fastify schemas | Checks declared in `request.body.schema` (422 before the chain runs), single-use body, handoff through `state` |
+| Body handoff | `body.mjs` | `express-validator`, Fastify schemas | Checks declared in `request.body.<METHOD>.schema` (422 before the chain runs), single-use body, handoff through `state` |
 | Debug echo | `debug.mjs` | Request loggers | Inspecting inputs, args and redacted headers when the console is silent |
 
 ## Reading the modules
@@ -61,7 +61,7 @@ Three habits recur and are worth copying:
   the destination they return a new `Response` instead.
 - **Chains compose through `state`.** `/fragile` runs `request-id` before
   `errors`, so the fallback JSON carries the correlation id. `/profile`
-  declares its field rules in `request.body.schema` (with
+  declares its field rules in `request.body.<METHOD>.schema` (with
   `additionalProperties: false`), so the runtime answers 422 before the chain
   runs; the middleware only parses the body once and the function reads
   `context.state.body`. Validation belongs in the schema, not in middleware.

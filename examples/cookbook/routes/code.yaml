@@ -30,19 +30,21 @@ routes:
     methods: [POST]
     request:
       body:
-        required: true
-        maxBytes: 4096
-        contentTypes: [application/json]
-        format: json
+        POST:
+          required: true
+          maxBytes: 4096
+          contentTypes: [application/json]
+          format: json
     function: {source: functions/echo.mjs}
   /text:
     methods: [POST]
     request:
       body:
-        required: true
-        maxBytes: 1024
-        contentTypes: [text/plain]
-        format: text
+        POST:
+          required: true
+          maxBytes: 1024
+          contentTypes: [text/plain]
+          format: text
     function: {source: functions/text.mjs}
   /choice:
     parameters:

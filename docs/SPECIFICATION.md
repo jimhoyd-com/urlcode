@@ -114,7 +114,7 @@ the [executable example](../examples/conditions).
 
 ## HTTP request/response configuration
 
-Routes accept `request.body` validation and `response.headers` overrides. The
+Routes accept per-method `request.body.<METHOD>` validation and `response.headers` overrides. The
 `respond` handler serves declared text/JSON with a status without running code.
 See [HTTP configuration](HTTP.md) for the exact supported fields, precedence,
 security restrictions and examples.
@@ -168,7 +168,7 @@ Duplicate scalar query/header inputs return 400. Required missing inputs return
 Supported validation: `type`, scalar `enum`, `default`, string `minLength`/
 `maxLength`, string `format: uuid` and a bounded `pattern` ([restrictions](HTTP.md#body-schema-and-input-patterns)),
 numeric `minimum`/`maximum`, query array `items` and `maxItems`. JSON bodies are
-validated by `request.body.schema`, a bounded JSON Schema 2020-12 profile, not
+validated by `request.body.<METHOD>.schema`, a bounded JSON Schema 2020-12 profile, not
 by a parameter (a failure answers 422 as JSON naming the first failure; see [HTTP](HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
 OpenAPI `style`/`explode` fields are not implemented. This uses a documented
 OpenAPI-like input subset; it is not an OpenAPI document or full JSON Schema
@@ -252,9 +252,11 @@ path `parameters` to it, so a route like `/api/todos/{id}` with
 `function: {source: ..., export: get}` must declare the `id` parameter under
 `parameters` and map it under `args` by hand, as the example above does. A
 function has one `source` and one `export` per route; to serve several methods
-on one path, branch on `request.method` inside the function, or declare one
-route per method where the path allows it. A `methods:` map of per-method
-functions is not implemented.
+on one path, branch on `request.method` inside the function. A path is one
+route key, so it cannot be split into one route per method, and a `methods:`
+map of per-method functions is not implemented. Body rules can still differ per
+method: `request.body` is keyed by method
+([per-method body rules](HTTP.md#per-method-body-rules)).
 
 ES modules only. `.mjs` is loaded as ESM in both modes. A `sandbox: true` route
 also reads `.js` as ESM independently of Node package settings, but a trusted

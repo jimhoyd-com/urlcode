@@ -9,23 +9,23 @@ import { runProjectTests } from '../packages/core/src/project-tests.ts';
 import { project } from './helpers.ts';
 
 const shared = {
-  api: { request: { body: { maxBytes: 100 } }, response: { headers: { 'Cache-Control': 'no-store' } } },
+  api: { request: { body: { GET: { maxBytes: 100 } } }, response: { headers: { 'Cache-Control': 'no-store' } } },
   page: { response: { headers: { 'X-Page': 'yes' } } },
 };
 
 test('use copies the shared blocks and is removed from the resolved route', () => {
   const document = validateDocument({ version: '1', shared, routes: { '/a': { use: 'api', respond: { text: 'x' } } } });
-  assert.deepEqual(document.routes['/a'], { request: { body: { maxBytes: 100 } }, response: { headers: { 'Cache-Control': 'no-store' } }, respond: { text: 'x' } });
+  assert.deepEqual(document.routes['/a'], { request: { body: { GET: { maxBytes: 100 } } }, response: { headers: { 'Cache-Control': 'no-store' } }, respond: { text: 'x' } });
 });
 test("a route's own request or response wins as a whole block, with no deep merge", () => {
   const document = validateDocument({ version: '1', shared, routes: {
-    '/a': { use: 'api', request: { body: { required: true } }, respond: { text: 'x' } },
+    '/a': { use: 'api', request: { body: { GET: { maxBytes: 0 } } }, respond: { text: 'x' } },
     '/b': { use: 'api', response: { headers: { 'X-Own': '1' } }, respond: { text: 'x' } },
   } });
-  assert.deepEqual(document.routes['/a']?.request, { body: { required: true } });
+  assert.deepEqual(document.routes['/a']?.request, { body: { GET: { maxBytes: 0 } } });
   assert.deepEqual(document.routes['/a']?.response, { headers: { 'Cache-Control': 'no-store' } });
   assert.deepEqual(document.routes['/b']?.response, { headers: { 'X-Own': '1' } });
-  assert.deepEqual(document.routes['/b']?.request, { body: { maxBytes: 100 } });
+  assert.deepEqual(document.routes['/b']?.request, { body: { GET: { maxBytes: 100 } } });
 });
 test('resolved routes do not alias the shared block', () => {
   const document = validateDocument({ version: '1', shared, routes: { '/a': { use: 'page', respond: { text: 'x' } }, '/b': { use: 'page', respond: { text: 'y' } } } });

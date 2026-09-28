@@ -72,7 +72,7 @@ export function createVercelHandler({ project = process.cwd(), origin, aliasOrig
         const key = (req.rawHeaders[i] ?? '').toLowerCase();
         headers.append(key,req.rawHeaders[i+1] ?? ''); headerCounts[key] = (headerCounts[key] || 0) + 1;
       }
-      const limit = Math.min(maxBodyBytes, runtime.requestLimit(target) ?? maxBodyBytes);
+      const limit = Math.min(maxBodyBytes, runtime.requestLimit(target, method) ?? maxBodyBytes);
       const body = await readBody(req,limit);
       const forwarded = forwardedClient(headers, headerCounts);
       const publicOrigin = resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost';

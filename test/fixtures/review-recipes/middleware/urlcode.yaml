@@ -5,10 +5,11 @@ routes:
     methods: [POST]
     request:
       body:
-        required: true
-        maxBytes: 4096
-        contentTypes: [application/json]
-        format: json
+        POST:
+          required: true
+          maxBytes: 4096
+          contentTypes: [application/json]
+          format: json
     middleware:
       - source: middleware/body.mjs
     function: {source: functions/profile.mjs}

@@ -5,7 +5,7 @@ import type { BodySchema, BodySchemaIssue, BodyValidator, CompiledBodySchema } f
 
 // Also published as the public `@jimhoyd/urlcode/body-schema` subpath: an operator-installed extension
 // (docs/EXTENSIONS.md) that declares its own bounded per-request input contract (for example a tool's
-// `arguments`) validates against exactly the profile `request.body.schema` uses, compiled by the same Ajv
+// `arguments`) validates against exactly the profile `request.body.<METHOD>.schema` uses, compiled by the same Ajv
 // options, instead of hand-rolling or configuring a second JSON Schema engine. This module compiles with Ajv,
 // which generates code, so it runs on Node hosts only; the Cloudflare Worker imports body-validation.ts and
 // receives build-time standalone validators instead (build-cloudflare.ts).

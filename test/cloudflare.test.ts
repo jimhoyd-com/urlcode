@@ -77,7 +77,7 @@ test('the Worker runtime answers exactly as the self-hosted server does', async 
 
 test('a declared request body is read and policed like everywhere else', async t => {
   const root = await project(t,{ '/in':{ methods:['POST'],
-    request:{ body:{ required:true, format:'json', maxBytes:32 } }, respond:{ text:'ok' } } });
+    request:{ body:{ POST: { required:true, format:'json', maxBytes:32 } } }, respond:{ text:'ok' } } });
   const hosted = await startServer({ project:root, port:0, log:()=>{} });
   t.after(() => hosted.close());
   const worker = await build(t,root);

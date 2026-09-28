@@ -96,7 +96,7 @@ export function createLambdaHandler({ project = process.cwd(), origin, aliasOrig
       const request = target(event);
       method = request.method; requestTarget = request.target;
       const { headers, counts } = requestHeaders(event);
-      const limit = Math.min(maxBodyBytes, runtime.requestLimit(request.target) ?? maxBodyBytes);
+      const limit = Math.min(maxBodyBytes, runtime.requestLimit(request.target, method) ?? maxBodyBytes);
       const result = await runtime.handle({ target:request.target, method, headers, headerCounts:counts, requestId,
         body: requestBody(event,limit),
         origin: resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost',

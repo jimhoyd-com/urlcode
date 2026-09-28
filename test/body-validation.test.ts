@@ -78,19 +78,19 @@ test('checkBodySchema reports fixed-wording failures and never echoes client dat
 });
 
 test('checkRequest returns 422 for schema failures and keeps 400/415 for syntax and media type', () => {
-  const route: HttpRoute = { request: { body: { format: 'json', schema: todo } } }; compileHttp(route);
-  assert.throws(() => checkRequest(route, encode('{"title":"ok"}'), jsonHeaders), /was not compiled/, 'a declared schema is never skipped');
-  route.bodySchema = compileBodySchema(todo);
-  const run = (text: string) => { try { checkRequest(route, encode(text), jsonHeaders); return 200; } catch (error) { return (error as { status: number }).status; } };
+  const route: HttpRoute = { methods: ['POST'], request: { body: { POST: { format: 'json', schema: todo } } } }; compileHttp(route);
+  assert.throws(() => checkRequest(route, 'POST', encode('{"title":"ok"}'), jsonHeaders), /request\.body\.POST\.schema was not compiled/, 'a declared schema is never skipped');
+  route.bodySchemas = { POST: compileBodySchema(todo) };
+  const run = (text: string) => { try { checkRequest(route, 'POST', encode(text), jsonHeaders); return 200; } catch (error) { return (error as { status: number }).status; } };
   assert.equal(run('{"title":"ok"}'), 200);
   assert.equal(run('{"title":1}'), 422);
   assert.equal(run('{bad'), 400);
-  assert.throws(() => compileHttp({ request: { body: { schema: todo } } }), /requires format json/);
-  assert.throws(() => compileHttp({ request: { body: { format: 'json', schema: { type: 'string', pattern: '(a+)+', maxLength: 5 } } } }), /repeat a group/);
+  assert.throws(() => compileHttp({ methods: ['POST'], request: { body: { POST: { schema: todo } } } }), /request\.body\.POST\.schema requires format json/);
+  assert.throws(() => compileHttp({ methods: ['POST'], request: { body: { POST: { format: 'json', schema: { type: 'string', pattern: '(a+)+', maxLength: 5 } } } } }), /repeat a group/);
 });
 
-test('a route with request.body.schema answers a JSON 422 with declared paths only', async t => {
-  const app = await serve(t, { '/todos': { methods: ['POST'], request: { body: { format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema: todo } },
+test('a route with request.body.<METHOD>.schema answers a JSON 422 with declared paths only', async t => {
+  const app = await serve(t, { '/todos': { methods: ['POST'], request: { body: { POST: { format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema: todo } } },
     respond: { status: 201, json: { ok: true } } } });
   const post = (body: string) => request(app, '/todos', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
   assert.equal((await post('{"title":"Buy milk"}')).status, 201);
@@ -104,6 +104,28 @@ test('a route with request.body.schema answers a JSON 422 with declared paths on
   const typed = JSON.parse((await post('{"title":5,"completed":"x"}')).body) as typeof answer;
   assert.deepEqual(typed.issues.map(issue => [issue.pointer, issue.message]), [['/title', 'must be a string']]);
   assert.equal((await post('{nope')).status, 400);
+});
+
+test('GET and POST on one path each enforce their own request.body rules on Node (#845, #861)', async t => {
+  const app = await serve(t, {
+    '/requests': { methods: ['GET', 'HEAD', 'POST', 'DELETE'], request: { body: { GET: { maxBytes: 0 }, HEAD: { maxBytes: 0 },
+      POST: { required: true, format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema: todo } } }, respond: { json: { ok: true } } },
+  });
+  const json = { 'content-type': 'application/json' };
+  const send = async (method: string, body?: string) => (await request(app, '/requests', { method, headers: body === undefined ? json : { ...json, 'content-length': String(Buffer.byteLength(body)) }, ...(body === undefined ? {} : { body }) })).status;
+  assert.equal(await send('GET'), 200, 'GET needs no body');
+  assert.equal(await send('GET', '{"title":"x"}'), 413, 'GET maxBytes: 0 refuses a body');
+  assert.equal(await send('HEAD'), 200);
+  assert.equal(await send('HEAD', '{}'), 413);
+  assert.equal(await send('POST'), 400, 'POST requires a body');
+  assert.equal(await send('POST', '{"title":"Ship"}'), 200);
+  assert.equal(await send('POST', '{"title":5}'), 422);
+  assert.equal(await send('DELETE', 'anything, unchecked'), 200, 'DELETE has no entry, so it has no body policy');
+  for (const [routes, message] of [
+    [{ '/x': { methods: ['POST'], request: { body: { PUT: { maxBytes: 1 } } }, respond: { json: {} } } }, /request\.body\.PUT: PUT is not one of the route's methods/],
+    [{ '/x': { request: { body: { POST: { maxBytes: 1 } } }, respond: { json: {} } } }, /request\.body\.POST: POST is not one of the route's methods/],
+    [{ '/x': { methods: ['DELETE'], request: { body: { DELETE: { required: true } } }, respond: { json: {} } } }, /Invalid configuration|request\.body\.DELETE\.required/],
+  ] as const) await assert.rejects(startServer({ project: await project(t, routes as Parameters<typeof project>[1]), port: 0, log: () => {} }), message);
 });
 
 test('parameter format uuid and bounded pattern are enforced on path, query and header inputs', async t => {

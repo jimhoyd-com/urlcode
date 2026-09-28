@@ -19,7 +19,7 @@
   from a registry.
 - Reuse core's `assertBodySchema`/`bodySchemaIssues`/`bodySchemaLine` for tool
   `inputSchema`/`outputSchema` and per-call argument validation; do not add a
-  second JSON Schema engine or hand-roll the validation `request.body.schema`
+  second JSON Schema engine or hand-roll the validation `request.body.<METHOD>.schema`
   already does. Reuse `loadExtensionHooks`/`functionFile`-style trusted
   module loading for tool/resource/prompt handlers; do not add a second
   dynamic-import or project-relative path resolver.

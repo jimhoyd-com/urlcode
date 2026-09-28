@@ -158,10 +158,11 @@ in parameter schemas.
     methods: [POST]
     request:
       body:
-        required: true
-        maxBytes: 4096
-        contentTypes: [application/json]
-        format: json
+        POST:
+          required: true
+          maxBytes: 4096
+          contentTypes: [application/json]
+          format: json
     function:
       source: functions/echo.mjs
 ```

@@ -57,8 +57,8 @@ test('CLI prints one handler, one policy, schema fragments and fails closed on u
  assert.equal(run('schema').status,1);
 });
 
-test('get_schema and get_capability state the whole request.body.schema profile up front, matching the validator (#587, #845)',()=>{
- const described=getSchemaFragment('request.body.schema').schema.description as string;
+test('get_schema and get_capability state the whole request.body.<METHOD>.schema profile up front, matching the validator (#587, #845)',()=>{
+ const described=getSchemaFragment('request.body.POST.schema').schema.description as string;
  const constraints=getCapability('request.body').constraints.join('\n');
  const word=(keyword:string)=>new RegExp('(^|[^\\w$])'+keyword.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b');
  for(const keyword of bodySchemaProfile.keywords){assert.match(described,word(keyword),keyword);assert.match(constraints,word(keyword),keyword);}
@@ -68,4 +68,18 @@ test('get_schema and get_capability state the whole request.body.schema profile 
  assert.match(constraints,new RegExp('at most '+bodySchemaProfile.patternMaxLength));
  for(const text of [described,constraints])assert.ok(text.includes(String(bodySchemaProfile.limits.length))&&text.includes(String(bodySchemaProfile.limits.items)),'string and item caps are stated (#713)');
  for(const text of [described,constraints])for(const limit of [bodySchemaProfile.limits.depth,bodySchemaProfile.limits.nodes,bodySchemaProfile.limits.expandedNodes,bodySchemaProfile.limits.refs,bodySchemaProfile.limits.properties,bodySchemaProfile.limits.uniqueItems])assert.ok(text.includes(String(limit)),String(limit));
+});
+
+test('get_schema and get_capability describe request.body per method, with GET/HEAD/DELETE limited to maxBytes (#861)',()=>{
+ const body=getSchemaFragment('request.body');
+ const methods=Object.keys((body.schema.properties??{}) as Record<string,unknown>);
+ assert.deepEqual(methods,['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']);
+ assert.equal(body.schema.additionalProperties,false);
+ assert.match(body.schema.description as string,/keyed by HTTP method/);
+ for(const method of ['GET','HEAD','DELETE'])assert.deepEqual(Object.keys((getSchemaFragment(`request.body.${method}`).schema.properties??{}) as Record<string,unknown>),['maxBytes'],method);
+ for(const method of ['POST','PUT','PATCH','OPTIONS'])assert.deepEqual(Object.keys((getSchemaFragment(`request.body.${method}`).schema.properties??{}) as Record<string,unknown>),['required','maxBytes','contentTypes','format','schema'],method);
+ assert.equal(getSchemaFragment('request.body.POST.schema').pointer,'#/$defs/route/properties/request/properties/body/properties/POST/properties/schema');
+ assert.throws(()=>getSchemaFragment('request.body.schema'),/names under .*GET, HEAD, POST/);
+ const constraints=getCapability('request.body').constraints.join('\n');
+ assert.match(constraints,/request\.body\.<METHOD>/);assert.match(constraints,/GET, HEAD and DELETE entries may only set `maxBytes`/);
 });

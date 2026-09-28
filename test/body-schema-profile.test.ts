@@ -15,13 +15,13 @@ import type { Artifact, BodyValidators, Validators } from '../packages/core/src/
 import type { RuntimeExtension } from '../packages/core/src/extensions.ts';
 import type { BodySchema, BodySchemaIssue } from '../packages/core/src/body-schema.ts';
 
-// The request.body.schema JSON Schema 2020-12 profile (#845). The shared fixtures in
+// The request.body.<METHOD>.schema JSON Schema 2020-12 profile (#845). The shared fixtures in
 // test/fixtures/body-schema/profile.json run on the Node validator (Ajv at load time) and on the
 // Cloudflare build's standalone validators, so the two hosts cannot drift.
 interface Fixture { accepted: { name: string; schema: BodySchema; valid: unknown[]; invalid: { value: unknown; issues: BodySchemaIssue[] }[] }[]; refused: { name: string; schema: unknown; message: string }[] }
 const fixtures = JSON.parse(await readFile(new URL('./fixtures/body-schema/profile.json', import.meta.url), 'utf8')) as Fixture;
 const json = { 'content-type': 'application/json' };
-const route = (schema: unknown) => ({ methods: ['POST'], request: { body: { format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema } }, respond: { status: 201, json: { ok: true } } });
+const route = (schema: unknown) => ({ methods: ['POST'], request: { body: { POST: { format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema } } }, respond: { status: 201, json: { ok: true } } });
 
 test('accepted fixtures: valid values pass and invalid values report the fixed issues on Node', () => {
   for (const fixture of fixtures.accepted) {
@@ -103,7 +103,7 @@ test('the Cloudflare build runs the same fixtures through build-time standalone 
   const artifact = ((await import(pathToFileURL(join(out, 'artifact.js')).href)) as { default: Artifact }).default;
   const validators = (await import(pathToFileURL(join(out, 'validators.js')).href)) as Validators;
   const bodyValidators = (await import(pathToFileURL(join(out, 'body-validators.js')).href)) as BodyValidators;
-  assert.throws(() => createFetchHandler(artifact, validators, {}), /missing the request\.body\.schema validator for \/f0; rebuild/);
+  assert.throws(() => createFetchHandler(artifact, validators, {}), /missing the request\.body\.POST\.schema validator for \/f0; rebuild/);
   const worker = createFetchHandler(artifact, validators, bodyValidators);
   const app = await startServer({ project: root, port: 0, log: () => {} }); t.after(() => app.close());
   for (const [index, fixture] of fixtures.accepted.entries()) {

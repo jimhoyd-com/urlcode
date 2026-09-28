@@ -53,6 +53,11 @@ const cases: Record<string, { path: string; method?: string; headers?: Record<st
   '2020-12 $defs pattern fails': post('/contacts', { name: 'Ada', email: secret, phone: null }, 'application/json'),
   '2020-12 nullable type fails': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: 5 }, 'application/json'),
   '2020-12 anyOf fails': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: null, channel: secret }, 'application/json'),
+  // Per-method body rules (#861): GET and POST on /requests, each with its own policy and validator.
+  'per-method GET, no body': { path: '/requests' },
+  'per-method POST valid': post('/requests', { title: 'Ship it' }, 'application/json'),
+  'per-method POST, no body': { path: '/requests', method: 'POST', headers: json },
+  'per-method POST invalid': post('/requests', { title: '', extra: secret }, 'application/json'),
 };
 const volatile = new Set(['date', 'server', 'connection', 'keep-alive', 'transfer-encoding', 'content-length', 'x-request-id']);
 // workerd gzips a response when the client sends Accept-Encoding (docs/CLOUDFLARE.md: compression is delegated to the edge); fetch() decodes it, so the body still compares byte for byte.
@@ -65,13 +70,14 @@ try {
     methods: [POST]
     request:
       body:
-        format: json
-        contentTypes: [application/json]
-        schema:
-          type: object
-          required: [v]
-          properties:
-            v: {type: string, pattern: "^[a-z]*[a-z]*[a-z]*!$", maxLength: 128}
+        POST:
+          format: json
+          contentTypes: [application/json]
+          schema:
+            type: object
+            required: [v]
+            properties:
+              v: {type: string, pattern: "^[a-z]*[a-z]*[a-z]*!$", maxLength: 128}
     respond: {status: 201, json: {ok: true}}
   /q:
     parameters:

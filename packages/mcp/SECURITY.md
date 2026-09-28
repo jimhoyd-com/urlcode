@@ -59,7 +59,7 @@ reaches the handler; the caller gets a list of which declared constraint
 failed (under MCP revision `2025-11-25` as an `isError: true` tool result,
 under earlier revisions as a structured `-32602 Invalid params` error), using the same bounded
 validator (`@jimhoyd/urlcode/body-schema`, the exact code
-`request.body.schema` itself runs) a native route body already uses. Nothing
+`request.body.<METHOD>.schema` itself runs) a native route body already uses. Nothing
 the caller sent is echoed back in an issue; only the schema's own declared
 path and keyword are.
 

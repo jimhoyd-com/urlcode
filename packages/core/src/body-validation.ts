@@ -3,7 +3,7 @@ import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
 import { isRecord, own } from './object-guards.ts';
 
 // The request body schema profile: which JSON Schema 2020-12 documents a route may declare as
-// `request.body.schema`, and how a validator's failures become the bounded 422 answer. This module
+// `request.body.<METHOD>.schema`, and how a validator's failures become the bounded 422 answer. This module
 // never compiles anything, so the Cloudflare Worker (which forbids code generation) imports it too:
 // Node hosts compile a profile schema with Ajv at load time (body-schema.ts) and the Worker build
 // ships the same Ajv output as standalone code (build-cloudflare.ts). Both then report failures here.
@@ -21,7 +21,7 @@ export interface BodySchema {
 /** The one format the runtime checks without an extra dependency; every other `format` is refused at load. */
 export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /**
- * The largest request body any route admits: `request.body.maxBytes` is at most this and defaults to it, on every host
+ * The largest request body any route admits: `request.body.<METHOD>.maxBytes` is at most this and defaults to it, on every host
  * (#713). A JSON string can never hold more characters than its body has bytes, so it is also the string-length cap.
  */
 export const maxRequestBodyBytes = 1048576;

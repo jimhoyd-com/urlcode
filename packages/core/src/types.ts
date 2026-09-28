@@ -10,7 +10,7 @@ import type { RouteMatch } from './conditions.ts';
 // live in match.ts; HandlerResult and HeaderPair in http-response.ts.
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { CompiledParameter, MatchableRoute, ParameterLocation, ParameterSchema, RedirectSpec, Scalar, ValueRef } from './match.ts';
-import type { HttpRoute, Reply, RequestBodyPolicy, RespondSpec } from './http-policy.ts';
+import type { HttpRoute, Reply, RequestBodyPolicies, RespondSpec } from './http-policy.ts';
 import type { AgentsConfig, AgentsDescription, AgentsState } from './policies/agents.ts';
 import type { SecurityConfig, SecurityDescription, SecurityState } from './policies/security.ts';
 import type { CacheConfig, CacheDescription, CacheState, CacheStore } from './policies/cache.ts';
@@ -114,7 +114,7 @@ export interface RouteConfig {
   parameters?: ParameterConfig[]; redirect?: RedirectConfig; function?: FunctionConfig;
   env?: Record<string, EnvBinding>; secrets?: Record<string, SecretBinding>;
   page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;
-  request?: { body?: RequestBodyPolicy }; response?: { headers?: Record<string, string | string[]> };
+  request?: { body?: RequestBodyPolicies }; response?: { headers?: Record<string, string | string[]> };
   respond?: RespondSpec; middleware?: MiddlewareConfig[]; policies?: PoliciesConfig;
   /** Name of a top-level `shared` block; expanded away at load time, so nothing downstream sees it. */
   use?: string;

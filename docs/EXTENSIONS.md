@@ -50,7 +50,7 @@ configuration, and refuses a shared collection or a mount without a
 principal-providing policy. See the [form-records package](../packages/form-records/README.md).
 
 The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
-server: named tools with a description, a `request.body.schema`-shaped input
+server: named tools with a description, a `request.body.<METHOD>.schema`-shaped input
 schema (the same bounded JSON Schema 2020-12 profile, compiled by the same
 `@jimhoyd/urlcode/body-schema` code, reused rather than reimplemented) and a trusted project handler loaded the same way as other
 extension hooks. The official MCP SDK serves the protocol statelessly (JSON-RPC

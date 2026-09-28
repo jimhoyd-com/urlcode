@@ -332,7 +332,10 @@
               "uniqueItems": true
             }
           },
-          "required": ["format", "paths"],
+          "required": [
+            "format",
+            "paths"
+          ],
           "additionalProperties": false
         }
       },
@@ -441,7 +444,15 @@
           "type": "object",
           "minProperties": 1,
           "propertyNames": {
-            "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+            "enum": [
+              "GET",
+              "HEAD",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "OPTIONS"
+            ]
           },
           "additionalProperties": {
             "type": "string",
@@ -456,12 +467,17 @@
           "description": "How this route's runtime-generated errors are written: the 405 for an undeclared method (Allow kept), 404 for a disabled route or missing asset, 410, 413, 415, 422 and gateway errors. Handler, policy and extension responses are never rewritten. Wins over site.errors.",
           "properties": {
             "format": {
-              "enum": ["text", "json"],
+              "enum": [
+                "text",
+                "json"
+              ],
               "default": "text",
               "description": "text (the default) sends the plain-text line, byte for byte as without this key; json sends {\"error\":{\"code\":…,\"message\":…}} as application/json with a code from a closed set keyed by status. HEAD still has no body."
             }
           },
-          "required": ["format"],
+          "required": [
+            "format"
+          ],
           "additionalProperties": false
         },
         "expires": {
@@ -1974,42 +1990,91 @@
       "properties": {
         "body": {
           "type": "object",
-          "description": "What the request body must look like before the handler runs (docs/HTTP.md).",
+          "description": "Request body checks, keyed by HTTP method: each key is one of the route's methods and holds that method's policy, so GET and POST on one path state their own rules. A method without an entry has no body policy (docs/HTTP.md).",
+          "minProperties": 1,
           "properties": {
-            "required": {
-              "type": "boolean",
-              "description": "Whether an empty body is refused with 400."
+            "GET": {
+              "description": "The body policy for GET requests; GET must be one of the route's methods. RFC 9110 gives a GET body no defined meaning, so only maxBytes is accepted; maxBytes: 0 refuses any body with 413.",
+              "$ref": "#/$defs/requestBodyBodyless"
             },
-            "maxBytes": {
-              "type": "integer",
-              "description": "Largest body accepted, in bytes; a larger one answers 413.",
-              "minimum": 0,
-              "maximum": 1048576
+            "HEAD": {
+              "description": "The body policy for HEAD requests; HEAD must be one of the route's methods. RFC 9110 gives a HEAD body no defined meaning, so only maxBytes is accepted; maxBytes: 0 refuses any body with 413.",
+              "$ref": "#/$defs/requestBodyBodyless"
             },
-            "contentTypes": {
-              "type": "array",
-              "description": "Lowercase media types a nonempty body may declare; any other answers 415.",
-              "minItems": 1,
-              "maxItems": 16,
-              "uniqueItems": true,
-              "items": {
-                "type": "string",
-                "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
-              }
+            "POST": {
+              "description": "The body policy for POST requests; POST must be one of the route's methods.",
+              "$ref": "#/$defs/requestBody"
             },
-            "format": {
-              "description": "text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400.",
-              "enum": [
-                "text",
-                "json"
-              ]
+            "PUT": {
+              "description": "The body policy for PUT requests; PUT must be one of the route's methods.",
+              "$ref": "#/$defs/requestBody"
             },
-            "schema": {
-              "type": "object",
-              "description": "A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object."
+            "PATCH": {
+              "description": "The body policy for PATCH requests; PATCH must be one of the route's methods.",
+              "$ref": "#/$defs/requestBody"
+            },
+            "DELETE": {
+              "description": "The body policy for DELETE requests; DELETE must be one of the route's methods. RFC 9110 gives a DELETE body no defined meaning, so only maxBytes is accepted; maxBytes: 0 refuses any body with 413.",
+              "$ref": "#/$defs/requestBodyBodyless"
+            },
+            "OPTIONS": {
+              "description": "The body policy for OPTIONS requests; OPTIONS must be one of the route's methods.",
+              "$ref": "#/$defs/requestBody"
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "requestBody": {
+      "type": "object",
+      "description": "One method's request body policy: size, media types, format and JSON schema (docs/HTTP.md).",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether an empty body is refused with 400."
+        },
+        "maxBytes": {
+          "type": "integer",
+          "description": "Largest body accepted, in bytes; a larger one answers 413.",
+          "minimum": 0,
+          "maximum": 1048576
+        },
+        "contentTypes": {
+          "type": "array",
+          "description": "Lowercase media types a nonempty body may declare; any other answers 415.",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
+          }
+        },
+        "format": {
+          "description": "text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400.",
+          "enum": [
+            "text",
+            "json"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "description": "A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object."
+        }
+      },
+      "additionalProperties": false
+    },
+    "requestBodyBodyless": {
+      "type": "object",
+      "description": "A GET, HEAD or DELETE body has no defined meaning (RFC 9110), so this entry may only bound it; maxBytes: 0 refuses any body with 413.",
+      "properties": {
+        "maxBytes": {
+          "type": "integer",
+          "description": "Largest body accepted, in bytes; a larger one answers 413.",
+          "minimum": 0,
+          "maximum": 1048576
         }
       },
       "additionalProperties": false

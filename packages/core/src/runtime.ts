@@ -8,7 +8,7 @@ import { matchesRoute } from './conditions.ts';
 import { analyzeProjectCapabilities, assertTargetCompatibility } from './capabilities.ts';
 import { projectPlan, hasRedirect } from './readiness.ts';
 import type { ProjectPlan } from './readiness.ts';
-import { checkRequest, decorateResponse } from './http-policy.ts';
+import { bodyPolicy, checkRequest, decorateResponse } from './http-policy.ts';
 import { compileAssets, assetResponse } from './assets.ts';
 import { loadDocument, loadBindings } from './config.ts';
 import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.ts';
@@ -106,7 +106,8 @@ export interface Runtime {
   /** How the host writes an error answer (docs/HTTP.md#error-format): the format handle() resolved when it threw the
    * error, otherwise the one the request target resolves to (an error the host raised before or around handle()). */
   errorFormat(error: unknown, target: string): ErrorFormat;
-  requestLimit(target: string): number | undefined;
+  /** The body limit the route matching `target` sets for `method` (its `request.body.<METHOD>.maxBytes`), if any. */
+  requestLimit(target: string, method: string): number | undefined;
   /** A result carrying `stream` must be pulled to its end or cancelled (its iterator's `return()`); `close()` waits for it. */
   handle(request: RuntimeRequest): Promise<HandlerResult>;
   close(): Promise<void>;
@@ -291,9 +292,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       const known = error && typeof error === 'object' ? errorFormats.get(error) : undefined;
       return known ?? targetErrorFormat(target);
     },
-    requestLimit(target) {
+    requestLimit(target, method) {
       const match = matchRoute(compiled, parseTarget(target));
-      return match?.route.request?.body?.maxBytes ?? (match?.route.proxy||match?.route.extension?1048576:undefined);
+      return (match ? bodyPolicy(match.route, method)?.maxBytes : undefined) ?? (match?.route.proxy||match?.route.extension?1048576:undefined);
     },
     async handle(request) {
       const requestId = request.requestId ?? crypto.randomUUID();
@@ -360,7 +361,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // in it; only an authorize()/middleware() hook below can write into this clone
         // (RIM-EXT-CONTEXT-001, docs/RUNTIME-IMPLEMENTATION.md).
         const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:stripReservedContextHeaders(new Headers(headers)),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null,requestId,env:Object.freeze({...route.env}),signal};
-        if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,route.request?.body?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
+        if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,bodyPolicy(route,method)?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
         // The request's opaque principal (RIM-EXT-PRINCIPAL-001): null until a principal-providing extension's
         // authorize() on this route sets it and allows the request; never read from the client request.
         const principalSlot=installPrincipalSlot(extensionRequest);
@@ -390,7 +391,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           // the security profile like any other answer; nothing caches a 405.
           return policyReq ? await finishPolicies(policy, policyReq, refused) : refused;
         }
-        checkRequest(route, body || Buffer.alloc(0), headers, headerCounts);
+        checkRequest(route, method, body || Buffer.alloc(0), headers, headerCounts);
         const finishResponse = async (result: HandlerResult): Promise<HandlerResult> => {
           const out = policyReq ? await finishPolicies(policy, policyReq, decorateResponse(route,result)) : decorateResponse(route,result);
           if(method!=='HEAD'&&!trace.probe)for(const signal of route.compiledSignals||[])signalBroker.emit(signal,{route:route.pattern,status:out.status,method});

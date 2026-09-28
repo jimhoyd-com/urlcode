@@ -16,16 +16,17 @@ routes:
         schema: {type: string, maxLength: 71, pattern: "^sha256=[0-9a-f]{64}$"}
     request:
       body:
-        required: true
-        maxBytes: 65536
-        contentTypes: [application/json]
-        format: json
-        # A body that is not an object with a string id answers 422.
-        schema:
-          type: object
-          required: [id]
-          properties:
-            id: {type: string, minLength: 1, maxLength: 128}
+        POST:
+          required: true
+          maxBytes: 65536
+          contentTypes: [application/json]
+          format: json
+          # A body that is not an object with a string id answers 422.
+          schema:
+            type: object
+            required: [id]
+            properties:
+              id: {type: string, minLength: 1, maxLength: 128}
     # The signing key: an operator grant names WEBHOOK_SIGNING_SECRET for this
     # route and the process supplies its value. It never lives in the project.
     secrets:

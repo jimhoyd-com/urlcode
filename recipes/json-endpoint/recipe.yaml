@@ -1,5 +1,5 @@
 id: json-endpoint
-description: JSON endpoints with no project code; a POST whose fields request.body.schema validates (422 on failure) and fixed answers declared with respond.
+description: JSON endpoints with no project code; a POST whose fields request.body.POST.schema validates (422 on failure) and fixed answers declared with respond.
 tags: [json, endpoint, api, respond, schema, validation, validate, validated, post, body, "202", "422", signup, native, declarative, no-code]
 complexity: starter
 capabilities: [enabled, methods, request.body, respond, response.headers]
@@ -8,7 +8,7 @@ routes: 2
 inputs:
   - name: field rules
     file: urlcode.yaml
-    description: The properties, required fields and limits in request.body.schema; additionalProperties false refuses unknown fields.
+    description: The properties, required fields and limits in request.body.POST.schema; additionalProperties false refuses unknown fields.
   - name: answers
     file: urlcode.yaml
     description: The status and JSON each respond declares.

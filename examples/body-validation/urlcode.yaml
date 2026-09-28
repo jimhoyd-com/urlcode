@@ -4,18 +4,19 @@ routes:
     methods: [POST]
     request:
       body:
-        maxBytes: 4096
-        contentTypes: [application/json]
-        format: json
-        required: true
-        schema:
-          type: object
-          required: [title]
-          additionalProperties: false
-          properties:
-            title: {type: string, minLength: 1, maxLength: 200}
-            description: {type: string, maxLength: 2000}
-            completed: {type: boolean}
+        POST:
+          maxBytes: 4096
+          contentTypes: [application/json]
+          format: json
+          required: true
+          schema:
+            type: object
+            required: [title]
+            additionalProperties: false
+            properties:
+              title: {type: string, minLength: 1, maxLength: 200}
+              description: {type: string, maxLength: 2000}
+              completed: {type: boolean}
     respond:
       status: 201
       json: {ok: true}
@@ -36,25 +37,45 @@ routes:
     methods: [POST]
     request:
       body:
-        maxBytes: 4096
-        contentTypes: [application/json]
-        format: json
-        required: true
-        schema:
-          $schema: https://json-schema.org/draft/2020-12/schema
-          $defs:
-            email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^@\\s]+@[^@\\s]+$"}
-          type: object
-          required: [name, email, phone]
-          additionalProperties: false
-          properties:
-            name: {type: string, minLength: 1, maxLength: 100}
-            email: {$ref: "#/$defs/email"}
-            phone: {type: [string, "null"], maxLength: 32}
-            channel:
-              anyOf:
-                - {const: email}
-                - {const: phone}
+        POST:
+          maxBytes: 4096
+          contentTypes: [application/json]
+          format: json
+          required: true
+          schema:
+            $schema: https://json-schema.org/draft/2020-12/schema
+            $defs:
+              email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^@\\s]+@[^@\\s]+$"}
+            type: object
+            required: [name, email, phone]
+            additionalProperties: false
+            properties:
+              name: {type: string, minLength: 1, maxLength: 100}
+              email: {$ref: "#/$defs/email"}
+              phone: {type: [string, "null"], maxLength: 32}
+              channel:
+                anyOf:
+                  - {const: email}
+                  - {const: phone}
     respond:
       status: 201
+      json: {ok: true}
+  # GET and POST on one path, each with its own body rules: GET takes no body, POST needs a valid JSON one.
+  /requests:
+    methods: [GET, POST]
+    request:
+      body:
+        GET: {maxBytes: 0}
+        POST:
+          maxBytes: 4096
+          contentTypes: [application/json]
+          format: json
+          required: true
+          schema:
+            type: object
+            required: [title]
+            additionalProperties: false
+            properties:
+              title: {type: string, minLength: 1, maxLength: 200}
+    respond:
       json: {ok: true}

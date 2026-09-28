@@ -99,7 +99,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       }
       compileHttp(route);
       // Compiled once here, before serving; a request only runs the compiled validator (RIM-HTTP-001).
-      if (route.request?.body?.schema) route.bodySchema = compileBodySchema(route.request.body.schema);
+      for (const [method, policy] of Object.entries(route.request?.body ?? {})) if (policy?.schema) (route.bodySchemas ??= {})[method] = compileBodySchema(policy.schema);
       if (config.match) route.match = normalizeMatch(config.match);
       if (config.stream) {
         assert(config.function, `${pattern}: stream: true needs a function route; an extension mount streams through its registration's streams declaration`, { code: 'stream-without-function' });

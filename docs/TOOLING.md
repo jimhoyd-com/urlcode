@@ -262,7 +262,7 @@ Recipes are ranked declarative first: one that runs no project code (no
 `function` or `middleware`) comes before one that does, then more matched goal
 terms win. Each listed recipe carries the goal terms it `matched` (its planner
 terms, tags, capabilities and id) and an `outline` entry, so a simple JSON
-endpoint lands on `respond` plus `request.body.schema` (the `json-endpoint`
+endpoint lands on `respond` plus `request.body.<METHOD>.schema` (the `json-endpoint`
 recipe) rather than a function. A signature goal (HMAC, signature, webhook)
 adds an application-code boundary naming a `secrets` binding and `node:crypto`
 in a trusted function, and never reads "signed" there as signing a user in.
@@ -316,10 +316,13 @@ environment variable or secret is read, and no network call is made. Findings
 are grouped:
 
 - `native-alternative`: an already-supported declarative capability appears to
-  cover the behavior (for example `request.body.schema` in place of
-  hand-written `JSON.parse` or `request.json()` plus field checks, `respond`
-  in place of a function that always answers the same thing, or one route per
-  method in place of a hand-written `request.method` dispatch table).
+  cover the behavior (for example `request.body.<METHOD>.schema` in place of
+  hand-written `JSON.parse` or `request.json()` plus field checks, or `respond`
+  in place of a function that always answers the same thing). Branching on
+  `request.method` is never flagged: several methods on one path share one
+  function by design, and splitting that path into one route per method is not
+  an equivalent supported shape. Per-method body rules on that path are declared
+  with `request.body.<METHOD>` ([HTTP](HTTP.md#per-method-body-rules)).
 - `extension-alternative`: the project **declares** an extension that could
   plausibly own the behavior. Without `--host-file`, the required operator
   setup (registration, revision pin) is stated as unconfirmed — a declaration
@@ -352,7 +355,7 @@ confidence level and a plain-language reason:
   (`request`, `req` or the handler's first parameter, never a fetched
   response), followed by at least two field checks (a `typeof` test, a length
   bound, `Array.isArray`/`Number.isInteger`, a `422`, or an error such as
-  "required"/"missing"/"invalid"), on a route without `request.body.schema`.
+  "required"/"missing"/"invalid"), on a route without `request.body.<METHOD>.schema`.
 - A handler that answers a constant response (`constant-response`), reported
   as `native-alternative` pointing at `get_capability("respond")`: a single
   default-exported function with one `return Response.json(…)`/`new
@@ -363,12 +366,6 @@ confidence level and a plain-language reason:
 - Manually assembled `Set-Cookie`/session construction (`manual-cookie-session`).
 - Module-scope mutable state later mutated in the same file (`global-mutable-state`).
 - A direct outbound call, `fetch`/`http(s).request`/`http(s).get` (`outbound-network-call`).
-- Hand-written `request.method` branching or a `switch (request.method)`
-  dispatch table (`method-dispatch`), reported as `native-alternative`:
-  declaring one route per method is the native alternative (see
-  `get_capability("methods")`); URLCode has no per-method-function YAML shape
-  to point at instead (`YAML-REFERENCE.md` is explicit that "a `methods:` map
-  of per-method functions is not implemented").
 - Hand-rolled request counting paired with a `429`/`Retry-After` response
   (`manual-rate-limit`). Reported as `native-alternative` (pointing at
   `get_capability("policies.throttle")`) when `policies.throttle` is not
@@ -440,7 +437,7 @@ A case is generated only when the YAML alone determines the answer:
 | `method-refusal` | the first of `POST`, `PUT`, `PATCH`, `DELETE`, `GET` the route does not accept | `405` and the exact `allow` |
 | `missing-parameter` | the first required query or header input without a default, omitted | `400` |
 | `invalid-parameter` | a non-numeric value for an integer, number or boolean input, or an unlisted value for a string `enum` | `400` |
-| `body-required` | no body for a route with `request.body.required` | `400` |
+| `body-required` | no body for a route with `request.body.<METHOD>.required` | `400` |
 | `unknown-path` | a path no route matches | `404` |
 
 Every other route is reported instead of tested. `gaps` lists a route (or, in

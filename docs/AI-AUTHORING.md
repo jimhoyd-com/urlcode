@@ -320,7 +320,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | `stream: true` on a trusted `function` route (self-hosted only): the Response body is sent as it is produced, bounded by operator stream limits | Streaming from a `sandbox: true` route, on AWS/Cloudflare/static, WebSocket, or a route-level stream limit |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
-| Parameter validation, JSON body syntax checks and `request.body.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP](HTTP.md#body-schema-and-input-patterns)) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, OpenAPI documents or export |
+| Parameter validation, JSON body syntax checks and `request.body.<METHOD>.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP](HTTP.md#body-schema-and-input-patterns)) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, OpenAPI documents or export |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
 | File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store](STORE.md)) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
@@ -379,7 +379,7 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
 | A cache strategy on any route | `policies.cache` | [cache](policies/cache.md) |
-| Body size, required body, content types, JSON syntax and shape | `request.body.maxBytes`, `required`, `contentTypes`, `format`, `schema` | [HTTP](HTTP.md#body-schema-and-input-patterns) |
+| Body size, required body, content types, JSON syntax and shape, per method (GET and POST on one path each with their own rules) | `request.body.<METHOD>.maxBytes`, `required`, `contentTypes`, `format`, `schema`; GET/HEAD/DELETE take only `maxBytes` (`0` refuses a body) | [HTTP](HTTP.md#per-method-body-rules) |
 | A uuid path id or a bounded string pattern | parameter `schema: {type: string, format: uuid}` or `pattern` with `maxLength` | [HTTP](HTTP.md#body-schema-and-input-patterns) |
 | Method gating | `methods` (default GET/HEAD; 405 with `Allow`) | [HTTP](HTTP.md) |
 | Rate limits, bot and crawler denial, compression | `policies.throttle`, `agents`, `compression` | [policies](POLICIES.md) |
@@ -391,7 +391,7 @@ Which handler serves the response:
 | The response is | Handler | Recipe |
 |---|---|---|
 | Fixed text or JSON | `respond` | `health-page` |
-| A fixed answer to a POST whose JSON fields are validated | `respond` plus `request.body.schema` | `json-endpoint` |
+| A fixed answer to a POST whose JSON fields are validated | `respond` plus `request.body.<METHOD>.schema` | `json-endpoint` |
 | A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](HTTP.md) |
 | One HTML file | `page` | `static-page` |
 | A directory of files | `static` | `static-plus-api` |
@@ -523,7 +523,7 @@ and stay trusted, as long as its own code is reviewed, first-party and
 handles untrusted input carefully; conversely, a route with no untrusted
 input at all can still warrant `sandbox: true` if its own code is what
 you don't trust. A signed webhook is the common case: declare the header
-parameters and `request.body.schema`, bind the signing key with
+parameters and `request.body.<METHOD>.schema`, bind the signing key with
 `secrets: {KEY: {secret: NAME}}` and verify the HMAC in a trusted function
 with `node:crypto`. A `sandbox: true` route has no crypto API and could not
 check the signature at all. The `webhook-receiver` recipe is that route.
@@ -571,19 +571,19 @@ routes:
   /webhook:
     methods: [POST]
     sandboxReason: Reviewed first-party code; trusted so node:crypto can verify the HMAC signature.
-    request: { body: { maxBytes: 65536, contentTypes: [application/json], format: json } }
+    request: { body: { POST: { maxBytes: 65536, contentTypes: [application/json], format: json } } }
     secrets: { WEBHOOK_SECRET: { secret: WEBHOOK_SIGNING_SECRET } }
     function: { source: functions/receive.mjs }
   /plugins/run:
     methods: [POST]
     sandbox: true
     sandboxReason: Runs a submitted plugin nobody on the team has reviewed yet; isolate it.
-    request: { body: { maxBytes: 16384 } }
+    request: { body: { POST: { maxBytes: 16384 } } }
     function: { source: plugins/submitted.mjs }
 ```
 
 `urlcode audit` also runs a non-blocking heuristic: a route that runs project
-code, accepts `POST` with a declared `request.body` policy, and declares
+code, accepts `POST` with a declared `request.body.POST` policy, and declares
 neither `sandbox: true` nor `sandboxReason` looks plausibly
 webhook/callback/third-party-input-shaped, and the audit report lists it
 under `advisories`, asking the author to record the trust decision. The

@@ -17,8 +17,8 @@ const schema = { type: 'object', required: ['title', 'kind'], additionalProperti
   title: { type: 'string', minLength: 1, maxLength: 8 }, kind: { type: 'string', enum: ['a', 'b'] }, count: { type: 'integer', maximum: 3 },
   'a/b~c': { type: 'boolean' }, list: { type: 'array', maxItems: 2, items: { type: 'string', pattern: '^[a-z]+$', maxLength: 8 } } } } satisfies BodySchema;
 const routes = {
-  '/todos': { methods: ['POST'], request: { body: { format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema: structuredClone(schema) } }, respond: { status: 201, json: { ok: true } } },
-  '/box': { sandbox: true, methods: ['POST'], function: { source: 'f.mjs' }, request: { body: { format: 'json', schema: structuredClone(schema) } } },
+  '/todos': { methods: ['POST'], request: { body: { POST: { format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema: structuredClone(schema) } } }, respond: { status: 201, json: { ok: true } } },
+  '/box': { sandbox: true, methods: ['POST'], function: { source: 'f.mjs' }, request: { body: { POST: { format: 'json', schema: structuredClone(schema) } } } },
 };
 const files = { 'f.mjs': 'export default () => new Response("guest ran");' };
 const bad = { title: secret, kind: secret, count: 99, 'a/b~c': secret, list: [secret, 'ok', secret], extra: secret, ['<' + secret + '>']: secret };
