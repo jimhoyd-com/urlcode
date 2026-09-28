@@ -90,6 +90,13 @@ Each rung's YAML is valid on every rung above it.
    leaves that handler for you, unlike the other rungs here). Add `auth: true` where a
    mount needs a signed-in caller.
 
+Owner-private records, a reviewed state change and a reviewer permission are
+declarative: an owned store collection, a `by: others` transition and a
+[membership collection](STORE.md#membership-gates-and-cross-owner-reads) keyed
+by the signed-in user id. The
+[private-requests proof](../proofs/private-requests/README.md) is an
+end-to-end application built that way, with no application server code.
+
 When the declarative contracts do not express an application's rules, keep
 each operation as an ordinary YAML function route with `auth: true`, explicit
 methods and bounded request bodies (the
@@ -99,9 +106,7 @@ reads the verified user id from
 `context.capabilities.auth.identity.userId`
 ([request-bound capabilities](EXTENSIONS.md#request-bound-capabilities)).
 Better Auth owns accounts and sessions; the application owns its business
-rules and authorization. The
-[private-requests proof](../proofs/private-requests/README.md) is an
-end-to-end application built this way.
+rules and authorization.
 
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](STORE.md)); core has no native `link` route.

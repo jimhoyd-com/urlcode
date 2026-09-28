@@ -15,7 +15,6 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "mount",
           "fields"
         ],
         "properties": {
@@ -23,7 +22,7 @@
             "type": "string",
             "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
             "maxLength": 256,
-            "description": "URL path of the collection's JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE)."
+            "description": "URL path of the collection's JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). Required, except on a membership collection, which has none."
           },
           "fields": {
             "description": "Declared record fields by name; a body naming any other field is refused. id, createdAt and updatedAt are reserved and store-owned.",
@@ -294,8 +293,39 @@
                   "type": "string",
                   "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
                   "maxLength": 256,
-                  "description": "Required with by: others, refused otherwise: the transition is served as POST <mount>/<id> on a route <mount>/* with extension: store (POST) and a principal-providing policy. Who may reach that route is the route's policy: the store has no roles."
+                  "description": "Required with by: others, refused otherwise: the transition is served as POST <mount>/<id> on a route <mount>/* with extension: store (POST) and a principal-providing policy."
+                },
+                "members": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+                  "description": "A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request."
                 }
+              }
+            }
+          },
+          "membership": {
+            "type": "boolean",
+            "description": "true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with addMember/removeMember or trusted extension code (StoreExports). Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable, readOnly or audit."
+          },
+          "readers": {
+            "description": "With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET <mount> (with the collection's limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is never shown.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mount",
+              "members"
+            ],
+            "properties": {
+              "mount": {
+                "type": "string",
+                "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
+                "maxLength": 256,
+                "description": "A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy."
+              },
+              "members": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+                "description": "A membership collection: anyone it does not list gets 403 membership_required before any record is read."
               }
             }
           }

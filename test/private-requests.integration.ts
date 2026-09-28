@@ -1,5 +1,5 @@
-// The #843 proof end to end with real npm: pack this checkout's core and add-ons as a release does, install core and
-// @jimhoyd/urlcode-auth (Better Auth) into a copy of proofs/private-requests, run the site's own scripts, and exercise
+// The #843 proof end to end with real npm: pack this checkout's core and add-ons as a release does, install core,
+// @jimhoyd/urlcode-auth (Better Auth) and @jimhoyd/urlcode-store into a copy of proofs/private-requests, run the site's own scripts, and exercise
 // the served application over HTTP. It needs the npm registry for better-auth and esbuild; run after `npm run build`
 // and the add-on builds (npm run test:proof); like the other packaging tests it packs with --ignore-scripts. The test
 // acts as the evaluator: it writes the operator policy from `urlcode permissions` explicitly, the step a person
@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -70,10 +70,11 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   const addons = { URLCODE_ADDONS: packed.manifest };
   const site = join(root, 'site');
   await cp(proof, site, { recursive: true, filter: source => !/[/\\](node_modules|data)$/.test(source) && !source.endsWith('policy.json') && !source.endsWith(join('assets', 'app.js')) });
-  // The committed site links the in-repository auth package; the copy depends on the packed tarballs at core's pins.
+  // The committed site links the in-repository packages; the copy depends on the packed tarballs at core's pins.
   const manifestFile = join(site, 'package.json'), pkg = JSON.parse(await readFile(manifestFile, 'utf8')) as { dependencies: Record<string, string> };
   pkg.dependencies['@jimhoyd/urlcode'] = `file:${packed.core}`;
   pkg.dependencies['@jimhoyd/urlcode-auth'] = `file:${packed.tarballs.auth!}`;
+  pkg.dependencies['@jimhoyd/urlcode-store'] = `file:${packed.tarballs.store!}`;
   await writeFile(manifestFile, JSON.stringify(pkg, null, 2) + '\n');
 
   // Installation and build may use the network; nothing after them does.
@@ -86,12 +87,12 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   // Setup is safe to re-run and keeps the same accounts.
   assert.deepEqual((JSON.parse(npm(t, site, ['run', '-s', 'setup']).stdout.trim().split('\n').at(-1)!) as { users: unknown }).users, users);
 
-  // Auth is the first-party catalog extension, installed at core's pin, declared and hosted; checked statically
-  // without host code.
+  // Auth and the store are first-party catalog extensions, installed at core's pins, declared and hosted; checked
+  // statically without host code.
   const listed = urlcode(t, site, ['extensions', 'list', '--strict', '--json'], addons);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
   const extensions = JSON.parse(listed.stdout) as { addons: { name: string; package: string; independent?: boolean; pinned: boolean; problems: string[] }[]; problems: string[] };
-  assert.deepEqual(extensions.addons.map(item => [item.name, item.package, item.independent ?? false, item.pinned, item.problems]), [['auth', '@jimhoyd/urlcode-auth', false, true, []]]);
+  assert.deepEqual(extensions.addons.map(item => [item.name, item.package, item.independent ?? false, item.pinned, item.problems]), [['auth', '@jimhoyd/urlcode-auth', false, true, []], ['store', '@jimhoyd/urlcode-store', false, true, []]]);
   assert.deepEqual(extensions.problems, []);
   const staticCheck = urlcode(t, site, ['validate', '--project', 'app']);
   assert.equal(staticCheck.status, 0, staticCheck.stdout + staticCheck.stderr);
@@ -108,7 +109,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   const hosted = ['--project', 'app', '--host-file', 'host.mjs', '--origin', origin];
   const policy = join(site, 'operator', 'policy.json');
 
-  // No reviewed policy yet: the application's database binding is not granted, so nothing activates.
+  // No reviewed policy yet: the revision is not pinned, so nothing activates.
   const unapproved = urlcode(t, site, ['validate', '--local', ...hosted], { ...env, PROJECT_SHA256: '0'.repeat(64) });
   assert.notEqual(unapproved.status, 0);
   // The evaluator's explicit approval: review `urlcode permissions`, then save it outside app/.
@@ -129,7 +130,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
     const empty = join(root, 'empty-data');
     const refusals: [string, Record<string, string>, RegExp][] = [
       ['no secret', { PRIVATE_REQUESTS_DATA: empty }, /auth secret .*is missing/],
-      ['uninitialized schema', { PRIVATE_REQUESTS_DATA: empty, BETTER_AUTH_SECRET: 'b'.repeat(43), APP_DATABASE: join(root, 'unused.db') }, /Better Auth's tables are not initialized/],
+      ['uninitialized schema', { PRIVATE_REQUESTS_DATA: empty, BETTER_AUTH_SECRET: 'b'.repeat(43) }, /Better Auth's tables are not initialized/],
     ];
     // There is no origin to mismatch: the extension builds Better Auth's baseURL from the operator's --origin.
     for (const [name, extra, message] of refusals) {
@@ -139,12 +140,13 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
     }
     const yamlFile = join(site, 'app', 'urlcode.yaml'), yaml = await readFile(yamlFile, 'utf8');
     try {
-      // An unreviewed edit invalidates the pinned revision and the binding grant.
+      // An unreviewed edit invalidates the pinned revision.
       await writeFile(yamlFile, yaml.replace('The signed-in user', 'The user'));
       const stale = urlcode(t, site, ['validate', '--local', ...approved], env);
       assert.notEqual(stale.status, 0);
       assert.match(stale.stdout + stale.stderr, /revision|projectSha256|pin/i);
       // A live capability object cannot cross into the sandbox: refused at compile time, not degraded.
+      await mkdir(join(site, 'app', 'functions'));
       await writeFile(join(site, 'app', 'functions', 'sandboxed.mjs'), 'export default (_request, context) => Response.json({ capabilities: Object.keys(context.capabilities ?? {}) });\n');
       await writeFile(yamlFile, yaml + '  /api/sandboxed:\n    methods: [GET]\n    auth: true\n    sandbox: true\n    function: {source: functions/sandboxed.mjs}\n');
       const sandboxProposal = urlcode(t, site, ['permissions', '--project', 'app']);
@@ -154,7 +156,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
       assert.notEqual(sandboxed.status, 0);
       assert.match(sandboxed.stdout + sandboxed.stderr, /capabilit/);
     } finally {
-      await rm(join(site, 'app', 'functions', 'sandboxed.mjs'), { force: true });
+      await rm(join(site, 'app', 'functions'), { recursive: true, force: true });
       await writeFile(yamlFile, yaml);
       await writeFile(policy, proposal.stdout);
     }
@@ -166,7 +168,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   const documented = ['--project', 'app', '--host-file', 'host.mjs', '--origin', 'http://localhost:4180', '--policy', policy];
   const fixtures = urlcode(t, site, ['test', ...documented], fixtureEnv);
   assert.equal(fixtures.status, 0, fixtures.stdout + fixtures.stderr);
-  const audit = urlcode(t, site, ['audit', '--expect-routes', '8', ...documented, '--json'], fixtureEnv);
+  const audit = urlcode(t, site, ['audit', '--expect-routes', '6', ...documented, '--json'], fixtureEnv);
   const report = JSON.parse(audit.stdout.trim().split('\n').at(-1)!) as { countMatches: boolean; failed: number; ready: boolean; uncovered: unknown[] };
   assert.deepEqual([report.ready, report.countMatches, report.failed, report.uncovered], [true, true, 0, []], audit.stdout);
 
@@ -191,92 +193,116 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   // Sign-up is disabled over HTTP even though Better Auth ships it.
   assert.equal((await ann('/api/auth/sign-up/email', { method: 'POST', body: { email: 'eve@example.test', password: 'eve-local-demo-password', name: 'Eve' } })).status, 404);
 
+  type Page = { items: { id: string; title: string; status: string }[]; total: number };
+  const titles = async (client: ReturnType<typeof browser>, path: string): Promise<string[]> => ((await client(path)).json as Page).items.map(item => item.title);
+  const errorCode = (response: { json: unknown }): string => (response.json as { error: { code: string } }).error.code;
+
   await t.test('identity comes from the verified session, permissions from the application', async () => {
-    assert.deepEqual((await ann('/api/me')).json, { userId: users['ann@example.test'], reviewer: false });
-    assert.deepEqual((await rita('/api/me')).json, { userId: users['rita@example.test'], reviewer: true });
+    assert.equal(((await ann('/api/auth/get-session')).json as { user: { id: string } }).user.id, users['ann@example.test']);
+    assert.equal(((await rita('/api/auth/get-session')).json as { user: { id: string } }).user.id, users['rita@example.test']);
+    // Signing in never grants review: membership of the reviewers collection does.
+    assert.equal((await ann('/api/review')).status, 403);
+    assert.equal((await rita('/api/review')).status, 200);
     // A client cannot claim another identity through the reserved context namespace.
-    assert.equal(((await ann('/api/me', { headers: { 'x-urlcode-context-auth': users['rita@example.test']! } })).json as { userId: string }).userId, users['ann@example.test']);
+    assert.equal((await ann('/api/review', { headers: { 'x-urlcode-context-auth': users['rita@example.test']! } })).status, 403);
   });
 
   let annRequest = '';
   await t.test('owners create, list and read only their own requests', async () => {
     const created = await ann('/api/requests', { method: 'POST', body: { title: 'New laptop', details: 'Synthetic request' } });
     assert.equal(created.status, 201);
-    annRequest = (created.json as { id: string; status: string; ownerId: string }).id;
+    annRequest = (created.json as { id: string }).id;
     assert.equal((created.json as { status: string }).status, 'pending');
-    assert.equal((created.json as { ownerId: string }).ownerId, users['ann@example.test']);
+    // The store never shows the stored owner, to anyone.
+    assert.equal(Object.hasOwn(created.json as object, '_owner'), false);
     assert.equal((await bob('/api/requests', { method: 'POST', body: { title: 'Desk lamp' } })).status, 201);
-    assert.deepEqual(((await ann('/api/requests')).json as { requests: { title: string }[] }).requests.map(request => request.title), ['New laptop']);
-    assert.deepEqual(((await bob('/api/requests')).json as { requests: { title: string }[] }).requests.map(request => request.title), ['Desk lamp']);
+    assert.deepEqual(await titles(ann, '/api/requests'), ['New laptop']);
+    assert.deepEqual(await titles(bob, '/api/requests'), ['Desk lamp']);
     assert.equal((await ann(`/api/requests/${annRequest}`)).status, 200);
-    // Another owner cannot tell the request exists.
-    assert.deepEqual(await bob(`/api/requests/${annRequest}`).then(response => [response.status, response.json]), [404, { error: 'not_found' }]);
-    assert.equal((await rita(`/api/requests/${annRequest}`)).status, 200);
+    // Another owner cannot tell the request exists, and neither can a reviewer on the owners' mount.
+    assert.deepEqual(await bob(`/api/requests/${annRequest}`).then(response => [response.status, errorCode(response)]), [404, 'not_found']);
+    assert.equal((await rita(`/api/requests/${annRequest}`)).status, 404);
+    // A reviewer reads it through the read-only review mount.
+    assert.equal(((await rita(`/api/review/${annRequest}`)).json as { title: string }).title, 'New laptop');
   });
 
-  await t.test('malformed and out-of-contract input is refused before or by the handler', async () => {
+  await t.test('malformed and out-of-contract input is refused by the store', async () => {
     assert.equal((await ann('/api/requests', { method: 'POST', body: '{"title":' })).status, 400);
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: '' } })).status, 422);
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', owner: users['bob@example.test'] } })).status, 422);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: '' } })).status, 400);
+    // No body can name the owner or the review state: an undeclared field and a transitionOnly one are refused.
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', owner: users['bob@example.test'] } })).status, 400);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', _owner: users['bob@example.test'] } })).status, 400);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', status: 'approved' } })).status, 400);
     assert.equal((await ann('/api/requests', { method: 'POST', body: 'title=x', headers: { 'content-type': 'application/x-www-form-urlencoded' } })).status, 415);
-    assert.equal((await ann('/api/requests', { method: 'POST' })).status, 400);
-    assert.equal((await ann('/api/requests/not-a-uuid')).status, 400);
+    assert.equal((await ann('/api/requests', { method: 'POST' })).status, 415);
+    assert.equal((await ann('/api/requests/not-a-uuid')).status, 404);
+    // Owners cannot change a request: the route admits GET and POST only.
+    assert.equal((await ann(`/api/requests/${annRequest}`, { method: 'PATCH', body: { status: 'approved' } })).status, 405);
     assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x' }, headers: { origin: 'https://attacker.example' } })).status, 403);
-    assert.equal(((await ann('/api/requests')).json as { requests: unknown[] }).requests.length, 1);
+    assert.equal(((await ann('/api/requests')).json as Page).total, 1);
   });
 
   await t.test('only a reviewer approves, once, and never their own request', async () => {
-    assert.deepEqual(await bob(`/api/requests/${annRequest}/approve`, { method: 'POST' }).then(response => [response.status, response.json]), [403, { error: 'reviewer_required' }]);
-    assert.equal((await ann(`/api/requests/${annRequest}/approve`, { method: 'POST' })).status, 403);
-    assert.equal((await bob('/api/review/pending')).status, 403);
-    assert.equal(((await rita('/api/review/pending')).json as { requests: unknown[] }).requests.length, 2);
+    const missing = `${'0'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}`;
+    // A non-reviewer, owner or not, gets one 403 whether or not the id exists, before any record is read.
+    for (const [client, id] of [[bob, annRequest], [ann, annRequest], [bob, missing]] as const) {
+      const refused = await client(`/api/approvals/${id}`, { method: 'POST' });
+      assert.deepEqual([refused.status, errorCode(refused)], [403, 'membership_required']);
+    }
+    assert.equal((await bob('/api/review?status=pending')).status, 403);
+    assert.equal((await bob(`/api/review/${annRequest}`)).status, 403);
+    assert.deepEqual(await titles(rita, '/api/review?status=pending'), ['New laptop', 'Desk lamp']);
     const own = (await rita('/api/requests', { method: 'POST', body: { title: 'Reviewer own request' } })).json as { id: string };
-    assert.deepEqual(await rita(`/api/requests/${own.id}/approve`, { method: 'POST' }).then(response => [response.status, response.json]), [403, { error: 'self_approval_refused' }]);
-    // Concurrent approvals: the conditional update lets exactly one win.
-    const racing = await Promise.all([1, 2, 3].map(() => rita(`/api/requests/${annRequest}/approve`, { method: 'POST' })));
+    assert.deepEqual(await rita(`/api/approvals/${own.id}`, { method: 'POST' }).then(response => [response.status, errorCode(response)]), [403, 'own_record_refused']);
+    // The review mount is read-only.
+    assert.equal((await rita(`/api/review/${annRequest}`, { method: 'POST' })).status, 405);
+    // Concurrent approvals: the conditional transition lets exactly one win.
+    const racing = await Promise.all([1, 2, 3].map(() => rita(`/api/approvals/${annRequest}`, { method: 'POST' })));
     assert.deepEqual(racing.map(response => response.status).sort(), [200, 409, 409]);
-    assert.equal(((await ann(`/api/requests/${annRequest}`)).json as { status: string }).status, 'approved');
-    assert.equal((await rita(`/api/requests/${'0'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}/approve`, { method: 'POST' })).status, 404);
+    assert.deepEqual(racing.filter(response => response.status === 409).map(errorCode), ['transition_conflict', 'transition_conflict']);
+    const approved = (await ann(`/api/requests/${annRequest}`)).json as { status: string; reviewedAt: string };
+    assert.equal(approved.status, 'approved');
+    assert.match(approved.reviewedAt, /^\d{4}-\d\d-\d\dT/);
+    assert.equal((await rita(`/api/approvals/${missing}`, { method: 'POST' })).status, 404);
   });
 
-  await t.test('the application change: owners filter their own list by a declared status input', async () => {
+  await t.test('the application change: owners filter their own list by a declared status field', async () => {
     assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'Second request' } })).status, 201);
-    const titles = async (query: string): Promise<string[]> => ((await ann(`/api/requests${query}`)).json as { requests: { title: string }[] }).requests.map(request => request.title);
-    assert.deepEqual(await titles('?status=approved'), ['New laptop']);
-    assert.deepEqual(await titles('?status=pending'), ['Second request']);
-    assert.equal((await titles('')).length, 2);
-    assert.equal((await ann('/api/requests?status=withdrawn')).status, 400);
+    assert.deepEqual(await titles(ann, '/api/requests?status=approved'), ['New laptop']);
+    assert.deepEqual(await titles(ann, '/api/requests?status=pending'), ['Second request']);
+    assert.equal((await titles(ann, '/api/requests')).length, 2);
+    assert.equal((await ann('/api/requests?reviewedAt=x')).status, 400, 'only declared filters');
     // The filter narrows the caller's own records; it never widens to another owner's.
-    assert.deepEqual(((await bob('/api/requests?status=pending')).json as { requests: { title: string }[] }).requests.map(request => request.title), ['Desk lamp']);
+    assert.deepEqual(await titles(bob, '/api/requests?status=pending'), ['Desk lamp']);
   });
 
   await t.test('a cancelled request writes nothing', async () => {
-    const before = ((await bob('/api/requests')).json as { requests: unknown[] }).requests.length;
+    const before = ((await bob('/api/requests')).json as Page).total;
     const controller = new AbortController();
     let pull = 0;
     const body = new ReadableStream({ pull(stream) { if (pull++ === 0) stream.enqueue(new TextEncoder().encode('{"title":"never fin')); else return new Promise(() => { setTimeout(() => controller.abort(), 200); }); } });
     await assert.rejects(bob('/api/requests', { method: 'POST', rawBody: body, duplex: 'half', headers: { 'content-type': 'application/json' }, signal: controller.signal }));
-    assert.equal(((await bob('/api/requests')).json as { requests: unknown[] }).requests.length, before);
+    assert.equal(((await bob('/api/requests')).json as Page).total, before);
   });
 
   await t.test('sign-out and revocation end access immediately', async () => {
     assert.equal((await bob('/api/auth/sign-out', { method: 'POST', body: {} })).status, 200);
-    assert.equal((await bob('/api/me')).status, 401);
+    assert.equal((await bob('/api/requests')).status, 401);
     // A second device; revoking every session from one ends both.
     const annPhone = browser(origin);
     assert.equal(await signIn(annPhone, 'ann@example.test', 'ann-local-demo-password'), 200);
     const stolen = new Map(annPhone.jar);
-    assert.equal((await annPhone('/api/me')).status, 200);
+    assert.equal((await annPhone('/api/requests')).status, 200);
     assert.equal((await ann('/api/auth/revoke-sessions', { method: 'POST', body: {} })).status, 200);
-    assert.equal((await ann('/api/me')).status, 401);
-    assert.equal((await annPhone('/api/me')).status, 401);
+    assert.equal((await ann('/api/requests')).status, 401);
+    assert.equal((await annPhone('/api/requests')).status, 401);
     // Replaying the revoked cookie does not revive it.
     const replay = browser(origin);
     for (const [name, value] of stolen) replay.jar.set(name, value);
     assert.equal((await replay('/api/requests')).status, 401);
     // Signing in again works and the owner's data is intact.
     assert.equal(await signIn(ann, 'ann@example.test', 'ann-local-demo-password'), 200);
-    assert.equal(((await ann('/api/requests')).json as { requests: unknown[] }).requests.length, 2);
+    assert.equal(((await ann('/api/requests')).json as Page).total, 2);
   });
 
   await t.test('sign-in attempts are throttled per client address', async () => {

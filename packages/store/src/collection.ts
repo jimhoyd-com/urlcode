@@ -56,9 +56,17 @@ export interface TransitionSpec {
   by?: TransitionActor;
   /** With `by: others` only, and required there: the separate mount serving `POST <mount>/<id>`, guarded by its own route. */
   mount?: string;
+  /** A membership collection (`membership: true`): only principals it lists may run the transition. */
+  members?: string;
 }
+/**
+ * Cross-owner reads on an owned collection: members of the named membership collection list and read every owner's
+ * records, read-only, on a separate mount guarded by a principal-providing policy.
+ */
+export interface ReadersSpec { mount: string; members: string }
 export interface CollectionSpec {
-  mount: string; fields: Record<string, FieldSpec>;
+  /** Required, except on a membership collection, which has none. */
+  mount?: string; fields: Record<string, FieldSpec>;
   maxRecords?: number; maxRecordBytes?: number; pageSize?: number; readOnly?: boolean;
   /** One required bounded string field that callers choose and the collection keeps unique. */
   key?: string;
@@ -84,6 +92,13 @@ export interface CollectionSpec {
   audit?: boolean;
   /** Declared conditional state changes by name (#835). */
   transitions?: Record<string, TransitionSpec>;
+  /**
+   * A membership list (#863): its `key` field holds principal ids, and a transition's or reader mount's `members` names
+   * it. It has no mount and no HTTP API; the operator maintains it (`addMember`, or `StoreExports`).
+   */
+  membership?: boolean;
+  /** On an owned collection: who may list and read every owner's records, and where. */
+  readers?: ReadersSpec;
 }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
@@ -96,9 +111,9 @@ export class StoreError extends Error {
 
 /** JSON Schema for one collection declaration; `normalize` enforces the cross-field rules it cannot express. */
 export const collectionSchema = {
-  type: 'object', additionalProperties: false, required: ['mount', 'fields'],
+  type: 'object', additionalProperties: false, required: ['fields'],
   properties: {
-    mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256, description: 'URL path of the collection\'s JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE).' },
+    mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256, description: 'URL path of the collection\'s JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). Required, except on a membership collection, which has none.' },
     fields: { description: 'Declared record fields by name; a body naming any other field is refused. id, createdAt and updatedAt are reserved and store-owned.', type: 'object', minProperties: 1, maxProperties: LIMITS.fields, propertyNames: { pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['type'],
       properties: {
@@ -133,8 +148,14 @@ export const collectionSchema = {
         set: { type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Declared fields and the constant value the transition writes; not the collection key.' },
         stamp: { type: 'object', maxProperties: TRANSITION_LIMITS.stamps, propertyNames: { pattern: FIELD_NAME }, additionalProperties: { enum: ['actor', 'now'] }, description: 'String fields the store fills: actor (the principal id, needs maxLength of at least 128) or now (the commit time in ISO 8601, needs maxLength of at least 24). No enum or format.' },
         by: { enum: ['owner', 'others'], description: 'With ownership: owner only. owner (default): only the record\'s owner, on the collection mount. others: any principal except the record\'s owner (the owner gets 403 own_record_refused), served on its own mount.' },
-        mount: { ...MOUNT, description: 'Required with by: others, refused otherwise: the transition is served as POST <mount>/<id> on a route <mount>/* with extension: store (POST) and a principal-providing policy. Who may reach that route is the route\'s policy: the store has no roles.' },
+        mount: { ...MOUNT, description: 'Required with by: others, refused otherwise: the transition is served as POST <mount>/<id> on a route <mount>/* with extension: store (POST) and a principal-providing policy.' },
+        members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request.' },
       },
+    } },
+    membership: { type: 'boolean', description: 'true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with addMember/removeMember or trusted extension code (StoreExports). Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable, readOnly or audit.' },
+    readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is never shown.', type: 'object', additionalProperties: false, required: ['mount', 'members'], properties: {
+      mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
+      members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read.' },
     } },
   },
 } as const;
@@ -170,12 +191,13 @@ function checkValue(spec: FieldSpec, value: unknown): string | undefined {
 }
 
 export interface NormalizedSpec {
-  mount: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
+  mount?: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
+  membership: boolean; readers?: ReadersSpec;
 }
 /** A validated transition. `by` is `any` on a shared collection, whose records have no owner to compare. */
-export interface NormalizedTransition { from: Record<string, Scalar>; set: Record<string, Scalar>; stamp: Record<string, 'actor' | 'now'>; by: TransitionActor | 'any'; mount?: string }
+export interface NormalizedTransition { from: Record<string, Scalar>; set: Record<string, Scalar>; stamp: Record<string, 'actor' | 'now'>; by: TransitionActor | 'any'; mount?: string; members?: string }
 
 /** Validates the declared transitions against the collection's fields and ownership; throws plain Errors for the operator. */
 function transitionsOf(name: string, spec: CollectionSpec, ownership: Ownership, key: string | undefined): Record<string, NormalizedTransition> {
@@ -207,7 +229,7 @@ function transitionsOf(name: string, spec: CollectionSpec, ownership: Ownership,
     if (by === 'others' && declared.mount === undefined) throw new Error(`${where}: by: others needs its own mount`);
     if (by !== 'others' && declared.mount !== undefined) throw new Error(`${where}: mount is only for by: others`);
     if (declared.mount === spec.mount) throw new Error(`${where}: mount must differ from the collection mount`);
-    out[transition] = { from: values('from'), set: values('set'), stamp, by: ownership === 'shared' ? 'any' : by ?? 'owner', ...(declared.mount === undefined ? {} : { mount: declared.mount }) };
+    out[transition] = { from: values('from'), set: values('set'), stamp, by: ownership === 'shared' ? 'any' : by ?? 'owner', ...(declared.mount === undefined ? {} : { mount: declared.mount }), ...(declared.members === undefined ? {} : { members: declared.members }) };
   }
   return out;
 }
@@ -239,6 +261,14 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     return names;
   };
   const key = spec.key;
+  const membership = spec.membership === true;
+  if (membership) {
+    // A membership list is authorization data: served over a collection API, anyone the route admits could add
+    // themselves or enumerate members. It has no mount, and nothing that only makes sense with one.
+    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly', 'audit'] as const).filter(option => spec[option] !== undefined);
+    if (refused.length) throw new Error(`Collection ${name}: a membership collection takes no ${refused.join(', ')}`);
+    if (key === undefined) throw new Error(`Collection ${name}: a membership collection needs a key, the field holding each member's principal id`);
+  } else if (spec.mount === undefined) throw new Error(`Collection ${name}: mount is required`);
   if (key !== undefined) {
     const field = spec.fields[key];
     if (!field) throw new Error(`Collection ${name}: key ${key} is not a declared field`);
@@ -261,13 +291,20 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if (!['integer', 'number'].includes(field.type) || typeof field.default !== 'number') throw new Error(`Collection ${name}: increment field ${fieldName} must be numeric with a numeric default`);
   }
   const transitions = transitionsOf(name, spec, ownership, key);
+  const readers = spec.readers;
+  if (readers !== undefined) {
+    // Readers widen an owned collection's view to members; a shared collection's mount already shows every record.
+    if (ownership !== 'owner') throw new Error(`Collection ${name}: readers needs ownership: owner`);
+    if (readers.mount === spec.mount) throw new Error(`Collection ${name}: the readers mount must differ from the collection mount`);
+    if (Object.values(transitions).some(transition => transition.mount === readers.mount)) throw new Error(`Collection ${name}: the readers mount must differ from every transition mount`);
+  }
   for (const [field, f] of Object.entries(spec.fields)) {
     if (!f.transitionOnly) continue;
     if (f.required) throw new Error(`Collection ${name}: field ${field} cannot be both required and transitionOnly`);
     if (field === key || increments.includes(field)) throw new Error(`Collection ${name}: field ${field} is the key or an increment and cannot be transitionOnly`);
     if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field))) throw new Error(`Collection ${name}: field ${field} is transitionOnly but no transition sets or stamps it`);
   }
-  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions };
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members } }) };
 }
 
 /** What an audited collection needs from the audit extension: its pure event validator, and a wake-up for the drain after a commit that wrote an event. */
@@ -422,7 +459,7 @@ export class Collection {
         else unset.push(key);
         continue;
       }
-      const problem = checkValue(spec, input[key]);
+      const problem = checkValue(spec, input[key]) ?? (this.spec.membership && key === this.spec.key && !principalIdPattern.test(input[key] as string) ? 'must be a principal id' : undefined);
       if (problem) errors[key] = problem; else out[key] = input[key] as Scalar;
     }
     if (Object.keys(errors).length) throw new StoreError(400, 'invalid_record', 'Record does not match the collection fields', errors);
@@ -506,8 +543,12 @@ export class Collection {
     if (typeof id !== 'string' || !principalIdPattern.test(id)) throw new StoreError(401, 'principal_required', 'Sign in to use this collection');
     return id;
   }
-  /** The row filter for the caller's scope: the collection, and on an owned collection the caller's own records only (a record with no owner is in nobody's scope). */
-  private where(scope: string | undefined): { sql: string; values: string[] } {
+  /**
+   * The row filter for the caller's scope: the collection, and on an owned collection the caller's own records only (a
+   * record with no owner is in nobody's scope). `null` is a reader's scope: every owned record.
+   */
+  private where(scope: string | undefined | null): { sql: string; values: string[] } {
+    if (scope === null) return { sql: 'collection = ? AND owner IS NOT NULL', values: [this.name] };
     return scope === undefined ? { sql: 'collection = ?', values: [this.name] } : { sql: 'collection = ? AND owner = ?', values: [this.name, scope] };
   }
   /** The record `id` in `scope` read inside the current transaction; another owner's (or nobody's) record is the same 404 as a missing id. */
@@ -521,6 +562,38 @@ export class Collection {
     const row = db.get<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? AND id = ?`, this.name, id);
     if (!row || row.owner === null) throw new StoreError(404, 'not_found', 'No such record');
     return this.parse(row);
+  }
+
+  /**
+   * The membership gate (#863): with `members` (a membership collection's name), `principal` must be one of its keys,
+   * or the request is 403 `membership_required`. It runs first inside the caller's transaction, before any record of
+   * this collection is read, so a non-member gets the same answer for an existing id and a missing one, and a
+   * membership change committed before the transaction began applies to it.
+   */
+  private admit(db: StoreDatabase, members: string | undefined, principal: string): void {
+    if (members !== undefined && db.get('SELECT 1 AS found FROM store_records WHERE collection = ? AND key = ?', members, principal) === undefined) throw new StoreError(403, 'membership_required', 'You are not allowed to do this');
+  }
+  /**
+   * The readers mount (#863), for a member of `readers.members`: one page of every owner's records (`total`, sort,
+   * filters and cursor over all of them; a record with no owner is nobody's and is left out). The principal (401)
+   * and the membership gate (403) come first, in the same read transaction, before the query is parsed or any
+   * record is read. Read-only.
+   */
+  listAcross(params: URLSearchParams, principal: string | undefined): { items: StoredRecord[]; total: number; next?: string | number } {
+    return this.across(principal, db => this.listIn(db, parseListQuery(this.spec, params), null));
+  }
+  /** One owned record for a member of `readers.members` (the gate as `listAcross`); a missing or malformed id is 404. */
+  getAcross(id: string, principal: string | undefined): StoredRecord {
+    return this.across(principal, db => {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) throw new StoreError(404, 'not_found', 'No such record');
+      return this.anyOwned(db, id);
+    });
+  }
+  private across<T>(principal: string | undefined, work: (db: StoreDatabase) => T): T {
+    const readers = this.spec.readers;
+    if (!readers) throw new StoreError(404, 'not_found', 'No such collection');
+    const caller = this.principal(principal);
+    return this.read(db => { this.admit(db, readers.members, caller); return work(db); });
   }
 
   /**
@@ -539,7 +612,7 @@ export class Collection {
    * filters those in memory, and then reads the page's records by id: bounded by `maxRecords`, never a scan of the
    * full record bodies.
    */
-  private listIn(db: StoreDatabase, query: ReturnType<typeof parseListQuery>, scope: string | undefined): { items: StoredRecord[]; total: number; next?: string | number } {
+  private listIn(db: StoreDatabase, query: ReturnType<typeof parseListQuery>, scope: string | undefined | null): { items: StoredRecord[]; total: number; next?: string | number } {
     const where = this.where(scope);
     if (!query.sort && !query.filters.length) {
       const total = db.get<{ n: number }>(`SELECT count(*) AS n FROM store_records WHERE ${where.sql}`, ...where.values)!.n;
@@ -604,7 +677,8 @@ export class Collection {
   }
   /**
    * Runs the declared transition `name` on record `id` for `principal` (#835). An unknown name is a 404. Checked in
-   * this order, all inside the one write transaction: the retained `Idempotency-Key`; the record in the transition's
+   * this order, all inside the one write transaction: with `members`, the membership gate (403); the retained
+   * `Idempotency-Key`; the record in the transition's
    * scope (404); for `by: others`, that the caller is not its owner (403); `If-Match` (412); every `from` value (409
    * `transition_conflict`). Only then are the `set` values, the `stamp` values and `updatedAt` written with the claim
    * and the audit event. Any refusal writes nothing.
@@ -612,10 +686,18 @@ export class Collection {
   transition(id: string, name: string, retry?: Retry, expectedEtag?: string, principal?: string, actor?: string): Written {
     const transition = hasOwn(this.spec.transitions, name) ? this.spec.transitions[name]! : undefined;
     if (!transition) throw new StoreError(404, 'not_found', 'No such transition');
-    // `principal` is checked before anything is read: owner scoping, or the caller an others transition compares.
-    const caller = transition.by === 'any' ? principal : this.principal(principal);
+    // `principal` is checked before anything is read: owner scoping, the caller an others transition compares, or a member.
+    const caller = this.caller(transition, principal);
     this.writable();
-    return this.write(db => this.idempotent(db, retry, 200, found => this.transitionTarget(db, found, transition, caller), () => this.transitionIn(db, id, name, expectedEtag, caller, actor)));
+    // The membership gate comes before the retained key, so a removed member's retry is refused rather than replayed.
+    return this.write(db => {
+      if (caller !== undefined) this.admit(db, transition.members, caller);
+      return this.idempotent(db, retry, 200, found => this.transitionTarget(db, found, transition, caller), () => this.transitionIn(db, id, name, expectedEtag, caller, actor));
+    });
+  }
+  /** Who runs a transition: any caller on an ungated shared one, otherwise a principal (401 without one). */
+  private caller(transition: NormalizedTransition, principal: string | undefined): string | undefined {
+    return transition.by === 'any' && transition.members === undefined ? principal : this.principal(principal);
   }
   recordClick(id: string, field: string): StoredRecord {
     // Store-owned click-counter bookkeeping for a short-link redirect (dispatchShortLink in store.ts), never reachable
@@ -696,7 +778,8 @@ export class Collection {
     this.writable();
     const transition = hasOwn(this.spec.transitions, name) ? this.spec.transitions[name]! : undefined;
     if (!transition) throw new StoreError(404, 'not_found', 'No such transition');
-    const caller = transition.by === 'any' ? principal : this.principal(principal);
+    const caller = this.caller(transition, principal);
+    if (caller !== undefined) this.admit(db, transition.members, caller);
     const current = this.transitionTarget(db, id, transition, caller);
     // The owner learns nothing here it does not already know: the record is its own.
     if (transition.by === 'others' && current[OWNER_FIELD] === caller) throw new StoreError(403, 'own_record_refused', 'This transition cannot be applied to your own record');

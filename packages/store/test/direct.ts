@@ -14,13 +14,14 @@ export interface Call { who?: string | null; body?: unknown; headers?: Record<st
 export interface Answer { status: number; body: Record<string, unknown> | undefined; header(name: string): string | undefined }
 
 /** A request as core would hand it to the store's mount: `mount` is the longest declared mount the path is under. */
-export function requestFor(mounts: readonly string[], method: string, path: string, init: Call = {}): ExtensionRequest {
+export function requestFor(mounts: readonly string[], method: string, target: string, init: Call = {}): ExtensionRequest {
+  const split = target.indexOf('?'), path = split < 0 ? target : target.slice(0, split), query = new URLSearchParams(split < 0 ? '' : target.slice(split + 1));
   const mount = [...mounts].sort((a, b) => b.length - a.length).find(candidate => path === candidate || path.startsWith(`${candidate}/`)) ?? null;
   const text = init.raw ?? (init.body === undefined ? '' : JSON.stringify(init.body));
   const headers = new Headers({ ...(text ? { 'content-type': 'application/json' } : {}), ...init.headers });
   const headerCounts = Object.fromEntries([...headers.keys()].map(name => [name, 1]));
   const principal = init.who ? Object.freeze({ id: init.who, provider: 'badge' }) : null;
-  return { method, target: path, path, query: new URLSearchParams(), headers, headerCounts, body: new TextEncoder().encode(text), origin, route: `${mount}/*`, mount, client: init.client ?? '203.0.113.9', requestId: 'direct', env: {}, principal };
+  return { method, target, path, query, headers, headerCounts, body: new TextEncoder().encode(text), origin, route: `${mount}/*`, mount, client: init.client ?? '203.0.113.9', requestId: 'direct', env: {}, principal };
 }
 export function answer(result: HandlerResult): Answer {
   const text = typeof result.body === 'string' ? result.body : result.body === undefined ? '' : new TextDecoder().decode(result.body as Uint8Array);

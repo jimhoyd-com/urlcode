@@ -7,20 +7,29 @@ runnable URLCode site. [Better Auth](https://better-auth.com/) owns accounts,
 passwords, sessions and its own SQLite tables. URLCode owns the declared
 routes, the admission decision and the review facts. The first-party
 [`auth` extension](../../packages/auth/README.md) (`@jimhoyd/urlcode-auth`)
-connects the two. The application owns one business rule. It is not a
-starter or a release claim.
+connects the two, and the first-party
+[`store` extension](../../docs/STORE.md) (`@jimhoyd/urlcode-store`) holds the
+application's data and serves its one business rule from YAML. There is no
+application server code. It is not a starter or a release claim.
 
 - Two synthetic owners and one reviewer. Owners create, list and read only
-  their own requests. A reviewer can read any request and approve another
-  user's pending one. Signing in never grants review: that permission is an
-  application table keyed by Better Auth's opaque user id.
+  their own requests (an owned store collection). A reviewer can read any
+  request and approve another user's pending one. Signing in never grants
+  review: that permission is application data, a store
+  [membership collection](../../docs/STORE.md#membership-gates-and-cross-owner-reads)
+  keyed by Better Auth's opaque user id.
 - Sign-in, sign-out, "sign out everywhere" and session checks are Better
   Auth's own endpoints and browser client. There is no URLCode session, cookie
   or password code here.
-- Application routes are ordinary trusted `function` routes marked
-  `auth: true`. They receive the verified user id through the request-bound
-  capability from #840 (`context.capabilities.auth.identity.userId`), never a
-  cookie or header.
+- Application routes are `extension: store` mounts marked `auth: true`. The
+  store receives the verified user id as the request principal, never a cookie
+  or header, and scopes, gates and stamps with it.
+
+| Route | What the store serves |
+|---|---|
+| `GET /api/requests`, `GET /api/requests/<id>`, `POST /api/requests` | The caller's own requests (`?status=pending` or `approved` filters); another owner's is `404` |
+| `POST /api/approvals/<id>` | The `approve` transition: `pending` to `approved`, stamping `reviewedAt`; members of `reviewers` only, never on their own request |
+| `GET /api/review`, `GET /api/review/<id>` | Every owner's requests, read-only, for members of `reviewers`; `?status=pending` is the queue |
 
 ## Layout
 
@@ -28,24 +37,23 @@ starter or a release claim.
 |---|---|---|
 | `operator/auth.mjs` | operator | This proof's Better Auth choices beyond the package defaults: app name, `disabledPaths`, and the data directory |
 | `host.mjs` | operator | Composes the host with `auth({database, secretFile, betterAuth})` |
-| `scripts/setup.mjs` | operator | Forward schema setup and synthetic accounts |
+| `scripts/setup.mjs` | operator | Forward schema setup, synthetic accounts, and the reviewer's membership (the store's `addMember`) |
 | `scripts/inventory.mjs` | operator | Pinned versions and the probed endpoint list |
-| `app/urlcode.yaml` | application | Every route, input bound and protection |
-| `app/functions/*.mjs`, `app/lib/requests.mjs` | application | The business rules and parameterized SQL |
+| `app/urlcode.yaml` | application | Every route, protection, collection and the approval transition |
 | `client/main.js`, `app/public/` | application | The frontend and its Better Auth client |
 
 The secret file (`data/auth.secret`), the Better Auth database
-(`data/auth.sqlite`), the exact allowlist of served Better Auth paths, rate
+(`data/auth.sqlite`), the store database (`data/store.sqlite`), the exact allowlist of served Better Auth paths, rate
 limiting and the client-address header are the package's defaults. The
-committed site depends on `file:../../packages/auth`; a real site gets it
-from `urlcode extensions add auth`, which installs it at core's pin and writes
-the mount and secret. `urlcode extensions list` then reports `auth` as a
-catalog extension, and `urlcode validate --project app` checks the declaration
+committed site depends on `file:../../packages/auth` and
+`file:../../packages/store`; a real site gets them from
+`urlcode extensions add auth store`, which installs them at core's pins and
+writes the mount and secret. `urlcode extensions list` then reports both as
+catalog extensions, and `urlcode validate --project app` checks the declaration
 against its schemas without loading any host code.
 
-Provider settings never appear in `app/urlcode.yaml`. The application database
-path reaches the functions only through an `APP_DATABASE` binding, which the
-operator policy must grant for the reviewed revision.
+Provider settings and database paths never appear in `app/urlcode.yaml`:
+`host.mjs` chooses both databases.
 
 ## Run it
 
@@ -56,10 +64,11 @@ latest published runtime. From the repository root:
 npm ci && npm run build && npm run build:addons
 npm pack --pack-destination /tmp/urlcode-pack
 (cd packages/auth && npm pack --pack-destination /tmp/urlcode-pack)
+(cd packages/store && npm pack --pack-destination /tmp/urlcode-pack)
 cp -R proofs/private-requests /tmp/private-requests && cd /tmp/private-requests
-npm install /tmp/urlcode-pack/jimhoyd-urlcode-0*.tgz /tmp/urlcode-pack/jimhoyd-urlcode-auth-*.tgz
+npm install /tmp/urlcode-pack/jimhoyd-urlcode-0*.tgz /tmp/urlcode-pack/jimhoyd-urlcode-auth-*.tgz /tmp/urlcode-pack/jimhoyd-urlcode-store-*.tgz
 npm run build     # bundles the Better Auth browser client into app/public/assets/app.js
-npm run setup     # data/: auth.secret, auth.sqlite (Better Auth schema), app.db, three accounts
+npm run setup     # data/: auth.secret, auth.sqlite (Better Auth schema), three accounts, store.sqlite with rita as a reviewer
 npm run inventory # the Better Auth version, integrity and every endpoint, probed
 ```
 
@@ -70,7 +79,7 @@ Review `app/`, `host.mjs` and `operator/`, then approve the revision yourself.
 Nothing computes or repins it for you:
 
 ```sh
-npm run -s proposal > operator/policy.json   # the requested APP_DATABASE grants and projectSha256
+npm run -s proposal > operator/policy.json   # the reviewed projectSha256
 npm run validate
 npm test          # declarative fixtures, including a signed-in owner, foreign owner and reviewer flow
 npm run audit     # every route and method covered
@@ -104,8 +113,14 @@ directory and exercises every success and failure case over HTTP:
   the declared mount, so they cannot disagree with what URLCode serves.
 - Any revision the operator policy does not pin, and a `sandbox: true` route
   that names `auth`: a live capability cannot enter the sandbox.
-- AWS, Vercel, Cloudflare and static targets: the extension declares `node`
+- AWS, Vercel, Cloudflare and static targets: both extensions declare `node`
   only.
+- A non-reviewer on the approval or review mount: one `403
+  membership_required`, whether or not the request id exists, before any
+  request is read. A reviewer approving their own request (`403
+  own_record_refused`), an approval of a request that is no longer pending
+  (`409 transition_conflict`; of concurrent approvals exactly one wins), and
+  any body that names the owner or `status` (`400`).
 - Every Better Auth path outside the package's allowlist (sign-in, sign-out,
   the session endpoints, `/change-password` and `/ok`; sign-up stays off).
   Better Auth's own `disabledPaths`, set in `operator/auth.mjs`, matches
@@ -128,14 +143,13 @@ directory and exercises every success and failure case over HTTP:
   directory, and run `npm run setup` there, to keep them apart.
 - The authoring MCP runners pass their child process only `PATH`, so they
   always use the site's own `data/`, whatever `PRIVATE_REQUESTS_DATA` says.
-- The approval transition is one conditional SQL statement. The store now
-  declares the same transition (a `by: others` transition with
-  `transitionOnly` state, idempotent retries and audit evidence;
-  [store transitions](../../docs/STORE.md#conditional-transitions-and-result-aware-retries)),
-  but this proof keeps its own tables: the store has no reviewer role, so a
-  reviewer could neither read another owner's request nor list pending ones
-  across owners, and the transition's route would admit every signed-in user.
-  Moving only the approval would split one application's data across two
-  databases and add code rather than remove it.
-- A trusted route's grant digest covers its entry file, not
-  `app/lib/requests.mjs`. `urlcode report` still lists that file as changed code.
+- Reviewer membership is maintained by the operator (`addMember` in
+  `scripts/setup.mjs`); there is no `urlcode-store` command for it yet, and
+  membership changes are not audited. The proof does not install the audit
+  extension, so approvals leave no audit event either (the store records
+  `store.record.transitioned` with the reviewer as actor when a collection
+  declares `audit: true`).
+- The store never returns a record's owner, so a reviewer sees what was
+  requested but not by whom.
+- Requests cannot be edited or withdrawn: the route admits `GET` and `POST`
+  only, and `approve` is the one transition.

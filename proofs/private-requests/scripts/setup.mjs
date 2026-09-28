@@ -1,17 +1,18 @@
-// Operator setup: forward-initializes Better Auth's schema and the application's tables in local SQLite, and
-// bootstraps three synthetic accounts through Better Auth's own server API. Safe to re-run: an existing account is
-// looked up, not created again. It uses @jimhoyd/urlcode-auth's options and migration, as `urlcode-auth migrate`
-// and `create-user` do, because it also needs each account's id for the reviewer table and honours
-// PRIVATE_REQUESTS_DATA.
+// Operator setup: forward-initializes Better Auth's schema in local SQLite, bootstraps three synthetic accounts
+// through Better Auth's own server API, and adds the reviewer to the store's `reviewers` membership collection with
+// the store's operator call. Safe to re-run: an existing account is looked up, not created again, and an existing
+// member is left as it is. It uses @jimhoyd/urlcode-auth's options and migration, as `urlcode-auth migrate` and
+// `create-user` do, because it also needs each account's id for the membership and honours PRIVATE_REQUESTS_DATA.
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { betterAuth } from 'better-auth';
+import { loadDocument } from '@jimhoyd/urlcode';
+import { addMember } from '@jimhoyd/urlcode-store';
 import { betterAuthOptions, defaultBasePath, migrate } from '@jimhoyd/urlcode-auth';
 import { readSecret } from '@jimhoyd/urlcode-auth/extension';
 import { authFiles, providerOptions } from '../operator/auth.mjs';
-import { database as appDatabase } from '../app/lib/requests.mjs';
 
 const site = fileURLToPath(new URL('..', import.meta.url));
 const { data, database, secretFile } = authFiles(site);
@@ -29,13 +30,14 @@ const options = betterAuthOptions({ database, secret: await readSecret(site, sec
 await migrate(options);
 const auth = betterAuth(options);
 const context = await auth.$context;
-const app = appDatabase(process.env.APP_DATABASE ?? join(data, 'app.db'));
+// The reviewed project's own declaration: addMember validates the member against it.
+const { collections } = (await loadDocument(join(site, 'app'))).document.extensions.store.config;
 const users = {};
 for (const account of accounts) {
   const existing = await context.internalAdapter.findUserByEmail(account.email);
   const id = existing?.user.id ?? (await auth.api.signUpEmail({ body: { name: account.name, email: account.email, password: account.password } })).user.id;
   users[account.email] = id;
   // The review permission is application data, keyed by Better Auth's opaque user id.
-  if (account.reviewer) app.prepare('INSERT OR IGNORE INTO reviewers (user_id) VALUES (?)').run(id);
+  if (account.reviewer) await addMember(join(data, 'store.sqlite'), { collections, collection: 'reviewers', principal: id });
 }
 console.log(JSON.stringify({ event: 'setup', data, users }));

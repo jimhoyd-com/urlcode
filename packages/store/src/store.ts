@@ -144,9 +144,21 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       const byMount = new Map<string, Collection>();
       const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor));
       for (const collection of collections) if (collection.spec.audit && !audit?.active) throw new Error(`collection ${collection.name} declares audit: true; install the audit extension (urlcode extensions add audit)`);
-      for (const collection of collections) {
+      // A membership collection has no mount: it is never served over HTTP.
+      const served = collections.filter((collection): collection is Collection & { spec: { mount: string } } => collection.spec.mount !== undefined);
+      for (const collection of served) {
         if (byMount.has(collection.spec.mount)) throw new Error(`Collections ${byMount.get(collection.spec.mount)!.name} and ${collection.name} share a mount`);
         byMount.set(collection.spec.mount, collection);
+      }
+      // A gate names a membership collection; anything else refuses, so a typo can never leave a gate open or shut.
+      const membership = (where: string, members: string): void => {
+        const found = collections.find(candidate => candidate.name === members);
+        if (!found) throw new Error(`${where}: members names ${members}, which is not a declared collection`);
+        if (!found.spec.membership) throw new Error(`${where}: members names ${members}, which is not a membership collection (membership: true)`);
+      };
+      for (const collection of collections) {
+        for (const [name, transition] of Object.entries(collection.spec.transitions)) if (transition.members !== undefined) membership(`Collection ${collection.name}: transition ${name}`, transition.members);
+        if (collection.spec.readers) membership(`Collection ${collection.name}: readers`, collection.spec.readers.members);
       }
       const shortByMount = new Map<string, ShortLink>();
       for (const [name, link] of Object.entries(declaredLinks)) {
@@ -160,9 +172,9 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         if (!context.mounts.includes(link.mount)) throw new Error(`Short link ${name}: route ${link.mount}/* with extension: store is not declared`);
         shortByMount.set(link.mount, { collection, destination: link.destination, clicks: link.clicks });
       }
-      for (const collection of collections) if (!context.mounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: route ${collection.spec.mount}/* with extension: store is not declared`);
+      for (const collection of served) if (!context.mounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: route ${collection.spec.mount}/* with extension: store is not declared`);
       // A `by: others` transition is served on its own mount, so the operator guards who may run it with that route's
-      // policy, separately from the collection's. The store has no roles: the route is the only gate.
+      // policy, separately from the collection's, and with `members` the store's membership gate as well.
       const transitionByMount = new Map<string, TransitionMount>();
       for (const collection of collections) for (const [name, transition] of Object.entries(collection.spec.transitions)) {
         if (transition.mount === undefined) continue;
@@ -172,13 +184,24 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         if (!(context.principalMounts ?? []).includes(transition.mount)) throw new Error(`${where}: by: others needs route ${transition.mount}/* guarded by a principal-providing policy (for example auth: true)`);
         transitionByMount.set(transition.mount, { collection, name });
       }
+      // Cross-owner reads are served on their own mount, which must carry a principal for the membership gate.
+      const readersByMount = new Map<string, Collection>();
+      for (const collection of collections) {
+        const readers = collection.spec.readers;
+        if (!readers) continue;
+        const where = `Collection ${collection.name}: readers`;
+        if (byMount.has(readers.mount) || shortByMount.has(readers.mount) || transitionByMount.has(readers.mount) || readersByMount.has(readers.mount)) throw new Error(`${where}: mount ${readers.mount} conflicts with another store mount`);
+        if (!context.mounts.includes(readers.mount)) throw new Error(`${where}: route ${readers.mount}/* with extension: store is not declared`);
+        if (!(context.principalMounts ?? []).includes(readers.mount)) throw new Error(`${where}: route ${readers.mount}/* needs a principal-providing policy (for example auth: true)`);
+        readersByMount.set(readers.mount, collection);
+      }
       // Fail closed at startup: an owned collection is only served on a mount where a request can carry a principal.
       const principalMounts = context.principalMounts ?? [];
-      for (const collection of collections) if (collection.spec.ownership === 'owner' && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: ownership: owner needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
+      for (const collection of served) if (collection.spec.ownership === 'owner' && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: ownership: owner needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
       // Audit retention is shared with auth's privileged events, so writes nobody has to authenticate for must not
       // be able to fill it: an audited collection is only served where a request can carry a principal.
-      for (const collection of collections) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
-      for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount) && !transitionByMount.has(mount)) throw new Error(`Mount ${mount} has no collection, transition or short link declared`);
+      for (const collection of served) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
+      for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount) && !transitionByMount.has(mount) && !readersByMount.has(mount)) throw new Error(`Mount ${mount} has no collection, transition, readers or short link declared`);
       const held = await acquire();
       let pending: number;
       try {
@@ -191,7 +214,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       if (pending > 0) attachment?.notify();
       let closed = false;
       return {
-        handle: request => dispatch({ byMount, shortByMount, transitionByMount }, context, request),
+        handle: request => dispatch({ byMount, shortByMount, transitionByMount, readersByMount }, context, request),
         async close() {
           if (closed) return;
           closed = true;
@@ -217,7 +240,7 @@ function opener(database: string): Connection {
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
 interface ShortLink { collection: Collection; destination: string; clicks: string }
 interface TransitionMount { collection: Collection; name: string }
-interface Mounts { byMount: Map<string, Collection>; shortByMount: Map<string, ShortLink>; transitionByMount: Map<string, TransitionMount> }
+interface Mounts { byMount: Map<string, Collection>; shortByMount: Map<string, ShortLink>; transitionByMount: Map<string, TransitionMount>; readersByMount: Map<string, Collection> }
 
 /** Store's own wording for the codes it has always answered; any other refusal keeps core's code and fixed message. */
 const bodyMessages: Readonly<Record<string, string>> = { unsupported_media_type: 'Send Content-Type: application/json', invalid_json: 'Body is not valid JSON' };
@@ -284,6 +307,8 @@ function noBody(request: ExtensionRequest): void {
 async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin' | 'origins'>, request: ExtensionRequest): Promise<HandlerResult> {
   const short = request.mount === null ? undefined : mounts.shortByMount.get(request.mount);
   if (short) return dispatchShortLink(short, request);
+  const readers = request.mount === null ? undefined : mounts.readersByMount.get(request.mount);
+  if (readers) return dispatchReaders(readers, request);
   const transition = request.mount === null ? undefined : mounts.transitionByMount.get(request.mount);
   const collection = transition?.collection ?? (request.mount === null ? undefined : mounts.byMount.get(request.mount));
   if (!collection || request.mount === null) return failure(new StoreError(404, 'not_found', 'No such collection'));
@@ -337,6 +362,25 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
   } catch (error) {
     if (error instanceof StoreError) return failure(error, error.status === 405 ? allowed(transition ? 'POST' : collection.spec.readOnly ? 'GET, HEAD' : 'GET, HEAD, POST, PUT, PATCH, DELETE') : []);
     return failure(new StoreError(500, 'internal_error', 'The store failed to handle this request')); // never echo the cause
+  }
+}
+/**
+ * A readers mount (#863): `GET`/`HEAD <mount>` lists and `GET`/`HEAD <mount>/<id>` reads every owner's records for a
+ * member of the declared membership collection. Read-only: every other method is 405. The principal (401) and the
+ * membership gate (403) are checked before the path is interpreted or any record is read.
+ */
+async function dispatchReaders(collection: Collection, request: ExtensionRequest): Promise<HandlerResult> {
+  const rest = request.mount === null ? '' : request.path.slice(request.mount.length).replace(/^\/+/, '');
+  const method = request.method.toUpperCase();
+  try {
+    if (method !== 'GET' && method !== 'HEAD') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), [['allow', 'GET, HEAD']]);
+    const principal = request.principal?.id;
+    if (rest === '') return json(200, listView(collection.listAcross(request.query, principal)));
+    const record = collection.getAcross(rest, principal);
+    return json(200, view(record), [['etag', etagOf(record)]]);
+  } catch (error) {
+    if (error instanceof StoreError) return failure(error);
+    return failure(new StoreError(500, 'internal_error', 'The store failed to handle this request'));
   }
 }
 async function dispatchShortLink(short: ShortLink, request: ExtensionRequest): Promise<HandlerResult> {

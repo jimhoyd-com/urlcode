@@ -2,8 +2,8 @@
 
 Operator-installed data store extension for URLCode. Declare typed collections in
 `urlcode.yaml`, mount each with `extension: store`, and the extension serves a
-bounded JSON CRUD API backed by atomically written files in an operator-owned
-directory. No handler code.
+bounded JSON CRUD API backed by one operator-owned SQLite database. No handler
+code.
 
 ## Install
 
@@ -117,6 +117,21 @@ expression language: interval constraints and multi-record transfers use a
 host transaction. See
 [conditional transitions and result-aware retries](../../docs/STORE.md#conditional-transitions-and-result-aware-retries).
 
+## Membership gates
+
+Permissions are application data keyed by the principal id, not roles in auth
+(#863). A collection declared `membership: true` with a `key` holds one record
+per member, keyed by principal id. It has no mount and no HTTP API: the
+operator maintains it with `addMember`, `removeMember` and `listMembers` from
+this package, and trusted extension code through `StoreExports`. A transition
+that names `members: <collection>` admits only members (`403
+membership_required` before any record is read, the same for an existing and a
+missing id). An owned collection's `readers: {mount, members}` lets members
+list (with the declared filters and sort) and read every owner's records,
+read-only, on a separate mount. Membership is read inside each request's
+transaction, so a change applies to the next request. See
+[membership gates and cross-owner reads](../../docs/STORE.md#membership-gates-and-cross-owner-reads).
+
 ## Short links
 
 A collection with a unique `key`, a required `format: http-url` destination
@@ -178,7 +193,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
 | `extensions.store.config.collections` | object | yes | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | Collections by name, each stored as rows of the site's store database (data/store.sqlite outside app/, chosen by the operator) and served as a bounded CRUD API at its mount. |
-| `extensions.store.config.collections.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the collection's JSON API; it needs a route `<mount>/*` with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). |
+| `extensions.store.config.collections.*.mount` | string | no | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the collection's JSON API; it needs a route `<mount>/*` with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). Required, except on a membership collection, which has none. |
 | `extensions.store.config.collections.*.fields` | object | yes | minProperties: 1; maxProperties: 64; keys: "^[a-z][A-Za-z0-9_]{0,63}$" | Declared record fields by name; a body naming any other field is refused. id, createdAt and updatedAt are reserved and store-owned. |
 | `extensions.store.config.collections.*.fields.*.type` | string | yes | enum: ["string","integer","number","boolean"] | Value type; integer must be a safe integer and number a finite number. |
 | `extensions.store.config.collections.*.fields.*.required` | boolean | no | — | true: every record must carry the field and PATCH cannot clear it; not combinable with default. |
@@ -208,7 +223,12 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.transitions.*.set` | object | yes | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Declared fields and the constant value the transition writes; not the collection key. |
 | `extensions.store.config.collections.*.transitions.*.stamp` | object | no | maxProperties: 4; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string (enum: ["actor","now"]) | String fields the store fills: actor (the principal id, needs maxLength of at least 128) or now (the commit time in ISO 8601, needs maxLength of at least 24). No enum or format. |
 | `extensions.store.config.collections.*.transitions.*.by` | string | no | enum: ["owner","others"] | With ownership: owner only. owner (default): only the record's owner, on the collection mount. others: any principal except the record's owner (the owner gets 403 own_record_refused), served on its own mount. |
-| `extensions.store.config.collections.*.transitions.*.mount` | string | no | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | Required with by: others, refused otherwise: the transition is served as POST `<mount>/<id>` on a route `<mount>/*` with extension: store (POST) and a principal-providing policy. Who may reach that route is the route's policy: the store has no roles. |
+| `extensions.store.config.collections.*.transitions.*.mount` | string | no | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | Required with by: others, refused otherwise: the transition is served as POST `<mount>/<id>` on a route `<mount>/*` with extension: store (POST) and a principal-providing policy. |
+| `extensions.store.config.collections.*.transitions.*.members` | string | no | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request. |
+| `extensions.store.config.collections.*.membership` | boolean | no | — | true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with addMember/removeMember or trusted extension code (StoreExports). Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable, readOnly or audit. |
+| `extensions.store.config.collections.*.readers` | object | no | unknown keys rejected | With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET `<mount>` (with the collection's limit, cursor, sort and filters) and GET `<mount>/<id>`. Owners keep their own view on the collection mount. The stored owner is never shown. |
+| `extensions.store.config.collections.*.readers.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | A separate mount: a route `<mount>/*` with extension: store (GET, HEAD) and a principal-providing policy. |
+| `extensions.store.config.collections.*.readers.members` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A membership collection: anyone it does not list gets 403 membership_required before any record is read. |
 | `extensions.store.config.shortLinks` | object | no | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | Public redirect mounts by name: GET `<mount>/<key>` atomically increments a counter and answers 302 to the record's stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route `<mount>/*` with extension: store (GET, HEAD). |
 | `extensions.store.config.shortLinks.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the redirect mount, separate from the collection's CRUD mount. |
 | `extensions.store.config.shortLinks.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A declared shared collection with a key; the key value is the path segment after the mount. |
@@ -225,9 +245,10 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 
 Declare collections under extensions.store.config.collections and mount each on a route with `extension: store`. Bounded unique keys, numeric increments, idempotency retention and short-link redirects remain store-owned; no handler code is needed.
 
-- **collections** (configuration, `urlcode.yaml`): Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` field lists, and `ownership: owner` (per-record ownership: each signed-in principal sees and changes only its own records; the mount must be guarded by a principal-providing policy such as `auth: true`) with an optional `maxRecordsPerOwner` (at most maxRecords; a principal at it gets `409 owner_quota_exceeded`), and `audit: true` (every write recorded in the audit log with field names and the principal, never values; needs the audit extension, and writes answer `503 audit_backlog` while 1000 events wait to drain).
+- **collections** (configuration, `urlcode.yaml`): Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` field lists, and `ownership: owner` (per-record ownership: each signed-in principal sees and changes only its own records; the mount must be guarded by a principal-providing policy such as `auth: true`) with an optional `maxRecordsPerOwner` (at most maxRecords; a principal at it gets `409 owner_quota_exceeded`), `audit: true` (every write recorded in the audit log with field names and the principal, never values; needs the audit extension, and writes answer `503 audit_backlog` while 1000 events wait to drain), and declared `transitions`.
+- **membership** (configuration, `urlcode.yaml`): Permissions as data keyed by the principal id, never roles in auth: a `membership: true` collection with a `key` lists principal ids and has no mount (the operator maintains it with `addMember`/`removeMember`); a transition's `members: <collection>` admits only its members, and an owned collection's `readers: {mount, members}` lets members list and read every owner's records read-only on a separate mount.
 - **shortLinks** (configuration, `urlcode.yaml`): Optional public GET redirect mounts that look up a collection key, use a declared HTTP(S) destination field, and atomically increment a declared counter.
-- **mount** (extension, `urlcode.yaml`): Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Add `auth: true` to any private mount; an `ownership: owner` collection requires it (or another principal-providing policy).
+- **mount** (extension, `urlcode.yaml`): Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Readers routes use GET, HEAD and a `by: others` transition route uses POST. Add `auth: true` to any private mount; an `ownership: owner` collection requires it (or another principal-providing policy).
 - **screens** (configuration, `urlcode.yaml`): Optional list-and-form screens (`/todos: {collection: todos, title?, columns?}`) for declared collections. The store hands them to the ui extension through contributes.ui; each needs a route `<path>/*` with `extension: ui`, methods GET and HEAD. Ignored when ui is not installed.
 
 Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.

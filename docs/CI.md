@@ -131,8 +131,8 @@ integration (`npm run test:addons`: pack core and every add-on, pin them by
 sha512, create a site and add, serve and remove every extension); missing
 workspace outputs fail. The same job then runs the embedded Better Auth proof
 (`npm run test:proof`, [#843](https://github.com/jimhoyd-com/urlcode/issues/843)):
-it packs core and the add-ons, installs core and `@jimhoyd/urlcode-auth` at
-core's pins into a copy of
+it packs core and the add-ons, installs core, `@jimhoyd/urlcode-auth` and
+`@jimhoyd/urlcode-store` at core's pins into a copy of
 [`proofs/private-requests`](../proofs/private-requests/README.md) and exercises
 it over HTTP, so it needs the npm registry like the add-on suite. A change under
 `proofs/` or to that test is high-impact and selects this job.
