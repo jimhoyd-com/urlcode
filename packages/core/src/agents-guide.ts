@@ -68,7 +68,7 @@ replacing extension behavior. \`--allow-authoring\` is an operator opt-in; never
 
 - Handlers, exactly one per route: ${handlers.map(name => `\`${name}\``).join(', ')}.
 - Ordered \`middleware\` around any handler, declared in YAML, trusted by default.
-- Validated route \`parameters\`, \`request.body\`, \`methods\` and function \`args\`.
+- Validated route \`parameters\`, per-method \`request.body.<METHOD>\`, \`methods\` and function \`args\`.
 - Policies, host-enforced and off by default: ${policies.map(name => `\`${name}\``).join(', ')}.
 - Site conventions under \`site\`, each generating one native route: ${site.join(', ')}.
 - Bindings: named \`env\` and \`secrets\` references resolved by the operator, never values in YAML.

@@ -8,7 +8,7 @@ import {effectivePolicies} from './policies.ts';
 import {handlerNames} from './types.ts';
 import type {CompiledRoute,HandlerName,LoadedDocument,PolicyChain,PolicyInventory,RouteState} from './types.ts';
 import type {ParameterSchema,ParameterLocation} from './match.ts';
-import type {RequestBodyPolicy} from './http-policy.ts';
+import type {RequestBodyPolicies} from './http-policy.ts';
 
 // Effective route behavior read from the compiled IR (config → router →
 // policies), never from request execution. Everything here is safe to print:
@@ -38,7 +38,7 @@ export interface RouteExplanation {
    * a native handler with `middleware` runs project code too, and its mode has to be reviewable.
    * Reported for every route, including those that run no project code at all. */
   sandbox:boolean; sandboxReason?:string;
-  inputs:{parameters:ExplainedParameter[];body?:RequestBodyPolicy};
+  inputs:{parameters:ExplainedParameter[];body?:RequestBodyPolicies};
   policies:{names:string[];inventory:PolicyInventory;extensions:Record<string,ExplainedExtensionRequirement>};
   cache:ExplainedCache;
   bindings:{env:Record<string,{env:string}|{literal:true}|{env:string;default:string}>;secrets:Record<string,{secret:string}>};

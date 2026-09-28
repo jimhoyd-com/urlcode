@@ -30,7 +30,7 @@ const body = { format: 'json', contentTypes: ['application/json'], maxBytes: 64,
 const routes = {
   '/status': { respond: { json: { status: 'ok' } }, errors: { format: 'json' } },
   '/plain': { respond: { json: { status: 'ok' } } },
-  '/todos': { methods: ['POST'], request: { body }, respond: { status: 201, json: { ok: true } }, errors: { format: 'json' } },
+  '/todos': { methods: ['POST'], request: { body: { POST: body } }, respond: { status: 201, json: { ok: true } }, errors: { format: 'json' } },
   '/api/v1/items': { respond: { json: [] } },
   '/api/legacy': { respond: { text: 'legacy' }, errors: { format: 'text' } },
   '/api/teapot': { respond: { status: 404, text: 'handler says no' } },

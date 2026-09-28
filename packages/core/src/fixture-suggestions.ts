@@ -15,6 +15,7 @@
 import {Ajv} from 'ajv';
 import {loadDocument,parseYaml,validateDocument,normalizeRouteAuth} from './config.ts';
 import {ConfigError} from './errors.ts';
+import {bodyPolicy} from './http-policy.ts';
 import {contextFor,matchRoute,parameterName,parseTarget,redirectLocation} from './match.ts';
 import type {CompiledParameter,CompiledRoutes,MatchableRoute,ParameterSchema,RedirectSpec} from './match.ts';
 import {effectiveExtensionPolicies} from './extensions.ts';
@@ -250,7 +251,7 @@ function suggestFor(project:YamlProject, options:FixtureSuggestionOptions):Fixtu
     const method=methodOrder.find(candidate=>methods.includes(candidate))!;
     const methodKey=method==='GET'?{}:{method};
     // A required body is refused before any handler runs; a positive case needs a real body, which only the author knows.
-    if(route.request?.body?.required){
+    if(bodyPolicy(route,method)?.required){
       add(pattern,'body-required',{path:sent,...methodKey,...headers,status:400});
       note(pattern,'request-body','Only the missing-body refusal is suggested; add a case with a valid body.');
     } else {

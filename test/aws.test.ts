@@ -57,7 +57,7 @@ test('payload format 1.0 is refused with the reason, not silently mishandled', a
 });
 
 test('base64 request bodies are decoded and route body policy still applies', async t => {
-  const root = await project(t,{'/go':{...redirect(),methods:['GET','POST'],request:{body:{maxBytes:16}}}});
+  const root = await project(t,{'/go':{...redirect(),methods:['GET','POST'],request:{body:{ POST: {maxBytes:16} }}}});
   const handler = createLambdaHandler({project:root,maxBodyBytes:64});
   assert.equal((await handler(invoke('/go',{method:'POST',body:Buffer.from('small').toString('base64'),isBase64Encoded:true}))).statusCode,302);
   assert.equal((await handler(invoke('/go',{method:'POST',body:'small'}))).statusCode,302);

@@ -51,7 +51,7 @@ test('accepted patterns stay fast on adversarial input at the length cap (ReDoS 
 
 test('activation rejects ReDoS-prone or unbounded body patterns before serving', async t => {
   for (const schema of [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, { type: 'string', pattern: '^[a-z]+$' }, { type: 'string', pattern: 'a'.repeat(129), maxLength: 10 }]) {
-    const root = await project(t, { '/x': { methods: ['POST'], request: { body: { format: 'json', schema } }, respond: { json: {} } } });
+    const root = await project(t, { '/x': { methods: ['POST'], request: { body: { POST: { format: 'json', schema } } }, respond: { json: {} } } });
     await assert.rejects(startServer({ project: root, port: 0, log: () => {} }), /./, JSON.stringify(schema).slice(0, 60));
   }
 });
@@ -66,7 +66,7 @@ test('body schema limits: bytes, depth, node count, property count, string, item
   assert.throws(() => assertBodySchema({ type: 'string', minLength: maxRequestBodyBytes + 1 }), /minLength/);
   assert.throws(() => assertBodySchema({ type: 'array', maxItems: 10001 }), /maxItems/);
   assert.throws(() => assertBodySchema({ type: 'string', enum: Array.from({ length: 65 }, (_, i) => `v${i}`) }), /1 to 64/);
-  const app = await serve(t, { '/todos': { methods: ['POST'], request: { body: { ...bodyPolicy, maxBytes: 64 } }, respond: { status: 201, json: { ok: true } } } });
+  const app = await serve(t, { '/todos': { methods: ['POST'], request: { body: { POST: { ...bodyPolicy, maxBytes: 64 } } }, respond: { status: 201, json: { ok: true } } } });
   const post = (body: string) => request(app, '/todos', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
   assert.equal((await post('{"title":"ok"}')).status, 201);
   assert.equal((await post(JSON.stringify({ title: 'x'.repeat(200) }))).status, 413, 'the byte cap applies before schema validation');
@@ -74,7 +74,7 @@ test('body schema limits: bytes, depth, node count, property count, string, item
 
 test('sandboxed routes get the same body and parameter validation before any guest code runs', async t => {
   const route = (sandbox: boolean) => ({ ...(sandbox ? { sandbox: true } : {}), methods: ['POST'], function: { source: 'f.mjs' },
-    parameters: [{ ...param('id'), schema: { type: 'string', format: 'uuid' } }], request: { body: structuredClone(bodyPolicy) } });
+    parameters: [{ ...param('id'), schema: { type: 'string', format: 'uuid' } }], request: { body: { POST: structuredClone(bodyPolicy) } } });
   const app = await serve(t, { '/box/{id}': route(true), '/trusted/{id}': route(false) }, { 'f.mjs': 'export default () => new Response("guest ran");' });
   const post = (path: string, body: string) => request(app, path, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
   for (const base of ['/box', '/trusted']) {
@@ -99,7 +99,7 @@ test('a string without a pattern may be as long as the request body limit; a pat
   assert.throws(() => assertBodySchema({ type: 'array', maxItems: 10001 }), /\/maxItems: must be an integer from 0 to 10000/, 'item bounds are unchanged');
 
   const note = { type: 'object', required: ['text'], additionalProperties: false, properties: { text: { type: 'string', minLength: 9000, maxLength: 100000 } } } satisfies BodySchema;
-  const app = await serve(t, { '/notes': { methods: ['POST'], request: { body: { format: 'json', contentTypes: ['application/json'], schema: note } }, respond: { status: 201, json: { ok: true } } } });
+  const app = await serve(t, { '/notes': { methods: ['POST'], request: { body: { POST: { format: 'json', contentTypes: ['application/json'], schema: note } } }, respond: { status: 201, json: { ok: true } } } });
   const post = (text: string) => request(app, '/notes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
   assert.equal((await post('x'.repeat(50000))).status, 201, 'a 50,000-character string within the bounds is accepted');
   const long = await post('x'.repeat(100001));

@@ -45,7 +45,10 @@ test('explain describes a cookbook function route from the compiled IR',async()=
   const cached=await explainRoute(cookbook,'/cached');
   assert.ok(cached.matched);assert.deepEqual(cached.policies.names,['cache']);assert.equal(cached.cache.outcome,'public');assert.equal(cached.cache.cacheControl,'public, max-age=60');assert.equal(cached.policies.inventory.cache?.target,'native');
   const expired=await explainRoute(cookbook,'/expired');assert.ok(expired.matched);assert.equal(expired.state,'expired');assert.equal(expired.expires,'2020-01-01T00:00:00Z');
-  const echo=await explainRoute(cookbook,'/echo');assert.ok(echo.matched);assert.deepEqual(echo.inputs.body,{required:true,maxBytes:4096,contentTypes:['application/json'],format:'json'});
+  const echo=await explainRoute(cookbook,'/echo');assert.ok(echo.matched);assert.deepEqual(echo.inputs.body,{POST:{required:true,maxBytes:4096,contentTypes:['application/json'],format:'json'}});
+  // GET and POST on one path: explain and its text output list each method's own body policy (#861).
+  const both=await explainRoute(fileURLToPath(new URL('../examples/body-validation/',import.meta.url)),'/requests');assert.ok(both.matched);
+  assert.deepEqual(Object.keys(both.inputs.body??{}),['GET','POST']);assert.deepEqual(both.inputs.body?.GET,{maxBytes:0});assert.equal(both.inputs.body?.POST?.required,true);assert.equal(both.inputs.body?.POST?.schema?.type,'object');
 });
 test('explain reports the route\'s actual sandbox boolean at route level, explicit either way',async t=>{
   const trusted=await explainRoute(cookbook,'/hello/world');
@@ -132,4 +135,6 @@ test('the explain CLI prints a project table, a route detail and exits 1 for an 
   const miss=run('explain','/cachd');assert.equal(miss.status,1);assert.ok(miss.stdout.includes('nearest: /cached'));
   const missJson=run('explain','/cachd','--json');assert.equal(missJson.status,1);assert.equal((JSON.parse(missJson.stdout) as {matched:boolean}).matched,false);
   assert.equal(run('explain','relative').status,1);
+  const perMethod=spawnSync(process.execPath,[cli,'explain','/requests','--project',fileURLToPath(new URL('../examples/body-validation/',import.meta.url))],{encoding:'utf8',timeout:60000});
+  assert.equal(perMethod.status,0);assert.match(perMethod.stdout,/^inputs: none; body GET \{"maxBytes":0\}, POST \{"maxBytes":4096,/m);
 });

@@ -57,7 +57,7 @@ test('proxy placeholders and secret alias references are validated during compil
 test('checked-in egress example compiles and executes through the bounded fake transport',async t=>{
  const root=fileURLToPath(new URL('../examples/egress/',import.meta.url)),permissions=await approveBindings(root),calls:Captured[]=[];
  const runtime=await createRuntime(root,{permissions,egressDependencies:transport(calls)});t.after(()=>runtime.close());
- assert.equal((await runtime.handle({target:'/proxy/hello?page=2'})).status,200);assert.equal(calls[0]?.url,'https://api.example.com/items/hello?page=2');assert.equal(runtime.requestLimit('/proxy/hello'),1048576);
+ assert.equal((await runtime.handle({target:'/proxy/hello?page=2'})).status,200);assert.equal(calls[0]?.url,'https://api.example.com/items/hello?page=2');assert.equal(runtime.requestLimit('/proxy/hello','GET'),1048576);
 });
 test('proxy refuses early-return middleware and unsafe shared caching before egress',async t=>{
  for(const extra of [{middleware:[{source:'auth.mjs'}]},{policies:{cache:{strategy:'public' as const}}},{response:{headers:{'CDN-Cache-Control':'public, max-age=3600'}}}]) {

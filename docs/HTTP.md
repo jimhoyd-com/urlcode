@@ -10,10 +10,11 @@ routes:
     methods: [POST]
     request:
       body:
-        required: true
-        maxBytes: 16384
-        contentTypes: [application/json]
-        format: json
+        POST:
+          required: true
+          maxBytes: 16384
+          contentTypes: [application/json]
+          format: json
     function:
       source: functions/echo.mjs
     response:
@@ -55,20 +56,73 @@ status or default `Cache-Control: no-store` on functions/redirects.
 |---|---|
 | `methods` | Allowed methods, default GET/HEAD; exact lists, 405 plus Allow on mismatch |
 | `parameters` | Required/defaulted/typed path, query and header inputs; see the specification |
-| `request.body.required` | Reject an empty body with 400; default false |
-| `request.body.maxBytes` | 0–1048576; tighter per-route budget, enforced while reading fixed/chunked bodies; 413 on overflow |
-| `request.body.contentTypes` | Exact lowercase MIME essences for nonempty bodies; parameters ignored; mismatch/missing type returns 415 |
-| `request.body.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax; malformed input returns 400 |
-| `request.body.schema` | Requires `format: json`. A JSON Schema 2020-12 document in a bounded profile, compiled at load and checked after parsing; a body that breaks it returns 422 (see below) |
+| `request.body.<METHOD>` | That method's body policy, below; `<METHOD>` must be one of the route's `methods` |
+| `request.body.<METHOD>.required` | Reject an empty body with 400; default false |
+| `request.body.<METHOD>.maxBytes` | 0–1048576; tighter per-route budget, enforced while reading fixed/chunked bodies; 413 on overflow |
+| `request.body.<METHOD>.contentTypes` | Exact lowercase MIME essences for nonempty bodies; parameters ignored; mismatch/missing type returns 415 |
+| `request.body.<METHOD>.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax; malformed input returns 400 |
+| `request.body.<METHOD>.schema` | Requires `format: json`. A JSON Schema 2020-12 document in a bounded profile, compiled at load and checked after parsing; a body that breaks it returns 422 (see below) |
 
-The operator request limit remains an upper bound; YAML cannot raise it. A route
-without body policy keeps the existing server limit. A configured body policy
+The operator request limit remains an upper bound; YAML cannot raise it. A
+method without a body policy keeps the existing server limit. A configured body policy
 rejects nonidentity Content-Encoding for nonempty bodies; no automatic decompression.
 Empty optional bodies skip media/format checks. Inputs are validated before the
 handler; the original body remains available through function `request.text()` or
 `request.json()`. No YAML body interpolation or automatic argument binding.
 Request header inputs use `parameters` with `in: header`; this is validation,
 not arbitrary modification or forwarding of the incoming request.
+
+### Per-method body rules
+
+`request.body` is keyed by HTTP method, and each key holds that method's
+policy. This is the one way to write a body rule, including on a single-method
+route, and it matches OpenAPI, where each operation on a path has its own
+request body. So one path can read with GET and create with POST, each with
+its own rules:
+
+```yaml
+routes:
+  /api/requests:
+    methods: [GET, POST]
+    parameters:
+      - {name: status, in: query, schema: {type: string, enum: [pending, approved]}}
+    request:
+      body:
+        GET: {maxBytes: 0}
+        POST:
+          required: true
+          maxBytes: 4096
+          contentTypes: [application/json]
+          format: json
+          schema:
+            type: object
+            required: [title]
+            additionalProperties: false
+            properties:
+              title: {type: string, minLength: 1, maxLength: 200}
+    function: {source: functions/requests.mjs}
+```
+
+- Every key must be one of the route's `methods`, or the project fails to load.
+  Remember that the default `methods` are GET and HEAD.
+- A declared method without an entry has no body policy: it keeps the server
+  limit, and the other methods' rules never apply to it.
+- RFC 9110 gives content in a GET, HEAD or DELETE request no defined meaning,
+  so their entries may only set `maxBytes`. `maxBytes: 0` refuses any body
+  with 413. `required`, `contentTypes`, `format` or `schema` on these methods
+  fails at load.
+- POST, PUT, PATCH and OPTIONS entries take the whole policy.
+- A shared block's `request` is copied as a whole, so its method keys must suit
+  every route that uses it.
+- `urlcode explain` and `manifest` list the policy under each method. The
+  capability query (`get_capability("request.body")`) and
+  `get_schema("request.body.POST.schema")` describe the same shape.
+
+The function still branches on `request.method` for the work it does per
+method. That is the specified way to serve several methods on one path, because
+a path has one handler. `urlcode review` does not suggest splitting the path
+into one route per method.
+
 
 ## Responses
 
@@ -118,7 +172,7 @@ JSON declarations require a JSON type. No response header secret interpolation.
 
 ### Body schema and input patterns
 
-`request.body.schema` is a [JSON Schema 2020-12](https://json-schema.org/draft/2020-12)
+`request.body.<METHOD>.schema` is a [JSON Schema 2020-12](https://json-schema.org/draft/2020-12)
 document restricted to a bounded profile. The runtime checks it against the
 profile when the project loads and compiles it once with
 [Ajv](https://ajv.js.org/); a request only runs the compiled validator. A
@@ -178,7 +232,7 @@ schema:
 ```
 
 A string `minLength`/`maxLength` may be as large as 1,048,576, the largest
-request body any route admits (`request.body.maxBytes` defaults to it and
+request body any route admits (`request.body.<METHOD>.maxBytes` defaults to it and
 cannot exceed it), so a long text field such as a document or a pasted log
 needs no workaround. A string with a `pattern` keeps the 128-character
 `maxLength` described below, because that bound limits regex cost rather than
@@ -190,7 +244,7 @@ is accepted but never reached.
 
 On the Cloudflare Worker, which forbids code generation at runtime,
 `urlcode build --target cloudflare` compiles every body schema with the same
-Ajv options into a standalone `body-validators.js` module, so the Worker runs
+Ajv options into a standalone `body-validators.js` module, one validator per route and method, so the Worker runs
 the same validator as the server. See [Cloudflare](CLOUDFLARE.md#what-has-run-on-workerd)
 for what has run on workerd.
 
@@ -355,7 +409,7 @@ error, so it refuses `errors: {format: json}` and `site.errors` before building
 
 Automatic CORS/preflight policy, cookie parsing/signing, authentication
 (beyond the operator-installed auth extension), JSON Schema beyond the
-`request.body.schema` profile above, OpenAPI export, multipart/file uploads, streaming, content negotiation,
+`request.body.<METHOD>.schema` profile above, OpenAPI export, multipart/file uploads, streaming, content negotiation,
 WebSocket upgrades and proxies are not implemented. Do not advertise these as
 supported just because raw headers can be declared. Compression negotiation,
 security-header profiles, per-client throttling, User-Agent policy and HTTP

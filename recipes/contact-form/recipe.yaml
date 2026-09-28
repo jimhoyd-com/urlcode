@@ -17,7 +17,7 @@ inputs:
     description: The hook that is notified after each response.
   - name: field rules
     file: urlcode.yaml
-    description: The name, email and message limits in request.body.schema.
+    description: The name, email and message limits in request.body.POST.schema.
 files: [urlcode.yaml, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json

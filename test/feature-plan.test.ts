@@ -48,7 +48,7 @@ test('feature planning reports an artifact installed in the site around the proj
  assert.equal((await planFeature(await project(t,{}),'durable persisted record')).extensions.required.find(item=>item.name==='store')?.artifact,'none');
 });
 
-test('feature planning steers a simple JSON endpoint to respond plus request.body.schema, with matched terms and an outline (#587)',async t=>{
+test('feature planning steers a simple JSON endpoint to respond plus request.body.POST.schema, with matched terms and an outline (#587)',async t=>{
  const root=await project(t,{});
  const plan=await planFeature(root,'POST /signup validates email and name and returns 202');
  assert.equal(plan.applicable.recipes[0]?.name,'json-endpoint');
@@ -56,7 +56,7 @@ test('feature planning steers a simple JSON endpoint to respond plus request.bod
  assert.ok(!plan.applicable.capabilities.some(item=>item.name==='function'),'no recipe steers this goal to function code');
  assert.ok(plan.applicable.capabilities.some(item=>item.name==='respond')&&plan.applicable.capabilities.some(item=>item.name==='request.body'));
  assert.equal(plan.outline.length,plan.applicable.recipes.length);
- assert.match(plan.outline[0]!.note,/request\.body\.schema/);assert.match(plan.outline[0]!.note,/respond/);
+ assert.match(plan.outline[0]!.note,/request\.body\.POST\.schema/);assert.match(plan.outline[0]!.note,/respond/);
  assert.ok(!plan.extensions.required.some(item=>item.name==='auth'));
 });
 

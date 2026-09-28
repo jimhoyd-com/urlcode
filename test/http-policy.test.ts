@@ -25,7 +25,7 @@ test('declarative text, JSON and empty responses use correct bodies and statuses
  assert.equal((await request(app,'/json',{method:'HEAD'})).body,'');
 });
 test('request body policies reject size, media, encoding and malformed JSON before handler',async t=>{
- const app=await appFor(t,{'/echo':{methods:['POST'],request:{body:{required:true,maxBytes:32,contentTypes:['application/json'],format:'json'}},function:{source:'echo.mjs'}}},{'echo.mjs':'export default async request => Response.json(await request.json())'});
+ const app=await appFor(t,{'/echo':{methods:['POST'],request:{body:{ POST: {required:true,maxBytes:32,contentTypes:['application/json'],format:'json'} }},function:{source:'echo.mjs'}}},{'echo.mjs':'export default async request => Response.json(await request.json())'});
  const send=(body: string|Buffer,headers: Record<string,string>={'content-type':'application/json'})=>request(app,'/echo',{method:'POST',body,headers});
  assert.equal((await send('{"a":1}')).status,200);
  assert.equal((await send('')).status,400);assert.equal((await send('{')).status,400);

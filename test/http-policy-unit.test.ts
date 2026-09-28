@@ -41,20 +41,40 @@ test('compileHttp validates declared headers and compiles static replies', () =>
 });
 
 test('checkRequest enforces the declared body policy with the right statuses', () => {
-  const route = (body: RequestBodyPolicy): HttpRoute => ({ request: { body } });
-  assert.equal(status(() => checkRequest({}, encode('anything'), headers({}))), undefined);
-  assert.equal(status(() => checkRequest(route({ maxBytes: 4 }), encode('12345'), headers({}))), 413);
-  assert.equal(status(() => checkRequest(route({ required: true }), new Uint8Array(), headers({}))), 400);
-  assert.equal(status(() => checkRequest(route({}), new Uint8Array(), headers({}))), undefined);
-  assert.equal(status(() => checkRequest(route({}), encode('x'), headers({ 'content-type': 'text/plain' }), { 'content-type': 2 })), 400);
-  assert.equal(status(() => checkRequest(route({}), encode('x'), headers({ 'content-encoding': 'gzip' }))), 415);
-  assert.equal(status(() => checkRequest(route({}), encode('x'), headers({ 'content-encoding': 'identity' }))), undefined);
-  assert.equal(status(() => checkRequest(route({ contentTypes: ['application/json'] }), encode('{}'), headers({ 'content-type': 'text/plain' }))), 415);
-  assert.equal(status(() => checkRequest(route({ contentTypes: ['application/json'] }), encode('{}'), headers({ 'content-type': 'Application/JSON; charset=utf-8' }))), undefined);
-  assert.equal(status(() => checkRequest(route({ format: 'text' }), new Uint8Array([0xff, 0xfe]), headers({ 'content-type': 'text/plain' }))), 400);
-  assert.equal(status(() => checkRequest(route({ format: 'json' }), encode('{}'), headers({ 'content-type': 'text/plain' }))), 415);
-  assert.equal(status(() => checkRequest(route({ format: 'json' }), encode('{'), headers({ 'content-type': 'application/json' }))), 400);
-  assert.equal(status(() => checkRequest(route({ format: 'json' }), encode('{"a":1}'), headers({ 'content-type': 'application/ld+json' }))), undefined);
+  const route = (body: RequestBodyPolicy): HttpRoute => ({ methods: ['POST'], request: { body: { POST: body } } });
+  assert.equal(status(() => checkRequest({}, 'POST', encode('anything'), headers({}))), undefined);
+  assert.equal(status(() => checkRequest(route({ maxBytes: 4 }), 'POST', encode('12345'), headers({}))), 413);
+  assert.equal(status(() => checkRequest(route({ required: true }), 'POST', new Uint8Array(), headers({}))), 400);
+  assert.equal(status(() => checkRequest(route({}), 'POST', new Uint8Array(), headers({}))), undefined);
+  assert.equal(status(() => checkRequest(route({}), 'POST', encode('x'), headers({ 'content-type': 'text/plain' }), { 'content-type': 2 })), 400);
+  assert.equal(status(() => checkRequest(route({}), 'POST', encode('x'), headers({ 'content-encoding': 'gzip' }))), 415);
+  assert.equal(status(() => checkRequest(route({}), 'POST', encode('x'), headers({ 'content-encoding': 'identity' }))), undefined);
+  assert.equal(status(() => checkRequest(route({ contentTypes: ['application/json'] }), 'POST', encode('{}'), headers({ 'content-type': 'text/plain' }))), 415);
+  assert.equal(status(() => checkRequest(route({ contentTypes: ['application/json'] }), 'POST', encode('{}'), headers({ 'content-type': 'Application/JSON; charset=utf-8' }))), undefined);
+  assert.equal(status(() => checkRequest(route({ format: 'text' }), 'POST', new Uint8Array([0xff, 0xfe]), headers({ 'content-type': 'text/plain' }))), 400);
+  assert.equal(status(() => checkRequest(route({ format: 'json' }), 'POST', encode('{}'), headers({ 'content-type': 'text/plain' }))), 415);
+  assert.equal(status(() => checkRequest(route({ format: 'json' }), 'POST', encode('{'), headers({ 'content-type': 'application/json' }))), 400);
+  assert.equal(status(() => checkRequest(route({ format: 'json' }), 'POST', encode('{"a":1}'), headers({ 'content-type': 'application/ld+json' }))), undefined);
+});
+
+test('request.body is per method: each method has its own policy and a method without an entry has none (#861)', () => {
+  const route: HttpRoute = { methods: ['GET', 'POST'], request: { body: { GET: { maxBytes: 0 }, POST: { required: true, format: 'json' } } } };
+  compileHttp(route);
+  assert.equal(status(() => checkRequest(route, 'GET', new Uint8Array(), headers({}))), undefined, 'GET without a body passes');
+  assert.equal(status(() => checkRequest(route, 'GET', encode('{}'), headers({ 'content-type': 'application/json' }))), 413, 'GET maxBytes: 0 refuses any body');
+  assert.equal(status(() => checkRequest(route, 'POST', new Uint8Array(), headers({}))), 400, 'POST requires a body');
+  assert.equal(status(() => checkRequest(route, 'POST', encode('{}'), headers({ 'content-type': 'application/json' }))), undefined);
+  const postOnly: HttpRoute = { methods: ['GET', 'POST'], request: { body: { POST: { required: true } } } };
+  compileHttp(postOnly);
+  assert.equal(status(() => checkRequest(postOnly, 'GET', new Uint8Array(), headers({}))), undefined, 'GET has no policy, so the POST rule never applies to it');
+  assert.throws(() => compileHttp({ methods: ['POST'], request: { body: { PUT: { required: true } } } }), /request\.body\.PUT: PUT is not one of the route's methods/);
+  assert.throws(() => compileHttp({ request: { body: { POST: {} } } }), /POST is not one of the route's methods/, 'the default methods are GET and HEAD');
+  for (const method of ['GET', 'HEAD', 'DELETE']) {
+    assert.throws(() => compileHttp({ methods: [method], request: { body: { [method]: { required: true } } } }), new RegExp(`request\\.body\\.${method}\\.required: a ${method} body has no defined meaning`));
+    assert.throws(() => compileHttp({ methods: [method], request: { body: { [method]: { format: 'json' } } } }), /may only set maxBytes/);
+    assert.doesNotThrow(() => compileHttp({ methods: [method], request: { body: { [method]: { maxBytes: 0 } } } }));
+  }
+  assert.doesNotThrow(() => compileHttp({ methods: ['OPTIONS'], request: { body: { OPTIONS: { format: 'text' } } } }), 'OPTIONS may declare content');
 });
 
 test('decorateResponse replaces handler headers with the declared ones and bounds the total', () => {

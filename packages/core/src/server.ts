@@ -283,7 +283,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
           headers.append(key, req.rawHeaders[i + 1] ?? ''); headerCounts[key] = (headerCounts[key] || 0) + 1;
         }
         const target = originForm(url);
-        const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(target) ?? maxBodyBytes));
+        const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(target, method) ?? maxBodyBytes));
         result = await current.handle({ target, method, headers, headerCounts, body, trace, requestId, signal: controller.signal,
           origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') ?? undefined : undefined, proxies) });
       }

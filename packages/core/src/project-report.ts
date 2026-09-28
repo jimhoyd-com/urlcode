@@ -203,7 +203,7 @@ function routeNeeds(route:RouteExplanation):string[] {
 }
 function steps(route:RouteExplanation):[string,string][] {
   const {kind,provider:_provider,...detail}=route.handler;
-  const inputs=[...route.inputs.parameters.map(p=>`${p.in} ${p.name}${p.required?'':' (optional)'}`),...(route.inputs.body?['request body checked']:[])];
+  const inputs=[...route.inputs.parameters.map(p=>`${p.in} ${p.name}${p.required?'':' (optional)'}`),...(route.inputs.body?[`request body checked (${Object.keys(route.inputs.body).join(', ')})`]:[])];
   const incompatible=Object.entries(route.targets).filter(([,support])=>!support.compatible).map(([target,support])=>`${target}: ${support.issues.map(issue=>issue.capability).join(', ')}`);
   return [
     ['Match',`${esc(route.methods.join(' '))}${inputs.length?` · ${esc(inputs.join(', '))}`:''}`],

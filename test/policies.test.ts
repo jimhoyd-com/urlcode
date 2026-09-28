@@ -136,7 +136,7 @@ test('error responses carry the security headers of the matched route or the pro
     '/gone': { ...redirect(), expires: '2020-01-01T00:00:00Z' },
     '/bare': { ...redirect(), expires: '2020-01-01T00:00:00Z', policies: { security: false } },
     '/strict': { ...redirect(), expires: '2020-01-01T00:00:00Z', policies: { security: { headers: 'oshp', set: { 'X-Frame-Options': 'sameorigin' } } } },
-    '/post': { methods: ['POST'], request: { body: { maxBytes: 8 } }, respond: { text: 'ok' } },
+    '/post': { methods: ['POST'], request: { body: { POST: { maxBytes: 8 } } }, respond: { text: 'ok' } },
   }, {}, { policies: { security: { headers: 'oshp-no-csp' } } });
   const app = await serve(t, root, { origin: 'https://links.example' });
   // No route matched: project-level headers, including HSTS on an https origin.

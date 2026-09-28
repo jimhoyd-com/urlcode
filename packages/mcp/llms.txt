@@ -1,7 +1,7 @@
 # URLCode mcp
 
 > Operator-installed declarative MCP (Model Context Protocol) tool server for
-> URLCode. Declares bounded tools (name, description, request.body.schema-shaped
+> URLCode. Declares bounded tools (name, description, request.body.<METHOD>.schema-shaped
 > input/output schema, trusted project handler), plus optional bounded
 > resources and prompts; the extension owns JSON-RPC 2.0 framing, protocol
 > version negotiation, request-id handling, cursor pagination, error codes and

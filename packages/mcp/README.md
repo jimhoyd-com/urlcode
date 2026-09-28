@@ -2,7 +2,7 @@
 
 Operator-installed declarative [MCP](https://modelcontextprotocol.io) (Model
 Context Protocol) tool server for URLCode. Declare bounded tools — a name, a
-description, a `request.body.schema`-shaped input schema and a trusted
+description, a `request.body.<METHOD>.schema`-shaped input schema and a trusted
 project handler — plus optional bounded `resources` and `prompts`, and mount
 the server. The protocol is the official MCP TypeScript SDK's
 (`@modelcontextprotocol/server`, pinned in `package.json`; #846): JSON-RPC
@@ -83,7 +83,7 @@ instance); `tools/list`, `resources/list` and `prompts/list` return every
 entry in one response.
 
 `inputSchema` (and the optional `outputSchema` below) is the same bounded
-JSON Schema 2020-12 profile `request.body.schema` accepts (local `$defs`/`$ref`,
+JSON Schema 2020-12 profile `request.body.<METHOD>.schema` accepts (local `$defs`/`$ref`,
 type lists, `anyOf`/`oneOf`/`allOf`/`not`, `properties`, `required`,
 `additionalProperties`, `items`, scalar `enum`/`const`, string/number/array
 bounds, a bounded `pattern` and `format: uuid`; see
@@ -94,7 +94,7 @@ call whose arguments fail `inputSchema` never reaches the handler. Under
 MCP revision `2025-11-25` it answers a tool result with `isError: true` whose
 text lists the failed checks; under earlier revisions it answers a JSON-RPC
 `-32602 Invalid params` error carrying the same checks as a structured
-`issues` list. Both use the wording `request.body.schema` produces,
+`issues` list. Both use the wording `request.body.<METHOD>.schema` produces,
 rendered as `pointer`/`message` text — reused, not reimplemented.
 
 A tool may also declare `outputSchema`. When present, the handler's return
@@ -384,7 +384,7 @@ Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema
 | `extensions.mcp.config.servers.*.tools.*.annotations.destructiveHint` | boolean | no | — | Hint that the tool may perform destructive updates. |
 | `extensions.mcp.config.servers.*.tools.*.annotations.idempotentHint` | boolean | no | — | Hint that repeated calls with the same arguments have no additional effect. |
 | `extensions.mcp.config.servers.*.tools.*.annotations.openWorldHint` | boolean | no | — | Hint that the tool interacts with external entities beyond the site. |
-| `extensions.mcp.config.servers.*.tools.*.inputSchema` | object | yes | — | Schema of the arguments object, in the bounded request.body.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler. |
+| `extensions.mcp.config.servers.*.tools.*.inputSchema` | object | yes | — | Schema of the arguments object, in the bounded `request.body.<METHOD>.schema` JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler. |
 | `extensions.mcp.config.servers.*.tools.*.outputSchema` | object | no | — | Optional schema, in the same profile, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error. |
 | `extensions.mcp.config.servers.*.tools.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
 | `extensions.mcp.config.servers.*.tools.*.handler.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
@@ -417,7 +417,7 @@ Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema
 
 ### Authoring surfaces and limits
 
-Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.
+Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a `request.body.<METHOD>.schema-shaped` input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.
 
 - **servers** (configuration, `urlcode.yaml#extensions.mcp.config.servers`): Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.
 - **tool handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler`): Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.

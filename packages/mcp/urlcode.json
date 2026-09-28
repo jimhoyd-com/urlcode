@@ -101,7 +101,7 @@
                   },
                   "inputSchema": {
                     "type": "object",
-                    "description": "Schema of the arguments object, in the bounded request.body.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler."
+                    "description": "Schema of the arguments object, in the bounded request.body.<METHOD>.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler."
                   },
                   "outputSchema": {
                     "type": "object",
@@ -344,7 +344,7 @@
     }
   },
   "authoring": {
-    "description": "Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.",
+    "description": "Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.<METHOD>.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.",
     "surfaces": [
       {
         "kind": "configuration",

@@ -23,14 +23,14 @@ urlcode validate --local --project ./orders-hook
 | `redirect` | starter | Permanent redirect forwarding one allowlisted query key | nothing |
 | `health-page` | starter | Native `/health` text and `/status` JSON, no-store | nothing |
 | `static-page` | starter | One HTML file served natively as a page | nothing |
-| `json-endpoint` | starter | POST fields validated by `request.body.schema`, answers from `respond`, no project code | nothing |
+| `json-endpoint` | starter | POST fields validated by `request.body.<METHOD>.schema`, answers from `respond`, no project code | nothing |
 | `json-api` | starter | Bounded JSON body echoed by a trusted function | self-hosted runtime |
 | `webhook-receiver` | starter | HMAC-signed JSON event: header parameters and body schema declared, signature checked with `node:crypto` in a trusted function, `202` | secret grant (`--policy`) |
 | `typescript` | intermediate | Typed function transpiled by `build-typescript` | build step |
 | `static-plus-api` | intermediate | Page, static directory and one JSON endpoint declared with `respond`, no project code | nothing (self-hosted, AWS, Vercel) |
 | `streaming-progress` | intermediate | Progress lines sent while a trusted function works, with `stream: true` ([streamed responses](SPECIFICATION.md#streamed-responses)) | self-hosted runtime |
 | `cors-api` | intermediate | Preflight and CORS headers from route middleware around a declared `respond` | self-hosted runtime |
-| `contact-form` | intermediate | Message checked by `request.body.schema`, `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |
+| `contact-form` | intermediate | Message checked by `request.body.<METHOD>.schema`, `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
@@ -44,14 +44,14 @@ the short form described in [extensions](EXTENSIONS.md); their README shows the
 minimal host-file fixture that reproduces the bundled tests.
 
 Recipes are declarative first ([project direction](PROJECT-DIRECTION.md)): a
-field check is `request.body.schema` or a parameter `pattern`, a fixed answer is
+field check is `request.body.<METHOD>.schema` or a parameter `pattern`, a fixed answer is
 `respond`, and a function appears only for what YAML cannot express. The
 `webhook-receiver` function is the example: everything but the signature is
 declared, and the HMAC check runs in a trusted function with `node:crypto` and a
 granted secret. A `sandbox: true` route has no crypto API, so it cannot verify
 a signature; untrusted input alone is not a reason to sandbox
 ([AI authoring](AI-AUTHORING.md)). `urlcode review` reports a function that
-duplicates `request.body.schema` or answers a constant response
+duplicates `request.body.<METHOD>.schema` or answers a constant response
 ([tooling](TOOLING.md#project-review)).
 
 ## `recipe.yaml`

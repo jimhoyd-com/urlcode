@@ -51,7 +51,7 @@ routes:
   /code/{c}:
     parameters: [{name: c, in: path, required: true, schema: {type: string, pattern: "^[a-z]+$", maxLength: 8}}]
     redirect: {url: "https://example.com/{c}"}
-  /body: {methods: [POST], request: {body: {required: true, maxBytes: 100}}, respond: {text: ok}}
+  /body: {methods: [POST], request: {body: { POST: {required: true, maxBytes: 100} }}, respond: {text: ok}}
   /hdr:
     parameters: [{name: X-Api-Version, in: header, required: true, schema: {type: integer}}]
     respond: {text: v}

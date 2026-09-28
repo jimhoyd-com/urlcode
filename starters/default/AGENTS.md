@@ -28,7 +28,7 @@ replacing extension behavior. `--allow-authoring` is an operator opt-in; never a
 
 - Handlers, exactly one per route: `redirect`, `respond`, `page`, `static`, `download`, `function`, `proxy`, `conditional`.
 - Ordered `middleware` around any handler, declared in YAML, trusted by default.
-- Validated route `parameters`, `request.body`, `methods` and function `args`.
+- Validated route `parameters`, per-method `request.body.<METHOD>`, `methods` and function `args`.
 - Policies, host-enforced and off by default: `agents`, `throttle`, `cache`, `security`, `compression`.
 - Site conventions under `site`, each generating one native route: `robots` (/robots.txt), `sitemap` (/sitemap.xml), `favicon` (/favicon.ico), `securityTxt` (/.well-known/security.txt), `llms` (/llms.txt), `notFound` (/404.html).
 - Bindings: named `env` and `secrets` references resolved by the operator, never values in YAML.

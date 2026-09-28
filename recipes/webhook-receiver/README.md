@@ -8,7 +8,7 @@ Most of the checking is declared, so it happens before any code runs:
 
 - the `X-Webhook-Event` and `X-Webhook-Signature` header parameters, with a
   `pattern` each (400 when missing or malformed);
-- `request.body.schema`: an object with a string `id` (422 otherwise);
+- `request.body.POST.schema`: an object with a string `id` (422 otherwise);
 - the method (405), content type (415), size (413) and JSON syntax (400).
 
 `functions/receive.mjs` does the one thing YAML cannot: it recomputes the

@@ -8,19 +8,36 @@ import type { BodySchema, CompiledBodySchema } from './body-validation.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
 export interface RequestBodyPolicy { maxBytes?: number; required?: boolean; contentTypes?: string[]; format?: 'json' | 'text'; schema?: BodySchema }
+/**
+ * `request.body`: one policy per HTTP method, keyed by an uppercase method the route declares (the OpenAPI shape:
+ * each operation has its own request body). A method without an entry has no body policy (docs/HTTP.md).
+ */
+export type RequestBodyPolicies = Partial<Record<string, RequestBodyPolicy>>;
+/**
+ * Methods whose request content has no generally defined semantics (RFC 9110 sections 9.3.1, 9.3.2, 9.3.5): their
+ * entry may only bound or forbid a body with `maxBytes`, never require, type or validate one.
+ */
+export const bodylessMethods: readonly string[] = ['GET', 'HEAD', 'DELETE'];
+/** The body policy `method` has on `route`, if any. */
+export function bodyPolicy(route: { request?: { body?: RequestBodyPolicies } }, method: string): RequestBodyPolicy | undefined {
+  const policies = route.request?.body;
+  return policies && Object.hasOwn(policies, method) ? policies[method] : undefined;
+}
 /** A static reply compiled from `respond`; the body is bytes so every host, including the Worker, shares the type. */
 export interface Reply { status: number; headers: HeaderPair[]; body: Uint8Array }
 /** The declared HTTP surface of a route: response headers, request body policy and a static reply. */
 export interface HttpRoute {
   response?: { headers?: Record<string, string | string[]> };
-  request?: { body?: RequestBodyPolicy };
+  /** The methods the route answers; `request.body` keys must be among them. Defaults to GET and HEAD. */
+  methods?: string[];
+  request?: { body?: RequestBodyPolicies };
   respond?: RespondSpec; page?: unknown; static?: unknown; download?: unknown;
   responseHeaders?: HeaderPair[]; reply?: Reply | undefined;
   /**
-   * The compiled `request.body.schema`, attached by the host that loaded the route: Ajv at load time on Node
-   * (router.ts), the build's standalone validator on the Worker (cloudflare.ts). Never serialised.
+   * Each method's compiled `request.body.<METHOD>.schema`, attached by the host that loaded the route: Ajv at load
+   * time on Node (router.ts), the build's standalone validators on the Worker (cloudflare.ts). Never serialised.
    */
-  bodySchema?: CompiledBodySchema | undefined;
+  bodySchemas?: Partial<Record<string, CompiledBodySchema>> | undefined;
 }
 
 export const reservedResponseHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
@@ -41,10 +58,18 @@ export function compileHttp(route: HttpRoute): void {
     }
   }
   assert(size <= 16384, 'Response headers exceed 16 KiB');
-  const bodySchema = route.request?.body?.schema;
-  if (bodySchema !== undefined) {
-    assert(route.request?.body?.format === 'json', 'request.body.schema requires format json');
-    assertBodySchema(bodySchema);
+  const methods = route.methods ?? ['GET', 'HEAD'];
+  for (const [method, policy] of Object.entries(route.request?.body ?? {})) {
+    assert(methods.includes(method), `request.body.${method}: ${method} is not one of the route's methods`);
+    if (!policy) continue;
+    if (bodylessMethods.includes(method)) {
+      const extra = Object.keys(policy).find(key => key !== 'maxBytes');
+      assert(extra === undefined, `request.body.${method}.${extra}: a ${method} body has no defined meaning (RFC 9110), so its entry may only set maxBytes`);
+    }
+    if (policy.schema !== undefined) {
+      assert(policy.format === 'json', `request.body.${method}.schema requires format json`);
+      assertBodySchema(policy.schema);
+    }
   }
   if (route.respond) {
     const status = route.respond.status ?? 200;
@@ -57,8 +82,8 @@ export function compileHttp(route: HttpRoute): void {
     route.reply = { status, headers: [['content-type',json ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8']], body };
   }
 }
-export function checkRequest(route: HttpRoute, body: Uint8Array, headers: HeadersLike, counts: Record<string, number> = {}): void {
-  const policy = route.request?.body;
+export function checkRequest(route: HttpRoute, method: string, body: Uint8Array, headers: HeadersLike, counts: Record<string, number> = {}): void {
+  const policy = bodyPolicy(route, method);
   if (!policy) return;
   if (body.length > (policy.maxBytes ?? maxRequestBodyBytes)) throw new HttpError(413,'Request body too large');
   if (!body.length) { if (policy.required) throw new HttpError(400,'Request body required'); return; }
@@ -75,8 +100,9 @@ export function checkRequest(route: HttpRoute, body: Uint8Array, headers: Header
       try { parsed = JSON.parse(text); } catch { throw new HttpError(400,'Invalid JSON body'); }
       if (policy.schema) {
         // A declared schema that no host compiled is a runtime defect, never a reason to skip validation.
-        if (!route.bodySchema) throw new Error('request.body.schema was not compiled for this route');
-        const issues = bodyIssues(route.bodySchema, parsed);
+        const compiled = route.bodySchemas?.[method];
+        if (!compiled) throw new Error(`request.body.${method}.schema was not compiled for this route`);
+        const issues = bodyIssues(compiled, parsed);
         if (issues.length) {
           const text = `Request body failed validation\n${issues.map(bodySchemaLine).join('\n')}`;
           // A route that declares a JSON body schema is a JSON endpoint: its 422 is always JSON, listing its bounded issues.

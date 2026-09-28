@@ -55,7 +55,7 @@ export interface McpToolSpec {
   /** Optional behavior hints, echoed in `tools/list`. */
   annotations?: McpToolAnnotations;
   /**
-   * Optional JSON Schema (the same bounded `request.body.schema` JSON Schema 2020-12 profile as
+   * Optional JSON Schema (the same bounded `request.body.<METHOD>.schema` JSON Schema 2020-12 profile as
    * `inputSchema`) a tool result's `structuredContent` must conform to. When
    * declared, the handler's return value must be an object satisfying this
    * schema; `tools/call` then returns both a serialized-JSON text content
@@ -170,10 +170,10 @@ const toolConfigSchema = {
     title: titleSchema,
     description: { type: 'string', minLength: 1, maxLength: 1024, description: 'What the tool does, shown to MCP clients in tools/list.' },
     annotations: { ...toolAnnotationsSchema, description: 'Optional MCP behavior hints, passed to clients as declared; they are advisory and grant or restrict nothing.' },
-    // Loosely typed here (any JSON object); the bounded `request.body.schema`
+    // Loosely typed here (any JSON object); the bounded `request.body.<METHOD>.schema`
     // profile itself is enforced strictly, and compiled, at activation via `compileBodySchema`,
-    // the same rule a native route's `request.body.schema` is held to.
-    inputSchema: { type: 'object', description: 'Schema of the arguments object, in the bounded request.body.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler.' },
+    // the same rule a native route's `request.body.<METHOD>.schema` is held to.
+    inputSchema: { type: 'object', description: 'Schema of the arguments object, in the bounded request.body.<METHOD>.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler.' },
     outputSchema: { type: 'object', description: 'Optional schema, in the same profile, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error.' },
     handler: handlerSchema('Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer.'),
   },
@@ -233,7 +233,7 @@ export const mcpConfigSchema = {
   },
 } as const;
 export const mcpAuthoring: ExtensionAuthoringContract = {
-  description: 'Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
+  description: 'Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.<METHOD>.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
   surfaces: [
     { kind: 'configuration', name: 'servers', description: 'Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.', path: 'urlcode.yaml#extensions.mcp.config.servers' },
     { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
@@ -459,7 +459,7 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
             if (tool.outputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} outputSchema must declare type: object (MCP structuredContent is always an object)`);
           }
           // The hook contract's schema is deliberately permissive (any object): each call's arguments are checked
-          // against the tool's own declared inputSchema, with the same request.body.schema rules a native route uses.
+          // against the tool's own declared inputSchema, with the same request.body.<METHOD>.schema rules a native route uses.
           contracts.push({ name: `tool:${toolName}`, kind: 'action', description: tool.description, inputSchema: { type: 'object' } });
           hooksConfig[`tool:${toolName}`] = tool.handler;
         }

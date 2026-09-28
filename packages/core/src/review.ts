@@ -10,12 +10,12 @@ import type {RuntimeExtension} from './extensions.ts';
 // Read-only static review; see docs/TOOLING.md#project-review.
 export type ReviewCategory = 'native-alternative' | 'extension-alternative' | 'gap' | 'manual-review';
 export type ReviewSignal = 'manual-body-validation' | 'manual-cookie-session' | 'global-mutable-state' | 'outbound-network-call'
-  | 'method-dispatch' | 'manual-rate-limit' | 'manual-security-headers' | 'constant-response';
+  | 'manual-rate-limit' | 'manual-security-headers' | 'constant-response';
 
 export interface ReviewObservation {
   category: ReviewCategory; signal: ReviewSignal; routes: string[];
   source: string; line: number; confidence: 'low' | 'medium'; reason: string; excerpt: string;
-  capability?: 'request.body' | 'respond' | 'proxy' | 'methods' | 'policies.throttle' | 'policies.security'; extension?: string; note: string;
+  capability?: 'request.body' | 'respond' | 'proxy' | 'policies.throttle' | 'policies.security'; extension?: string; note: string;
   /** Set only for an extension-alternative observation when the caller supplied operator registrations (InspectOptions.extensions): whether that extension is actually registered, and, if so, whether the registration is pinned to this project's current revision. Absent when registration state could not be determined (no registrations supplied), in which case `note` stays with the conservative "declared, setup unconfirmed" wording. */
   registered?: boolean; revisionPinned?: boolean;
 }
@@ -106,16 +106,6 @@ function detectEgress(source: string): Match | undefined {
   const call = /\bfetch\s*\(|\bhttps?\.request\s*\(|\bhttps?\.get\s*\(/.exec(source);
   return call ? locate(source, call.index) : undefined;
 }
-const methodCompare = /\brequest\s*\.\s*method\s*(?:===|==)\s*(['"])[A-Z]+\1/g;
-function detectMethodDispatch(source: string): Match | undefined {
-  const compares = [...source.matchAll(methodCompare)];
-  if (compares.length >= 2) return locate(source, compares[0]!.index!);
-  const dispatch = /switch\s*\(\s*request\s*\.\s*method\s*\)/.exec(source);
-  if (!dispatch) return undefined;
-  const tail = source.slice(dispatch.index, dispatch.index + 2000);
-  const cases = [...tail.matchAll(/case\s+(['"])[A-Z]+\1\s*:/g)];
-  return cases.length >= 2 ? locate(source, dispatch.index) : undefined;
-}
 const rateLimitHints = [/\b(?:count|counts|hits|attempts|requests)\w*\s*(?:\+\+|\+=\s*1)/i, /Date\.now\s*\(\)/, /\bwindow\b/i, /\bquota\b/i, /retry-after/i, /too many requests/i];
 function detectRateLimit(source: string): Match | undefined {
   const anchor = /\b429\b/.exec(source) ?? /retry-after/i.exec(source);
@@ -147,7 +137,7 @@ export async function reviewProject(project: string, options: InspectOptions = {
   for (const route of routes) {
     const declared = loaded.routes[route.pattern];
     if (!declared) continue;
-    const hasSchema = declared.request?.body?.schema !== undefined;
+    const hasSchema = Object.values(declared.request?.body ?? {}).some(policy => policy?.schema !== undefined);
     const effective = effectivePolicies(loaded.document, declared);
     const hasThrottle = Boolean(effective.throttle), hasSecurity = Boolean(effective.security);
     for (const definition of routeFunctions(declared)) {
@@ -179,8 +169,8 @@ export async function reviewProject(project: string, options: InspectOptions = {
     const bodyValidation = detectBodyValidation(source);
     if (bodyValidation && info.routesMissingSchema.size) push(bodyValidation, {
       category: 'native-alternative', signal: 'manual-body-validation', routes: [...info.routesMissingSchema].sort(), confidence: 'medium',
-      reason: 'Body parsed (JSON.parse or request.json()) then checked field by field; no request.body.schema.', capability: 'request.body',
-      note: 'request.body.schema validates this; see get_capability("request.body").',
+      reason: 'Body parsed (JSON.parse or request.json()) then checked field by field; no request.body.<METHOD>.schema.', capability: 'request.body',
+      note: 'request.body.<METHOD>.schema validates this, per method on one path; see get_capability("request.body").',
     });
 
     const constant = info.middleware || !info.handlerRoutes.size ? undefined : detectConstantResponse(source, !info.boundArgs);
@@ -233,13 +223,6 @@ export async function reviewProject(project: string, options: InspectOptions = {
       category: 'manual-review', signal: 'outbound-network-call', routes: routesList, confidence: 'low',
       reason: 'Direct outbound call (fetch/http(s).request/get) from app code.', capability: 'proxy',
       note: 'proxy/signals centralizes egress but equivalence isn\'t verifiable; review by hand.',
-    });
-
-    const methodDispatch = detectMethodDispatch(source);
-    if (methodDispatch) push(methodDispatch, {
-      category: 'native-alternative', signal: 'method-dispatch', routes: routesList, confidence: 'medium',
-      reason: 'Hand-written request.method branching/switch dispatches per-method logic in code.', capability: 'methods',
-      note: 'Native routing already dispatches by method; declare one route per method instead of branching on request.method. See get_capability("methods").',
     });
 
     const rateLimit = detectRateLimit(source);

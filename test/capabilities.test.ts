@@ -114,7 +114,7 @@ test('compiled requirements preserve HTTP, inputs, bindings and profile semantic
   const root = await project(t, {
     '/input/{id}': {
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-      methods: ['POST'], request: { body: { format: 'json', maxBytes: 32 } },
+      methods: ['POST'], request: { body: { POST: { format: 'json', maxBytes: 32 } } },
       response: { headers: { 'x-example': 'PRIVATE_HEADER_VALUE' } },
       expires: '2030-01-01T00:00:00Z', respond: { text: 'PRIVATE_BODY' },
       env: { NAME: { value: 'PRIVATE_BINDING_VALUE' } },

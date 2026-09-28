@@ -11,7 +11,7 @@ grants:
 inputs:
   - name: header and body rules
     file: urlcode.yaml
-    description: The event header pattern, the signature header format and the payload fields in request.body.schema.
+    description: The event header pattern, the signature header format and the payload fields in request.body.POST.schema.
   - name: signature scheme
     file: functions/receive.mjs
     description: How the sender signs; this one is HMAC-SHA256 of the raw body, hex, with a sha256= prefix.

@@ -7,7 +7,7 @@ Start here for a JSON endpoint whose answer does not depend on code. There are
 no functions:
 
 - `GET /api/status` answers fixed JSON declared with `respond.json`.
-- `POST /api/signups` declares its fields in `request.body.schema`: `email`
+- `POST /api/signups` declares its fields in `request.body.POST.schema`: `email`
   and `name` are required, `plan` must be `free` or `team`, and
   `additionalProperties: false` refuses anything else. The runtime answers 422
   when a body breaks a rule, 400 for malformed JSON and 415 for another content

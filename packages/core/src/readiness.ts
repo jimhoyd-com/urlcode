@@ -14,6 +14,7 @@ import { CookieJar, cookieNames, jarScope } from './cookie-jar.ts';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.ts';
 import { runCompliance } from './compliance.ts';
 import { handlerNames as handlers } from './types.ts';
+import { bodyPolicy } from './http-policy.ts';
 import type { CompiledRedirect, CompiledRoute, HandlerName, LogFn, PlanInventoryEntry, PolicyInventory } from './types.ts';
 import type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 import type { CompiledRoutes, RequestContext } from './match.ts';
@@ -167,7 +168,7 @@ export const hasRedirect = (route: CompiledRoute): route is CompiledRoute & { re
 // User-Agent does not fail every generated case; fixtures may override it.
 export const probeAgent = 'Mozilla/5.0 (compatible; RouteProbe/0.1)';
 // Advisory only (docs/AI-AUTHORING.md, "Deciding when a route needs sandbox: true"):
-// a route that runs project code, accepts POST with a declared request.body
+// a route that runs project code, accepts POST with a declared request.body.POST
 // policy, and declares neither `sandbox: true` nor `sandboxReason` looks
 // plausibly webhook/callback/third-party-input-shaped. This is a nudge to
 // record the trust decision, never an inferred verdict — it never fails
@@ -176,8 +177,8 @@ export const probeAgent = 'Mozilla/5.0 (compatible; RouteProbe/0.1)';
 function routeAdvisories(route: CompiledRoute): string[] {
   const advisories: string[] = [];
   const runsCode = Boolean(route.function) || Boolean(route.middleware?.length);
-  if (runsCode && route.methods.includes('POST') && route.request?.body && !route.sandbox && !route.sandboxReason) {
-    advisories.push("This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; record the trust decision. Untrusted input alone is not a reason to sandbox: validate it with request.body.schema and parameters. Reviewed first-party code stays trusted (the default; the filesystem, node:crypto signature checks, fetch and npm packages exist only there): add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" Add sandbox: true only when the route's own code is unreviewed or contributed, or must not be able to leak a granted secret, with a sandboxReason saying why.");
+  if (runsCode && bodyPolicy(route, 'POST') && !route.sandbox && !route.sandboxReason) {
+    advisories.push("This route accepts POST with a declared request.body.POST policy but declares neither sandbox: true nor sandboxReason; record the trust decision. Untrusted input alone is not a reason to sandbox: validate it with request.body.POST.schema and parameters. Reviewed first-party code stays trusted (the default; the filesystem, node:crypto signature checks, fetch and npm packages exist only there): add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" Add sandbox: true only when the route's own code is unreviewed or contributed, or must not be able to leak a granted secret, with a sandboxReason saying why.");
   }
   return advisories;
 }
@@ -204,7 +205,6 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>, extensionAs
     // Required inputs need intentional fixtures; never invent business data.
     let context: RequestContext;
     try { context = contextFor(route,route.wildcard ? {'**':'sample'} : {},new URLSearchParams(),new Headers()); } catch { continue; }
-    if (route.request?.body?.required) continue;
     const files = route.asset instanceof Map ? route.asset : undefined;
     const prefix = route.prefix ?? '';
     const paths = route.wildcard ? [prefix + 'sample'] : route.static && files ? [...files.keys()].map(key => prefix + key.split('/').map(encodeURIComponent).join('/')) : [route.pattern];
@@ -460,7 +460,11 @@ export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: Be
     let req: ClientRequest|undefined;
     try {
       const send=target?.protocol==='https:' ? secureRequest : request;
-      const own=cookie===undefined ? test.headers || {} : {...Object.fromEntries(Object.entries(test.headers || {}).filter(([name])=>name.toLowerCase()!=='cookie')),cookie};
+      const given=cookie===undefined ? test.headers || {} : {...Object.fromEntries(Object.entries(test.headers || {}).filter(([name])=>name.toLowerCase()!=='cookie')),cookie};
+      // A body is always framed with its length: Node sends a GET/HEAD/DELETE body unframed otherwise, which the server
+      // cannot tell from the next request, so a fixture could not check how a route answers a body on those methods.
+      const framed=test.body!==undefined && !Object.keys(given).some(name=>['content-length','transfer-encoding'].includes(name.toLowerCase()));
+      const own=framed ? {...given,'content-length':String(Buffer.byteLength(test.body!))} : given;
       const options: RequestOptions=target
         ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.authority,'user-agent':probeAgent,...own},agent,timeout:10000}
         : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:{'user-agent':probeAgent,...own},agent,timeout:10000};

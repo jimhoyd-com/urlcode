@@ -1,7 +1,7 @@
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './match.ts';
 import type { CompiledParameter, CompiledRoutes, MatchableRoute, ParameterLocation, ParameterSchema } from './match.ts';
-import { checkRequest, decorateResponse } from './http-policy.ts';
-import type { RequestBodyPolicy } from './http-policy.ts';
+import { bodyPolicy, checkRequest, decorateResponse } from './http-policy.ts';
+import type { RequestBodyPolicies } from './http-policy.ts';
 import { declaredBodyNames } from './body-validation.ts';
 import type { BodyValidator, CompiledBodySchema } from './body-validation.ts';
 import { prepareResponse, errorResponse, errorScope, resolveErrorFormat, methodNotAllowed } from './http-response.ts';
@@ -21,10 +21,10 @@ export interface ArtifactParameter { name: string; in: ParameterLocation; requir
 export interface ArtifactReply { status: number; headers: HeaderPair[]; body: string }
 export interface ArtifactRoute {
   pattern: string; parts: string[]; names: string[]; methods: string[]; parameters: ArtifactParameter[]; responseHeaders: HeaderPair[];
-  request?: { body?: RequestBodyPolicy }; redirect?: CompiledRedirect; reply?: ArtifactReply; enabled?: false; expiresAt?: number;
+  request?: { body?: RequestBodyPolicies }; redirect?: CompiledRedirect; reply?: ArtifactReply; enabled?: false; expiresAt?: number;
   policies?: Record<string, unknown>; errors?: { format: ErrorFormat };
-  /** The export name of this route's build-time standalone `request.body.schema` validator in body-validators.js. */
-  bodyValidator?: string;
+  /** Method to the export name of that method's build-time standalone `request.body.<METHOD>.schema` validator in body-validators.js. */
+  bodyValidators?: Record<string, string>;
 }
 /** `errorPaths` is the validated `site.errors.paths` scope: runtime-generated errors there use the JSON envelope. */
 export interface Artifact { format: number; version: string; routes: ArtifactRoute[]; policies?: { security: SecurityConfig }; notFound?: true; errorPaths?: string[] }
@@ -35,9 +35,9 @@ export type BodyValidators = Record<string, BodyValidator | undefined>;
 export interface WorkerPolicy { request: [PolicyModule, unknown][]; response: [PolicyModule, unknown][]; security?: SecurityState; agents?: AgentsState }
 /** A rehydrated route: MatchableRoute plus what the request path reads. The reply body is bytes, not a Buffer. */
 export interface WorkerRoute extends MatchableRoute {
-  names: string[]; methods: string[]; responseHeaders: HeaderPair[]; request?: { body?: RequestBodyPolicy }; redirect?: CompiledRedirect;
+  names: string[]; methods: string[]; responseHeaders: HeaderPair[]; request?: { body?: RequestBodyPolicies }; redirect?: CompiledRedirect;
   reply: { status: number; headers: HeaderPair[]; body: Uint8Array<ArrayBuffer> } | undefined; enabled?: false; expiresAt?: number;
-  middleware: never[]; policy: WorkerPolicy | null; errors?: { format: ErrorFormat }; bodySchema?: CompiledBodySchema | undefined;
+  middleware: never[]; policy: WorkerPolicy | null; errors?: { format: ErrorFormat }; bodySchemas?: Partial<Record<string, CompiledBodySchema>> | undefined;
 }
 export interface RehydratedArtifact extends CompiledRoutes<WorkerRoute> { errorPolicy: SecurityState | null }
 // A Web-standard runtime for a compiled artifact. It shares the matching,
@@ -80,15 +80,16 @@ export function rehydrate(artifact: Artifact, validators: Validators = {}, bodyV
   if (artifact?.format !== 1) throw new Error('Unsupported URLCode artifact; rebuild with this runtime version');
   const exact = new Map<string, WorkerRoute>(), byLength = new Map<number, WorkerRoute[]>(), shared: PolicyShared = { target: 'cloudflare' };
   for (const route of artifact.routes) {
-    const bodySchema = route.request?.body?.schema;
-    let compiledBody: CompiledBodySchema | undefined;
-    if (bodySchema) {
-      const validate = route.bodyValidator ? bodyValidators[route.bodyValidator] : undefined;
-      if (!validate) throw new Error(`Artifact is missing the request.body.schema validator for ${route.pattern}; rebuild`);
-      compiledBody = { validate, names: declaredBodyNames(bodySchema) };
+    let bodySchemas: Record<string, CompiledBodySchema> | undefined;
+    for (const [method, policy] of Object.entries(route.request?.body ?? {})) {
+      if (!policy?.schema) continue;
+      const name = route.bodyValidators?.[method];
+      const validate = name ? bodyValidators[name] : undefined;
+      if (!validate) throw new Error(`Artifact is missing the request.body.${method}.schema validator for ${route.pattern}; rebuild`);
+      (bodySchemas ??= dict())[method] = { validate, names: declaredBodyNames(policy.schema) };
     }
-    const { bodyValidator: _bodyValidator, ...served } = route;
-    const prepared: WorkerRoute = { ...served, ...(compiledBody ? { bodySchema: compiledBody } : {}),
+    const { bodyValidators: _bodyValidators, ...served } = route;
+    const prepared: WorkerRoute = { ...served, ...(bodySchemas ? { bodySchemas } : {}),
       parameters: (route.parameters || []).map((parameter): CompiledParameter => {
         const validate = validators[parameter.validator];
         if (!validate) throw new Error(`Artifact is missing the validator for ${route.pattern} ${parameter.in}:${parameter.name}`);
@@ -173,13 +174,12 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators, 
         // and passes through the response-phase policies like the Node runtime.
         return respond(prepareResponse(await finish(methodNotAllowed(route.methods, format)), { requestId, method }), requestId, method);
       }
-      const body = route.request?.body
-        ? await readCappedBody(request, route.request.body.maxBytes ?? 1048576)
-        : new Uint8Array(0);
+      const policy = bodyPolicy(route, method);
+      const body = policy ? await readCappedBody(request, policy.maxBytes ?? 1048576) : new Uint8Array(0);
       // Duplicate request headers are joined by the platform before this runs,
       // so per-header counts are unavailable and the duplicate-scalar check
       // cannot fire here. docs/CLOUDFLARE.md records the difference.
-      checkRequest(route, body, request.headers, {});
+      checkRequest(route, method, body, request.headers, {});
       const context = contextFor(route, path, parsed.query, request.headers, {});
       let native: HandlerResult;
       if (redirecting(route)) native = { status: route.redirect.status || 302, headers:[['location',redirectLocation(route, context, parsed.query)]], body: new Uint8Array(0) };

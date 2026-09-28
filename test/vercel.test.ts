@@ -105,7 +105,7 @@ test('the resolved client IP comes from x-vercel-forwarded-for, never a client-s
 });
 
 test('request bodies stay bounded and route policy still applies', async t => {
-  const root = await project(t,{'/go':{...redirect(),methods:['GET','POST'],request:{body:{maxBytes:16}}}});
+  const root = await project(t,{'/go':{...redirect(),methods:['GET','POST'],request:{body:{ POST: {maxBytes:16} }}}});
   const adapted = await deploy(t,{project:root,maxBodyBytes:64});
   assert.equal((await request(adapted,'/go',{method:'POST',body:'small'})).status,302);
   assert.equal((await request(adapted,'/go',{method:'POST',body:'x'.repeat(200)})).status,413);

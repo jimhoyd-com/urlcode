@@ -75,7 +75,7 @@ const oneSecurityHeaderSource = 'export default function(request){\n'
   + '  return {status:200,headers:{"X-Frame-Options":"DENY"},body:"ok"};\n'
   + '}\n';
 
-test('review flags hand-written JSON body validation as a native-alternative when request.body.schema is absent',async t=>{
+test('review flags hand-written JSON body validation as a native-alternative when request.body.<METHOD>.schema is absent',async t=>{
   const root=await project(t,{'/submit':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':validatorSource});
   const review=await reviewProject(root);
   const found=review.observations.find(item=>item.signal==='manual-body-validation');
@@ -86,8 +86,8 @@ test('review flags hand-written JSON body validation as a native-alternative whe
   assert.ok(Buffer.byteLength(found!.excerpt)<=240);
 });
 
-test('review does not flag body validation when the route already declares request.body.schema',async t=>{
-  const root=await project(t,{'/submit':{methods:['POST'],function:{source:'f.mjs'},request:{body:{format:'json',schema:{type:'object',properties:{email:{type:'string'}},required:['email']}}}}},{'f.mjs':validatorSource});
+test('review does not flag body validation when the route already declares request.body.<METHOD>.schema',async t=>{
+  const root=await project(t,{'/submit':{methods:['POST'],function:{source:'f.mjs'},request:{body:{ POST: {format:'json',schema:{type:'object',properties:{email:{type:'string'}},required:['email']}} }}}},{'f.mjs':validatorSource});
   const review=await reviewProject(root);
   assert.ok(!review.observations.some(item=>item.signal==='manual-body-validation'));
 });
@@ -142,20 +142,12 @@ test('review flags a direct outbound network call for manual review, not as core
   assert.doesNotMatch(found!.note.toLowerCase(),/idempoten/);
 });
 
-test('review flags hand-written request.method branching as a native-alternative to per-method routes',async t=>{
-  const root=await project(t,{'/items':{methods:['GET','POST'],function:{source:'f.mjs'}}},{'f.mjs':methodDispatchSource});
-  const review=await reviewProject(root);
-  const found=review.observations.find(item=>item.signal==='method-dispatch');
-  assert.ok(found);
-  assert.equal(found!.category,'native-alternative');
-  assert.equal(found!.capability,'methods');
-  assert.deepEqual(found!.routes,['/items']);
-});
-
-test('review does not flag a single request.method guard as method-dispatch',async t=>{
-  const root=await project(t,{'/items':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':singleMethodCheckSource});
-  const review=await reviewProject(root);
-  assert.ok(!review.observations.some(item=>item.signal==='method-dispatch'));
+test('review does not advise splitting one path into per-method routes: branching on request.method is the specified shape (#842)',async t=>{
+  for(const [methods,source] of [[['GET','POST'],methodDispatchSource],[['POST'],singleMethodCheckSource]] as const){
+    const root=await project(t,{'/items':{methods:[...methods],function:{source:'f.mjs'}}},{'f.mjs':source});
+    const review=await reviewProject(root);
+    assert.deepEqual(review.observations.filter(item=>/request\.method|one route per method|per-method route/i.test(item.reason+item.note)),[]);
+  }
 });
 
 test('review flags hand-rolled rate limiting as a native-alternative when policies.throttle is not declared for the route',async t=>{

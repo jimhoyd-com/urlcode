@@ -87,11 +87,13 @@ POST. See [What has run on workerd](#what-has-run-on-workerd).
 - `validators.js` — the parameter schemas, precompiled by Ajv into standalone ES
   modules. The platform forbids runtime code generation, so a validator cannot
   be compiled on the Worker; it has to be compiled by the build.
-- `body-validators.js` — every `request.body.schema`, admitted against the
+- `body-validators.js` — every `request.body.<METHOD>.schema`, admitted against the
   [JSON Schema 2020-12 profile](HTTP.md#body-schema-and-input-patterns) and
   compiled by Ajv with the same options the self-hosted runtime uses, as
-  standalone ES module code. The Worker never compiles a schema; a route whose
-  validator is missing from this file refuses to start (`rebuild`).
+  standalone ES module code, one validator per route and method; the artifact
+  maps each method to its validator. The Worker never compiles a schema; a
+  route whose validator for any method is missing from this file refuses to
+  start (`rebuild`).
 - `index.js` — the Worker entry, which is a few lines over
   `createFetchHandler` from `@jimhoyd/urlcode/cloudflare`. That import resolves to the
   package's built `dist/cloudflare.js` (and its declarations, for a TypeScript
@@ -155,7 +157,7 @@ workerd, locally, through `wrangler dev --local`, with nothing deployed and no
 Cloudflare account or credentials involved. The Cloudflare build of
 [`examples/body-validation/`](../examples/body-validation/) (plus two routes
 with a `pattern` at the 128-character cap, one in a body and one in a query
-parameter) was run next to the self-hosted server, and 21 requests were sent
+parameter) was run next to the self-hosted server, and 25 requests were sent
 to both: a valid body; an invalid body and a missing required property with
 `Accept: application/json`; the same invalid body with `Accept: text/plain`, no
 `Accept`, `*/*` and `application/json;q=0` (all 422 JSON); malformed JSON (400);
@@ -165,8 +167,13 @@ an oversize body (413); a wrong content type (415); a valid and an invalid
 query parameter, plus 129 characters; and five requests to the JSON Schema
 2020-12 route (`$schema`, a local `$defs` reference, a `[string, "null"]` type
 and `anyOf`): a valid body with `null`, an absent required property, a failing
-`$ref` target, a wrong type and a failing `anyOf`. Status, headers and body were
-identical to the server's, and no client value appeared in any error body.
+`$ref` target, a wrong type and a failing `anyOf`; and four requests to the
+GET+POST route with [per-method body rules](HTTP.md#per-method-body-rules): a
+GET with no body, a valid POST, a POST with no body (400) and an invalid POST
+(422). Status, headers and body were identical to the server's, and no client
+value appeared in any error body. A GET that carries a body was not sent to
+workerd: the script's `fetch` cannot send one, so that refusal (413) is covered
+only by the Node-run Worker test.
 
 - **Versions.** Wrangler 4.143.0 with the workerd it bundles (2026-09-28),
   `compatibility_date = "2026-09-01"`, no `nodejs_compat`, on macOS arm64 with
