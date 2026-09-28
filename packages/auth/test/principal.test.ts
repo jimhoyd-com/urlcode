@@ -12,6 +12,7 @@ import { apiKeyPrincipalId } from '../src/auth.ts';
 import { internal } from '../src/auth-core.ts';
 import { companions, withCompanions } from './support/companions.ts';
 import { AuthHttp } from '../src/auth-ui.ts';
+import { sessionUserId } from '../src/session-identity.ts';
 import { activatedUi } from './support/render.ts';
 // urlcode#331: auth declares providesPrincipal and, from authorize(), hands core's opaque request principal the
 // session's stable user id, or `apikey:<key id>` for a bearer key, only on a request it allows.
@@ -29,11 +30,18 @@ test('auth sets the core principal to the user id for a session and apikey:<id> 
     const principalOf = async (requirement: Record<string, unknown>, value: ExtensionRequest) => {
         const slot = installPrincipalSlot(value);
         const result = await slot.authorize('auth', true, () => instance.authorize!(requirement, value));
+        assert.equal(sessionUserId(value), !result && !requirement.bearer ? value.principal?.id ?? null : null);
         return { status: result?.status, principal: value.principal };
     };
     const admin = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
     const alice = await service.register({ email: 'alice@example.test', password: 'correct horse battery staple' });
     const cookie = '__Host-urlcode-session=' + alice.token;
+    const noSlot = request('GET', { cookie });
+    assert.equal(await instance.authorize!({}, noSlot), undefined);
+    assert.equal(sessionUserId(noSlot), null);
+    const refusedSlot: ExtensionRequest = { ...request('GET', { cookie }), setPrincipal: () => { throw new Error('principal refused'); } };
+    assert.equal((await instance.authorize!({}, refusedSlot))?.status, 500);
+    assert.equal(sessionUserId(refusedSlot), null);
     // Session: the stable user id, never the email, and frozen with core's provider stamp.
     const read = await principalOf({}, request('GET', { cookie }));
     assert.equal(read.status, undefined);

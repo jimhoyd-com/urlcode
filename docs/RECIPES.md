@@ -33,6 +33,7 @@ urlcode validate --local --project ./orders-hook
 | `contact-form` | intermediate | Message checked by `request.body.schema`, `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
+| `authenticated-handlers` | intermediate | Custom business functions with `sessionUserId(request)`, explicit YAML routes, validated path input and bounded JSON | native auth (`urlcode init DIR --with auth`), reviewed registration mode, `--host-file`, `--origin`; trusted Node |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `headless-auth-profile` | advanced | Register, sign in, read and update a per-user profile and sign out as JSON: auth's own endpoints plus an owned store collection, no handler code | `ui`, `audit`, `mail`, `auth` and `store` extensions (`urlcode init DIR --with ui,auth,store`), `registrationMode: 'open'`, `--host-file`, `--origin` |
 | `fixed-contract-adapter` | advanced | A pre-existing JSON contract (`/api/me`, owner-scoped `/api/items`, a fixed error envelope) served by a thin operator adapter over auth's and the store's exports, with an audit of which contract parts the client must change instead (sign-in, sign-out, delete, auth's `401`/`403` bodies) | as `headless-auth-profile`, plus the README's `api-contract.mjs` module in `host.mjs` |
@@ -151,3 +152,9 @@ taken from its README: the contract lifecycle and every error mapping, the
 adapter's activation refusals, its fixtures twice, the `headless-auth-profile`
 fixtures on the same auth database, and `urlcode test` and `audit` through
 `--host-file`.
+
+The [authenticated handlers recipe](../recipes/authenticated-handlers/README.md)
+runs in `packages/auth/test/authenticated-handlers-recipe.test.ts` with the native
+extensions and its client fixtures twice against the same account database.
+The session-identity tests separately exercise spoofing, authorization denials
+and guest credential withholding in both trusted and sandboxed function routes.

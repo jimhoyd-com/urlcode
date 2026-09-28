@@ -1,0 +1,38 @@
+version: "1"
+extensions:
+  ui: {version: "1", config: {}}
+  audit: {version: "1", config: {}}
+  mail: {version: "1", config: {}}
+  auth: {version: "1", config: {registration: open}}
+routes:
+  /assets/ui/*:
+    description: Assets required by auth's account pages.
+    extension: ui
+    methods: [GET, HEAD]
+  /account/*:
+    description: Native registration, login, session, CSRF and logout endpoints.
+    extension: auth
+    methods: [GET, HEAD, POST]
+  /api/me:
+    description: The authorized session's opaque account id, without credentials.
+    methods: [GET, HEAD]
+    auth: true
+    sandboxReason: Uses the installed auth package helper in trusted Node.
+    function: {source: functions/me.mjs}
+  /api/echo/{label}:
+    description: Replace this bounded echo with application-specific behavior.
+    methods: [POST]
+    auth: true
+    parameters:
+      - in: path
+        name: label
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 40}
+    request:
+      body:
+        required: true
+        maxBytes: 16384
+        contentTypes: [application/json]
+        format: json
+    sandboxReason: Imports the auth helper; replace the echo with reviewed trusted application behavior.
+    function: {source: functions/echo.mjs}

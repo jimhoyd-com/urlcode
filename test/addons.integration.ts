@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -176,6 +176,53 @@ test('every extension installs once, composes, serves, and removes in dependency
   const removed = await urlcode(t, dir, ['extensions', 'remove', 'admin']);
   assert.equal(removed.status, 0, removed.stderr);
   assert.doesNotMatch(await readFile(join(dir, 'host.mjs'), 'utf8'), /urlcode-admin/);
+});
+
+test('installed authenticated-handlers recipe runs with generated native auth and unchanged package imports', { timeout: 900000 }, async t => {
+  const { dir } = await site(t);
+  const added = await urlcode(t, dir, ['extensions', 'add', 'auth']);
+  assert.equal(added.status, 0, added.stdout + added.stderr);
+  const { manifest } = await pack();
+  const installedCli = join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js');
+  const installed = (args: string[], env: Record<string, string> = {}) => {
+    const result = spawnSync(process.execPath, [installedCli, ...args, '--json'], {
+      cwd: dir, encoding: 'utf8', timeout: 600000,
+      env: { ...process.env, URLCODE_ADDONS: manifest, ...env },
+    });
+    t.diagnostic(`installed urlcode ${args.join(' ')} -> ${result.status}`);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    // Audit emits check events before its final report; other commands may pretty-print one object.
+    try { return JSON.parse(result.stdout); }
+    catch { return JSON.parse(result.stdout.trim().split('\n').at(-1)!); }
+  };
+  await rename(join(dir, 'app'), join(dir, 'app-initial'));
+  installed(['recipes', 'add', 'authenticated-handlers', '--out', 'app']);
+  const handlers = await Promise.all(['me', 'echo'].map(name => readFile(join(dir, 'app', 'functions', `${name}.mjs`), 'utf8')));
+  for (const source of handlers) assert.match(source, /from '@jimhoyd\/urlcode-auth'/);
+  const exported = spawnSync(process.execPath, ['--input-type=module', '-e',
+    "import {sessionUserId} from '@jimhoyd/urlcode-auth'; if(sessionUserId(new Request('https://example.test')) !== null) process.exit(1);"],
+    {cwd: dir, encoding: 'utf8', timeout: 120000});
+  assert.equal(exported.status, 0, exported.stdout + exported.stderr);
+  for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-mail']) {
+    assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
+  }
+  const operator = join(dir, 'operator-service.mjs'), source = await readFile(operator, 'utf8');
+  assert.match(source, /registrationMode: 'off'/);
+  await writeFile(operator, source.replace("registrationMode: 'off'", "registrationMode: 'open'"));
+  const revision = installed(['extensions', '--project', 'app']).projectSha256 as string;
+  assert.match(revision, /^[a-f0-9]{64}$/);
+  const env = {PROJECT_SHA256: revision, AUTH_ORIGIN: 'https://api.example.com'};
+  const host = ['--project', 'app', '--host-file', 'host.mjs', '--origin', 'https://api.example.com'];
+  installed(['validate', '--local', ...host], env);
+  const first = installed(['test', ...host], env);
+  assert.ok(first.total >= 30);
+  assert.equal(first.failed, 0);
+  // New CLI processes reopen the same generated host and data; no reset hides repeat-run failures.
+  assert.deepEqual(installed(['test', ...host], env), first);
+  const audited = installed(['audit', '--expect-routes', '4', ...host], env);
+  assert.equal(audited.ready, true);
+  assert.equal(audited.failed, 0);
+  assert.deepEqual(await Promise.all(['me', 'echo'].map(name => readFile(join(dir, 'app', 'functions', `${name}.mjs`), 'utf8'))), handlers);
 });
 
 test('a blank install adds every capability and no sample endpoint (#711)', { timeout: 900000 }, async t => {

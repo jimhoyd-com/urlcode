@@ -1,6 +1,7 @@
 export { createAuthService, AuthError } from './auth-core.ts';
 export type { AuthService, AuthOptions, AuthUser, AuthSession, AuthSessionResult, AuthCase, AuthDailyMetric, AuthHookStats, AuthSecurityPolicy, AuthRestriction, AuthDevice, AuthPasskey, AuthProof, ExternalAuthProof, PasskeyAuthProof } from './auth-core.ts';
 export { apiKeyPrincipalId } from './auth.ts';
+export { sessionUserId } from './session-identity.ts';
 export { authPermissions } from './exports.ts';
 export type { AuthExports, AuthAccount, AuthActor, AuthCsrf, AuthUrls, AuthPermission } from './exports.ts';
 export type { AuthAdministration, AdminAccountRequestInput, AuthDashboard, AuthAccountExport, AuthSessionFilters, AuthPage } from './administration.ts';

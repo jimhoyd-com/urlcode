@@ -424,6 +424,41 @@ into this namespace — only a derived, non-secret value. `packages/auth`'s
 scopes (base64-encoded JSON) to the route's own handler; see
 [bearer/API-key routes](#bearerapi-key-routes).
 
+### Session identity in functions
+
+On a route protected by a session `auth:` policy, auth writes the signed-in
+user's opaque id to `x-urlcode-context-auth-session` after authorization,
+the applicable CSRF/origin checks and setting the request principal succeed.
+The value is a plain id, not JSON: it contains no email, roles, session token
+or other credential. Bearer routes do not set this header, including keys
+that act for a user; their existing bearer context is unchanged.
+
+A trusted Node function can use the auth package's accessor:
+
+```js
+import {sessionUserId} from '@jimhoyd/urlcode-auth';
+
+export default function handler(request) {
+  const userId = sessionUserId(request);
+  if (userId === null) return Response.json({error: 'authentication_required'}, {status: 401});
+  return Response.json({userId});
+}
+```
+
+`sessionUserId(request)` returns the bounded opaque id or `null` when the
+header is absent or invalid. It reads derived context; it does not authenticate
+an arbitrary `Request` constructed outside URLCode. The guarantee depends on
+core stripping inbound reserved headers and auth authorizing the route.
+Business authorization still belongs to the application.
+
+Keep each application path, method and body limit in its own YAML function
+route with `auth: true`. The same derived header reaches a `sandbox: true`
+function, which can read it with project-local pure code; this does
+not grant sandboxed code npm imports or filesystem access. Native account
+endpoints continue to own sign-in, CSRF and sign-out. The
+[authenticated-handlers recipe](../recipes/authenticated-handlers/README.md)
+provides the native auth setup and ordinary function routes.
+
 ### Request principal
 
 Other extensions on a route sometimes need to know *who* the request is for,
@@ -456,9 +491,11 @@ for.
   email address, a name, a session token or any secret.
 - **Where it comes from.** Never from the client: core never reads it from a
   header, cookie, query value, body or YAML, and the `x-urlcode-context-*`
-  channel above is unrelated to it. A later `authorize()`, every `middleware()`
+  channel above does not set it. A later `authorize()`, every `middleware()`
   and the mount's own `handle()` on the same route read `request.principal`.
-  It does not reach a route's own `function`/`middleware` guest code.
+  The principal object does not reach a route's own `function`/`middleware`
+  guest code; auth separately exposes the derived session id through the
+  [reserved header](#session-identity-in-functions).
 - **Knowing at startup.** The activation context carries `principalMounts`:
   the subset of `mounts` whose route names a principal-providing extension in
   its policies. An extension that needs a principal refuses to activate a mount

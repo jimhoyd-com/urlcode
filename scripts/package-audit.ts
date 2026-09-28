@@ -214,8 +214,10 @@ export const budgets: Record<string, Budget> = {
     // recipe with its compatibility audit and llms-full.txt copy. Measured
     // on the merged branch (Node 26): 876609 packed, 3468112 unpacked, 493
     // entries.
-    packed: 860 * 1024,
-    unpacked: 3395 * 1024,
+    // Session identity guidance and the authenticated-handlers recipe (#832):
+    // measured 882184 packed / 3510731 unpacked bytes, 499 entries on Node 26.
+    packed: 864 * 1024,
+    unpacked: 3430 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
