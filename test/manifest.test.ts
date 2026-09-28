@@ -11,7 +11,7 @@ import {buildCloudflare} from '../packages/core/src/build-cloudflare.ts';
 import {inspectProject} from '../packages/core/src/tooling.ts';
 import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
-import {project,redirect} from './helpers.ts';
+import {project,redirect,byReplyId} from './helpers.ts';
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
 const extensions=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
@@ -83,7 +83,7 @@ test('MCP offers get_manifest as a read-only tool',async t=>{
   const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
   const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_manifest',arguments:{}}}];
   await serveMcp({project:root,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});
-  const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{tools?:{name:string;annotations:{readOnlyHint:boolean}}[];content?:{text:string}[]}});
+  const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{tools?:{name:string;annotations:{readOnlyHint:boolean}}[];content?:{text:string}[]}}).sort(byReplyId);
   const tool=replies[1]!.result.tools!.find(item=>item.name==='get_manifest');assert.ok(tool);assert.equal(tool.annotations.readOnlyHint,true);
   const manifest=JSON.parse(replies[2]!.result.content![0]!.text) as {revision:string;routes:{path:string}[]};
   assert.equal(manifest.revision,await inspectExtensionRevision(root));assert.deepEqual(manifest.routes.map(route=>route.path),['/a']);

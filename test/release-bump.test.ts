@@ -27,7 +27,7 @@ async function fixture(version = '1.0.0'): Promise<string> {
     'examples/cloudflare/package.json': json({ name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: version }, devDependencies: { wrangler: '^4' } }),
     'examples/aws/package.json': json({ name: 'aws-example', private: true, dependencies: { other: '^1.0.0' } }),
     'packages/core/src/cli.ts': `const VERSION = '${version}';\n`,
-    'packages/core/src/mcp.ts': `const info = {serverInfo:{name:'urlcode',version:'${version}'}};\n`,
+    'packages/core/src/mcp.ts': `const server = new Server({name:'urlcode',version:'${version}'},{capabilities:{tools:{}}});\n`,
     'starters/default/app/urlcode.yaml': `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v${version}/schemas/urlcode.schema.json\nroutes: []\n`,
     'starters/default/.github/workflows/urlcode.yml': `steps:\n  - uses: jimhoyd-com/urlcode/action@v${version}\n`,
     'packaging/claude-plugin/.claude-plugin/plugin.json': json({ name: 'urlcode', version }),

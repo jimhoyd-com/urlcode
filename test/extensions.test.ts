@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {project,request} from './helpers.ts';
+import {project,request,byReplyId} from './helpers.ts';
 import {loadDocument} from '../packages/core/src/config.ts';
 import {createRuntime} from '../packages/core/src/runtime.ts';
 import {startServer} from '../packages/core/src/server.ts';
@@ -502,7 +502,7 @@ test('urlcode extensions prints schemas only with an explicit host file',async t
 test('MCP exposes get_extensions only when the operator started it with a host file',async t=>{
   const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url)),file=await hostFile(t,root);
   const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_extensions',arguments:{}}},{jsonrpc:'2.0',id:4,method:'tools/call',params:{name:'get_extensions',arguments:{hostFile:file}}}];
-  const session=async(hostFile?:string)=>{let text='';await serveMcp({project:root,...(hostFile===undefined?{}:{hostFile}),input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});return text.trim().split('\n').map(line=>JSON.parse(line) as {error?:{code:number};result:{tools:{name:string}[];content:{text:string}[]}});};
+  const session=async(hostFile?:string)=>{let text='';await serveMcp({project:root,...(hostFile===undefined?{}:{hostFile}),input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});return text.trim().split('\n').map(line=>JSON.parse(line) as {error?:{code:number};result:{tools:{name:string}[];content:{text:string}[]}}).sort(byReplyId);};
   const absent=await session();assert.ok(!absent[1]!.result.tools.some(tool=>tool.name==='get_extensions'));assert.equal(absent[2]!.error?.code,-32602);assert.equal(absent[3]!.error?.code,-32602);
   const present=await session(file);assert.ok(present[1]!.result.tools.some(tool=>tool.name==='get_extensions'));
   const report=JSON.parse(present[2]!.result.content[0]!.text) as {extensions:{name:string;schema:object}[]};assert.equal(report.extensions[0]?.name,'demo');assert.ok('properties' in report.extensions[0]!.schema);

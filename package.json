@@ -162,6 +162,7 @@
     "url": "https://github.com/jimhoyd-com/urlcode.git"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.1.0",
     "ajv": "8.20.0",
     "content-disposition": "3.0.0",
     "es-module-lexer": "3.0.2",
@@ -171,6 +172,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@modelcontextprotocol/client": "2.1.0",
     "@types/mime-types": "3.0.1",
     "@types/node": "26.6.2",
     "@types/semver": "7.8.0",

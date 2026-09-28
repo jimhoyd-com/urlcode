@@ -11,6 +11,7 @@ import type {Bootstrap} from '../packages/core/src/bootstrap.ts';
 import {getSchemaFragment} from '../packages/core/src/schema-query.ts';
 import {localInvocation,shellWord} from '../packages/core/src/context.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
+import {byReplyId} from './helpers.ts';
 
 // #807: the local agent bootstrap composes init, context's quoting and the capability catalog.
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
@@ -177,7 +178,7 @@ test('MCP get_context bootstrap returns the same read-only bootstrap for the ser
  const messages=[initialize,{jsonrpc:'2.0',method:'notifications/initialized'},...calls.map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))];
  let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
  await serveMcp({project:join(site,'app'),input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});
- const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{content:{text:string}[];isError?:boolean}}).slice(1);
+ const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{content:{text:string}[];isError?:boolean}}).sort(byReplyId).slice(1);
  assert.equal(replies[0]!.result.isError,undefined,replies[0]!.result.content[0]!.text);
  const result=JSON.parse(replies[0]!.result.content[0]!.text) as Bootstrap;
  assert.deepEqual(result,await buildBootstrap(site,{capabilities:['respond','nope']}));

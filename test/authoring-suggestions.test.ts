@@ -13,7 +13,7 @@ import {summarizeChange} from '../packages/core/src/yaml-change.ts';
 import {loadDocument} from '../packages/core/src/config.ts';
 import {runProjectTests} from '../packages/core/src/project-tests.ts';
 import {readFixtures} from '../packages/core/src/readiness.ts';
-import {project} from './helpers.ts';
+import {project,byReplyId} from './helpers.ts';
 import {Readable,Writable} from 'node:stream';
 import {serveMcp} from '../packages/core/src/mcp.ts';
 
@@ -230,7 +230,7 @@ const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 async function session(root:string,messages:unknown[]):Promise<McpReply[]> {
   let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
   await serveMcp({project:root,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});
-  return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as McpReply);
+  return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as McpReply).sort(byReplyId);
 }
 test('local MCP exposes both helpers as read-only tools over the project urlcode.yaml or supplied YAML',async t=>{
   const root=await project(t,{'/go':{redirect:{url:'https://example.com/'}},'/fn':{function:'fn.mjs'}},{'fn.mjs':'export default () => new Response("x")'});
