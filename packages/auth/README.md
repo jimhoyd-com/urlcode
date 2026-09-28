@@ -105,7 +105,7 @@ operator's `--origin` and its base path is the mount.
 
 ## Not included
 
-- No account pages, admin console, audit events, email flows, passkeys,
+- No account pages, admin console, audit events, email flows,
   two-factor, social or OIDC sign-in, API keys or account recovery. Add a
   Better Auth plugin through `betterAuth` and its paths through `paths` when an
   application needs one.

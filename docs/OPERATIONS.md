@@ -46,12 +46,6 @@ or aliases without `--origin`. The same list goes to `validate`, `test`,
 `aliasOrigins` option or `URLCODE_ALIAS_ORIGINS` (comma-separated). See
 [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
 
-Core also accepts `--passkey-rp-id` (the AWS and Vercel handlers take a
-`passkeyRpId` option or `URLCODE_PASSKEY_RP_ID`), a shared WebAuthn
-relying-party ID for an extension that runs passkey ceremonies. No first-party
-extension uses it: `auth` serves no passkeys, and a follow-up removes the
-option. It is never project YAML.
-
 Use a process supervisor that restarts on
 failure and sends SIGTERM for shutdown. On SIGTERM, `/_urlcode/ready` starts
 reporting unhealthy for `--drain-delay-ms` (default `0`, disabled) before the

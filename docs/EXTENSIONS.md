@@ -870,9 +870,6 @@ An extension's activation context carries both:
 - `origins`: the canonical origin first, then the alias origins, frozen.
   (It is optional in the type only so a hand-built activation in a test still
   means the canonical origin alone; the runtime always sets it.)
-- `passkeyRpId`: present only when the operator set a
-  [shared passkey relying-party domain](#shared-passkey-relying-party-domain),
-  which no first-party extension reads.
 - `warn`: the [activation warning](#activation-warnings) channel.
 
 `isSiteOrigin(context, value)` is the one match for a single origin value: the
@@ -901,28 +898,6 @@ it. The rule is admission only: forms still requires its own CSRF token, and
 Better Auth applies its own origin checks on its mount. On a loopback bind the server's
 [host admission](OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
 alias authority too.
-
-#### Shared passkey relying-party domain
-
-Core still accepts one generic operator option for an extension that runs
-WebAuthn ceremonies: a shared relying-party (RP) ID, so a passkey works on
-every site origin under one registrable domain (issue #729). **No first-party
-extension uses it**: `auth` serves no passkeys, and the option is due to be
-removed. It is operator configuration, never project YAML:
-
-| Where | How |
-|---|---|
-| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit`, `benchmark` | `--passkey-rp-id site.example` beside `--origin` and `--alias-origin` |
-| `createRuntime`, `startServer`, `runProjectTests` | `passkeyRpId: 'site.example'` |
-| AWS and Vercel handlers | the `passkeyRpId` handler option, otherwise `URLCODE_PASSKEY_RP_ID` |
-
-Core refuses to start with a `ConfigError` (code `invalid-passkey-rp-id`)
-unless the value is a lowercase DNS name, not an IP address, a single label
-(except `localhost` on a `localhost` origin) or a listed public suffix
-(`passkeyPublicSuffixes` in `packages/core/src/site-origins.ts`), and is the
-host of the canonical origin and of every alias origin or a parent domain of
-each at a label boundary. The activation context then carries `passkeyRpId`
-for an external extension to read.
 
 Every extension also follows the
 [generic add-on authoring rules](#generic-add-on-authoring-rules).

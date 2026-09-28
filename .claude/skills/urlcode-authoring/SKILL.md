@@ -185,7 +185,7 @@ historical, not valid YAML guidance.
   store collection behind `auth: true`. The `authenticated-json-api` recipe
   and the end-to-end application in `proofs/private-requests` show the shape.
   Never write login, cookie, password or session checks in a function; report
-  what auth cannot express (it has no account pages, email flows, passkeys,
+  what auth cannot express (it has no account pages, email flows,
   two-factor or API keys).
 - When a React frontend has `components.json`, follow the installed official
   shadcn/ui skill for component discovery, composition, accessibility and

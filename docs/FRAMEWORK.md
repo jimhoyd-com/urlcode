@@ -249,9 +249,6 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
 `isSameOriginRequest`, so mcp, forms, store and auth admit the same
 origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
-Core still accepts a generic `--passkey-rp-id` that activation carries as
-`passkeyRpId`, but no first-party extension uses it
-([shared passkey RP ID](EXTENSIONS.md#shared-passkey-relying-party-domain)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
 an `extension_warning` event and never a response

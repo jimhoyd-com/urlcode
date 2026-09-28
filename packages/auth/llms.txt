@@ -13,6 +13,6 @@
 - [SECURITY](SECURITY.md): what Better Auth owns and what the mount and route gate enforce.
 
 ## Do not guess
-- There are no roles, account pages, passkeys, OIDC, API keys or recovery; keep permissions in the application.
+- There are no roles, account pages, OIDC, API keys or recovery; keep permissions in the application.
 - A `sandbox: true` route cannot use `auth` (the identity capability cannot enter the sandbox).
 - Better Auth's tables must exist (`npx urlcode-auth migrate`) or activation refuses.

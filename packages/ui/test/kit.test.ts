@@ -116,13 +116,13 @@ test('the kit catalogue is merged by default: a host presentation without ui.* k
 });
 test('extension-owned scripts render nonce-bound beside kit scripts; foreign, absolute and schemed sources and the count limit are refused', () => {
     const kit = createKit({ presentation: createPresentation({ defaults: kitCatalogue }) });
-    const page = kit.wrap(markup(''), { title: 'T', scripts: ['confirm', { src: '/account/static/passkeys.js' }, { src: '/account/static/vendor.js?v=2', integrity: 'sha384-' + 'A'.repeat(64) }] });
+    const page = kit.wrap(markup(''), { title: 'T', scripts: ['confirm', { src: '/static/widget.js' }, { src: '/account/static/vendor.js?v=2', integrity: 'sha384-' + 'A'.repeat(64) }] });
     const html = decode(page.body);
     const nonce = /<style nonce="([^"]+)"/.exec(html)![1]!;
     const quoted = nonce.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&');
-    assert.match(html, new RegExp(`<script nonce="${quoted}" src="/assets/ui/confirm\\.[0-9a-f]{12}\\.js" defer></script><script nonce="${quoted}" src="/account/static/passkeys\\.js" defer></script><script nonce="${quoted}" src="/account/static/vendor\\.js\\?v=2" integrity="sha384-A{64}" defer></script></body></html>$`));
+    assert.match(html, new RegExp(`<script nonce="${quoted}" src="/assets/ui/confirm\\.[0-9a-f]{12}\\.js" defer></script><script nonce="${quoted}" src="/static/widget\\.js" defer></script><script nonce="${quoted}" src="/account/static/vendor\\.js\\?v=2" integrity="sha384-A{64}" defer></script></body></html>$`));
     assert.ok(header(page.headers, 'content-security-policy')!.includes(`script-src 'nonce-${nonce}'`));
-    for (const src of ['https://cdn.example.test/lib.js', '//cdn.example.test/lib.js', 'javascript:alert(1)', 'static/passkeys.js', '/bad path.js', '/x"onload="1', '', '/' + 'a'.repeat(2048)])
+    for (const src of ['https://cdn.example.test/lib.js', '//cdn.example.test/lib.js', 'javascript:alert(1)', 'static/widget.js', '/bad path.js', '/x"onload="1', '', '/' + 'a'.repeat(2048)])
         assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src }] }), /must be same-site or listed in csp\.script/, src || '(empty)');
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: '/a.js', integrity: 'md5-abc' }] }), /integrity/);
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: [{ src: '/a.js', integrity: 'sha256-<b>' }] }), /integrity/);

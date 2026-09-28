@@ -64,10 +64,8 @@ project-aware `urlcode mcp` server. Its machine-readable entry point is
   with a repeatable `--alias-origin` (at most 16 `https:` origins; hosted
   adapters read `URLCODE_ALIAS_ORIGINS`). It is operator configuration, never
   project YAML; extensions' same-origin checks admit those origins
-  (`docs/OPERATIONS.md`, process deployment). Core still accepts a generic
-  `--passkey-rp-id` (`URLCODE_PASSKEY_RP_ID` on hosted adapters) and hands it to
-  extensions, but no first-party extension uses it: auth (Better Auth) serves
-  no passkeys. Better Auth's base URL is the canonical `--origin`.
+  (`docs/OPERATIONS.md`, process deployment). Better Auth's base URL is the
+  canonical `--origin`.
 - Distinguish local checks (`validate`, `test`, `audit`, `benchmark` — all
   activate a local snapshot only) from `verify-deployment` (probes a live
   target over HTTP, read-only, no credential, no redirect following). Do not
