@@ -356,6 +356,11 @@ test('readers.showOwner shows each record\'s owner id on the readers mount only'
   assert.deepEqual((list.body!.items as Record<string, unknown>[]).map(item => [item.title, item._owner]), [['desk', 'bob'], ['laptop', 'ann']]);
   const one = await store.call('GET', `/api/review/${ann}`, { who: 'rita' });
   assert.equal(one.body!._owner, 'ann');
+  // The list keeps its per-record ETags (#872) with showOwner, and each matches the record's own ETag.
+  const etags = list.body!.etags as Record<string, string>;
+  assert.deepEqual(Object.keys(etags).sort(), (list.body!.items as { id: string }[]).map(item => item.id).sort());
+  for (const etag of Object.values(etags)) assert.match(etag, /^"[0-9a-f]{32}"$/);
+  assert.equal(etags[ann], one.header('etag'));
   // Everywhere else the owner stays in the database: the owner's own mount, the transition's answer, StoreExports.
   assert.equal(Object.hasOwn((await store.call('GET', `/api/requests/${ann}`, { who: 'ann' })).body!, '_owner'), false);
   assert.ok(((await store.call('GET', '/api/requests', { who: 'ann' })).body!.items as Record<string, unknown>[]).every(item => !Object.hasOwn(item, '_owner')));

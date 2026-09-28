@@ -40,7 +40,7 @@ const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record
  * A list page as the HTTP API answers it: the records, plus `etags`, each listed record's current ETag by id, so a
  * client (the ui screen's transition buttons) can send `If-Match` for the version it listed without a read per record.
  */
-const listView = (page: { items: StoredRecord[]; total: number; next?: string | number }) => ({ ...page, items: page.items.map(view), etags: Object.fromEntries(page.items.map(record => [record.id as string, etagOf(record)])) });
+const listView = (page: { items: StoredRecord[]; total: number; next?: string | number }, project: (record: StoredRecord) => StoredRecord = view) => ({ ...page, items: page.items.map(project), etags: Object.fromEntries(page.items.map(record => [record.id as string, etagOf(record)])) });
 
 /** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created path compares correctly. */
 async function realTarget(path: string): Promise<string> {
@@ -381,7 +381,7 @@ async function dispatchReaders(collection: Collection, request: ExtensionRequest
     const principal = request.principal?.id;
     // With showOwner, and only here, a member sees each record's owner: the opaque principal id, nothing more.
     const shown = (record: StoredRecord): StoredRecord => collection.spec.readers?.showOwner ? record : view(record);
-    if (rest === '') { const page = collection.listAcross(request.query, principal); return json(200, { ...page, items: page.items.map(shown) }); }
+    if (rest === '') return json(200, listView(collection.listAcross(request.query, principal), shown));
     const record = collection.getAcross(rest, principal);
     return json(200, shown(record), [['etag', etagOf(record)]]);
   } catch (error) {
