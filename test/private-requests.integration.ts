@@ -1,0 +1,282 @@
+// The #843 proof end to end with real npm: pack this checkout's core as a release does, install it with the
+// pinned Better Auth into a copy of proofs/private-requests, run the site's own scripts, and exercise the served
+// application over HTTP. It needs the npm registry for better-auth and esbuild; run after `npm run build`
+// (npm run test:proof); like the other packaging tests it packs the built core with --ignore-scripts. The test acts as the evaluator: it writes the operator policy from `urlcode permissions`
+// explicitly, the step a person performs after review.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { TestContext } from 'node:test';
+import { repositoryRoot } from '../scripts/workspaces.ts';
+
+const proof = join(repositoryRoot, 'proofs', 'private-requests');
+// npm's own CLI under this Node, as `npm run test:proof` provides it: no shell, so Windows needs no npm.cmd quoting.
+const npmCli = process.env.npm_execpath;
+const npmCommand = npmCli ? process.execPath : process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+interface Run { status: number | null; stdout: string; stderr: string }
+function run(t: TestContext, cwd: string, command: string, args: string[], env: Record<string, string> = {}): Run {
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', timeout: 600000, env: { ...process.env, ...env }, shell: command === 'npm.cmd' });
+  t.diagnostic(`${command} ${args.join(' ')} -> ${result.status}`);
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+const npm = (t: TestContext, cwd: string, args: string[], env: Record<string, string> = {}): Run => run(t, cwd, npmCommand, npmCli ? [npmCli, ...args] : args, env);
+const urlcode = (t: TestContext, site: string, args: string[], env: Record<string, string> = {}): Run => run(t, site, process.execPath, [join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), ...args], env);
+const freePort = (): Promise<number> => new Promise((resolve, reject) => {
+  const server = createServer().listen(0, '127.0.0.1', () => { const { port } = server.address() as { port: number }; server.close(() => resolve(port)); }).on('error', reject);
+});
+
+/** A cookie-keeping client that behaves like a same-origin browser on `origin`. */
+function browser(origin: string) {
+  const jar = new Map<string, string>();
+  const call = async (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string>; signal?: AbortSignal; rawBody?: BodyInit; duplex?: 'half' } = {}): Promise<{ status: number; json: unknown; headers: Headers }> => {
+    const headers: Record<string, string> = { accept: 'application/json', ...init.headers };
+    if (jar.size) headers.cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+    if (init.method && init.method !== 'GET') headers.origin ??= origin;
+    if (init.body !== undefined) headers['content-type'] ??= 'application/json';
+    const response = await fetch(origin + path, { method: init.method ?? 'GET', headers, body: init.rawBody ?? (init.body === undefined ? undefined : typeof init.body === 'string' ? init.body : JSON.stringify(init.body)), signal: init.signal, redirect: 'manual', ...(init.duplex ? { duplex: init.duplex } : {}) } as RequestInit);
+    for (const cookie of response.headers.getSetCookie()) {
+      const [pair = ''] = cookie.split(';'), split = pair.indexOf('=');
+      if (/max-age=0/i.test(cookie)) jar.delete(pair.slice(0, split)); else jar.set(pair.slice(0, split), pair.slice(split + 1));
+    }
+    const text = await response.text();
+    let json: unknown = text;
+    try { json = JSON.parse(text); } catch { /* keep text */ }
+    return { status: response.status, json, headers: response.headers };
+  };
+  return Object.assign(call, { jar });
+}
+const signIn = async (client: ReturnType<typeof browser>, email: string, password: string): Promise<number> => (await client('/api/auth/sign-in/email', { method: 'POST', body: { email, password } })).status;
+
+test('private-requests: packed consumer, upstream auth, owner-private records and reviewer approval', { timeout: 1200000 }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-proof-'));
+  // One unwind stack: node:test runs separate after hooks in registration order, which would remove the site while
+  // the server still holds its SQLite files (EBUSY on Windows). Every closer is attempted, newest first.
+  const closers: (() => unknown)[] = [];
+  t.after(async () => {
+    const errors: unknown[] = [];
+    while (closers.length) try { await closers.pop()!(); } catch (error) { errors.push(error); }
+    if (errors.length) throw new AggregateError(errors, 'Proof cleanup failed');
+  });
+  closers.push(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
+  const packed = npm(t, repositoryRoot, ['pack', '--ignore-scripts', '--silent', '--pack-destination', root]);
+  assert.equal(packed.status, 0, packed.stderr);
+  const tarball = join(root, packed.stdout.trim().split('\n').at(-1)!);
+  const site = join(root, 'site');
+  await cp(proof, site, { recursive: true, filter: source => !/[/\\](node_modules|data)$/.test(source) && !source.endsWith('policy.json') && !source.endsWith(join('assets', 'app.js')) });
+
+  // Installation and build may use the network; nothing after them does.
+  assert.equal(npm(t, site, ['install', '--no-audit', '--no-fund', tarball]).status, 0);
+  assert.equal(npm(t, site, ['run', 'build']).status, 0);
+  const setup = npm(t, site, ['run', '-s', 'setup']);
+  assert.equal(setup.status, 0, setup.stderr);
+  const users = (JSON.parse(setup.stdout.trim().split('\n').at(-1)!) as { users: Record<string, string> }).users;
+  assert.equal(Object.keys(users).length, 3);
+  // Setup is safe to re-run and keeps the same accounts.
+  assert.deepEqual((JSON.parse(npm(t, site, ['run', '-s', 'setup']).stdout.trim().split('\n').at(-1)!) as { users: unknown }).users, users);
+
+  const inventory = JSON.parse(npm(t, site, ['run', '-s', 'inventory']).stdout) as { provider: Record<string, { version: string; integrity: string }>; plugins: string[]; endpoints: { path: string | null; served: boolean }[]; servedMatchesOperatorList: boolean };
+  assert.equal(inventory.provider['better-auth']?.version, '1.7.6');
+  assert.match(inventory.provider['better-auth']!.integrity, /^sha512-/);
+  assert.deepEqual(inventory.plugins, []);
+  assert.equal(inventory.servedMatchesOperatorList, true);
+  t.diagnostic(`served Better Auth endpoints: ${inventory.endpoints.filter(entry => entry.served).map(entry => entry.path).join(', ')}`);
+
+  const port = await freePort(), origin = `http://localhost:${port}`;
+  const env = { SITE_ORIGIN: origin };
+  const hosted = ['--project', 'app', '--host-file', 'host.mjs', '--origin', origin];
+  const policy = join(site, 'operator', 'policy.json');
+
+  // No reviewed policy yet: the application's database binding is not granted, so nothing activates.
+  const unapproved = urlcode(t, site, ['validate', '--local', ...hosted], { ...env, PROJECT_SHA256: '0'.repeat(64) });
+  assert.notEqual(unapproved.status, 0);
+  // The evaluator's explicit approval: review `urlcode permissions`, then save it outside app/.
+  const proposal = urlcode(t, site, ['permissions', '--project', 'app']);
+  assert.equal(proposal.status, 0, proposal.stderr);
+  await writeFile(policy, proposal.stdout);
+  const approved = [...hosted, '--policy', policy];
+  const valid = urlcode(t, site, ['validate', '--local', ...approved], env);
+  assert.equal(valid.status, 0, valid.stderr);
+  // Review facts: the capability a protected handler receives, and the provider mount's unlisted subpaths.
+  const reviewEnv = { ...env, PROJECT_SHA256: (JSON.parse(proposal.stdout) as { projectSha256: string }).projectSha256 };
+  const protectedRoute = urlcode(t, site, ['explain', '/api/requests', '--project', 'app', '--host-file', 'host.mjs'], reviewEnv);
+  assert.match(protectedRoute.stdout, /handler receives context\.capabilities\.better-auth: identity/);
+  const mount = urlcode(t, site, ['explain', '/api/auth/sign-in/email', '--project', 'app', '--host-file', 'host.mjs'], reviewEnv);
+  assert.match(mount.stdout, /"subpaths":"provider-defined, not enumerated or inspected by URLCode"/);
+
+  await t.test('provider and target misconfiguration refuses before serving', async () => {
+    const empty = join(root, 'empty-data');
+    const refusals: [string, Record<string, string>, RegExp][] = [
+      ['no secret', { PRIVATE_REQUESTS_DATA: empty }, /No Better Auth secret/],
+      ['uninitialized schema', { PRIVATE_REQUESTS_DATA: empty, BETTER_AUTH_SECRET: 'b'.repeat(43), APP_DATABASE: join(root, 'unused.db') }, /schema is not initialized/],
+      ['origin mismatch', { SITE_ORIGIN: 'http://localhost:1' }, /differs from the operator origin/],
+    ];
+    for (const [name, extra, message] of refusals) {
+      const refused = urlcode(t, site, ['validate', '--local', ...approved], { ...env, ...extra });
+      assert.notEqual(refused.status, 0, name);
+      assert.match(refused.stdout + refused.stderr, message, name);
+    }
+    const yamlFile = join(site, 'app', 'urlcode.yaml'), yaml = await readFile(yamlFile, 'utf8');
+    try {
+      // An unreviewed edit invalidates the pinned revision and the binding grant.
+      await writeFile(yamlFile, yaml.replace('The signed-in user', 'The user'));
+      const stale = urlcode(t, site, ['validate', '--local', ...approved], env);
+      assert.notEqual(stale.status, 0);
+      assert.match(stale.stdout + stale.stderr, /revision|projectSha256|pin/i);
+      // A live capability object cannot cross into the sandbox: refused at compile time, not degraded.
+      await writeFile(join(site, 'app', 'functions', 'sandboxed.mjs'), 'export default (_request, context) => Response.json({ capabilities: Object.keys(context.capabilities ?? {}) });\n');
+      await writeFile(yamlFile, yaml + '  /api/sandboxed:\n    methods: [GET]\n    policies: {extensions: {better-auth: {}}}\n    sandbox: true\n    function: {source: functions/sandboxed.mjs}\n');
+      const sandboxProposal = urlcode(t, site, ['permissions', '--project', 'app']);
+      assert.equal(sandboxProposal.status, 0, sandboxProposal.stdout + sandboxProposal.stderr);
+      await writeFile(policy, sandboxProposal.stdout);
+      const sandboxed = urlcode(t, site, ['validate', '--local', ...approved], env);
+      assert.notEqual(sandboxed.status, 0);
+      assert.match(sandboxed.stdout + sandboxed.stderr, /capabilit/);
+    } finally {
+      await rm(join(site, 'app', 'functions', 'sandboxed.mjs'), { force: true });
+      await writeFile(yamlFile, yaml);
+      await writeFile(policy, proposal.stdout);
+    }
+  });
+
+  // The declarative fixtures, signed-in steps included, run on their own synthetic data at the documented origin.
+  const fixtureEnv = { PRIVATE_REQUESTS_DATA: join(root, 'fixture-data'), SITE_ORIGIN: 'http://localhost:4180' };
+  assert.equal(npm(t, site, ['run', '-s', 'setup'], fixtureEnv).status, 0);
+  const documented = ['--project', 'app', '--host-file', 'host.mjs', '--origin', 'http://localhost:4180', '--policy', policy];
+  const fixtures = urlcode(t, site, ['test', ...documented], fixtureEnv);
+  assert.equal(fixtures.status, 0, fixtures.stdout + fixtures.stderr);
+  const audit = urlcode(t, site, ['audit', '--expect-routes', '8', ...documented, '--json'], fixtureEnv);
+  const report = JSON.parse(audit.stdout.trim().split('\n').at(-1)!) as { countMatches: boolean; failed: number; ready: boolean; uncovered: unknown[] };
+  assert.deepEqual([report.ready, report.countMatches, report.failed, report.uncovered], [true, true, 0, []], audit.stdout);
+
+  const server = spawn(process.execPath, [join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), 'serve', ...approved, '--port', String(port)], { cwd: site, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  server.stdout.on('data', chunk => { output += chunk; });
+  server.stderr.on('data', chunk => { output += chunk; });
+  const exited = new Promise(resolve => server.once('exit', resolve));
+  closers.push(async () => { if (server.exitCode === null && server.signalCode === null) server.kill(); await exited; });
+  for (let attempt = 0; ; attempt++) {
+    if (await fetch(`${origin}/_urlcode/ready`).then(response => response.ok, () => false)) break;
+    assert.ok(attempt < 100 && server.exitCode === null, `server did not start: ${output}`);
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  const ann = browser(origin), bob = browser(origin), rita = browser(origin);
+  assert.equal(await signIn(ann, 'ann@example.test', 'wrong-password'), 401);
+  assert.equal(ann.jar.size, 0);
+  assert.equal(await signIn(ann, 'ann@example.test', 'ann-local-demo-password'), 200);
+  assert.equal(await signIn(bob, 'bob@example.test', 'bob-local-demo-password'), 200);
+  assert.equal(await signIn(rita, 'rita@example.test', 'rita-local-demo-password'), 200);
+  // Sign-up is disabled over HTTP even though Better Auth ships it.
+  assert.equal((await ann('/api/auth/sign-up/email', { method: 'POST', body: { email: 'eve@example.test', password: 'eve-local-demo-password', name: 'Eve' } })).status, 404);
+
+  await t.test('identity comes from the verified session, permissions from the application', async () => {
+    assert.deepEqual((await ann('/api/me')).json, { userId: users['ann@example.test'], reviewer: false });
+    assert.deepEqual((await rita('/api/me')).json, { userId: users['rita@example.test'], reviewer: true });
+    // A client cannot claim another identity through the reserved context namespace.
+    assert.equal(((await ann('/api/me', { headers: { 'x-urlcode-context-better-auth': users['rita@example.test']! } })).json as { userId: string }).userId, users['ann@example.test']);
+  });
+
+  let annRequest = '';
+  await t.test('owners create, list and read only their own requests', async () => {
+    const created = await ann('/api/requests', { method: 'POST', body: { title: 'New laptop', details: 'Synthetic request' } });
+    assert.equal(created.status, 201);
+    annRequest = (created.json as { id: string; status: string; ownerId: string }).id;
+    assert.equal((created.json as { status: string }).status, 'pending');
+    assert.equal((created.json as { ownerId: string }).ownerId, users['ann@example.test']);
+    assert.equal((await bob('/api/requests', { method: 'POST', body: { title: 'Desk lamp' } })).status, 201);
+    assert.deepEqual(((await ann('/api/requests')).json as { requests: { title: string }[] }).requests.map(request => request.title), ['New laptop']);
+    assert.deepEqual(((await bob('/api/requests')).json as { requests: { title: string }[] }).requests.map(request => request.title), ['Desk lamp']);
+    assert.equal((await ann(`/api/requests/${annRequest}`)).status, 200);
+    // Another owner cannot tell the request exists.
+    assert.deepEqual(await bob(`/api/requests/${annRequest}`).then(response => [response.status, response.json]), [404, { error: 'not_found' }]);
+    assert.equal((await rita(`/api/requests/${annRequest}`)).status, 200);
+  });
+
+  await t.test('malformed and out-of-contract input is refused before or by the handler', async () => {
+    assert.equal((await ann('/api/requests', { method: 'POST', body: '{"title":' })).status, 400);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: '' } })).status, 422);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', owner: users['bob@example.test'] } })).status, 422);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: 'title=x', headers: { 'content-type': 'application/x-www-form-urlencoded' } })).status, 415);
+    assert.equal((await ann('/api/requests', { method: 'POST' })).status, 400);
+    assert.equal((await ann('/api/requests/not-a-uuid')).status, 400);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x' }, headers: { origin: 'https://attacker.example' } })).status, 403);
+    assert.equal(((await ann('/api/requests')).json as { requests: unknown[] }).requests.length, 1);
+  });
+
+  await t.test('only a reviewer approves, once, and never their own request', async () => {
+    assert.deepEqual(await bob(`/api/requests/${annRequest}/approve`, { method: 'POST' }).then(response => [response.status, response.json]), [403, { error: 'reviewer_required' }]);
+    assert.equal((await ann(`/api/requests/${annRequest}/approve`, { method: 'POST' })).status, 403);
+    assert.equal((await bob('/api/review/pending')).status, 403);
+    assert.equal(((await rita('/api/review/pending')).json as { requests: unknown[] }).requests.length, 2);
+    const own = (await rita('/api/requests', { method: 'POST', body: { title: 'Reviewer own request' } })).json as { id: string };
+    assert.deepEqual(await rita(`/api/requests/${own.id}/approve`, { method: 'POST' }).then(response => [response.status, response.json]), [403, { error: 'self_approval_refused' }]);
+    // Concurrent approvals: the conditional update lets exactly one win.
+    const racing = await Promise.all([1, 2, 3].map(() => rita(`/api/requests/${annRequest}/approve`, { method: 'POST' })));
+    assert.deepEqual(racing.map(response => response.status).sort(), [200, 409, 409]);
+    assert.equal(((await ann(`/api/requests/${annRequest}`)).json as { status: string }).status, 'approved');
+    assert.equal((await rita(`/api/requests/${'0'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}/approve`, { method: 'POST' })).status, 404);
+  });
+
+  await t.test('the application change: owners filter their own list by a declared status input', async () => {
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'Second request' } })).status, 201);
+    const titles = async (query: string): Promise<string[]> => ((await ann(`/api/requests${query}`)).json as { requests: { title: string }[] }).requests.map(request => request.title);
+    assert.deepEqual(await titles('?status=approved'), ['New laptop']);
+    assert.deepEqual(await titles('?status=pending'), ['Second request']);
+    assert.equal((await titles('')).length, 2);
+    assert.equal((await ann('/api/requests?status=withdrawn')).status, 400);
+    // The filter narrows the caller's own records; it never widens to another owner's.
+    assert.deepEqual(((await bob('/api/requests?status=pending')).json as { requests: { title: string }[] }).requests.map(request => request.title), ['Desk lamp']);
+  });
+
+  await t.test('a cancelled request writes nothing', async () => {
+    const before = ((await bob('/api/requests')).json as { requests: unknown[] }).requests.length;
+    const controller = new AbortController();
+    let pull = 0;
+    const body = new ReadableStream({ pull(stream) { if (pull++ === 0) stream.enqueue(new TextEncoder().encode('{"title":"never fin')); else return new Promise(() => { setTimeout(() => controller.abort(), 200); }); } });
+    await assert.rejects(bob('/api/requests', { method: 'POST', rawBody: body, duplex: 'half', headers: { 'content-type': 'application/json' }, signal: controller.signal }));
+    assert.equal(((await bob('/api/requests')).json as { requests: unknown[] }).requests.length, before);
+  });
+
+  await t.test('sign-out and revocation end access immediately', async () => {
+    assert.equal((await bob('/api/auth/sign-out', { method: 'POST', body: {} })).status, 200);
+    assert.equal((await bob('/api/me')).status, 401);
+    // A second device; revoking every session from one ends both.
+    const annPhone = browser(origin);
+    assert.equal(await signIn(annPhone, 'ann@example.test', 'ann-local-demo-password'), 200);
+    const stolen = new Map(annPhone.jar);
+    assert.equal((await annPhone('/api/me')).status, 200);
+    assert.equal((await ann('/api/auth/revoke-sessions', { method: 'POST', body: {} })).status, 200);
+    assert.equal((await ann('/api/me')).status, 401);
+    assert.equal((await annPhone('/api/me')).status, 401);
+    // Replaying the revoked cookie does not revive it.
+    const replay = browser(origin);
+    for (const [name, value] of stolen) replay.jar.set(name, value);
+    assert.equal((await replay('/api/requests')).status, 401);
+    // Signing in again works and the owner's data is intact.
+    assert.equal(await signIn(ann, 'ann@example.test', 'ann-local-demo-password'), 200);
+    assert.equal(((await ann('/api/requests')).json as { requests: unknown[] }).requests.length, 2);
+  });
+
+  await t.test('sign-in attempts are throttled per client address', async () => {
+    const attacker = browser(origin);
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 12; attempt++) statuses.push(await signIn(attacker, 'rita@example.test', 'guess'));
+    assert.ok(statuses.includes(429), statuses.join(','));
+    // A spoofed forwarding header does not buy a fresh bucket: the adapter supplies the admitted address.
+    assert.equal((await attacker('/api/auth/sign-in/email', { method: 'POST', body: { email: 'rita@example.test', password: 'guess' }, headers: { 'x-forwarded-for': '203.0.113.7', 'x-urlcode-client-address': '203.0.113.7' } })).status, 429);
+  });
+
+  await t.test('the frontend is ordinary static files plus the upstream client bundle', async () => {
+    const page = await fetch(origin + '/');
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /<script type="module" src="\/assets\/app.js">/);
+    const script = await fetch(origin + '/assets/app.js');
+    assert.equal(script.status, 200);
+    assert.match(await script.text(), /\/api\/auth/);
+  });
+});

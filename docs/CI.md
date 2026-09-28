@@ -129,7 +129,12 @@ workspace packages are separate jobs to shorten the critical path.
 `workspace-integration` rebuilds extensions, audits their archives and runs the real add-on
 integration (`npm run test:addons`: pack core and every add-on, pin them by
 sha512, create a site and add, serve and remove every extension); missing
-workspace outputs fail.
+workspace outputs fail. The same job then runs the embedded Better Auth proof
+(`npm run test:proof`, [#843](https://github.com/jimhoyd-com/urlcode/issues/843)):
+it packs core, installs `better-auth` into a copy of
+[`proofs/private-requests`](../proofs/private-requests/README.md) and exercises
+it over HTTP, so it needs the npm registry like the add-on suite. A change under
+`proofs/` or to that test is high-impact and selects this job.
 
 Packaging tests use `npm pack --ignore-scripts` against the already-built core.
 The source `prepare` entry also checks npm's `ignore-scripts` setting because

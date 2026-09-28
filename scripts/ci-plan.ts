@@ -86,6 +86,9 @@ const HIGH_IMPACT: readonly RegExp[] = [
   // Integration and cleanup: the packed add-on suite and the per-package
   // fixture cleanup whose Windows SQLite ordering delayed a release (#673).
   /^test\/addons\.integration\.ts$/,
+  // The embedded-provider proof (#843): its packed-consumer suite runs in the same job.
+  /^test\/private-requests\.integration\.ts$/,
+  /^proofs\//,
   /^scripts\/test-addons[^/]*$/,
   /^packages\/[^/]+\/test\/cleanup\.ts$/,
   // Shared inputs fail closed: any workflow, action or repository automation

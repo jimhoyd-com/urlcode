@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {explainRoute,explainProject} from '../packages/core/src/tooling.ts';
+import {unenumeratedSubpaths} from '../packages/core/src/explain.ts';
 import {createRuntime} from '../packages/core/src/runtime.ts';
 import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
@@ -90,6 +91,11 @@ test('explain describes an extension-protected route, with provider facts when a
   assert.ok(account.matched);assert.deepEqual(account.policies.extensions.auth?.provider,{registered:false});
   const mount=await explainRoute(extensions,'/demo/anything',{extensions:registry});
   assert.ok(mount.matched);assert.equal(mount.handler.kind,'extension');assert.equal(mount.handler.name,'demo');assert.equal((mount.handler.provider as {registered:boolean}).registered,true);assert.equal(mount.cache.forcedNoStore,true);
+  // What the provider serves below its mount is its own: review says so instead of implying it was inspected (#843).
+  assert.equal(mount.handler.subpaths,unenumeratedSubpaths);
+  // A provider's declared request-bound capabilities are a review fact of every route it protects.
+  const capable=await explainRoute(extensions,'/private',{extensions:[{...registry[0]!,capabilities:['identity']}]});
+  assert.ok(capable.matched);assert.deepEqual(capable.policies.extensions.demo?.provider?.capabilities,['identity']);
 });
 test('explain agrees with the runtime on methods and policies for every route',async t=>{
   for(const [root,options] of [[cookbook,{}],[conditions,{}],[extensions,{origin:'https://extensions.example.test'}]] as const){

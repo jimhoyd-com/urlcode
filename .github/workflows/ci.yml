@@ -324,6 +324,8 @@ jobs:
       - run: node scripts/workspaces.ts run build
       - run: npm run audit:packages
       - run: npm run test:addons
+      # The embedded Better Auth proof (#843): packs core and installs better-auth into a site copy.
+      - run: npm run test:proof
       # Real-browser check of the CRUD screen (#332), on the Chrome that the
       # Linux runner image already carries: no new action or download. One leg
       # only; it is a step in this job, not a new required check.

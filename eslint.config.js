@@ -15,6 +15,7 @@ export default tseslint.config(
   { languageOptions: { globals: globals.node }, rules: { 'no-control-regex': 'off',
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     '@typescript-eslint/no-non-null-assertion': 'off' } },
+  { files: ['proofs/*/client/**/*.js'], languageOptions: { globals: globals.browser } },
   // Modules shipped to the Cloudflare Worker must import nothing from Node.
   // scripts/check.ts computes the real Worker import closure; keep this list
   // in step with what it reports.

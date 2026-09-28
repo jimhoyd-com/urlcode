@@ -17,7 +17,13 @@ import type {RequestBodyPolicy} from './http-policy.ts';
 
 export interface ExplainedHandler { kind:HandlerName|'none'; [detail:string]:unknown }
 interface ExplainedParameter { name:string; in:ParameterLocation; required:boolean; schema:ParameterSchema }
-export interface ExtensionProvider { registered:boolean; version?:string; targets?:string[]; revisionMatch?:boolean; requirementValid?:boolean|null }
+export interface ExtensionProvider {
+  registered:boolean; version?:string; targets?:string[]; revisionMatch?:boolean; requirementValid?:boolean|null;
+  /** The request-bound capabilities the registration declares (RIM-EXT-CAPABILITY-001); absent when it declares none. */
+  capabilities?:string[];
+}
+/** What review can say about the paths below an extension mount: the provider serves them, URLCode does not list them. */
+export const unenumeratedSubpaths='provider-defined, not enumerated or inspected by URLCode';
 export interface ExplainedExtensionRequirement { requirement:Record<string,unknown>; provider?:ExtensionProvider }
 export interface ExplainedCache {
   /** What a response from this route carries: the policy strategy, the header source or `none`. */
@@ -48,7 +54,7 @@ function origin(url:string):string {try{return new URL(url).origin;}catch{return
 function handlerOf(route:CompiledRoute,root:string):ExplainedHandler {
   const kind=handlerNames.find(key=>route[key]);
   switch(kind){
-    case 'extension':return {kind,name:route.extension};
+    case 'extension':return {kind,name:route.extension,subpaths:unenumeratedSubpaths};
     case 'proxy':return {kind,url:route.proxy!.url,...(route.proxy!.query?{query:route.proxy!.query}:{}),...(route.proxy!.requestHeaders?{requestHeaders:route.proxy!.requestHeaders}:{}),...(route.proxy!.responseHeaders?{responseHeaders:route.proxy!.responseHeaders}:{})};
     case 'conditional':{
       const branch=(entry:CompiledRoute)=>entry.redirect?{redirect:{url:entry.redirect.url,status:entry.redirect.status??302}}:{respond:{status:entry.reply?.status??200}};
@@ -80,7 +86,7 @@ function providerOf(name:string,requirement:Record<string,unknown>|undefined,opt
   if(!registration)return {registered:false};
   let requirementValid:boolean|null=null;
   if(requirement)try{requirementValid=registration.policySchema?Boolean(new Ajv.default({strict:false,allErrors:false}).compile(registration.policySchema)(requirement)):false;}catch{requirementValid=false;}
-  return {registered:true,version:registration.version,targets:[...registration.targets],revisionMatch:options.projectSha256===undefined?false:registration.projectSha256===options.projectSha256,requirementValid};
+  return {registered:true,version:registration.version,targets:[...registration.targets],revisionMatch:options.projectSha256===undefined?false:registration.projectSha256===options.projectSha256,requirementValid,...(registration.capabilities?.length?{capabilities:[...registration.capabilities]}:{})};
 }
 function targetsOf(loaded:LoadedDocument,route:CompiledRoute,options:ExplainOptions):Record<CapabilityTarget,TargetSupport> {
   const table={exact:new Map([[route.pattern,route]]),byLength:new Map(),mounts:[],modules:[],count:1};
