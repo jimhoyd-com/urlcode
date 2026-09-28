@@ -227,8 +227,12 @@ export const budgets: Record<string, Budget> = {
     // the MCP runner forwarding and named policy-file errors, and their
     // TOOLING/EXTENSIONS sections with llms-full.txt copies. Measured on Node
     // 26: 887241 packed / 3532433 unpacked bytes, 499 entries.
+    // Unpacked raised from 3460 to 3470 KiB for #861 item 8: body schema
+    // coherence refusals and pointer-based Ajv refusal diagnostics
+    // (body-validation.ts) with the HTTP/RUNTIME-IMPLEMENTATION sections and
+    // their llms-full.txt copies. Measured on Node 26: 887922 packed / 3543842 unpacked bytes, 489 entries.
     packed: 870 * 1024,
-    unpacked: 3460 * 1024,
+    unpacked: 3470 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

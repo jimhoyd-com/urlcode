@@ -182,6 +182,25 @@ naming the keyword and the JSON pointer inside the schema, for example
 is not in the supported JSON Schema 2020-12 profile`. Nothing outside the
 profile is silently ignored.
 
+Every refusal has that `Body schema <pointer>: <problem>` form, including
+schemas that use only profile keywords but combine them into a mistake. These
+are refused at load with a hint:
+
+- a name in `properties` that a `patternProperties` pattern on the same schema
+  also matches (both would apply; Ajv's strict mode refuses the overlap);
+- a `required` name that `additionalProperties: false` forbids because it is
+  neither in `properties` nor matched by a `patternProperties` pattern;
+- a type-specific keyword beside a `type` it cannot apply to, such as
+  `minLength` on `type: number` or `required` on `type: string`;
+- a `const` value, or an `enum` entry, that is not of the declared `type`;
+- `items: false` with a `minItems` larger than the `prefixItems` it closes.
+
+If Ajv still refuses a schema the profile admitted, the message keeps the same
+form: the pointer comes from Ajv's meta-schema error or path, or is `/`, and
+Ajv's wording is redacted (quoted text, URLs and `#` references elided, control
+characters replaced, length capped). No diagnostic echoes a `$ref` value or a
+string constant.
+
 | Keyword | In the profile |
 |---|---|
 | `$schema` | Root only, and only `https://json-schema.org/draft/2020-12/schema`. A schema without it is read as 2020-12 |

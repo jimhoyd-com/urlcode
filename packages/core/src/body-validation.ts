@@ -47,6 +47,13 @@ const refusedBecause: Record<string, string> = {
   definitions: 'use $defs (JSON Schema 2020-12)', dependencies: 'not part of JSON Schema 2020-12', nullable: 'use a type list that includes "null"',
   default: 'the runtime does not fill in request body defaults', readOnly: 'the runtime does not enforce readOnly', writeOnly: 'the runtime does not enforce writeOnly',
 };
+/** The instance types a type-specific keyword constrains; beside a `type` that excludes them all, it can never run. */
+const appliesTo: Record<string, readonly BodySchemaType[]> = {
+  minLength: ['string'], maxLength: ['string'], pattern: ['string'], format: ['string'],
+  minimum: ['number', 'integer'], maximum: ['number', 'integer'], exclusiveMinimum: ['number', 'integer'], exclusiveMaximum: ['number', 'integer'], multipleOf: ['number', 'integer'],
+  items: ['array'], prefixItems: ['array'], minItems: ['array'], maxItems: ['array'], uniqueItems: ['array'],
+  properties: ['object'], patternProperties: ['object'], additionalProperties: ['object'], propertyNames: ['object'], required: ['object'], minProperties: ['object'], maxProperties: ['object'],
+};
 const limits = {
   depth: 8, nodes: 256, expandedNodes: 1024, refs: 32, defs: 32, properties: 64, patternProperties: 16, branches: 16, enums: 64, required: 64,
   length: maxRequestBodyBytes, items: 10000, uniqueItems: 64, text: 4096, examples: 16,
@@ -110,7 +117,41 @@ export function assertBodySchema(schema: unknown): asserts schema is BodySchema 
       }
       checkKeyword(kind!, key, value, here, at, pointer === '');
     }
+    checkCoherence(here, pointer);
     for (const [suffix, child] of children(here)) walk(child, pointer + suffix, depth + 1);
+  };
+  // Conditions a schema can satisfy keyword by keyword yet still be an authoring mistake: Ajv's strict mode refuses
+  // some of them at compile time with an unpointed message, and the rest leave a keyword that can never run or a
+  // schema nothing can satisfy. Each is refused here, with the pointer and a hint, before Ajv sees the schema.
+  const checkCoherence = (node: Record<string, unknown>, pointer: string): void => {
+    const declared = Array.isArray(node.type) ? node.type as BodySchemaType[] : typeof node.type === 'string' ? [node.type as BodySchemaType] : undefined;
+    if (declared) {
+      for (const key of Object.keys(node)) {
+        const applies = own(appliesTo, key) ? appliesTo[key]! : undefined;
+        if (applies && !applies.some(type => declared.includes(type)))
+          fail(`${pointer}/${key}`, `${key} applies only to ${applies.join(' or ')} values, but this schema's type is ${declared.join(', ')}, so it would never run; drop it or add the type`);
+      }
+      const fits = (value: unknown): boolean => value === null ? declared.includes('null')
+        : typeof value === 'number' ? declared.includes('number') || (declared.includes('integer') && Number.isInteger(value))
+        : declared.includes(typeof value as BodySchemaType);
+      // The value itself is never echoed: it may be a string constant.
+      if (own(node, 'const') && !fits(node.const)) fail(`${pointer}/const`, `the value is not of this schema's type (${declared.join(', ')}), so nothing can match it`);
+      if (Array.isArray(node.enum)) node.enum.forEach((value, index) => { if (!fits(value)) fail(`${pointer}/enum/${index}`, `the value is not of this schema's type (${declared.join(', ')}), so it can never match; drop it or add the type`); });
+    }
+    const properties = isRecord(node.properties) ? Object.keys(node.properties) : [];
+    const patterns = isRecord(node.patternProperties) ? Object.keys(node.patternProperties).map(source => ({ source, regex: new RegExp(source, 'u') })) : [];
+    for (const name of properties) {
+      const match = patterns.find(pattern => pattern.regex.test(name));
+      if (match) fail(`${pointer}/properties/${escapePointer(name)}`, `is also matched by ${shown(`${pointer}/patternProperties/${escapePointer(match.source)}`)}, so both schemas would apply (Ajv strict mode refuses this); narrow the pattern or keep the property's rules in one place`);
+    }
+    if (node.additionalProperties === false && Array.isArray(node.required)) node.required.forEach((name, index) => {
+      if (!properties.includes(name as string) && !patterns.some(pattern => pattern.regex.test(name as string)))
+        fail(`${pointer}/required/${index}`, 'names a property that additionalProperties: false forbids (it is not in properties and matches no patternProperties pattern), so no object can satisfy this schema; declare it in properties');
+    });
+    if (node.items === false && typeof node.minItems === 'number') {
+      const room = Array.isArray(node.prefixItems) ? node.prefixItems.length : 0;
+      if (node.minItems > room) fail(`${pointer}/minItems`, `requires more than the ${room} items prefixItems allows while items is false, so no array can satisfy this schema; declare more prefixItems or drop items: false`);
+    }
   };
   const count = (value: unknown, at: string, cap: number): void => { if (!(Number.isInteger(value) && (value as number) >= 0 && (value as number) <= cap)) fail(at, `must be an integer from 0 to ${cap}`); };
   const scalar = (value: unknown): boolean => value === null || ['string', 'number', 'boolean'].includes(typeof value);
@@ -188,6 +229,31 @@ export function assertBodySchema(schema: unknown): asserts schema is BodySchema 
     return total;
   };
   expanded(root, '');
+}
+
+/**
+ * The diagnostic for a schema the profile admitted but Ajv still refused to compile, in the same `Body schema
+ * <pointer>: <problem>` form as `assertBodySchema`. `schemaErrors` are Ajv's meta-schema errors (its `errors` after a
+ * failed compile), whose `instancePath` is a pointer into the schema. Otherwise the pointer comes from a path Ajv
+ * wrote into its message, or is the root. Ajv's own words are kept only after redaction: quoted text (a format, a
+ * keyword, a string constant) and anything shaped like a URL or `#` reference are elided, control characters are
+ * replaced and the result is capped, so a `$ref` value or a string constant is never echoed.
+ */
+export function bodySchemaRefusal(error: unknown, schemaErrors?: readonly { instancePath?: string; keyword?: string }[] | null): string {
+  const first = schemaErrors?.[0];
+  if (first) {
+    const keyword = typeof first.keyword === 'string' && /^\$?[A-Za-z][A-Za-z0-9_]{0,63}$/.test(first.keyword) ? first.keyword : 'schema';
+    return `Body schema ${shown(first.instancePath ?? '')}: does not satisfy the JSON Schema 2020-12 meta-schema at keyword ${keyword}`;
+  }
+  if (isRecord(error) && own(error, 'missingRef')) return 'Body schema /: a $ref could not be resolved (only a local #/$defs/<name> reference is supported)';
+  const message = String(isRecord(error) && typeof error.message === 'string' ? error.message : error);
+  const path = /\bat path "#?(\/[^"]*)"/.exec(message)?.[1];
+  const detail = message
+    .replace(/\s*(?:ignored )?in schema at path "[^"]*"/g, '').replace(/^strict mode:\s*/, '').replace(/\s*\(use [^)]*\)/g, '')
+    .replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '"..."').replace(/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S*|#\/\S*/g, '<ref>')
+    .replace(/[\u0000-\u001f\u007f]/g, '?').replace(/\s+/g, ' ').trim();
+  const capped = detail.length > 160 ? detail.slice(0, 160) + '...' : detail;
+  return `Body schema ${shown(path ?? '')}: the JSON Schema 2020-12 validator refused this schema${capped ? ` (${capped})` : ''}`;
 }
 
 /** Every property name the schema itself declares (in `properties` or `required`); only these may appear in an issue pointer. */
