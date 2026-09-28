@@ -10,13 +10,14 @@ import {inspectProject,validateProject,explainRoute,buildContext} from '../packa
 import {buildManifest} from '../packages/core/src/manifest.ts';
 import {loadOperatorHost} from '../packages/core/src/operator-host.ts';
 import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
+import {inspectInstalledArtifact} from '../packages/core/src/artifact-inspect.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 interface Reply { error:{code:number;message:string};result:{protocolVersion:string;tools:unknown[];content:{text:string}[];isError?:boolean} }
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 async function session(root:string,messages:unknown[],raw?:string,options:{allowAuthoring?:boolean}={}) {let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});await serveMcp({project:root,input:Readable.from([raw??messages.map(value=>JSON.stringify(value)+'\n').join('')]),output,...options});return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply).sort(byReplyId);}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
- assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,29);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,30);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
  // get_context is documented as the first call an authoring agent makes; it is first in tools/list too.
  assert.equal((replies[1]!.result.tools[0] as {name:string}).name,'get_context');
 });
@@ -142,6 +143,20 @@ test('MCP inventories and reads only installed, pinned, inert artifact data from
  const bare=await project(t,{});
  const none=await session(bare,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_extension_artifacts',arguments:{}}}]);
  assert.deepEqual(JSON.parse(none[1]!.result.content[0]!.text).artifacts,[]);
+});
+test('MCP inspect_extension_artifact returns exactly the facts urlcode artifacts inspect computes, offline (#844)',async t=>{
+ const {site,project:app}=await artifactSite(t,'sample');
+ // The installed package links the fixture copy; its descriptor now lists its schema as a standard document.
+ const installed=join(site,'node_modules','@jimhoyd','urlcode-sample','urlcode.json');
+ await writeFile(installed,JSON.stringify({kind:'artifact',name:'sample',description:'Fixture artifact',requires:[],documents:[{path:'schemas/config.json',mediaType:'application/schema+json'}]}));
+ const replies=await session(app,[initialize,ready,...[{name:'inspect_extension_artifact',arguments:{name:'sample'}},{name:'inspect_extension_artifact',arguments:{name:'missing'}},{name:'inspect_extension_artifact',arguments:{}}].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
+ const inspected=JSON.parse(replies[1]!.result.content[0]!.text);
+ assert.deepEqual(inspected,JSON.parse(JSON.stringify(await inspectInstalledArtifact(site,'sample'))));
+ assert.deepEqual(inspected.documents.map((item:{path:string;kind:string})=>[item.path,item.kind]),[['schemas/config.json','json-schema']]);
+ assert.equal(inspected.artifact.verification,'development');
+ assert.match(inspected.notice,/untrusted/);
+ assert.equal(replies[2]!.result.isError,true,'an artifact that is not installed is refused');
+ assert.equal(replies[3]!.error.code,-32602,'name is required');
 });
 test('MCP validates tool schema, method and root confinement',async t=>{
  const root=await project(t,{});const replies=await session(root,[initialize,ready,...[

@@ -1148,7 +1148,7 @@ URLCode ships two kinds of add-on with one shape:
 
 | | Extension | Artifact |
 | --- | --- | --- |
-| Purpose | Executable operator code: routes, mounts, route policies, hooks | Inert JSON data for tooling: schemas, example configuration |
+| Purpose | Executable operator code: routes, mounts, route policies, hooks | Inert JSON, YAML and Markdown data for tooling: schemas, example configuration, OpenAPI documents |
 | Source | `packages/<name>` | `artifacts/<name>` |
 | Package | `@jimhoyd/urlcode-<name>` | `@jimhoyd/urlcode-<name>` |
 | Descriptor | `urlcode.json`, generated from the extension's code | `urlcode.json`, written by hand |
@@ -1162,7 +1162,8 @@ policySchema?, hooks?, authoring?}`. For an extension the descriptor is written 
 `contributes`, the sorted names of the extensions it hands a value to), and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
 contracts without running any of its code. An artifact descriptor carries only
-`kind`, `name`, `description` and `requires`.
+`kind`, `name`, `description`, `requires` and, optionally, `agent` and the
+[`documents`](#artifact-documents) it ships.
 
 Add-ons are versioned in lockstep with core. Only core is published to npm;
 each add-on is released as a tarball on the same GitHub Release as core. The
@@ -1282,9 +1283,10 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 | --- | --- |
 | `urlcode extensions available` / `urlcode artifacts available` | Lists the add-ons of that kind the running core pins, with their requirements |
 | `urlcode extensions add <name>… [--example]` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires; for extensions, the capability only unless `--example` also writes each one's demo |
-| `urlcode extensions add <package spec or tarball>…` | Adds an [independent extension package](#independent-extension-packages) the operator chose, outside core's catalog |
+| `urlcode extensions add <package spec or tarball>…` / `urlcode artifacts add <package spec or tarball>…` | Adds an [independent extension](#independent-extension-packages) or [artifact](#independent-artifact-packages) package the operator chose, outside core's catalog |
 | `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
 | `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins |
+| `urlcode artifacts inspect <name> [--strict]` | Reports, offline, the standard documents an installed, pin-verified artifact lists; see [inspecting artifact documents](#inspecting-artifact-documents) |
 
 `add` resolves transitive `requires` from core's `addons.json` and adds each
 add-on exactly once, at the top level of the site, with `npm install
@@ -1416,7 +1418,7 @@ against its descriptor's schemas, and `remove` takes it out by name.
 kind `artifact`, a name that a first-party add-on of this core already has,
 a `@jimhoyd/urlcode*` package (those install from core's pins), two installed
 packages providing the same name, and an independent extension whose
-`requires` are not installed. Artifacts stay catalog-only. Installing a
+`requires` are not installed. Installing a
 package runs no lifecycle script, but its `./extension` entry is trusted
 operator code once `host.mjs` imports it: review it like any other code you
 deploy.
@@ -1635,24 +1637,135 @@ code.
 
 ### Artifacts
 
-An artifact package may hold only `package.json`, `urlcode.json`, `README.md`,
-`LICENSE`, `NOTICE`, `SECURITY.md`, `schemas/*.json` and `config/*.json`. Its
+An artifact package may hold only `package.json`, `urlcode.json`, notices at
+its root (`LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, optionally `.md` or
+`.txt`), and JSON, YAML and Markdown files (`.json`, `.yaml`, `.yml`, `.md`)
+under plain relative paths: no dotfiles, no symlinks, at most 128 files of
+2 MiB each. Every JSON file must parse, and every YAML file must parse under
+the runtime's YAML profile (no anchors, aliases or explicit tags). Its
 `package.json` may declare only `name`, `version`, `description`, `keywords`,
 `homepage`, `bugs`, `license`, `author`, `contributors`, `repository`,
 `private` and `files`: any other key, including `main`, `exports`, `bin`,
 `scripts`, `dependencies` and `peerDependencies`, is refused, and so is a
-`package-lock.json` entry for the artifact that declares dependencies, peers
-or a binary. Anything else is refused when the artifact is installed and
-whenever it is listed. Artifacts are never imported by `serve`, `validate`, `init` or the
-runtime, and installing `store-schema` does not install or activate `store`.
+`package-lock.json` entry for the artifact that declares dependencies, peers,
+a binary or an install script. Anything else is refused when the artifact is
+installed and whenever it is listed. Artifacts are never imported by `serve`,
+`validate`, `init` or the runtime, and installing `store-schema` does not
+install or activate `store`.
+
+#### Artifact documents
+
+An artifact's `urlcode.json` may list the standard documents it ships, so
+tooling can find and verify them without a URLCode-specific layout:
+
+```json
+{
+  "kind": "artifact",
+  "name": "petstore-docs",
+  "description": "Petstore API description and schemas",
+  "requires": [],
+  "documents": [
+    { "path": "openapi/petstore.yaml", "mediaType": "application/vnd.oai.openapi" },
+    { "path": "schemas/order.json", "mediaType": "application/schema+json" },
+    { "path": "README.md", "mediaType": "text/markdown" }
+  ]
+}
+```
+
+`path` is relative to the package root (no `..`, no leading `/`, no hidden
+segment) and must be a file the package contains. `mediaType` is one of a
+closed set, each with the extensions it may carry:
+
+| `mediaType` | Document | Extensions |
+| --- | --- | --- |
+| `application/vnd.oai.openapi` | OpenAPI, YAML | `.yaml`, `.yml` |
+| `application/vnd.oai.openapi+json` | OpenAPI, JSON | `.json` |
+| `application/schema+json` | JSON Schema | `.json` |
+| `text/markdown` | Markdown | `.md` |
+| `application/json` | JSON data | `.json` |
+| `application/yaml` | YAML data | `.yaml`, `.yml` |
+
+At most 32 documents are listed. The documents stay in their own standard
+format; URLCode never repackages them into its own field syntax.
+`store-schema` lists its JSON Schema, its example configuration and its README
+this way.
+
+#### Independent artifact packages
+
+Like an [independent extension](#independent-extension-packages), an artifact
+does not have to be released with core (#844). Any npm package carrying a
+valid `urlcode.json` artifact descriptor at its root can be added by its npm
+spec or a local tarball:
+
+```sh
+urlcode artifacts add ./example-urlcode-petstore-docs-1.4.0.tgz
+```
+
+npm installs it with `--ignore-scripts --save-exact`, so no lifecycle script
+runs, and records its sha512 integrity in `package-lock.json`: that lock
+entry is its pin. `add` then refuses it unless it is inert (the rules above),
+declares the kind `artifact`, does not take the name of a first-party add-on
+and is not a `@jimhoyd/urlcode*` package; adding artifacts to a site that has
+a lock also refuses any other new lock entry. `list` reports it as
+independent (`locked by npm integrity`, or `linked, not locked` for a `file:`
+directory), and `remove` takes it out by name. When the package came from a
+local tarball, `list --strict` and `inspect` also re-hash that tarball and
+refuse when it no longer matches the recorded integrity (a replaced tarball or
+a stale lock) or is missing. `urlcode upgrade` never moves an independent
+package.
+
+#### Inspecting artifact documents
+
+`urlcode artifacts inspect <name> [--json] [--strict]` (MCP
+`inspect_extension_artifact {name}`, the same core function and the same
+JSON) reads the documents an installed artifact lists, offline, and reports
+for each one:
+
+- `path`, the declared `mediaType`, the detected `kind` (`openapi`,
+  `json-schema`, `markdown`, `json` or `yaml`) and `version`: the OpenAPI
+  `openapi` (or `swagger`) value, or the JSON Schema `$schema` dialect, or
+  `null` when the document declares none;
+- `sha256` and `bytes` of the file as installed;
+- `refs`: every `$ref` in an OpenAPI or JSON Schema document resolved inside
+  the package, as `{at, ref, target}` with `at` the JSON pointer of the object
+  carrying it and `target` `<package path>#<JSON pointer>`. A same-document
+  `#/…` pointer and a relative file reference are resolved against the
+  referring file's location in the package (a `$id` base is not applied); a
+  package file reached only through a reference appears under
+  `referencedFiles` with its own digest and references;
+- `diagnostics`, each with a `code`, `severity`, the `at` pointer and the
+  `ref` as written: `remote-ref` (warning: a reference with a scheme or
+  authority, listed and never fetched), `unsupported-ref` (warning: a
+  plain-name `#anchor`), `ref-cycle` (warning: legal for a recursive schema,
+  reported once and not expanded), and the errors `unresolved-ref`,
+  `path-escape` (a reference leaving the package directory), `symlink`,
+  `invalid-document` and `limit`.
+
+The result also names the artifact's origin: package, version, whether it is
+independent, the lock's `integrity` and `resolved` values and how they were
+verified (`catalog-pin`, `development`, `local-tarball` or `lock-integrity`,
+the last meaning npm's recorded integrity, not re-checked offline). Inspection
+is refused unless the artifact is inert and pin-verified; a `file:` directory
+link is not. `--strict` exits 1 when any document has an error diagnostic.
+
+Inspection never imports package code, runs a lifecycle script, fetches a
+reference, follows a symlink, leaves the package directory or creates a grant.
+It is bounded: 1 MiB per document or referenced file, 64 files and 8 MiB read
+in total, 1,024 references, reference chains of 32 and object nesting of 256;
+anything beyond a limit is reported as a `limit` diagnostic, never silently
+dropped. Document text, titles, descriptions and `$ref` values are
+third-party data: the result carries a `notice` saying so, and an agent must
+treat that content as untrusted, never as instructions. Inspection does not
+validate data against a JSON Schema or export OpenAPI.
 
 Agent tooling reads installed artifacts from the site's `node_modules` without
 gaining write or execution authority. MCP `get_extension_artifacts` lists each
-installed artifact, whether it matches core's pin, and its files;
-`get_extension_artifact {name, path}` returns one bounded JSON or Markdown file
-from an installed, pinned artifact. Feature planning (`urlcode plan-feature`,
-MCP `plan_feature`) also sees them. The CLI equivalent is `urlcode artifacts
-list --json`.
+installed artifact, released or independent, whether it is pin-verified, its
+files and its listed documents; `get_extension_artifact {name, path}` returns
+one bounded JSON, YAML or Markdown file from an installed, pinned artifact,
+labelled as untrusted data. Feature planning (`urlcode plan-feature`, MCP
+`plan_feature`) also sees them. The CLI equivalents are `urlcode artifacts
+list --json` and `urlcode artifacts inspect <name> --json`.
 
 ### Validation and CI
 

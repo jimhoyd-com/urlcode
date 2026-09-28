@@ -60,7 +60,7 @@ The tooling API consolidates authoring operations without starting a runtime:
   manifest. It deliberately does not flatten extension schemas, skills or
   artifacts into core prose: inspect an installed extension through
   `get_extensions`, and an installed inert artifact through
-  `get_extension_artifacts`/`get_extension_artifact`.
+  `get_extension_artifacts`/`get_extension_artifact`/`inspect_extension_artifact`.
 - `readAddonCatalog()` (from `@jimhoyd/urlcode/agent-context` and
   `@jimhoyd/urlcode`) returns the release-wide add-on agent catalog, MCP
   `get_release_addon_catalog`: each add-on's package, version, description,
@@ -681,7 +681,7 @@ call), are `get_context`, `inspect`, `validate`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`,
 `get_release_addon_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
-`get_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
+`get_extension_artifact`, `inspect_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
 `urlcode review`), with `suggest_fixtures` and `summarize_yaml_change` listed
 after `explain_error` (see [fixture suggestions](#fixture-suggestions) and
 [YAML change summaries](#yaml-change-summaries)). None of them executes project
@@ -719,12 +719,22 @@ not evidence that the project installed or activated an add-on; installed
 components come from `get_addon_agent_tooling`, `get_extension_artifacts` and
 `get_extensions`. Reading it imports, downloads and installs nothing.
 `get_extension_artifacts` lists the artifacts installed in the site around the
-project (`<site>/node_modules`), checking each is inert and matches core's pin,
-and returns its version, status and files. `get_extension_artifact` accepts only
-an installed, pinned artifact name and one of its `README.md`, `urlcode.json`,
-`schemas/*.json` or `config/*.json` paths. Both are local, read-only and inert:
-they never download, install, update or activate an add-on and never substitute for `get_extensions`, which reports
-the operator-registered executable contract.
+project (`<site>/node_modules`), released or [independent](EXTENSIONS.md#independent-artifact-packages),
+checking each is inert and pin-verified (core's pin, or npm's lock integrity),
+and returns its package, version, status, files and listed documents.
+`get_extension_artifact` accepts only an installed, pinned artifact name and one
+of its JSON, YAML or Markdown paths, and labels the content as untrusted
+package data. `inspect_extension_artifact {name}` returns exactly what
+`urlcode artifacts inspect <name> --json` prints, from the same core function:
+each listed document's media type, detected OpenAPI version or JSON Schema
+dialect, sha256, size and origin, its local `$ref`s resolved inside the
+package, and diagnostics for remote references (listed, never fetched),
+unresolvable references, cycles and limits (see
+[inspecting documents](EXTENSIONS.md#inspecting-artifact-documents)). All
+three are local, read-only and inert: they never download, install, update or
+activate an add-on, fetch a reference or import package code, and never
+substitute for `get_extensions`, which reports the operator-registered
+executable contract.
 When the operator starts
 the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
@@ -992,8 +1002,8 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds seven tools to the twenty-nine read
-tools above (thirty with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty read
+tools above (thirty-one with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 

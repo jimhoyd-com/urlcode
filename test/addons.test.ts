@@ -235,11 +235,11 @@ test('an independent extension package installs by spec, is found by its descrip
   // Refused before anything is wired: a first-party name, an artifact descriptor, and no descriptor at all.
   const before = await readFile(join(dir, 'package.json'), 'utf8');
   await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.name = 'alpha'; })], { manifest: m }), /names itself alpha, which is a first-party extension released with this core/);
-  await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.kind = 'artifact'; delete descriptor.schema; })], { manifest: m }), /independent packages may provide extensions only/);
+  await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.kind = 'artifact'; delete descriptor.schema; })], { manifest: m }), /its descriptor declares an artifact; add it with `urlcode artifacts add`/);
   const bare = await copy(() => undefined); await rm(join(bare, 'urlcode.json'));
   await assert.rejects(addAddons(dir, 'extension', [bare], { manifest: m }), /carries no valid urlcode\.json extension descriptor/);
   assert.equal(await readFile(join(dir, 'package.json'), 'utf8'), before, 'every refusal rolls package.json back');
-  await assert.rejects(addAddons(dir, 'artifact', [join(fixtures, 'greeting')], { manifest: m }), /Name at least one artifact$/);
+  await assert.rejects(addAddons(dir, 'artifact', [join(fixtures, 'greeting')], { manifest: m }), /its descriptor declares an extension; add it with `urlcode extensions add`/);
 
   const added = await addAddons(dir, 'extension', [join(fixtures, 'greeting')], { manifest: m });
   assert.deepEqual(added.added, ['greeting']);

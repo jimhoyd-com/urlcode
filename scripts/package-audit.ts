@@ -6,6 +6,7 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parsePackJson } from './pack-json.ts';
 import { addons, repositoryRoot } from './workspaces.ts';
+import { isArtifactFile } from '../packages/core/src/addon-install.ts';
 
 interface PackedFile { path: string; size: number }
 interface PackReport {
@@ -346,20 +347,18 @@ export const budgets: Record<string, Budget> = {
   },
 };
 
-/** The only files an artifact package may carry: its descriptor, docs and legal files, and JSON data. */
-const artifactFile = /^(?:package\.json|urlcode\.json|README\.md|LICENSE|NOTICE|SECURITY\.md|(?:schemas|config)\/[A-Za-z0-9._-]+\.json)$/;
 
 /**
  * Checks a package's `npm pack --dry-run` file list beyond its root allowlist: no installed dependency tree
  * (a `node_modules/` path) and no copy of core (`@jimhoyd/urlcode`) may ship inside any package, and an artifact
- * carries only the files `artifactFile` names. Returns one line per offending path.
+ * carries only the files core's `isArtifactFile` accepts. Returns one line per offending path.
  */
 export function packFileProblems(kind: PackageKind, paths: readonly string[]): string[] {
   const problems: string[] = [];
   for (const path of paths) {
     if (/(?:^|\/)node_modules(?:\/|$)/.test(path)) problems.push(`${path}: node_modules/ must never ship`);
     else if (/(?:^|\/)@jimhoyd\/urlcode(?:[/-]|$)/.test(path)) problems.push(`${path}: a copy of @jimhoyd/urlcode (core or a sibling add-on) must never ship inside a package`);
-    else if (kind === 'artifact' && !artifactFile.test(path)) problems.push(`${path}: an artifact carries only package.json, urlcode.json, README.md, LICENSE, NOTICE, SECURITY.md, schemas/*.json and config/*.json`);
+    else if (kind === 'artifact' && !isArtifactFile(path)) problems.push(`${path}: an artifact carries only package.json, notices, and JSON, YAML or Markdown data`);
   }
   return problems;
 }

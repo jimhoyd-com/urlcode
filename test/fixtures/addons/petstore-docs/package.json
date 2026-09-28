@@ -1,0 +1,1 @@
+{ "name": "@example/urlcode-petstore-docs", "version": "1.4.0", "description": "Independent fixture artifact: an OpenAPI 3.1 document and JSON Schemas", "license": "Apache-2.0", "files": ["urlcode.json", "openapi", "schemas", "README.md"] }
