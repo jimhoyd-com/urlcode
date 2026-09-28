@@ -29,26 +29,23 @@ const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
 const format={enum:['csv','json','yaml','netlify','cloudflare','vercel','netlify-toml']};
 const deployTargetEnum={enum:['self-hosted','cloudflare','aws','vercel','static']};
-// `target` means two unrelated things across this surface: a route-selecting path (`explain`'s
-// `target`) and a deployment target (self-hosted/cloudflare/aws/vercel/static, everywhere else).
-// `deployTarget` is the canonical name for the latter; `target` stays accepted on these tools as a
-// deprecated alias for one release so an existing caller is not broken by the rename.
-const deployTargetProps={deployTarget:deployTargetEnum,target:{...deployTargetEnum,description:'Deprecated alias for deployTarget; use deployTarget.'}};
-// Canonical, verb-first tool names. `legacy` names the pre-#590 name this tool answers to as well
-// (kept working, and listed in tools/list, for one release); see aliasOf/legacyNames below.
+// `deployTarget` names a deployment target (self-hosted/cloudflare/aws/vercel/static); `explain`'s `target` is the
+// route-selecting path, an unrelated argument.
+const deployTargetProps={deployTarget:deployTargetEnum};
+// Canonical, verb-first tool names.
 const definitions=[
  {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order. Pass `bootstrap: true` (optionally with `capabilities`, at most 8 catalog names) for the local bootstrap instead: site and route-project roots, entry and host file, pinned/installed runtime against this one, commands to run from the site root, the site/project path mapping and a packet of this runtime\'s schema fragments and one example per named capability; it never creates a site. Call this first.',properties:{...deployTargetProps,task:{enum:['redirects']},budget:{type:'integer',minimum:1},bootstrap:{type:'boolean'},capabilities:{type:'array',items:{type:'string',maxLength:64},maxItems:8}}},
  {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{...deployTargetProps,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
- {name:'list_capabilities',legacy:'capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:deployTargetProps},
+ {name:'list_capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:deployTargetProps},
  {name:'get_capability',description:'Describe one catalog capability: schema fragment, constraints, grants, target support and bundled recipe/cookbook uses.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'get_schema',description:'Return the resolved JSON Schema fragment for a dotted urlcode.yaml path such as route, redirect or policies.cache.',properties:{path:{type:'string',maxLength:256}},required:['path']},
  {name:'explain',description:'Explain the route a path selects from the compiled configuration: methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes.',properties:{target:text},required:['target']},
  {name:'get_manifest',description:'The generated semantic manifest: routes, capabilities, extensions, external requirements, functions, target support and the revision digest.',properties:{}},
- {name:'preview_import',legacy:'import_preview',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
- {name:'preview_export',legacy:'export_preview',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
- {name:'list_recipes',legacy:'recipes_list',description:'List bundled local recipes.',properties:{}},
- {name:'get_recipe',legacy:'recipes_show',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'preview_import',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
+ {name:'preview_export',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
+ {name:'list_recipes',description:'List bundled local recipes.',properties:{}},
+ {name:'get_recipe',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'search_recipes',description:'Search bundled recipes by id, description, tags and capabilities; local text matching, no service. Check here before generating a common route by hand.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'search_examples',description:'Search bundled runnable examples and the cookbook route index; returns the smallest matching example and its route.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'list_skills',description:'List every bundled agent skill (name and its own SKILL.md description). Load a skill only when it applies.',properties:{}},
@@ -65,13 +62,8 @@ const definitions=[
  {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from an installed, pinned artifact. The name and path must be listed by get_extension_artifacts.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
  {name:'get_addon_agent_tooling',description:'List agent references declared by installed, core-pinned extensions and inert artifacts. Metadata only: it never imports an extension or reads a reference file.',properties:{}},
  {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, installed inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},...deployTargetProps},required:['goal']},
- {name:'review',legacy:'review_project',description:'Opt-in, read-only static review of the project\'s own function/middleware source for avoidable plumbing: native-alternative/extension-alternative/gap/manual-review. Already-loaded operator registrations (--host-file) sharpen extension-alternative findings with registered/revision-pinned state; without a host file that state stays conservative ("declared, setup unconfirmed"). No execution, no secrets, no network. Named to match the CLI\'s `urlcode review`.',properties:deployTargetProps},
+ {name:'review',description:'Opt-in, read-only static review of the project\'s own function/middleware source for avoidable plumbing: native-alternative/extension-alternative/gap/manual-review. Already-loaded operator registrations (--host-file) sharpen extension-alternative findings with registered/revision-pinned state; without a host file that state stays conservative ("declared, setup unconfirmed"). No execution, no secrets, no network. Named to match the CLI\'s `urlcode review`.',properties:deployTargetProps},
 ];
-// Pre-#590 tool name -> canonical name, and its inverse. A legacy-named entry is a second tools/list
-// row (own description, "Deprecated alias for ...") with the same input schema and handler as its
-// canonical tool, so an existing client keeps working unmodified for one release.
-const legacyNames=Object.fromEntries(definitions.filter(def=>'legacy' in def).map(def=>[def.name,(def as {legacy:string}).legacy]));
-const aliasOf=Object.fromEntries(Object.entries(legacyNames).map(([canonical,legacy])=>[legacy,canonical]));
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 // run_tests executes the project's code, so it is not a read tool: it is offered only under the operator's
 // --allow-authoring flag, alongside the authoring tools, and annotated as able to do anything Node can (#590).
@@ -92,16 +84,13 @@ function argumentProblems(tool:{name:string;inputSchema:{properties:Record<strin
  return `Invalid arguments for ${tool.name}: ${problems.join('; ')||'arguments must be an object'}. Accepted arguments: ${accepted.length?accepted.map(name=>tool.inputSchema.required.includes(name)?`${name} (required)`:name).join(', '):'none'}`;
 }
 const canonicalReadTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object' as const,properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
-// One tools/list row per pre-#590 name, same schema and handler as its canonical tool, kept for
-// one release so an existing client that calls the old name is not broken by this rename.
-const legacyReadTools=canonicalReadTools.filter(tool=>legacyNames[tool.name]!==undefined).map(tool=>({...tool,name:legacyNames[tool.name]!,description:`Deprecated alias for \`${tool.name}\`; use \`${tool.name}\`. ${tool.description}`}));
-const readTools=[...canonicalReadTools,...legacyReadTools];
+const readTools=canonicalReadTools;
 const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object' as const,properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
 const runTestsTool={name:runTestsDefinition.name,description:runTestsDefinition.description,inputSchema:{type:'object' as const,properties:runTestsDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}};
 const authoringTools=[...authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object' as const,properties:def.properties,required:def.required,additionalProperties:false},annotations:authoringAnnotations(def)})),runTestsTool];
 /** The tool names each server mode exposes; scripts/check-agent-facts.ts compares documented tool counts against it. */
 export const mcpToolInventory:{readonly read:readonly string[];readonly hostFile:readonly string[];readonly authoring:readonly string[]}={read:readTools.map(tool=>tool.name),hostFile:[hostTool.name],authoring:authoringTools.map(tool=>tool.name)};
-/** Canonical (non-legacy) read tool names, including the host-file get_extensions tool: every tool another module suggests as a next call must be one of these. */
+/** Read tool names, including the host-file get_extensions tool: every tool another module suggests as a next call must be one of these. */
 export const canonicalMcpToolNames:readonly string[]=[...definitions.map(def=>def.name),hostDefinition.name];
 const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[tool.name,{tool,validate:ajv.compile(tool.inputSchema)}]));
 /** `allowAuthoring` and `hostFile` are set only by the `--allow-authoring` and `--host-file` command-line flags; tool arguments and the environment never enable them. */
@@ -128,15 +117,13 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  const projectFlag=resolve(options.project);
  try{await serve();}finally{await host.close?.();}
  async function serve():Promise<void> {
- // `deployTarget` is canonical; `target` still works on these tools (deprecated) for one release.
- const deployTargetOf=(value:Record<string,unknown>):string|undefined=> {const picked=value.deployTarget??value.target;return typeof picked==='string'?picked:undefined;};
+ const deployTargetOf=(value:Record<string,unknown>):string|undefined=>typeof value.deployTarget==='string'?value.deployTarget:undefined;
  const call=async(name:string,args:Record<string,unknown>):Promise<unknown>=> {
   // The operator's --host-file registrations reach every compiled-project tool exactly as `urlcode explain/manifest
   // --host-file` and the SDK's `extensions` option pass them (#755); with no host file nothing is added.
   const registered=host.extensions===undefined?{}:{extensions:host.extensions};
   const base={...(options.origin?{origin:options.origin}:{}),...registered};
-  // Legacy tool names route to the same handler as their canonical name (see aliasOf/legacyNames).
-  switch(aliasOf[name]??name){
+  switch(name){
    // The suggested commands repeat the operator's own --host-file and project, both absolute so they run from any
    // working directory, and --origin, which also reaches site expansion (#791); a flag the operator did not give is
    // named under `prerequisites`, never guessed (#778).
