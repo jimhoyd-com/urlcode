@@ -78,6 +78,10 @@ export const kitCatalogue: Readonly<Catalogue> = Object.freeze({
     'ui.crud.deleteFailed': 'That item was not deleted. Try again.',
     'ui.crud.invalid': 'Some values are not valid. Check the highlighted fields.',
     'ui.crud.noScript': 'This screen needs JavaScript to list and edit records.',
+    'ui.crud.transitionConflict': 'That action no longer applies to this item. Refresh to see its current state.',
+    'ui.crud.transitionStale': 'This item changed since the list was loaded. Refresh and try again.',
+    'ui.crud.transitionForbidden': 'You are not allowed to do that to this item.',
+    'ui.crud.transitionFailed': 'That action did not complete. Try again.',
     'ui.count.items': { one: '{count} item', other: '{count} items' },
 });
 /**
@@ -134,6 +138,10 @@ export const kitCatalogueFr: Readonly<Catalogue> = Object.freeze({
     'ui.crud.deleteFailed': "Cet élément n'a pas été supprimé. Réessayez.",
     'ui.crud.invalid': 'Certaines valeurs ne sont pas valides. Vérifiez les champs signalés.',
     'ui.crud.noScript': 'Cet écran nécessite JavaScript pour afficher et modifier les enregistrements.',
+    'ui.crud.transitionConflict': "Cette action ne s'applique plus à cet élément. Actualisez pour voir son état actuel.",
+    'ui.crud.transitionStale': 'Cet élément a changé depuis le chargement de la liste. Actualisez et réessayez.',
+    'ui.crud.transitionForbidden': "Vous n'êtes pas autorisé à faire cela sur cet élément.",
+    'ui.crud.transitionFailed': "Cette action n'a pas abouti. Réessayez.",
     'ui.count.items': { one: '{count} élément', other: '{count} éléments' },
 });
 // Keeps kitCatalogueFr honest against drift in baseCatalogue/kitCatalogue at module load,

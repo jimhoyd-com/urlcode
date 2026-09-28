@@ -98,7 +98,7 @@ A hand-authored public mount, as in the YAML above, stays supported.
 
 | Request | Answer |
 |---|---|
-| `GET /api/todos?limit=&cursor=` | `200 {items, total, next?}` in creation order; `limit` is capped at the collection `pageSize`, `cursor` is the offset from `next` |
+| `GET /api/todos?limit=&cursor=` | `200 {items, total, next?, etags}` in creation order; `limit` is capped at the collection `pageSize`, `cursor` is the offset from `next`, and `etags` maps each listed record's `id` to its current [`ETag`](#conditional-writes) |
 | `GET /api/todos?sort=-priority&kind=a&cursor=` | the same shape, sorted and filtered as [declared](#sorting-and-filtering); `total` counts the matches and `cursor` is the opaque `next` of a sorted page |
 | `POST /api/todos` | `201` and the record, `Location: /api/todos/<id>` |
 | `GET /api/todos/<id>` | `200` record, or `404` |
@@ -233,7 +233,11 @@ Content-Type: application/json
 ## Conditional writes
 
 A single-record `GET`/`HEAD` on a collection's own CRUD mount returns a
-strong `ETag`, as does the response to a `POST`, `PUT` or `PATCH`. Send that
+strong `ETag`, as does the response to a `POST`, `PUT` or `PATCH`. A list
+(on the collection mount or a [readers mount](#membership-gates-and-cross-owner-reads))
+carries the same value for each listed record in `etags`, keyed by `id`, so a
+client can make a write conditional on the version it listed without reading
+each record first. Send that
 value back as `If-Match` on a later `PUT`, `PATCH` or `DELETE` to make the
 write conditional: it applies only if the record has not changed since, and
 otherwise answers `412` without writing anything — useful when two callers
@@ -340,8 +344,8 @@ routes:
   `is changed only by a transition`. Without it, the owner in the example could
   `PATCH` `status: approved` and skip the review. Activation refuses it with
   `required`, on the key or an increment field, and when no transition sets or
-  stamps it. A [screen](#a-screen-for-the-collection) over such a collection
-  is refused until screens can show transitions.
+  stamps it. A [screen](#transitions-on-a-screen) shows such a field
+  read-only and offers the transitions as buttons.
 
 ### Membership gates and cross-owner reads
 
@@ -1025,6 +1029,60 @@ labels come from the field names unless the screen sets `columns`
 relabel the fields shown. Details and limits are in the
 [ui package README](../packages/ui/README.md#data-bound-screens).
 
+### Transitions on a screen
+
+A screen over a collection with
+[declared transitions](#declared-transitions) shows every `transitionOnly`
+field read-only (never in the create form or an edit row, never in a request
+body) and offers each transition the screen's viewer can run as a button, on
+the rows whose values match the transition's `from`. The owner's reads and
+the reviewer's reads live on different mounts, so there are two kinds of
+screen:
+
+```yaml
+# snippet: partial (the collections and routes of the approval example above)
+extensions:
+  store:
+    version: "1"
+    config:
+      screens:
+        /requests: {collection: requests, title: My requests}      # the collection mount
+        /review: {collection: requests, readers: true, title: Review}   # the readers mount
+routes:
+  /requests/*: {extension: ui, methods: [GET, HEAD], auth: true}
+  /review/*: {extension: ui, methods: [GET, HEAD], auth: true}
+```
+
+- **A collection screen** (the default) lists the collection mount, so an
+  owner sees their own records with create, edit and delete, and gets a
+  button for each transition served on that mount: `by: owner`, or any
+  transition of a shared collection. A `by: others` transition is never
+  offered there, since the store refuses it to the owner.
+- **A readers screen** (`readers: true`) lists the collection's
+  [readers mount](#membership-gates-and-cross-owner-reads): every owner's
+  records, read-only, with the collection's sort and filter controls (a
+  `status` filter is the review queue). It offers exactly the `by: others`
+  transitions, each posted to its own mount. The collection must declare
+  `readers`, or activation refuses the screen.
+- **A click** sends `POST <mount>/<id>/<name>` (or `POST <transition
+  mount>/<id>`) from the page's own origin, with no body, `If-Match` set to
+  the ETag the record was listed with (or the ETag of the screen's own last
+  write to it), and a fresh `Idempotency-Key` when the collection declares
+  `idempotency`. The row then shows the record the store returns.
+- **A refusal is a page message**, and the row keeps its state:
+  `412` (the record changed since the list was loaded; refresh and try
+  again), `409 transition_conflict`, `403` (`membership_required` or
+  `own_record_refused`), and a generic message for anything else. Because
+  `If-Match` is checked before `from`, a stale row answers `412`; a `409`
+  reaches the page only for a record listed without an ETag.
+- **Who may run it is still the store's decision.** The screen offers a button
+  from the declaration and the record's values; it cannot know whether the
+  viewer is a member of a `members` gate, so a non-member gets the button
+  and the `403` message. A reviewer's own request is listed on the readers
+  screen with its `by: others` button, and the store refuses it with `403`.
+- A `readOnly` collection offers no transitions (the store refuses them).
+  Membership collections have no mount and are refused, as before.
+
 ## Using a collection from another extension
 
 An extension that `requires: [store]` reaches declared collections through the
@@ -1071,9 +1129,8 @@ operations as one database transaction: see
 ## Not built yet
 
 SQL ordering for sorted lists, a declarative interval (non-overlap)
-constraint, a declarative multi-record transfer, roles beyond a
-[membership collection](#membership-gates-and-cross-owner-reads) and screen
-controls for transitions are not built
+constraint, a declarative multi-record transfer and roles beyond a
+[membership collection](#membership-gates-and-cross-owner-reads) are not built
 ([#835](https://github.com/jimhoyd-com/urlcode/issues/835); the
 [transition design](#what-is-not-covered) lists what each needs). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search, and richer screens beyond the first slice ([#262]): labels,

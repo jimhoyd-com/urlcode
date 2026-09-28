@@ -20,17 +20,20 @@ export const screensSchema = {
     properties: {
       collection: { type: 'string', pattern: NAME, description: 'A collection declared under collections; activation fails otherwise.' },
       title: { type: 'string', minLength: 1, maxLength: 80, description: 'Page title. Default: the collection name in sentence case.' },
+      readers: { type: 'boolean', description: 'true: the screen lists the collection\'s readers mount (every owner\'s records, read-only) and offers its by: others transitions; the collection must declare readers. Default false: the collection mount, with create, edit, delete and the transitions its owner runs.' },
       columns: { type: 'array', minItems: 1, maxItems: 64, description: 'Fields shown in the list, in order: a field name, or {field, label} to set the heading. Default: every declared field. Unless the collection is readOnly, every required field without a default must be listed, or ui refuses the screen.', items: { oneOf: [{ type: 'string', pattern: FIELD }, { type: 'object', additionalProperties: false, required: ['field'], properties: { field: { type: 'string', pattern: FIELD, description: 'A declared field of the collection.' }, label: { type: 'string', minLength: 1, maxLength: 80, description: 'Column heading. Default: the field name.' } } }] } },
     },
   },
 } as const;
 
 type Column = string | { field: string; label?: string };
-interface ScreenSpec { collection: string; title?: string; columns?: Column[] }
+interface ScreenSpec { collection: string; title?: string; columns?: Column[]; readers?: boolean }
+/** A transition button as ui's `CrudTransition` describes it: `POST <mount>/<id>` when `mount` is set, else `POST <collection mount>/<id>/<name>`. */
+export interface StoreScreenTransition { name: string; from: Record<string, string | number | boolean>; mount?: string }
 /** A screen as the store contributes it to ui: the same shape as ui's `UiScreen`. */
 export interface StoreScreen {
   title: string;
-  collection: { mount: string; fields: CollectionSpec['fields']; readOnly?: boolean; sortable?: string[]; filterable?: string[] };
+  collection: { mount: string; fields: CollectionSpec['fields']; readOnly?: boolean; sortable?: string[]; filterable?: string[]; idempotency?: boolean; transitions?: StoreScreenTransition[] };
   columns?: Column[];
 }
 
@@ -50,15 +53,23 @@ export function storeScreens(config: unknown): Record<string, StoreScreen> {
   for (const [path, screen] of Object.entries(screens)) {
     if (!Object.hasOwn(collections, screen.collection)) throw new Error(`Screen ${path}: collection ${screen.collection} is not declared in extensions.store.config.collections`);
     const spec = collections[screen.collection]!;
-    // ui's form would offer fields only a transition may change, and has no transition controls: refused, not half-served.
     // A membership collection has no mount to list or write through.
     if (spec.mount === undefined) throw new Error(`Screen ${path}: collection ${screen.collection} is a membership collection, which has no mount`);
-    if (Object.values(spec.fields ?? {}).some(field => field.transitionOnly)) throw new Error(`Screen ${path}: collection ${screen.collection} declares transitionOnly fields, which screens do not support yet`);
-    result[path] = {
-      title: screen.title ?? label(screen.collection),
-      collection: { mount: spec.mount, fields: spec.fields, ...(spec.readOnly !== undefined ? { readOnly: spec.readOnly } : {}), ...(spec.sortable ? { sortable: spec.sortable } : {}), ...(spec.filterable ? { filterable: spec.filterable } : {}) },
-      ...(screen.columns ? { columns: screen.columns } : {}),
-    };
+    if (screen.readers && !spec.readers) throw new Error(`Screen ${path}: readers: true needs collection ${screen.collection} to declare readers`);
+    // The buttons a viewer of this screen can run: on the collection mount the transitions its owner runs there (a
+    // by: others one answers only on its own mount, never to the owner); on the readers mount exactly the by: others
+    // ones, since a reader acts on other owners' records. A readOnly collection refuses every transition.
+    const transitions = spec.readOnly ? [] : Object.entries(spec.transitions ?? {})
+      .filter(([, transition]) => screen.readers ? transition.mount !== undefined : transition.mount === undefined)
+      .map(([name, transition]) => ({ name, from: { ...transition.from }, ...(transition.mount === undefined ? {} : { mount: transition.mount }) }));
+    const collection: StoreScreen['collection'] = screen.readers
+      ? { mount: spec.readers!.mount, fields: spec.fields, readOnly: true }
+      : { mount: spec.mount, fields: spec.fields, ...(spec.readOnly !== undefined ? { readOnly: spec.readOnly } : {}) };
+    if (spec.sortable) collection.sortable = spec.sortable;
+    if (spec.filterable) collection.filterable = spec.filterable;
+    if (transitions.length) collection.transitions = transitions;
+    if (transitions.length && spec.idempotency) collection.idempotency = true;
+    result[path] = { title: screen.title ?? label(screen.collection), collection, ...(screen.columns ? { columns: screen.columns } : {}) };
   }
   return result;
 }

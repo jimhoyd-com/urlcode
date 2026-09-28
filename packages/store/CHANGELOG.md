@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+**Screens over transitions (#863).** A screen over a collection with `transitionOnly` fields is no longer refused: the store contributes the collection's transitions and `idempotency` to ui, which shows those fields read-only and each transition as a button. A screen may declare `readers: true` to list the collection's readers mount instead, read-only, offering exactly the `by: others` transitions on their own mounts; the default screen offers the transitions served on the collection mount. `readers: true` on a collection without `readers` refuses activation, and a `readOnly` collection's screen offers no transitions. **Breaking:** every list answer (collection mount and readers mount) adds `etags`, each listed record's current `ETag` keyed by id, so a client can send `If-Match` for the version it listed; an empty list is `{"items":[],"total":0,"etags":{}}`.
+
 `urlcode-store backup --database <file> --destination <file>` takes an online backup (#859): a consistent copy through `node:sqlite`'s `backup()` (Node 22.16 or newer) while the server keeps serving. Both paths are absolute; it refuses a source that is not a private store database of a schema this release understands and an existing destination, writes the copy `0600` in a private temporary directory beside the destination, checks its `application_id`, `user_version` and `integrity_check`, links it into place and prints `{format, schemaVersion, bytes, destination}`. Exported as `backupStore`.
 
 The definition declares its deployment targets (node), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.

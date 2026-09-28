@@ -36,7 +36,11 @@ const failure = (error: StoreError, extra: [string, string][] = []): HandlerResu
   json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) } }, extra);
 /** What a caller sees of a record: everything but the stored owner, which never leaves the database. */
 const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record, OWNER_FIELD)) return record; const { [OWNER_FIELD]: _owner, ...rest } = record; return rest; };
-const listView = (page: { items: StoredRecord[]; total: number; next?: string | number }) => ({ ...page, items: page.items.map(view) });
+/**
+ * A list page as the HTTP API answers it: the records, plus `etags`, each listed record's current ETag by id, so a
+ * client (the ui screen's transition buttons) can send `If-Match` for the version it listed without a read per record.
+ */
+const listView = (page: { items: StoredRecord[]; total: number; next?: string | number }) => ({ ...page, items: page.items.map(view), etags: Object.fromEntries(page.items.map(record => [record.id as string, etagOf(record)])) });
 
 /** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created path compares correctly. */
 async function realTarget(path: string): Promise<string> {

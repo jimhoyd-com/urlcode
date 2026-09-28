@@ -22,6 +22,6 @@ export {icon} from './icons.ts';
 export type {IconName} from './icons.ts';
 export {hiddenField,postForm,withDeadline} from './forms.ts';
 export type {PostFormOptions} from './forms.ts';
-export {crudScreen,crudMarkup,crudFields,crudCopyKeys,fieldLabel} from './crud.ts';
-export type {CrudCollection,CrudColumn,CrudFieldSpec,CrudScreenOptions} from './crud.ts';
+export {crudScreen,crudMarkup,crudFields,crudTransitions,crudCopyKeys,crudTransitionCopyKeys,fieldLabel} from './crud.ts';
+export type {CrudCollection,CrudColumn,CrudFieldSpec,CrudScreenOptions,CrudTransition} from './crud.ts';
 export {crudScript} from './crud-script.ts';
