@@ -287,7 +287,12 @@ export const budgets: Record<string, Budget> = {
     // listMembers (dist/membership.js with declarations), the schema again in
     // urlcode.json and the README field reference, and the SECURITY/CHANGELOG
     // contract measure 75895 packed and 308658 unpacked bytes (30 entries).
-    packed: 80 * 1024,
+    // Raised to 86 KiB packed and 340 KiB unpacked for #866's membership follow-ups: the
+    // `urlcode-store members` CLI (dist/cli.js), audited membership events and reassign moving membership
+    // (dist/collection.js, dist/membership.js, dist/ownership.js with declarations), readers.showOwner and enum
+    // filter refusal, the schema again in urlcode.json and the README field reference, and the SECURITY/CHANGELOG
+    // contract measure 83457 packed and 334230 unpacked bytes (32 entries).
+    packed: 86 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -311,7 +316,8 @@ export const budgets: Record<string, Budget> = {
     // README/SECURITY contract): 46693 packed and 177677 unpacked bytes.
     // #822 generated field reference in the README (measured 220290 unpacked).
     // #835 transitions and retries, #863 membership gates: see the packed note above.
-    unpacked: 315 * 1024,
+    // #866 membership follow-ups: see the packed note above.
+    unpacked: 340 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

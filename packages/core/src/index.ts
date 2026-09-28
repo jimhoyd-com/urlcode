@@ -7,7 +7,7 @@ export { events as observabilityEvents, validateObservers, createObserverSink, c
 
 export { getCapabilities, routeCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility, normalizeCapabilityTarget } from './capabilities.ts';
 export { capabilityDetails } from './capabilities.ts';
-export type { CapabilityTarget, CapabilityName, CapabilityKind, CapabilityDetail, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport } from './capabilities.ts';
+export type { CapabilityTarget, CapabilityName, CapabilityKind, CapabilityDetail, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport, ProjectExtensionTargets } from './capabilities.ts';
 
 export { importRoutes, exportRoutes } from './interchange.ts';
 export type { InterchangeFormat, ConversionDiagnostic, ConversionCounts, ConversionReport, ImportRoutesOptions, ExportRoutesOptions } from './interchange.ts';
@@ -43,7 +43,7 @@ export type {ScaffoldReport, Unresolved as ScaffoldUnresolved} from './scaffold.
 export {initProject, addRedirect} from './authoring.ts';
 export {initSite} from './authoring.ts';
 export {initSiteWith} from './init-with.ts';
-export {addAddons,removeAddon,listAddons,validateDeclaredExtensions} from './addon-install.ts';
+export {addAddons,removeAddon,listAddons,validateDeclaredExtensions,declaredExtensionTargetsOf} from './addon-install.ts';
 export type {AddResult,RemoveResult,AddonReport,ListedAddon} from './addon-install.ts';
 export {readAddonManifest,readAddonCatalog} from './addon-manifest.ts';
 export type {AddonManifest,AddonPin,AddonDescriptor,AddonKind,AddonCatalog,AddonCatalogEntry,AddonAgentTooling,AddonAgentReference} from './addon-manifest.ts';

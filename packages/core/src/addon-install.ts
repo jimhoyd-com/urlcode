@@ -8,14 +8,15 @@ import { isDeepStrictEqual } from 'node:util';
 import Ajv from 'ajv/dist/2020.js';
 import { isMap, isNode, isPair, isScalar, isSeq, parseDocument, stringify } from 'yaml';
 import { loadDocument, parseYaml, validateDocument } from './config.ts';
+import type { LoadedDocument } from './types.ts';
 import { ConfigError, assert } from './errors.ts';
 import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, inspectExtensionRevision } from './extensions.ts';
 import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './extensions.ts';
 import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
 import { isCode, isRecord } from './object-guards.ts';
-import { addonNamePattern, addonPackage, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonManifest, withRequirements } from './addon-manifest.ts';
-import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin, ArtifactDocument } from './addon-manifest.ts';
+import { addonNamePattern, addonPackage, declaredExtensionTargets, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, withRequirements } from './addon-manifest.ts';
+import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin, ArtifactDocument, ExtensionTarget } from './addon-manifest.ts';
 
 /**
  * A site is the one project layout: `package.json` (exact core pin plus add-on tarball URLs), `host.mjs` (the
@@ -811,6 +812,25 @@ export async function validateDeclaredExtensions(project: string): Promise<strin
     checkExtensionPolicies(loaded.document, loaded.routes, loaded.routeAuth, name, policyValidator, error => problems.push(error.message));
   }
   return problems;
+}
+
+/**
+ * The targets each extension the project declares runs on (#867): from its installed `urlcode.json`, or else from this
+ * core's release catalog. `validate` and `capabilities` read them when no host file is loaded, so an extension on a
+ * target it does not declare is `refused` instead of `conditional`. An extension neither source describes is left
+ * out and stays `conditional`. Descriptors only: this never imports or activates an extension.
+ */
+export async function declaredExtensionTargetsOf(loaded: LoadedDocument): Promise<Map<string, ExtensionTarget[]>> {
+  const found = new Map<string, ExtensionTarget[]>(), site = dirname(loaded.root);
+  let catalog: Map<string, ExtensionTarget[]> | undefined;
+  for (const name of Object.keys(loaded.document.extensions ?? {})) {
+    const descriptor = await readInstalledDescriptor(site, name).catch(() => undefined);
+    if (descriptor?.kind === 'extension' && descriptor.targets) { found.set(name, [...descriptor.targets]); continue; }
+    catalog ??= await readAddonCatalog().then(declaredExtensionTargets, () => new Map<string, ExtensionTarget[]>());
+    const released = catalog.get(name);
+    if (released) found.set(name, released);
+  }
+  return found;
 }
 
 /** Agent references from installed, core-pinned add-ons. Static descriptors only: this never imports an extension. */

@@ -75,7 +75,10 @@ export function parseListQuery(spec: NormalizedSpec, params: URLSearchParams): L
     const field = own(spec.fields, key) && spec.filterable.includes(key) ? spec.fields[key] : undefined;
     if (!field) { errors[named(key)] = 'is not a filterable field'; continue; }
     const value = filterValue(field, params.get(key)!);
-    if (value === undefined) errors[key] = `must be a valid ${field.type}`; else filters.push([key, value]);
+    // A value the field can never hold is refused rather than answered with an empty page (#866).
+    if (value === undefined) errors[key] = `must be a valid ${field.type}`;
+    else if (field.enum && !field.enum.includes(value as string | number)) errors[key] = 'is not one of the allowed values';
+    else filters.push([key, value]);
   }
   if (filters.length > QUERY_LIMITS.filters) errors.filter = `at most ${QUERY_LIMITS.filters} filters per request`;
   let sort: SortKey | undefined;

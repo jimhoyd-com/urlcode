@@ -9,7 +9,7 @@ export type { CollectionAuditor, CollectionSpec, FieldSpec, FieldType, Ownership
 export { assignOwnerless, deleteOwnerless, reassignOwner, reportOwnerless } from './ownership.ts';
 export { backupStore } from './backup.ts';
 export type { StoreBackupOptions, StoreBackupResult } from './backup.ts';
-export type { OwnerlessReport, ReassignCollectionReport, ReassignOptions, ReassignReport } from './ownership.ts';
+export type { OwnerlessReport, ReassignCollectionReport, ReassignMembershipReport, ReassignOptions, ReassignReport } from './ownership.ts';
 export type { StoreExports, StoreListResult, StorePrincipal, StoreRecordResult, StoreRecords } from './records.ts';
 export { addMember, listMembers, removeMember } from './membership.ts';
 export type { MemberOptions, MemberReport, MembershipOptions } from './membership.ts';

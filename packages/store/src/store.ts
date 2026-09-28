@@ -34,7 +34,7 @@ const FIELD = /^[a-z][A-Za-z0-9_]{0,63}$/;
 const json = (status: number, value: unknown, extra: [string, string][] = []): HandlerResult => jsonResponse(status, value, extra);
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
   json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) } }, extra);
-/** What a caller sees of a record: everything but the stored owner, which never leaves the database. */
+/** What a caller sees of a record: everything but the stored owner, which only a readers mount with `showOwner` shows. */
 const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record, OWNER_FIELD)) return record; const { [OWNER_FIELD]: _owner, ...rest } = record; return rest; };
 /**
  * A list page as the HTTP API answers it: the records, plus `etags`, each listed record's current ETag by id, so a
@@ -379,9 +379,11 @@ async function dispatchReaders(collection: Collection, request: ExtensionRequest
   try {
     if (method !== 'GET' && method !== 'HEAD') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), [['allow', 'GET, HEAD']]);
     const principal = request.principal?.id;
-    if (rest === '') return json(200, listView(collection.listAcross(request.query, principal)));
+    // With showOwner, and only here, a member sees each record's owner: the opaque principal id, nothing more.
+    const shown = (record: StoredRecord): StoredRecord => collection.spec.readers?.showOwner ? record : view(record);
+    if (rest === '') { const page = collection.listAcross(request.query, principal); return json(200, { ...page, items: page.items.map(shown) }); }
     const record = collection.getAcross(rest, principal);
-    return json(200, view(record), [['etag', etagOf(record)]]);
+    return json(200, shown(record), [['etag', etagOf(record)]]);
   } catch (error) {
     if (error instanceof StoreError) return failure(error);
     return failure(new StoreError(500, 'internal_error', 'The store failed to handle this request'));

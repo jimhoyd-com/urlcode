@@ -42,7 +42,12 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   function. See the README's "Short links" example.
 - `urlcode-store reassign --database <file> --project <app> --from <id>
   --to <id> [--collection <name>] [--dry-run]` moves one principal's records to another in one transaction (it may run
-  while the server serves); it refuses as a whole if `--to` would exceed a collection's `maxRecordsPerOwner`.
+  while the server serves); it refuses as a whole if `--to` would exceed a collection's `maxRecordsPerOwner`, and moves
+  `--from`'s membership in every `membership: true` collection with the records.
+- `urlcode-store members add|remove|list --database <file> --project <app> --collection <name> [--principal <id>]`
+  maintains a membership collection (no HTTP API exists for it). `audit: true` on it records every added and removed
+  member in the same transaction. `readers.showOwner: true` shows the owner's principal id as `_owner` on the readers
+  mount only.
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({database})`) in
   the `composeHost` list; `urlcode extensions add store` writes that line.
 
@@ -57,9 +62,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   collection. Those routes run trusted and in-process, but hold no store authority of their own.
 - One server process per database (supported, not enforced); each request is one SQLite
   transaction over one record; last write wins unless a caller sends `If-Match`; a repeated
-  `Idempotency-Key` answers `409`, never the first response.
+  `Idempotency-Key` replays the first answer's status with the record as it is now, and the same key on a
+  different request is `422`.
 - `sortable`/`filterable` field lists are declared per collection; `?sort=`/`?<field>=` queries
-  against an undeclared name are `400`s, not silently ignored.
+  against an undeclared name, or a filter value outside the field's `enum`, are `400`s, not silently ignored.
 - The database is operator-owned, outside the project, on local disk, not a network
   filesystem; the store creates its directory `0700` and the file `0600`.
 - The `store-schema` artifact is the configuration schema and an example as inert JSON:

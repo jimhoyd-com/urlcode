@@ -144,12 +144,14 @@ directory and exercises every success and failure case over HTTP:
 - The authoring MCP runners pass their child process only `PATH`, so they
   always use the site's own `data/`, whatever `PRIVATE_REQUESTS_DATA` says.
 - Reviewer membership is maintained by the operator (`addMember` in
-  `scripts/setup.mjs`); there is no `urlcode-store` command for it yet, and
-  membership changes are not audited. The proof does not install the audit
-  extension, so approvals leave no audit event either (the store records
-  `store.record.transitioned` with the reviewer as actor when a collection
-  declares `audit: true`).
-- The store never returns a record's owner, so a reviewer sees what was
-  requested but not by whom.
+  `scripts/setup.mjs`; `urlcode-store members add|remove|list` is the same
+  operation from the command line). The proof does not install the audit
+  extension, so neither membership changes nor approvals leave an audit event
+  (with audit installed, `audit: true` on `reviewers` records
+  `store.membership.added`/`removed`, and on `requests`
+  `store.record.transitioned` with the reviewer as actor).
+- The review queue does not declare `readers.showOwner`, so a reviewer sees
+  what was requested but not by whom; with it, each record carries the
+  owner's opaque user id as `_owner` on the review mount only.
 - Requests cannot be edited or withdrawn: the route admits `GET` and `POST`
   only, and `approve` is the one transition.

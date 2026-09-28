@@ -102,7 +102,6 @@ test('equality filters combine with sort and pagination and report the filtered 
   ordered(rows, r => r.priority, true);
   assert.equal((await page('priority=3&score=0.5')).total, many.filter(r => r.priority === 3 && r.score === 0.5).length, 'numbers match by value, not text');
   assert.equal((await page('score=5e-1&priority=3')).total, many.filter(r => r.priority === 3 && r.score === 0.5).length);
-  assert.equal((await page('kind=zzz')).total, 0);
   assert.equal((await walk('kind=a&limit=3')).length, 20, 'a filter without a sort pages by offset over the filtered list');
   assert.equal((await page('done=false&priority=-0')).total, many.filter(r => !r.done && r.priority === 0).length, '-0 is 0');
 });
@@ -118,6 +117,8 @@ test('undeclared, duplicated and malformed names and values are 400s that name o
     ['secret=hush', 'secret'], ['title=x', 'title'], ['sort=secret', 'secret'], ['sort=-kind', 'kind'], ['bogus=1', 'bogus'], ['id=abc', 'id'], ['createdAt=x', 'createdAt'],
     ['sort=__proto__', '__proto__'], ['constructor=1', 'constructor'], ['kind=a&kind=b', 'kind'], ['priority=abc', 'priority'], ['priority=1.5', 'priority'], ['priority=0x10', 'priority'],
     ['score=Infinity', 'score'], ['score=', 'score'], ['done=yes', 'done'], ['priority=99999999999999999999', 'priority'], ['limit=-1', 'limit'], ['sort=title&cursor=12', 'cursor'],
+    // A value outside the field's enum can never match, so it is refused rather than answered with an empty page (#866).
+    ['kind=zzz', 'kind'], ['kind=A', 'kind'], ['kind=', 'kind'],
   ];
   for (const [query, key] of cases) {
     const res = await call(`/api/todos?${query}`);
@@ -126,6 +127,18 @@ test('undeclared, duplicated and malformed names and values are 400s that name o
     const body = JSON.parse(text) as { error: { code: string; fields: Record<string, string> } };
     assert.equal(body.error.code, 'invalid_query'); assert.ok(Object.hasOwn(body.error.fields, key), `${query} names ${key}`);
     assert.ok(!text.includes('hush'), 'no stored value in the error');
+    if (query.startsWith('kind=') && !query.includes('&')) { assert.equal(body.error.fields.kind, 'is not one of the allowed values'); assert.ok(!text.includes('zzz') && text.length < 300, 'bounded, never echoed'); }
+  }
+});
+
+test('a numeric enum filter accepts only a declared value, compared by number', async t => {
+  const { page, call } = await seed(t, [{ title: 'x', level: 1 }, { title: 'y', level: 2 }], { mount: '/api/todos', filterable: ['level'], fields: { title: { type: 'string', required: true, maxLength: 40 }, level: { type: 'integer', enum: [1, 2, 3] } } });
+  assert.equal((await page('level=2')).total, 1);
+  assert.equal((await page('level=3')).total, 0, 'a declared value no record holds is an ordinary empty page');
+  for (const query of ['level=4', 'level=0', 'level=x']) {
+    const res = await call(`/api/todos?${query}`);
+    assert.equal(res.status, 400, query);
+    assert.equal(((await res.json()) as { error: { code: string } }).error.code, 'invalid_query');
   }
 });
 

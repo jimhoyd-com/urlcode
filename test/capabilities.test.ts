@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { access } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility } from '../packages/core/src/capabilities.ts';
@@ -44,6 +45,50 @@ test('CLI works without a project and rejects unknown targets without echoing ar
   const invalid = run('--target', 'SECRET');
   assert.equal(invalid.status, 1);
   assert.doesNotMatch(invalid.stderr, /SECRET/);
+});
+
+test('validate and capabilities refuse an extension on a target its installed descriptor does not declare (#867)', async t => {
+  const site = await mkdtemp(join(tmpdir(), 'urlcode-targets-site-'));
+  t.after(() => rm(site, { recursive: true, force: true }));
+  const app = join(site, 'app'), installed = join(site, 'node_modules', '@jimhoyd', 'urlcode-store');
+  await mkdir(app); await mkdir(installed, { recursive: true });
+  const descriptor = JSON.parse(await readFile(new URL('../packages/store/urlcode.json', import.meta.url), 'utf8')) as { targets: string[] };
+  assert.deepEqual(descriptor.targets, ['node'], 'the store declares only node');
+  const install = (targets: string[]) => writeFile(join(installed, 'urlcode.json'), JSON.stringify({ ...descriptor, targets }));
+  await install(descriptor.targets);
+  await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1',
+    extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', fields: { title: { type: 'string', required: true, maxLength: 80 } } } } } } },
+    routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST'] } } }));
+  const run = (...args: string[]) => spawnSync(process.execPath, ['--conditions=development', cli, ...args], { encoding: 'utf8', timeout: 20000 });
+  const extensionRow = (catalog: CapabilityCatalog, target: 'self-hosted' | 'aws' | 'vercel') => catalog.capabilities.find(row => row.capability === 'extension')!.targets[target]!;
+
+  // validate: self-hosted by default, which the store declares; aws and vercel are refused before any host file.
+  const valid = run('validate', '--project', app);
+  assert.equal(valid.status, 0, valid.stderr);
+  assert.deepEqual((JSON.parse(valid.stdout) as { event: string; target: string }).target, 'self-hosted');
+  for (const target of ['aws', 'vercel']) {
+    const refused = run('validate', '--project', app, '--target', target);
+    assert.equal(refused.status, 1, target);
+    assert.match(refused.stderr, /Refused by the extension's declared targets \(its urlcode\.json\): store/, target);
+  }
+  assert.match(run('validate', '--project', app, '--target', 'cloudflare').stderr, /Operator extensions have no Worker artifact lowering/);
+  assert.equal(run('validate', '--project', app, '--target', 'netlify').status, 1, 'an unknown target fails');
+
+  // capabilities: in the site, the extension rows follow the store's declared targets; without a project they stay generic.
+  const catalog = JSON.parse(run('capabilities', '--project', app, '--json').stdout) as CapabilityCatalog;
+  assert.deepEqual(catalog.extensions, ['store']);
+  assert.equal(extensionRow(catalog, 'aws').support, 'refused'); assert.match(extensionRow(catalog, 'aws').reason, /store/);
+  assert.equal(extensionRow(catalog, 'vercel').support, 'refused');
+  assert.equal(extensionRow(catalog, 'self-hosted').support, 'conditional', 'a descriptor can refuse a target, never confirm one');
+  assert.match(run('capabilities', '--project', app).stdout, /extension rows use the declared targets of this project's extensions: store/);
+  const generic = JSON.parse(run('capabilities', '--project', join(site, 'missing'), '--json').stdout) as CapabilityCatalog;
+  assert.equal(generic.extensions, undefined); assert.equal(extensionRow(generic, 'aws').support, 'conditional');
+
+  // The installed descriptor, not the release catalog, decides: one that also declares aws is not refused there.
+  await install(['node', 'aws']);
+  assert.equal(run('validate', '--project', app, '--target', 'aws').status, 0);
+  assert.equal(extensionRow(JSON.parse(run('capabilities', '--project', app, '--target', 'aws', '--json').stdout) as CapabilityCatalog, 'aws').support, 'conditional');
+  assert.equal(run('validate', '--project', app, '--target', 'vercel').status, 1);
 });
 
 test('preflight and compiled IR agree, including inherited and disabled policies', async t => {

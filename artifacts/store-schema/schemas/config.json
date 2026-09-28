@@ -205,7 +205,7 @@
           },
           "audit": {
             "type": "boolean",
-            "description": "true: every write is recorded in the audit log (field names and the principal, never values). Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain."
+            "description": "true: every write is recorded in the audit log (field names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member's principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain."
           },
           "transitions": {
             "description": "Declared conditional state changes by name: POST <mount>/<id>/<name> moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language.",
@@ -305,10 +305,10 @@
           },
           "membership": {
             "type": "boolean",
-            "description": "true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with addMember/removeMember or trusted extension code (StoreExports). Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable, readOnly or audit."
+            "description": "true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member's key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded."
           },
           "readers": {
-            "description": "With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET <mount> (with the collection's limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is never shown.",
+            "description": "With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET <mount> (with the collection's limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner.",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -326,6 +326,10 @@
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9_-]{0,63}$",
                 "description": "A membership collection: anyone it does not list gets 403 membership_required before any record is read."
+              },
+              "showOwner": {
+                "type": "boolean",
+                "description": "true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner's mount, transitions and StoreExports never do."
               }
             }
           }

@@ -63,7 +63,11 @@ export interface TransitionSpec {
  * Cross-owner reads on an owned collection: members of the named membership collection list and read every owner's
  * records, read-only, on a separate mount guarded by a principal-providing policy.
  */
-export interface ReadersSpec { mount: string; members: string }
+export interface ReadersSpec {
+  mount: string; members: string;
+  /** Include each record's owner (its opaque principal id) as `_owner` in this mount's answers, and nowhere else. */
+  showOwner?: boolean;
+}
 export interface CollectionSpec {
   /** Required, except on a membership collection, which has none. */
   mount?: string; fields: Record<string, FieldSpec>;
@@ -87,7 +91,8 @@ export interface CollectionSpec {
   maxRecordsPerOwner?: number;
   /**
    * Record every write in the audit log (the audit extension): the event is inserted into the store database's outbox
-   * table in the same transaction as the record, and audit drains it from there. Field names only, never values.
+   * table in the same transaction as the record, and audit drains it from there. Field names only, never values. On a
+   * membership collection an added or removed member is `store.membership.added`/`removed`, naming the member.
    */
   audit?: boolean;
   /** Declared conditional state changes by name (#835). */
@@ -140,7 +145,7 @@ export const collectionSchema = {
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, description: 'Declared fields a list request may filter by equality (<field>=<value>); limit, cursor and sort cannot be filterable.' },
     ownership: { enum: ['shared', 'owner'], description: 'shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true.' },
     maxRecordsPerOwner: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded.' },
-    audit: { type: 'boolean', description: 'true: every write is recorded in the audit log (field names and the principal, never values). Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain.' },
+    audit: { type: 'boolean', description: 'true: every write is recorded in the audit log (field names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member\'s principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain.' },
     transitions: { description: 'Declared conditional state changes by name: POST <mount>/<id>/<name> moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language.', type: 'object', maxProperties: TRANSITION_LIMITS.transitions, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['from', 'set'],
       properties: {
@@ -152,10 +157,11 @@ export const collectionSchema = {
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request.' },
       },
     } },
-    membership: { type: 'boolean', description: 'true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with addMember/removeMember or trusted extension code (StoreExports). Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable, readOnly or audit.' },
-    readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is never shown.', type: 'object', additionalProperties: false, required: ['mount', 'members'], properties: {
+    membership: { type: 'boolean', description: 'true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
+    readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner.', type: 'object', additionalProperties: false, required: ['mount', 'members'], properties: {
       mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
       members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read.' },
+      showOwner: { type: 'boolean', description: 'true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner\'s mount, transitions and StoreExports never do.' },
     } },
   },
 } as const;
@@ -194,7 +200,7 @@ export interface NormalizedSpec {
   mount?: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
-  membership: boolean; readers?: ReadersSpec;
+  membership: boolean; readers?: Required<ReadersSpec>;
 }
 /** A validated transition. `by` is `any` on a shared collection, whose records have no owner to compare. */
 export interface NormalizedTransition { from: Record<string, Scalar>; set: Record<string, Scalar>; stamp: Record<string, 'actor' | 'now'>; by: TransitionActor | 'any'; mount?: string; members?: string }
@@ -265,7 +271,7 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
   if (membership) {
     // A membership list is authorization data: served over a collection API, anyone the route admits could add
     // themselves or enumerate members. It has no mount, and nothing that only makes sense with one.
-    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly', 'audit'] as const).filter(option => spec[option] !== undefined);
+    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly'] as const).filter(option => spec[option] !== undefined);
     if (refused.length) throw new Error(`Collection ${name}: a membership collection takes no ${refused.join(', ')}`);
     if (key === undefined) throw new Error(`Collection ${name}: a membership collection needs a key, the field holding each member's principal id`);
   } else if (spec.mount === undefined) throw new Error(`Collection ${name}: mount is required`);
@@ -304,8 +310,24 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if (field === key || increments.includes(field)) throw new Error(`Collection ${name}: field ${field} is the key or an increment and cannot be transitionOnly`);
     if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field))) throw new Error(`Collection ${name}: field ${field} is transitionOnly but no transition sets or stamps it`);
   }
-  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members } }) };
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }) };
 }
+
+/**
+ * Inserts one store event into the outbox inside the caller's open transaction, after audit's own validator accepted
+ * it. At the collection's backlog cap it refuses with 503 `audit_backlog`, which rolls the caller's write back too.
+ */
+export function writeAuditEvent(db: StoreDatabase, collection: string, validate: (value: unknown) => AuditEvent, body: { action: string; actor: string; subject: string; metadata: Record<string, unknown> }): void {
+  if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', collection)!.n >= AUDIT_BACKLOG) throw new StoreError(503, 'audit_backlog', 'The audit log is behind; try again later');
+  const event = validate({ id: randomUUID(), source: 'store', at: Date.now(), ...body });
+  db.run('INSERT INTO store_audit_outbox(id, collection, at, event) VALUES (?, ?, ?, ?)', event.id, collection, event.at, JSON.stringify(event));
+}
+/**
+ * The event for one membership change (#866): the member's principal id is the subject, because who was granted or
+ * lost the right is the evidence. It is an opaque id the principal provider set, never an email or a name.
+ */
+export const membershipEvent = (collection: string, change: 'added' | 'removed', member: string, actor: string) =>
+  ({ action: `store.membership.${change}`, actor, subject: `${collection}/${member}`, metadata: { collection } });
 
 /** What an audited collection needs from the audit extension: its pure event validator, and a wake-up for the drain after a commit that wrote an event. */
 export interface CollectionAuditor { validate(value: unknown): AuditEvent; notify(): void }
@@ -345,7 +367,7 @@ class RowError extends Error {}
  * mutation therefore gets a distinct `updatedAt`, so the ETag derived from it changes on every write, even two
  * writes in the same millisecond (an `If-Match` taken before either can never match after both).
  */
-function stamp(previous?: string): string {
+export function stamp(previous?: string): string {
   const now = Date.now(), last = previous === undefined ? Number.NaN : Date.parse(previous);
   return new Date(Number.isFinite(last) && last >= now ? last + 1 : now).toISOString();
 }
@@ -489,15 +511,18 @@ export class Collection {
    * the backlog cap the write is refused (and rolled back). The event names the changed fields, never their values; a
    * list too long for audit's metadata bound is cut and marked `truncated`. Returns whether an event was inserted.
    */
-  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, transition?: string): boolean {
+  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, transition?: string, record?: StoredRecord): boolean {
     if (!this.spec.audit) return false;
     // Activation refuses an audited collection without an active audit, so this is a wiring error, never a request's.
     if (!this.auditor) throw new StoreError(503, 'audit_unavailable', 'The audit log is unavailable');
-    if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', this.name)!.n >= AUDIT_BACKLOG) throw new StoreError(503, 'audit_backlog', 'The audit log is behind; try again later');
+    // A membership collection records who gained or lost the right; any other write to it is an ordinary record event.
+    if (this.spec.membership && record !== undefined && (action === 'created' || action === 'deleted')) {
+      writeAuditEvent(db, this.name, this.auditor.validate, membershipEvent(this.name, action === 'created' ? 'added' : 'removed', record[this.spec.key!] as string, actor ?? 'anonymous'));
+      return true;
+    }
     const names = [...fields]; let truncated = false;
     while (Buffer.byteLength(JSON.stringify(names)) > AUDIT_FIELDS_BYTES) { names.pop(); truncated = true; }
-    const event = this.auditor.validate({ id: randomUUID(), source: 'store', action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, at: Date.now(), metadata: { collection: this.name, ...(transition === undefined ? {} : { transition }), fields: names, ...(truncated ? { truncated: true } : {}) } });
-    db.run('INSERT INTO store_audit_outbox(id, collection, at, event) VALUES (?, ?, ?, ?)', event.id, this.name, event.at, JSON.stringify(event));
+    writeAuditEvent(db, this.name, this.auditor.validate, { action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, metadata: { collection: this.name, ...(transition === undefined ? {} : { transition }), fields: names, ...(truncated ? { truncated: true } : {}) } });
     return true;
   }
   /** Declared fields whose value differs between two versions of a record (a removed field counts), in declaration order. */
@@ -734,7 +759,7 @@ export class Collection {
     const now = stamp(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
     this.sized(record);
     this.insert(db, record);
-    return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor) };
+    return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, undefined, record) };
   }
   /** Creates in the owner's scope inside an open transaction (a host transaction's `create`). */
   createFor(db: StoreDatabase, input: unknown, owner: string | undefined, actor: string | undefined): Step { return this.createIn(db, input, this.scope(owner), actor); }
@@ -754,7 +779,11 @@ export class Collection {
     const kept = Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key) && key !== OWNER_FIELD && (replace ? only(key) : !unset.includes(key))));
     // The owner is carried over from the stored record, never from the body (check() refuses an `_owner` key).
     const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: stamp(current.updatedAt as string), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...kept, ...clean };
-    if (this.spec.key && record[this.spec.key] !== current[this.spec.key] && this.keyTaken(db, record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
+    if (this.spec.key && record[this.spec.key] !== current[this.spec.key]) {
+      // A member is added and removed, never renamed, so every grant and revocation is its own event.
+      if (this.spec.membership) throw new StoreError(400, 'invalid_record', 'Record does not match the collection fields', { [this.spec.key]: 'cannot be changed; remove the member and add the new one' });
+      if (this.keyTaken(db, record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
+    }
     this.sized(record);
     this.replaceRow(db, record);
     return { record, audited: this.audited(db, replace ? 'replaced' : 'updated', id, this.changed(current, record), actor) };
@@ -766,7 +795,7 @@ export class Collection {
     const current = this.current(db, id, scope);
     if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
     db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', this.name, id);
-    return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor) };
+    return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor, undefined, current) };
   }
   /** Deletes in the owner's scope inside an open transaction (a host transaction's `remove`). */
   removeFor(db: StoreDatabase, id: string, expectedEtag: string | undefined, owner: string | undefined, actor: string | undefined): Step { return this.removeIn(db, id, expectedEtag, this.scope(owner), actor); }
