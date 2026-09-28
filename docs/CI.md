@@ -177,6 +177,15 @@ sandbox tests on Windows. It has only a manual `workflow_dispatch` trigger, is
 not part of `verify-complete` or any ruleset, and never retries: a run that
 aborts fails its job and uploads its logs.
 
+**Parity — workerd (#868)** (`workerd-parity.yml`) runs `npm run test:workerd`
+on `ubuntu-latest` with Node 26: the Cloudflare build compared with the
+self-hosted server on a real workerd, as described in
+[What has run on workerd](CLOUDFLARE.md#what-has-run-on-workerd). It needs the
+network to install Wrangler, whose version is a dispatch input defaulting to an
+exact release. It has only a manual `workflow_dispatch` trigger, is not part of
+`verify-complete` or any ruleset, and a run that cannot install or start workerd
+fails rather than skipping.
+
 ## Checking a URLCode project on GitHub
 
 `jimhoyd-com/urlcode/action` is a composite GitHub Action for a URLCode

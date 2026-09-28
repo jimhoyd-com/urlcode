@@ -1,0 +1,40 @@
+name: Parity — workerd (#868)
+run-name: workerd parity — Wrangler ${{ inputs.wrangler }} on ${{ github.ref_name }}
+# Optional. Runs `npm run test:workerd` (scripts/workerd-parity.ts): the
+# Cloudflare build of examples/body-validation on a real workerd through
+# `wrangler dev --local`, compared request by request with the self-hosted
+# server. It needs the network to install Wrangler into a scratch directory, so
+# it is manually dispatched, never triggered by a push or pull request, and is
+# not a required check. No Cloudflare account or credentials are involved.
+on:
+  workflow_dispatch:
+    inputs:
+      wrangler:
+        description: Wrangler version to install (the one docs/CLOUDFLARE.md records by default)
+        type: string
+        default: '4.143.0'
+permissions:
+  contents: read
+concurrency:
+  group: workerd-parity-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+          cache: npm
+      # test:workerd builds dist/ itself before comparing, so there is no separate build step.
+      - run: npm ci --ignore-scripts
+      - name: Compare workerd with the self-hosted server
+        env:
+          WRANGLER_VERSION: ${{ inputs.wrangler }}
+          # A run that could not install or start workerd fails instead of printing SKIP.
+          WORKERD_PARITY_REQUIRED: '1'
+        run: npm run test:workerd

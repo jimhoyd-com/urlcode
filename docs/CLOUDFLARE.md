@@ -157,8 +157,8 @@ workerd, locally, through `wrangler dev --local`, with nothing deployed and no
 Cloudflare account or credentials involved. The Cloudflare build of
 [`examples/body-validation/`](../examples/body-validation/) (plus two routes
 with a `pattern` at the 128-character cap, one in a body and one in a query
-parameter) was run next to the self-hosted server, and 25 requests were sent
-to both: a valid body; an invalid body and a missing required property with
+parameter, and one that refuses a body on its default GET and HEAD) was run
+next to the self-hosted server, and 30 requests were sent to both: a valid body; an invalid body and a missing required property with
 `Accept: application/json`; the same invalid body with `Accept: text/plain`, no
 `Accept`, `*/*` and `application/json;q=0` (all 422 JSON); malformed JSON (400);
 an oversize body (413); a wrong content type (415); a valid and an invalid
@@ -170,10 +170,13 @@ and `anyOf`): a valid body with `null`, an absent required property, a failing
 `$ref` target, a wrong type and a failing `anyOf`; and four requests to the
 GET+POST route with [per-method body rules](HTTP.md#per-method-body-rules): a
 GET with no body, a valid POST, a POST with no body (400) and an invalid POST
-(422). Status, headers and body were identical to the server's, and no client
-value appeared in any error body. A GET that carries a body was not sent to
-workerd: the script's `fetch` cannot send one, so that refusal (413) is covered
-only by the Node-run Worker test.
+(422); and, over a raw socket because `fetch` cannot send them, five requests
+with a `Content-Length` body: a GET to the route whose GET declares
+`maxBytes: 0` (413), a HEAD to it (405, since its `methods` list does not
+include HEAD), a GET and a HEAD to the default-method route with `maxBytes: 0`
+on both (413 each) and a GET there with an empty body (200). Status, headers
+and body were identical to the server's, and no client value appeared in any
+error body.
 
 - **Versions.** Wrangler 4.143.0 with the workerd it bundles (2026-09-28),
   `compatibility_date = "2026-09-01"`, no `nodejs_compat`, on macOS arm64 with
@@ -189,11 +192,16 @@ only by the Node-run Worker test.
   sends `Accept-Encoding` (compression is the edge's job, above); the decoded
   body is byte for byte the same.
 
-To repeat it, run `npm run build` and then `npm run test:workerd`. The script
-installs Wrangler into a scratch directory outside the repository (about 200 MB,
-needs the network; `WRANGLER_VERSION` pins it), prints `SKIP` and exits 0 when
-it cannot, and fails when any response differs. It is not part of
-`npm run verify`.
+To repeat it, run `npm run test:workerd`. It builds `dist/` first, so the run
+always covers the current sources (a stale build once answered every invalid
+body 201 on both sides and passed). The script installs Wrangler into a scratch
+directory outside the repository (about 200 MB, needs the network;
+`WRANGLER_VERSION` pins it, and it is `latest` otherwise), prints `SKIP` and
+exits 0 when it cannot, and fails when any response differs. It is not part of
+`npm run verify` or any required check. The manually dispatched
+[workerd parity workflow](CI.md#diagnostic-workflows) runs it on
+`ubuntu-latest` with a pinned Wrangler, and there a `SKIP` fails the run
+(`WORKERD_PARITY_REQUIRED=1`).
 
 What this does **not** show is behavior on Cloudflare's network: Wrangler's local
 mode is workerd, not the platform, so limits such as CPU time, request size

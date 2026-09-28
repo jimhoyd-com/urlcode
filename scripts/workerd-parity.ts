@@ -2,20 +2,23 @@
 // `wrangler dev --local`) and compares it with the self-hosted server, request
 // by request. Optional and never part of `npm run verify`: it needs the network
 // to install wrangler into a scratch directory, which it does outside the repo.
-// Exit 0 with SKIP when workerd cannot be installed or started here.
+// Exit 0 with SKIP when workerd cannot be installed or started here. `npm run test:workerd` builds first, so
+// `dist/` always matches the sources it covers (#868: a stale build once passed every case on both sides).
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { createServer } from 'node:net';
+import { connect, createServer } from 'node:net';
 
 const repo = resolve(import.meta.dirname, '..');
 const npm = process.env.npm_execpath ?? '';
 const wranglerSpec = `wrangler@${process.env.WRANGLER_VERSION ?? 'latest'}`;
 const scratch = await mkdtemp(join(tmpdir(), 'urlcode-workerd-'));
 const children: ChildProcess[] = [];
-const skip = (why: string): never => { console.log(`SKIP: ${why}`); process.exitCode = 0; throw new Error('skip'); };
+// WORKERD_PARITY_REQUIRED=1 (the manual workflow sets it) turns a SKIP into a failure, so a run that never reached workerd cannot pass.
+const required = process.env.WORKERD_PARITY_REQUIRED === '1';
+const skip = (why: string): never => { console.log(`${required ? 'FAIL' : 'SKIP'}: ${why}`); process.exitCode = required ? 1 : 0; throw new Error('skip'); };
 const run = (bin: string, args: string[], cwd: string): string => {
   const r = spawnSync(bin, args, { cwd, encoding: 'utf8', timeout: 240000 });
   if (r.status !== 0) skip(`${bin} ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').slice(0, 300)}`);
@@ -26,6 +29,28 @@ const ready = async (port: number, path: string): Promise<void> => {
   for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${port}${path}`)).status < 500) return; } catch { /* not up yet */ } await new Promise(r => setTimeout(r, 500)); }
   skip(`nothing answered on port ${port}`);
 };
+
+// fetch() refuses a GET or HEAD with a body, so those requests go over a raw socket (#868).
+const raw = (port: number, method: string, path: string, body: string): Promise<{ status: number; body: string; headers: string; ms: number }> => new Promise((done, fail) => {
+  const started = performance.now();
+  const chunks: Buffer[] = [];
+  const socket = connect(port, '127.0.0.1', () => socket.end(`${method} ${path} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`));
+  socket.setTimeout(15000, () => socket.destroy(new Error(`${method} ${path}: no response within 15 s`)));
+  socket.on('data', (chunk: Buffer) => chunks.push(chunk)).on('error', fail).on('close', () => {
+    const text = Buffer.concat(chunks).toString('latin1');
+    const split = text.indexOf('\r\n\r\n');
+    if (split < 0) { fail(new Error(`${method} ${path}: no complete response: ${JSON.stringify(text.slice(0, 200))}`)); return; }
+    const [statusLine = '', ...lines] = text.slice(0, split).split('\r\n');
+    const fields = lines.map(line => { const colon = line.indexOf(':'); return [line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim()] as [string, string]; });
+    let rest = text.slice(split + 4);
+    if (fields.some(([k, v]) => k === 'transfer-encoding' && /chunked/i.test(v))) {
+      let decoded = '';
+      for (;;) { const eol = rest.indexOf('\r\n'); const size = parseInt(rest.slice(0, eol), 16); if (!(size > 0)) break; decoded += rest.slice(eol + 2, eol + 2 + size); rest = rest.slice(eol + 4 + size); }
+      rest = decoded;
+    }
+    done({ status: Number(statusLine.split(' ')[1]), body: Buffer.from(rest, 'latin1').toString('utf8'), headers: JSON.stringify(fields.filter(([k]) => !volatile.has(k)).sort()), ms: performance.now() - started });
+  });
+});
 
 const secret = 'sk_live_TOPSECRET_9f8e7d';
 const json = { 'content-type': 'application/json' };
@@ -59,13 +84,23 @@ const cases: Record<string, { path: string; method?: string; headers?: Record<st
   'per-method POST, no body': { path: '/requests', method: 'POST', headers: json },
   'per-method POST invalid': post('/requests', { title: '', extra: secret }, 'application/json'),
 };
+// Sent over a raw socket, each with the status both sides must answer. /requests lists [GET, POST], so HEAD is not
+// implied there (405); /nobody takes the default GET and HEAD, each with `maxBytes: 0`.
+const rawCases: Record<string, { method: string; path: string; body: string; status: number }> = {
+  'per-method GET with a body (raw socket)': { method: 'GET', path: '/requests', body: JSON.stringify({ title: secret }), status: 413 },
+  'HEAD not listed, with a body (raw socket)': { method: 'HEAD', path: '/requests', body: JSON.stringify({ title: secret }), status: 405 },
+  'GET maxBytes 0, with a body (raw socket)': { method: 'GET', path: '/nobody', body: JSON.stringify({ title: secret }), status: 413 },
+  'HEAD maxBytes 0, with a body (raw socket)': { method: 'HEAD', path: '/nobody', body: JSON.stringify({ title: secret }), status: 413 },
+  'GET maxBytes 0, empty body (raw socket)': { method: 'GET', path: '/nobody', body: '', status: 200 },
+};
 const volatile = new Set(['date', 'server', 'connection', 'keep-alive', 'transfer-encoding', 'content-length', 'x-request-id']);
 // workerd gzips a response when the client sends Accept-Encoding (docs/CLOUDFLARE.md: compression is delegated to the edge); fetch() decodes it, so the body still compares byte for byte.
 volatile.add('content-encoding');
 
 try {
   if (!npm) skip('run through npm run test:workerd');
-  // The example plus two routes that exercise the 128-character `pattern` cap in a body and a query parameter.
+  // The example plus two routes that exercise the 128-character `pattern` cap in a body and a query parameter, and one
+  // that refuses a body on its default GET and HEAD.
   const extra = `  /pat:
     methods: [POST]
     request:
@@ -82,6 +117,12 @@ try {
   /q:
     parameters:
       - {name: v, in: query, required: true, schema: {type: string, pattern: "^[a-z]*[a-z]*[a-z]*!$", maxLength: 128}}
+    respond: {json: {ok: true}}
+  /nobody:
+    request:
+      body:
+        GET: {maxBytes: 0}
+        HEAD: {maxBytes: 0}
     respond: {json: {ok: true}}
 `;
   const project = join(scratch, 'project'), work = join(scratch, 'worker');
@@ -116,6 +157,13 @@ try {
     if (!same) different++;
     console.log(`${same ? 'SAME' : 'DIFF'} ${w.status} ${name} (workerd ${w.ms.toFixed(1)} ms, node ${n.ms.toFixed(1)} ms)`);
     if (!same) console.log(`  workerd ${w.status} ${w.headers} ${JSON.stringify(w.body)}\n  node    ${n.status} ${n.headers} ${JSON.stringify(n.body)}`);
+  }
+  for (const [name, c] of Object.entries(rawCases)) {
+    const w = await raw(workerdPort, c.method, c.path, c.body), n = await raw(nodePort, c.method, c.path, c.body);
+    const same = w.status === c.status && n.status === c.status && w.body === n.body && w.headers === n.headers && !w.body.includes('TOPSECRET');
+    if (!same) different++;
+    console.log(`${same ? 'SAME' : 'DIFF'} ${w.status} ${name} (workerd ${w.ms.toFixed(1)} ms, node ${n.ms.toFixed(1)} ms)`);
+    if (!same) console.log(`  expected ${c.status}\n  workerd ${w.status} ${w.headers} ${JSON.stringify(w.body)}\n  node    ${n.status} ${n.headers} ${JSON.stringify(n.body)}`);
   }
   console.log(different ? `${different} request(s) differ` : 'all responses identical (status, headers except request id, body)');
   if (different) process.exitCode = 1;
