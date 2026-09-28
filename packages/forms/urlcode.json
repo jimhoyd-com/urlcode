@@ -12,6 +12,11 @@
   "contributes": [
     "mail"
   ],
+  "targets": [
+    "node",
+    "aws",
+    "vercel"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

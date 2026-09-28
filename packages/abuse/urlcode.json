@@ -3,6 +3,9 @@
   "name": "abuse",
   "description": "Persistent, pseudonymous rate limits, failure backoff and challenge escalation for extensions",
   "requires": [],
+  "targets": [
+    "node"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

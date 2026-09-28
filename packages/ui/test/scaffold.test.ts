@@ -118,7 +118,7 @@ test('host() through composeHost registers ui with the definition schema, resolv
     let received: UiExtension | undefined;
     const demoSchema = { type: 'object', additionalProperties: false };
     const demo = defineExtension({
-        name: 'demo', description: 'Test peer', requires: ['ui'], schema: demoSchema, contributes: { ui: contribution },
+        name: 'demo', description: 'Test peer', targets: ['node'], requires: ['ui'], schema: demoSchema, contributes: { ui: contribution },
         host(context) {
             received = context.get<UiExtension>('ui');
             return { registration: { name: 'demo', version: '1', projectSha256: context.projectSha256, targets: ['node'], schema: demoSchema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } };
@@ -157,7 +157,7 @@ test('composeHost refuses a ui template namespace that is not its contributor\'s
     const schema = { type: 'object', additionalProperties: false };
     // A second, synthetic contributor: it may only ship templates as `demo`, named `demo/...`.
     const peer = (templates: UiContribution['templates']) => defineExtension({
-        name: 'demo', description: 'Test peer', schema, contributes: { ui: { templates } },
+        name: 'demo', description: 'Test peer', targets: ['node'], schema, contributes: { ui: { templates } },
         host: context => ({ registration: { name: 'demo', version: '1', projectSha256: context.projectSha256, targets: ['node'], schema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } }),
     })();
     const compose = (templates: UiContribution['templates']) => composeHost(pathToFileURL(join(site, 'host.mjs')), [peer(templates), ui()]);

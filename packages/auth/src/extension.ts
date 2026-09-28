@@ -51,6 +51,7 @@ function scaffold(): ScaffoldResult {
 
 export default defineExtension<AuthHostOptions>({
   name: 'auth',
+  targets: ['node'],
   description: 'Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id',
   requires: [],
   schema: authConfigSchema,

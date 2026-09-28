@@ -40,7 +40,7 @@ function badgeAuth(projectSha256: string): RuntimeExtension {
 /** Reads the audit exports like any extension that `uses` audit, so the test can query the log. */
 function probe(seen: { audit?: AuditExports | undefined }) {
   return defineExtension({
-    name: 'probe', description: 'Reads the audit exports for the test', uses: ['audit'], schema: { type: 'object' },
+    name: 'probe', description: 'Reads the audit exports for the test', targets: ['node'], uses: ['audit'], schema: { type: 'object' },
     host(ctx) {
       seen.audit = ctx.get<AuditExports | undefined>('audit');
       return { registration: { name: 'probe', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema: { type: 'object' }, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } };

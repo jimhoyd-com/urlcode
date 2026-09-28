@@ -3,6 +3,9 @@
   "name": "auth",
   "description": "Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id",
   "requires": [],
+  "targets": [
+    "node"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

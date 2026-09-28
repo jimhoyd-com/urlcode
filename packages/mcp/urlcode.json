@@ -3,6 +3,11 @@
   "name": "mcp",
   "description": "Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers",
   "requires": [],
+  "targets": [
+    "node",
+    "aws",
+    "vercel"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

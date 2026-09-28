@@ -7,7 +7,8 @@ import { prepareFunctionSnapshot } from './policy.ts';
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import type { HandlerResult } from './http-response.ts';
 import type { LogFn, ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
-import type { AddonAgentTooling } from './addon-manifest.ts';
+import { extensionTargetNames } from './addon-manifest.ts';
+import type { AddonAgentTooling, ExtensionTarget } from './addon-manifest.ts';
 export type { HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
 /** Why a streamed response ended; also the `reason` of `ExtensionRequest.signal` when a stream ends early. */
 export type { StreamEndReason } from './http-stream.ts';
@@ -558,6 +559,12 @@ export interface ExtensionDefinition<Options=Record<string,never>> {
    * `undefined`. Must not name itself or repeat a `requires` entry.
    */
   uses?:readonly string[];
+  /**
+   * The deployment targets this extension runs on. `host()` must register exactly these, the registration refuses
+   * every other target at activation, and the build writes them into `urlcode.json` so the capability preflight and
+   * recipe metadata can refuse an unsupported target without loading a host file.
+   */
+  targets:readonly ExtensionTarget[];
   schema:object;
   policySchema?:object;
   hooks?:readonly ExtensionHookContract[];
@@ -588,6 +595,7 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   assert(definition&&typeof definition==='object'&&typeof definition.name==='string'&&namePattern.test(definition.name),'Extension definition needs a lowercase name');
   assert(typeof definition.description==='string'&&definition.description.length>0&&definition.description.length<=300,`Extension ${definition.name} needs a one-line description`);
   assert(definition.schema&&typeof definition.schema==='object'&&typeof definition.host==='function',`Extension ${definition.name} needs a schema and a host function`);
+  assert(Array.isArray(definition.targets)&&definition.targets.length>0&&new Set(definition.targets).size===definition.targets.length&&definition.targets.every(target=>(extensionTargetNames as readonly string[]).includes(target)),`Extension ${definition.name} targets must list ${extensionTargetNames.join(', ')} once each (at least one)`);
   assert((definition.requires??[]).every(name=>namePattern.test(name)&&name!==definition.name),`Extension ${definition.name} requires must list other extension names`);
   const uses=definition.uses??[];
   assert(Array.isArray(uses)&&uses.every(name=>typeof name==='string'&&namePattern.test(name)&&name!==definition.name)&&new Set(uses).size===uses.length,`Extension ${definition.name} uses must list other extension names once each`);

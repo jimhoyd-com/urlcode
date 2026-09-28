@@ -70,6 +70,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
 
 export default defineExtension<StoreHostOptions>({
   name: 'store',
+  targets: ['node'],
   description: 'SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code',
   requires: [],
   // Optional: a collection that declares `audit: true` records its writes through the audit extension, and refuses

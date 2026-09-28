@@ -4,7 +4,7 @@ import Ajv from 'ajv/dist/2020.js';
 import {loadDocument,parseYaml} from './config.ts';
 import {applySite} from './site.ts';
 import {analyzeProjectCapabilities,capabilityTargets} from './capabilities.ts';
-import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
+import type {CapabilityName,CapabilityTarget,DeclaredExtensionTargets} from './capabilities.ts';
 import {readAuthoringFile,authoringPath} from './authoring-files.ts';
 import {assert} from './errors.ts';
 
@@ -48,13 +48,17 @@ export async function readMetadata(root: string,id: string,file: 'recipe.yaml'|'
   return metadata;
 }
 const strength: Record<TargetVerdict,number>={compatible:0,conditional:1,unknown:2,refused:3};
-/** Preflight only: loads the project, expands site routes and asks the capability analysis for every target. No bindings, code or activation. */
-export async function deriveMetadata(root: string): Promise<DerivedMetadata> {
+/**
+ * Preflight only: loads the project, expands site routes and asks the capability analysis for every target. No bindings, code or activation.
+ * `declared` is every extension's descriptor targets (`declaredExtensionTargets` of the add-on catalog), so a recipe
+ * that uses an extension on a target the extension refuses derives `refused` for it, never `conditional`.
+ */
+export async function deriveMetadata(root: string,declared: DeclaredExtensionTargets): Promise<DerivedMetadata> {
   const loaded=await loadDocument(root);await applySite(loaded,{});
   const capabilities=new Set<CapabilityName>();
   const targets={} as Record<CapabilityTarget,TargetVerdict>;
   for(const target of capabilityTargets){
-    const report=analyzeProjectCapabilities(loaded,target);
+    const report=analyzeProjectCapabilities(loaded,target,undefined,declared);
     let verdict: TargetVerdict='compatible';
     for(const issue of report.issues){const support=issue.support as TargetVerdict;if(strength[support]>strength[verdict])verdict=support;}
     targets[target]=verdict;

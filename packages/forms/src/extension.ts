@@ -24,6 +24,7 @@ export interface FormsHostOptions {
 
 export default defineExtension<FormsHostOptions>({
   name: 'forms',
+  targets: ['node', 'aws', 'vercel'],
   description: 'Declarative server-rendered form flows with CSRF, field validation and a confirmation page, rendered through ui.',
   requires: ['ui'],
   // Both optional: a flow that declares `abuse` needs abuse, and one that declares `notify` needs mail; each refuses

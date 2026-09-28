@@ -15,6 +15,12 @@ export const capabilityNames = ['extension','policies.extensions','proxy', 'sign
 export type CapabilityName = typeof capabilityNames[number];
 /** The resolved operator registration set, when known (loaded via --host-file, same as `inspectExtensions`). Keyed by extension name. */
 export type ExtensionRegistry = ReadonlyMap<string, RuntimeExtension>;
+/**
+ * The targets each extension declares in its `urlcode.json` descriptor (the release add-on catalog), keyed by name.
+ * Read without a host file: it can refuse a target the extension declares no support for, but it never makes an
+ * extension requirement `native`, because only the registration pinned to this project revision can do that.
+ */
+export type DeclaredExtensionTargets = ReadonlyMap<string, readonly string[]>;
 export interface CapabilityDecision { support: CapabilitySupport; reason: string }
 export interface CapabilityRequirement extends CapabilityDecision { path: string; capability: CapabilityName }
 export interface CompatibilityReport {
@@ -75,11 +81,17 @@ const STREAMING_AWS_REASON = 'Lambda payload format 2.0 returns one buffered res
 // capability name. `extensionNames` names the specific extension(s) this
 // requirement involves; `extensions` is the resolved registration set, when
 // the caller has one (loaded via --host-file, same as `inspectExtensions`).
-function decision(capability: CapabilityName, target: CapabilityTarget, policies?: EffectivePolicies, extensionNames?: readonly string[], extensions?: ExtensionRegistry): CapabilityDecision {
+// Without a registration set, `declared` (the descriptors' targets) can still
+// refuse a target an extension never runs on.
+function decision(capability: CapabilityName, target: CapabilityTarget, policies?: EffectivePolicies, extensionNames?: readonly string[], extensions?: ExtensionRegistry, declared?: DeclaredExtensionTargets): CapabilityDecision {
   if(capability==='extension'||capability==='policies.extensions'){
     if(target==='cloudflare')return {support:'refused',reason:'Operator extensions have no Worker artifact lowering'};
     if(target==='static')return {support:'refused',reason:staticRefusals[capability]!};
-    if(!extensions)return {support:'conditional',reason:'Depends on the specific registered extension\'s declared targets; resolve with --host-file (CLI) or the runtime\'s extensions option'};
+    if(!extensions){
+      const refused=(extensionNames??[]).filter(name=>declared?.get(name)?.includes(internalTarget(target))===false);
+      if(refused.length)return {support:'refused',reason:`Refused by the extension's declared targets (its urlcode.json): ${refused.join(', ')}`};
+      return {support:'conditional',reason:'Depends on the specific registered extension\'s declared targets; resolve with --host-file (CLI) or the runtime\'s extensions option'};
+    }
     const names=extensionNames?.length?extensionNames:[...extensions.keys()];
     if(!names.length)return {support:'unknown',reason:'No extension registration to check'};
     const checked=names.map(name=>{const registration=extensions.get(name);return {name,support:(registration?(registration.targets.includes(internalTarget(target))?'native':'refused'):'unknown') as CapabilitySupport};});
@@ -171,14 +183,14 @@ export function routeCapabilities(route: RouteConfig | CompiledRoute, document: 
   return result;
 }
 
-function analyze(document: ProjectDocument, iterable: Iterable<readonly [string, RouteConfig | CompiledRoute]>, requestedTarget: string, registrations?: readonly RuntimeExtension[], suggest = true): CompatibilityReport {
+function analyze(document: ProjectDocument, iterable: Iterable<readonly [string, RouteConfig | CompiledRoute]>, requestedTarget: string, registrations?: readonly RuntimeExtension[], declared?: DeclaredExtensionTargets, suggest = true): CompatibilityReport {
   const target = normalizeCapabilityTarget(requestedTarget);
   const routes = [...iterable];
   const extensions: ExtensionRegistry | undefined = registrations ? new Map(registrations.map(registration => [registration.name, registration])) : undefined;
   const requirements: CapabilityRequirement[] = [];
   // site.errors is project-wide: it changes how every runtime-generated error on its paths is written, matched or not.
   if (document.site?.errors) requirements.push({path:'(project)',capability:'errors',...decision('errors',target)});
-  if (Object.keys(document.extensions??{}).length) requirements.push({path:'(project)',capability:'extension',...decision('extension',target,undefined,Object.keys(document.extensions??{}),extensions)});
+  if (Object.keys(document.extensions??{}).length) requirements.push({path:'(project)',capability:'extension',...decision('extension',target,undefined,Object.keys(document.extensions??{}),extensions,declared)});
   for (const [path, route] of routes) {
     const policies = effectivePolicies(document, route);
     const capabilities = routeCapabilities(route, document);
@@ -187,12 +199,12 @@ function analyze(document: ProjectDocument, iterable: Iterable<readonly [string,
     for (const capability of capabilities) {
       const extensionNames = capability==='extension' ? (route.extension?[route.extension]:[])
         : capability==='policies.extensions' ? Object.keys(effectiveExtensionPolicies(document,route)) : undefined;
-      requirements.push({ path, capability, ...decision(capability, target, policies, extensionNames, extensions) });
+      requirements.push({ path, capability, ...decision(capability, target, policies, extensionNames, extensions, declared) });
     }
   }
   const issues = requirements.filter(item => item.support === 'refused' || item.support === 'unknown' || item.support === 'conditional');
   const report: CompatibilityReport = { target, deployment: deployment(target), compatible: issues.length === 0, requirements, issues };
-  if (issues.length && suggest) report.alternatives = capabilityTargets.filter(other => other !== target && analyze(document, routes, other, registrations, false).compatible);
+  if (issues.length && suggest) report.alternatives = capabilityTargets.filter(other => other !== target && analyze(document, routes, other, registrations, declared, false).compatible);
   return report;
 }
 
@@ -202,9 +214,12 @@ function analyze(document: ProjectDocument, iterable: Iterable<readonly [string,
  * shape --host-file loads for `inspectExtensions`); without it, `extension`/
  * `policies.extensions` requirements report `conditional`/`unknown` rather
  * than a blanket `native` that ignores the specific extension's own targets.
+ * `declared` is each extension's descriptor targets (`declaredExtensionTargets`
+ * in addon-manifest.ts); without registrations it turns a target an extension
+ * does not declare into `refused` instead of `conditional`.
  */
-export function analyzeProjectCapabilities(loaded: LoadedDocument, target: string, registrations?: readonly RuntimeExtension[]): CompatibilityReport {
-  return analyze(loaded.document, Object.entries(loaded.routes), target, registrations);
+export function analyzeProjectCapabilities(loaded: LoadedDocument, target: string, registrations?: readonly RuntimeExtension[], declared?: DeclaredExtensionTargets): CompatibilityReport {
+  return analyze(loaded.document, Object.entries(loaded.routes), target, registrations, declared);
 }
 
 /** Analyze normalized route semantics without exporting validators, resources or resolved secrets. */

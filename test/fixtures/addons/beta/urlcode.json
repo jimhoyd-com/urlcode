@@ -1,1 +1,1 @@
-{ "kind": "extension", "name": "beta", "description": "Fixture extension that requires alpha", "requires": ["alpha"], "schema": { "type": "object" }, "policySchema": { "type": "object", "additionalProperties": false, "properties": { "level": { "type": "integer" } } } }
+{ "kind": "extension", "name": "beta", "description": "Fixture extension that requires alpha", "requires": ["alpha"], "targets": ["node"], "schema": { "type": "object" }, "policySchema": { "type": "object", "additionalProperties": false, "properties": { "level": { "type": "integer" } } } }

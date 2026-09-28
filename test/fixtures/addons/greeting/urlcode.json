@@ -1,1 +1,1 @@
-{ "kind": "extension", "name": "greeting", "description": "Independent fixture extension outside the first-party namespace", "requires": [], "schema": { "type": "object", "additionalProperties": false, "properties": { "text": { "type": "string" } } } }
+{ "kind": "extension", "name": "greeting", "description": "Independent fixture extension outside the first-party namespace", "requires": [], "targets": ["node"], "schema": { "type": "object", "additionalProperties": false, "properties": { "text": { "type": "string" } } } }

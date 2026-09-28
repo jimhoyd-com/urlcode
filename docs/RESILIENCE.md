@@ -161,7 +161,7 @@ responsible for its own backup and recovery procedure. `auth` (Better Auth's
 SQLite database `data/auth.sqlite` and the secret `data/auth.secret`; see
 [auth](../packages/auth/README.md#add-it)) and `store` (every collection in the
 SQLite database `data/store.sqlite`, including undelivered audit events; stop
-the server and copy it, or take an online copy with SQLite's backup API, never
+the server and copy it, or take an online copy with `urlcode-store backup`, never
 a plain file copy of a running database; see
 [store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee))
 are the two that hold durable state.

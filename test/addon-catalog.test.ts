@@ -21,7 +21,7 @@ async function checkout(t: TestContext): Promise<string> {
   await write('package.json', json({ name: '@jimhoyd/urlcode', version: '9.9.9' }));
   await write('packages/alpha/package.json', json({ name: '@jimhoyd/urlcode-alpha', version: '9.9.9', type: 'module' }));
   await write('packages/alpha/urlcode.json', json({ kind: 'extension', name: 'alpha', description: 'stub', requires: [], schema: {} }));
-  await write('packages/alpha/dist/extension.js', `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', schema: { type: 'object' }, agent: agent('alpha') })} };\n`);
+  await write('packages/alpha/dist/extension.js', `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', targets: ['vercel', 'node'], schema: { type: 'object' }, agent: agent('alpha') })} };\n`);
   await write('artifacts/notes/package.json', json({ name: '@jimhoyd/urlcode-notes', version: '9.9.9' }));
   await write('artifacts/notes/urlcode.json', json({ kind: 'artifact', name: 'notes', description: 'Notes artifact', requires: ['alpha'], agent: agent('notes') }));
   return root;
@@ -37,7 +37,7 @@ test('the catalog is generated from every add-on descriptor, extension and artif
   assert.deepEqual(written, {
     format: 1, scope: 'release', version: '9.9.9',
     addons: [
-      { name: 'alpha', kind: 'extension', package: '@jimhoyd/urlcode-alpha', version: '9.9.9', description: 'Alpha extension', requires: [], agent: agent('alpha') },
+      { name: 'alpha', kind: 'extension', package: '@jimhoyd/urlcode-alpha', version: '9.9.9', description: 'Alpha extension', requires: [], targets: ['node', 'vercel'], agent: agent('alpha') },
       { name: 'notes', kind: 'artifact', package: '@jimhoyd/urlcode-notes', version: '9.9.9', description: 'Notes artifact', requires: ['alpha'], agent: agent('notes') },
     ],
   });
@@ -94,19 +94,22 @@ test('an artifact\'s documents reach the catalog as bounded paths and media type
 
 test('uses round-trips from the definition through urlcode.json, the catalog and the development manifest, never as a requirement', async t => {
   const root = await checkout(t);
-  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', schema: { type: 'object' }, uses: ['zeta', 'mail'] })} };\n`);
+  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', targets: ['node'], schema: { type: 'object' }, uses: ['zeta', 'mail'] })} };\n`);
   await syncExpectedFiles(root);
   const descriptor = JSON.parse(await readFile(join(root, 'packages/alpha/urlcode.json'), 'utf8')) as Record<string, unknown>;
   assert.deepEqual(Object.keys(descriptor).slice(0, 5), ['kind', 'name', 'description', 'requires', 'uses'], 'uses follows requires');
   assert.deepEqual([descriptor.requires, descriptor.uses], [[], ['mail', 'zeta']]);
   const catalog = parseAddonCatalog(JSON.parse(await readFile(join(root, 'dist', 'addon-catalog.json'), 'utf8')), 'catalog');
-  assert.deepEqual(catalog.addons.find(entry => entry.name === 'alpha'), { name: 'alpha', kind: 'extension', package: '@jimhoyd/urlcode-alpha', version: '9.9.9', description: 'Alpha extension', requires: [], uses: ['mail', 'zeta'] }, 'a used add-on need not be in the release');
+  assert.deepEqual(catalog.addons.find(entry => entry.name === 'alpha'), { name: 'alpha', kind: 'extension', package: '@jimhoyd/urlcode-alpha', version: '9.9.9', description: 'Alpha extension', requires: [], uses: ['mail', 'zeta'], targets: ['node'] }, 'a used add-on need not be in the release');
   const manifest = parseAddonManifest(JSON.parse(await developmentManifest(root)), 'development manifest');
   assert.deepEqual([manifest.addons.alpha!.requires, manifest.addons.alpha!.uses], [[], ['mail', 'zeta']]);
   assert.deepEqual(withRequirements(manifest, ['alpha']), ['alpha'], 'uses never enters the requires closure');
   assert.throws(() => parseDescriptor({ ...descriptor, requires: ['mail'] }, 'overlap'), /uses must be a list of other extension names, disjoint from requires/);
   assert.throws(() => parseDescriptor({ ...descriptor, uses: ['alpha'] }, 'self'), /disjoint from requires/);
   assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', requires: [], uses: ['alpha'] }, 'artifact'), /carries no extension contract/);
+  // Targets (#859): an extension declares a non-empty list in canonical order; an artifact declares none.
+  for (const targets of [undefined, [], ['aws', 'node'], ['node', 'node'], ['cloudflare']]) assert.throws(() => parseDescriptor({ ...descriptor, targets }, 'targets'), /needs targets/);
+  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', requires: [], targets: ['node'] }, 'artifact'), /declares no targets/);
 });
 
 test('readAddonCatalog reads the catalog file without importing, installing or activating any add-on', async t => {

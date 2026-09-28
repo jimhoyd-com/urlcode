@@ -326,7 +326,7 @@ test('a duplicate provider is reported once, in the list of its own kind (#857)'
   await provide('@example/docs-a', { kind: 'artifact', name: 'docs' });
   await provide('@example/docs-b', { kind: 'artifact', name: 'docs' });
   await provide('@example/widget-art', { kind: 'artifact', name: 'widget' });
-  await provide('@example/widget-ext', { kind: 'extension', name: 'widget', schema: {} });
+  await provide('@example/widget-ext', { kind: 'extension', name: 'widget', targets: ['node'], schema: {} });
   await provide('@example/broken', { kind: 'artifact', name: 'Not A Name' });
   const pkgFile = join(site, 'package.json'), manifestJson = JSON.parse(await readFile(pkgFile, 'utf8')) as { dependencies: Record<string, string> };
   for (const name of ['@example/docs-a', '@example/docs-b', '@example/widget-art', '@example/widget-ext', '@example/broken']) manifestJson.dependencies[name] = '1.0.0';

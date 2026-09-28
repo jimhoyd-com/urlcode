@@ -3,7 +3,7 @@ description: Persistent JSON CRUD API for a declared collection (create, read, u
 tags: [crud, store, persist, persistence, database, storage, todo, records, collection, json, api, rest, extension, "201", "404"]
 complexity: advanced
 capabilities: [enabled, extension, methods]
-targets: {self-hosted: conditional, cloudflare: refused, aws: conditional, vercel: conditional, static: refused}
+targets: {self-hosted: conditional, cloudflare: refused, aws: refused, vercel: refused, static: refused}
 routes: 1
 services:
   - name: store extension

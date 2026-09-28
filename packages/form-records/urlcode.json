@@ -7,6 +7,9 @@
     "store",
     "ui"
   ],
+  "targets": [
+    "node"
+  ],
   "schema": {
     "type": "object",
     "additionalProperties": false,

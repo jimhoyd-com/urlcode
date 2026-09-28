@@ -27,7 +27,12 @@ Cloudflare (no artifact lowering yet) and by `static` (no server to match a
 request against). `extension`/`policies.extensions` report per-extension
 support from the registered extension's own declared `targets` when a
 `--host-file` is supplied; without one they report `conditional`/`unknown`
-rather than a blanket answer. See [egress](EGRESS.md) and
+rather than a blanket answer. Recipe and example metadata (derived by the same
+analysis and checked by `npm run check`) and the feature planner also read the
+`targets` each extension declares in its `urlcode.json` descriptor, so a target
+the extension does not declare is `refused` rather than `conditional`: the
+`store-crud` recipe is refused on `aws` and `vercel` because the store declares
+only `node`. See [egress](EGRESS.md) and
 [conditions](CONDITIONS.md).
 
 | Support | Meaning |

@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { addons, repositoryRoot } from './workspaces.ts';
 import type { Addon } from './workspaces.ts';
-import { buildAddonCatalog } from '../packages/core/src/addon-manifest.ts';
+import { buildAddonCatalog, extensionTargetNames } from '../packages/core/src/addon-manifest.ts';
 
 const render = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
 /** Artifact files generated from an extension's descriptor, so the two can never disagree. */
@@ -35,8 +35,11 @@ export async function expectedFiles(root = repositoryRoot): Promise<Map<string, 
     if (!definition || definition.name !== addon.name) throw new Error(`${addon.packageName}/extension must default-export defineExtension({name: '${addon.name}'})`);
     const contributes = Object.keys((definition.contributes ?? {}) as Record<string, unknown>).sort();
     const uses = [...(definition.uses ?? []) as string[]].sort();
+    // Canonical order, so the descriptor does not depend on how the definition happens to list them.
+    const targets = extensionTargetNames.filter(target => ((definition.targets ?? []) as string[]).includes(target));
+    if (!targets.length) throw new Error(`${addon.packageName}/extension must declare targets (${extensionTargetNames.join(', ')}) in its defineExtension definition`);
     const descriptor = { kind: 'extension', name: definition.name, description: definition.description, requires: definition.requires ?? [], ...(uses.length ? { uses } : {}),
-      ...(contributes.length ? { contributes } : {}), schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
+      ...(contributes.length ? { contributes } : {}), targets, schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
     descriptors.set(addon.name, descriptor);
     files.set(join(addon.directory, 'urlcode.json'), render(descriptor));
   }

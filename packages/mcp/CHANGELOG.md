@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The definition declares its deployment targets (node, aws, vercel), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
+
 - The protocol is the official MCP TypeScript SDK's (`@modelcontextprotocol/server`
   2.1.0; #846), serving every request statelessly. Removed: `Mcp-Session-Id`
   sessions, the GET stream and `Last-Event-ID` replay, list pagination, and

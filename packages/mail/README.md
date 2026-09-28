@@ -70,7 +70,7 @@ A consumer contributes English source copy:
 
 ```ts
 export default defineExtension({
-  name: 'notifier', requires: ['mail'],
+  name: 'notifier', requires: ['mail'], targets: ['node'],
   contributes: { mail: { namespace: 'notifier', templates: {
     ping: { subject: 'Ping received', text: 'Someone pinged {page}.\n\nNote: {note}', slots: { page: 'page-link', note: 'text' } },
   } } },

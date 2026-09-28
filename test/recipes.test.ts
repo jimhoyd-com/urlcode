@@ -19,7 +19,12 @@ import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {project,request} from './helpers.ts';
 import {readmeHost} from './spa-shell-host.ts';
+import {declaredExtensionTargets,parseAddonCatalog} from '../packages/core/src/addon-manifest.ts';
+import {capabilityTargets} from '../packages/core/src/capabilities.ts';
+import {addonCatalog} from '../scripts/build-addon-manifest.ts';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+// Every extension's declared targets, read from the committed urlcode.json descriptors as `npm run check` reads them.
+const declared=declaredExtensionTargets(parseAddonCatalog(JSON.parse(await addonCatalog()),'committed add-on descriptors'));
 
 test('local recipe catalog is defensive and rejects arbitrary paths',async()=>{
   const catalog=await listRecipes();assert.equal(catalog.length,recipeNames.length);catalog[0]!.files.push('mutated');
@@ -44,13 +49,36 @@ test('the typescript recipe states the optional compiler install before its firs
 test('recipe metadata is what the capability preflight derives, not a hand-written claim',async()=>{
   for(const recipe of await listRecipes()){
     const root=fileURLToPath(new URL('../recipes/'+recipe.id+'/',import.meta.url));
-    assert.deepEqual(derivedDifferences(recipe,await deriveMetadata(root)),[],recipe.id);
+    assert.deepEqual(derivedDifferences(recipe,await deriveMetadata(root,declared)),[],recipe.id);
   }
   // A drifted target verdict or capability list is named, so the check script can point at it.
   const health=(await listRecipes()).find(recipe=>recipe.id==='health-page')!;
   const drifted={...health,capabilities:['function'],targets:{...health.targets!,cloudflare:'refused' as const},routes:3};
-  const problems=derivedDifferences(drifted,await deriveMetadata(fileURLToPath(new URL('../recipes/health-page/',import.meta.url))));
+  const problems=derivedDifferences(drifted,await deriveMetadata(fileURLToPath(new URL('../recipes/health-page/',import.meta.url)),declared));
   assert.equal(problems.length,3);assert.match(problems[1]!,/targets.cloudflare should be compatible/);
+});
+
+test('no recipe claims a target that one of its extensions refuses (#859)',async()=>{
+  const runtimeTarget=(target:string)=>target==='self-hosted'?'node':target;
+  let checked=0;
+  for(const recipe of await listRecipes()){
+    const {document}=await loadDocument(fileURLToPath(new URL('../recipes/'+recipe.id+'/',import.meta.url)));
+    const used=new Set([...Object.keys(document.extensions??{}),...Object.values(document.routes??{}).flatMap(route=>route.extension?[route.extension]:[])]);
+    for(const name of used){
+      const targets=declared.get(name);
+      assert.ok(targets,`${recipe.id} uses ${name}, which no committed descriptor declares`);
+      for(const target of capabilityTargets)if(!targets.includes(runtimeTarget(target) as never)){
+        assert.equal(recipe.targets![target],'refused',`${recipe.id} claims ${target}: ${recipe.targets![target]}, but ${name} declares only ${targets.join(', ')}`);checked++;
+      }
+    }
+  }
+  assert.ok(checked>0,'at least one recipe uses an extension');
+  // The preflight is what makes this so: the store's declared ['node'] refuses aws and vercel, and a wider declaration would not.
+  const root=fileURLToPath(new URL('../recipes/store-crud/',import.meta.url));
+  const store=await deriveMetadata(root,declared);
+  assert.deepEqual([store.targets.aws,store.targets.vercel,store.targets['self-hosted']],['refused','refused','conditional']);
+  const wider=await deriveMetadata(root,new Map([['store',['node','aws','vercel']]]));
+  assert.deepEqual([wider.targets.aws,wider.targets.vercel],['conditional','conditional']);
 });
 
 test('every recipe is found first by the words someone would search for',async()=>{
@@ -252,7 +280,7 @@ test('examples carry the same metadata shape and search returns the smallest run
   for(const example of examples){
     const root=fileURLToPath(new URL('../examples/'+example.id+'/',import.meta.url));
     if(example.runnable===false){assert.equal(example.capabilities,undefined);await assert.rejects(lstat(join(root,'urlcode.yaml')),{code:'ENOENT'});continue;}
-    assert.deepEqual(derivedDifferences(example,await deriveMetadata(root)),[],example.id);
+    assert.deepEqual(derivedDifferences(example,await deriveMetadata(root,declared)),[],example.id);
   }
   const etag=await searchExamples('etag');assert.equal(etag.best!.id,'cookbook');assert.equal(etag.best!.route!.path,'/versioned');assert.equal(etag.best!.route!.file,'routes/middleware.yaml');
   const redirect=await searchExamples('redirect');assert.ok(redirect.count>1);

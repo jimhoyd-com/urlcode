@@ -3,6 +3,11 @@
   "name": "ui",
   "description": "Shared presentation kit: theme, copy, templates and the data screens other extensions contribute, for every extension page.",
   "requires": [],
+  "targets": [
+    "node",
+    "aws",
+    "vercel"
+  ],
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",

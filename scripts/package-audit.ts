@@ -308,7 +308,9 @@ export const budgets: Record<string, Budget> = {
     // #822 generated field reference in the README (measured 220290 unpacked).
     // #835 transitions and retries, #863 membership gates: see the packed note above.
     unpacked: 315 * 1024,
-    entries: 31,
+    // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
+    // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
+    entries: 32,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-forms': {

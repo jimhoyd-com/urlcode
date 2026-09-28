@@ -180,7 +180,7 @@ function authoringContract(name: string): Record<string, unknown> {
  * prepare step (which builds the add-on catalog from every urlcode.json) accepts the package before its first build.
  */
 function urlcodeJson(name: string, description: string, fork: ForkShape | undefined): string {
-  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name), schema: configSchema(), authoring: authoringContract(name), agent: agentTooling(name) }, null, 2)}\n`;
+  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name), targets: ['node', 'aws', 'vercel'], schema: configSchema(), authoring: authoringContract(name), agent: agentTooling(name) }, null, 2)}\n`;
 }
 
 function readmeMd(name: string, camel: string, description: string, fork: ForkShape | undefined): string {
@@ -385,6 +385,7 @@ export default defineExtension<${Name}HostOptions>({
   name: '${name}',
   description: ${JSON.stringify(description)},
   requires: ${JSON.stringify(requires)},
+  targets: ['node', 'aws', 'vercel'],
   schema: ${camel}ConfigSchema,
   authoring: ${camel}Authoring,
   agent: ${JSON.stringify(agentTooling(name))},
