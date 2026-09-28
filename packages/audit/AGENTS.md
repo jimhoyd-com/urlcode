@@ -12,7 +12,7 @@
   bounded lag, record before release) is a contract change: update SECURITY.md,
   the README and the tests in the same change, and never skip or ack an event
   that was not stored.
-- `src/event.ts` is pure (no I/O): auth's store worker imports it at runtime.
+- `src/event.ts` is pure (no I/O): a producer may import it at runtime.
   Keep it that way.
 - Apache-2.0. Do not publish packages by hand. This package is released with
   core at core's version and installed with `urlcode extensions add audit`;
@@ -22,8 +22,8 @@
 - TypeScript run through Node type stripping; `dist/` is built, never
   committed. It has no sibling peers, only `@jimhoyd/urlcode`.
 - Run `npm run verify` for every change. `test/drain.test.ts` exercises the
-  producer contract with a fake in-memory outbox; auth and store prove it with
-  their real outboxes in their own tests.
+  producer contract with a fake in-memory outbox; the store proves it with
+  its real outbox in their own tests.
 - Never commit credentials or customer data. Synthetic fixtures only.
 - Report actual evidence and remaining limitations; CI is not a security
   review.

@@ -15,7 +15,7 @@
     ],
     "properties": {
       "records": {
-        "description": "Record flows by name. Each needs a route <mount>/* with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: {csrf: origin}; records are private to their signed-in creator.",
+        "description": "Record flows by name. Each needs a route <mount>/* with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: true; records are private to their signed-in creator.",
         "type": "object",
         "maxProperties": 16,
         "propertyNames": {
@@ -405,7 +405,7 @@
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records).",
+        "description": "Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller's own records).",
         "path": "urlcode.yaml"
       }
     ],

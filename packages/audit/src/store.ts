@@ -12,7 +12,7 @@ import type { NormalizedQuery } from './event.ts';
 export const AUDIT_APPLICATION_ID = 0x55415544;
 export const AUDIT_SCHEMA_VERSION = 1;
 
-/** SQLite releases with the fixes URLCode's SQLite stores require (the same rule as auth's store). */
+/** SQLite releases with the fixes URLCode's SQLite stores require. */
 export function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
 
 const SCHEMA = `CREATE TABLE audit_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);

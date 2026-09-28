@@ -1,5 +1,5 @@
-// Delivery transports. SES and the file/console development output are ported from auth's senders; the
-// busy/deadline/abort handling they shared lives in mail's send pipeline (mail.ts), not here.
+// Delivery transports. SES and the file/console development output; the busy/deadline/abort
+// handling they share lives in mail's send pipeline (mail.ts), not here.
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { open, readdir, realpath, stat } from 'node:fs/promises';

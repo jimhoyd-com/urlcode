@@ -95,8 +95,7 @@ makes no logging or alerting decision beyond invoking that callback exactly
 once per failure.
 
 **No identity, authorization, rate limiting or idempotency model of its
-own.** Put a mount behind `auth: true` (or a specific role/permission
-requirement) where a tool call requires a signed-in caller; the extension
+own.** Put a mount behind `auth: true` where a tool call requires a signed-in caller; the extension
 does not create sign-in sessions, ownership rules or abuse protection, and every
 caller who can reach an unprotected mount can invoke every declared tool on
 it. A tool handler whose external effects are not naturally idempotent needs

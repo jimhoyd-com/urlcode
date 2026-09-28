@@ -16,7 +16,7 @@
     }
   },
   "authoring": {
-    "description": "Durable, bounded audit log. It serves no routes: other extensions record into it (auth always; store collections that declare audit: true) and admin reads it. The project declares only how many events it keeps.",
+    "description": "Durable, bounded audit log. It serves no routes: other extensions record into it (store collections that declare audit: true) and operators read it with urlcode-audit list. The project declares only how many events it keeps.",
     "surfaces": [
       {
         "kind": "configuration",

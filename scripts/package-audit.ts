@@ -257,24 +257,11 @@ export const budgets: Record<string, Budget> = {
     optionalPeers: ['@aws-sdk/client-sesv2'],
   },
   '@jimhoyd/urlcode-auth': {
-    // Raised from 225/900 KiB for the extension split: AuthExports v1 and the
-    // actor-bound administration API (dist/exports.js, dist/administration.js,
-    // dist/delivery.js), the contributed mail templates and the audit outbox,
-    // with their declarations and README/SECURITY contract, measure 237400
-    // packed and 967920 unpacked bytes in 83 files. Main's #736 passkey RP ID
-    // recording and startup warning (240/910 KiB there) fit inside these.
-    packed: 250 * 1024,
-    unpacked: 1000 * 1024,
-    entries: 90,
-    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json'],
-    // Every sibling peer is optional so npm never installs a second copy;
-    // `extensions add auth` installs the required audit, mail and ui itself.
-    optionalPeers: ['@jimhoyd/urlcode-abuse', '@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-mail', '@jimhoyd/urlcode-ui'],
-  },
-  '@jimhoyd/urlcode-admin': {
-    packed: 75 * 1024,
-    unpacked: 250 * 1024,
-    entries: 56,
+    // Rebuilt on Better Auth (#841, #843): the adapter, definition and CLI with their declarations and docs.
+    // First measured at 13593/42819/14 packed bytes, unpacked bytes and files.
+    packed: 18 * 1024,
+    unpacked: 56 * 1024,
+    entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-store': {

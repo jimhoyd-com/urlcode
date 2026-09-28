@@ -142,7 +142,7 @@ Once the reports are clean, move the value to `Content-Security-Policy` under
 
 Two paths, neither needs `oshp-no-csp`:
 
-- Pages rendered by the kit (`createKit`, the `ui` extension, auth and admin)
+- Pages rendered by the kit (`createKit` and the `ui` extension)
   link a content-hashed stylesheet and send their own nonce-based
   `content-security-policy`. A response's own header wins over the profile, so
   they work under `oshp` unchanged.

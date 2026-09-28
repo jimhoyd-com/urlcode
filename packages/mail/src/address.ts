@@ -1,4 +1,4 @@
-// Recipient and sender mailbox validation. Deliberately independent of auth's normalizeEmail: mail refuses anything
+// Recipient and sender mailbox validation. Deliberately independent of any consumer's email normalization: mail refuses anything
 // that could split a header or name a second mailbox, and lower-cases only the domain.
 const forbidden = /[\s\x00-\x1f\x7f-\x9f,;<>()[\]"\\]/;
 const label = /^[^.]+$/;

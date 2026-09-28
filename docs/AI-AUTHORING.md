@@ -67,13 +67,9 @@ for installation, host registration, discovery and validation. The managed
 4. [Routing](ROUTING.md), [HTTP](HTTP.md), [middleware](MIDDLEWARE.md), [assets](ASSETS.md).
 5. [Trust model, sandbox opt-in and operator grants](FUNCTION-SECURITY.md).
 6. [Readiness](READINESS.md), [capacity](CAPACITY.md), [DDoS/recovery](RESILIENCE.md).
-7. [The framework](FRAMEWORK.md) for accounts, administration and presentation:
+7. [The framework](FRAMEWORK.md) for sign-in, data and presentation:
    `extensions.<name>` blocks and `extension` mounts are the only YAML those
-   packages need. [Composing a site](COMPOSING-A-SITE.md) is the map of what a
-   consumer may then change: the `config` each package accepts, the
-   presentation overrides under `ui/`, the project functions its lifecycle
-   hooks call, and when a requirement instead needs a new extension in
-   TypeScript.
+   packages need.
 8. [Extension field references](EXTENSION-REFERENCE.md): core's field
    reference stops at `extensions.<name>.config`, so each first-party
    extension's package README ends with a field reference generated from its
@@ -162,7 +158,7 @@ requests that change. Neither guide nor artifact replaces the runtime schema;
 all defer to the pinned implementation.
 
 Treat core, installed extensions and product UI as one application with
-different owners. Keep auth/admin security and workflow behavior package-owned;
+different owners. Keep auth's sign-in and session behavior package-owned;
 keep branding, product navigation and the smallest necessary overrides in the
 project. When a React frontend contains `components.json`, use the installed
 official shadcn/ui skill for component discovery, composition, accessibility
@@ -338,19 +334,14 @@ unsupported policy refuses activation rather than degrading.
 
 When the project declares `extensions.auth` (an operator-installed extension,
 see [extensions](EXTENSIONS.md)), protect a route with the short form
-`auth: true` or `auth: {role: member}` rather than writing
-`policies.extensions.auth` by hand; the compiler expands it to that long form
-and `routes`/`audit` show the expansion. Do not use both forms on one route,
-and do not declare `auth` in a project without `extensions.auth`; both refuse
-to load. Only `required`, `role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny` and `bearer` are accepted; there is no `roles`
-or `permissions` list. `auth: {required: false}` emits nothing.
-`auth: {bearer: {scopes: [...]}}` protects the route with an operator-issued
-API key instead of a signed-in session and is exclusive of the other keys
-(see [extensions](EXTENSIONS.md#bearerapi-key-routes)). A per-key budget is
-`bearer: {scopes: [...], quota: {requests, window}}` (window in seconds), not a
-hand-written counter in a function; keep `policies.throttle` for per-client
-limits on the same route.
+`auth: true` rather than writing `policies.extensions.auth: {}` by hand; the
+compiler expands it to that long form and `routes`/`audit` show the expansion.
+Do not use both forms on one route, and do not declare `auth` in a project
+without `extensions.auth`; both refuse to load. The policy accepts no keys:
+there is no role, permission, verification, CSRF or bearer vocabulary. A
+protected route answers `401` without a verified session and `403` for a
+cross-origin write ([auth](../packages/auth/README.md#protect-a-route)).
+Roles, ownership and approvals are application data keyed by the user id.
 
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
@@ -379,8 +370,7 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
 | Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](../recipes/spa-shell/README.md) |
-| Application rules that need the signed-in caller | recipe `authenticated-handlers`: ordinary `function` routes with `auth: true`, declared methods and bounded request bodies; `sessionUserId(request)` reads native auth’s verified opaque user id | [authenticated-handlers](../recipes/authenticated-handlers/README.md) |
-| A pre-existing, fixed JSON API contract (`/api/login`, `/api/me`, `/api/items`, `{error: {code}}`) | no generic response rewriting: recipe `fixed-contract-adapter`, a thin operator adapter over `AuthExports` and `StoreExports` plus `site.errors`; sign-in, sign-out and CSRF stay auth's own endpoints | [fixed-contract-adapter](../recipes/fixed-contract-adapter/README.md) |
+| Application rules that need the signed-in caller | an ordinary `function` route with `auth: true` (recipe `authenticated-json-api`); the function reads the verified user id from `context.capabilities.auth.identity.userId` | [auth](../packages/auth/README.md#protect-a-route), [authenticated-json-api](../recipes/authenticated-json-api/README.md) |
 | Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
@@ -409,46 +399,29 @@ persist"` finds the `store-crud` recipe. In a site, `urlcode extensions add
 store auth ui` (or `urlcode init DIR --with ui,auth,store`) installs the
 extension with an empty `collections` block and wires `host.mjs`; declare the
 collection and its mount yourself, or add `--example` for the `todos`
-collection, its API mount with `auth: {csrf: origin}` and its `/todos` screen
-with `auth: true`, which makes the collection per-user (`ownership: owner`).
-Keep `csrf: origin` on the API mount: the screen's script sends no
-`x-csrf-token`, so `auth: true` there refuses its writes with 403. The store example without `auth`
-refuses until the operator re-runs with `--ack store:public-write`, and its
-collection stays shared. Report anything beyond that recipe (filtering, sorting,
-ownership beyond owner-only records, a database) as a gap. `urlcode context` lists the same built-ins so
-they are visible before you write code.
+collection, its API mount and its `/todos` screen, both with `auth: true`,
+which makes the collection per-user (`ownership: owner`). The store example
+without `auth` refuses until the operator re-runs with `--ack
+store:public-write`, and its collection stays shared. Report anything beyond
+that recipe (filtering, sorting, ownership beyond owner-only records, a
+database) as a gap. `urlcode context` lists the same built-ins so they are
+visible before you write code.
 
-Accounts with a per-user profile, served as a headless JSON API, need no code
-either: `urlcode recipes show headless-auth-profile` is the bounded entry
-point. Registration, sign-in, the auth-owned profile (`displayName`, `locale`)
-and sign-out are auth's own JSON endpoints under `/account/*`
-([auth JSON contract](../packages/auth/docs/JSON-API.md)); the application's
-profile fields are an `ownership: owner` store collection behind `auth: true`,
-so another user's record is a `404`. Its README states every request and
-response shape, status code, header and owner boundary, and which operator
-files hold the keys. A function that reads a session cookie, checks a password
-or compares user ids reimplements what these contracts already enforce.
-
-For application rules beyond those declarative contracts, start from
-`urlcode recipes show authenticated-handlers`. Each operation remains an
+For application rules that need the signed-in caller, `urlcode recipes show
+authenticated-json-api` shows the route shape. Each operation remains an
 ordinary YAML function route with its own methods, parameters and bounded
-body declaration. Native auth owns accounts, sessions and CSRF; the trusted
-Node handler imports `sessionUserId` and calls `sessionUserId(request)` for
-the verified opaque caller id, then implements only the application's rules. The helper does not
-re-authenticate arbitrary requests or supply application authorization. See
-[session identity in functions](EXTENSIONS.md#session-identity-in-functions).
-
-When the JSON contract already exists and is fixed (`POST /api/login`,
-`GET /api/me`, CRUD under `/api/items`, a `{error: {code}}` taxonomy), start
-from `urlcode recipes show fixed-contract-adapter`. Its README is a
-compatibility audit: path aliasing through an adapter mount, projection of
-non-secret account and record fields, and mapping store and body errors to the
-contract's codes are safe over `AuthExports` and `StoreExports`; sign-in and
-sign-out at contract paths, skipping CSRF or origin checks, a session in an
-`Authorization` header, the contract's body on auth's `401`/`403`, cross-owner
-access and custom password hashing are not, and the client adapts. The thin
-operator adapter it carries serves the rest. Report a remaining mismatch as a
-gap rather than writing password, session or ownership code to close it.
+body declaration, protected with `auth: true`. Better Auth owns accounts,
+passwords and sessions; the browser signs in with Better Auth's own client
+against the auth mount. The trusted Node function reads the verified opaque
+caller id from `context.capabilities.auth.identity.userId` (a
+[request-bound capability](EXTENSIONS.md#request-bound-capabilities)) and
+implements only the application's rules; it never receives the cookie or an
+`Authorization` header. A `sandbox: true` route cannot name `auth`.
+Permissions are application data keyed by that id:
+[proofs/private-requests](../proofs/private-requests/README.md) is an
+end-to-end example with owners and a reviewer. A function that reads a session
+cookie, checks a password or compares a session token reimplements what auth
+already enforces.
 
 ## Agent skills
 
@@ -622,9 +595,7 @@ example) or verifies a signature must be a trusted route: declare
 the `webhook-receiver` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
-extension invokes (auth's `beforeRegister`, `beforeRoleChange`, `onAccountCreated`,
-`onAccountStatusChanged`, `onDeletionScheduled` and `onAccountDeleted`, forms'
-`onSubmit`, ui's `transformView` and the like) — it is
+extension invokes (forms' `onSubmit`, ui's `transformView` and the like) — it is
 first-party project code with the same trusted-by-default rule as a
 `function`/`middleware` route. Extension hook contract v1 is trusted-only;
 `sandbox: true` is rejected rather than silently ignored. See

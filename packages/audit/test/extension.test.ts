@@ -55,10 +55,8 @@ test('the definition shares the runtime schema, needs nothing and scaffolds conf
   assert.equal(scaffolded.files, undefined, 'the database is created on open');
   const notes = scaffolded.notes!.join('\n');
   assert.match(notes, /npx urlcode-audit backup/);
-  assert.match(notes, /after the auth backup/);
+  assert.match(notes, /urlcode-audit list/);
   assert.match(notes, /audit: true/);
-  assert.match(notes, /audit\.read/);
-  assert.match(notes, /audit\.export/);
 });
 
 test('composeHost and createRuntime activate audit from its declaration; a consumer records and drains through it', async t => {

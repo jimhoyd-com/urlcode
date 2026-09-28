@@ -142,7 +142,7 @@ export function shardMatrix(event: string, paths: string[] | null): { include: {
  * source can change installed behavior even when its manifest is unchanged.
  */
 export function packageSmokeRelevant(paths: string[] | null): boolean {
-  return !paths?.length || paths.some(path => !/^packages\/(ui|audit|abuse|mail|auth|admin|store|forms|form-records|mcp)\//.test(path));
+  return !paths?.length || paths.some(path => !/^packages\/(ui|audit|abuse|mail|auth|store|forms|form-records|mcp)\//.test(path));
 }
 
 /** Core tests, examples, drills, and dependency audit exercise the root
@@ -197,26 +197,23 @@ export function checksMatrix(event: string, paths: string[] | null): { include: 
   })) };
 }
 // `verify --workspace ...` for the extension packages, run one at a time
-// in a single job, put windows-latest workspaces close to 6 minutes: package
-// `auth`'s own suite (SQLite-backed, ~200 tests) alone was over half of that.
+// in a single job, put windows-latest workspaces close to 6 minutes.
 // One job per (leg, package) instead runs them in parallel; each still needs
 // its own install and the root build (packages import `@jimhoyd/urlcode`, the
 // workspace-linked root package, resolved through its built `dist/`).
-const WORKSPACE_PACKAGES = ['ui', 'audit', 'abuse', 'mail', 'auth', 'admin', 'store', 'forms', 'form-records', 'mcp'] as const;
+const WORKSPACE_PACKAGES = ['ui', 'audit', 'abuse', 'mail', 'auth', 'store', 'forms', 'form-records', 'mcp'] as const;
 // Cross-package `@jimhoyd/urlcode-*` build dependencies, in the build order
 // each package's own typecheck/build needs. They are transitive, because a
 // package's emitted declarations import its dependencies' declarations:
-// `auth` imports `ui`, `audit`, `mail` and `abuse` (and its recipe test `store`); `admin` imports `auth`
-// and so needs everything `auth` needs; `store` imports `ui` and `audit`;
+// `store` imports `ui` and `audit`;
 // `forms` imports `ui`, `abuse` and `mail`; `form-records` imports `forms`,
 // `store` and `ui` (which renders its list page), plus theirs. `ui`, `audit`,
-// `abuse`, `mail` and `mcp` only peer on core.
+// `abuse`, `mail`, `auth` and `mcp` only peer on core.
 // The serial script used to get this for free from running packages in order;
 // a package's own job now has to build its declared dependencies first.
 const WORKSPACE_DEPS: Record<string, readonly string[]> = {
   ui: [], audit: [], abuse: [], mail: [],
-  auth: ['ui', 'audit', 'mail', 'abuse', 'store'],
-  admin: ['ui', 'audit', 'mail', 'abuse', 'store', 'auth'],
+  auth: [],
   store: ['ui', 'audit'],
   forms: ['ui', 'abuse', 'mail'],
   'form-records': ['ui', 'audit', 'abuse', 'mail', 'forms', 'store'],
@@ -238,7 +235,7 @@ export function workspacePackages(paths: string[] | null): readonly string[] {
   if (!paths?.length) return WORKSPACE_PACKAGES;
   const changed = new Set<string>();
   for (const path of paths) {
-    const match = /^packages\/(ui|audit|abuse|mail|auth|admin|store|forms|form-records|mcp)\//.exec(path);
+    const match = /^packages\/(ui|audit|abuse|mail|auth|store|forms|form-records|mcp)\//.exec(path);
     if (!match) return WORKSPACE_PACKAGES;
     changed.add(match[1]!);
   }
@@ -252,7 +249,7 @@ export function workspacePackages(paths: string[] | null): readonly string[] {
   return WORKSPACE_PACKAGES.filter(pkg => selected.has(pkg));
 }
 
-const EXTENSION_PATH = /^packages\/(?:ui|audit|abuse|mail|auth|admin|store|forms|form-records|mcp)\//;
+const EXTENSION_PATH = /^packages\/(?:ui|audit|abuse|mail|auth|store|forms|form-records|mcp)\//;
 /**
  * The extension suites a pull request also runs on Windows Node 24 (#824).
  * Package tests used to run on Windows only in release coverage, so a Windows

@@ -4,8 +4,8 @@
 from it.** Declare an application's public URL surface in YAML, add JavaScript
 only where declarative handlers are not enough, and run the same
 project locally, in a container, on your own infrastructure or on a provider
-adapter. When the project gets serious, add accounts and an administration
-console as operator-installed extensions instead of building them again.
+adapter. When the project gets serious, add accounts, data and forms as
+operator-installed extensions instead of building them again.
 **URL behavior as code.**
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
@@ -130,11 +130,10 @@ rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
 | [ui](packages/ui) extension | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | add-on on core's GitHub Release |
-| [audit](packages/audit) extension | The durable audit log other extensions record privileged actions in, through a transactional outbox | add-on on core's GitHub Release |
+| [audit](packages/audit) extension | The durable audit log audited store collections record their writes in, through a transactional outbox | add-on on core's GitHub Release |
 | [abuse](packages/abuse) extension | Keyed budgets, backoff, a challenge provider and a honeypot helper for other extensions' flows | add-on on core's GitHub Release |
 | [mail](packages/mail) extension | Plain-text transactional email from contributed templates, through one operator transport | add-on on core's GitHub Release |
-| [auth](packages/auth) extension | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | add-on on core's GitHub Release |
-| [admin](packages/admin) extension | Administration: users, sessions, roles, the audit log, approvals, cases, impersonation | add-on on core's GitHub Release |
+| [auth](packages/auth) extension | Accounts and sessions from [Better Auth](https://better-auth.com/) on one mount; `auth: true` routes receive the signed-in user id | add-on on core's GitHub Release |
 | [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API, with optional audited writes | add-on on core's GitHub Release |
 | [forms](packages/forms) extension | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation, submission budgets and notifications | add-on on core's GitHub Release |
 | [form-records](packages/form-records) extension | Saves a declared form into an owned store collection, with a confirmation and a constrained edit page | add-on on core's GitHub Release |
@@ -165,26 +164,21 @@ for that retirement's history and migration note.
 ```yaml
 version: "1"
 extensions:
-  ui:    { version: "1", config: {} }
-  audit: { version: "1", config: {} }
-  mail:  { version: "1", config: {} }
-  auth:  { version: "1", config: { registration: "off" } }
-  admin: { version: "1", config: {} }
+  auth: { version: "1", config: {} }
 routes:
-  /go:          { redirect: { url: https://example.com, status: 302 } }
-  /assets/ui/*: { extension: ui,    methods: [GET, HEAD] }
-  /account/*:   { extension: auth,  methods: [GET, HEAD, POST] }
-  /admin/*:     { extension: admin, methods: [GET, HEAD, POST], auth: { onDeny: 404 } }
+  /go:         { redirect: { url: https://example.com, status: 302 } }
+  /api/auth/*: { extension: auth, methods: [GET, POST] }
   /private:
     respond: { text: Signed in }
-    policies: { extensions: { auth: {} } }
+    auth: true
 ```
 
 The YAML names logical extensions; it never names packages, code, databases
-or credentials. `urlcode init site --with ui,auth,admin --example` writes the route
-project in `site/app/` (with `--example`, a signed-in `/private` page like the
-one above; without it, only the extensions' own mounts), the operator host `site/host.mjs`, auth's keys and a
-private `data/` directory; `urlcode serve --host-file host.mjs` loads it. Cross-repository acceptance is tracked in
+or credentials. `urlcode init site --with auth` writes the route project in
+`site/app/` with auth's `/api/auth/*` mount, the operator host `site/host.mjs`
+and a private `data/auth.secret`; `npx urlcode-auth migrate` creates Better
+Auth's tables, and `urlcode serve --host-file host.mjs` loads it. Browsers sign
+in through Better Auth's own client. Cross-repository acceptance is tracked in
 [issue 58](https://github.com/jimhoyd-com/urlcode/issues/58).
 
 ## What it is
@@ -215,7 +209,7 @@ for the vocabulary these two paragraphs use.
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the `0.6.5` core release. The ui, auth, admin, store,
+This checkout prepares the `0.6.5` core release. The ui, audit, abuse, mail, auth, store,
 forms, form-records and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or
@@ -260,8 +254,8 @@ Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./my-links --dry-r
 then remove `--dry-run` to create missing modules, pages and directories. Existing
 files are preserved; code placeholders return 501 until implemented.
 [Scaffolding guide](docs/SCAFFOLDING.md). Node 22.13+ installed, 22.18+ to run
-the TypeScript source; the `auth` extension additionally needs a Node build with
-a patched bundled SQLite ([auth](packages/auth/README.md)).
+the TypeScript source. The `auth` extension runs on the Node target only
+([auth](packages/auth/README.md)).
 
 ## Everything else in YAML
 

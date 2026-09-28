@@ -130,7 +130,7 @@ production-gate list; other guides link here instead of repeating it.
   it on Linux with Node 24.
 - Core has no durable store, so the drill has no backup/restore or
   disk-exhaustion exercise. Extensions owning durable state own that proof:
-  `auth` ([backup and restore](AUTH-BACKUP.md)) and `store` ([store](STORE.md)).
+  `auth` ([auth](../packages/auth/README.md#add-it)) and `store` ([store](STORE.md)).
 
 ### Gates before production approval
 

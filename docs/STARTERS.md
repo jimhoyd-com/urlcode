@@ -123,9 +123,9 @@ that step.
 Add-ons are released with core `0.6.5` and pinned by it (see [package and
 channel alignment](VERSION-ALIGNMENT.md)). Add extensions to a site with
 `urlcode extensions add <name>`, or name them at creation: `urlcode init
-../my-site --with ui,auth,admin --example` writes the same site and then adds those
-extensions (`--example` also writes each one's demo, such as auth's signed-in
-`/private` page; without it only the capabilities are installed), installing each once with npm, writing its configuration into
+../my-site --with ui,auth,store --example` writes the same site and then adds those
+extensions (`--example` also writes each one's demo, such as the store's
+`todos` collection; without it only the capabilities are installed), installing each once with npm, writing its configuration into
 `app/urlcode.yaml`, its routes into `app/routes/<name>.yaml`, its operator files
 beside `host.mjs`, and one line each in `host.mjs`. Name the set in any order;
 each extension brings what it requires. A writable `store` without `auth`

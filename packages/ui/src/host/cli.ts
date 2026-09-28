@@ -22,8 +22,8 @@ urlcode-ui copy --missing LANG --project DIR --copy DIR [--languages en,fr]   pr
 
 Every command takes --extensions PKG,PKG to add the namespaces peer extension
 packages contribute to ui (the contributes.ui value of each package's
-./extension definition; --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin), so
-auth/* and admin/* templates and their copy are listed, ejected, previewed and
+./extension definition), so
+their templates and copy are listed, ejected, previewed and
 checked as the host that registers them sees them. Each package is resolved
 from --project with Node package resolution; one that is not installed there is
 skipped.

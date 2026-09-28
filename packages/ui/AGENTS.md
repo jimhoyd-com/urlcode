@@ -15,13 +15,12 @@
   namespace is only in that report when its package is named in `--extensions`,
   so keep `scaffold`'s generated commands naming the peers a site composes.
 - Run `npm run verify`. Escaping, URL validation, CSP and limits need tests.
-- Public export changes need a packed consumer test with core, auth and admin.
+- Public export changes need a packed consumer test with core and the extensions that require ui.
 
 ## File what you find
 
 Do not drop a defect, a gap or an idea you could not act on. Runtime, CLI and
-schema, accounts and protected routes, users and audit, extension page styling
-and copy all live in this one repository now, so file everything against
+schema, protected routes, audit, extension page styling and copy all live in this one repository now, so file everything against
 [urlcode](https://github.com/jimhoyd-com/urlcode/issues), using its issue
 templates.
 

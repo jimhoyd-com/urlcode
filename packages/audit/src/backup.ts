@@ -1,4 +1,4 @@
-// Online backup and restore of the audit database, ported from auth's backup (format urlcode-audit-sqlite-v1).
+// Online backup and restore of the audit database, (format urlcode-audit-sqlite-v1).
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { DatabaseSync, backup } from 'node:sqlite';
 import { open, lstat, stat, realpath, mkdtemp, rm, link } from 'node:fs/promises';

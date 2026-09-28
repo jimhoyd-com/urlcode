@@ -4,8 +4,8 @@ Status: released as a tarball on core's GitHub Release at core's version,
 pinned by sha512 in core's `dist/addons.json` and installed with
 `urlcode extensions add ui` ([add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 The current source version is in `package.json`; [version
-alignment](../../docs/VERSION-ALIGNMENT.md) records it. The source is complete; integration review with core, auth and
-admin — now siblings in this repository — is pending, and the items below remain.
+alignment](../../docs/VERSION-ALIGNMENT.md) records it. The source is complete; integration review with core and the
+extensions that require it — siblings in this repository — is pending, and the items below remain.
 
 The original design spike is private maintainer material; this page is the
 contract for what shipped. Cross-repository acceptance:
@@ -31,13 +31,14 @@ The registration now publishes machine-readable authoring surfaces and fast
 checks. Project hooks cover both per-template view transformation and the shared
 page shell (`title`, `layout`, navigation, account menu and flash), while the kit
 continues to own CSP, headers, scripts and rendering. This lets people and
-agents customize one application without forking the UI, auth or admin package.
+agents customize one application without forking the UI or an extension package.
 
-Adoption follow-ups from auth (#11) and admin (#12): extension-owned scripts
+Adoption follow-ups from the former auth and admin packages (#11, #12):
+extension-owned scripts
 in `PageOptions.scripts` with the page nonce; `targets` typed as core's
 literal `TargetName` union; the kit catalogue completed by default in
 `createKit`; per-source catalogue bounds (1024 per source, 4096 in all) so
-auth's and admin's catalogues register together; the console layout classes
+several extensions' catalogues register together; the console layout classes
 in `kitCss`; navigation icons (`nav@2`) and the `compact` and `application`
 layouts rendered through `layout@3`, whose application branch renders the
 console shell (sidebar, content region, page header) from `nav`, `menu` and
@@ -45,9 +46,10 @@ console shell (sidebar, content region, page header) from `nav`, `menu` and
 
 ## Remaining release acceptance
 
-Kit adoption is implemented in auth (`71957dd`, `src/auth-ui.ts`) and admin
-(`f3b4882`, `src/admin-ui.ts`): both render package templates through the kit
-when the host supplies it. Shared primitives remain supported without the kit.
+No first-party extension contributes ui templates now: the auth and admin
+packages that did were replaced (auth by a Better Auth adapter with no pages)
+or deleted (admin). forms, form-records and the store's screens render through
+the kit. Shared primitives remain supported without the kit.
 Shared form/deadline helpers live in `src/forms.ts`. The `ui` registration
 declares `immutableAssets: { prefix: '/static' }` (core PR #93), so the
 runtime serves the kit's hashed assets under `<mount>/static/` with `public,

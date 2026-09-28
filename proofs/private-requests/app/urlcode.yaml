@@ -1,7 +1,7 @@
 version: "1"
 extensions:
-  # Provider settings (secret, database, enabled endpoints) live in the operator's host.mjs, not here.
-  better-auth: {version: "1", config: {}}
+  # Provider settings (secret, database, enabled endpoints) belong to the operator's host.mjs and data/, not here.
+  auth: {version: "1", config: {}}
 routes:
   /:
     description: The single-page frontend; it signs in through Better Auth's own client.
@@ -10,13 +10,13 @@ routes:
     description: The frontend's script and stylesheet; app.js is built by npm run build.
     static: {directory: public/assets}
   /api/auth/*:
-    description: Better Auth's own endpoints. The operator host decides which ones are enabled; npm run inventory lists them.
-    extension: better-auth
+    description: Better Auth's own endpoints. @jimhoyd/urlcode-auth serves an exact allowlist; npm run inventory lists it.
+    extension: auth
     methods: [GET, POST]
   /api/me:
     description: The signed-in user's opaque id and whether this application lets them review.
     methods: [GET]
-    policies: {extensions: {better-auth: {}}}
+    auth: true
     env: {APP_DATABASE: {env: APP_DATABASE}}
     sandboxReason: Opens the application's SQLite database in trusted Node.
     function: {source: functions/me.mjs}
@@ -25,7 +25,7 @@ routes:
     methods: [GET, POST]
     parameters:
       - {in: query, name: status, schema: {type: string, enum: [pending, approved]}}
-    policies: {extensions: {better-auth: {}}}
+    auth: true
     request:
       body:
         maxBytes: 8192
@@ -46,7 +46,7 @@ routes:
     methods: [GET]
     parameters:
       - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
-    policies: {extensions: {better-auth: {}}}
+    auth: true
     env: {APP_DATABASE: {env: APP_DATABASE}}
     sandboxReason: Opens the application's SQLite database in trusted Node.
     function: {source: functions/request.mjs}
@@ -55,14 +55,14 @@ routes:
     methods: [POST]
     parameters:
       - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
-    policies: {extensions: {better-auth: {}}}
+    auth: true
     env: {APP_DATABASE: {env: APP_DATABASE}}
     sandboxReason: Opens the application's SQLite database in trusted Node.
     function: {source: functions/approve.mjs}
   /api/review/pending:
     description: Every pending request, for reviewers only.
     methods: [GET]
-    policies: {extensions: {better-auth: {}}}
+    auth: true
     env: {APP_DATABASE: {env: APP_DATABASE}}
     sandboxReason: Opens the application's SQLite database in trusted Node.
     function: {source: functions/pending.mjs}

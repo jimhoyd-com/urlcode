@@ -175,7 +175,7 @@ export function renderReference(source: ExtensionSource): string {
   if (descriptor.policySchema) {
     const policy = rows(descriptor.policySchema), rules = rulesOf(descriptor.policySchema as Schema);
     out.push('', `### Route policy: \`policies.extensions.${name}\``, '');
-    if (name === 'auth') out.push('A route may write this as the `auth:` short form: `auth: true` is `{}`, and an object is the same keys.', '');
+    if (name === 'auth') out.push('A route may write this as the `auth:` short form: `auth: true` is `{}`.', '');
     out.push(table(`policies.extensions.${name}.`, policy));
     if (rules) out.push('', `Whole-policy rules: ${cell(rules)}.`);
   }

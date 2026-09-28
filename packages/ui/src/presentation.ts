@@ -83,7 +83,7 @@ function themeCss(theme: ThemeVariables = {}): string {
 }
 /**
  * Bounds for one effective catalogue (the merged English defaults, or one
- * language): the kit, auth and admin catalogues together stay well under them,
+ * language): the kit's and extensions' catalogues together stay well under them,
  * and every message is still bounded on its own. Sources merged through
  * `mergeCatalogues` are bounded per source by `catalogueLimits.sourceKeys`.
  */

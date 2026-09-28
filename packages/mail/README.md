@@ -80,7 +80,7 @@ export default defineExtension({
 
 - `namespace` must be the contributing extension's own name. `composeHost` stamps each contribution with the name of
   the extension that contributed it (`{from, value}`, which the value cannot override), and mail's `host()` refuses a
-  namespace that differs from it: `Mail namespace "auth" is contributed by extension "notifier": an extension
+  namespace that differs from it: `Mail namespace "forms" is contributed by extension "notifier": an extension
   contributes mail templates only under its own name`. `composeHost` reports that as a `ConfigError` for extension
   `mail`. A consumer sends only templates in its own namespace (a documented rule: `send()` does not know its caller).
 - Calling `createMail()` directly (outside `composeHost`), pass `contributions` in the same stamped shape:
@@ -108,18 +108,10 @@ The rendered text is at most 16384 characters.
 
 | Namespace | Keys | Slots |
 |---|---|---|
-| `auth` | `verify-email`, `reset-password`, `cancel-deletion`, `verify-email-change`, `cancel-email-change`, `invitation`, `manual-recovery`, `account-setup` | `link: token-link` |
-| `auth` | `sign-in-code` | `link: token-link`, `code: code` |
-| `auth` | `signup-code` | `link: page-link`, `code: code` |
-| `auth` | `factor-recovery` | `link`, `cancelLink`: `token-link` |
-| `auth` | `manual-recovery-warning` | none |
-| `auth` | `new-device`, `password-changed`, `email-changed`, `registration-attempt` and the nine `admin-*` notices | `link: page-link` |
-| `auth` | `impersonation-started` | `reason: text`, `link: page-link` |
 | `forms` | `submission` | `flow: text`, `summary: text` |
 
-Auth sends every account message, including the ones an administrator starts, so a raw token never leaves auth.
-Admin contributes no templates. The auth and forms contributions land with those packages; this table is their
-contract with mail.
+forms is the only first-party contributor; auth sends no mail (Better Auth owns accounts, and its email flows
+are not included). The forms contribution lands with that package; this table is its contract with mail.
 
 ## Change the wording or translate
 
@@ -127,7 +119,7 @@ List a copy file per locale under `extensions.mail.config.copy`. Each file is a 
 `<namespace>.<key>`:
 
 ```json
-{ "auth.reset-password": { "subject": "Réinitialisez votre mot de passe", "text": "Ouvrez ce lien :\n\n{link}\n\nNe partagez jamais ce lien." } }
+{ "forms.submission": { "subject": "Nouvelle réponse au formulaire", "text": "Un visiteur a envoyé le formulaire « {flow} ».\n\n{summary}" } }
 ```
 
 - Paths match `mail/copy/<name>.json`, resolve against the site directory (beside host.mjs) and must stay inside it

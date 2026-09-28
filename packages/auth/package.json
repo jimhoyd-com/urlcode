@@ -2,7 +2,7 @@
   "name": "@jimhoyd/urlcode-auth",
   "version": "0.6.5",
   "type": "module",
-  "description": "Operator-installed authentication extension for URLCode: accounts, sessions, passkeys, OIDC, TOTP and trusted account pages",
+  "description": "Operator-installed authentication extension for URLCode: Better Auth accounts and sessions on one mount",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -16,8 +16,7 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "pretest": "node scripts/check-sqlite.mjs",
-    "test": "node --conditions=development --test --test-timeout=300000 test/*.test.ts",
+    "test": "node --conditions=development --test test/*.test.ts",
     "verify": "npm run typecheck && npm run build && npm test"
   },
   "exports": {
@@ -36,46 +35,18 @@
     "README.md",
     "LICENSE",
     "NOTICE",
-    "SECURITY.md",
-    "THIRD_PARTY_NOTICES.md"
+    "SECURITY.md"
   ],
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
-    "@jimhoyd/urlcode-abuse": "file:../abuse",
-    "@jimhoyd/urlcode-audit": "file:../audit",
-    "@jimhoyd/urlcode-mail": "file:../mail",
-    "@jimhoyd/urlcode-store": "file:../store",
-    "@jimhoyd/urlcode-ui": "file:../ui",
     "@types/node": "26.6.2",
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "@simplewebauthn/server": "14.0.2",
-    "bcryptjs": "3.0.3",
-    "jose": "6.2.12",
-    "openid-client": "6.8.8",
-    "otpauth": "9.5.2"
+    "better-auth": "1.7.6"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.5",
-    "@jimhoyd/urlcode-abuse": "0.6.5",
-    "@jimhoyd/urlcode-audit": "0.6.5",
-    "@jimhoyd/urlcode-mail": "0.6.5",
-    "@jimhoyd/urlcode-ui": "0.6.5"
-  },
-  "peerDependenciesMeta": {
-    "@jimhoyd/urlcode-abuse": {
-      "optional": true
-    },
-    "@jimhoyd/urlcode-audit": {
-      "optional": true
-    },
-    "@jimhoyd/urlcode-mail": {
-      "optional": true
-    },
-    "@jimhoyd/urlcode-ui": {
-      "optional": true
-    }
+    "@jimhoyd/urlcode": "0.6.5"
   },
   "bin": {
     "urlcode-auth": "./dist/cli.js"

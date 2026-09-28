@@ -278,8 +278,7 @@ cannot reach a call another request is running.
 
 ## Protecting a mount
 
-Add `auth: true` (or a specific `auth: {role: ...}`) to the route like any
-other extension mount, when tool calls require a signed-in caller. The
+Add `auth: true` to the route like any other extension mount, when tool calls require a signed-in caller. The
 extension has no identity or authorization model of its own.
 
 ## What this implements

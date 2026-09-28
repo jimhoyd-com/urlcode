@@ -1,17 +1,15 @@
 // Trusted operator host: keep it outside app/ and review it like any other code you deploy.
-// Better Auth is built here from operator configuration; the application declares only the mount and the routes it protects.
+// Better Auth is configured here by the operator; the application declares only the mount and the routes it protects.
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { composeHost } from '@jimhoyd/urlcode/host';
-import { createAuth, dataDirectory, enabledPaths } from './operator/auth.mjs';
-import betterAuth from '@example/urlcode-better-auth/extension';
+import auth from '@jimhoyd/urlcode-auth/extension';
+import { authFiles, providerOptions } from './operator/auth.mjs';
 
-const site = fileURLToPath(new URL('.', import.meta.url));
-// Must equal the --origin the CLI is given; the adapter refuses to activate otherwise.
-const origin = process.env.SITE_ORIGIN ?? 'http://localhost:4180';
+const { data, database, secretFile } = authFiles(fileURLToPath(new URL('.', import.meta.url)));
 // The application database the routes' APP_DATABASE binding names; operator/policy.json must still grant it.
-process.env.APP_DATABASE ??= join(dataDirectory(site), 'app.db');
+process.env.APP_DATABASE ??= join(data, 'app.db');
 
 export default await composeHost(import.meta.url, [
-  betterAuth({ auth: createAuth({ site, origin }), paths: enabledPaths }),
+  auth({ database, secretFile, betterAuth: providerOptions }),
 ]);

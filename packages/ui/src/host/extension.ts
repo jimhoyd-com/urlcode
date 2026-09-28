@@ -64,7 +64,7 @@ const colors = colorSchemes('');
 export const uiHookContracts = [{
     name: 'transformView', kind: 'filter',
     description: 'Runs before a named kit template renders and returns the view model to render.',
-    inputSchema: { type: 'object', additionalProperties: false, required: ['template', 'view'], properties: { template: { type: 'string', description: 'Name of the template about to render, for example auth/sign-in.' }, view: { type: 'object', description: 'The view model; return it, changed or not, as the model to render.' } } },
+    inputSchema: { type: 'object', additionalProperties: false, required: ['template', 'view'], properties: { template: { type: 'string', description: 'Name of the template about to render, for example layout.' }, view: { type: 'object', description: 'The view model; return it, changed or not, as the model to render.' } } },
     outputSchema: { type: 'object' },
 }, {
     name: 'transformPage', kind: 'filter',
@@ -73,17 +73,17 @@ export const uiHookContracts = [{
     outputSchema: { type: 'object' },
 }] as const satisfies readonly ExtensionHookContract[];
 export const uiAuthoring: ExtensionAuthoringContract = Object.freeze({
-    description: 'Keep the site as one application: customize the installed UI in the project and keep auth/admin behavior in their packages. Use a new extension only for a capability the installed extensions do not provide.',
+    description: 'Keep the site as one application: customize the installed UI in the project and keep each extension\'s behavior in its package. Use a new extension only for a capability the installed extensions do not provide.',
     surfaces: Object.freeze([
         { kind: 'theme' as const, name: 'theme', description: 'Set brand name, local assets, semantic light/dark colours, radius and font in extensions.ui.config.theme.', path: 'urlcode.yaml#extensions.ui.config.theme' },
         { kind: 'copy' as const, name: 'copy', description: 'Override or translate catalogue entries without copying a screen.', path: 'ui/copy/<locale>.json' },
-        { kind: 'template' as const, name: 'templates', description: 'Override only the screen or shared partial whose structure must change; doctor reports view-model drift.', path: 'ui/templates/<name>.html', command: 'urlcode-ui list --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin' },
+        { kind: 'template' as const, name: 'templates', description: 'Override only the screen or shared partial whose structure must change; doctor reports view-model drift.', path: 'ui/templates/<name>.html', command: 'urlcode-ui list --project .' },
         { kind: 'stylesheet' as const, name: 'stylesheet', description: 'Append project CSS after the shared stylesheet; use semantic shadcn tokens and existing ui-* component classes.', path: 'ui/extra.css' },
         { kind: 'hook' as const, name: 'transformView', description: 'Add computed project data to a named view immediately before its template renders.', path: 'extensions.ui.config.hooks.transformView' },
         { kind: 'hook' as const, name: 'transformPage', description: 'Customize the shared page shell, navigation, account menu and flash immediately before layout rendering.', path: 'extensions.ui.config.hooks.transformPage' },
     ]),
     fastChecks: Object.freeze([
-        'urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css',
+        'urlcode-ui doctor --project . --copy ui/copy --templates ui/templates --stylesheet ui/extra.css',
         'urlcode validate --local',
     ]),
 });

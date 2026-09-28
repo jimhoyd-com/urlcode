@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { access, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -83,12 +83,12 @@ async function copies(dir: string, name: string): Promise<number> {
 test('every extension installs once, composes, serves, and removes in dependency order', { timeout: 900000 }, async t => {
   const { dir } = await site(t);
   const all = (await addons()).filter(addon => addon.kind === 'extension').map(addon => addon.name);
-  // --example reproduces the demos a new user expects: /api/todos and /todos, /contact, /private and /todo-form (#711, #529).
+  // --example reproduces the demos a new user expects: /api/todos and /todos, /contact and /todo-form (#711, #529).
   const added = await urlcode(t, dir, ['extensions', 'add', ...all, '--example']);
   assert.equal(added.status, 0, added.stderr);
   const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string; examples: string[] };
   assert.deepEqual([...result.added].sort(), [...all].sort());
-  assert.deepEqual([...result.examples].sort(), ['auth', 'form-records', 'forms', 'store']);
+  assert.deepEqual([...result.examples].sort(), ['form-records', 'forms', 'store']);
   for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
   const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
@@ -98,18 +98,19 @@ test('every extension installs once, composes, serves, and removes in dependency
   assert.equal(todos.collections.todos.ownership, 'owner');
   // audit is installed in the same command too, so the example collection records its writes.
   assert.equal((todos.collections.todos as { audit?: boolean }).audit, true);
-  // The console carries auth's policy, which hides it from anyone who is not signed in with a console permission.
-  // (core expands the `auth:` short form into policies.extensions.auth when it loads the document.)
+  // The store example's JSON mount is signed-in only (core expands `auth: true` into policies.extensions.auth).
   const routes = (await loadDocument(join(dir, 'app'))).routes as Record<string, { policies?: { extensions?: Record<string, unknown> | false } }>;
-  assert.deepEqual((routes['/admin/*']?.policies?.extensions || {}).auth, { onDeny: 404 });
+  assert.deepEqual((routes['/api/todos/*']?.policies?.extensions || {}).auth, {});
   // abuse's HMAC key is scaffolded with the site; its counters database only appears once a host runs.
   await access(join(dir, 'data', 'abuse.key'));
 
+  // Better Auth's tables are an explicit operator step; auth refuses to activate without them.
+  operatorCli(t, dir, 'urlcode-auth', ['migrate'], {});
   // Static validation needs no host, and the full runtime activates every extension through composeHost.
   const staticCheck = await urlcode(t, dir, ['validate', '--project', 'app']);
   assert.equal(staticCheck.status, 0, staticCheck.stderr);
   assert.equal((JSON.parse(staticCheck.stdout) as { static: boolean }).static, true);
-  const env = { PROJECT_SHA256: result.projectSha256, AUTH_ORIGIN: 'https://site.example' };
+  const env = { PROJECT_SHA256: result.projectSha256 };
   const full = await urlcode(t, dir, ['validate', '--project', 'app', '--host-file', 'host.mjs', '--origin', 'https://site.example'], env);
   assert.equal(full.status, 0, full.stderr);
 
@@ -126,22 +127,21 @@ test('every extension installs once, composes, serves, and removes in dependency
   try {
     // /todos is the store's own screen, contributed to ui (#709); signed-in only, so it redirects rather than 404s.
     // /todo-form is form-records' example, saving into the store example's owned todos (#529); signed-in only too.
-    for (const path of ['/account/login', '/api/todos', '/todos', '/contact', '/private', '/todo-form']) {
+    for (const path of ['/api/auth/ok', '/api/todos', '/todos', '/contact', '/todo-form']) {
       const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
       assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
     }
-    // Admin hides itself from anyone who is not a signed-in administrator; an extension mount is always no-store.
-    const admin = await fetch(`http://127.0.0.1:${server.address.port}/admin/`, { redirect: 'manual' });
-    assert.equal(admin.status, 404);
-    assert.match(admin.headers.get('cache-control') ?? '', /no-store/);
+    // An extension mount is always no-store, and Better Auth answers only its allowlisted paths.
+    const mount = await fetch(`http://127.0.0.1:${server.address.port}/api/auth/update-user`, { redirect: 'manual' });
+    assert.equal(mount.status, 404);
+    assert.match(mount.headers.get('cache-control') ?? '', /no-store/);
 
-    // Real auth in front of the two `auth: {csrf: origin}` mounts: a signed-in HTML form POST (forms verifies its own
-    // token) and a JSON write, both with the session cookie and no x-csrf-token header.
-    const credentials = { email: 'owner@site.example', password: 'integration owner passphrase' };
-    operatorCli(t, dir, 'urlcode-auth', ['bootstrap', '--operator-file', join(dir, 'operator-service.mjs')], credentials);
+    // Better Auth in front of the two `auth: true` mounts: a signed-in HTML form POST (forms verifies its own token)
+    // and a JSON write, both with the session cookie from Better Auth's own sign-in.
+    const credentials = { email: 'owner@site.example', password: 'integration owner passphrase', name: 'Owner' };
+    operatorCli(t, dir, 'urlcode-auth', ['create-user'], credentials);
     const send = browser(`http://127.0.0.1:${server.address.port}`, 'https://site.example');
-    const csrf = (await (await send('/account/csrf', { headers: { accept: 'application/json' } })).json() as { csrf: string }).csrf;
-    const login = await send('/account/login', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'x-csrf-token': csrf }, body: JSON.stringify(credentials) });
+    const login = await send('/api/auth/sign-in/email', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ email: credentials.email, password: credentials.password }) });
     assert.equal(login.status, 200, await login.text());
     const created = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'first' }) });
     assert.equal(created.status, 201, await created.text());
@@ -174,59 +174,13 @@ test('every extension installs once, composes, serves, and removes in dependency
     assert.ok(listed.events.length >= 1, 'a store.record.created event is queryable through urlcode-audit list');
   } finally { await server.close(); await host.close(); }
 
+  // auth cannot be removed while other routes still protect themselves with it.
   const refused = await urlcode(t, dir, ['extensions', 'remove', 'auth']);
   assert.notEqual(refused.status, 0);
-  assert.match(refused.stderr + refused.stdout, /admin.* require.* auth/);
-  const removed = await urlcode(t, dir, ['extensions', 'remove', 'admin']);
+  assert.match(refused.stderr + refused.stdout, /still uses auth/);
+  const removed = await urlcode(t, dir, ['extensions', 'remove', 'mcp']);
   assert.equal(removed.status, 0, removed.stderr);
-  assert.doesNotMatch(await readFile(join(dir, 'host.mjs'), 'utf8'), /urlcode-admin/);
-});
-
-test('installed authenticated-handlers recipe runs with generated native auth and unchanged package imports', { timeout: 900000 }, async t => {
-  const { dir } = await site(t);
-  const added = await urlcode(t, dir, ['extensions', 'add', 'auth']);
-  assert.equal(added.status, 0, added.stdout + added.stderr);
-  const { manifest } = await pack();
-  const installedCli = join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js');
-  const installed = (args: string[], env: Record<string, string> = {}) => {
-    const result = spawnSync(process.execPath, [installedCli, ...args, '--json'], {
-      cwd: dir, encoding: 'utf8', timeout: 600000,
-      env: { ...process.env, URLCODE_ADDONS: manifest, ...env },
-    });
-    t.diagnostic(`installed urlcode ${args.join(' ')} -> ${result.status}`);
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-    // Audit emits check events before its final report; other commands may pretty-print one object.
-    try { return JSON.parse(result.stdout); }
-    catch { return JSON.parse(result.stdout.trim().split('\n').at(-1)!); }
-  };
-  await rename(join(dir, 'app'), join(dir, 'app-initial'));
-  installed(['recipes', 'add', 'authenticated-handlers', '--out', 'app']);
-  const handlers = await Promise.all(['me', 'echo'].map(name => readFile(join(dir, 'app', 'functions', `${name}.mjs`), 'utf8')));
-  for (const source of handlers) assert.match(source, /from '@jimhoyd\/urlcode-auth'/);
-  const exported = spawnSync(process.execPath, ['--input-type=module', '-e',
-    "import {sessionUserId} from '@jimhoyd/urlcode-auth'; if(sessionUserId(new Request('https://example.test')) !== null) process.exit(1);"],
-    {cwd: dir, encoding: 'utf8', timeout: 120000});
-  assert.equal(exported.status, 0, exported.stdout + exported.stderr);
-  for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-mail']) {
-    assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
-  }
-  const operator = join(dir, 'operator-service.mjs'), source = await readFile(operator, 'utf8');
-  assert.match(source, /registrationMode: 'off'/);
-  await writeFile(operator, source.replace("registrationMode: 'off'", "registrationMode: 'open'"));
-  const revision = installed(['extensions', '--project', 'app']).projectSha256 as string;
-  assert.match(revision, /^[a-f0-9]{64}$/);
-  const env = {PROJECT_SHA256: revision, AUTH_ORIGIN: 'https://api.example.com'};
-  const host = ['--project', 'app', '--host-file', 'host.mjs', '--origin', 'https://api.example.com'];
-  installed(['validate', '--local', ...host], env);
-  const first = installed(['test', ...host], env);
-  assert.ok(first.total >= 30);
-  assert.equal(first.failed, 0);
-  // New CLI processes reopen the same generated host and data; no reset hides repeat-run failures.
-  assert.deepEqual(installed(['test', ...host], env), first);
-  const audited = installed(['audit', '--expect-routes', '4', ...host], env);
-  assert.equal(audited.ready, true);
-  assert.equal(audited.failed, 0);
-  assert.deepEqual(await Promise.all(['me', 'echo'].map(name => readFile(join(dir, 'app', 'functions', `${name}.mjs`), 'utf8'))), handlers);
+  assert.doesNotMatch(await readFile(join(dir, 'host.mjs'), 'utf8'), /urlcode-mcp/);
 });
 
 test('a blank install adds every capability and no sample endpoint (#711)', { timeout: 900000 }, async t => {
@@ -237,9 +191,10 @@ test('a blank install adds every capability and no sample endpoint (#711)', { ti
   const result = JSON.parse(added.stdout) as { projectSha256: string; examples: string[] };
   assert.deepEqual(result.examples, []);
   const routes = Object.keys((await loadDocument(join(dir, 'app'))).routes).sort();
-  // Only the capabilities are mounted: ui's assets, auth's account pages and admin's console.
-  assert.deepEqual(routes, ['/account/*', '/admin/*', '/assets/ui/*']);
-  const env = { PROJECT_SHA256: result.projectSha256, AUTH_ORIGIN: 'https://site.example' };
+  // Only the capabilities are mounted: ui's assets and the Better Auth mount.
+  assert.deepEqual(routes, ['/api/auth/*', '/assets/ui/*']);
+  operatorCli(t, dir, 'urlcode-auth', ['migrate'], {});
+  const env = { PROJECT_SHA256: result.projectSha256 };
   const full = await urlcode(t, dir, ['validate', '--project', 'app', '--host-file', 'host.mjs', '--origin', 'https://site.example'], env);
   assert.equal(full.status, 0, full.stderr);
   // --ack only applies to the store example, so a blank add refuses it as having no effect.

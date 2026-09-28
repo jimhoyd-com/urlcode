@@ -24,7 +24,7 @@ without it, the same as every other package under `packages/`.
 
 ## What mail does not do
 
-- It does not decide who may receive what. Consumers (auth, forms) own account enumeration defenses, rate limits
+- It does not decide who may receive what. Consumers (such as forms) own enumeration defenses, rate limits
   and whether a failed delivery is visible to the requester.
 - It does not know which extension calls `send()`. `MailExports` is one shared object, so a consumer sending only
   templates in its own namespace is a documented rule, not an enforced one. Extensions are operator code.

@@ -78,7 +78,7 @@ An optional `onSubmit` lifecycle hook is trusted project code, exactly like a
 normal unsandboxed project function; `sandbox: true` is refused by the generic
 extension-hook contract. It should not expose submitted values, and any durable
 or remote side effect must be idempotent because a client can retry a valid
-POST. Put a mount behind `auth: {csrf: origin}` (never `auth: true`, whose token mode refuses every form POST) where its
+POST. Put a mount behind `auth: true` where its
 submissions require an account; the form extension does not create identities,
 ownership rules or storage.
 

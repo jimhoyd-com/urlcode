@@ -71,19 +71,15 @@ curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://
 ```
 
 With `auth` installed (`--with ui,auth,store --example` in any order, or `urlcode
-extensions add auth` before `store --example`) the example adds `auth: {csrf:
-origin}` to the API mount and `auth: true` to the screen, so only signed-in
-callers reach either, and declares the `todos` collection `ownership: owner`, so
-each signed-in user sees and changes only their own todos
-([per-record ownership](#per-record-ownership)); no acknowledgement is needed.
-`csrf: origin` admits the API's JSON writes on same-origin provenance and the
-session cookie instead of auth's session-bound token header, which the screen's
-script does not send; the store accepts only JSON, which a cross-site browser
-cannot send without a preflight ([CSRF on protected
-routes](EXTENSIONS.md#csrf-on-protected-routes-csrf-token--origin)). Auth
-installs `audit`, so the example collection also declares `audit: true`
-([audited writes](#audited-writes)). Without `auth` the example collection stays shared,
-because there is no principal to own a record.
+extensions add auth` before `store --example`) the example adds `auth: true` to
+the API mount and to the screen, so only signed-in callers reach either, and
+declares the `todos` collection `ownership: owner`, so each signed-in user sees
+and changes only their own todos ([per-record ownership](#per-record-ownership));
+no acknowledgement is needed. `auth: true` admits the API's JSON writes with the
+session cookie and same-origin provenance, and refuses a cross-origin write with
+`403`. When `audit` is installed too, the example collection also declares
+`audit: true` ([audited writes](#audited-writes)). Without `auth` the example
+collection stays shared, because there is no principal to own a record.
 
 Without `auth` the mount would be a public writable endpoint, so adding `store`
 (with or without `ui`) refuses, rolls back, and names the two ways forward: add
@@ -325,18 +321,13 @@ routes:
   /api/notes/*:
     extension: store
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
-    auth: {csrf: origin}           # required: a principal-providing policy
+    auth: true                     # required: a principal-providing policy
 ```
 
 The owner is the request's **principal**: an opaque, stable id that a
 principal-providing extension on the mount's route sets from its `authorize()`
 ([request principal](EXTENSIONS.md#request-principal)). With `auth` that is the
-signed-in user's id, or for a
-[bearer key](EXTENSIONS.md#bearerapi-key-routes) either the id of the user the
-operator issued it for (`userId`, so its records belong to that user and survive
-rotating the key) or, for a service key with no user, `apikey:<key id>` (records
-it creates belong to that key; [move them](#moving-records-to-another-principal)
-when the key is replaced). The store never reads a
+signed-in user's Better Auth id. The store never reads a
 cookie, header or auth table itself, and it compares the id for equality only.
 
 On an owned collection:
@@ -371,8 +362,7 @@ so size `maxRecords` for them); all owners' records share
 one file, one lock and one write sequence; the store is still trusted operator
 code on one host, not a hostile multi-tenant boundary; and backups copy every
 owner's records together. Access by an operator or support role to another
-user's records is not modelled: auth's impersonation gives the impersonated
-user's principal, so an impersonating operator acts on that user's records.
+user's records is not modelled.
 
 ### Per-owner record limit
 
@@ -428,8 +418,8 @@ npx urlcode-store ownerless-delete --directory /srv/site/data/store --collection
 ```
 
 Each prints `{collection, records, ownerless, ids}` as JSON. `--owner` takes a
-principal id exactly as the provider sets it (for auth, the user's id from
-`urlcode-auth users`, or `apikey:<key id>`). The same operations are exported
+principal id exactly as the provider sets it (for auth, the user's Better Auth
+id). The same operations are exported
 from the package as `reportOwnerless`, `assignOwnerless` and `deleteOwnerless`.
 
 Going back is refused: a collection declared shared whose file holds records
@@ -442,21 +432,21 @@ one-way change for older releases.
 ### Moving records to another principal
 
 Records belong to the principal that created them. When that principal is
-replaced, for example a service API key (`apikey:<key id>`) that is rotated or
-revoked, its records stay in the file but nobody can reach them. With the server
+replaced, for example a user account that is recreated under a new id, its
+records stay in the file but nobody can reach them. With the server
 stopped, the operator moves them
 ([#732](https://github.com/jimhoyd-com/urlcode/issues/732)); run `--dry-run`
 first to see the counts:
 
 ```sh
 npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
-  --from apikey:<old key id> --to apikey:<new key id> --dry-run
+  --from <old principal id> --to <new principal id> --dry-run
 npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
-  --from apikey:<old key id> --to apikey:<new key id>
+  --from <old principal id> --to <new principal id>
 ```
 
 - `--from` and `--to` are principal ids exactly as the provider sets them (for
-  auth, a user's id from `urlcode-auth users`, or `apikey:<key id>`), validated
+  auth, a user's Better Auth id), validated
   with the same pattern core applies to a principal. The two must differ.
 - `--project` is the site's route project (the `app/` directory). The command
   reads it through core's project loader to learn which collections are
@@ -484,10 +474,7 @@ npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/
 
 The same operation is exported as `reassignOwner(directory, {from, to,
 collections, collection?, dryRun?})`, where `collections` is the declared
-`extensions.store.config.collections`. A key that should keep a user's records
-across rotation can be issued for that user in the first place
-([keys that act for a user](../packages/auth/README.md#keys-that-act-for-a-user));
-then no move is needed.
+`extensions.store.config.collections`.
 
 ## Audited writes
 
@@ -497,10 +484,10 @@ and declared (the store `uses` it); without it, activation refuses:
 `collection <name> declares audit: true; install the audit extension (urlcode
 extensions add audit)`.
 
-Audit's retention is one count shared with auth's privileged events, so writes
+Audit's retention is one count shared by every audited collection, so writes
 that need no credentials must not be able to fill it. An audited collection's
 mount must therefore be guarded by a principal-providing policy (for example
-`auth: {csrf: origin}`), or activation refuses: `Collection <name>: audit: true
+`auth: true`), or activation refuses: `Collection <name>: audit: true
 needs route <mount>/* guarded by a principal-providing policy`. A short-link
 click is never audited: it is anonymous and unthrottled, and the counter it
 bumps is not a privileged change.

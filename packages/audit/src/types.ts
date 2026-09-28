@@ -6,9 +6,9 @@ export type AuditValue = string | number | boolean | null | readonly AuditValue[
 export interface AuditEvent {
   /** Producer-assigned idempotency key: crypto.randomUUID() (lowercase v4). */
   readonly id: string;
-  /** Producing extension name, /^[a-z][a-z0-9-]{0,63}$/ ("auth", "store", "admin"). */
+  /** Producing extension name, /^[a-z][a-z0-9-]{0,63}$/ ("store", or another extension's name). */
   readonly source: string;
-  /** /^[a-z][a-z0-9_.-]{0,127}$/, for example "session.login", "admin.roles", "store.record.created". */
+  /** /^[a-z][a-z0-9_.-]{0,127}$/, for example "store.record.created". */
   readonly action: string;
   /** 1..256 characters, no C0/DEL: a principal id, account id, "anonymous", "operator" or "system". */
   readonly actor: string;
@@ -30,7 +30,7 @@ export interface AuditStoredEvent extends Required<Omit<AuditEvent, 'metadata'>>
 }
 export interface AuditQuery {
   source?: string; actor?: string; subject?: string; action?: string;
-  /** Matches action = prefix or an action starting with prefix + "." ("admin" matches admin.*). */
+  /** Matches action = prefix or an action starting with prefix + "." ("store.record" matches store.record.*). */
   actionPrefix?: string;
   /** Inclusive bounds on `at`. */
   from?: number; to?: number;
@@ -92,7 +92,7 @@ export class AuditError extends Error {
   }
 }
 /** Outbox caps, exported so producers and docs agree. A producer at its cap refuses the mutation with 503 audit_backlog. */
-export const auditOutboxLimits: { readonly auth: 10000; readonly perCollection: 1000 } = Object.freeze({ auth: 10000, perCollection: 1000 } as const);
+export const auditOutboxLimits: { readonly perCollection: 1000 } = Object.freeze({ perCollection: 1000 } as const);
 /** Conventional permission names a consumer checks before showing or exporting audit data. Audit itself enforces none. */
 export const auditPermissions: readonly ['audit.read', 'audit.export'] = Object.freeze(['audit.read', 'audit.export'] as const);
 export interface AuditOptions {

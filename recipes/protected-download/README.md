@@ -25,6 +25,7 @@ revision from `PROJECT_SHA256` or a `--policy` file and never recomputes it, so
 replacing the attachment or editing `urlcode.yaml` makes every command refuse
 with a revision pin mismatch until you review the change and supply the new
 revision ([the review gate](../authenticated-json-api/README.md#the-review-gate)).
-A real deployment registers `urlcode-auth` instead. Replace `files/report.txt`
+A real deployment installs the `auth` extension (`urlcode extensions add auth`)
+instead. Replace `files/report.txt`
 with the real attachment and adjust `filename` and `contentType`. Cloudflare
 refuses extensions.

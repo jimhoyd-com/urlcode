@@ -32,7 +32,7 @@ function scaffold(): ScaffoldResult {
     files: [{ path: KEY_FILE, content: randomBytes(32), mode: 0o600 }],
     env: { TURNSTILE_SECRET: 'Optional: pass abuse({challenge: createTurnstileChallenge({...})}) in host.mjs' },
     notes: [
-      'abuse does nothing until an extension declares budgets (extensions.auth.config.abuse, a forms flow\'s abuse).',
+      'abuse does nothing until an extension declares budgets (for example a forms flow\'s abuse).',
       'The challenge verifier is host.mjs code, never YAML. Use policies.throttle for a plain per-route request budget.',
       'Keep data/abuse.key private; losing it only resets the counters.',
     ],

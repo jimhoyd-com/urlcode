@@ -93,9 +93,9 @@ export const clientKeyIpv6Prefix = 64;
  * An IPv6 address is grouped by its /64 network, because one subscriber or
  * cloud host routinely holds a whole /64 and could otherwise rotate addresses
  * for fresh budgets. The key is the network prefix, e.g. `2001:db8:0:1::/64`.
- * Anything that is not an address yields undefined. packages/auth keeps an
- * equivalent function (it may not require a newer core); both are pinned to
- * test/fixtures/client-key-vectors.json.
+ * Anything that is not an address yields undefined. Pinned to
+ * test/client-key-vectors.json; the auth extension keys Better Auth's rate
+ * limiter with it.
  */
 export function clientKey(address: unknown): string | undefined {
   const normalized = normalizeAddress(address);

@@ -1,7 +1,7 @@
 # Shared UI contract, version 1
 
-Core, auth and admin may consume the same dependency-free package. This package
-must never depend on any of them. Its main exports use standard Web/Intl APIs,
+Core and the extensions that require `ui` may consume the same dependency-free
+package. This package must never depend on any of them. Its main exports use standard Web/Intl APIs,
 with no Node imports, browser DOM requirement, network calls or client framework.
 
 - `createPresentation`: bounded immutable catalogues, custom default messages,
@@ -18,11 +18,11 @@ with no Node imports, browser DOM requirement, network calls or client framework
 - `stylesheet`: shared CSS with logical properties, focus indicators and dark mode.
 - `escapeHtml`: text/attribute escaping, not authorization or URL validation.
 
-Only generic --ui-* theme variables live here. Legacy auth theme aliases are
-adapted in urlcode-auth. Auth owns its catalogue IDs and composes them into the
-shared factory; core can register its own defaults without importing auth. The auth
-and admin workflows, notices, validation, secrets, CSP and CSRF policy never move
-here; only the keyless HMAC token primitive in `./host` (below) is shared.
+Only generic --ui-* theme variables live here. An extension owns its catalogue
+IDs and composes them into the shared factory; core can register its own
+defaults without importing any extension. An extension's workflows, notices,
+validation, secrets, CSP and CSRF policy never move here; only the keyless HMAC
+token primitive in `./host` (below) is shared.
 
 Tailwind CSS is compiled at build time and embedded by the shared document renderer.
 The shadcn Button/Input/Card recipes are adapted to server HTML (see THIRD_PARTY_NOTICES.md).
@@ -66,7 +66,7 @@ beside it and without changing the exports above:
 - Catalogue bounds (`catalogueLimits`): an effective catalogue (the merged
   English defaults, or one language) holds at most 4096 keys and 512 KiB of
   message text; `mergeCatalogues` bounds each source at 1024 keys and at most
-  16 sources, so the kit's, auth's and admin's English catalogues register
+  16 sources, so the kit's and several extensions' English catalogues register
   side by side as `sources`. Every key and message stays bounded on its own.
 - The kit catalogue is part of the kit: `createKit` completes a presentation
   that lacks `ui.*` keys from `kitCatalogue`, for `resolveContext`, `render`,
@@ -95,7 +95,7 @@ beside it and without changing the exports above:
   carry the rendered icon markup or `null` (`nav@2`). An ejected `layout@2` or
   `nav@1` is reported behind by `doctor`; other ejected partials are
   unchanged.
-- `kitCss` carries the console layout classes the admin screens use
+- `kitCss` carries the console layout classes an application-layout screen uses
   (`ui-shell`, `ui-sidebar`, `ui-metrics`, `ui-definition-grid`, `ui-badge`,
   `ui-list`, `ui-toolbar`, `ui-section-heading`, `ui-danger-zone`,
   `ui-form-grid`, `ui-actions`, `ui-activity`, `ui-chart`, `ui-filter`,
@@ -124,7 +124,7 @@ beside it and without changing the exports above:
   `ExtensionInstance`, `ExtensionRequest` and the rest) are core's own, imported
   from `@jimhoyd/urlcode/extensions` rather than copied, so `ui.registration`
   needs no cast in a host file and cannot drift from the runtime's shape.
-- The `./host` HMAC-SHA256 token helpers auth and forms build CSRF on:
+- The `./host` HMAC-SHA256 token helpers forms builds CSRF on:
   `signHmac(secret, message, encoding?)` and `verifyHmac(secret, message,
   provided, encoding?)` (`'hex'`, the default, or `'base64url'`);
   `createSignedToken(secret, payload, ttlMs)` issues
@@ -158,7 +158,7 @@ beside it and without changing the exports above:
   does not know how the contributing extension declares a screen:
   it never loads the project document or reads another extension's block. The
   scaffold never adds another extension's screen; the owner scaffolds its own
-  (the store adds `/todos` when ui is installed). `requires` on auth, admin and forms makes `composeHost` activate
+  (the store adds `/todos` when ui is installed). `requires` on forms and form-records makes `composeHost` activate
   `ui` before them and hand them the kit.
 
 The main entry stays dependency-free and free of Node imports. The `./host`
@@ -174,8 +174,7 @@ allowlist. It accepts no markup, URL or styling input. Keep visible labels; icon
 are hidden from assistive technology and cannot receive focus. `button` accepts
 an optional third icon argument, and navigation items accept `icon`.
 
-Version 1 also adds the form and deadline helpers auth and admin used to keep
-as private copies:
+Version 1 also adds shared form and deadline helpers:
 
 - `hiddenField(name, value)`: an escaped `<input type="hidden">`; the name follows the `field` grammar.
 - `postForm({action, csrf, fields, label, destructive?, icon?, className?})`: a `method="post"` form with the CSRF hidden field, trusted field markup and one submit `button`; `action` must pass `safeHref` unchanged, `destructive` adds `ui-button-destructive`.

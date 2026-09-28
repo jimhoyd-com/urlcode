@@ -7,7 +7,7 @@
   pipeline (deadline, concurrency, refusal order) and the transports. It
   serves no routes and logs nothing. It never learns what a message means:
   account policy, enumeration defenses and rate limits stay with the
-  consumer (auth, forms).
+  consumer (such as forms).
 - Apache-2.0. Do not publish packages by hand. This package is released with
   core at core's version and installed with `urlcode extensions add mail`;
   `"private": true` in `package.json` only prevents an accidental

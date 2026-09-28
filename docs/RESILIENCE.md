@@ -157,7 +157,8 @@ provider-level mitigation validation and sustained failure/soak testing. These a
 free-runtime/operator requirements.
 
 Core has no durable store of its own to recover; a durable-state extension is
-responsible for its own backup and recovery procedure. `auth` (SQLite; see
-[backup and restore](AUTH-BACKUP.md)) and `store` (JSON collections in an
+responsible for its own backup and recovery procedure. `auth` (Better Auth's
+SQLite database `data/auth.sqlite` and the secret `data/auth.secret`; see
+[auth](../packages/auth/README.md#add-it)) and `store` (JSON collections in an
 operator-owned directory; see [store](STORE.md)) are the two that hold durable
 state.

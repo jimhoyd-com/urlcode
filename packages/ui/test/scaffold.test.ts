@@ -91,7 +91,7 @@ test('ui never scaffolds another extension\'s screen: store owns its CRUD screen
     assert.deepEqual({ ...(await scaffold(['store', 'ui'], site)).config, theme: alone.config.theme }, alone.config);
     const signedIn = await scaffold(['auth', 'store', 'ui'], site);
     assert.ok(signedIn.notes!.some(note => note.includes('--extensions @jimhoyd/urlcode-auth') && !note.includes('urlcode-admin')));
-    assert.ok(signedIn.notes!.some(note => note.includes('eject auth/sign-in')));
+    assert.ok(signedIn.notes!.some(note => note.includes('eject layout')));
 });
 
 test('the scaffold validates as a project document with core and never writes', async () => {

@@ -3,7 +3,7 @@
 - Read the root [CONTRIBUTING.md](../../CONTRIBUTING.md) and [SECURITY.md](../../SECURITY.md) first. Core owns the
   generic extension contract (`@jimhoyd/urlcode/extensions`). This package owns the persistent abuse counters, the
   budget and backoff bounds, the counter key derivation, and the challenge wrapper. It never reimplements core's
-  `policies.throttle`, client-address parsing (`clientKey`) or request helpers. It knows nothing about auth, forms
+  `policies.throttle`, client-address parsing (`clientKey`) or request helpers. It knows nothing about forms
   or any other consumer.
 - `AbuseExports` v1 (`src/types.ts`) is a contract other packages build against. Change it only additively. A
   breaking change is v2.

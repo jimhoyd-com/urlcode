@@ -142,7 +142,7 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   one. An extension that holds something exclusive (the store's directory
   lock) passes it to the replacement through the
   [reload hand-off](EXTENSIONS.md#reload-hand-off) instead of refusing, so a
-  site from `urlcode init --with admin,form-records --example` reloads an edit
+  site from `urlcode init --with auth,form-records --example` reloads an edit
   such as the contact form's title and keeps serving the records written before
   it. A rejected reload leaves the running runtime, its lock and its data
   untouched. A second `dev` or `serve` over the same data directory is still
@@ -175,8 +175,7 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   `--verbose`. The message uses the same one-line, 500-character, stackless
   form as an activation error; at most 20 are printed per extension per
   activation, then one `further warnings suppressed` line. A warning is the
-  extension telling the operator to act (for example auth's passkey
-  relying-party ID check); requests never see it. See
+  extension telling the operator to act; requests never see it. See
   [activation warnings](EXTENSIONS.md#activation-warnings).
 - The host file fails before any extension activates: when `host.mjs` itself
   throws while it is imported (a top-level error or an import that cannot be

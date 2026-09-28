@@ -10,7 +10,7 @@ version changes, and `node scripts/release-bump.ts --check` (part of
 | Package | Manifest | Where it is published |
 | --- | --- | --- |
 | `@jimhoyd/urlcode` (core) | `package.json` | npm, `v<version>` GitHub Release, Homebrew (stable), GHCR image |
-| Every extension (`@jimhoyd/urlcode-<name>`: `ui`, `audit`, `abuse`, `mail`, `auth`, `admin`, `store`, `forms`, `form-records`, `mcp`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
+| Every extension (`@jimhoyd/urlcode-<name>`: `ui`, `audit`, `abuse`, `mail`, `auth`, `store`, `forms`, `form-records`, `mcp`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 | Every artifact (`@jimhoyd/urlcode-<name>`) | `artifacts/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 
 | Version | npm dist-tag | GitHub Release | Homebrew | GHCR tags | Template PR |
@@ -46,7 +46,7 @@ Core `0.6.5` is published to npm, GitHub Releases and Homebrew. For a new
 composed site:
 
 ```sh
-npx @jimhoyd/urlcode@0.6.5 init site --with ui,auth,admin,store --example
+npx @jimhoyd/urlcode@0.6.5 init site --with ui,auth,store --example
 ```
 <!-- urlcode-current-version:end -->
 

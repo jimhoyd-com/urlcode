@@ -1,6 +1,6 @@
 // Cloudflare Turnstile as an AbuseChallengeProvider, for host.mjs: abuse({challenge: createTurnstileChallenge({...})}).
 // A fixed upstream only. Siteverify tokens are single-use; a verdict is never cached. The action is the caller's
-// namespace (auth, forms), checked against the verdict.
+// namespace (for example forms), checked against the verdict.
 import { isIP } from 'node:net';
 import type { AbuseChallengeProvider, AbuseChallengeWidget } from './types.ts';
 import { SCOPE } from './keys.ts';

@@ -36,7 +36,7 @@ node /opt/urlcode/dist/cli.js serve --project /srv/my-links --origin https://lin
 ```
 
 It is one operator-set, site-wide list, never project YAML. Every extension's
-same-origin check (`mcp`, `forms`, `store`, `auth`, `admin`) admits an alias
+same-origin check (`mcp`, `forms`, `store`, `auth`) admits an alias
 origin exactly as it admits `--origin`; everything that builds an absolute URL
 (redirects, sitemaps, emails, links, HSTS) keeps using `--origin`. Startup
 refuses an entry that is not an `https:` origin (loopback `http:` is allowed),
@@ -46,35 +46,11 @@ or aliases without `--origin`. The same list goes to `validate`, `test`,
 `aliasOrigins` option or `URLCODE_ALIAS_ORIGINS` (comma-separated). See
 [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
 
-Passkeys stay on `--origin` by default: its host is the WebAuthn relying-party
-ID and alias origins get no passkey ceremonies. When every origin shares a
-registrable domain, `--passkey-rp-id` opts in to one shared RP ID, so a passkey
-registered on one origin works on all of them:
-
-```sh
-node /opt/urlcode/dist/cli.js serve --project /srv/my-links --origin https://links.example.com \
-  --alias-origin https://www.example.com --passkey-rp-id example.com
-```
-
-Startup refuses an RP ID that is not a lowercase DNS name, is an IP address, a
-single label (`localhost` only when `--origin` is on localhost) or a listed
-public suffix (`co.uk`, `github.io`, ...), or is not the host, or a parent
-domain, of `--origin` and of every `--alias-origin` (`go.example.net` above
-would be refused). The same flag goes to `dev`, `validate`, `test`, `routes`,
-`audit` and `benchmark`; the AWS and Vercel handlers take a `passkeyRpId`
-option or `URLCODE_PASSKEY_RP_ID`. It is never project YAML. See
-[shared passkey relying-party domain](EXTENSIONS.md#shared-passkey-relying-party-domain).
-
-> **Warning: changing the RP ID makes existing passkeys stop working.** Setting
-> `--passkey-rp-id` for the first time, changing it, or removing it strands
-> every passkey registered under the previous RP ID; those users must sign in
-> another way and register a new passkey, and a passkey-only account needs
-> recovery. Treat the value as fixed once users enrol. Auth records the RP ID of
-> each passkey registered since #736 and, at startup, prints an
-> `extension_warning` with the number of stored passkeys that cannot work under
-> the current RP ID (and, when `--passkey-rp-id` is set, how many older
-> passkeys predate that record); see
-> [auth's passkey notes](../packages/auth/README.md#passkeys-and-the-relying-party-domain).
+Core also accepts `--passkey-rp-id` (the AWS and Vercel handlers take a
+`passkeyRpId` option or `URLCODE_PASSKEY_RP_ID`), a shared WebAuthn
+relying-party ID for an extension that runs passkey ceremonies. No first-party
+extension uses it: `auth` serves no passkeys, and a follow-up removes the
+option. It is never project YAML.
 
 Use a process supervisor that restarts on
 failure and sends SIGTERM for shutdown. On SIGTERM, `/_urlcode/ready` starts
@@ -146,8 +122,10 @@ docker run --rm --name my-links \
 
 Replace the example mount with your route project (a site's `app/` directory). The image uses the unprivileged `node`
 user; ensure mounted config/functions are readable by it. Core has no writable
-mount of its own; a future mount-based extension (like `auth`/`admin`, see
-[extensions](EXTENSIONS.md)) is the place for operator-owned writable state.
+mount of its own; operator-owned writable state of an extension (auth's
+`data/auth.sqlite`, the store's `data/store/`, see
+[extensions](EXTENSIONS.md)) lives beside `host.mjs`, outside the read-only
+route project.
 The image listens on `$PORT` (default `3000`, read by both the CLI's default
 and its `HEALTHCHECK`); set `-e PORT=8080` and publish that port instead of
 editing the image's `CMD`. `--stop-timeout` is Docker's own grace period
@@ -238,9 +216,8 @@ production does not watch or refresh secret values automatically.
 
 ## Email delivery
 
-Every email a site sends (account verification, password reset, invitations,
-sign-in codes, administrator notices, form notifications) goes through the
-`mail` extension, which auth and forms use. The operator chooses the one
+Every email a site sends through a first-party extension (form
+notifications) goes through the `mail` extension, which forms use. The operator chooses the one
 transport in `host.mjs`; project YAML never names a provider, credential or
 address:
 
@@ -253,8 +230,7 @@ mail({ transport: sesTransport({ region: 'eu-west-1' }), from: 'no-reply@site.ex
 
 With no `transport`, mail writes each message to `data/outbox/` only while the
 activation origin is loopback (`urlcode dev`); on any other origin delivery is
-off, and auth then serves password sign-in only (no email codes, resets,
-invitations or setup links). `sesTransport` needs the optional
+off. `sesTransport` needs the optional
 `@aws-sdk/client-sesv2` package installed in the site. Deliveries are bounded
 (8 in flight, 5 s each by default) and refused, never queued, when full. There
 is no HTML, attachment, Reply-To, SMTP or retry queue. See the

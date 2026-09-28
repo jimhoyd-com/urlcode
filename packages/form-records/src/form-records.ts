@@ -59,7 +59,7 @@ export const formRecordsConfigSchema = {
   type: 'object', additionalProperties: false, required: ['records'],
   properties: {
     records: {
-      description: 'Record flows by name. Each needs a route <mount>/* with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: {csrf: origin}; records are private to their signed-in creator.',
+      description: 'Record flows by name. Each needs a route <mount>/* with extension: form-records (GET, HEAD, POST) and a principal-providing policy such as auth: true; records are private to their signed-in creator.',
       type: 'object', maxProperties: 16, propertyNames: { pattern: NAME.source },
       additionalProperties: {
         type: 'object', additionalProperties: false, required: ['mount', 'collection', 'form'],
@@ -88,7 +88,7 @@ export const formRecordsAuthoring: ExtensionAuthoringContract = {
   description: 'Save a declared form into an owned store collection: a submission creates a record private to its signed-in creator, the confirmation page reads the saved record back, and an edit page changes only the fields listed in `editable`. forms keeps rendering, CSRF and validation; the store keeps ownership, limits and ETags. No handler code.',
   surfaces: [
     { kind: 'configuration', name: 'records', description: 'Each record flow: `mount`, the owned store `collection`, the `form` (a forms flow without a mount: title, submitLabel, confirmation with `show`, optional `success` (`{mode: inline, status: 200|201}` answers a create or edit with the saved record\'s confirmation instead of a 303 to `<mount>/<id>`; an edit is always 200), fields), the optional `fields` map from form field to collection field, `editable` form fields, `editTitle` and an optional `list` page (`title`, `columns` of form fields).', path: 'urlcode.yaml#extensions.form-records.config.records' },
-    { kind: 'extension', name: 'mount', description: 'Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: {csrf: origin}` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller\'s own records).', path: 'urlcode.yaml' },
+    { kind: 'extension', name: 'mount', description: 'Mount each record flow as `<mount>/*` with GET, HEAD and POST and a principal-providing policy such as `auth: true` (forms verifies its own CSRF token, which a plain HTML form posts in the body). It serves `<mount>` (new record), `<mount>/<id>` (confirmation), `<mount>/<id>/edit` and, with `list`, `<mount>/` (the caller\'s own records).', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
 };
@@ -198,7 +198,7 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
         if (byMount.has(spec.mount)) throw new Error(`Records ${byMount.get(spec.mount)!.name} and ${name} share mount ${spec.mount}`);
         if (!context.mounts.includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* with extension: form-records is not declared`);
         // Fail closed at startup: a record is private to its creator, so the mount must be able to carry a principal.
-        if (!(context.principalMounts ?? []).includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* needs a principal-providing policy (for example auth: {csrf: origin}), because each record belongs to the signed-in user who created it`);
+        if (!(context.principalMounts ?? []).includes(spec.mount)) throw new Error(`Record ${name}: route ${spec.mount}/* needs a principal-providing policy (for example auth: true), because each record belongs to the signed-in user who created it`);
         byMount.set(spec.mount, binding);
       }
       for (const mount of context.mounts) if (!byMount.has(mount)) throw new Error(`form-records mount ${mount} has no declared record flow`);

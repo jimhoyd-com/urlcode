@@ -49,13 +49,11 @@ so ui never reads the store's configuration. `ui` is an optional peer, not a
 requirement: without it `screens` is simply not served. See
 [a screen for the collection](../../docs/STORE.md#a-screen-for-the-collection).
 
-When `auth` is installed the example puts `auth: {csrf: origin}` on the API
-mount (auth admits its JSON writes on same-origin provenance and the session
-cookie; the store accepts only JSON) and declares the `todos` collection
-`ownership: owner`, so each signed-in user sees and changes only their own
-todos. Auth installs `audit`, so the example collection also declares
-`audit: true`. Without
-`auth` the example refuses; the refusal prints the exact command, ending in
+When `auth` is installed the example puts `auth: true` on the API mount (a
+signed-in session, and same-origin provenance for writes) and declares the
+`todos` collection `ownership: owner`, so each signed-in user sees and changes
+only their own todos. When `audit` is installed the example collection also
+declares `audit: true`. Without `auth` the example refuses; the refusal prints the exact command, ending in
 `--ack store:public-write`, which acknowledges a public writable endpoint (not
 rate limiting, abuse protection or multi-tenant isolation).
 

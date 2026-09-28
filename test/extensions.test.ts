@@ -287,12 +287,11 @@ test('the auth extension policy schema judges the auth short form and errors nam
   const app=join(site,'app'),descriptor=join(site,'node_modules','@jimhoyd','urlcode-auth');
   await mkdir(app);await mkdir(descriptor,{recursive:true});
   await writeFile(join(descriptor,'urlcode.json'),await readFile(new URL('../packages/auth/urlcode.json',import.meta.url),'utf8'));
-  const write=(value:unknown)=>writeFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:'off'}}},routes:{'/account/*':{extension:'auth'},'/api/items':{respond:{text:'x'},auth:value}}}));
-  await write({bearer:{scopes:['items.read'],quota:{requests:100,window:60}}});assert.equal((await validateProject(app)).valid,true);
-  await write({bearer:{scopes:['items.read'],quota:{requests:100,window:60,burst:5}}});
-  await assert.rejects(validateProject(app),/Invalid extension policy at route \/api\/items, auth\.bearer\.quota \(additionalProperties\): unknown key "burst"/);
-  await write({roles:['admin']});
-  await assert.rejects(validateProject(app),/Invalid extension policy at route \/api\/items, auth \(additionalProperties\): unknown key "roles"; did you mean "role"\?/);
+  const write=(value:unknown)=>writeFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{}}},routes:{'/api/auth/*':{extension:'auth'},'/api/items':{respond:{text:'x'},auth:value}}}));
+  // The Better Auth extension's policy is closed and empty: `auth: true` is the whole vocabulary.
+  await write(true);assert.equal((await validateProject(app)).valid,true);
+  await write({role:'admin'});
+  await assert.rejects(validateProject(app),/Invalid extension policy at route \/api\/items, auth \(additionalProperties\): unknown key "role"/);
 });
 test('core types and schema carry no auth policy vocabulary',async()=>{
   const schema=JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json',import.meta.url),'utf8')) as {$defs:{routeAuth:{properties:Record<string,unknown>}}};

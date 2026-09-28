@@ -34,8 +34,7 @@ older snapshots for untrusted functions; review and upgrade to the current revis
 Which request headers a route's own `function`/`middleware` receives depends
 on what the operator activated. Each active operator extension (declared in
 the project and provided by the host) withholds `Cookie` and `Authorization`
-plus every header it declares in `credentialHeaders` (`auth` adds
-`X-CSRF-Token`); an operator plugin withholds the headers it declares. The
+plus every header it declares in `credentialHeaders`; an operator plugin withholds the headers it declares. The
 runtime strips those names from the guest-facing projection (headers, header
 inputs and arguments) of every route before that code runs. Without such an
 extension or plugin nothing is withheld: your own trusted middleware or
@@ -51,19 +50,23 @@ the runtime always strips from what a client actually sent before any
 extension or guest code observes it, so a request can never inject or spoof
 a value there (`packages/core/src/extensions.ts`:
 `stripReservedContextHeaders`, docs/RUNTIME-IMPLEMENTATION.md
-`RIM-EXT-CONTEXT-001`). `packages/auth`'s `bearer` gate uses it to expose a
-verified API key's id/name/scopes, never the raw key, to the route it
-protects. Its session gate separately exposes only the opaque user id in
-`x-urlcode-context-auth-session`, after authorization and the applicable
-CSRF/origin checks succeed. No session credential or role is included, and a
-bearer-authenticated request does not receive session context. The
-`sessionUserId` accessor reads this derived value; it cannot authenticate a
-caller-created Request outside the runtime's reserved-header stripping and
-auth policy. See [session identity](docs/EXTENSIONS.md#session-identity-in-functions).
-This is a generic core channel with no built-in size or shape
+`RIM-EXT-CONTEXT-001`). This is a generic core channel with no built-in size or shape
 limit beyond ordinary HTTP header limits; an extension writing into it is
 trusted operator code and is expected not to place a credential or unbounded
 data there.
+
+The first-party `auth` extension, a thin adapter over Better Auth, does not
+use that header channel. On a route with `auth: true` it lets the request
+through only after Better Auth verifies the session from the request's cookie
+(and, for `POST`, `PUT`, `PATCH` and `DELETE`, after core's same-origin rule
+admits it), then hands the route's code only the verified user id, through
+the request-bound `identity` capability
+(`context.capabilities.auth.identity.userId`; `RIM-EXT-CAPABILITY-001`). The
+route still never receives the `Cookie` or `Authorization` header, no session
+token or role is included, and a `sandbox: true` route cannot name `auth`.
+Identity is not permission: authorization stays in the application. See the
+[auth package's security model](packages/auth/SECURITY.md) and
+[request-bound capabilities](docs/EXTENSIONS.md#request-bound-capabilities).
 
 Declarative proxy and signal handlers run in a separate bounded host transport;
 they do not grant guest networking. They require per-route, per-purpose HTTPS

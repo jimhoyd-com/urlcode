@@ -28,7 +28,6 @@ async function extensionsFlag(site: string, installed: readonly string[]): Promi
 export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult> {
     const { site, installed } = request;
     const name = directoryName(site).replace(/[^A-Za-z0-9 ._-]/g, ' ').trim().slice(0, 80) || 'Site';
-    const withAuth = installed.includes('auth');
     const flag = await extensionsFlag(site, installed);
     return {
         config: {
@@ -49,7 +48,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         ],
         notes: [
             `Customize ui/copy/<locale>.json, ui/templates/<name>.html and ui/extra.css; check them with npx urlcode-ui doctor --project .${flag} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`,
-            `Copy a shipped template to customize it: npx urlcode-ui eject ${withAuth ? 'auth/sign-in' : 'layout'} --out ${uiDirectory}/templates${flag}`,
+            `Copy a shipped template to customize it: npx urlcode-ui eject layout --out ${uiDirectory}/templates${flag}`,
         ],
     };
 }

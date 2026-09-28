@@ -5,8 +5,10 @@ the first gate of the ecosystem-reuse plan in
 [#841](https://github.com/jimhoyd-com/urlcode/issues/841). It is one locally
 runnable URLCode site. [Better Auth](https://better-auth.com/) owns accounts,
 passwords, sessions and its own SQLite tables. URLCode owns the declared
-routes, the admission decision and the review facts. The application owns one
-business rule. It is not a starter, a supported extension or a release claim.
+routes, the admission decision and the review facts. The first-party
+[`auth` extension](../../packages/auth/README.md) (`@jimhoyd/urlcode-auth`)
+connects the two. The application owns one business rule. It is not a
+starter or a release claim.
 
 - Two synthetic owners and one reviewer. Owners create, list and read only
   their own requests. A reviewer can read any request and approve another
@@ -15,30 +17,31 @@ business rule. It is not a starter, a supported extension or a release claim.
 - Sign-in, sign-out, "sign out everywhere" and session checks are Better
   Auth's own endpoints and browser client. There is no URLCode session, cookie
   or password code here.
-- Application routes are ordinary trusted `function` routes. They receive the
-  verified user id through the request-bound capability from #840
-  (`context.capabilities['better-auth'].identity`), never a cookie or header.
+- Application routes are ordinary trusted `function` routes marked
+  `auth: true`. They receive the verified user id through the request-bound
+  capability from #840 (`context.capabilities.auth.identity.userId`), never a
+  cookie or header.
 
 ## Layout
 
 | Path | Owner | What it is |
 |---|---|---|
-| `better-auth-extension/` | operator | The adapter as an independent package, `@example/urlcode-better-auth`: one mount, one principal gate, one capability, and its `urlcode.json` descriptor |
-| `operator/auth.mjs` | operator | Better Auth options: secret, database, enabled endpoints |
-| `host.mjs` | operator | Builds the instance and composes the host |
+| `operator/auth.mjs` | operator | This proof's Better Auth choices beyond the package defaults: app name, `disabledPaths`, and the data directory |
+| `host.mjs` | operator | Composes the host with `auth({database, secretFile, betterAuth})` |
 | `scripts/setup.mjs` | operator | Forward schema setup and synthetic accounts |
 | `scripts/inventory.mjs` | operator | Pinned versions and the probed endpoint list |
 | `app/urlcode.yaml` | application | Every route, input bound and protection |
 | `app/functions/*.mjs`, `app/lib/requests.mjs` | application | The business rules and parameterized SQL |
 | `client/main.js`, `app/public/` | application | The frontend and its Better Auth client |
 
-The adapter is an ordinary npm package outside the first-party namespace
-(#844). The site depends on it with `file:./better-auth-extension`; core finds
-it by its `urlcode.json` descriptor, so `urlcode extensions list` reports it
-as an independent extension and `urlcode validate --project app` checks the
-declaration against its schemas without loading any host code. A packed
-tarball of it installs with `urlcode extensions add ./<tarball>`, which npm
-locks by sha512.
+The secret file (`data/auth.secret`), the Better Auth database
+(`data/auth.sqlite`), the exact allowlist of served Better Auth paths, rate
+limiting and the client-address header are the package's defaults. The
+committed site depends on `file:../../packages/auth`; a real site gets it
+from `urlcode extensions add auth`, which installs it at core's pin and writes
+the mount and secret. `urlcode extensions list` then reports `auth` as a
+catalog extension, and `urlcode validate --project app` checks the declaration
+against its schemas without loading any host code.
 
 Provider settings never appear in `app/urlcode.yaml`. The application database
 path reaches the functions only through an `APP_DATABASE` binding, which the
@@ -46,21 +49,22 @@ operator policy must grant for the reviewed revision.
 
 ## Run it
 
-It needs a packed build of this checkout: the request-bound capability is
-newer than the latest published runtime. From the repository root:
+It needs a packed build of this checkout: the auth extension is newer than the
+latest published runtime. From the repository root:
 
 ```sh
-npm ci && npm run build
+npm ci && npm run build && npm run build:addons
 npm pack --pack-destination /tmp/urlcode-pack
+(cd packages/auth && npm pack --pack-destination /tmp/urlcode-pack)
 cp -R proofs/private-requests /tmp/private-requests && cd /tmp/private-requests
-npm install /tmp/urlcode-pack/jimhoyd-urlcode-*.tgz
+npm install /tmp/urlcode-pack/jimhoyd-urlcode-0*.tgz /tmp/urlcode-pack/jimhoyd-urlcode-auth-*.tgz
 npm run build     # bundles the Better Auth browser client into app/public/assets/app.js
-npm run setup     # data/: generated secret, auth.db (Better Auth schema), app.db, three accounts
+npm run setup     # data/: auth.secret, auth.sqlite (Better Auth schema), app.db, three accounts
 npm run inventory # the Better Auth version, integrity and every endpoint, probed
 ```
 
 Installation and the client build use the network. Nothing after them does:
-Better Auth telemetry is off and the adapter refuses to start if it is not.
+the auth extension always turns Better Auth telemetry off.
 
 Review `app/`, `host.mjs` and `operator/`, then approve the revision yourself.
 Nothing computes or repins it for you:
@@ -95,24 +99,27 @@ directory and exercises every success and failure case over HTTP:
 
 ## What it refuses
 
-- Starting before `npm run setup` (no secret, or Better Auth's schema is not
-  initialized), a `SITE_ORIGIN` that differs from `--origin`, a mount path
-  that differs from Better Auth's `basePath`, and telemetry left enabled.
+- Starting before `npm run setup`: no secret, or Better Auth's tables are not
+  initialized. Better Auth's `baseURL` and `basePath` come from `--origin` and
+  the declared mount, so they cannot disagree with what URLCode serves.
 - Any revision the operator policy does not pin, and a `sandbox: true` route
-  that names `better-auth`: a live capability cannot enter the sandbox.
-- AWS, Vercel, Cloudflare and static targets: the adapter declares `node` only.
-- Every Better Auth path not listed in `operator/auth.mjs`. Better Auth's own
-  `disabledPaths` matches literal paths, so parametric routes such as
-  `/callback/:id` stay routed inside Better Auth; the adapter's exact
-  allowlist answers 404 before the request reaches it.
+  that names `auth`: a live capability cannot enter the sandbox.
+- AWS, Vercel, Cloudflare and static targets: the extension declares `node`
+  only.
+- Every Better Auth path outside the package's allowlist (sign-in, sign-out,
+  the session endpoints, `/change-password` and `/ok`; sign-up stays off).
+  Better Auth's own `disabledPaths`, set in `operator/auth.mjs`, matches
+  literal paths, so parametric routes such as `/callback/:id` stay routed
+  inside Better Auth; the mount's exact allowlist answers 404 before the
+  request reaches it.
 - Unsafe methods on application routes without a same-origin `Origin`,
   `Sec-Fetch-Site` or `Referer`. Better Auth applies its own origin check to
   its endpoints.
-- A Better Auth instance without rate limiting. Better Auth enables its
-  limiter only under `NODE_ENV=production`, and without a client address it
-  puts every client in one bucket. The adapter requires `rateLimit.enabled`
-  and supplies the address URLCode admitted in a header it always overwrites;
-  sign-in allows 10 attempts per address a minute.
+- Sign-in floods. Better Auth enables its limiter only under
+  `NODE_ENV=production`, and without a client address it puts every client in
+  one bucket. The extension always enables it and supplies the address URLCode
+  admitted in a header it always overwrites; sign-in allows 10 attempts per
+  address a minute.
 
 ## Limits
 

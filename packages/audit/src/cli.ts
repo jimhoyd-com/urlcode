@@ -8,7 +8,7 @@ import { openAuditReader } from './store.ts';
 import { validateAuditQuery } from './event.ts';
 
 const usage = 'urlcode-audit list     JSON {"database": "/abs/data/audit.sqlite", "query"?: {source, actor, subject, action, actionPrefix, from, to, after, limit, order}} on stdin\n'
-  + 'urlcode-audit backup   JSON {"database", "destination", "projectRoot"} on stdin (back up after the auth backup)\n'
+  + 'urlcode-audit backup   JSON {"database", "destination", "projectRoot"} on stdin (back up after the producers\' data)\n'
   + 'urlcode-audit restore  JSON {"backup", "destination", "projectRoot"} on stdin (restores to a new path only)\n'
   + 'Paths are absolute. list prints one page of at most 100 events; pass its "next" back as query.after for the next page.\n';
 

@@ -1,746 +1,118 @@
-# URLCode auth
+# @jimhoyd/urlcode-auth
 
-An optional, operator-installed authentication extension for URLCode. This repository contains the Node/SQLite implementation: password and passkey authentication, OpenID Connect, email codes, TOTP, recovery codes, versioned registration profiles, account lifecycle operations, administrative service operations and trusted HTML pages.
+Operator-installed authentication for URLCode. Accounts, passwords, sessions,
+cookies and their tables are [Better Auth](https://better-auth.com/)'s; this
+extension serves one Better Auth instance on one mount and lets routes require
+a signed-in user. Released with core and installed with
+`urlcode extensions add auth`. Apache-2.0.
 
-[![CI](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
+It replaced URLCode's own account system (#841, proven in #843). What it does
+not do is listed [below](#not-included).
 
-The implementation is under active review. Local tests and builds are evidence of those checks, not an independent security assessment, production deployment, provider certification or recovery/soak result. See [SECURITY.md](SECURITY.md) for the trust boundary and [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) for what shipped; the original design spike is private maintainer material.
-
-## Install
-
-```sh
-npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth --example
-# or, in an existing site:
-npx urlcode extensions add auth --example
-```
-
-Without `--example`, auth installs its capability only: the `/account/*`
-pages (the default mount; move the route to change it), the operator service
-with the minimal `{member, admin}` role model and `defaultRole: member` in
-`operator-service.mjs` (edit it to change the roles), and private keys in
-`data/`. No page of yours is protected until you add `auth: true` to a route.
-Auth requires `ui` (every account screen), `audit` (every privileged action is
-recorded in its log) and `mail` (every message auth sends), and uses `abuse`
-when it is installed.
-`--example` also writes a `/private` page that only a signed-in caller can
-read.
-
-auth is released as a tarball on core's GitHub Release, at core's version, and
-pinned by sha512 in core's `dist/addons.json`; only core is on npm.
-`urlcode extensions add auth` adds `ui`, `audit` and `mail` too when the site
-lacks them, installs each once at the top level of the site with `npm install --ignore-scripts`,
-checks the pins and runs auth's scaffold. See
-[add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
-site layout and commands.
-
-Stable publication does not establish production readiness: independent
-security review, accessibility assessment, broader browser/device WebAuthn
-coverage and deployment/soak/recovery exercises remain pending (see
-[IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)). Prerelease versions may
-change public exports, configuration keys and the SQLite schema without a
-migration path; do not run the `alpha` channel on production accounts.
-
-Use a current supported Node release with a patched SQLite build. The actual runtime requirement is a Node build whose bundled SQLite (`process.versions.sqlite`) is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release; `engines.node` alone does not encode this, and the service (`src/auth-store.ts`) refuses other builds with `patched_sqlite_required` even when the package's minimum Node version is satisfied.
-
-## Build from reviewed source
-
-Operators who pin exact reviewed commits can build every package locally. This package depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine, and on the `@jimhoyd/urlcode-audit`, `@jimhoyd/urlcode-mail` and optional `@jimhoyd/urlcode-abuse` peers; authentication behavior remains here. Core can use UI without auth/admin. Every peer is a sibling in this repository, so CI builds them from the same commit.
-
-One lockfile governs the workspace. From a clean checkout of the reviewed commit, install without lifecycle scripts, build core and every add-on, and pack them in dependency order. Nothing is published:
+## Add it
 
 ```sh
-git checkout REVIEWED_40_CHARACTER_COMMIT_SHA
-npm ci --ignore-scripts
-npm run build && npm run build:addons
-node scripts/pack-addons.ts /absolute/new-private-package-directory
+urlcode extensions add auth
+npx urlcode-auth migrate
+echo '{"email":"you@example.com","password":"a long local password","name":"You"}' | npx urlcode-auth create-user
 ```
 
-Run `npm run verify` for each workspace package; packing runs the builds, not the HTTP suite. The tarballs are for local review; a site installs the release tarballs core pins.
-
-## Extension definition
-
-`@jimhoyd/urlcode-auth/extension` default-exports the auth extension definition (`defineExtension` from `@jimhoyd/urlcode/extensions`). It `requires` `ui`, `audit` and `mail`, and `uses` `abuse`. Its `scaffold` returns the `extensions.auth` config, the `/account/*` route, the private `operator-service.mjs`, `data/encryption.key` and `data/csrf.key` files (mode 0600, fresh key material, an existing file kept) and one-line next steps; its `example` adds the `/private` page. Its `host` loads that operator service and CSRF key, receives the `ui` kit and the audit, mail and (when installed) abuse exports from `composeHost`, attaches auth's audit outbox to audit, and exports [`AuthExports` v1](#authexports-v1). It contributes its English catalogue and `auth/*` templates to `ui`, and its message templates to `mail`, through `contributes`.
-
-## Operator activation
-
-Route YAML declares a versioned logical extension, not executable code:
+`add` writes `extensions.auth` (empty config), a `/api/auth/*` mount route and
+a private `data/auth.secret`, and adds `auth()` to `host.mjs`. `migrate`
+creates Better Auth's tables in `data/auth.sqlite`; the extension refuses to
+activate until they exist. Both files stay out of the route project; keep them
+private and backed up.
 
 ```yaml
-version: '1'
+version: "1"
 extensions:
-  ui: {version: '1', config: {}}
-  audit: {version: '1', config: {}}
-  mail: {version: '1', config: {}}
-  auth:
-    version: '1'
-    config:
-      registration: 'off'
+  auth: {version: "1", config: {}}
 routes:
-  /assets/ui/*:
-    extension: ui
-    methods: [GET, HEAD]
-  /account/*:
+  /api/auth/*:
     extension: auth
-    methods: [GET, HEAD, POST]
-  /private:
-    respond: {text: Signed in}
+    methods: [GET, POST]
+  /api/me:
+    methods: [GET]
     auth: true
+    function: {source: functions/me.mjs}
 ```
 
-The site's `host.mjs` activates it. Email delivery is the mail extension's
-transport, not an auth option; auth sends every message through it:
+## Protect a route
+
+`auth: true` (the short form of `policies.extensions.auth: {}`) requires a
+session Better Auth verifies from the request's own cookie. Without one the
+route answers `401 {"error":"authentication_required"}`. A `POST`, `PUT`,
+`PATCH` or `DELETE` must also come from the site's own origin (`Origin`,
+`Sec-Fetch-Site` or `Referer`), or it answers `403 {"error":"cross_origin_refused"}`.
+
+The route's function never receives the cookie or an `Authorization` header.
+It receives the verified user id through the request-bound capability:
 
 ```js
-// host.mjs (trusted operator code, outside app/)
-import { composeHost } from '@jimhoyd/urlcode/host';
-import audit from '@jimhoyd/urlcode-audit/extension';
-import mail from '@jimhoyd/urlcode-mail/extension';
-import ui from '@jimhoyd/urlcode-ui/extension';
-import auth from '@jimhoyd/urlcode-auth/extension';
-import { sesTransport } from '@jimhoyd/urlcode-mail';
-
-export default await composeHost(import.meta.url, [
-  audit(),
-  mail({ transport: sesTransport({ region: 'eu-west-1' }), from: 'no-reply@site.example' }),
-  ui(),
-  auth(),
-]);
+export default function me(request, context) {
+  const { userId } = context.capabilities.auth.identity;
+  return Response.json({ userId });
+}
 ```
 
-`auth({...})` accepts `service`, `csrfKey`, `providers` (OpenID Connect) and `passkeys`; the kit, audit, mail, abuse and the revision pin come from the host. By default the service is the one `operator-service.mjs` default-exports and the CSRF key is `data/csrf.key`; pass `service` or `csrfKey` to supply your own (the host then leaves closing them to you). `composeHost` takes the reviewed revision from the operator policy passed with `--policy` beside `--host-file`, or from a static `PROJECT_SHA256` copied after review (`urlcode extensions add` prints it). Inspecting a revision with `inspectExtensionRevision(project)` grants nothing; never compute and automatically approve the current project during activation. Pass the canonical HTTPS origin (`AUTH_ORIGIN`) to `urlcode serve --origin`, with `--host-file host.mjs`. Guest/application code never chooses the module, database path, keys, mail credentials or grants.
+Identity is not permission. Roles, ownership and approvals are application
+data keyed by that id. A `sandbox: true` route cannot name `auth`: the
+capability is a live object that cannot cross into the sandbox, so the runtime
+refuses it before serving.
 
-Activation refuses while `ui`, `audit` or `mail` is not active, and refuses a service configured with `requireEmailVerification` while mail has no transport (`available: false`). Without a transport auth serves password sign-in only: email codes, verification, password reset, invitations, setup links and every notice are not offered.
+## Sign in from the browser
 
-Registration starts off. Bootstrap the first administrator from the site with `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`, supplying `{email,password}` as bounded JSON on stdin. Never place passwords in command arguments or source files. The command returns account metadata, not the session token. A role/default-role configuration change is a reviewed operator change, not an administration-page edit.
-
-## AuthExports v1
-
-Another extension that `requires` auth (admin, a support desk) reads
-`ctx.get<AuthExports>('auth')`; import its types with `import type` from
-`@jimhoyd/urlcode-auth`. It never receives auth's keys, database, a session
-token or a cookie:
-
-| Member | What it is |
-|---|---|
-| `version`, `active` | `1`, and whether auth is activated. While it is not, `account()`, `csrf.token()`, `urls.*` and `administration` throw `AuthError` 503 `auth_inactive`; `permissions`, `csrf.field` and `csrf.header` are static and never throw, so read `active` to tell whether auth is activated |
-| `permissions` | The 11 permission names auth enforces (`authPermissions`) |
-| `account(request)` | The signed-in account of a request an auth session policy authorized: `{id, email, emailVerified, roles, permissions, restricted, impersonated, authenticatedAt, freshUntil, fresh, locale, has(permission), actor}`, or `null`. `has()` accepts any name, for example `audit.read`. `actor` is an opaque capability for `administration` |
-| `csrf` | `{field: 'csrf', header: 'x-csrf-token', token(request)}`: the session-bound token to embed in a form or send as the header |
-| `urls` | `{mount, account(), signIn(returnTo?), stepUp(returnTo?)}`; `returnTo` must be a local path outside auth |
-| `administration` | The administration API admin uses: users, sessions, registrations, support cases, recovery, impersonation and `reauthorize(actor, {permissions, fresh?})`. Every call takes the `actor` and re-checks the session, permission and freshness; a forged actor is 401 `invalid_actor`, a revoked, locked or impersonated session 401 `invalid_session`, a missing permission 403 `permission_denied` |
-
-Freshness is `FRESHNESS_WINDOW_MS`, five minutes after the last primary or
-step-up proof. Auth sends every message itself, including the ones an
-administrator starts, so a raw token never leaves auth.
-
-## Session identity for application functions
-
-A function behind `auth: true` can import `sessionUserId` from
-`@jimhoyd/urlcode-auth` and call `sessionUserId(request)`. It returns
-the signed-in user's opaque id or `null`; it does not expose the auth service,
-credentials or roles. Auth supplies the reserved session header only after its
-session authorization and applicable CSRF/origin checks succeed. Bearer routes
-keep their separate context. See the authoritative
-[session identity contract](../../docs/EXTENSIONS.md#session-identity-in-functions)
-for provenance, trusted Node imports and sandbox limits. Keep ordinary function
-routes and their method/body declarations in YAML; no custom auth or wildcard
-dispatcher is needed to obtain the caller's id.
-
-## Project-level lifecycle hooks
-
-A project can name its own function per lifecycle point in `extensions.auth.config.hooks`, using the same `{source, export}` shape (or a bare string, defaulting to the module's default export) `function`/`middleware` routes already use (docs/EXTENSIONS.md "Project-level lifecycle hooks"):
-
-```yaml
-extensions:
-  auth:
-    version: '1'
-    config:
-      registration: open
-      hooks:
-        beforeRegister: ./hooks/registration-rule.mjs   # bare string: default export
-        onAccountCreated:
-          source: ./hooks/on-account-created.mjs
-          export: provisionWorkspace
-        onDeletionScheduled: ./hooks/on-deletion.mjs
-```
-
-The auth service fires them, so every path gets the same set: auth's own
-pages, the administration API admin calls, and the operator CLI (`bootstrap`,
-`import` and `purge` load the project's hooks from `--project <app dir>`,
-default `app/` beside the operator file, unless `--no-project-hooks`).
-
-| Hook | Kind | Input |
-|---|---|---|
-| `beforeRegister` | filter | `{email, method, profile?}`; `method` is `password`, `signup`, `external`, `waitlist`, `invitation`, `administrator` or `import` |
-| `beforeRoleChange` | filter | `{accountId, currentRoles, requestedRoles, actorId, reason}` |
-| `onAccountCreated` | action | `{accountId, email, method, actorId?}` (`method` may also be `bootstrap`) |
-| `onAccountStatusChanged` | action | `{accountId, status: 'active' \| 'locked', actorId, reason}` |
-| `onDeletionScheduled` | action | `{accountId, email, deleteAfter, actorId?}` (no `actorId` when the owner scheduled it) |
-| `onAccountDeleted` | action | `{accountId}`, after the purge |
-
-A filter allows only by returning `{allow: true}` within 5 seconds; anything
-else (`{allow: false, reason}`, no verdict, a throw, a timeout) refuses with
-403 `registration_rejected` or `role_change_rejected` and the hook's `reason`
-(at most 256 characters). Filters run before the store transaction and can
-only narrow: every guard still runs inside it. This is how "only `@acme.com`
-may register" becomes portable project code instead of a fork. Actions run
-after the commit, at most 4 at a time and 5 seconds each; a throw or timeout
-is counted (`getHookStats()`), never shown to the caller, and never undoes the
-change.
-
-These hooks are first-party project code, the same trust category as any
-`function`/`middleware` route: **trusted, in-process execution by default**,
-following the runtime's trust model with no special case (urlcode's
-docs/SPIKE-DEFAULT-TRUST-MODEL.md). A missing module, a module that fails to
-import, or a named export that is not a function fails **activation** —
-before this extension serves a single request — never the first request
-that happens to reach the hook.
-
-Each activation re-reads the hook's **entry** module from disk, so editing a
-hook file and re-activating (a dev reload) takes effect without restarting
-the process. Only the entry module is refreshed: modules the hook itself
-imports stay on Node's module cache for the life of the process, so a change
-to a hook's own dependency still needs a restart.
-
-Core's extension-hook primitive loads these hooks and publishes their contracts
-through `get_extensions`. Contract v1 is trusted-only: `sandbox: true` is
-refused explicitly at activation. Declare a hook without `sandbox` (or with
-`sandbox: false`) to use it.
-
-## Authentication and presentation
-
-`createAuthService` owns a private SQLite database outside the application directory. Its operations enforce authority, fresh authentication, delegation ceilings, replay protection and transaction boundaries, and write every privileged action into the audit outbox in the same transaction. Callers must preserve the distinction between unrestricted operator APIs and the actor-bound administration API. The extension adds HTTP cookies, same-origin and CSRF checks, bounded bodies (core's request helpers) and trusted pages.
-
-Optional factories supply Google/Apple/generic OIDC and passkey providers. Unconfigured providers are not offered. Synthetic cryptographic fixtures do not prove real Google, Apple, authenticator or mail delivery behavior. The auth extension currently declares **Node only**; generic core extension support for AWS/Vercel does not make this SQLite service portable to their deployment environments.
-
-### Passkeys and the relying-party domain
-
-`createPasskeyProvider({origin, rpId, rpName})` (and `createAuthPreset`) binds passkeys to the canonical HTTPS origin with the canonical host as the WebAuthn relying-party ID; the provider refuses any other `rpId`. That is the default, and it is unchanged: ceremonies are accepted only from the canonical origin, so an operator [`--alias-origin`](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) gets no passkeys.
-
-To share passkeys across origins that sit under one registrable domain, the operator sets a [shared passkey relying-party domain](../../docs/EXTENSIONS.md#shared-passkey-relying-party-domain) beside the origins: `urlcode serve --origin https://app.site.example --alias-origin https://www.site.example --passkey-rp-id site.example`. Core validates it (a lowercase registrable domain equal to, or a parent of, every site origin's host; no IP address, single label or listed public suffix) and passes it to the activation as `passkeyRpId`. Auth then calls the provider's `withSite({rpId, origins})`: registration and authentication options carry the shared RP ID, and verification accepts a client origin that is any site origin (canonical or alias) and nothing else. A provider without `withSite` is refused at activation. It is never set in project YAML.
-
-**Changing the RP ID makes existing passkeys stop working.** A credential is bound to the RP ID it was registered under: turning `--passkey-rp-id` on, changing it or turning it off strands every passkey registered under the previous RP ID, and those users must sign in with another method and register a new passkey (an account whose only sign-in method is a passkey needs [manual recovery](#operations-and-recovery)). Choose the RP ID before users enrol.
-
-Auth records the RP ID each new passkey is registered under (issue #736): the ceremony's RP ID is stored with the credential (`rpId` in `StoredPasskey`/`AuthPasskey`, and an `rp_id` column that existing databases gain in place). At activation auth counts stored passkeys against the RP ID ceremonies now use (the operator `passkeyRpId`, otherwise the provider's canonical host) with one aggregate query, and prints a startup warning through core's [activation warnings](../../docs/EXTENSIONS.md#activation-warnings) when some cannot work:
-
-- `N passkeys were registered under a different relying-party ID than the current one (<rp id>) and will not work until users re-register; ...` when recorded RP IDs differ;
-- `N passkeys were stored before auth recorded relying-party IDs; if registered under the canonical host (<host>), as was the default, they will not work under the passkey RP ID <rp id> until users re-register; ...` only when a `--passkey-rp-id` other than the canonical host is set. Passkeys stored before this change have no record; auth assumes they were registered under the canonical host, the default until #729, which is wrong only if the operator already used `--passkey-rp-id` before upgrading (then the warning is spurious).
-
-The warnings carry counts, the RP ID and the canonical host only, never an account, email or credential id, and appear in `validate`, `test` and `dev`/`serve` startup output as `{"event":"extension_warning","extension":"auth",...}`. They do not change verification: a mismatched passkey is still simply refused by the browser or the verifier, and the fix is still sign-in by another method and re-registration.
-
-Account copy resolves through the `ui` kit: auth contributes its English catalogue, and a project translates or overrides it in `ui/copy/<locale>.json`. Messages are plain text and escaped by renderers. Translation coverage and accessibility require review; nothing here establishes WCAG conformance. Registration metadata is descriptive data and never authorization authority. Private metadata is excluded from public projections; public and unsafe fields remain untrusted.
-
-## Route requirements (`auth:`)
-
-This package owns the vocabulary of a route's `auth:` short form (and of the
-long form `policies.extensions.auth` it expands to). Core maps `auth: true` to
-`{}` and an object to the same object minus `required`, and knows nothing else
-about it; the keys and bounds are this package's `authPolicySchema`
-(`src/auth.ts`), published as `policySchema` in the registration and in
-`urlcode.json`. The keys are `role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny` (`401`, `403`, `404` or `sign-in`), `csrf`
-and `bearer`. `urlcode validate`, `validateProject` and runtime startup check
-routes against it and report a failure at the key the author wrote, for example
-`Invalid extension policy at route /api/items, auth.bearer.quota.requests
-(minimum): must be >= 1`. Adding or tightening a route key is a change here, not
-in core's schema. See [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form).
-
-### CSRF: `csrf: token | origin`
-
-A session-protected route verifies CSRF on every write. With the default
-`csrf: token`, the write must carry auth's session-bound token (an HMAC over
-the canonical origin and the session) in a single `x-csrf-token` header, or in
-a `csrf` body field when the header is absent, and its provenance must pass
-core's same-origin rule. `AuthExports.csrf.token(request)` gives another
-extension the value to embed. `csrf: origin` skips the token and admits a write
-on same-origin provenance ([the full rule](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks):
-a site `Origin`, else `Sec-Fetch-Site: same-origin` or `none`, else a site
-`Referer`) and the `SameSite=Strict` `__Host-` session cookie
-alone; use it only on a mount that verifies its own token (forms,
-form-records) or that accepts JSON only (a store collection). `csrf` cannot be
-combined with `bearer`.
-
-### Support sessions
-
-While an administrator impersonates an account (admin's support session),
-auth's middleware marks every response on an auth-protected route
-uncacheable and shows a banner ("support.banner" in the catalogue) with a link
-that ends the session, so the impersonation is visible on application pages
-too, not only on auth's own.
-
-Only an account whose roles grant nothing beyond the default role can be
-impersonated, and the support session carries only the default role's
-permissions. A permission is privileged by that rule, not by its name, so
-`audit.read` or another extension's permission excludes a target exactly as
-`auth.*` does, and granting one to the target mid-session ends the session.
-
-## Bearer/API-key authentication
-
-`AuthService` also owns an optional, separate credential kind for
-machine/agent callers: bearer API keys, checked against the
-`Authorization: Bearer <key>` header instead of the session cookie. A route
-opts in with `auth: {bearer: {scopes: [...]}}` (see
-[docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#bearerapi-key-routes)), exclusive
-of the session-based `role`/`permission`/`verified`/`freshWithinSeconds`/`onDeny`
-keys.
-
-An operator issues, lists and revokes keys outside route YAML — through the
-same `AuthService` object that owns sessions, or the CLI:
-
-```sh
-echo '{"name":"ci-deploy-bot","scopes":["deploys.write"],"expiresInMs":7776000000}' \
-  | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
-```
-
-An optional `quota: {requests, window}` gives the key its own budget (see
-[per-credential quota](#per-credential-quota)), and an optional `userId` makes
-it act for a user (see [keys that act for a user](#keys-that-act-for-a-user)).
-
-`issueApiKey` returns the raw key (`uak_<id>.<secret>`) exactly once; only its
-scrypt hash (the same derivation `createAuthService` uses for passwords) is
-stored, so it cannot be recovered afterward — treat it like any other secret.
-`listApiKeys` never returns the raw key or its hash. `revokeApiKey` takes the
-key's `id` (from `issueApiKey` or `listApiKeys`), not the secret.
-
-The extension gate enforces expiry, revocation and the route's required
-scopes with RFC 6750-shaped responses: a missing/malformed `Authorization`
-header is a 401 with no error parameter; an unknown, wrong-secret, expired or
-revoked key is a 401 with `WWW-Authenticate: Bearer error="invalid_token"`; a
-valid key missing a required scope is a 403 with
-`error="insufficient_scope"` naming the missing scopes. On success, the
-verified key's id/name/scopes (never the raw key) are written into the
-reserved `x-urlcode-context-auth-principal` request header as base64-encoded
-JSON (`{id, name, scopes}`), so the protected route's own trusted
-`function`/`middleware` can read who authenticated directly off its `Request`
-object:
+Use Better Auth's own client; the mount is its `basePath`:
 
 ```js
-const principal = JSON.parse(Buffer.from(request.headers.get('x-urlcode-context-auth-principal'), 'base64').toString());
+import { createAuthClient } from 'better-auth/client';
+const auth = createAuthClient({ basePath: '/api/auth' });
+await auth.signIn.email({ email, password });
+await auth.signOut();
 ```
 
-This uses core's generic `x-urlcode-context-*` extension-context header
-namespace (`@jimhoyd/urlcode/extensions`, `extensionContextHeaderPrefix`):
-the runtime strips it from every inbound request before any extension or
-guest code sees it, so a client can never inject or spoof a principal (see
-[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618) and
-[extensions](../../docs/EXTENSIONS.md#handing-data-forward-into-a-protected-routes-own-context)).
-The header is absent on a session-cookie-protected route (`auth: {role: ...}`
-etc.) — only `bearer` writes it — so a route reading it must not assume it is
-always present.
+The mount forwards only these Better Auth paths; everything else under it is
+`404`:
 
-### The request principal
+| Path | Purpose |
+| --- | --- |
+| `POST /sign-in/email`, `POST /sign-out` | Sign in and out |
+| `GET /get-session` (or `POST`), `GET /list-sessions` | The current session and the user's sessions |
+| `POST /revoke-session`, `/revoke-sessions`, `/revoke-other-sessions` | End sessions |
+| `POST /change-password` | Change the signed-in user's password |
+| `GET /ok` | Health |
+| `POST /sign-up/email` | Only with `auth({signUp: true})` |
 
-Separately from that header, auth is a principal provider for other extensions
-on the same route (`providesPrincipal: true`; see
-[request principal](../../docs/EXTENSIONS.md#request-principal)). On every
-request its `authorize()` allows, it sets core's opaque request principal:
+## Operator options
 
-| Route protection | Principal id |
-|---|---|
-| session (`auth: true`, `role`, `permission`, ...) | the signed-in user's stable id (never the email), set after the CSRF check on a write |
-| `bearer`, key issued with `userId` | that user's id |
-| `bearer`, service key (no `userId`) | `apikey:<key id>` (`apiKeyPrincipalId(id)`) |
+Everything about the Better Auth instance is `host.mjs` code, never YAML:
 
-A service key belongs to no user, so it is its own principal, namespaced so it
-can never equal a user id: records it creates in an
-[owned store collection](../../docs/STORE.md#per-record-ownership) belong to
-that key, and stop being reachable through the API once it is revoked or
-expires; the operator can move them to another principal with
-[`urlcode-store reassign`](../../docs/STORE.md#moving-records-to-another-principal).
-A denied request never carries a principal. An impersonation session carries
-the impersonated user's id, so an operator impersonating a user acts on that
-user's owned records.
-
-### Keys that act for a user
-
-An operator can issue a key for an existing user
-([urlcode#732](https://github.com/jimhoyd-com/urlcode/issues/732)): pass
-`userId` (the id from `urlcode-auth users`) to `issueApiKey`, or in the
-`api-key-issue` JSON:
-
-```sh
-echo '{"name":"alice-sync","scopes":["notes.read","notes.write"],"userId":"<user id>"}' \
-  | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
+```js
+auth({
+  signUp: false,          // allow POST /sign-up/email
+  paths: [],              // more Better Auth paths to serve, for example a plugin's
+  betterAuth: {},         // extra Better Auth options, such as plugins (trusted code)
+  database: 'data/auth.sqlite',
+  secretFile: 'data/auth.secret',
+})
 ```
 
-- **Principal.** The key sets the request principal to that user's id, so
-  records it creates in an owned store collection belong to the user: they are
-  the same records the user sees when signed in, and they survive rotating the
-  key (issue a new key for the same user, then revoke the old one).
-- **Authority.** The key still acts only within its own `scopes`, checked
-  against the route's `auth.bearer.scopes`. The user's roles and permissions do
-  not apply to it, and it never passes a session-protected route
-  (`auth: true`, `role`, `permission`, ...), which still needs a session.
-- **Validation.** `userId` must name an existing account whose status is
-  `active`; an unknown id, a locked account or one pending deletion is refused
-  with `invalid_api_key_user` and nothing is stored.
-- **Disable and delete.** A user-linked key authenticates only while its user is
-  `active`. Locking the account, or the account entering its deletion grace
-  period, makes every key linked to it fail with the same 401 `invalid_token` a
-  revoked key gets, from the next request; unlocking the account, or cancelling
-  the deletion, makes them work again. When the account is purged its keys are
-  revoked for good. `listApiKeys` and `api-key-list` report each key's `userId`
-  (`null` for a service key) and `userDisabled` (`true` while the linked user is
-  not active). Revoke a key explicitly when it must never return.
-- **Handler context.** The `x-urlcode-context-auth-principal` header also
-  carries `userId` for such a key (`{id, name, scopes, userId}`); it is absent
-  for a service key.
-
-Keys issued before this field existed, and keys issued without it, are service
-keys (`userId: null`); an existing database gains the nullable `user_id` column
-in place when the service opens it.
-
-### Per-credential quota
-
-A bearer route can also budget each API key separately
-([urlcode#572](https://github.com/jimhoyd-com/urlcode/issues/572)):
-
-```yaml
-routes:
-  /api/items:
-    function: functions/items.mjs
-    auth: {bearer: {scopes: [items.read], quota: {requests: 1000, window: 3600}}}
-    policies:
-      throttle: {quota: 60, window: 60}   # core, per client: still owns unauthenticated floods
-```
-
-`requests` (1 to 1,000,000) per `window` seconds (1 to 2,592,000, 30 days) use
-the units of core's `policies.throttle` `quota`/`window`.
-
-A key can also carry its own budget, set when it is issued
-([urlcode#703](https://github.com/jimhoyd-com/urlcode/issues/703)): pass
-`quota: {requests, window}` (same bounds) to `issueApiKey`, or in the
-`api-key-issue` JSON on stdin:
-
-```sh
-echo '{"name":"plan-gold","scopes":["items.read"],"quota":{"requests":50000,"window":3600}}' \
-  | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
-```
-
-**A key's own quota replaces the route's.** A key issued with one is counted
-only against it, on every bearer route it authenticates on, whether or not the
-route declares a `quota`; the route's `auth.bearer.quota` applies to keys issued
-without one. This is how plan tiers work: one route, different keys, different
-budgets. The quota is fixed at issuance (issue a new key and revoke the old one
-to change it); `listApiKeys` and `api-key-list` report it, and keys issued before
-this field existed have none (`quota: null`). Core `policies.throttle` is
-separate: it still applies to every request, per client, before auth runs.
-
-The gate counts a request only after the key has authenticated and covers the
-route's scopes, so 401 and 403 keep their meaning. An allowed request's
-response reports the budget it was counted against, in the same fields the
-refusal uses: `RateLimit-Policy: "credential";q=<requests>;w=<window>` and
-`RateLimit: "credential";r=<remaining>;t=<seconds>` (added by the extension's
-`middleware()` hook after the route's handler has answered). These values are
-per credential, so they must never reach a shared cache: core already sends
-`Cache-Control: no-store` on every response of a route auth protects, and
-refuses to start with a `cache` strategy other than `no-store` on such a route.
-The request that would exceed the budget is refused with a 429 before the
-route's handler runs:
-
-- body `{"error":"credential_quota_exceeded"}`, `Cache-Control: no-store`;
-- `Retry-After: <seconds>` until the window closes;
-- the IETF RateLimit fields core throttle uses, under the policy name
-  `credential`: `RateLimit-Policy: "credential";q=<requests>;w=<window>` and
-  `RateLimit: "credential";r=0;t=<seconds>`.
-
-Semantics, matching the sign-in attempt counter:
-
-- **Fixed window per credential.** The window opens at the key's first counted
-  request; a refused request is not counted, so a retry loop cannot keep its
-  own window open. Routes that restate the same `requests`/`window` share one
-  counter per key; a route with a different budget gets its own. A key's own
-  quota is one counter for that key across every route.
-- **Counted by key id, never the secret.** The counter row is a SHA-256 of the
-  key's public id and the budget, in the same `auth_attempts` table (100,000-row
-  ceiling, expired rows swept on write and by `urlcode-auth cleanup`).
-- **Durable on one host.** The count lives in the auth SQLite database, so it
-  survives a restart, and every process on the host that opens the same
-  database file shares it. It is not shared across hosts.
-- **Fails closed.** When the store is unavailable, or the counter table is at
-  capacity, the request fails with a 503 (as the key lookup itself does); it is
-  never waved through uncounted.
-
-On a route that also declares core `throttle`, both budgets share the same
-structured-field lists. On an allowed response the list is
-`"credential", "default"`:
-
-```http
-HTTP/1.1 200 OK
-Cache-Control: no-store
-RateLimit-Policy: "credential";q=2;w=60, "default";q=60;w=60
-RateLimit: "credential";r=1;t=60, "default";r=59;t=60
-```
-
-The 429 keeps the credential's policy: core's response phase appends its own
-`default` member to the same lists, so the refusal carries both budgets and
-`Retry-After` stays the credential's:
-
-```http
-HTTP/1.1 429 Too Many Requests
-Retry-After: 45
-RateLimit-Policy: "credential";q=2;w=60, "default";q=60;w=60
-RateLimit: "credential";r=0;t=45, "default";r=57;t=31
-```
-
-`r=0` on the `credential` member names the exhausted budget.
-
-Core throttle is the other half: it counts per client (address) before auth
-runs, so it answers floods of unauthenticated or invalid-key requests without
-spending an scrypt verification on each. Declare both on a public bearer API.
-
-## Optional breached-password screening
-
-An operator can configure `checkPassword: createPasswordBreachChecker()` on `createAuthService`. This optional Have I Been Pwned range check sends only the SHA-1 prefix, requests padded responses, bounds concurrency/deadline/response bytes, and fails closed when the check cannot complete. It does not send the password or full hash to the service. Configuring the callback introduces an external service dependency; do not enable it silently or describe it as a complete hardened preset. Offline fixtures are not evidence of live service availability.
-
-## Email
-
-Auth sends every message through the [mail extension](../mail/README.md): the
-transport, sender address and delivery bounds are mail's operator options in
-`host.mjs`, and a project changes or translates any message in
-`mail/copy/<locale>.json`. The message keys auth contributes (for example
-`verify-email`, `reset-password`, `sign-in-code`, `signup-code`,
-`account-setup`, `impersonation-started` and the `admin-*` notices) are listed
-in `src/mail-templates.ts` and in mail's README. Links in a message are built
-on the canonical origin; notices carry only page links, never a token.
-
-On `urlcode dev` (a loopback origin) mail writes each message to
-`data/outbox/` by default, so every email flow works locally. On any other
-origin delivery is off until `host.mjs` names a transport, and auth then
-offers password sign-in only. Delivery failures for post-commit security
-notices do not roll back account changes; monitor mail delivery.
-
-## Operations and recovery
-
-Run `urlcode-auth --help` for the current CLI. Operator commands have full database authority; stdin avoids putting secrets in process arguments. `bootstrap`, `import` and `purge` fire the project's [lifecycle hooks](#project-level-lifecycle-hooks) from `--project <app dir>` (default `app/` beside the operator file) unless `--no-project-hooks` is passed. The user listing returns a bounded page; use service pagination for complete exports. The audit log is the audit extension's: list it with `npx urlcode-audit list`. Doctor's successful local database check is not live-provider verification.
-
-| Command | Arguments | Purpose |
-| --- | --- | --- |
-| `bootstrap` | `--operator-file`, JSON `{email,password}` on stdin | Create the first administrator; returns account metadata, not a session token |
-| `users` | `--operator-file` | List accounts (bounded page of 100) |
-| `sessions` | `--operator-file`, JSON `{accountId}` on stdin | List an account's sessions |
-| `revoke` | `--operator-file`, JSON `{accountId}` on stdin | Revoke all sessions of an account |
-| `import` | `--operator-file`, JSON `{users:[{email,passwordHash,emailVerified?}]}` on stdin | Import generic password hashes; only those fields are accepted |
-| `rotate-key` | `--operator-file` | Re-encrypt records with the active encryption key; reports changed/remaining |
-| `purge` | `--operator-file` | Permanently remove accounts whose deletion grace has elapsed |
-| `cleanup` | `--operator-file` | Sweep expired sessions/tokens (bounded batch) |
-| `configuration` | `--operator-file` | Print configuration revision, registration mode, security policy and roles |
-| `doctor` | `--operator-file` | Local database/configuration readiness check; reports `auditBacklog` (events still in auth's outbox) and a warning when it is not zero |
-| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?,quota?,userId?}` on stdin | Issue a bearer/API key, optionally acting for an active user; returns the raw key once, never stored |
-| `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed/quota/userId/userDisabled; never the raw key or its hash) |
-| `api-key-revoke` | `--operator-file`, JSON `{id}` on stdin | Revoke a key by its id |
-| `validate` | `--operator-file` | Offline validation of the loaded service's configuration |
-| `auth-baseline` | none (refuses `--operator-file`) | Offline synthetic checks against a temporary runtime |
-| `verify-deployment` | JSON `{origin,authMount,allowDevelopment?,allowTurnstile?}` on stdin | Anonymous header/cookie checks of a deployed site |
-| `backup` | JSON `{database,destination,projectRoot}` on stdin | Online SQLite backup to a new private path |
-| `restore` | JSON `{backup,destination,projectRoot}` on stdin | Restore a backup to a new private path |
-
-`--operator-file` is an absolute path to a module that default-exports an `AuthService`. Audit events written by an operator command wait in auth's outbox until a host with the audit extension runs.
-
-Backup/restore accepts JSON paths on stdin. `createBackup({database,destination,projectRoot})` uses SQLite's online backup API, including committed WAL pages, with a bounded worker and integrity checks. `restoreBackup({backup,destination,projectRoot})` restores to a **new** path. Both require private operator paths outside the project and refuse overwrite. Never copy only a live `.sqlite` file and assume its WAL is included. See [backup and restore platform guarantees](../../docs/AUTH-BACKUP.md), including Windows ACL and directory durability limits.
-
-Back up encryption keys, CSRF keys and reviewed static configuration separately. Back up the audit log after the auth database, so events not yet drained travel in the auth backup ([audit and abuse data](../../docs/AUTH-BACKUP.md#audit-and-abuse-data)). Database snapshots contain sensitive account data, undelivered audit events and password hashes, but do not export key files. Restoring historical data also restores historical sessions/tokens and revocation state: plan revocation and recovery before reopening traffic. Rotate keys by adding a new active key, retaining decryption keys while bounded migration reports remaining records, then remove old keys only after completion and backup verification. Old writers fail closed after activation switches. Keep a tested isolated restore procedure.
-
-`composeHost`'s `close` detaches auth's outbox from audit and releases the service and CSRF key auth opened itself, after all extension runtimes stop; a service or key the operator passed in stays the operator's to close. Scheduled purge/sweep operation and backups are operator responsibilities; opportunistic cleanup is not a retention policy.
-
-Apache-2.0. auth is released as a tarball on core's GitHub Release; only core is
-published to npm.
-
-## Operator presets and enrollment
-
-`createAuthPreset({preset: 'standard', origin, rpName})` supplies passkeys, standard session limits and seven-day deletion grace. Email flows depend on the mail extension's transport, not the preset. TOTP and recovery are service capabilities; remembered devices can optionally exempt ordinary MFA, but never grant fresh step-up authority.
-
-`createAuthPreset({preset: 'hardened', origin, rpName, checkPassword: createPasswordBreachChecker()})` requires the password-screening adapter, and auth's activation requires a mail transport; it supplies mandatory email verification followed by TOTP enrollment, shorter sessions and 30-day deletion grace. Spread `preset.service` into `createAuthService` in `operator-service.mjs` and `preset.extension` into `auth({...})` in `host.mjs`. Choosing the online breach checker makes password creation/reset depend on that external service; inject an approved local checker if needed. Deliberate overrides change the effective policy and should be reviewed.
-
-Restricted enrollment sessions can verify their email and enroll TOTP, but cannot authorize protected application routes or administration. Required verification revokes old sessions and requires a fresh sign-in before factor enrollment. Public routes without auth policies remain public. These controls do not establish independent security certification or live provider readiness.
-
-Configuration is database-pinned. Before changing modes, roles or security requirements, run `urlcode-auth configuration --operator-file /absolute/operator-service.mjs` and retain its revision. Review the new operator configuration and pass `approveConfigurationChangeFrom: 'the-old-64-character-revision'` on the first `createAuthService` startup. The generated operator file accepts that explicit approval through `AUTH_CONFIG_FROM`. A matching already-applied migration can be repeated safely; an unrelated pin fails.
-
-Migration preserves accounts, enrolled credentials and history, while revoking sessions and pending authentication/registration state, closing pending cases and recording an audit entry. Existing roles must remain valid and active administration cannot be removed accidentally. Valid pending-deletion cancellation links retain only their original expiry. Old workers reject reads and writes after migration; restart every instance with the reviewed configuration, remove the approval variable, and separately review/pin the changed route project. Schedule the transition as a maintenance operation; do not edit database metadata manually.
-
-Auth's semantic UI keys reach catalogue authors through the `ui` kit: `npx urlcode-ui copy --missing <locale> --extensions @jimhoyd/urlcode-auth` lists them. Translations are plain text and escaped at rendering; runtime templates never execute project markup. No complete non-English language pack is bundled. Dates, provider identifiers and user data retain their own values.
-
-## Presentation
-
-Auth is one part of the product, while this package retains ownership of
-identity, sessions, CSRF, validation and recovery behavior. Its extension
-registration publishes a machine-readable `authoring` contract through
-`urlcode extensions --host-file ... --json` and MCP `get_extensions`. Follow
-those configuration, copy, template and lifecycle-hook surfaces before copying
-an auth screen or flow into the project. The contract also lists focused checks
-for the edit loop; full project tests remain the handoff evidence.
-
-Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model and a sample view, contributed to the `ui` extension through the definition's `contributes.ui`. The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the kit's shared form primitives (`field`, `postForm` and friends from `@jimhoyd/urlcode-ui`).
-
-Auth requires `ui`: the kit is the only render path. `composeHost` activates `ui` before auth and hands auth its kit, and the runtime activates them in the same order, whatever order `urlcode.yaml` declares them in. Auth refuses activation when `ui` is missing or not active, and reads `ui.kit` per request, never capturing it at activation. `@jimhoyd/urlcode-ui` is an optional exact peer that `urlcode extensions add auth` installs once at the top level of the site.
-
-```yaml
-extensions:
-  ui: { version: "1", config: { theme: { name: Acme }, templates: ui/templates } }
-  auth: { version: "1", config: { registration: "off" } }
-routes:
-  /assets/ui/*: { extension: ui, methods: [GET, HEAD] }
-  /account/*: { extension: auth, methods: [GET, HEAD, POST] }
-```
-
-A headless site, whose clients only send `Accept: application/json`, still
-declares the `ui` route ([#812](https://github.com/jimhoyd-com/urlcode/issues/812)).
-The requirement is not conditional: the same auth mount answers its account
-pages to any client that does not ask for JSON, and `ui` activates only with
-exactly one asset mount (`ui extension needs exactly one route mount`), because
-those pages link its stylesheet and scripts there. The mount is harmless: `GET`
-and `HEAD` of the kit's content-hashed static files, `404` for anything else, no
-cookies and no state. [`recipes/headless-auth-profile`](../../recipes/headless-auth-profile/README.md#why-a-json-only-site-mounts-ui)
-is such a site.
-
-Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor --extensions @jimhoyd/urlcode-auth` reports every `auth/*` template behind its view model (the CLI reads the namespace, copy and samples from this package's `./extension` definition, `contributes.ui`; without the flag it sees the kit alone). Copy resolves through the kit's catalogue, the auth catalogue and the project's `extensions.ui` copy.
-
-There is no fallback render path. The auth passkey script is nonce-bound to the kit's page nonce. A challenge widget (from the abuse extension's provider) is passed to the kit as an `async` script whose origin the page CSP lists; auth no longer rewrites the page nonce.
-
-Changing `configurationTag` deliberately advances the approved configuration revision for provider/callback/profile-policy deployments that cannot be fingerprinted as simple data. The service does not automatically fingerprint executable callbacks. Session idle and absolute limits do participate in the declared configuration fingerprint.
-
-### Verification-first signup
-
-The browser registration entry point resumes a short-lived, browser-bound signup
-wizard. With `requireEmailVerification`, it verifies an emailed numeric code before
-accepting a password or passkey; mail must have a transport. Credentials,
-profile and required consent are finalized together. Open/invited signup creates
-one account/session transaction; waitlist signup creates only a pending application
-until an administrator approves it. Passkey applications retain their credential
-and account binding through approval. Existing accounts are never overwritten:
-the identifier step gives the same next page and sends a registration-attempt
-notice privately. The low-level operator registration/bootstrap methods remain
-explicit privileged provisioning APIs, not public HTTP signup shortcuts.
-
-### Unverified accounts and first mailbox proof
-
-Without `requireEmailVerification` (the `standard` preset's default), anyone can
-register an address they do not control and then add sign-in methods to that
-unverified account. So the first time an unverified account proves control of its
-mailbox, the proof claims the account: in the same transaction the service removes
-every passkey, linked provider identity, authenticator, passkey second factor,
-recovery code, remembered device, pending email change or factor recovery, other
-outstanding email token and session established before it, marks the email
-verified, and records an `account.claimed` audit event listing what was removed.
-What happens to the password depends on the proof:
-
-| First mailbox proof | Password | Session |
-| --- | --- | --- |
-| Password reset link | Replaced by the one the prover chooses | None; sign in again |
-| Email sign-in code | Removed; set one later through password reset | The one the code issues |
-| Verification link, submitted in a browser holding a live session of that same account | Kept, with every other method: the verifier is the registrant | Unchanged unless verification is required |
-| Verification link, any other browser | Removed; `POST /verify` answers `passwordResetRequired: true` and the page links to password reset | None |
-
-Earlier factors are neither demanded nor accepted by a claiming email code,
-because the claim removes them. An account that is already verified is never
-claimed: reset still keeps its passkeys, linked identities and factors, and an
-email code still requires its second factor. Accounts created from a provider
-identity whose email the provider asserts as verified start verified. An
-administrator's `verify-email` action is an attestation, not a mailbox proof, and
-does not claim; review an account's sign-in methods before verifying it by hand.
-
-With `requireEmailVerification`, an unverified session cannot add passkeys,
-provider links, authenticators or remembered devices in the first place, and
-public signup verifies the mailbox before any credential is stored.
-
-### Lost second-factor recovery
-
-`allowEmailFactorRecovery: true` explicitly enables an email fallback for verified
-accounts that lost their second factor. It is disabled by default because control
-of the mailbox becomes a recovery authority. It needs a mail transport. The flow confirms a private
-email link in the originating browser, starts a 24-hour waiting period and provides
-a separate cancellation link. GET requests never consume either capability.
-
-Completion checks the account version, revokes sessions and pending authority,
-removes the old TOTP/recovery codes, and issues an enrollment-only session. Only that
-recovery session can enroll the replacement factor; ordinary password/provider
-logins cannot race it, even when the site's global MFA requirement is off. No
-application authority returns until the replacement factor is confirmed. Recovery
-state expires, is rate-limited, survives restart and is revoked by configuration
-migration. This is email-based factor recovery, not proof of a person's legal
-identity or the later public lost-everything workflow.
-
-### Anonymous deployment checks
-
-Run `urlcode-auth verify-deployment` with bounded JSON on stdin containing the
-canonical HTTPS `origin` and `authMount`. It performs two anonymous GET requests,
-checks the expected login/unauthenticated account status, restrictive CSP,
-no-store, path-private referrer and nosniff headers, and secure host-only cookies. It does not send
-credentials, follow redirects, read response bodies, send email or create accounts.
-A failed check exits nonzero and prints only named booleans, never response bodies
-or network errors. `allowDevelopment: true` permits HTTP only for loopback hosts.
-These checks cover the observed public responses; they do not establish live
-provider readiness, security assessment, recovery or load-test results.
-
-### Passkey second factors and remembered devices
-
-Set `allowPasskeySecondFactor: true` to let a user explicitly enroll an owned,
-user-verified passkey as a second factor at `/account/second-factors`. A passkey
-used for primary sign-in cannot also satisfy the second factor in that sign-in.
-WebAuthn challenges bind to the browser; opaque factor proofs are consumed with
-the primary credential, account version and counter in the final transaction.
-TOTP/recovery-code alternatives remain available. Restricted enrollment may add a
-factor through a narrowly scoped path, including the recovery-session grant.
-
-Set `trustedDeviceTtlMs` (at most 30 days; default disabled) to offer
-`/account/trusted-devices`. Remembering a device requires recent actual MFA and an
-explicit user action. It creates a separate Secure, HttpOnly, host-only cookie;
-ordinary device recognition is never an MFA exemption. Remembered sign-in has no
-fresh authentication timestamp and cannot satisfy admin/credential step-up or mint
-another exemption. Users can revoke individual remembered devices; account
-security/version changes invalidate them. These options are part of the pinned
-operator configuration and require the explicit migration workflow when changed.
-
-`blockDisposableEmails: true` optionally refuses new registrations using the
-bundled disposable-domain snapshot, including subdomains. The dataset revision is
-part of the configuration fingerprint. Existing-account login/recovery is not
-blocked by this policy. Exact operator allow/block lists still apply. The snapshot
-is fallible and may reject legitimate addresses; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance and CC0 data terms.
-
-### Offline operational checks
-
-`urlcode-auth validate --operator-file /absolute/operator/auth.mjs` checks the loaded service's configuration revision, registration mode, bounded role definitions and public security policy. Output contains policy values and aggregate counts, not accounts, credentials, database paths or callback configuration. It requests no migration or account mutation. Loading an operator module executes trusted initialization: use an existing configuration without migration approval, and review that module's own startup behavior. This command does not sandbox operator code or verify providers.
-
-`urlcode-auth auth-baseline` requires no operator module and refuses one. It creates private temporary fixtures and an auth database outside the fixture project, runs a bounded child process, then removes them. Seventeen named checks (listed in `test/auth-baseline.test.ts`) exercise the real local runtime without opening a listener: anonymous authorization denial, CSRF and origin enforcement, Secure/HttpOnly/Strict host cookies, no-store auth responses, credential withholding from guest Request and derived header context, revocation, and restricted enrollment authority. Extra failure-only markers are recorded when a probe, deadline or cleanup fails. A failed check or deadline produces a nonzero exit status and redacted results. The command uses no customer state, network, mail or live providers. These synthetic checks are limited regression evidence, not an independent security assessment, deployment certification, browser test, load test or recovery drill.
-
-`verify-deployment` remains a separate network check. Its stdin option `allowTurnstile: true` permits only the reviewed `challenges.cloudflare.com` challenge origin (the abuse extension's Turnstile provider) in script/frame/connect CSP checks; the default remains strict about external origins. Neither command proves a deployment's provider credentials, delivery, breach callback or complete abuse policy.
-
-### Abuse controls
-
-Sign-in and sign-up budgets, the challenge escalation and password backoff are
-reviewed YAML in `extensions.auth.config.abuse`, enforced through the
-[abuse extension](../abuse/README.md) (auth `uses` it; activation refuses the
-block when abuse is not installed and active):
-
-```yaml
-extensions:
-  abuse: {version: '1', config: {}}
-  auth:
-    version: '1'
-    config:
-      abuse:
-        client: {limit: 20, windowMs: 60000}          # entry requests per client
-        signupClient: {limit: 5, windowMs: 3600000}   # sign-ups per client
-        signupDomain: {limit: 50, windowMs: 3600000}  # sign-ups per email domain
-        challengeAfter: 10                            # below client.limit; needs abuse({challenge}) in host.mjs
-        passwordBackoff: {threshold: 5, initialDelayMs: 1000, maxDelayMs: 900000, resetAfterMs: 86400000}
-```
-
-A budget over its limit answers 429 `Too many attempts. Try again later.`
-with `Retry-After`. Configure the runtime trusted-proxy boundary before
-enabling client budgets. Client keys use core's `clientKey`: an IPv4 address
-(including an IPv4-mapped IPv6 address) by itself, an IPv6 address by its /64
-network, so rotating addresses inside one allocation earns no fresh budget;
-callers behind one IPv6 /64 share a budget. The challenge provider (for
-example Turnstile) and its secret are the operator's `abuse({challenge})` in
-`host.mjs`; the widget appears only when `challengeAfter` is set, and success
-never overrides a hard budget. The per-client password-attempt limit inside
-the login transaction still applies with or without abuse. Provider callbacks
-and existing token redemption keep their own bound proofs.
-
-Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. A state-changing request must pass core's [same-origin rule](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks) with `whenAbsent: 'refuse'`: an `Origin` that is one of the site's origins (the canonical `--origin` or an operator `--alias-origin`); with no `Origin`, `Sec-Fetch-Site: same-origin` or `none`; with neither, a `Referer` whose origin is a site origin. A repeated provenance header, a null or foreign Origin, `Sec-Fetch-Site: cross-site`, an unparseable or foreign Referer, or no provenance at all is rejected. CSRF tokens and email links stay bound to the canonical origin. Passkey ceremonies work only on the canonical origin unless the operator sets a [shared passkey RP ID](#passkeys-and-the-relying-party-domain). Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
+`BETTER_AUTH_SECRET` overrides the secret file. The extension always keeps
+Better Auth's rate limiter on (10 sign-in attempts per client address a
+minute), keyed by the client address URLCode admitted, and telemetry off; the
+`betterAuth` option cannot change either. Better Auth's base URL is the
+operator's `--origin` and its base path is the mount.
+
+## Not included
+
+- No account pages, admin console, audit events, email flows, passkeys,
+  two-factor, social or OIDC sign-in, API keys or account recovery. Add a
+  Better Auth plugin through `betterAuth` and its paths through `paths` when an
+  application needs one.
+- No role or permission model: keep permissions in the application.
+- Node only; aws and vercel refuse it.
+
+See [SECURITY.md](SECURITY.md) for the security model.
 
 <!-- extension-reference:start -->
 <!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
@@ -751,189 +123,28 @@ Every key `auth` accepts, rendered from this package's `urlcode.json` (the schem
 
 **Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
 
-**Peers.** requires `ui`, `audit`, `mail` (`urlcode extensions add auth` installs them too); uses `abuse` when installed (optional: the features that need one refuse to activate without it); contributes to `mail`, `ui` (read only when that extension is installed).
+**Peers.** none.
 
 ### Configuration: `extensions.auth.config`
 
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `extensions.auth.config.registration` | string | no | enum: ["open","invite-only","waitlist","off"] | Who may create an account from the register page: anyone (open), holders of an invitation token (invite-only), a request an administrator approves (waitlist), or nobody (off, the default). Activation fails unless it equals the operator auth service's registration mode. |
-| `extensions.auth.config.abuse` | object | no | minProperties: 1; dependentRequired: {"challengeAfter":["client"]}; unknown keys rejected | Sign-in and sign-up budgets, challenge escalation and password backoff, enforced through the abuse extension. Activation refuses this block when abuse is not installed and active; client budgets need the runtime trusted-proxy boundary (503 trusted_client_required otherwise). |
-| `extensions.auth.config.abuse.client` | object | no | unknown keys rejected | Budget for every auth entry request (sign-in, sign-up, recovery, email code) per client network: an IPv4 address, or an IPv6 /64. |
-| `extensions.auth.config.abuse.client.limit` | integer | yes | minimum: 1; maximum: 100000 | Requests admitted per window for one key; the next one answers 429 with Retry-After. |
-| `extensions.auth.config.abuse.client.windowMs` | integer | yes | minimum: 1000; maximum: 86400000 | Length of the counting window in milliseconds. |
-| `extensions.auth.config.abuse.signupClient` | object | no | unknown keys rejected | Additional budget for sign-up requests per client network. |
-| `extensions.auth.config.abuse.signupClient.limit` | integer | yes | minimum: 1; maximum: 100000 | Requests admitted per window for one key; the next one answers 429 with Retry-After. |
-| `extensions.auth.config.abuse.signupClient.windowMs` | integer | yes | minimum: 1000; maximum: 86400000 | Length of the counting window in milliseconds. |
-| `extensions.auth.config.abuse.signupDomain` | object | no | unknown keys rejected | Budget for sign-up requests per email domain (the part after @). |
-| `extensions.auth.config.abuse.signupDomain.limit` | integer | yes | minimum: 1; maximum: 100000 | Requests admitted per window for one key; the next one answers 429 with Retry-After. |
-| `extensions.auth.config.abuse.signupDomain.windowMs` | integer | yes | minimum: 1000; maximum: 86400000 | Length of the counting window in milliseconds. |
-| `extensions.auth.config.abuse.challengeAfter` | integer | no | minimum: 1; maximum: 99999 | Once the client budget has admitted this many requests in its window, further entry requests must pass the operator challenge (abuse({challenge}) in host.mjs; activation refuses it without one). Requires client and must be below client.limit; a passed challenge never overrides the hard budget. |
-| `extensions.auth.config.abuse.passwordBackoff` | object | no | unknown keys rejected | Exponential delay per email address after repeated wrong passwords at sign-in or step-up; a blocked address is refused before any password is checked. Bounds match the abuse backoff. |
-| `extensions.auth.config.abuse.passwordBackoff.threshold` | integer | no | minimum: 1; maximum: 20 | Failures allowed before the first delay (default 5). |
-| `extensions.auth.config.abuse.passwordBackoff.initialDelayMs` | integer | no | minimum: 100; maximum: 60000 | First delay in milliseconds; each further failure doubles it (default 1000). |
-| `extensions.auth.config.abuse.passwordBackoff.maxDelayMs` | integer | no | minimum: 100; maximum: 86400000 | Cap on the delay in milliseconds (default 900000); must be at least initialDelayMs. |
-| `extensions.auth.config.abuse.passwordBackoff.resetAfterMs` | integer | no | minimum: 100; maximum: 604800000 | Quiet period in milliseconds after which the failure count resets (default 86400000); must be at least maxDelayMs. |
+No configuration keys: declare `extensions.auth: {version: "1", config: {}}`.
 
 ### Route policy: `policies.extensions.auth`
 
-A route may write this as the `auth:` short form: `auth: true` is `{}`, and an object is the same keys.
+A route may write this as the `auth:` short form: `auth: true` is `{}`.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
-| `policies.extensions.auth.role` | string | no | minLength: 1; maxLength: 64 | The signed-in account must hold this role. |
-| `policies.extensions.auth.permission` | string | no | minLength: 1; maxLength: 128 | The signed-in account must hold this permission through one of its roles, for example audit.read. |
-| `policies.extensions.auth.verified` | boolean | no | — | true: the account's email address must be verified. |
-| `policies.extensions.auth.freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 | The session must have authenticated within this many seconds (step-up); an older one is denied. |
-| `policies.extensions.auth.onDeny` | number / string | no | enum: [401,403,404,"sign-in"] | Answer to a denied request: that status with a JSON error, or sign-in to redirect a GET/HEAD to the login page (other methods then get 401/403). Default: 401 without a session, 403 with one. |
-| `policies.extensions.auth.csrf` | string | no | enum: ["token","origin"] | How a session write proves same-site intent: token (default) requires auth's session-bound x-csrf-token header or csrf body field; origin admits same-origin provenance with the SameSite=Strict session cookie, for mounts that verify their own token or accept JSON only. |
-| `policies.extensions.auth.bearer` | object | no | unknown keys rejected | Protect the route with operator-issued API keys (Authorization: Bearer) instead of a session. Exclusive of csrf; the session keys (role, permission, verified, freshWithinSeconds, onDeny) do not apply to a bearer caller. |
-| `policies.extensions.auth.bearer.scopes` | array | yes | maxItems: 32; items: string (minLength: 1; maxLength: 128; pattern: "^[a-z][a-z0-9_.:-]*$") | Scopes the key must hold, all of them; a key missing one answers 403 insufficient_scope. An empty list admits any valid key. |
-| `policies.extensions.auth.bearer.quota` | object | no | unknown keys rejected | Per-key budget on this route, counted by key id in the auth store; over it the request answers 429 credential_quota_exceeded. A key issued with its own quota uses that instead. |
-| `policies.extensions.auth.bearer.quota.requests` | integer | yes | minimum: 1; maximum: 1000000 | Requests one key may make per window. |
-| `policies.extensions.auth.bearer.quota.window` | integer | yes | minimum: 1; maximum: 2592000 | Window length in seconds (at most 30 days), the units of core policies.throttle. |
 
-Whole-policy rules: minProperties: 0; unknown keys rejected; never together: csrf, bearer.
 
-### Project hooks: `extensions.auth.config.hooks`
-
-Project lifecycle hooks by name: a trusted module reference ({source, export} or a bare path) auth calls at that point. Filters run before the change and may deny it; actions run after the commit. sandbox: true is refused.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `extensions.auth.config.hooks.beforeRegister` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Filter hook: Runs before any path creates an account (self-service, provider sign-up, waitlist request, administrator creation, import) and may deny it. |
-| `extensions.auth.config.hooks.beforeRegister.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
-| `extensions.auth.config.hooks.beforeRegister.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
-| `extensions.auth.config.hooks.beforeRegister.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
-| `extensions.auth.config.hooks.beforeRegister.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
-| `extensions.auth.config.hooks.beforeRoleChange` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Filter hook: Runs before an account's roles change (direct, case, case approval, bulk account operation) and may deny it. |
-| `extensions.auth.config.hooks.beforeRoleChange.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
-| `extensions.auth.config.hooks.beforeRoleChange.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
-| `extensions.auth.config.hooks.beforeRoleChange.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
-| `extensions.auth.config.hooks.beforeRoleChange.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
-| `extensions.auth.config.hooks.onAccountCreated` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after an account is created, by any path. |
-| `extensions.auth.config.hooks.onAccountCreated.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
-| `extensions.auth.config.hooks.onAccountCreated.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
-| `extensions.auth.config.hooks.onAccountCreated.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
-| `extensions.auth.config.hooks.onAccountCreated.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
-| `extensions.auth.config.hooks.onAccountStatusChanged` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after an administrator locks or unlocks an account. |
-| `extensions.auth.config.hooks.onAccountStatusChanged.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
-| `extensions.auth.config.hooks.onAccountStatusChanged.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
-| `extensions.auth.config.hooks.onAccountStatusChanged.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
-| `extensions.auth.config.hooks.onAccountStatusChanged.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
-| `extensions.auth.config.hooks.onDeletionScheduled` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after an account's deletion is scheduled, by its owner (no actorId) or an administrator. |
-| `extensions.auth.config.hooks.onDeletionScheduled.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
-| `extensions.auth.config.hooks.onDeletionScheduled.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
-| `extensions.auth.config.hooks.onDeletionScheduled.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
-| `extensions.auth.config.hooks.onDeletionScheduled.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
-| `extensions.auth.config.hooks.onAccountDeleted` | string / object | no | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Action hook: Runs after a scheduled deletion is purged. |
-| `extensions.auth.config.hooks.onAccountDeleted.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
-| `extensions.auth.config.hooks.onAccountDeleted.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
-| `extensions.auth.config.hooks.onAccountDeleted.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
-| `extensions.auth.config.hooks.onAccountDeleted.sandboxReason` | string | no | minLength: 1; maxLength: 512 | Reviewer note recorded with a sandbox choice; it grants nothing. |
-
-#### `beforeRegister` (filter)
-
-Runs before any path creates an account (self-service, provider sign-up, waitlist request, administrator creation, import) and may deny it.
-
-Called as `beforeRegister(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `input.email` | string | yes | — | Normalized email address of the account to be created. |
-| `input.method` | string | yes | enum: ["password","signup","external","waitlist","invitation","administrator","import"] | The path creating the account. |
-| `input.profile` | object | no | — | Registration profile fields, when the path collects them. |
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `output.allow` | boolean | yes | — | false refuses the change with 403 and the reason. |
-| `output.reason` | string | no | — | Why the change was refused (at most 256 characters, control characters removed); returned with the 403. |
-
-#### `beforeRoleChange` (filter)
-
-Runs before an account's roles change (direct, case, case approval, bulk account operation) and may deny it.
-
-Called as `beforeRoleChange(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `input.accountId` | string | yes | — | Id of the account whose roles change. |
-| `input.currentRoles` | array | yes | items: string | Roles the account holds now. |
-| `input.requestedRoles` | array | yes | items: string | Roles it would hold after the change. |
-| `input.actorId` | string | yes | — | Id of the account making the change. |
-| `input.reason` | string | yes | — | The reason recorded for the change. |
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `output.allow` | boolean | yes | — | false refuses the change with 403 and the reason. |
-| `output.reason` | string | no | — | Why the change was refused (at most 256 characters, control characters removed); returned with the 403. |
-
-#### `onAccountCreated` (action)
-
-Runs after an account is created, by any path.
-
-Called as `onAccountCreated(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `input.accountId` | string | yes | — | Id of the new account. |
-| `input.email` | string | yes | — | Its email address. |
-| `input.method` | string | yes | enum: ["password","signup","external","waitlist","invitation","administrator","import","bootstrap"] | The path that created it. |
-| `input.actorId` | string | no | — | The administrator who created it, when one did. |
-
-Its return value is ignored.
-
-#### `onAccountStatusChanged` (action)
-
-Runs after an administrator locks or unlocks an account.
-
-Called as `onAccountStatusChanged(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `input.accountId` | string | yes | — | Id of the account. |
-| `input.status` | string | yes | enum: ["active","locked"] | Its new status. |
-| `input.actorId` | string | yes | — | The administrator who changed it. |
-| `input.reason` | string | yes | — | The reason recorded for the change. |
-
-Its return value is ignored.
-
-#### `onDeletionScheduled` (action)
-
-Runs after an account's deletion is scheduled, by its owner (no actorId) or an administrator.
-
-Called as `onDeletionScheduled(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `input.accountId` | string | yes | — | Id of the account. |
-| `input.email` | string | yes | — | Its email address. |
-| `input.deleteAfter` | integer | yes | — | When the purge becomes due, in epoch milliseconds. |
-| `input.actorId` | string | no | — | The administrator who scheduled it; absent when the owner did. |
-
-Its return value is ignored.
-
-#### `onAccountDeleted` (action)
-
-Runs after a scheduled deletion is purged.
-
-Called as `onAccountDeleted(input, context)`; `context` carries `requestId` and the mount route's granted `env`, frozen.
-
-| Field | Type | Required | Schema constraints | Description |
-|---|---|---|---|---|
-| `input.accountId` | string | yes | — | Id of the purged account. |
-
-Its return value is ignored.
+Whole-policy rules: unknown keys rejected.
 
 ### Authoring surfaces and limits
 
-Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.
+Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions (roles, ownership) are application data keyed by that id.
 
-- **registration** (configuration, `urlcode.yaml#extensions.auth.config.registration`): Select the supported registration mode in extensions.auth.config.registration.
-- **account copy** (copy, `ui/copy/<locale>.json`): Change account-screen wording through the UI catalogue.
-- **account screens** (template, `ui/templates/auth/<screen>.html`): Override one auth/* screen when its structure must change; keep form actions and security behavior package-owned.
-- **account lifecycle** (hook, `extensions.auth.config.hooks`): Use the declared beforeRegister, beforeRoleChange, onAccountCreated, onAccountStatusChanged, onDeletionScheduled and onAccountDeleted hooks; auth fires them for every caller, its pages, administration and its CLI.
-- **abuse budgets** (configuration, `urlcode.yaml#extensions.auth.config.abuse`): Rate-limit entry requests, escalate to a challenge and back off password failures through the abuse extension.
+- **mount** (extension, `urlcode.yaml#routes`): Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404.
+- **route protection** (configuration, `urlcode.yaml#routes`): `auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header.
 
-Fast checks: `urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth --copy ui/copy --templates ui/templates --stylesheet ui/extra.css`, `urlcode validate --local`, `urlcode test`.
+Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --origin <origin>`.
 <!-- extension-reference:end -->

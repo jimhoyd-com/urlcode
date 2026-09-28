@@ -47,7 +47,7 @@ export interface RuntimeOptions {
   aliasOrigins?: readonly string[] | undefined;
   /** Operator-set shared passkey relying-party ID: a registrable domain equal to, or a parent of, the host of
    * `origin` and of every alias origin. Extensions receive it as `passkeyRpId`; unset keeps each extension's
-   * default (auth: the canonical host). Requires `origin`. Never supplied by project YAML. */
+   * default. No first-party extension uses it now. Requires `origin`. Never supplied by project YAML. */
   passkeyRpId?: string | undefined;
   environment?: NodeJS.ProcessEnv | undefined; permissions?: OperatorPolicy | undefined;
   target?: TargetName | undefined; plugins?: HostPlugin[] | undefined;

@@ -78,9 +78,8 @@ field inventory in `llms-full.txt`; search only for the key you need.
 4. Declare routing, validation, middleware chains, policies, static serving,
    caching, throttling and authentication wherever the runtime or a supported
    extension provides them. Use custom code only for the unmet requirement.
-   Where a short form exists, it is the highest-level form: `auth: true` or
-   `auth: { role: admin }` on a route whose project declares an `auth`
-   extension, and `cache: { … }` for `policies.cache`. Each expands to the long
+   Where a short form exists, it is the highest-level form: `auth: true` on a
+   route whose project declares an `auth` extension, and `cache: { … }` for `policies.cache`. Each expands to the long
    form; declaring both is refused.
 
 Keep every route you were not asked to change. Match the file organization the
@@ -89,15 +88,16 @@ project already uses.
 ## Build one application
 
 Treat core routes, installed extensions and product UI as one application with
-different owners. Core owns routing and policy mechanics; auth/admin own their
-security and workflow behavior; the project owns its product pages, brand and
+different owners. Core owns routing and policy mechanics; each extension owns its
+security and workflow behavior (Better Auth, through auth, owns sign-in and
+sessions; permissions stay application data); the project owns its product pages, brand and
 the smallest set of overrides that make it distinct.
 
 For an installed extension, follow its `authoring` surfaces from
 `get_extensions` in this order: configuration; theme and copy; component or
 template override; project CSS; declared trusted hook. Build a new extension
 only for a reusable capability the installed contracts do not provide. A visual
-change is not a reason to fork core or copy an auth/admin flow.
+change is not a reason to fork core or copy an extension's flow.
 
 For a React frontend with `components.json`, load the official shadcn/ui skill,
 run `shadcn info --json`, then use its docs/search or MCP registry before

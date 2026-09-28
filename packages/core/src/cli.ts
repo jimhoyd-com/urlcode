@@ -46,7 +46,7 @@ interface HelpEntry { name: string; group: string; text: string }
 const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
 const helpEntries: HelpEntry[] = [
   { name:'init', group:'Start', text:
-`  urlcode init <directory> [--adopt] [--no-mcp] [--with ui,auth,admin [--example]] [--ack extension:id]
+`  urlcode init <directory> [--adopt] [--no-mcp] [--with ui,auth,store [--example]] [--ack extension:id]
     # Writes one site: app/ (the route project: urlcode.yaml), host.mjs (the operator host), package.json (exact runtime pin and npm scripts), AGENTS.md, .mcp.json (unless --no-mcp), a Makefile and CI. Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json keeps every key and gains only a missing runtime pin and missing scripts
     # --adopt: create the site around user files already there (for example a frontend/ or dist/ directory): only new files are written, nothing existing is changed or followed, and the entries left alone are listed. Refused, with nothing written, when an existing path collides with what init writes (app/, package.json, host.mjs, .gitignore, README.md, ...; with --with also node_modules and package-lock.json), inside an existing project or at an app/ directory
@@ -135,7 +135,7 @@ const helpEntries: HelpEntry[] = [
   { name:'serve', group:'Deploy', text:
 `  urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
     origins:  [--alias-origin https://www.links.example]…  # repeatable, at most 16: other https: origins (or loopback http:) the site is also served from; extensions' same-origin checks admit them, generated links keep --origin
-    passkeys: [--passkey-rp-id links.example]  # shared WebAuthn RP ID: a registrable domain equal to or a parent of the --origin host and every --alias-origin host; unset = the --origin host. Changing it makes existing passkeys stop working
+    passkeys: [--passkey-rp-id links.example]  # shared WebAuthn RP ID: a registrable domain equal to or a parent of the --origin host and every --alias-origin host; unset = the --origin host. No first-party extension uses it now; for a third-party extension, changing it makes existing passkeys stop working
     # --port defaults to the PORT environment variable, then 3000, so a container/PaaS can set the listen port without changing the command
     # on a loopback --host (the default), a request whose Host is not localhost, 127.0.0.1 or [::1] on the bound port, or the --origin or an --alias-origin authority, gets 421 before routing (DNS-rebinding defence; dev too)
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]

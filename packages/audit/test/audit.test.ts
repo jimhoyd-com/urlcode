@@ -31,7 +31,7 @@ test('the exports are version 1 with the shared constants', async t => {
   assert.equal(audit.exports.version, 1);
   assert.equal(audit.exports.validate, validateAuditEvent);
   assert.ok(Object.isFrozen(audit.exports));
-  assert.deepEqual(auditOutboxLimits, { auth: 10000, perCollection: 1000 });
+  assert.deepEqual(auditOutboxLimits, { perCollection: 1000 });
   assert.deepEqual(auditPermissions, ['audit.read', 'audit.export']);
   assert.ok(Object.isFrozen(auditOutboxLimits) && Object.isFrozen(auditPermissions));
   assert.throws(() => audit.exports.validate({}), (error: unknown) => error instanceof AuditError && error.status === 400);
