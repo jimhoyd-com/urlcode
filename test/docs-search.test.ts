@@ -12,6 +12,7 @@ import { coreDocs, headingsOf } from '../packages/core/src/docs-search.ts';
 import type { DocsSearch } from '../packages/core/src/docs-search.ts';
 import { renderAgentsGuide } from '../packages/core/src/agents-guide.ts';
 import { serveMcp } from '../packages/core/src/mcp.ts';
+import {byReplyId} from './helpers.ts';
 
 // #759: search_docs / urlcode docs search is the bounded documentation fallback the generated agent instructions
 // name. These tests hold the instructions and the retrieval contract together: what the guide tells an agent to run
@@ -203,7 +204,7 @@ test('MCP search_docs searches the operator-selected site and states its coverag
     { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'search_docs', arguments: { text: 'requiredWhen' } } },
   ];
   await serveMcp({ project: join(root, 'app'), input: Readable.from([messages.map(value => JSON.stringify(value) + '\n').join('')]), output });
-  const replies = text.trim().split('\n').map(line => JSON.parse(line) as { result: { tools?: { name: string; description: string }[]; content?: { text: string }[] } });
+  const replies = text.trim().split('\n').map(line => JSON.parse(line) as { result: { tools?: { name: string; description: string }[]; content?: { text: string }[] } }).sort(byReplyId);
   const tool = replies[1]!.result.tools!.find(candidate => candidate.name === 'search_docs')!;
   assert.match(tool.description, /installed and pin-verified/);
   assert.match(tool.description, /not that a feature is unsupported/);

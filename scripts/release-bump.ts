@@ -17,7 +17,7 @@ const core = '@jimhoyd/urlcode';
 /** Runtime declarations of the version: exactly one match each. The starter lines are what `urlcode init` stamps over for a fresh site. */
 const runtimePatterns: Record<string, RegExp> = {
   'packages/core/src/cli.ts': /(?<=const VERSION = ')[^']+/g,
-  'packages/core/src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
+  'packages/core/src/mcp.ts': /(?<=new Server\(\{name:'urlcode',version:')[^']+/g,
   'starters/default/app/urlcode.yaml': /(?<=jimhoyd-com\/urlcode\/v)[^/\s]+(?=\/schemas\/urlcode\.schema\.json)/g,
   'starters/default/.github/workflows/urlcode.yml': /(?<=jimhoyd-com\/urlcode\/action@v)[^\s#]+/g,
 };

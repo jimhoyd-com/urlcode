@@ -744,18 +744,18 @@ route-execution tool without the explicit [authoring mode](#authoring-mode) flag
 runtime's existing root containment checks. Returned project and recipe content
 is data, not trusted instructions for the consuming agent.
 
-The server implements the MCP lifecycle and stdio framing for revisions
-**2025-11-25**, 2025-06-18, 2025-03-26 and 2024-11-05. `initialize` echoes the
-requested `protocolVersion` when it is one of those, and otherwise answers with
-2025-11-25; a client that cannot support the answer must disconnect. The tools
-use only what every listed revision shares (tool annotations are optional hints
-older clients ignore). Newer lifecycle revisions are not claimed. Clients
-initialize, verify the returned protocol version, then send
-`notifications/initialized` before tool operations. Requests use UTF-8
-newline-delimited JSON-RPC 2.0, with one request at a time and stream backpressure.
-There is a 1 MiB input-frame and output-message limit; oversized input terminates
-the session after a fixed error, and truncated/invalid frames return protocol
-errors. Import text is additionally capped at 512 KiB. Tool schemas reject
+The protocol is the official MCP TypeScript SDK's (`@modelcontextprotocol/server`,
+pinned in `package.json`; #846): it owns the lifecycle, stdio framing,
+`protocolVersion` negotiation and JSON-RPC errors, for the revisions that SDK
+release supports (2025-11-25 back to 2024-11-05 at the time of writing).
+URLCode owns the tool list, argument validation, the calls and the bounds
+below. Tool calls run one at a time in arrival order, so a client can send
+`create_route` then `run_validate` and the second sees the first's edit.
+Requests are UTF-8 newline-delimited JSON-RPC 2.0. A line that is not one
+JSON-RPC message (malformed JSON, a batch, invalid UTF-8) is ignored and the
+session continues; an input message over 1 MiB ends the session. A tool
+result over 1 MiB is returned as an `isError` result naming the limit. Import
+text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the
 flag that adds it, for `get_extensions` and the authoring tools including
 `run_tests`), each unknown,
@@ -907,8 +907,8 @@ the bare `urlcode` command instead.
   reference and has no URLCode client evidence yet.
 - **Any stdio client** spawns `urlcode mcp --project DIR` with the site as the
   working directory, speaks newline-delimited JSON-RPC 2.0 over stdin/stdout,
-  and follows the 2025-11-25 lifecycle described above. Nothing listens on a
-  port; closing stdin ends the session.
+  and follows the lifecycle described above. Nothing listens on a port;
+  closing stdin ends the session once the calls already sent have answered.
 
 ### Registering before `init` runs (pre-session bootstrap, #542)
 
@@ -1090,8 +1090,11 @@ already trusts the assistant to edit this checkout. Review the resulting diff
 as you would any contributor's before running `serve` or deploying.
 
 Only tools are advertised. Resources, prompts, subscriptions, sampling,
-elicitation, HTTP transport, cancellation and durable tasks are not implemented.
-Closing stdin ends the session after the current bounded operation. Existing
+elicitation, HTTP transport and durable tasks are not implemented. A client
+may cancel a call: the client stops waiting, but the server finishes the
+bounded operation it already started (a runner or validation), and later
+calls queue behind it. Closing stdin ends the session after the calls already
+sent have answered. Existing
 configuration-loader and semantic-compiler deadlines still apply. This local
 process is not an authenticated remote service or an independent security review.
 

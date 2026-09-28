@@ -10,6 +10,7 @@ import {compileRoutes} from '../packages/core/src/router.ts';
 import {redirectStarter,buildTaskContext,renderTaskContext,redirectShapes,contextTasks,estimateTokens,projectScripts,buildContext,cliInvocation,localInvocation} from '../packages/core/src/context.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
 import {Readable,Writable} from 'node:stream';
+import {byReplyId} from './helpers.ts';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 
 // #383: `--task redirects` must never drift from what the runtime actually accepts — every `yaml`
@@ -95,7 +96,7 @@ test('MCP get_context accepts task alongside the existing target/budget shape',a
   {jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_context',arguments:{task:'redirects'}}},
  ];
  await serveMcp({project:starter,input:Readable.from([messages.map(v=>JSON.stringify(v)+'\n').join('')]),output});
- const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{content:{text:string}[]}});
+ const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{content:{text:string}[]}}).sort(byReplyId);
  const body=JSON.parse(replies[1]!.result.content[0]!.text) as {task:string};
  assert.equal(body.task,'redirects');
 });

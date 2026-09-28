@@ -1,7 +1,10 @@
 import {basename,dirname,join,resolve} from 'node:path';
+import {PassThrough} from 'node:stream';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
+import {ProtocolError,ProtocolErrorCode,Server} from '@modelcontextprotocol/server';
+import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
 import type {ErrorObject} from 'ajv';
 import {ConfigError,describeError} from './errors.ts';
 import {buildBootstrap} from './bootstrap.ts';
@@ -21,12 +24,7 @@ import {summarizeChange} from './yaml-change.ts';
 import {realpath} from 'node:fs/promises';
 import {isRecord as object} from './object-guards.ts';
 import {describeInstalledAgentTooling,describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
-// Newest first. The tool surface used here (initialize, tools/list, tools/call,
-// ping, text content, isError) is the same in every listed revision; newer
-// fields such as tool annotations are optional hints older clients ignore.
-const protocolVersions=['2025-11-25','2025-06-18','2025-03-26','2024-11-05'] as const;
-// MCP lifecycle negotiation: echo a requested revision this server supports, otherwise offer the latest.
-function negotiateProtocolVersion(requested:string):string {return (protocolVersions as readonly string[]).includes(requested)?requested:protocolVersions[0];}
+// The largest message the transport buffers and the largest tool result the server returns.
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
 const format={enum:['csv','json','yaml','netlify','cloudflare','vercel','netlify-toml']};
@@ -93,14 +91,14 @@ function argumentProblems(tool:{name:string;inputSchema:{properties:Record<strin
  const accepted=Object.keys(tool.inputSchema.properties);
  return `Invalid arguments for ${tool.name}: ${problems.join('; ')||'arguments must be an object'}. Accepted arguments: ${accepted.length?accepted.map(name=>tool.inputSchema.required.includes(name)?`${name} (required)`:name).join(', '):'none'}`;
 }
-const canonicalReadTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
+const canonicalReadTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object' as const,properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
 // One tools/list row per pre-#590 name, same schema and handler as its canonical tool, kept for
 // one release so an existing client that calls the old name is not broken by this rename.
 const legacyReadTools=canonicalReadTools.filter(tool=>legacyNames[tool.name]!==undefined).map(tool=>({...tool,name:legacyNames[tool.name]!,description:`Deprecated alias for \`${tool.name}\`; use \`${tool.name}\`. ${tool.description}`}));
 const readTools=[...canonicalReadTools,...legacyReadTools];
-const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object',properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
-const runTestsTool={name:runTestsDefinition.name,description:runTestsDefinition.description,inputSchema:{type:'object',properties:runTestsDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}};
-const authoringTools=[...authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:authoringAnnotations(def)})),runTestsTool];
+const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object' as const,properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
+const runTestsTool={name:runTestsDefinition.name,description:runTestsDefinition.description,inputSchema:{type:'object' as const,properties:runTestsDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}};
+const authoringTools=[...authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object' as const,properties:def.properties,required:def.required,additionalProperties:false},annotations:authoringAnnotations(def)})),runTestsTool];
 /** The tool names each server mode exposes; scripts/check-agent-facts.ts compares documented tool counts against it. */
 export const mcpToolInventory:{readonly read:readonly string[];readonly hostFile:readonly string[];readonly authoring:readonly string[]}={read:readTools.map(tool=>tool.name),hostFile:[hostTool.name],authoring:authoringTools.map(tool=>tool.name)};
 /** Canonical (non-legacy) read tool names, including the host-file get_extensions tool: every tool another module suggests as a next call must be one of these. */
@@ -130,9 +128,6 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  const projectFlag=resolve(options.project);
  try{await serve();}finally{await host.close?.();}
  async function serve():Promise<void> {
- let initialized=false,ready=false,pending=Buffer.alloc(0);
- const send=async(value:unknown)=> {let line=JSON.stringify(value);if(Buffer.byteLength(line)>maxBytes)line=JSON.stringify({jsonrpc:'2.0',id:object(value)?value.id??null:null,error:{code:-32603,message:'Result exceeds output limit'}});if(!output.write(line+'\n'))await once(output,'drain');};
- const error=(id:unknown,code:number,message:string)=>send({jsonrpc:'2.0',id,error:{code,message}});
  // `deployTarget` is canonical; `target` still works on these tools (deprecated) for one release.
  const deployTargetOf=(value:Record<string,unknown>):string|undefined=> {const picked=value.deployTarget??value.target;return typeof picked==='string'?picked:undefined;};
  const call=async(name:string,args:Record<string,unknown>):Promise<unknown>=> {
@@ -189,38 +184,47 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    default:if(authoring)return callAuthoringTool(project,name,args,operator,host.extensions);throw new Error('Unknown tool');
   }
  };
- const line=async(bytes:Buffer)=> {
-  let message:unknown;try{message=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{await error(null,-32700,'Parse error');return;}
-  if(!object(message)||message.jsonrpc!=='2.0'||typeof message.method!=='string'||('id'in message&&typeof message.id!=='string'&&!(typeof message.id==='number'&&Number.isSafeInteger(message.id)))) {await error(null,-32600,'Invalid request');return;}
-  const id=message.id;
-  if(id===undefined){if(message.method==='notifications/initialized'&&initialized)ready=true;return;}
-  const params=message.params??{};
-  if(!object(params)){await error(id,-32602,'Invalid params');return;}
-  if(message.method==='initialize') {
-   if(initialized){await error(id,-32600,'Already initialized');return;}
-   if(typeof params.protocolVersion!=='string'||!object(params.capabilities)||!object(params.clientInfo)||typeof params.clientInfo.name!=='string'||typeof params.clientInfo.version!=='string'){await error(id,-32602,'Invalid initialize params');return;}
-   initialized=true;await send({jsonrpc:'2.0',id,result:{protocolVersion:negotiateProtocolVersion(params.protocolVersion),capabilities:{tools:{}},serverInfo:{name:'urlcode',version:'0.6.5'}}});return;
-  }
-  if(message.method==='ping'){await send({jsonrpc:'2.0',id,result:{}});return;}
-  if(!ready){await error(id,-32002,'Initialize first');return;}
-  if(message.method==='tools/list'){await send({jsonrpc:'2.0',id,result:{tools}});return;}
-  if(message.method!=='tools/call'){await error(id,-32601,'Method not found');return;}
-  const name=params.name,args=params.arguments??{};
-  if(typeof name!=='string'){await error(id,-32602,'tools/call requires a string "name"');return;}
-  if(!names.has(name)){await error(id,-32602,`Unknown tool ${JSON.stringify(name.slice(0,64))}; call tools/list for the ${names.size} tools this session offers${validators.has(name)?` (${name} needs ${name==='get_extensions'?'the --host-file option':name==='run_tests'?'the --allow-authoring option because it executes the project\'s trusted code':'the --allow-authoring option'})`:''}`);return;}
+ // The official SDK owns the protocol: framing, lifecycle and version negotiation, ping and JSON-RPC errors (#846).
+ // URLCode owns the tool list, the argument checks, the calls and the 1 MiB result bound.
+ const server=new Server({name:'urlcode',version:'0.6.5'},{capabilities:{tools:{}}});
+ const inFlight=new Set<Promise<unknown>>();
+ const tracked=<T>(work:Promise<T>):Promise<T>=>{inFlight.add(work);void work.finally(()=>inFlight.delete(work)).catch(()=>undefined);return work;};
+ server.setRequestHandler('tools/list',()=>tracked(Promise.resolve({tools})));
+ // Calls run one at a time in arrival order, as a client sequencing create_route then run_validate expects: the SDK
+ // would otherwise run them concurrently, over files the previous call is still writing.
+ let queue:Promise<unknown>=Promise.resolve();
+ const inOrder=<T>(work:()=>Promise<T>):Promise<T>=>{const next=queue.then(work);queue=next.catch(()=>undefined);return next;};
+ server.setRequestHandler('tools/call',request=>tracked(inOrder(async()=>{
+  const name=request.params.name,args=request.params.arguments??{};
+  if(!names.has(name))throw new ProtocolError(ProtocolErrorCode.InvalidParams,`Unknown tool ${JSON.stringify(name.slice(0,64))}; call tools/list for the ${names.size} tools this session offers${validators.has(name)?` (${name} needs ${name==='get_extensions'?'the --host-file option':name==='run_tests'?'the --allow-authoring option because it executes the project\'s trusted code':'the --allow-authoring option'})`:''}`);
   const checker=validators.get(name)!;
-  if(!checker.validate(args)){await error(id,-32602,argumentProblems(checker.tool,checker.validate.errors));return;}
-  // The server is local and operator-started with read access to this project
-  // only, so the caller gets the same message the CLI prints for the failure.
-  // structuredContent mirrors the same JSON already in the text content, for a client that reads it
-  // directly instead of parsing text; only when the result is itself a JSON object, per the MCP
-  // structuredContent shape (a bare array or scalar result stays text-only).
-  try{const result=await call(name,args as Record<string,unknown>);await send({jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}],...(object(result)?{structuredContent:result}:{})}});}catch(failure){await send({jsonrpc:'2.0',id,result:{isError:true,content:[{type:'text',text:describeError(failure,{internal:true})}]}});}
- };
- for await(const chunk of input){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as string);let start=0;
-  for(let index=0;index<bytes.length;index++){if(bytes[index]!==10)continue;if(pending.length+index-start>maxBytes){await error(null,-32600,'Message exceeds input limit');return;}const message=Buffer.concat([pending,bytes.subarray(start,index)]);pending=Buffer.alloc(0);start=index+1;await line(message);}
-  if(pending.length+bytes.length-start>maxBytes){await error(null,-32600,'Message exceeds input limit');return;}pending=Buffer.concat([pending,bytes.subarray(start)]);
+  if(!checker.validate(args))throw new ProtocolError(ProtocolErrorCode.InvalidParams,argumentProblems(checker.tool,checker.validate.errors));
+  // The server is local and operator-started with read access to this project only, so the caller gets the same
+  // message the CLI prints for the failure. structuredContent mirrors the JSON text for a client that reads it
+  // directly, only when the result is itself a JSON object (a bare array or scalar stays text-only).
+  let result:unknown;
+  try{result=await call(name,args as Record<string,unknown>);}
+  catch(failure){return {isError:true,content:[{type:'text' as const,text:describeError(failure,{internal:true})}]};}
+  const text=JSON.stringify(result);
+  if(Buffer.byteLength(text)>maxBytes)return {isError:true,content:[{type:'text' as const,text:`Result exceeds the ${maxBytes}-byte output limit`}]};
+  return {content:[{type:'text' as const,text}],...(object(result)?{structuredContent:result}:{})};
+ })));
+ // The SDK's stdio transport reads bytes and closes itself, dropping any later reply, as soon as its input ends. A
+ // client may send its requests and close input at once, so input reaches the transport through a pipe this server
+ // ends only after every call already received has answered, and as Buffers (an in-process caller may yield strings,
+ // which the transport cannot parse and retries forever).
+ const bytes=new PassThrough();
+ const pumped=(async()=>{for await(const chunk of input)if(!bytes.write(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as string)))await once(bytes,'drain');})();
+ await server.connect(new StdioServerTransport(bytes,output,{maxBufferSize:maxBytes}));
+ try{await pumped;}
+ finally{
+  // The SDK starts a handler a turn after reading its message and writes its reply a turn after it settles, so
+  // yield before each check: end the session only once a whole turn passes with nothing in flight.
+  const turn=()=>new Promise(resolve=>setImmediate(resolve));
+  do{await turn();await Promise.allSettled([...inFlight]);}while(inFlight.size);
+  await turn();
+  bytes.end();
+  await server.close();
  }
- if(pending.length)await error(null,-32700,'Truncated message');
  }
 }

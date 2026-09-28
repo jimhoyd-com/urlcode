@@ -6,6 +6,7 @@ import {Readable,Writable} from 'node:stream';
 import {parse} from 'yaml';
 import {buildContext,renderContext,estimateTokens} from '../packages/core/src/context.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
+import {byReplyId} from './helpers.ts';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url)),starter=fileURLToPath(new URL('../starters/default/app/',import.meta.url));
 const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
@@ -64,7 +65,7 @@ test('MCP get_context returns the same object read-only',async()=>{
  const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},
   {jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_context',arguments:{budget:500}}},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_context',arguments:{hostFile:'/etc/passwd'}}}];
  await serveMcp({project:starter,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});
- const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{content:{text:string}[]};error?:{code:number}});
+ const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {result:{content:{text:string}[]};error?:{code:number}}).sort(byReplyId);
  assert.deepEqual(JSON.parse(replies[1]!.result.content[0]!.text),JSON.parse(JSON.stringify(await buildContext(starter,{budget:500,projectFlag:resolve(starter)}))));
  assert.equal(replies[2]!.error?.code,-32602);
 });

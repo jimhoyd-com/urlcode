@@ -82,3 +82,8 @@ export async function artifactSite(t: TestContext, name = 'notes'): Promise<{ si
   await addAddons(site, 'artifact', [name]);
   return { site, project: join(site, 'app') };
 }
+/** Orders MCP replies by request id: the SDK answers concurrent requests as they finish, not in arrival order. */
+export function byReplyId(a:unknown,b:unknown):number {
+  const id=(reply:unknown):number=>{const value=(reply as {id?:unknown}|null)?.id;return typeof value==='number'?value:-1;};
+  return id(a)-id(b);
+}

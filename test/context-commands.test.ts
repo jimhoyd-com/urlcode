@@ -7,6 +7,7 @@ import {Readable,Writable} from 'node:stream';
 import {buildContext,buildTaskContext,shellWord} from '../packages/core/src/context.ts';
 import {planFeature} from '../packages/core/src/feature-plan.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
+import {byReplyId} from './helpers.ts';
 
 // #791: the operator's --origin reaches site expansion in context, task context and feature planning (CLI, SDK and MCP).
 // #790: every emitted project argument is shell-quoted and names the project from the caller's working directory.
@@ -23,7 +24,7 @@ async function mcp(options:{project:string;origin?:string;hostFile?:string},call
  let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
  const messages=[initialize,ready,...calls.map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))];
  await serveMcp({...options,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});
- return text.trim().split('\n').map(line=>JSON.parse(line) as Reply).slice(1);
+ return text.trim().split('\n').map(line=>JSON.parse(line) as Reply).sort(byReplyId).slice(1);
 }
 /** Runs an emitted `urlcode ...` command through a POSIX shell from `cwd`, with this checkout's CLI standing in for `urlcode`. */
 function runEmitted(command:string,cwd:string) {
