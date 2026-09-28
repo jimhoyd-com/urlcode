@@ -54,7 +54,7 @@ form-records adds no parsing, token or storage code of its own. It delegates:
   and no administrator view. The optional `list` page shows only the caller's
   own records: the store scopes the page, its total and its cursors to the
   principal, and every value is escaped and served `no-store`.
-- The store is a single-writer file directory on Node; so is this composition.
+- The store is one SQLite database served by one Node process; so is this composition.
 - Passing tests does not establish independent security assessment, hostile
   multi-tenant readiness, production abuse resistance, or delivery guarantees.
 

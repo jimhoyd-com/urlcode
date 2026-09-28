@@ -139,15 +139,15 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   is still rejected as described above.
 - Stateful extensions and hot reload: a reload activates the edited
   project's runtime while the running one keeps serving, then retires the old
-  one. An extension that holds something exclusive (the store's directory
-  lock) passes it to the replacement through the
-  [reload hand-off](EXTENSIONS.md#reload-hand-off) instead of refusing, so a
-  site from `urlcode init --with auth,form-records --example` reloads an edit
-  such as the contact form's title and keeps serving the records written before
-  it. A rejected reload leaves the running runtime, its lock and its data
-  untouched. A second `dev` or `serve` over the same data directory is still
-  refused, and changing the store's `directory` in `host.mjs` needs a restart.
-  See [the store's lock and reload](STORE.md#single-writer-lock-and-reload).
+  one. The store's activations share its one database connection, so a site
+  from `urlcode init --with auth,form-records --example` reloads an edit such as
+  the contact form's title and keeps serving the records written before it; an
+  extension that holds something exclusive would pass it on through the
+  [reload hand-off](EXTENSIONS.md#reload-hand-off) instead. A rejected reload
+  leaves the running runtime and its data untouched. Run one `dev` or `serve`
+  per store database (a second is not refused, and not supported), and restart
+  after changing the store's `database` in `host.mjs`. See
+  [the store and reload](STORE.md#reload).
 - A function answers `502 Function execution failed`: the response stays
   generic on purpose, and dev writes a `function_error` line to stderr with the
   matched `route`, the `source` file and `export`, the thrown `message` and its

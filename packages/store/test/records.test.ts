@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer } from '@jimhoyd/urlcode';
@@ -9,6 +9,8 @@ import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { StoreError, createStore } from '../src/index.ts';
 import type { StoreExports } from '../src/index.ts';
+import { cleanup } from './cleanup.ts';
+import { records } from './rows.ts';
 
 // #529: the store's export contract (StoreExports, version 1). A synthetic consumer ("jot") reads it the way an
 // extension that requires store would, alongside a synthetic principal provider ("badge"), so the seam is proven
@@ -56,24 +58,24 @@ function jot(projectSha256: string, store: StoreExports): RuntimeExtension {
 }
 
 async function boot(t: TestContext) {
-  const root = await mkdtemp(join(tmpdir(), 'store-records-')); t.after(() => rm(root, { recursive: true, force: true }));
-  const project = join(root, 'app'), data = join(root, 'data'); await mkdir(project); await mkdir(data);
+  const root = await mkdtemp(join(tmpdir(), 'store-records-')); cleanup(t, () => rm(root, { recursive: true, force: true }));
+  const project = join(root, 'app'), database = join(root, 'data', 'store.sqlite'); await mkdir(project);
   const guarded = { policies: { extensions: { badge: {} } } };
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1',
     extensions: { badge: { version: '1', config: {} }, store: { version: '1', config: { collections: { notes, board } } }, jot: { version: '1', config: {} } },
     routes: { '/api/notes/*': { extension: 'store', methods: ['GET', 'POST', 'PATCH'], ...guarded }, '/api/board/*': { extension: 'store', methods: ['GET', 'POST'], ...guarded }, '/jot/*': { extension: 'jot', methods: ['GET', 'POST'], ...guarded } } }));
-  const projectSha256 = await inspectExtensionRevision(project), store = createStore({ directory: data, projectSha256 });
+  const projectSha256 = await inspectExtensionRevision(project), store = createStore({ database, projectSha256 });
   assert.equal(store.exports.version, 1); assert.equal(store.exports.active, false);
   assert.throws(() => store.exports.records('notes'), /store is not active yet/);
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [badge(projectSha256), store.registration, jot(projectSha256, store.exports)] });
   let open = true;
-  t.after(async () => { if (open) await app.close(); });
+  cleanup(t, async () => { if (open) await app.close(); });
   const as = (who: string) => (path: string, method = 'GET') => fetch(`http://127.0.0.1:${app.address.port}${path}`, { method, headers: { authorization: `Badge ${who}` } });
-  return { store: store.exports, as, data, close: async () => { open = false; await app.close(); } };
+  return { store: store.exports, as, database, close: async () => { open = false; await app.close(); } };
 }
 
 test('a consumer creates and reads owned records through the export; another principal gets the same 404 as the HTTP API', async t => {
-  const { as, data } = await boot(t);
+  const { as, database } = await boot(t);
   const created = await as('alice')('/jot?title=hello', 'POST');
   assert.equal(created.status, 200);
   const note = await created.json() as Record<string, unknown>;
@@ -82,8 +84,7 @@ test('a consumer creates and reads owned records through the export; another pri
   assert.equal((await as('alice')(`/jot/${note.id as string}`)).status, 200);
   assert.equal(await (await as('bob')(`/jot/${note.id as string}`)).text(), 'not_found');
   assert.equal((await as('bob')(`/api/notes/${note.id as string}`)).status, 404, 'the HTTP API agrees');
-  const stored = JSON.parse(await readFile(join(data, 'notes.json'), 'utf8')) as { records: Record<string, unknown>[] };
-  assert.equal(stored.records[0]!._owner, 'alice');
+  assert.equal(records(database, 'notes')[0]!._owner, 'alice');
   // The HTTP API sees the export's record, with the same ETag.
   const api = await as('alice')(`/api/notes/${note.id as string}`);
   assert.equal(api.headers.get('etag'), created.headers.get('etag'));

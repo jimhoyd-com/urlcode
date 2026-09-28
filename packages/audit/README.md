@@ -162,7 +162,7 @@ echo '{"backup":"/abs/backups/audit.sqlite","destination":"/abs/restore/audit.sq
 - `restore` copies a backup to a new isolated path only. Stop the host, then
   move it into place yourself.
 
-Back audit up **after** the producers' data (the store directory): events a
+Back audit up **after** the producers' data (the store database): events a
 producer has not delivered yet are still in its outbox, so they travel in its
 backup and are drained again, once, after a restore.
 

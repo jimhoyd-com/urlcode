@@ -8,6 +8,7 @@ import { validateDocument } from '@jimhoyd/urlcode';
 import { composeHost } from '@jimhoyd/urlcode/host';
 import store from '../src/extension.ts';
 import { storeConfigSchema } from '../src/store.ts';
+import { cleanup } from './cleanup.ts';
 
 const PROJECT_SHA256 = 'a'.repeat(64);
 const request = { site: '/tmp/site', project: '/tmp/site/app', installed: ['store'], acknowledgements: ['store:public-write'] } as const;
@@ -86,21 +87,21 @@ test('scaffold refuses a writable mount nothing protects unless store:public-wri
   assert.match(open.routeNotes!.join(' '), /public write/i);
 });
 
-test('host() registers the store through composeHost with the operator directory', async t => {
+test('host() registers the store through composeHost with the operator database', async t => {
   const site = await mkdtemp(join(tmpdir(), 'store-host-'));
-  t.after(() => rm(site, { recursive: true, force: true }));
+  cleanup(t, () => rm(site, { recursive: true, force: true }));
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = PROJECT_SHA256;
-  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
-  const host = await composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ directory: join(site, 'records') })]);
+  cleanup(t, () => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  const host = await composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ database: join(site, 'records', 'store.sqlite') })]);
   assert.equal(host.extensions!.length, 1);
   assert.equal(host.extensions![0]!.name, 'store');
   assert.equal(host.extensions![0]!.projectSha256, PROJECT_SHA256);
   await host.close?.();
-  // Without options the default is data/store beside host.mjs, which is absolute and so accepted.
+  // Without options the default is data/store.sqlite beside host.mjs, which is absolute and so accepted.
   const defaulted = await composeHost(pathToFileURL(join(site, 'host.mjs')), [store()]);
   assert.equal(defaulted.extensions![0]!.name, 'store');
-  await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ directory: 'relative/dir' })]), /absolute path/);
+  await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ database: 'relative/store.sqlite' })]), /absolute path/);
 });
 
 test('with audit installed the example collection records its writes, and says so', async () => {

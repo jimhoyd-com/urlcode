@@ -15,6 +15,7 @@ import ui from '@jimhoyd/urlcode-ui/extension';
 import store from '../src/extension.ts';
 import { contributedScreens, screensSchema, storeScreens } from '../src/screens.ts';
 import { storeConfigSchema, storeExtension } from '../src/store.ts';
+import { cleanup } from './cleanup.ts';
 
 const origin = 'https://todo.example.test';
 const fields = { title: { type: 'string', required: true, minLength: 1, maxLength: 200 }, done: { type: 'boolean', default: false } };
@@ -22,7 +23,7 @@ const fields = { title: { type: 'string', required: true, minLength: 1, maxLengt
 function withSha(t: test.TestContext, sha: string): void {
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = sha;
-  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  cleanup(t, () => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
 }
 
 test('the store configuration schema carries the screens block', async () => {
@@ -50,7 +51,7 @@ test('storeScreens hands ui a generic description and refuses an undeclared coll
 });
 
 test('contributedScreens reads the store block of the project and nothing else', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'store-screens-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'store-screens-')); cleanup(t, () => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', routes: { '/': { respond: { text: 'hi' } } } }));
   assert.deepEqual(await contributedScreens({ root }), {}, 'a project that does not declare the store contributes no screens');
   await writeFile(join(root, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', fields } }, screens: { '/todos': { collection: 'todos', title: 'Mine' } } } } }, routes: { '/api/todos/*': { extension: 'store' } } }));
@@ -58,14 +59,14 @@ test('contributedScreens reads the store block of the project and nothing else',
 });
 
 test('store activation refuses a screen naming a collection it does not declare', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'store-screens-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'store-screens-')); cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'); await mkdir(project);
-  const registration = storeExtension({ directory: join(root, 'data'), projectSha256: 'a'.repeat(64) });
+  const registration = storeExtension({ database: join(root, 'data', 'store.sqlite'), projectSha256: 'a'.repeat(64) });
   await assert.rejects(Promise.resolve().then(() => registration.activate({ collections: { todos: { mount: '/api/todos', fields } }, screens: { '/notes': { collection: 'notes' } } }, { origin, target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/api/todos'], root: project })), /collection notes is not declared/);
 });
 
 test('end to end: the scaffolded Todos screen is served by ui from the store contribution, and its API works', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'store-screens-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'store-screens-')); cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'); await mkdir(project);
   const request = { site: root, project, installed: ['store', 'ui'], acknowledgements: ['store:public-write'] };
   // What `extensions add store ui --example` writes: the store's capability with its example on top.
@@ -80,10 +81,10 @@ test('end to end: the scaffolded Todos screen is served by ui from the store con
   assert.equal('screens' in results.ui!.config, false);
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions, routes: { ...results.ui!.routes, ...results.store!.routes } }));
   withSha(t, await inspectExtensionRevision(project));
-  const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [ui(), store({ directory: join(root, 'data', 'store') })]);
-  t.after(() => host.close?.());
+  const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [ui(), store({ database: join(root, 'data', 'store.sqlite') })]);
+  cleanup(t, () => host.close?.());
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: host.extensions! });
-  t.after(() => app.close());
+  cleanup(t, () => app.close());
   const base = `http://127.0.0.1:${app.address.port}`;
   const page = await fetch(`${base}/todos`);
   const html = await page.text();

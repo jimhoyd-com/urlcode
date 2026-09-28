@@ -11,6 +11,7 @@ import type { ExtensionActivation, ExtensionInstance, ExtensionRequest } from '@
 import { storeAuthoring } from '../src/authoring.ts';
 import { collectionSchema } from '../src/collection.ts';
 import { createStore, storeConfigSchema } from '../src/store.ts';
+import { cleanup } from './cleanup.ts';
 
 const repo = new URL('../../../', import.meta.url);
 /** `describes` surfaces explain the capability; `points` surfaces only route the reader to it. */
@@ -59,11 +60,11 @@ const PIECES: { piece: string; prose: RegExp; breaks: (config: Config) => string
 
 async function activate(t: { after(fn: () => Promise<void>): void }, config: Config, mounts = MOUNTS): Promise<{ instance: ExtensionInstance; store: ReturnType<typeof createStore> }> {
   const root = await mkdtemp(join(tmpdir(), 'store-short-link-claims-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const store = createStore({ directory: join(root, 'data'), projectSha256: 'a'.repeat(64) });
+  cleanup(t, () => rm(root, { recursive: true, force: true }));
+  const store = createStore({ database: join(root, 'data', 'store.sqlite'), projectSha256: 'a'.repeat(64) });
   const context = { origin: 'https://links.example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts, root: join(root, 'app'), principalMounts: [] } as unknown as ExtensionActivation;
   const instance = await store.registration.activate(config, context);
-  t.after(async () => { await instance.close?.(); await store.close(); });
+  cleanup(t, async () => { await instance.close?.(); await store.close(); });
   return { instance, store };
 }
 function request(method: string, path: string, mount: string): ExtensionRequest {

@@ -15,7 +15,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-abuse` | [`packages/abuse`](../packages/abuse) | Abuse protection for other extensions: keyed budgets and backoff over pseudonymous (HMAC) keys, an optional challenge provider and a honeypot helper | `extensions.abuse`; no route. Consumers declare their budgets in their own configuration |
 | `@jimhoyd/urlcode-mail` | [`packages/mail`](../packages/mail) | Plain-text transactional email: templates contributed by other extensions, translatable copy, one operator transport (a loopback outbox by default, SES or your own) | `extensions.mail`; no route. The transport is chosen in `host.mjs` |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
-| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
+| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields, by 303 redirect or inline (200/201) in the POST response; per-flow submission budgets through `abuse` and a notification through `mail` | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth`, `abuse` and `mail` |
 | `@jimhoyd/urlcode-form-records` | [`packages/form-records`](../packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back, an edit page limited to declared fields and an optional per-user list page, through the typed exports of `forms` and `store` (and `ui` for the list) | `extensions.form-records` plus a `GET, HEAD, POST` mount with `auth: true`, over an `ownership: owner` collection |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
@@ -111,7 +111,7 @@ to the site with `urlcode extensions add`, which wires it into the explicit
 operator host. Auth, audit and abuse additionally need the Node/SQLite
 runtime their packages document; forms (except a flow with `abuse`), mail and
 mcp declare Node, AWS and Vercel targets (mcp's opt-in streaming transport is
-self-hosted only), while store, and so form-records, are currently Node-only. See each package's README ([auth](../packages/auth/README.md),
+self-hosted only), while store (its database is `node:sqlite`), and so form-records, are Node-only. See each package's README ([auth](../packages/auth/README.md),
 [ui](../packages/ui/README.md),
 [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md),
 [mail](../packages/mail/README.md),
@@ -139,7 +139,7 @@ my-site/
   host.mjs               trusted operator code: composeHost(import.meta.url, [ui(), auth(), store()])
   package.json           exact core pin and the add-on tarball URLs core pins
   package-lock.json      integrity of every installed package
-  data/                  private: auth.secret, auth.sqlite (after npx urlcode-auth migrate), store data (gitignored)
+  data/                  private: auth.secret, auth.sqlite (after npx urlcode-auth migrate), store.sqlite (gitignored)
 ```
 
 The project declares logical extensions and exclusive mounts:

@@ -152,8 +152,8 @@ test('every extension installs once, composes, serves, and removes in dependency
     const posted = await send('/todo-form', { method: 'POST', headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf: token, title: 'second' }).toString() });
     assert.equal(posted.status, 303, await posted.text());
 
-    // Hot reload an edit of the contact form's title: the store hands its directory lock to the replacement
-    // runtime, the new title is served, and the records written before the reload are still readable.
+    // Hot reload an edit of the contact form's title: the replacement runtime's store serves the same database
+    // connection, the new title is served, and the records written before the reload are still readable.
     const yaml = join(dir, 'app', 'urlcode.yaml');
     const text = await readFile(yaml, 'utf8');
     assert.match(text, /title: Contact us/);

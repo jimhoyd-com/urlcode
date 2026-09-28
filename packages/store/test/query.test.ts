@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { storeExtension } from '../src/index.ts';
+import { cleanup } from './cleanup.ts';
 
 // Filtering and sorting (#330): declared fields only, single-field sort, equality filters, id tie-break.
 const origin = 'https://store.example.test';
@@ -24,14 +25,14 @@ type Page = { items: Row[]; total: number; next?: string | number };
 
 async function boot(t: TestContext, collection: object) {
   const root = await mkdtemp(join(tmpdir(), 'store-query-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const project = join(root, 'app'), data = join(root, 'data');
+  cleanup(t, () => rm(root, { recursive: true, force: true }));
+  const project = join(root, 'app'), database = join(root, 'data', 'store.sqlite');
   await mkdir(project);
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: collection } } } }, routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] } } }));
   const projectSha256 = await inspectExtensionRevision(project);
-  const start = () => startServer({ project, origin, port: 0, log: () => {}, extensions: [storeExtension({ directory: data, projectSha256 })] });
+  const start = () => startServer({ project, origin, port: 0, log: () => {}, extensions: [storeExtension({ database, projectSha256 })] });
   let app = await start();
-  t.after(async () => { await app.close(); });
+  cleanup(t, async () => { await app.close(); });
   const call = (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) => fetch(`http://127.0.0.1:${app.address.port}${path}`, init);
   return { call, restart: async () => { await app.close(); app = await start(); } };
 }

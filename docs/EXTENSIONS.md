@@ -837,10 +837,11 @@ before. The same overlap applies to any per-registration "current activation"
 an extension keeps for its exports (the served kit, a records export, a
 delivery context): make the newest live activation current and, when it
 closes, fall back to the previous live one rather than to nothing, so a failed
-reload's close cannot switch off the runtime that is still serving. The store
-adopts the hand-off for its directory lock
-([single-writer lock and reload](STORE.md#single-writer-lock-and-reload)); ui
-and mail keep their current activation that way.
+reload's close cannot switch off the runtime that is still serving. No
+first-party extension needs the hand-off today: the store shares one database
+connection among its registration's live activations instead
+([store reload](STORE.md#reload)), and the store's records export, ui and mail
+keep their current activation that way.
 
 ### Site origins and same-origin checks
 

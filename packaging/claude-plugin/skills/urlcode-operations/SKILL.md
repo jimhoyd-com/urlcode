@@ -99,9 +99,9 @@ by the operator.
   follows no redirect and offers no `--insecure`. It cannot check anything a
   read-only HTTP probe cannot observe.
 - Core has no durable store and no private management API of its own. The
-  operator-installed `store` extension (Node target, one writer per directory)
-  owns durable collections and stored short links
-  (`extensions.store.config.shortLinks`); its directory and backups are
+  operator-installed `store` extension (Node target, one SQLite database served
+  by one process) owns durable collections and stored short links
+  (`extensions.store.config.shortLinks`); its database file and backups are
   operator infrastructure (`docs/STORE.md`).
 - Only `sandbox: true` routes share the sandbox worker slots and forced
   execution deadlines. Trusted routes run in Node under HTTP admission limits;

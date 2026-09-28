@@ -134,7 +134,7 @@ runtime with its fixtures and audit it with its declared route count (after
 building the TypeScript recipe, with a fixture registry for the authenticated
 ones, the generated policy for the contact form and the webhook receiver, and
 the webhook fixtures' test key in the process environment). `store-crud` runs against the
-real `storeExtension` from `packages/store` with a temporary data directory, and a
+real `storeExtension` from `packages/store` with a temporary database, and a
 separate test drives its full lifecycle across a restart. `spa-shell` runs with the
 plugin from its README host file, and `test/spa-shell-recipe.test.ts` drives it
 over HTTP: unseen deep paths, methods, excluded prefixes, a protected catch-all

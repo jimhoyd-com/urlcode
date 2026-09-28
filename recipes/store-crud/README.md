@@ -2,7 +2,7 @@
 
 `/api/todos/*` is a persistent JSON CRUD API. The project declares one
 collection and its mount; the operator-installed `store` extension serves it
-and keeps the data in the operator's directory. There is no handler code. Full
+and keeps the data in the operator's SQLite database. There is no handler code. Full
 contract, limits and guarantees: [docs/STORE.md](../../docs/STORE.md).
 
 ## Operator prerequisites
@@ -16,8 +16,9 @@ The store is not core and does not activate on its own.
   signed-in user has their own todos; without `auth`, the store example needs
   `--ack store:public-write`. Without `--example` the store installs with no
   collection.
-- The data directory must be outside the project. It is single-writer: one
-  server process per directory.
+- The database file must be outside the project. One server process serves
+  it; the store's Node-only `node:sqlite` engine refuses the aws and vercel
+  targets before serving.
 
 A host for this recipe, in a site where `@jimhoyd/urlcode-store` is installed:
 
@@ -27,7 +28,7 @@ import { composeHost } from '@jimhoyd/urlcode/host';
 import store from '@jimhoyd/urlcode-store/extension';
 
 export default await composeHost(import.meta.url, [
-  store({ directory: '/operator/data/store' }),
+  store({ database: '/operator/data/store.sqlite' }),
 ]);
 ```
 
@@ -43,7 +44,7 @@ urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --ori
 
 The bundled fixtures run one ordered create, read, update, delete lifecycle
 that captures the new record's id and deletes it again, so they need an empty
-collection and leave it empty. Point them at a scratch data directory, not one
+collection and leave it empty. Point them at a scratch database, not one
 holding real records. Try the write path by hand after serving:
 
 ```sh
@@ -58,5 +59,5 @@ caller sees the whole collection, which is shared by default; for per-user data
 declare `ownership: owner` on the collection and keep `auth: true` on its mount
 ([per-record ownership](../../docs/STORE.md#per-record-ownership)). Changing
 `urlcode.yaml` changes the revision and needs a new pin. Cloudflare and static
-targets refuse extensions, and the store writes local files, so run it on the
-self-hosted runtime with a persistent disk.
+targets refuse extensions, and the store keeps a local SQLite file, so run it on
+the self-hosted runtime with a persistent disk.
