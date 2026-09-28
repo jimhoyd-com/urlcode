@@ -379,6 +379,7 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
 | Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](../recipes/spa-shell/README.md) |
+| Application rules that need the signed-in caller | recipe `authenticated-handlers`: ordinary `function` routes with `auth: true`, declared methods and bounded request bodies; `sessionUserId(request)` reads native auth’s verified opaque user id | [authenticated-handlers](../recipes/authenticated-handlers/README.md) |
 | A pre-existing, fixed JSON API contract (`/api/login`, `/api/me`, `/api/items`, `{error: {code}}`) | no generic response rewriting: recipe `fixed-contract-adapter`, a thin operator adapter over `AuthExports` and `StoreExports` plus `site.errors`; sign-in, sign-out and CSRF stay auth's own endpoints | [fixed-contract-adapter](../recipes/fixed-contract-adapter/README.md) |
 | Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
@@ -427,6 +428,15 @@ so another user's record is a `404`. Its README states every request and
 response shape, status code, header and owner boundary, and which operator
 files hold the keys. A function that reads a session cookie, checks a password
 or compares user ids reimplements what these contracts already enforce.
+
+For application rules beyond those declarative contracts, start from
+`urlcode recipes show authenticated-handlers`. Each operation remains an
+ordinary YAML function route with its own methods, parameters and bounded
+body declaration. Native auth owns accounts, sessions and CSRF; the trusted
+Node handler imports `sessionUserId` and calls `sessionUserId(request)` for
+the verified opaque caller id, then implements only the application's rules. The helper does not
+re-authenticate arbitrary requests or supply application authorization. See
+[session identity in functions](EXTENSIONS.md#session-identity-in-functions).
 
 When the JSON contract already exists and is fixed (`POST /api/login`,
 `GET /api/me`, CRUD under `/api/items`, a `{error: {code}}` taxonomy), start

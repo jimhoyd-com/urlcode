@@ -19,8 +19,14 @@ own error codes) cannot be served by renaming these endpoints: the
 lists which mappings are safe over `AuthExports` and which the client must
 change, and why sign-in, sign-out and CSRF stay here.
 
-**This is documentation of already-shipped behavior.** Nothing here changes a
-response shape; it names what the handlers in `src/auth.ts`, `src/auth-ui.ts`,
+Application functions that need the signed-in caller's id can use
+[`sessionUserId(request)`](../../../docs/EXTENSIONS.md#session-identity-in-functions)
+on an ordinary `auth: true` route. This is server-side derived context, not a
+new client-supplied header or a change to these account endpoint responses.
+Sign-in, CSRF and sign-out remain native auth operations.
+
+**The account endpoint contract below documents existing behavior.** Nothing
+here changes an account response shape; it names what the handlers in `src/auth.ts`, `src/auth-ui.ts`,
 `src/auth-flows.ts`, `src/auth-signup.ts`, `src/second-factor-flows.ts`,
 `src/factor-recovery.ts`, `src/manual-recovery.ts` and `src/abuse-http.ts`
 already return.

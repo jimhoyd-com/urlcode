@@ -53,7 +53,14 @@ a value there (`packages/core/src/extensions.ts`:
 `stripReservedContextHeaders`, docs/RUNTIME-IMPLEMENTATION.md
 `RIM-EXT-CONTEXT-001`). `packages/auth`'s `bearer` gate uses it to expose a
 verified API key's id/name/scopes, never the raw key, to the route it
-protects. This is a generic core channel with no built-in size or shape
+protects. Its session gate separately exposes only the opaque user id in
+`x-urlcode-context-auth-session`, after authorization and the applicable
+CSRF/origin checks succeed. No session credential or role is included, and a
+bearer-authenticated request does not receive session context. The
+`sessionUserId` accessor reads this derived value; it cannot authenticate a
+caller-created Request outside the runtime's reserved-header stripping and
+auth policy. See [session identity](docs/EXTENSIONS.md#session-identity-in-functions).
+This is a generic core channel with no built-in size or shape
 limit beyond ordinary HTTP header limits; an extension writing into it is
 trusted operator code and is expected not to place a credential or unbounded
 data there.

@@ -134,6 +134,19 @@ Freshness is `FRESHNESS_WINDOW_MS`, five minutes after the last primary or
 step-up proof. Auth sends every message itself, including the ones an
 administrator starts, so a raw token never leaves auth.
 
+## Session identity for application functions
+
+A function behind `auth: true` can import `sessionUserId` from
+`@jimhoyd/urlcode-auth` and call `sessionUserId(request)`. It returns
+the signed-in user's opaque id or `null`; it does not expose the auth service,
+credentials or roles. Auth supplies the reserved session header only after its
+session authorization and applicable CSRF/origin checks succeed. Bearer routes
+keep their separate context. See the authoritative
+[session identity contract](../../docs/EXTENSIONS.md#session-identity-in-functions)
+for provenance, trusted Node imports and sandbox limits. Keep ordinary function
+routes and their method/body declarations in YAML; no custom auth or wildcard
+dispatcher is needed to obtain the caller's id.
+
 ## Project-level lifecycle hooks
 
 A project can name its own function per lifecycle point in `extensions.auth.config.hooks`, using the same `{source, export}` shape (or a bare string, defaulting to the module's default export) `function`/`middleware` routes already use (docs/EXTENSIONS.md "Project-level lifecycle hooks"):

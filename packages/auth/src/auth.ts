@@ -5,6 +5,7 @@ import type { AbuseExports } from '@jimhoyd/urlcode-abuse';
 import type { AuditExports } from '@jimhoyd/urlcode-audit';
 import type { MailExports } from '@jimhoyd/urlcode-mail';
 import { createEntryGuard, passwordBackoff } from './entry-guard.ts';
+import { sessionIdentityHeader } from './session-identity.ts';
 import type { AuthAbuse } from './entry-guard.ts';
 import {createManualRecoveryFlows} from './manual-recovery.ts';
 import {createFactorRecoveryFlows} from './factor-recovery.ts';
@@ -376,7 +377,11 @@ export function createAuth(configured: AuthExtensionOptions): AuthRuntime {
                             // Only after the CSRF check passed: a refused write never carries a principal. The stash
                             // lets AuthExports.account() answer for this request without reading a cookie again.
                             resolved.set(request, { token: token!, principal: user, locale });
-                            request.setPrincipal?.({ id: user.id });
+                            if (request.setPrincipal) {
+                                request.setPrincipal({ id: user.id });
+                                // Core validated the opaque id and accepted this provider before it reaches a guest.
+                                request.headers.set(sessionIdentityHeader, user.id);
+                            }
                             return undefined;
                         }
                         if (requirement.onDeny === 'sign-in' && ['GET', 'HEAD'].includes(request.method))

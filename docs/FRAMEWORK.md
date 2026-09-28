@@ -96,6 +96,14 @@ Each rung's YAML is valid on every rung above it.
    leaves that handler for you, unlike the other rungs here). Add `auth: true` where a
    mount needs a signed-in caller.
 
+When the declarative contracts do not express an application's rules, the
+[authenticated-handlers recipe](../recipes/authenticated-handlers/README.md)
+keeps each operation as an ordinary YAML function route with `auth: true`,
+explicit methods and bounded request bodies. Its trusted Node functions use
+[`sessionUserId(request)`](EXTENSIONS.md#session-identity-in-functions) to read
+native auth's verified opaque caller id. Auth still owns accounts, sessions
+and CSRF; the application owns its business rules and authorization.
+
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
 
