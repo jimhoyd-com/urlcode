@@ -566,10 +566,13 @@ undelivered in one collection, the next write answers
 - Every write rewrites the whole collection file, so cost grows with the
   collection size; the record and byte caps bound it. There is no transaction
   across records or collections, no index and no query language beyond
-  paginated listing with declared sorting and equality filtering, no optimistic concurrency (`PUT`/`PATCH` are last write
-  wins), and no history. Startup loads and revalidates every record; a file that
-  no longer matches the declared fields refuses activation rather than serving
-  bad data.
+  paginated listing with declared sorting and equality filtering, and no
+  history. A single record supports optional optimistic concurrency through
+  `If-Match`/`ifMatch` (see [Conditional writes](#conditional-writes) above);
+  omitting it remains last-write-wins for `PUT`/`PATCH`. That per-record
+  conditional write is not a cross-record or cross-collection transaction.
+  Startup loads and revalidates every record; a file that no longer matches the
+  declared fields refuses activation rather than serving bad data.
 - The keyed-transition guarantee is therefore one Node server process per
   operator directory. A second local process refuses the lock; multiple hosts,
   network filesystems and clustered workers are unsupported. An atomic crash
