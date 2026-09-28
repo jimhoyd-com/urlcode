@@ -15,6 +15,7 @@ import store from '@jimhoyd/urlcode-store/extension';
 import formRecords from '../src/extension.ts';
 import { formRecordsConfigSchema } from '../src/index.ts';
 import { storedRecords } from './store-rows.ts';
+import { cleanup } from './cleanup.ts';
 
 const origin = 'https://records.example.test';
 const request = (site: string, installed: string[]) => ({ site, project: join(site, 'app'), installed, acknowledgements: [] });
@@ -68,7 +69,7 @@ test('--example needs auth, and then mounts a signed-in todo form', async () => 
 });
 
 test('host() receives the forms and store exports through composeHost and refuses without them', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'form-records-host-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'form-records-host-')); cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   withSha(t, 'a'.repeat(64));
   const hostUrl = pathToFileURL(join(root, 'host.mjs'));
   await assert.rejects(composeHost(hostUrl, [ui(), forms({ csrfSecret: 'b'.repeat(32) }), formRecords()]), /form-records requires store/);
@@ -80,7 +81,7 @@ test('host() receives the forms and store exports through composeHost and refuse
 
 /** What `urlcode extensions add auth form-records --example` writes for ui, forms, store and form-records, run end to end. */
 test('the scaffolded example works end to end: create, confirmation, and an edit limited to done', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'form-records-example-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'form-records-example-')); cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const project = join(root, 'app'); await mkdir(project);
   const installed = ['auth', 'form-records', 'forms', 'store', 'ui'], add = request(root, installed);
   const merge = async (definition: typeof forms.definition | typeof store.definition | typeof formRecords.definition | typeof ui.definition, example: boolean): Promise<ScaffoldResult> => {
@@ -101,9 +102,9 @@ test('the scaffolded example works end to end: create, confirmation, and an edit
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions, routes: Object.assign({}, ...Object.values(results).map(result => result.routes)) }));
   const sha = await inspectExtensionRevision(project); withSha(t, sha);
   const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [ui(), forms(), store(), formRecords()]);
-  t.after(() => host.close?.());
+  cleanup(t, () => host.close?.());
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [...host.extensions!, badgeAuth(sha)] });
-  t.after(() => app.close());
+  cleanup(t, () => app.close());
   const cookies = new Map<string, string>();
   const call = async (path: string, init: { method?: string; body?: string } = {}) => {
     const response = await fetch(`http://127.0.0.1:${app.address.port}${path}`, { ...init, redirect: 'manual', headers: { authorization: 'Badge ada', origin, 'content-type': 'application/x-www-form-urlencoded', ...(cookies.size ? { cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; ') } : {}) } });

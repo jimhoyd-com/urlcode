@@ -12,6 +12,7 @@ import { createForms } from '@jimhoyd/urlcode-forms';
 import { createStore } from '@jimhoyd/urlcode-store';
 import { createFormRecordsExtension } from '../src/index.ts';
 import { storedRecords } from './store-rows.ts';
+import { cleanup } from './cleanup.ts';
 
 // #529. The principal provider is a synthetic "badge" extension, not auth, so the composition is proven against
 // core's generic principal contract: `Badge <id>` sets the principal, `Badge-anon` is allowed without one.
@@ -66,7 +67,7 @@ function badge(projectSha256: string): RuntimeExtension {
 
 interface Boot { record?: object; collection?: object; guard?: boolean; order?: string[]; target?: 'aws'; noUi?: boolean }
 async function project(t: TestContext, options: Boot = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'form-records-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'form-records-')); cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const app = join(root, 'app'), data = join(root, 'data', 'store.sqlite');
   await mkdir(app);
   const guard = options.guard === false ? {} : { policies: { extensions: { badge: {} } } };
@@ -92,7 +93,7 @@ async function project(t: TestContext, options: Boot = {}) {
 async function boot(t: TestContext, options: Boot = {}) {
   const { app, data, extensions } = await project(t, options);
   const server = await startServer({ project: app, origin, port: 0, log: () => {}, extensions });
-  t.after(() => server.close());
+  cleanup(t, () => server.close());
   /** One browser: its own cookie jar and badge. */
   const browser = (who: string | null) => {
     const cookies = new Map<string, string>();
