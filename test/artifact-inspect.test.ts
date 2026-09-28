@@ -313,3 +313,160 @@ test('store-schema lists its JSON Schema, example and README as standard documen
   const { documents } = await inspectArtifactDocuments(directory, descriptor.documents!);
   assert.deepEqual(documents.map(item => [item.path, item.kind, item.diagnostics.length]), [['schemas/config.json', 'json-schema', 0], ['config/example.json', 'json', 0], ['README.md', 'markdown', 0]]);
 });
+
+test('a duplicate provider is reported once, in the list of its own kind (#857)', async t => {
+  const root = await temp(t, 'urlcode-duplicates-');
+  const { site } = await initSite(join(root, 'site'));
+  const provide = async (packageName: string, descriptor: Record<string, unknown>): Promise<void> => {
+    const directory = join(site, 'node_modules', ...packageName.split('/'));
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'package.json'), JSON.stringify({ name: packageName, version: '1.0.0' }));
+    await writeFile(join(directory, 'urlcode.json'), JSON.stringify({ description: 'd', requires: [], ...descriptor }));
+  };
+  await provide('@example/docs-a', { kind: 'artifact', name: 'docs' });
+  await provide('@example/docs-b', { kind: 'artifact', name: 'docs' });
+  await provide('@example/widget-art', { kind: 'artifact', name: 'widget' });
+  await provide('@example/widget-ext', { kind: 'extension', name: 'widget', schema: {} });
+  await provide('@example/broken', { kind: 'artifact', name: 'Not A Name' });
+  const pkgFile = join(site, 'package.json'), manifestJson = JSON.parse(await readFile(pkgFile, 'utf8')) as { dependencies: Record<string, string> };
+  for (const name of ['@example/docs-a', '@example/docs-b', '@example/widget-art', '@example/widget-ext', '@example/broken']) manifestJson.dependencies[name] = '1.0.0';
+  await writeFile(pkgFile, JSON.stringify(manifestJson, null, 2));
+  const duplicates = async (kind: 'extension' | 'artifact'): Promise<string[]> => (await listAddons(site, kind, { manifest })).problems.filter(problem => /both provide|is not an add-on descriptor/.test(problem));
+  assert.deepEqual(await duplicates('artifact'), [
+    `${join(site, 'node_modules', '@example', 'broken', 'urlcode.json')} is not an add-on descriptor`,
+    '@example/docs-b and @example/docs-a both provide the artifact docs; keep one',
+  ], 'an unreadable descriptor is reported under the kind it claims');
+  assert.deepEqual(await duplicates('extension'), ['@example/widget-ext and @example/widget-art both provide an artifact and an extension named widget; keep one'], 'the set-aside package\'s kind owns the report');
+});
+
+test('a relative $id sets a package-local base: relative refs resolve under it, embedded resources resolve in the file, and an escaping $id is refused', async t => {
+  const dir = await pkg(t, {
+    'api/root.json': {
+      $schema: 'https://json-schema.org/draft/2020-12/schema', $id: '../shared/root.json',
+      properties: {
+        pet: { $ref: 'pet.json' },
+        self: { $ref: 'root.json#/$defs/n' },
+        inner: { $ref: 'item.json#/type' },
+        fragment: { $ref: '#/$defs/n' },
+      },
+      $defs: {
+        n: { type: 'number' },
+        item: { $id: 'item.json', type: 'string', properties: { up: { $ref: '#/type' } } },
+        out: { $id: '../../../outside/', properties: { escape: { $ref: 'secret.json' } } },
+        anchor: { $id: '#legacy-anchor', properties: { kept: { $ref: 'pet.json' } } },
+      },
+    },
+    'shared/pet.json': { type: 'object' },
+    'api/pet.json': { description: 'the file-relative target, which the $id base replaces' },
+  });
+  const { documents, referencedFiles } = await inspectArtifactDocuments(dir, [schemaDoc('api/root.json')]);
+  const [root] = documents;
+  assert.deepEqual(root!.refs.map(ref => [ref.at, ref.ref, ref.target]), [
+    ['/properties/pet', 'pet.json', 'shared/pet.json#'],
+    ['/properties/self', 'root.json#/$defs/n', 'api/root.json#/$defs/n'],
+    ['/properties/inner', 'item.json#/type', 'api/root.json#/$defs/item/type'],
+    ['/properties/fragment', '#/$defs/n', 'api/root.json#/$defs/n'],
+    ['/$defs/item/properties/up', '#/type', 'api/root.json#/$defs/item/type'],
+    ['/$defs/anchor/properties/kept', 'pet.json', 'shared/pet.json#'],
+  ], 'a plain-name $id is an anchor and keeps the enclosing base');
+  assert.deepEqual(root!.diagnostics.map(item => [item.code, item.severity, item.at, item.ref]), [['path-escape', 'error', '/$defs/out/properties/escape', 'secret.json']]);
+  assert.match(root!.diagnostics[0]!.message, /enclosing \$id \.\.\/\.\.\/\.\.\/outside\/ leaves the package directory/);
+  assert.deepEqual(referencedFiles.map(file => file.path), ['shared/pet.json'], 'api/pet.json is not read');
+});
+
+test('an absolute remote $id makes relative refs under it remote (reported, never fetched) while its own resources still resolve in the file', async t => {
+  const fetched: unknown[] = [], original = globalThis.fetch;
+  globalThis.fetch = (async (...args: unknown[]) => { fetched.push(args); throw new Error('no network'); }) as typeof fetch;
+  t.after(() => { globalThis.fetch = original; });
+  const dir = await pkg(t, {
+    'remote.json': {
+      $id: 'https://schemas.example/pets/root.json',
+      properties: {
+        relative: { $ref: 'pet.json' },
+        climbing: { $ref: '../../../../pet.json' },
+        fragment: { $ref: '#/$defs/local' },
+        absolute: { $ref: 'https://schemas.example/pets/root.json#/$defs/local' },
+        embedded: { $ref: 'tag.json' },
+      },
+      $defs: { local: { type: 'string' }, tag: { $id: 'tag.json', type: 'string' } },
+    },
+    'pet.json': { type: 'object' },
+    'legacy.yaml': 'openapi: 3.0.3\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      $id: "https://schemas.example/"\n      properties:\n        local: {$ref: "pet.json"}\n',
+  });
+  const { documents, referencedFiles } = await inspectArtifactDocuments(dir, [schemaDoc('remote.json'), { path: 'legacy.yaml', mediaType: 'application/vnd.oai.openapi' }]);
+  const [remote, legacy] = documents;
+  assert.deepEqual(remote!.diagnostics.map(item => [item.code, item.severity, item.ref]), [['remote-ref', 'warning', 'pet.json'], ['remote-ref', 'warning', '../../../../pet.json']]);
+  assert.match(remote!.diagnostics[0]!.message, /remote \$id base to https:\/\/schemas\.example\/pets\/pet\.json: listed, never fetched/);
+  assert.match(remote!.diagnostics[1]!.message, /https:\/\/schemas\.example\/pet\.json/);
+  assert.deepEqual(remote!.refs.map(ref => ref.target), ['remote.json#/$defs/local', 'remote.json#/$defs/local', 'remote.json#/$defs/tag']);
+  // OpenAPI 3.0 schemas have no $id: the reference resolves against the file, as the document's own dialect says.
+  assert.deepEqual([legacy!.diagnostics, legacy!.refs.map(ref => ref.target)], [[], ['pet.json#']]);
+  assert.deepEqual(referencedFiles.map(file => file.path), ['pet.json'], 'only the OpenAPI 3.0 reference reads pet.json');
+  assert.deepEqual(fetched, []);
+});
+
+test('$ref keys inside example, examples, const, enum and default data are data, not references', async t => {
+  const dir = await pkg(t, {
+    'data.json': {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      properties: {
+        default: { $ref: '#/$defs/x' },
+        value: {
+          default: { $ref: 'missing.json' }, const: { $ref: '../escape.json' }, enum: [{ $ref: 'https://schemas.example/x' }],
+          examples: [{ $ref: '#/nowhere' }], example: { $ref: 'missing.yaml' }, items: { default: { $id: '../../escape/' }, $ref: '#/$defs/x' },
+        },
+      },
+      $defs: { x: { type: 'string' }, enum: { $ref: '#/$defs/x' } },
+    },
+    'api.yaml': [
+      'openapi: 3.1.0',
+      'paths:',
+      '  /pets:',
+      '    post:',
+      '      requestBody:',
+      '        content:',
+      '          application/json:',
+      '            schema: {$ref: "#/components/schemas/example"}',
+      '            example: {$ref: "missing.json"}',
+      '            examples:',
+      '              inline: {value: {$ref: "../escape.json"}}',
+      '              shared: {$ref: "#/components/examples/Shared"}',
+      '      responses:',
+      '        default: {$ref: "#/components/responses/Ok"}',
+      'components:',
+      '  schemas:',
+      '    example: {type: object, default: {$ref: missing.json}, examples: [{$ref: missing.json}], enum: [{$ref: missing.json}]}',
+      '  responses:',
+      '    Ok: {description: ok}',
+      '  examples:',
+      '    Shared: {value: {$ref: "#/nowhere"}}',
+      '',
+    ].join('\n'),
+    'swagger.yaml': [
+      'swagger: "2.0"',
+      'paths:',
+      '  /pets:',
+      '    get:',
+      '      responses:',
+      '        "200":',
+      '          description: ok',
+      '          schema: {$ref: "#/definitions/Pet"}',
+      '          examples:',
+      '            application/json: {$ref: missing.json}',
+      'definitions:',
+      '  Pet: {type: object, example: {$ref: missing.json}}',
+      '',
+    ].join('\n'),
+  });
+  const { documents, referencedFiles } = await inspectArtifactDocuments(dir, [schemaDoc('data.json'), { path: 'api.yaml', mediaType: 'application/vnd.oai.openapi' }, { path: 'swagger.yaml', mediaType: 'application/vnd.oai.openapi' }]);
+  const [data, api, swagger] = documents;
+  assert.deepEqual(data!.refs.map(ref => [ref.at, ref.target]), [['/properties/default', 'data.json#/$defs/x'], ['/properties/value/items', 'data.json#/$defs/x'], ['/$defs/enum', 'data.json#/$defs/x']], 'a property or definition named like a data keyword is still a schema, and a $id inside data sets no base');
+  assert.deepEqual(api!.refs.map(ref => [ref.at, ref.target]), [
+    ['/paths/~1pets/post/requestBody/content/application~1json/schema', 'api.yaml#/components/schemas/example'],
+    ['/paths/~1pets/post/requestBody/content/application~1json/examples/shared', 'api.yaml#/components/examples/Shared'],
+    ['/paths/~1pets/post/responses/default', 'api.yaml#/components/responses/Ok'],
+  ], 'an Example Object reference and the default response are references; example values are not');
+  assert.deepEqual(swagger!.refs.map(ref => ref.target), ['swagger.yaml#/definitions/Pet']);
+  assert.deepEqual(documents.flatMap(codes), []);
+  assert.deepEqual(referencedFiles, []);
+});

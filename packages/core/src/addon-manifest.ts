@@ -165,12 +165,17 @@ export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
 /**
  * The release-wide add-on agent catalog (#721): `addon-catalog.json`, shipped next to `addons.json` in core's `dist/`.
  * Every add-on of this core's release, from its signed `urlcode.json` descriptor: name, package, version, kind,
- * description, requirements and, when the descriptor declares it, its agent tooling (reference `path`s are relative
- * to that add-on's package). Discovery metadata only: listing an add-on here is not evidence that a project installed
+ * description, requirements, an artifact's `documents` (path and media type, never contents) and, when the descriptor
+ * declares it, its agent tooling (reference and document `path`s are relative to that add-on's package). Discovery metadata only: listing an add-on here is not evidence that a project installed
  * or activated it; installed components are the local MCP's concern (`get_extensions`, `get_extension_artifacts`,
  * `get_addon_agent_tooling`). Reading it imports no add-on, fetches nothing and activates nothing.
  */
-export interface AddonCatalogEntry { name: string; kind: AddonKind; package: string; version: string; description: string; requires: string[]; uses?: string[]; agent?: AddonAgentTooling }
+export interface AddonCatalogEntry {
+  name: string; kind: AddonKind; package: string; version: string; description: string; requires: string[]; uses?: string[];
+  /** An artifact's standard documents (#857): path and media type only, never contents, at most `MAX_ARTIFACT_DOCUMENTS`. */
+  documents?: ArtifactDocument[];
+  agent?: AddonAgentTooling;
+}
 export interface AddonCatalog { format: 1; scope: 'release'; version: string; addons: AddonCatalogEntry[] }
 /** One add-on's signed descriptor and the package that carries it. */
 export interface AddonCatalogSource { descriptor: unknown; package: string; version: string; source: string }
@@ -178,6 +183,7 @@ export interface AddonCatalogSource { descriptor: unknown; package: string; vers
 const entryOf = (descriptor: AddonDescriptor, pkg: string, version: string): AddonCatalogEntry => ({
   name: descriptor.name, kind: descriptor.kind, package: pkg, version, description: descriptor.description, requires: [...descriptor.requires],
   ...(descriptor.uses?.length ? { uses: [...descriptor.uses] } : {}),
+  ...(descriptor.documents?.length ? { documents: descriptor.documents.map(({ path, mediaType }) => ({ path, mediaType })) } : {}),
   ...(descriptor.agent ? { agent: { description: descriptor.agent.description, references: descriptor.agent.references.map(({ name, description, path }) => ({ name, description, path })) } } : {}),
 });
 function checkCatalog(catalog: AddonCatalog, source: string): AddonCatalog {
@@ -204,12 +210,13 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
   assert(isRecord(raw) && raw.format === 1 && raw.scope === 'release' && typeof raw.version === 'string' && Array.isArray(raw.addons), `${source} is not an add-on catalog`);
   const addons = raw.addons.map((value: unknown) => {
     assert(isRecord(value) && typeof value.name === 'string' && addonNamePattern.test(value.name), `${source}: invalid add-on entry`);
-    const { name, kind, package: pkg, version, description, requires, uses, agent } = value;
+    const { name, kind, package: pkg, version, description, requires, uses, documents, agent } = value;
     assert((kind === 'extension' || kind === 'artifact') && pkg === addonPackage(name) && typeof version === 'string' && typeof description === 'string'
       && Array.isArray(requires) && requires.every(item => typeof item === 'string' && addonNamePattern.test(item)), `${source}: ${name} is malformed`);
     assert(uses === undefined || Array.isArray(uses) && uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== name && !requires.includes(item)), `${source}: ${name} has malformed uses`);
     if (agent !== undefined) assertAgentTooling(agent, `${source}: ${name}`);
-    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(agent ? { agent } : {}) }, pkg, version);
+    if (documents !== undefined) { assert(kind === 'artifact', `${source}: ${name} is an extension, which lists no documents`); assertDocuments(documents, `${source}: ${name}`); }
+    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}) }, pkg, version);
   });
   return checkCatalog({ format: 1, scope: 'release', version: raw.version, addons }, source);
 }

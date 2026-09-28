@@ -75,6 +75,23 @@ test('building and parsing refuse a catalog that is not bounded metadata of one 
   assert.throws(() => parseAddonCatalog({ ...catalog, addons: [{ ...catalog.addons[0], package: '@jimhoyd/urlcode-other' }] }, 'package'), /malformed/);
 });
 
+test('an artifact\'s documents reach the catalog as bounded paths and media types, never contents (#857)', () => {
+  const documents = [{ path: 'schemas/config.json', mediaType: 'application/schema+json' }, { path: 'README.md', mediaType: 'text/markdown' }];
+  const catalog = buildAddonCatalog('1.0.0', [
+    { descriptor: { kind: 'artifact', name: 'docs', description: 'd', requires: [], documents }, package: '@jimhoyd/urlcode-docs', version: '1.0.0', source: 'docs/urlcode.json' },
+    { descriptor: { kind: 'artifact', name: 'plain', description: 'p', requires: [], documents: [] }, package: '@jimhoyd/urlcode-plain', version: '1.0.0', source: 'plain/urlcode.json' },
+  ]);
+  assert.deepEqual(catalog.addons.map(entry => [entry.name, entry.documents]), [['docs', documents], ['plain', undefined]], 'an empty list is omitted');
+  assert.equal(Object.hasOwn(catalog.addons[1]!, 'documents'), false);
+  assert.deepEqual(parseAddonCatalog(JSON.parse(JSON.stringify(catalog)), 'round trip'), catalog);
+  const entry = catalog.addons[0]!;
+  const parse = (change: Record<string, unknown>): unknown => parseAddonCatalog({ ...catalog, addons: [{ ...entry, ...change }] }, 'catalog');
+  assert.throws(() => parse({ documents: [{ path: '../secret.json', mediaType: 'application/json' }] }), /relative package path/);
+  assert.throws(() => parse({ documents: [{ path: 'a.json', mediaType: 'application/json', content: '{}' }] }), /relative package path/, 'a document entry carries no content');
+  assert.throws(() => parse({ documents: Array.from({ length: 33 }, (_, index) => ({ path: `d${index}.json`, mediaType: 'application/json' })) }), /at most 32/);
+  assert.throws(() => parse({ kind: 'extension' }), /is an extension, which lists no documents/);
+});
+
 test('uses round-trips from the definition through urlcode.json, the catalog and the development manifest, never as a requirement', async t => {
   const root = await checkout(t);
   await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', schema: { type: 'object' }, uses: ['zeta', 'mail'] })} };\n`);

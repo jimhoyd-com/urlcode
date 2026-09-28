@@ -289,18 +289,28 @@ async function loadDefinition(site: string, name: string, pkg = addonPackage(nam
  * operator and checked against npm's own lock integrity.
  */
 export interface InstalledProvider { name: string; package: string; descriptor: AddonDescriptor; catalog: boolean }
+/**
+ * A problem with one installed descriptor, attributed to the kind of add-on list that reports it (#857): a duplicate
+ * provider to the kind of the package that was set aside, an unreadable descriptor to the kind it claims (extension
+ * when it claims none), so `extensions list` and `artifacts list` never both report the same problem.
+ */
+export interface ProviderProblem { kind: AddonKind; message: string }
 /** Every direct dependency of the site that carries an add-on descriptor, by logical name. Reads data only; imports nothing. */
-export async function installedProviders(site: string, manifest?: AddonManifest): Promise<{ providers: Map<string, InstalledProvider>; problems: string[] }> {
-  const providers = new Map<string, InstalledProvider>(), problems: string[] = [];
+export async function installedProviders(site: string, manifest?: AddonManifest): Promise<{ providers: Map<string, InstalledProvider>; problems: ProviderProblem[] }> {
+  const providers = new Map<string, InstalledProvider>(), problems: ProviderProblem[] = [];
   let pkg: PackageJson;
   try { pkg = await readJson<PackageJson>(join(site, 'package.json')); } catch (error) { if (isCode(error, 'ENOENT')) return { providers, problems }; throw error; }
   for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) {
     const path = join(site, 'node_modules', dependency, 'urlcode.json');
-    let descriptor: AddonDescriptor;
-    try { descriptor = parseDescriptor(await readJson(path), path); }
-    catch (error) { if (isCode(error, 'ENOENT') || isCode(error, 'ENOTDIR')) continue; problems.push(error instanceof Error ? error.message : String(error)); continue; }
+    let raw: unknown, descriptor: AddonDescriptor;
+    try { raw = await readJson(path); descriptor = parseDescriptor(raw, path); }
+    catch (error) {
+      if (isCode(error, 'ENOENT') || isCode(error, 'ENOTDIR')) continue;
+      problems.push({ kind: isRecord(raw) && raw.kind === 'artifact' ? 'artifact' : 'extension', message: error instanceof Error ? error.message : String(error) });
+      continue;
+    }
     const other = providers.get(descriptor.name);
-    if (other) { problems.push(`${dependency} and ${other.package} both provide the ${descriptor.kind} ${descriptor.name}; keep one`); continue; }
+    if (other) { problems.push({ kind: descriptor.kind, message: `${dependency} and ${other.package} both provide ${other.descriptor.kind === descriptor.kind ? `the ${descriptor.kind}` : `an ${other.descriptor.kind} and an ${descriptor.kind} named`} ${descriptor.name}; keep one` }); continue; }
     providers.set(descriptor.name, { name: descriptor.name, package: dependency, descriptor, catalog: manifest?.addons[descriptor.name]?.package === dependency });
   }
   return { providers, problems };
@@ -520,7 +530,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         independent.set(descriptor.name, dependency);
       }
       const { providers, problems } = await installedProviders(site.site, manifest);
-      assert(!problems.length, `Refusing ${specs.join(', ')}: ${problems.join('; ')}`);
+      assert(!problems.length, `Refusing ${specs.join(', ')}: ${problems.map(problem => problem.message).join('; ')}`);
       for (const name of independent.keys()) for (const requirement of providers.get(name)!.descriptor.requires) assert(providers.has(requirement), `${name} requires ${requirement}, which is not installed; add it first`);
     }
     const lock = await lockPackages(site.site);
@@ -747,7 +757,7 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
   }
   // Independent packages (#844): verified by npm's lock integrity (and, from a local tarball, that tarball's hash) rather than core's pin.
   const { providers, problems: providerProblems } = await installedProviders(site.site, manifest);
-  report.problems.push(...providerProblems);
+  report.problems.push(...providerProblems.filter(problem => problem.kind === kind).map(problem => problem.message));
   for (const provider of [...providers.values()].filter(item => !item.catalog && item.descriptor.kind === kind)) {
     const { name, package: packageName, descriptor } = provider, problems: string[] = [];
     const lockProblem = independentLockProblem(lock, packageName) ?? await localTarballProblem(site.site, lock, packageName);
@@ -786,7 +796,8 @@ export async function validateDeclaredExtensions(project: string): Promise<strin
   const loaded = await loadDocument(project), declared = loaded.document.extensions ?? {};
   if (!Object.keys(declared).length) return [];
   const site = dirname(loaded.root);
-  const { providers, problems } = await installedProviders(site);
+  const { providers, problems: providerProblems } = await installedProviders(site);
+  const problems = providerProblems.filter(problem => problem.kind === 'extension').map(problem => problem.message);
   const ajv = new Ajv.default({ strict: false, allErrors: true });
   // Policies are reported like the runtime reports them (the first violation per route, located where the author
   // wrote it, `auth` for the `auth:` short form), which needs the failing schema node for key suggestions.
