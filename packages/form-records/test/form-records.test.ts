@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRuntime, startServer } from '@jimhoyd/urlcode';
@@ -11,6 +11,7 @@ import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
 import { createForms } from '@jimhoyd/urlcode-forms';
 import { createStore } from '@jimhoyd/urlcode-store';
 import { createFormRecordsExtension } from '../src/index.ts';
+import { storedRecords } from './store-rows.ts';
 
 // #529. The principal provider is a synthetic "badge" extension, not auth, so the composition is proven against
 // core's generic principal contract: `Badge <id>` sets the principal, `Badge-anon` is allowed without one.
@@ -66,8 +67,8 @@ function badge(projectSha256: string): RuntimeExtension {
 interface Boot { record?: object; collection?: object; guard?: boolean; order?: string[]; target?: 'aws'; noUi?: boolean }
 async function project(t: TestContext, options: Boot = {}) {
   const root = await mkdtemp(join(tmpdir(), 'form-records-')); t.after(() => rm(root, { recursive: true, force: true }));
-  const app = join(root, 'app'), data = join(root, 'data');
-  await mkdir(app); await mkdir(data);
+  const app = join(root, 'app'), data = join(root, 'data', 'store.sqlite');
+  await mkdir(app);
   const guard = options.guard === false ? {} : { policies: { extensions: { badge: {} } } };
   const blocks: Record<string, unknown> = {
     badge: { version: '1', config: {} }, ui: { version: '1', config: {} }, forms: { version: '1', config: { flows: {} } },
@@ -83,7 +84,7 @@ async function project(t: TestContext, options: Boot = {}) {
   const projectSha256 = await inspectExtensionRevision(app);
   const ui = createUiExtension({ projectRoot: app, projectSha256 });
   const forms = createForms({ ui, projectSha256, csrfSecret: 'f'.repeat(32) });
-  const store = createStore({ directory: data, projectSha256 });
+  const store = createStore({ database: data, projectSha256 });
   const records = createFormRecordsExtension({ projectSha256, forms: forms.exports, store: store.exports, ...(options.noUi ? {} : { ui }) });
   const extensions = [badge(projectSha256), ui.registration, forms.registration, store.registration, records];
   return { app, data, extensions };
@@ -102,7 +103,7 @@ async function boot(t: TestContext, options: Boot = {}) {
       return response;
     };
   };
-  const stored = async () => JSON.parse(await readFile(join(data, 'profiles.json'), 'utf8')) as { records: Record<string, unknown>[] };
+  const stored = async () => ({ records: storedRecords(data, 'profiles') });
   return { browser, stored };
 }
 type Browser = ReturnType<Awaited<ReturnType<typeof boot>>['browser']>;

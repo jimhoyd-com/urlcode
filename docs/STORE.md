@@ -58,8 +58,8 @@ routes:
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
 ```
 
-Records live in `data/store/` beside `host.mjs` (or `STORE_DIRECTORY`), outside
-`app/`. Review the project, put the revision the command printed in the
+Records live in one SQLite database, `data/store.sqlite` beside `host.mjs` (or
+`STORE_DATABASE`), outside `app/`. Review the project, put the revision the command printed in the
 operator policy as its `projectSha256` (or set `PROJECT_SHA256` to it), and
 serve; `--policy` with `--host-file` pins the host automatically
 ([the revision pin](EXTENSIONS.md#the-revision-pin)):
@@ -118,14 +118,16 @@ neither `--origin` nor an operator
 `fields` maps field names to fixed messages; submitted values are never echoed.
 Status codes: `400` invalid record or JSON, `404`, `405` with `Allow`, `409`
 `collection_full` (or `owner_quota_exceeded` on an
-[owned collection with a per-owner limit](#per-owner-record-limit)), `413` body or record too large, `415`, `503` when the disk
-write failed, `500` for anything unexpected (no cause in the body).
+[owned collection with a per-owner limit](#per-owner-record-limit)), `413` body or record too large, `415`, `503`
+`storage_unavailable` when the database write failed or another process held its
+lock past the busy timeout (nothing is written), `500` for anything unexpected
+(no cause in the body).
 
 ## Bounded keyed transitions
 
 Collections can opt into three deliberately small state primitives. They are
 not a general transaction language, do not run project code, and do not select a
-database or provider. The operator still supplies the directory in the host
+database or provider. The operator still supplies the database path in the host
 file; the project only declares the bounded behavior it needs.
 
 ```yaml
@@ -160,22 +162,24 @@ routes:
   collection-local; they are not routing or authorization principals.
 - `increments` lists numeric fields with numeric defaults. `POST
   /api/links/<uuid>/increment/clicks` increases exactly one declared field by
-  one under the collection write lock. It refuses undeclared counters and an
+  one in one database transaction. It refuses undeclared counters and an
   increment that would violate the field's declared finite/integer/minimum or
   maximum limits. There is no caller-provided delta, conditional expression or
   multi-record operation.
 - `idempotency: {maxKeys: N}` enables an optional `Idempotency-Key` header on
   a collection's `POST`, `PUT`, `PATCH`, `DELETE`, and increment endpoints.
   A key is 1–128 characters with no control character. The store claims it in
-  the same atomic file replacement as the accepted mutation. A retained repeat
+  the same database transaction as the accepted mutation. A retained repeat
   is always `409 idempotency_duplicate`; invalid/failed mutations do not claim
-  the key. The newest `N` distinct keys are retained in order, so an evicted
-  key is intentionally no longer protected. Supplying the header to a
-  collection that did not enable idempotency is `400 idempotency_not_enabled`,
-  rather than silently offering a false guarantee. Retention is scoped per
-  network client (the runtime's caller identity), so two different callers
-  choosing the same key value do not collide; an unauthenticated mount has no
-  stronger caller identity than that to scope by.
+  the key. The collection retains its newest `N` distinct keys, across all
+  callers, in order, so an evicted key is intentionally no longer protected.
+  Supplying the header to a collection that did not enable idempotency is
+  `400 idempotency_not_enabled`, rather than silently offering a false
+  guarantee. A key is scoped to the network client (the runtime's caller
+  identity), so two different callers choosing the same key value do not
+  collide; an unauthenticated mount has no stronger caller identity than that
+  to scope by. The repeat answers `409`, not the first response: the store
+  keeps the claim, not the result.
 
 `format: http-url` applies only to string fields and accepts an absolute
 HTTP(S) URL without credentials or ASCII whitespace/control characters. A `shortLinks` entry combines a collection's
@@ -230,7 +234,11 @@ otherwise answers `412` without writing anything — useful when two callers
 might update the same record concurrently and the loser should not silently
 overwrite the winner's change. `If-Match` is optional; omitting it keeps the
 default last-write-wins behavior unchanged. A malformed `If-Match` (not this
-store's own quoted hex format) is `400`, not a silent bypass.
+store's own quoted hex format) is `400`, not a silent bypass. The ETag is
+derived from the record's `id` and `updatedAt`, and every write moves
+`updatedAt` by at least one millisecond, so two writes in the same millisecond
+still give two ETags: of concurrent writes holding the same `If-Match`,
+exactly one applies and the rest answer `412`.
 
 An idempotency claim is a durable *state/delivery decision*, not delivery
 itself: the store does not send webhooks, provide an outbox, retry a remote
@@ -295,10 +303,13 @@ filterable: [kind, done]         # <field>=<value>, equality only
   otherwise). Without `sort`, `cursor` stays the numeric offset in creation
   order, filtered or not; there a delete between pages can shift later records
   up by one.
-- The whole collection is sorted and filtered in memory per request, bounded by
-  `maxRecords` (at most 10,000). On a shared collection sorting and filtering
-  apply to every record; on an [owned](#per-record-ownership) one they apply to
-  the caller's own records only, and `total` and cursors count only those.
+- An unsorted, unfiltered page is one counted `LIMIT`/`OFFSET` query. A sorted
+  or filtered page reads the `id` and only the named fields of every record in
+  scope (bounded by `maxRecords`, at most 10,000), orders and filters those in
+  memory by the rules above, and then reads the page's records. On a shared
+  collection sorting and filtering apply to every record; on an
+  [owned](#per-record-ownership) one they apply to the caller's own records
+  only, and `total` and cursors count only those.
 
 ## Per-record ownership
 
@@ -333,10 +344,10 @@ cookie, header or auth table itself, and it compares the id for equality only.
 On an owned collection:
 
 - `POST` stamps the caller's principal on the new record. The owner is stored in
-  the data file as `_owner` and never appears in a response; a body naming
+  the database's `owner` column and never appears in a response; a body naming
   `_owner` is `400` like any undeclared field, and `PUT`/`PATCH` keep the stored
   owner. There is no transfer through the API; the operator can
-  [move records](#moving-records-to-another-principal) with the server stopped.
+  [move records](#moving-records-to-another-principal).
 - `GET` lists only the caller's records: `total`, `limit`, `cursor`, sorting and
   filtering all work over that set, so a caller learns nothing about how many
   records other principals hold.
@@ -359,7 +370,7 @@ Limits that stay true on an owned collection: `maxRecords` still caps the whole
 collection, and `409 collection_full` still tells any caller that it is full
 (with or without `maxRecordsPerOwner`, enough principals together can fill it,
 so size `maxRecords` for them); all owners' records share
-one file, one lock and one write sequence; the store is still trusted operator
+one database and its one-writer-at-a-time transactions; the store is still trusted operator
 code on one host, not a hostile multi-tenant boundary; and backups copy every
 owner's records together. Access by an operator or support role to another
 user's records is not modelled.
@@ -391,12 +402,13 @@ notes:
 - `maxRecordsPerOwner` must be at most the collection's `maxRecords` (or its
   default of 1,000). Activation refuses it on a shared collection, where there
   is no owner to count.
-- Only a create adds a record, and the limit is checked in the same write
-  sequence as the create, so concurrent creates cannot overshoot it. A replayed
-  `Idempotency-Key` is refused as a duplicate before anything is counted.
-- The counts are derived from the records in memory, rebuilt when the store
-  activates and after every write; nothing extra is stored. Records with no
-  owner (see below) count toward the collection but toward no principal.
+- Only a create adds a record, and the limit is counted in the same database
+  transaction as the create, so concurrent creates cannot overshoot it. A
+  replayed `Idempotency-Key` is refused as a duplicate before anything is
+  counted.
+- The counts are an indexed count of the principal's rows at create time;
+  nothing extra is stored. Records with no owner (see below) count toward the
+  collection but toward no principal.
   `ownerless-assign` can leave a principal above its limit, and lowering the
   limit can too: the store still activates, the principal's existing records
   stay readable and changeable, and it cannot create more until it is back
@@ -407,14 +419,15 @@ notes:
 Records written while a collection was shared carry no owner. After the
 collection is declared `ownership: owner` they are served to **nobody**: they
 are not listed, read, changed or deleted through the API, but they still count
-toward `maxRecords`. The store never guesses an owner. With the server
-stopped (the commands take the directory lock and refuse while it runs), the
-operator reports them and then assigns them to one principal or deletes them:
+toward `maxRecords`. The store never guesses an owner. The operator reports
+them and then assigns them to one principal or deletes them. Each command is one
+transaction on its own connection to the database, so it may run while the
+server serves, which sees the change on its next request:
 
 ```sh
-npx urlcode-store ownerless --directory /srv/site/data/store --collection notes
-npx urlcode-store ownerless-assign --directory /srv/site/data/store --collection notes --owner <principal id>
-npx urlcode-store ownerless-delete --directory /srv/site/data/store --collection notes
+npx urlcode-store ownerless --database /srv/site/data/store.sqlite --collection notes
+npx urlcode-store ownerless-assign --database /srv/site/data/store.sqlite --collection notes --owner <principal id>
+npx urlcode-store ownerless-delete --database /srv/site/data/store.sqlite --collection notes
 ```
 
 Each prints `{collection, records, ownerless, ids}` as JSON. `--owner` takes a
@@ -422,26 +435,23 @@ principal id exactly as the provider sets it (for auth, the user's Better Auth
 id). The same operations are exported
 from the package as `reportOwnerless`, `assignOwnerless` and `deleteOwnerless`.
 
-Going back is refused: a collection declared shared whose file holds records
-with an owner fails activation, because serving them shared would hand every
-user's records to every caller. Remove the owners from a stopped copy of the
-file deliberately if that is really intended. A store older than this feature
-refuses such a file too (`_owner` is not a declared field), so ownership is a
-one-way change for older releases.
+Going back is refused: a collection declared shared whose database rows carry
+an owner fails activation, because serving them shared would hand every user's
+records to every caller. Clear the `owner` column deliberately (SQL, server
+stopped) if that is really intended.
 
 ### Moving records to another principal
 
 Records belong to the principal that created them. When that principal is
 replaced, for example a user account that is recreated under a new id, its
-records stay in the file but nobody can reach them. With the server
-stopped, the operator moves them
+records stay in the database but nobody can reach them. The operator moves them
 ([#732](https://github.com/jimhoyd-com/urlcode/issues/732)); run `--dry-run`
 first to see the counts:
 
 ```sh
-npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
+npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv/site/app \
   --from <old principal id> --to <new principal id> --dry-run
-npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/app \
+npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv/site/app \
   --from <old principal id> --to <new principal id>
 ```
 
@@ -452,27 +462,26 @@ npx urlcode-store reassign --directory /srv/site/data/store --project /srv/site/
   reads it through core's project loader to learn which collections are
   declared `ownership: owner` and each one's `maxRecordsPerOwner`; only those
   collections are touched. `--collection <name>` limits the move to one of them
-  (a shared or undeclared name is refused). A declared collection with no data
-  file yet has nothing to move.
+  (a shared or undeclared name is refused). A declared collection that holds no
+  records yet has nothing to move and is left out of the report.
 - Only each record's owner changes. Records owned by anyone else, and records
   with no owner (see below), are left alone.
 - It prints `{from, to, dryRun, moved, collections: [{collection, moved,
-  toBefore, toAfter, maxRecordsPerOwner}]}` as JSON. `--dry-run` takes the lock,
-  counts and writes nothing.
+  toBefore, toAfter, maxRecordsPerOwner}]}` as JSON. `--dry-run` counts and
+  writes nothing.
 - **The per-owner limit is respected.** When moving would leave `--to` holding
   more than a collection's `maxRecordsPerOwner`, the whole command is refused,
   naming the collection and the counts, and no collection is changed (a dry run
   is refused the same way). Delete or move some of `--to`'s records first, or
   raise the limit. `maxRecords` is unaffected, since no record is added.
-- Like the `ownerless` commands it takes the directory lock and refuses while a
-  store process holds it. All counts are checked before anything is written;
-  each changed collection file is then replaced atomically, one after another. A
-  disk failure between two files can leave the earlier collections moved, and
-  running the same command again moves the rest.
+- It is one database transaction across every affected collection: all counts
+  are checked, then every collection moves, and a failure part-way (a full disk,
+  a lock held past the busy timeout) rolls all of them back. Like the
+  `ownerless` commands it may run while the server serves.
 - It does not touch `Idempotency-Key` retention, which is scoped by principal: a
   retry by `--to` with a key `--from` used is not recognised as a duplicate.
 
-The same operation is exported as `reassignOwner(directory, {from, to,
+The same operation is exported as `reassignOwner(database, {from, to,
 collections, collection?, dryRun?})`, where `collections` is the declared
 `extensions.store.config.collections`.
 
@@ -521,87 +530,110 @@ metadata is `{collection, fields}`: the names of the declared fields the write
 stored or changed, never their values, cut with `truncated: true` when the list
 would exceed audit's metadata bound.
 
-The event is written into the collection's data file, in the `audit` array,
-in the same file write as the record, and audit drains it into its log while
-the host runs. So a record and its event are stored together or not at all,
-and an event survives a crash until it is delivered. When 1000 events wait
-undelivered in one collection, the next write answers
-`503 audit_backlog` and changes nothing until audit catches up. Turning
-`audit` off keeps any undelivered events in the file. The operator's
+The event is inserted into the store database's outbox table
+(`store_audit_outbox`) in the same transaction as the record, and audit drains
+it into its log while the host runs (oldest first across collections, deleted
+once audit has committed it). So a record and its event are stored together or
+not at all, and an event survives a crash until it is delivered. Audit keeps its
+own database: the store's transaction ends at its outbox, and delivery into the
+audit log is a separate, idempotent step (audit ignores an id it already
+holds). When 1000 events wait undelivered in one collection, the next write
+answers `503 audit_backlog` and changes nothing until audit catches up. Turning
+`audit` off keeps any undelivered events in the outbox. The operator's
 `urlcode-store` ownership commands keep the outbox and add no event.
 
 ## Storage and concurrency: what it does and does not guarantee
 
-- One JSON file per collection in the operator directory (default `data/store`
-  beside `host.mjs`, or `STORE_DIRECTORY`). The directory must be outside the
-  project (checked after symlink resolution) and is created `0700`, files `0600`.
-- Each write goes to a temporary file, is fsynced, then renamed over the
-  collection file, and the directory is fsynced (best effort). A crash leaves
-  either the old or the new file, never a torn one; a failed write changes
-  nothing in memory or on disk.
-- Writes within one process are applied strictly one at a time per collection,
-  so concurrent requests cannot interleave or lose each other's updates in that
-  process. Unique-key claims, increments, and retained idempotency claims use
-  that same sequence and the same replacement file as the changed record.
-- The directory is single-writer. Activation takes an exclusive lock file
-  (`.store.lock`, holding the pid) and refuses a second server over the same
-  directory (a dev reload shares it with the replacement runtime instead; see
-  [below](#single-writer-lock-and-reload)); a lock left by a dead process is reclaimed. This is a guard against
-  mistakes, not a distributed lock: it does not work across machines or on
-  network filesystems, and the same host needs one process (no `workers`
-  multi-process clustering over the same directory).
-- Every write rewrites the whole collection file, so cost grows with the
-  collection size; the record and byte caps bound it. There is no transaction
-  across records or collections, no index and no query language beyond
-  paginated listing with declared sorting and equality filtering, and no
-  history. A single record supports optional optimistic concurrency through
-  `If-Match`/`ifMatch` (see [Conditional writes](#conditional-writes) above);
-  omitting it remains last-write-wins for `PUT`/`PATCH`. That per-record
-  conditional write is not a cross-record or cross-collection transaction.
-  Startup loads and revalidates every record; a file that no longer matches the
-  declared fields refuses activation rather than serving bad data.
-- The keyed-transition guarantee is therefore one Node server process per
-  operator directory. A second local process refuses the lock; multiple hosts,
-  network filesystems and clustered workers are unsupported. An atomic crash
-  leaves either the old transition and idempotency set or the new pair. This is
-  durable local state, not a distributed exactly-once or external-delivery
-  guarantee.
-- Backups are the operator's: copy the directory while the server is stopped, or
-  accept that a copy taken mid-write is the last complete file.
+- One SQLite database per site, through Node's built-in `node:sqlite`:
+  `store({database})` in `host.mjs`, else `STORE_DATABASE`, else
+  `data/store.sqlite` beside `host.mjs`. It must be outside the project
+  (checked after symlink resolution). Its directory is created `0700` and the
+  file `0600`; a symlinked, hard-linked or group- or other-readable file is
+  refused. The store requires a SQLite with the fixes audit and abuse require
+  too (3.44.6, 3.50.7, 3.51.3 or newer) and is Node only: its registration
+  declares `targets: ['node']`, so the aws and vercel targets refuse it before
+  serving.
+- Every collection lives as rows of three shared tables, keyed by the
+  collection name: `store_records` (one row per record; the declared fields are
+  one JSON object, beside the `id`, timestamps, owner and unique key columns),
+  `store_idempotency` (retained `Idempotency-Key` claims) and
+  `store_audit_outbox` (undelivered audit events). Collections are rows, not
+  tables, so declaring, changing or removing a collection never changes the
+  schema; the rows of a collection that is no longer declared stay untouched.
+- The schema only moves forward. An empty file is initialized in one
+  transaction; opening an up-to-date database changes nothing; a later release
+  that changes the schema adds a step, and each step runs in its own
+  transaction with the new version (`PRAGMA user_version`). A file that is not
+  a store database (`PRAGMA application_id`) or comes from a newer release
+  refuses activation. The JSON data files of earlier releases are not read or
+  imported.
+- Write-ahead log with `synchronous=FULL`: a write is answered only after a
+  durable commit, and a crash leaves the last committed transaction.
+- Every write is one `BEGIN IMMEDIATE` transaction that reads what it checks
+  and writes everything it changes: the record, its unique key, the
+  `Idempotency-Key` claim and eviction, and the audit event. Any failure rolls
+  all of it back. `If-Match`, key uniqueness, `maxRecords`,
+  `maxRecordsPerOwner`, increment bounds, retained keys and the audit backlog
+  are therefore checked against committed state and cannot be overshot by
+  concurrent requests. Statements are synchronous: within the process no other
+  request runs between a transaction's checks and its commit, and each commit's
+  fsync blocks the event loop while it runs.
+- Nothing is cached in memory: every read queries the database. Activation
+  still validates every stored record against the declaration and refuses a
+  database that no longer matches it rather than serving bad data.
+- **One process serves the database.** That is the supported and tested
+  deployment. SQLite's file locks keep any other connection from corrupting it:
+  the `urlcode-store` operator commands and an online backup run beside the
+  server, reads are never blocked by a writer, and a write that finds another
+  process holding the write lock waits up to 2 seconds (`busy_timeout`, blocking
+  the server's event loop meanwhile) and then answers `503 storage_unavailable`
+  with nothing written. Nothing refuses a second server over the same database,
+  but that is not tested and not supported (the audit drain, for one, is woken
+  only in the process that wrote the event). Network filesystems, several hosts
+  and clustered workers are unsupported.
+- Transactions span collections of this one database (`urlcode-store reassign`
+  uses that), but each API request changes exactly one record: there is no
+  multi-record or cross-collection operation in the API. Nothing is atomic
+  across the store and another extension's database (auth, audit); none is
+  claimed. There is no query language beyond paginated listing with declared
+  sorting and equality filtering, and no history. Omitting `If-Match` remains
+  last-write-wins for `PUT`/`PATCH`.
+- This is durable local state, not a distributed exactly-once or
+  external-delivery guarantee.
+- Backups are the operator's. Either stop the server and copy `store.sqlite`
+  (the last connection to close folds the write-ahead log into it), or take a
+  consistent copy while it serves through SQLite's online backup API (for
+  example `sqlite3 data/store.sqlite ".backup /backups/store.sqlite"`, or
+  `backup()` from `node:sqlite`). Copying the file with ordinary tools while the
+  server runs is not a consistent backup.
 
-Errors never contain record values, file contents or filesystem paths.
+Errors never contain record values, SQL or filesystem paths.
 
-### Single-writer lock and reload
+### Reload
 
 `urlcode dev` hot reloads by activating the edited project's runtime while the
-running one keeps serving, and a rejected edit keeps the running one serving.
-The store's lock therefore belongs to a lease, not to one activation (core's
-[reload hand-off](EXTENSIONS.md#reload-hand-off), issue #777):
+running one keeps serving, and a rejected edit keeps the running one serving
+(core's [reload hand-off](EXTENSIONS.md#reload-hand-off), issue #777). The
+store's registration holds one database connection, opened by its first
+activation and closed with its last, so it needs no hand-off:
 
-- The first activation takes `.store.lock` and opens the lease. On a reload the
-  serving activation offers the lease, and the replacement activation of the
-  same store registration joins it: one lock, one more reference. It does not
-  take the lock again and does not read around the serving activation.
-- Both activations write each collection file through the same one-at-a-time
-  write sequence, and every commit is applied to both at once, so there is
-  never a second, independent writer and no write is lost between them. The
-  replacement loads the file inside that sequence.
-- If the reload fails, even in another extension after the store joined, the
-  replacement's close drops only its reference: the serving store keeps its
-  lock, its data and its records export. If the reload succeeds, the retired
-  runtime's close drops only its reference and the lock stays held for the new
-  one. The lock file is removed when the last activation closes (shutdown).
-- A changed collection declaration reloads too: the replacement validates the
-  file against its new declaration (a record that no longer matches refuses
-  the reload, as it would refuse a restart). While the retiring runtime
-  finishes in-flight requests, a write it commits that the new declaration
-  cannot represent makes the new view answer `503 storage_unavailable` for that
-  collection instead of overwriting it; restart to recover.
-- Nothing else shares the lease: a second server, another store registration
-  over the same directory in the same process, and another process are refused
-  exactly as before (`Store directory is already locked by this process` or
-  `... in use by another process`). Changing the host's `directory` option needs
-  a restart.
+- The replacement activation of the same registration is one more view over the
+  same connection. Both read and write the same rows, so each sees the other's
+  writes at once and there is never a second writer.
+- If the reload fails, even in another extension after the store activated,
+  the replacement's close drops only its reference: the serving store keeps the
+  connection, its data and its records export. If the reload succeeds, the
+  retired runtime's close drops only its reference. The connection closes with
+  the last activation (shutdown).
+- A changed collection declaration reloads too: the replacement validates every
+  stored record against its new declaration (a record that no longer matches
+  refuses the reload, as it would refuse a restart), and a changed `key`
+  recomputes the stored key column in one transaction. While the retiring
+  runtime finishes in-flight requests, a record it writes that the new
+  declaration cannot represent makes the new view answer
+  `503 storage_unavailable` for requests that read it instead of serving or
+  overwriting it; restart to recover.
+- Changing the host's `database` option needs a restart.
 
 ## Trust and operation
 
@@ -710,8 +742,11 @@ and an optional per-user list page.
 
 ## Not built yet
 
-Recorded in [open decisions](OPEN-DECISIONS.md): a SQLite backend, ranges and
-text search, and richer screens beyond the first slice ([#262]): labels,
+Result-aware `Idempotency-Key` replay (answering a retry with the first
+response rather than `409`), conditional multi-record transitions and SQL
+ordering for sorted lists are the next steps of
+[#835](https://github.com/jimhoyd-com/urlcode/issues/835). Recorded in
+[open decisions](OPEN-DECISIONS.md): ranges and text search, and richer screens beyond the first slice ([#262]): labels,
 columns, sort and filter controls have all shipped
 ([#330](https://github.com/jimhoyd-com/urlcode/issues/330)). Owned collections
 ([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only: sharing a record with other principals and manager or support access are not

@@ -1,24 +1,24 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { link, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
-import type { CollectionAuditor, CollectionFile, CollectionSpec, StoredRecord } from './collection.ts';
-import type { AuditAttachment, AuditExports } from '@jimhoyd/urlcode-audit';
+import type { CollectionAuditor, CollectionSpec, StoredRecord } from './collection.ts';
+import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
+import { openStoreDatabase } from './database.ts';
+import type { StoreDatabase } from './database.ts';
 import { screensSchema, storeScreens } from './screens.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
 import type { StoreExports } from './records.ts';
-/** One value per process start (not per `lock()` call), so a stale lock file written by an
- * earlier process that happened to reuse this PID (routine for a container restarted after an
- * unclean exit, especially at PID 1) can be told apart from a lock this process itself still
- * holds. */
-const PROCESS_INSTANCE = randomUUID();
 
 export interface StoreExtensionOptions {
-  /** Absolute operator directory that holds the data files. It must be outside the route project and is never created inside it. */
-  directory: string;
+  /**
+   * Absolute path of the store's SQLite database, one per site (created 0600, its directory 0700, when absent). It
+   * must be outside the route project. Every collection, retained Idempotency-Key and undelivered audit event lives in it.
+   */
+  database: string;
   /** Exact project revision the operator reviewed (`inspectExtensionRevision`). */
   projectSha256: string;
   /**
@@ -34,91 +34,36 @@ const FIELD = /^[a-z][A-Za-z0-9_]{0,63}$/;
 const json = (status: number, value: unknown, extra: [string, string][] = []): HandlerResult => jsonResponse(status, value, extra);
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
   json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) } }, extra);
-/** What a caller sees of a record: everything but the stored owner, which never leaves the data file. */
+/** What a caller sees of a record: everything but the stored owner, which never leaves the database. */
 const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record, OWNER_FIELD)) return record; const { [OWNER_FIELD]: _owner, ...rest } = record; return rest; };
 const listView = (page: { items: StoredRecord[]; total: number; next?: string | number }) => ({ ...page, items: page.items.map(view) });
 
-/** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created directory compares correctly. */
+/** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created path compares correctly. */
 async function realTarget(path: string): Promise<string> {
   try { return await realpath(path); }
   catch { const parent = dirname(path); return parent === path ? path : join(await realTarget(parent), basename(path)); }
 }
 
 /**
- * Removes an operator directory lock left by a process that no longer exists; refuses one held by
- * a live process. The lock file holds `<pid>:<processInstance>`; a file bearing our own PID but a
- * different (or absent) instance was written by an earlier process that has since exited and whose
- * PID our process has now reused (common for a container restarted after an unclean exit — PID 1
- * especially), so it is treated as stale rather than as proof this process already holds it.
- * The claim itself is atomic: content is written to a uniquely-named temporary file first, then
- * linked into place — `link()` fails with EEXIST if the destination already exists — so no other
- * process can ever observe (or race the creation of) an empty or partially written lock file, the
- * gap `open(path, 'wx')` followed by a separate `writeFile` left open.
- *
- * Reclaiming a stale lock is also guarded (#549): the file judged stale is first atomically
- * renamed to a unique name and its contents re-read there. Only if they still equal what was
- * judged stale is it removed; otherwise another process reclaimed the lock between our read and
- * our rename, so its fresh lock is linked back into place and this process refuses to start rather
- * than deleting it. Unlock likewise removes the lock file only while it still carries this lock's
- * own `<pid>:<instance>` identity.
- *
- * `hooks.beforeReclaim` is a test seam only: it runs after a lock has been judged stale and
- * before the reclaim, so a test can deterministically inject a concurrent reclaim.
+ * Checks the whole outbox before audit may drain it: every row is a store event whose id matches its column, and
+ * with audit installed each one passes audit's own validation. A database edited by hand refuses activation instead
+ * of making the drain stop the producer mid-way.
  */
-export async function lockStoreDirectory(directory: string, hooks: { beforeReclaim?: () => Promise<void> } = {}): Promise<() => Promise<void>> {
-  const path = join(directory, '.store.lock'), identity = `${process.pid}:${PROCESS_INSTANCE}`;
-  const code = (error: unknown) => error instanceof Error && 'code' in error ? error.code : undefined;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const temporary = join(directory, `.store.lock.${randomUUID()}.tmp`);
-    let claimed = false;
-    try {
-      const handle = await open(temporary, 'wx', 0o600);
-      try { await handle.writeFile(identity); await handle.sync(); } finally { await handle.close(); }
-      await link(temporary, path);
-      claimed = true;
-    } catch (error) {
-      if (code(error) !== 'EEXIST') throw error;
-    } finally {
-      await rm(temporary, { force: true });
-    }
-    if (claimed) return async () => {
-      // Only ever remove a lock this call still owns: never one another process has since claimed.
-      if ((await readFile(path, 'utf8').catch(() => '')) === identity) await rm(path, { force: true });
-    };
-    const observed = await readFile(path, 'utf8').catch(() => '');
-    const [pidPart, instancePart] = observed.trim().split(':');
-    const pid = Number(pidPart);
-    let stale = false;
-    if (Number.isInteger(pid) && pid > 0) {
-      if (pid === process.pid) {
-        // A legacy lock file (written before this fix) carries no instance id: treated
-        // cautiously, as this process already holding it, exactly like before.
-        if (instancePart === undefined || instancePart === PROCESS_INSTANCE) throw new Error('Store directory is already locked by this process');
-        stale = true;
-      } else {
-        try { process.kill(pid, 0); } catch (e) { stale = code(e) === 'ESRCH'; }
-      }
-    } else stale = true; // unreadable or malformed lock file content
-    if (!stale) throw new Error('Store directory is in use by another process; the file store supports one writer');
-    await hooks.beforeReclaim?.();
-    const reclaimed = join(directory, `.store.lock.${randomUUID()}.stale`);
-    try { await rename(path, reclaimed); }
-    catch (error) { if (code(error) === 'ENOENT') continue; throw error; } // already reclaimed: retry the claim
-    const moved = await readFile(reclaimed, 'utf8').catch(() => '');
-    if (moved === observed) { await rm(reclaimed, { force: true }); continue; }
-    // Another process replaced the stale lock with its own between our read and our rename: put
-    // its fresh lock back and refuse, rather than deleting it and letting two writers proceed.
-    try { await link(reclaimed, path); }
-    finally { await rm(reclaimed, { force: true }); }
-    throw new Error('Store directory is in use by another process; the file store supports one writer');
+function checkOutbox(db: StoreDatabase, auditor: CollectionAuditor | undefined): number {
+  const rows = db.all<{ id: string; event: string }>('SELECT id, event FROM store_audit_outbox ORDER BY seq');
+  for (const row of rows) {
+    let event: unknown;
+    try { event = JSON.parse(row.event); } catch { event = undefined; }
+    const valid = event !== null && typeof event === 'object' && (event as AuditEvent).id === row.id && (event as AuditEvent).source === 'store';
+    try { if (!valid) throw new Error('invalid'); auditor?.validate(event); }
+    catch { throw new Error('The store database holds invalid audit events'); }
   }
-  throw new Error('Store directory cannot be locked');
+  return rows.length;
 }
-
 
 /** The `extensions.store.config` schema: the registration and the extension definition share this one object. */
 export const storeConfigSchema = { type: 'object', additionalProperties: false, required: ['collections'], properties: {
-  collections: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema, description: 'File-backed JSON collections by name, each stored as data/store/<name>.json (outside app/) and served as a bounded CRUD API at its mount.' },
+  collections: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema, description: 'Collections by name, each stored as rows of the site\'s store database (data/store.sqlite outside app/, chosen by the operator) and served as a bounded CRUD API at its mount.' },
   shortLinks: { description: 'Public redirect mounts by name: GET <mount>/<key> atomically increments a counter and answers 302 to the record\'s stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route <mount>/* with extension: store (GET, HEAD).', type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: {
     type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
       mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256, description: 'URL path of the redirect mount, separate from the collection\'s CRUD mount.' },
@@ -138,30 +83,51 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
  * The registration and its `StoreExports` (#529), the typed records API an extension that `requires: [store]`
  * reads through `ctx.get('store')`; usable once the runtime has activated this registration.
  *
- * With `audit`, the store attaches itself as the audit producer `store` once, here: its outbox is the `audit` array of
- * each collection file, which audit drains (peek, then ack through each collection's serialized write path). `close`
- * detaches it; the host calls it before the store's files are released.
+ * The registration owns one connection to the database, opened by its first activation and closed with its last. A
+ * dev reload activates the replacement while the serving activation is still live (core RIM-EXT-HANDOFF-001); both
+ * are views over the same connection, so there is no second writer and nothing to hand off.
+ *
+ * With `audit`, the store attaches itself as the audit producer `store` once, here: its outbox is the
+ * `store_audit_outbox` table, which audit drains (peek, then ack in a transaction). `close` detaches it; the host
+ * calls it before the store's database is released.
  */
 export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; close(): Promise<void> } {
-  if (!isAbsolute(options.directory)) throw new Error('Store directory must be an absolute path');
+  if (typeof options.database !== 'string' || !isAbsolute(options.database)) throw new Error('Store database must be an absolute path');
+  const database = resolve(options.database);
   const shared = storeExports(), audit = options.audit;
-  // The live activations, oldest first. The newest is the one being served: the producer reads and acks its
-  // collections, never a closed activation's; when a failed reload closes the newest, the serving one is newest again.
-  const live: { token: symbol; collections: readonly Collection[] }[] = [];
-  // The directory lease (RIM-EXT-HANDOFF-001): the one lock this registration holds and the write path of each data
-  // file, shared by every live activation that joined it through a reload hand-off, and released with the last one.
-  let lease: StoreLease | undefined;
-  // Hand-off values this registration's instances offered, each accepted at most once and only by this registration.
-  const offers = new WeakMap<object, StoreLease>();
-  const byName = (): Collection[] => [...live.at(-1)?.collections ?? []].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  // The live activations, oldest first. The newest is the one being served; the producer drains only while one is live.
+  const live: symbol[] = [];
+  // The one connection and how many live activations hold it.
+  let connection: Connection | undefined;
+  const acquire = async (): Promise<{ db: StoreDatabase; release(): Promise<void> }> => {
+    const held: Connection = connection ?? opener(database);
+    connection = held;
+    held.refs++;
+    let db: StoreDatabase;
+    try { db = await held.opening; }
+    catch (error) { if (--held.refs === 0 && connection === held) connection = undefined; throw error; }
+    let released = false;
+    return { db, async release() {
+      if (released) return;
+      released = true;
+      if (--held.refs > 0) return;
+      if (connection === held) connection = undefined;
+      db.close();
+    } };
+  };
+  const current = (): StoreDatabase | undefined => live.length && connection?.db?.open ? connection.db : undefined;
   const attachment: AuditAttachment | undefined = audit?.attach({
     source: 'store',
-    // The oldest pending events across every collection, not the first collections by name: audit's flush settles
-    // once a peek holds only newer events, so an older event left behind in a later collection would be missed.
+    // The oldest pending events across every collection: audit's flush settles once a peek holds only newer events,
+    // so an older event left behind would be missed.
     async peek(limit) {
-      return byName().flatMap(collection => collection.auditPeek(limit)).sort((a, b) => a.at - b.at).slice(0, limit);
+      const db = current();
+      return db ? db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent) : [];
     },
-    async ack(ids) { const gone = new Set(ids); for (const collection of byName()) if (collection.auditPeek(Infinity).some(event => gone.has(event.id))) await collection.auditAck(gone); },
+    async ack(ids) {
+      const db = current();
+      if (db && ids.length) db.transaction(() => { db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids)); });
+    },
   });
   const auditor: CollectionAuditor | undefined = audit && attachment ? { validate: value => audit.validate(value), notify: () => attachment.notify() } : undefined;
   const registration: RuntimeExtension = {
@@ -169,14 +135,14 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
     schema: storeConfigSchema,
     authoring: storeAuthoring,
     async activate(config, context): Promise<ExtensionInstance> {
-      const directory = resolve(options.directory), rel = relative(await realTarget(resolve(context.root)), await realTarget(directory));
-      if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('Store directory must be outside the route project');
+      const rel = relative(await realTarget(resolve(context.root)), await realTarget(database));
+      if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('Store database must be outside the route project');
       const declared = (config as { collections: Record<string, CollectionSpec>; shortLinks?: Record<string, ShortLinkSpec> }).collections;
       const declaredLinks = (config as { shortLinks?: Record<string, ShortLinkSpec> }).shortLinks ?? {};
       // Screens are served by ui, but they name store collections, so an unknown one refuses here too.
       storeScreens(config);
       const byMount = new Map<string, Collection>();
-      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, directory, auditor));
+      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor));
       for (const collection of collections) if (collection.spec.audit && !audit?.active) throw new Error(`collection ${collection.name} declares audit: true; install the audit extension (urlcode extensions add audit)`);
       for (const collection of collections) {
         if (byMount.has(collection.spec.mount)) throw new Error(`Collections ${byMount.get(collection.spec.mount)!.name} and ${collection.name} share a mount`);
@@ -202,40 +168,27 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       // be able to fill it: an audited collection is only served where a request can carry a principal.
       for (const collection of collections) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
       for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount)) throw new Error(`Mount ${mount} has no collection or short link declared`);
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      if (!(await stat(directory)).isDirectory()) throw new Error('Store directory is not a directory');
-      // A reload hand-off joins the serving activation's lease: one more reference to the same lock and write paths.
-      // Anything else (no hand-off, a value this registration did not offer, or a lease already released) locks
-      // afresh, which the serving activation's lock refuses exactly as before.
-      const offered = context.handoff?.value, joined = typeof offered === 'object' && offered !== null ? offers.get(offered) : undefined;
-      if (joined) offers.delete(offered as object);
-      let held: StoreLease;
-      if (joined && joined === lease && joined.refs > 0 && joined.directory === directory) { joined.refs++; held = joined; }
-      else { held = { directory, unlock: await lockStoreDirectory(directory), refs: 1, files: new Map() }; lease = held; }
-      let released = false;
-      const release = async (): Promise<void> => {
-        if (released) return;
-        released = true;
-        for (const collection of collections) collection.detach();
-        if (--held.refs > 0) return;
-        if (lease === held) lease = undefined;
-        await held.unlock();
-      };
-      try { for (const collection of collections) await collection.open(held.files); }
-      catch (error) { await release(); throw error; }
+      const held = await acquire();
+      let pending: number;
+      try {
+        pending = checkOutbox(held.db, auditor);
+        for (const collection of collections) collection.open(held.db);
+      } catch (error) { await held.release(); throw error; }
       const exported = shared.attach(collections);
-      live.push({ token: exported, collections });
-      // Events a previous run left in the files drain now rather than at the next write or poll.
-      if (collections.some(collection => collection.auditBacklog > 0)) attachment?.notify();
+      live.push(exported);
+      // Events a previous run left in the outbox drain now rather than at the next write or poll.
+      if (pending > 0) attachment?.notify();
+      let closed = false;
       return {
         handle: request => dispatch(byMount, shortByMount, context, request),
-        // Offers nothing once closed; otherwise a single-use value naming this lease, which only this registration accepts.
-        handoff() { if (released) return undefined; const token = Object.freeze(Object.create(null) as object); offers.set(token, held); return token; },
         async close() {
+          if (closed) return;
+          closed = true;
           shared.detach(exported);
-          const index = live.findIndex(entry => entry.token === exported);
+          const index = live.indexOf(exported);
           if (index >= 0) live.splice(index, 1);
-          await release();
+          for (const collection of collections) collection.close();
+          await held.release();
         },
       };
     },
@@ -243,8 +196,13 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   return { registration, exports: shared.exports, close: async () => { await attachment?.close(); } };
 }
 
-/** One directory lock and the data files' shared write paths, held while any activation that joined it is live. */
-interface StoreLease { readonly directory: string; readonly unlock: () => Promise<void>; refs: number; readonly files: Map<string, CollectionFile> }
+/** The registration's one connection while any activation holds it. */
+interface Connection { readonly opening: Promise<StoreDatabase>; db?: StoreDatabase; refs: number }
+function opener(database: string): Connection {
+  const connection: Connection = { opening: openStoreDatabase(database), refs: 0 };
+  connection.opening.then(db => { connection.db = db; }, () => undefined);
+  return connection;
+}
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
 interface ShortLink { collection: Collection; destination: string; clicks: string }
 
@@ -305,18 +263,18 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
       if (method === 'GET' || method === 'HEAD') {
         return json(200, listView(collection.list(request.query, owner)));
       }
-      if (method === 'POST') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.create(bodyOf(request, collection), key, owner, actor); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`], ['etag', etagOf(record)]]); }
+      if (method === 'POST') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = collection.create(bodyOf(request, collection), key, owner, actor); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`], ['etag', etagOf(record)]]); }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
     }
     const increment = rest.match(/^([0-9a-f-]{36})\/increment\/([a-z][A-Za-z0-9_]*)$/);
-    if (increment && method === 'POST') return json(200, view(await collection.increment(increment[1]!, increment[2]!, idempotencyKey(request, owner), owner, actor)));
+    if (increment && method === 'POST') return json(200, view(collection.increment(increment[1]!, increment[2]!, idempotencyKey(request, owner), owner, actor)));
     if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
     if (method === 'GET' || method === 'HEAD') { const record = collection.get(rest, owner); return json(200, view(record), [['etag', etagOf(record)]]); }
     const match = ifMatch(request);
     if (match === null) throw new StoreError(400, 'invalid_if_match', 'If-Match must be one strong quoted ETag this store issued');
-    if (method === 'PUT') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), true, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
-    if (method === 'PATCH') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), false, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
-    if (method === 'DELETE') { await collection.remove(rest, idempotencyKey(request, owner), match, owner, actor); return { status: 204, headers: [['cache-control', 'no-store']] }; }
+    if (method === 'PUT') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = collection.update(rest, bodyOf(request, collection), true, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
+    if (method === 'PATCH') { const key = idempotencyKey(request, owner); collection.validateIdempotency(key); const record = collection.update(rest, bodyOf(request, collection), false, key, match, owner, actor); return json(200, view(record), [['etag', etagOf(record)]]); }
+    if (method === 'DELETE') { collection.remove(rest, idempotencyKey(request, owner), match, owner, actor); return { status: 204, headers: [['cache-control', 'no-store']] }; }
     return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, PUT, PATCH, DELETE'));
   } catch (error) {
     if (error instanceof StoreError) return failure(error, error.status === 405 ? allowed(collection.spec.readOnly ? 'GET, HEAD' : 'GET, HEAD, POST, PUT, PATCH, DELETE') : []);
@@ -335,7 +293,7 @@ async function dispatchShortLink(short: ShortLink, request: ExtensionRequest): P
     // answers 404 without incrementing rather than a 302 to `Location: undefined`.
     const target = short.collection.getByKey(rest);
     if (typeof target[short.destination] !== 'string') throw new StoreError(404, 'not_found', 'No such record');
-    const record = method === 'HEAD' ? target : await short.collection.recordClick(target.id as string, short.clicks);
+    const record = method === 'HEAD' ? target : short.collection.recordClick(target.id as string, short.clicks);
     return { status: 302, headers: [['location', record[short.destination] as string], ['cache-control', 'no-store']] };
   } catch (error) {
     if (error instanceof StoreError) return failure(error);

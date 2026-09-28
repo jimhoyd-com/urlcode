@@ -121,15 +121,20 @@ Each bound refuses rather than growing without limit:
 | Resource | Bound | When full |
 |---|---|---|
 | Audit log | keeps the newest `extensions.audit.config.retention` events (default 100,000; 1,000 to 10,000,000) | older events are pruned |
+| Store records | `maxRecords` per collection (default 1,000, at most 10,000), `maxRecordBytes` each (default 4,096, at most 65,536), at most 32 collections, all in one SQLite database | a create answers `409 collection_full`, an oversized record `413` |
+| Store writes | one SQLite transaction at a time per database, each fsynced (`synchronous=FULL`) before it answers; statements are synchronous, so each commit blocks the event loop for its fsync | a write blocked by another process's lock for 2 s answers `503 storage_unavailable` |
+| Store sorted or filtered lists | read the `id` and the named fields of every record in scope (at most `maxRecords`), then the page | bounded by `maxRecords` and `pageSize` (at most 200) |
 | Audit outboxes | 1,000 undelivered events per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
 | Abuse counters | `extensions.abuse.config.maxKeys` keyed rows (default 100,000), each claimed scope at most an equal share | a new key answers 503; expired rows are swept |
 | Mail deliveries | `maxConcurrent` in flight across every consumer (default 8, 1 to 64), `deadlineMs` per message (default 5,000 ms, 1,000 to 30,000) | `send()` refuses `busy` at once |
 | Mail development outbox | 100 messages by default (at most 1,000), 32,768 bytes per message | the next message is refused |
 
-Mail's options are operator choices in `host.mjs`; the audit and abuse bounds
-are reviewed YAML. See the [audit](../packages/audit/README.md),
-[abuse](../packages/abuse/README.md) and [mail](../packages/mail/README.md)
-packages.
+Mail's options and the store's database path are operator choices in
+`host.mjs`; the store, audit and abuse bounds are reviewed YAML. See the
+[store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee),
+[audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md) and
+[mail](../packages/mail/README.md) packages. No store write throughput has been
+measured on this engine; establish it for your disk before relying on it.
 
 ## Sandbox and trusted dispatch
 

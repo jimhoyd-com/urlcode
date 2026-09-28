@@ -149,10 +149,10 @@
               "type": "string",
               "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
             },
-            "description": "Numeric fields with a numeric default that POST <mount>/<id>/increment/<field> raises by exactly one under the write lock, within the field's bounds."
+            "description": "Numeric fields with a numeric default that POST <mount>/<id>/increment/<field> raises by exactly one in one database transaction, within the field's bounds."
           },
           "idempotency": {
-            "description": "Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled.",
+            "description": "Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the network client (and the principal on an owned collection).",
             "type": "object",
             "additionalProperties": false,
             "required": [
@@ -163,7 +163,7 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 1000,
-                "description": "Newest distinct keys retained, per network client; an evicted key is no longer protected."
+                "description": "Newest distinct keys the collection retains, across all clients; an evicted key is no longer protected."
               }
             }
           },
@@ -206,7 +206,7 @@
           }
         }
       },
-      "description": "File-backed JSON collections by name, each stored as data/store/<name>.json (outside app/) and served as a bounded CRUD API at its mount."
+      "description": "Collections by name, each stored as rows of the site's store database (data/store.sqlite outside app/, chosen by the operator) and served as a bounded CRUD API at its mount."
     },
     "shortLinks": {
       "description": "Public redirect mounts by name: GET <mount>/<key> atomically increments a counter and answers 302 to the record's stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route <mount>/* with extension: store (GET, HEAD).",

@@ -60,11 +60,11 @@ function records(collection: Collection): StoreRecords {
   const fields = Object.freeze(Object.fromEntries(Object.entries(collection.spec.fields).map(([name, spec]) => [name, Object.freeze({ ...spec, ...(spec.enum ? { enum: Object.freeze([...spec.enum]) } : {}) })]))) as Readonly<Record<string, Readonly<FieldSpec>>>;
   return Object.freeze({
     name: collection.name, ownership: collection.spec.ownership, readOnly: collection.spec.readOnly, fields,
-    async create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { return result(await collection.create({ ...values }, undefined, ownerOf(principal), actorOf(principal))); },
+    async create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { return result(collection.create({ ...values }, undefined, ownerOf(principal), actorOf(principal))); },
     get(principal: StorePrincipal, id: string) { return result(collection.get(known(id), ownerOf(principal))); },
     async update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) {
       if (options.ifMatch !== undefined && (typeof options.ifMatch !== 'string' || !/^"[0-9a-f]{32}"$/.test(options.ifMatch))) throw new StoreError(400, 'invalid_if_match', 'If-Match must be one strong quoted ETag this store issued');
-      return result(await collection.update(known(id), { ...patch }, false, undefined, options.ifMatch, ownerOf(principal), actorOf(principal)));
+      return result(collection.update(known(id), { ...patch }, false, undefined, options.ifMatch, ownerOf(principal), actorOf(principal)));
     },
     list(principal: StorePrincipal, options: { limit?: number; cursor?: string } = {}) {
       const invalid = (field: string, message: string) => new StoreError(400, 'invalid_query', 'The query is not valid', { [field]: message });

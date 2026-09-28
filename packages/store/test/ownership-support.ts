@@ -1,7 +1,7 @@
 import { cleanup } from './cleanup.ts';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +9,7 @@ import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { storeExtension } from '../src/index.ts';
+import { records, seed } from './rows.ts';
 
 // urlcode#331: per-record ownership. The principal provider here is a synthetic "badge" extension, not auth, so the
 // store is proven against core's generic principal contract rather than one first-party pair: `Badge <id>` sets the
@@ -41,16 +42,16 @@ interface Boot { collection?: object; policy?: object | null; provides?: boolean
 export async function boot(t: TestContext, options: Boot = {}) {
   const root = await mkdtemp(join(tmpdir(), 'store-owned-'));
   cleanup(t, () => rm(root, { recursive: true, force: true }));
-  const project = join(root, 'app'), data = join(root, 'data');
-  await mkdir(project); await mkdir(data);
-  if (options.seed) await writeFile(join(data, 'notes.json'), JSON.stringify({ version: 2, records: options.seed, idempotency: [] }));
+  const project = join(root, 'app'), data = join(root, 'data'), database = join(data, 'store.sqlite');
+  await mkdir(project);
+  if (options.seed) await seed(database, 'notes', options.seed as Record<string, unknown>[]);
   const policy = options.policy === undefined ? { policies: { extensions: { badge: {} } } } : options.policy === null ? {} : options.policy;
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1',
     extensions: { badge: { version: '1', config: {} }, store: { version: '1', config: { collections: { notes: options.collection ?? notes, ...options.extraCollections } } } },
     routes: { '/api/notes/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...policy }, ...options.extraRoutes } }));
   const projectSha256 = await inspectExtensionRevision(project);
-  const start = async () => startServer({ project, origin, port: 0, log: () => {}, extensions: [await badge(project, options.provides ?? true), storeExtension({ directory: data, projectSha256 })] });
-  return { root, project, data, start };
+  const start = async () => startServer({ project, origin, port: 0, log: () => {}, extensions: [await badge(project, options.provides ?? true), storeExtension({ database, projectSha256 })] });
+  return { root, project, data, database, start };
 }
 export async function running(t: TestContext, options: Boot = {}) {
   const booted = await boot(t, options);
@@ -63,7 +64,7 @@ export async function running(t: TestContext, options: Boot = {}) {
     assert.equal(response.status, 201);
     return await response.json() as Record<string, unknown> & { id: string };
   };
-  const stored = async () => JSON.parse(await readFile(join(booted.data, 'notes.json'), 'utf8')) as { records: Record<string, unknown>[] };
+  const stored = async () => ({ records: records(booted.database, 'notes') });
   return { ...booted, as, create, stored, stop: async () => { open = false; await app.close(); }, restart: async () => { await app.close(); app = await booted.start(); } };
 }
 export const legacy = (title: string) => { const now = new Date().toISOString(); return { id: randomUUID(), createdAt: now, updatedAt: now, title, votes: 0 }; };

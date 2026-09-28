@@ -2,7 +2,7 @@
 
 - Read CONTRIBUTING.md and SECURITY.md first. Core owns the generic extension
   contract (`@jimhoyd/urlcode/extensions`); this package owns the trusted,
-  file-backed collection store: declared typed collections mounted as a
+  SQLite-backed collection store: declared typed collections mounted as a
   bounded JSON CRUD API, no project handler code. [docs/STORE.md](../../docs/STORE.md)
   is the full guide, HTTP contract and the honest list of concurrency
   guarantees.
@@ -15,19 +15,27 @@
   from a registry.
 - The store is trusted operator code: unsandboxed, not a multi-tenant
   boundary, and every caller who can reach a mount can read and (unless
-  `readOnly`) change every record in that collection. It owns one exclusive,
-  atomically written lock file per data directory (`src/store.ts`), whole-file
-  atomic writes, per-collection record/byte quotas, `sortable`/`filterable`
+  `readOnly`) change every record in that collection. It owns one SQLite
+  database per site (`src/database.ts`: forward-only schema, one transaction
+  helper; `src/collection.ts`: every write one `BEGIN IMMEDIATE` transaction
+  over the record, its key, its idempotency claim and its audit event),
+  per-collection record/byte quotas, `sortable`/`filterable`
   query handling (`src/query.ts`) and the extension definition
   (`src/extension.ts`: the `urlcode extensions add store` scaffold and the
   `host()` registration), whose scaffold refuses an unprotected mount without an
   explicit `--ack store:public-write`. See [SECURITY.md](SECURITY.md) for the full
   trust boundary before changing any of these.
-- Run `npm run verify` for every change. Locking, quota, `ETag`/`If-Match`,
-  `Idempotency-Key` scoping and query-validation paths need a regression test
-  in the same PR (`test/store.test.ts`, `test/query.test.ts`,
-  `test/scaffold.test.ts`).
-- Never commit credentials, customer data or a real operator data directory.
+- Run `npm run verify` for every change. Transaction, quota, `ETag`/`If-Match`,
+  `Idempotency-Key` scoping, schema and query-validation paths need a
+  regression test in the same PR (`test/store.test.ts`, `test/sqlite.test.ts`,
+  `test/query.test.ts`, `test/scaffold.test.ts`). A schema change is a new
+  forward step appended to `MIGRATIONS` in `src/database.ts`, never an edit of a
+  shipped one.
+- Tests close every database handle before removing its directory: register
+  resources with `test/cleanup.ts` (it unwinds in reverse order; node:test runs
+  separate `after` hooks in registration order) and read rows through
+  `test/rows.ts`, which closes its connection on return.
+- Never commit credentials, customer data or a real operator database.
   Synthetic fixtures only.
 - Report actual evidence and remaining limitations; CI passing is not an
   independent security review or a crash/disk-full/filesystem behavior proof.

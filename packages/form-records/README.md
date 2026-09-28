@@ -164,7 +164,7 @@ and `store` before `form-records` because it requires them, whatever order
 
 ## Targets
 
-Node only. The store is Node-only (a single-writer file directory), so the
+Node only. The store is Node-only (its database is `node:sqlite`), so the
 composition declares `targets: ['node']` and a build or runtime for `aws` or
 `vercel` refuses it before serving.
 

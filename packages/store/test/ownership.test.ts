@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { assignOwnerless, deleteOwnerless, reportOwnerless } from '../src/index.ts';
 import { boot, json, legacy, notes, running } from './ownership-support.ts';
+import { records } from './rows.ts';
 
 test('create stamps the principal as owner; the owner never appears in a response', async t => {
   const { create, as, stored } = await running(t);
@@ -103,9 +103,9 @@ test('activation refuses an owned collection on a mount without a principal-prov
   await assert.rejects(keyed.start(), /key is not supported with ownership: owner/);
 });
 
-test('legacy records without an owner are served to nobody until the operator assigns or deletes them', async t => {
+test('records without an owner are served to nobody until the operator assigns or deletes them, while the server keeps serving', async t => {
   const old1 = legacy('old-1'), old2 = legacy('old-2');
-  const { as, create, stop, start, data, stored } = await running(t, { seed: [old1, old2] });
+  const { as, create, database, stored } = await running(t, { seed: [old1, old2] });
   const mine = await create('alice', 'new');
   for (const who of ['alice', 'bob']) {
     const list = await (await as(who)('/api/notes')).json() as { items: { id: string }[]; total: number };
@@ -113,32 +113,28 @@ test('legacy records without an owner are served to nobody until the operator as
     assert.equal((await as(who)(`/api/notes/${old1.id}`)).status, 404);
     assert.equal((await as(who)(`/api/notes/${old1.id}`, { method: 'DELETE' })).status, 404);
   }
-  // The operator step refuses while the server holds the directory.
-  await assert.rejects(reportOwnerless(data, 'notes'), /in use|already locked/);
-  await stop();
-  assert.deepEqual(await reportOwnerless(data, 'notes'), { collection: 'notes', records: 3, ownerless: 2, ids: [old1.id, old2.id] });
-  await assert.rejects(assignOwnerless(data, 'notes', 'not an id'), /Owner must be a principal id/);
+  // Each operator command is one transaction on its own connection, so it runs beside the serving process.
+  assert.deepEqual(await reportOwnerless(database, 'notes'), { collection: 'notes', records: 3, ownerless: 2, ids: [old1.id, old2.id] });
+  await assert.rejects(assignOwnerless(database, 'notes', 'not an id'), /Owner must be a principal id/);
   // The shipped CLI reports the same thing.
-  const cli = await promisify(execFile)(process.execPath, ['--conditions=development', join(import.meta.dirname, '..', 'src', 'cli.ts'), 'ownerless', '--directory', data, '--collection', 'notes']);
+  const cli = await promisify(execFile)(process.execPath, ['--conditions=development', join(import.meta.dirname, '..', 'src', 'cli.ts'), 'ownerless', '--database', database, '--collection', 'notes']);
   assert.equal((JSON.parse(cli.stdout) as { ownerless: number }).ownerless, 2);
-  const assigned = await assignOwnerless(data, 'notes', 'alice');
+  const assigned = await assignOwnerless(database, 'notes', 'alice');
   assert.deepEqual(assigned.ids, [old1.id, old2.id]);
   assert.deepEqual((await stored()).records.map(record => record._owner), ['alice', 'alice', 'alice']);
-  assert.equal((await reportOwnerless(data, 'notes')).ownerless, 0);
-  const app = await start();
-  try {
-    const list = await (await fetch(`http://127.0.0.1:${app.address.port}/api/notes`, { headers: { authorization: 'Badge alice' } })).json() as { total: number };
-    assert.equal(list.total, 3);
-  } finally { await app.close(); }
+  assert.equal((await reportOwnerless(database, 'notes')).ownerless, 0);
+  const list = await (await as('alice')('/api/notes')).json() as { total: number };
+  assert.equal(list.total, 3, 'the running server serves the assigned records on its next request');
+  await assert.rejects(reportOwnerless(`${database}.missing`, 'notes'), /does not exist/, 'an operator command never creates a database');
 });
 
-test('the operator can delete legacy records instead', async t => {
+test('the operator can delete records without an owner instead', async t => {
   const old = legacy('old');
-  const { data } = await boot(t, { seed: [old, { ...legacy('owned'), _owner: 'bob' }] });
-  const removed = await deleteOwnerless(data, 'notes');
+  const { database } = await boot(t, { seed: [old, { ...legacy('owned'), _owner: 'bob' }] });
+  const removed = await deleteOwnerless(database, 'notes');
   assert.deepEqual(removed.ids, [old.id]);
-  const records = (JSON.parse(await readFile(join(data, 'notes.json'), 'utf8')) as { records: Record<string, unknown>[] }).records;
-  assert.equal(records.length, 1); assert.equal(records[0]!._owner, 'bob');
+  const stored = records(database, 'notes');
+  assert.equal(stored.length, 1); assert.equal(stored[0]!._owner, 'bob');
 });
 
 test('a collection holding owned records refuses to activate as shared, and a malformed owner refuses to load', async t => {

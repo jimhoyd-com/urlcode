@@ -26,7 +26,7 @@ test('maxRecordsPerOwner stops one principal at its limit while another can stil
   assert.equal((await as('alice')(`/api/notes/${mine.items[0]!.id}`, { method: 'DELETE' })).status, 204);
   await create('alice', 'a3');
   assert.equal(await codeOf(await post(as, 'alice', 'a4')), 'owner_quota_exceeded');
-  // The counts are rebuilt from the data file after a restart.
+  // The counts are read from the database on every create, so a restart changes nothing.
   await restart();
   assert.equal(await codeOf(await post(as, 'alice', 'a5')), 'owner_quota_exceeded');
   await create('bob', 'b2');
@@ -53,25 +53,25 @@ test('an idempotent replay does not count twice toward the per-owner limit', asy
   assert.equal(((await (await as('alice')('/api/notes')).json()) as { total: number }).total, 2);
 });
 
-test('legacy ownerless records count toward the collection but no owner, and ownerless-assign updates the counts', async t => {
-  const { as, create, stop, start, data } = await running(t, { collection: capped, seed: [legacy('old-1'), legacy('old-2'), legacy('old-3')] });
+test('records without an owner count toward the collection but no owner, and ownerless-assign updates the counts', async t => {
+  const { as, create, stop, start, database } = await running(t, { collection: capped, seed: [legacy('old-1'), legacy('old-2'), legacy('old-3')] });
   await create('alice', 'a1'); await create('alice', 'a2');
   assert.equal(await codeOf(await post(as, 'alice', 'a3')), 'owner_quota_exceeded');
   assert.equal(await codeOf(await post(as, 'bob', 'b1')), 'collection_full', 'the three legacy records still fill the collection');
   await stop();
   // Assigning them to bob puts bob over his limit: activation still succeeds, and bob cannot create more.
-  await assignOwnerless(data, 'notes', 'bob');
+  await assignOwnerless(database, 'notes', 'bob');
   const app = await start();
   try { assert.equal(await codeOf(await postAt(app.address.port, 'bob')), 'owner_quota_exceeded'); }
   finally { await app.close(); }
 });
 
 test('ownerless-delete frees room for owners after the restart', async t => {
-  const { as, create, stop, start, data } = await running(t, { collection: capped, seed: [legacy('old-1'), legacy('old-2'), legacy('old-3')] });
+  const { as, create, stop, start, database } = await running(t, { collection: capped, seed: [legacy('old-1'), legacy('old-2'), legacy('old-3')] });
   await create('alice', 'a1'); await create('alice', 'a2');
   assert.equal(await codeOf(await post(as, 'bob', 'b1')), 'collection_full');
   await stop();
-  await deleteOwnerless(data, 'notes');
+  await deleteOwnerless(database, 'notes');
   const app = await start();
   try {
     assert.equal((await postAt(app.address.port, 'bob')).status, 201);

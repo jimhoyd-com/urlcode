@@ -185,7 +185,7 @@ export function createFormRecordsExtension(options: FormRecordsExtensionOptions)
   if (options.store?.version !== 1) throw new Error('form-records needs the store export contract version 1; install the store release that matches this one');
   return {
     name: 'form-records', version: '1', projectSha256: options.projectSha256,
-    // The store is Node-only (a single-writer file directory), so the composition is too.
+    // The store is Node-only (its database is node:sqlite), so the composition is too.
     targets: ['node'],
     schema: formRecordsConfigSchema, authoring: formRecordsAuthoring,
     activate(raw, context): ExtensionInstance {

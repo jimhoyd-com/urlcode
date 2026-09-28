@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { parseYaml } from '@jimhoyd/urlcode';
 import type { ExtensionActivation, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import { createStore } from '../src/store.ts';
+import { cleanup } from './cleanup.ts';
 
 const heading = '## Short links';
 
@@ -27,11 +28,11 @@ test('the README short-link YAML activates and redirects as described', async t 
   assert.deepEqual(mounts.sort(), ['/api/links', '/go']);
 
   const root = await mkdtemp(join(tmpdir(), 'store-readme-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const store = createStore({ directory: join(root, 'data'), projectSha256: 'a'.repeat(64) });
+  cleanup(t, () => rm(root, { recursive: true, force: true }));
+  const store = createStore({ database: join(root, 'data', 'store.sqlite'), projectSha256: 'a'.repeat(64) });
   const context = { origin: 'https://links.example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts, root: join(root, 'app'), principalMounts: ['/api/links'] } as unknown as ExtensionActivation;
   const instance = await store.registration.activate(document.extensions.store.config, context);
-  t.after(async () => { await instance.close?.(); await store.close(); });
+  cleanup(t, async () => { await instance.close?.(); await store.close(); });
 
   const links = store.exports.records('links');
   const { record } = await links.create(null, { code: 'docs', destination: 'https://example.test/docs' });

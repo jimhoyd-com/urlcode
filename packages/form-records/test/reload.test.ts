@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,6 +19,7 @@ import forms from '@jimhoyd/urlcode-forms/extension';
 import store from '@jimhoyd/urlcode-store/extension';
 import formRecords from '../src/extension.ts';
 import { cleanup } from './cleanup.ts';
+import { storedRecords } from './store-rows.ts';
 
 const origin = 'https://reload.example.test';
 
@@ -110,9 +111,8 @@ test('the generated admin/form-records example reloads a contact title edit and 
   const again = await (await call('/todo-form')).text();
   assert.equal((await call('/todo-form', { method: 'POST', body: new URLSearchParams({ csrf: csrfOf(again), title: 'After the reload' }).toString() })).status, 303);
   assert.deepEqual(await todos(), ['Before the reload', 'API before', 'After the reload']);
-  assert.ok(await access(join(root, 'data', 'store', '.store.lock')).then(() => true, () => false), 'the store still holds its one lock');
 
-  // A reload that fails in form-records, after the store accepted its hand-off, keeps the last good site serving.
+  // A reload that fails in form-records, after the store activated its view, keeps the last good site serving.
   const records = (document.extensions['form-records']!.config as { records: Record<string, { collection: string }> }).records;
   const collection = records.todo!.collection;
   records.todo!.collection = 'missing';
@@ -132,8 +132,8 @@ test('the generated admin/form-records example reloads a contact title edit and 
   assert.match(await (await call('/contact')).text(), /Fixed contact title/);
   assert.equal((await todos()).length, 4);
   open = false; await app.close();
-  const file = JSON.parse(await readFile(join(root, 'data', 'store', 'todos.json'), 'utf8')) as { records: { title: string; _owner: string }[] };
+  assert.deepEqual(await readdir(join(root, 'data')).then(names => names.filter(name => name.startsWith('store.sqlite'))), ['store.sqlite'], 'closing the server closed the store database');
+  const file = { records: storedRecords(join(root, 'data', 'store.sqlite'), 'todos') };
   assert.deepEqual(file.records.map(record => record.title), ['Before the reload', 'API before', 'After the reload', 'After the failure']);
   assert.ok(file.records.every(record => record._owner === 'ada'));
-  assert.equal(await access(join(root, 'data', 'store', '.store.lock')).then(() => true, () => false), false, 'closing the server released the lock');
 });

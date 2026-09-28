@@ -4,15 +4,15 @@ import { isAbsolute } from 'node:path';
 import { assignOwnerless, deleteOwnerless, reassignOwner, reportOwnerless } from './ownership.ts';
 import type { CollectionSpec } from './collection.ts';
 
-const usage = 'urlcode-store ownerless --directory /absolute/data/store --collection <name>\n'
-  + 'urlcode-store ownerless-assign --directory /absolute/data/store --collection <name> --owner <principal id>\n'
-  + 'urlcode-store ownerless-delete --directory /absolute/data/store --collection <name>\n'
-  + 'urlcode-store reassign --directory /absolute/data/store --project /absolute/site/app --from <principal id> --to <principal id> [--collection <name>] [--dry-run]\n'
-  + 'Records in an `ownership: owner` collection with no owner (written before it became owned) are served to nobody.\n'
+const usage = 'urlcode-store ownerless --database /absolute/data/store.sqlite --collection <name>\n'
+  + 'urlcode-store ownerless-assign --database /absolute/data/store.sqlite --collection <name> --owner <principal id>\n'
+  + 'urlcode-store ownerless-delete --database /absolute/data/store.sqlite --collection <name>\n'
+  + 'urlcode-store reassign --database /absolute/data/store.sqlite --project /absolute/site/app --from <principal id> --to <principal id> [--collection <name>] [--dry-run]\n'
+  + 'Records in an `ownership: owner` collection with no owner (written while it was still shared) are served to nobody.\n'
   + 'Report them, then assign them to one principal or delete them. reassign moves every record one principal owns to\n'
   + 'another (for example a revoked API key\'s apikey:<id> to its replacement) in the project\'s owned collections, and\n'
   + 'refuses as a whole if that would put --to over a collection\'s maxRecordsPerOwner. Run it with --dry-run first.\n'
-  + 'Stop the server first: these take the directory lock.\n';
+  + 'Each command is one transaction on the store database, so it may run while the server is serving.\n';
 
 /** The declared store collections, read through core's own project loader (the same validation `urlcode serve` applies). */
 async function declaredCollections(project: string): Promise<Record<string, CollectionSpec>> {
@@ -25,24 +25,24 @@ async function declaredCollections(project: string): Promise<Record<string, Coll
 }
 
 try {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: { directory: { type: 'string' }, collection: { type: 'string' }, owner: { type: 'string' }, project: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, 'dry-run': { type: 'boolean' }, help: { type: 'boolean' } } });
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { database: { type: 'string' }, collection: { type: 'string' }, owner: { type: 'string' }, project: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, 'dry-run': { type: 'boolean' }, help: { type: 'boolean' } } });
   const command = positionals[0];
   if (values.help || !command) process.stdout.write(usage);
   else {
     if (positionals.length !== 1) throw new Error('Invalid command');
-    const directory = values.directory, collection = values.collection;
+    const database = values.database, collection = values.collection;
     if (command !== 'ownerless-assign' && values.owner !== undefined) throw new Error('--owner applies to ownerless-assign only');
     if (command !== 'reassign' && (values.project !== undefined || values.from !== undefined || values.to !== undefined || values['dry-run'] !== undefined)) throw new Error('--project, --from, --to and --dry-run apply to reassign only');
     let output: unknown;
     if (command === 'reassign') {
-      if (!directory || !values.project || values.from === undefined || values.to === undefined) throw new Error('--directory, --project, --from and --to are required');
-      output = await reassignOwner(directory, { from: values.from, to: values.to, collections: await declaredCollections(values.project), ...(collection === undefined ? {} : { collection }), dryRun: values['dry-run'] === true });
+      if (!database || !values.project || values.from === undefined || values.to === undefined) throw new Error('--database, --project, --from and --to are required');
+      output = await reassignOwner(database, { from: values.from, to: values.to, collections: await declaredCollections(values.project), ...(collection === undefined ? {} : { collection }), dryRun: values['dry-run'] === true });
     }
     else {
-      if (!directory || !collection) throw new Error('--directory and --collection are required');
-      if (command === 'ownerless') output = await reportOwnerless(directory, collection);
-      else if (command === 'ownerless-assign') { if (!values.owner) throw new Error('--owner is required'); output = await assignOwnerless(directory, collection, values.owner); }
-      else if (command === 'ownerless-delete') output = await deleteOwnerless(directory, collection);
+      if (!database || !collection) throw new Error('--database and --collection are required');
+      if (command === 'ownerless') output = await reportOwnerless(database, collection);
+      else if (command === 'ownerless-assign') { if (!values.owner) throw new Error('--owner is required'); output = await assignOwnerless(database, collection, values.owner); }
+      else if (command === 'ownerless-delete') output = await deleteOwnerless(database, collection);
       else throw new Error('Unknown command');
     }
     process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);

@@ -117,7 +117,7 @@ docker run --rm --name my-links \
 Replace the example mount with your route project (a site's `app/` directory). The image uses the unprivileged `node`
 user; ensure mounted config/functions are readable by it. Core has no writable
 mount of its own; operator-owned writable state of an extension (auth's
-`data/auth.sqlite`, the store's `data/store/`, see
+`data/auth.sqlite`, the store's `data/store.sqlite`, see
 [extensions](EXTENSIONS.md)) lives beside `host.mjs`, outside the read-only
 route project.
 The image listens on `$PORT` (default `3000`, read by both the CLI's default
@@ -299,8 +299,8 @@ storage/network access is exposed to the guest. Core no longer has a native
 link store, and the `urlcode-dynamic-link` extension package that replaced it
 has been retired and unpublished. Stored short links are served by the
 operator-installed `store` extension's `extensions.store.config.shortLinks`
-([data store](STORE.md)), whose records live in the store's data directory:
-back it up with the rest of the store.
+([data store](STORE.md)), whose records live in the store's SQLite database:
+back it up with the rest of the store ([backups](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee)).
 
 ### Streamed responses
 

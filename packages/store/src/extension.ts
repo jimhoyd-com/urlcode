@@ -8,8 +8,8 @@ import { contributedScreens } from './screens.ts';
 
 /** Operator choices for the store in host.mjs. Every field is optional. */
 export interface StoreHostOptions {
-  /** Absolute directory for collection files. Defaults to `STORE_DIRECTORY`, then `data/store` beside host.mjs; it must be outside `app/`. */
-  directory?: string;
+  /** Absolute path of the store's SQLite database. Defaults to `STORE_DATABASE`, then `data/store.sqlite` beside host.mjs; it must be outside `app/`. */
+  database?: string;
 }
 
 const publicWrite = 'store:public-write';
@@ -24,7 +24,7 @@ function scaffold(): ScaffoldResult {
   return {
     config: { collections: {} },
     routes: {},
-    env: { STORE_DIRECTORY: 'Optional absolute directory for collection files (default data/store beside host.mjs); must be outside app/.' },
+    env: { STORE_DATABASE: 'Optional absolute path of the store\'s SQLite database (default data/store.sqlite beside host.mjs); must be outside app/.' },
     notes: [
       'store is installed with no collections: declare one under extensions.store.config.collections and mount it with a route <mount>/* using extension: store (add auth: true to protect writes). See docs/STORE.md.',
       'For a working demo, add the store to a fresh site with --example: a todos collection on /api/todos (and a /todos screen when ui is installed).',
@@ -61,7 +61,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
     ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
     notes: [
       withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount: writes are admitted with the session cookie and same-origin provenance), and each user sees and changes only their own todos (ownership: owner).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
-      'Records live in data/store/todos.json, outside app/; back up data/ like any operator data. Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
+      'Records live in the SQLite database data/store.sqlite, outside app/; back up data/ like any operator data (docs/STORE.md, backups). Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
       ...(withAudit ? ['Every create, change and delete on the todos collection is recorded in the audit log (audit: true): field names and the signed-in user, never values. When the audit log falls 1000 events behind, writes answer 503 until it catches up.'] : []),
       ...(withUi ? [`Open ${todosScreen}: a list and form for the todos collection, declared in extensions.store.config.screens and rendered by ui.${withAuth ? ' It shows each signed-in user only their own todos.' : ' Everyone who can reach it sees and edits every todo.'}`] : []),
     ],
@@ -70,7 +70,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
 
 export default defineExtension<StoreHostOptions>({
   name: 'store',
-  description: 'File-backed JSON collections served as a bounded CRUD API, declared in YAML with no handler code',
+  description: 'SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code',
   requires: [],
   // Optional: a collection that declares `audit: true` records its writes through the audit extension, and refuses
   // to activate when audit is not installed. Without such a collection the store never touches audit.
@@ -84,9 +84,9 @@ export default defineExtension<StoreHostOptions>({
   scaffold,
   example,
   host(context, options) {
-    const directory = options.directory ?? process.env.STORE_DIRECTORY ?? join(context.site, 'data', 'store');
+    const database = options.database ?? process.env.STORE_DATABASE ?? join(context.site, 'data', 'store.sqlite');
     // `exports` is the StoreExports records API (version 1) an extension that requires store reads with ctx.get('store').
     // With audit installed the store attaches as its `store` producer here; the host's close detaches it.
-    return createStore({ directory, projectSha256: context.projectSha256, audit: context.get<AuditExports | undefined>('audit') });
+    return createStore({ database, projectSha256: context.projectSha256, audit: context.get<AuditExports | undefined>('audit') });
   },
 });

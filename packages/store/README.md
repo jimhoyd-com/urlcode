@@ -33,12 +33,13 @@ import { composeHost } from '@jimhoyd/urlcode/host';
 import store from '@jimhoyd/urlcode-store/extension';
 
 export default await composeHost(import.meta.url, [
-  store(),                    // or store({ directory: '/var/lib/site/store' })
+  store(),                    // or store({ database: '/var/lib/site/store.sqlite' })
 ]);
 ```
 
-Collection files live in `store({ directory })`, else `STORE_DIRECTORY`, else
-`data/store` beside `host.mjs`; the directory must be outside `app/`.
+Every collection lives in one SQLite database (`node:sqlite`, so Node only):
+`store({ database })`, else `STORE_DATABASE`, else `data/store.sqlite` beside
+`host.mjs`; it must be outside `app/`.
 
 When `ui` is installed too, the example also declares a `/todos` list-and-form
 screen under `extensions.store.config.screens` and its `/todos/*` route with
@@ -59,18 +60,20 @@ rate limiting, abuse protection or multi-tenant isolation).
 
 The full guide, HTTP contract, limits and the honest list of concurrency
 guarantees is [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
-Short version: one server process per directory (enforced by a lock file,
-which a `urlcode dev` hot reload shares with the replacement runtime through
-core's reload hand-off rather than taking twice; see
-[single-writer lock and reload](../../docs/STORE.md#single-writer-lock-and-reload)),
-whole-file atomic writes, per-collection record and byte quotas, last write
-wins, no transactions. A collection is shared by default; one that holds
+Short version: one server process per database (supported and tested, not
+enforced: SQLite's locks keep another process from corrupting it, and a write
+blocked past the 2-second busy timeout answers `503`); every write is one SQLite
+transaction that commits the record, its key, its `Idempotency-Key` claim and
+its audit event together or not at all; per-collection record and byte quotas;
+last write wins unless a caller sends `If-Match`; each request changes one
+record. A `urlcode dev` hot reload shares the database connection with the
+replacement runtime (see [reload](../../docs/STORE.md#reload)). A collection is shared by default; one that holds
 per-user data declares `ownership: owner`, and every request is then scoped to
 the principal a policy such as `auth: true` on its mount sets (another user's
 record is a `404`, records written before it became owned are served to nobody
 until `urlcode-store ownerless-assign` or `ownerless-delete` handles them,
 `urlcode-store reassign --from <principal> --to <principal>` moves one
-principal's records to another with the server stopped, and
+principal's records to another in one transaction, and
 `maxRecordsPerOwner` caps each user's records with `409 owner_quota_exceeded`; see
 [per-record ownership](../../docs/STORE.md#per-record-ownership)). A collection may declare
 `sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`
@@ -88,10 +91,9 @@ guards its mount). Each create, replace, update, delete and increment (never a
 short-link click) is an event (`store.record.created`, `.replaced`, `.updated`,
 `.deleted`, `.incremented`) with subject `<collection>/<id>`, the principal id
 or `anonymous` as actor, and the changed field names, never values. The event
-is written into the collection's data file (its `audit` array) in the same
-write as the record and drained by audit while the host runs; when 1000 events
-wait undelivered the next write answers `503 audit_backlog` and changes
-nothing. See [audited writes](../../docs/STORE.md#audited-writes).
+is inserted into the store database's outbox table in the same transaction as
+the record and drained by audit while the host runs; when 1000 events wait
+undelivered the next write answers `503 audit_backlog` and changes nothing. See [audited writes](../../docs/STORE.md#audited-writes).
 
 Another extension that requires the store reaches declared collections through
 its typed export, `StoreExports` (`ctx.get('store')`): `create`, `get`, a
@@ -159,7 +161,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
-| `extensions.store.config.collections` | object | yes | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | File-backed JSON collections by name, each stored as `data/store/<name>.json` (outside app/) and served as a bounded CRUD API at its mount. |
+| `extensions.store.config.collections` | object | yes | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | Collections by name, each stored as rows of the site's store database (data/store.sqlite outside app/, chosen by the operator) and served as a bounded CRUD API at its mount. |
 | `extensions.store.config.collections.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the collection's JSON API; it needs a route `<mount>/*` with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). |
 | `extensions.store.config.collections.*.fields` | object | yes | minProperties: 1; maxProperties: 64; keys: "^[a-z][A-Za-z0-9_]{0,63}$" | Declared record fields by name; a body naming any other field is refused. id, createdAt and updatedAt are reserved and store-owned. |
 | `extensions.store.config.collections.*.fields.*.type` | string | yes | enum: ["string","integer","number","boolean"] | Value type; integer must be a safe integer and number a finite number. |
@@ -176,9 +178,9 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.pageSize` | integer | no | minimum: 1; maximum: 200 | Records per list page, and the cap on a list request's limit (default 50). |
 | `extensions.store.config.collections.*.readOnly` | boolean | no | — | true: the API serves only GET and HEAD (other methods answer 405); short-link click counting still works. |
 | `extensions.store.config.collections.*.key` | string | no | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A required string field (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner. |
-| `extensions.store.config.collections.*.increments` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Numeric fields with a numeric default that POST `<mount>/<id>/increment/<field>` raises by exactly one under the write lock, within the field's bounds. |
-| `extensions.store.config.collections.*.idempotency` | object | no | unknown keys rejected | Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled. |
-| `extensions.store.config.collections.*.idempotency.maxKeys` | integer | yes | minimum: 1; maximum: 1000 | Newest distinct keys retained, per network client; an evicted key is no longer protected. |
+| `extensions.store.config.collections.*.increments` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Numeric fields with a numeric default that POST `<mount>/<id>/increment/<field>` raises by exactly one in one database transaction, within the field's bounds. |
+| `extensions.store.config.collections.*.idempotency` | object | no | unknown keys rejected | Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the network client (and the principal on an owned collection). |
+| `extensions.store.config.collections.*.idempotency.maxKeys` | integer | yes | minimum: 1; maximum: 1000 | Newest distinct keys the collection retains, across all clients; an evicted key is no longer protected. |
 | `extensions.store.config.collections.*.sortable` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields a list request may sort by (sort=`<field>` or sort=`-<field>`). |
 | `extensions.store.config.collections.*.filterable` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields a list request may filter by equality (`<field>`=`<value>`); limit, cursor and sort cannot be filterable. |
 | `extensions.store.config.collections.*.ownership` | string | no | enum: ["shared","owner"] | shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true. |
