@@ -12,7 +12,7 @@ import type { SQLInputValue, StatementSync } from 'node:sqlite';
 export const STORE_APPLICATION_ID = 0x55535452;
 /**
  * Forward-only schema steps: `MIGRATIONS[n]` moves a database from `user_version` n to n + 1. A later version appends
- * a step (for example a result column on `store_idempotency` for result-aware replay) and never edits a shipped one.
+ * a step and never edits a shipped one.
  */
 const MIGRATIONS: readonly string[] = [
   // 0 -> 1. Records: one row per record of every collection. `seq` is creation order (an update keeps it), `owner` is
@@ -31,6 +31,13 @@ const MIGRATIONS: readonly string[] = [
      at INTEGER NOT NULL, event TEXT NOT NULL CHECK (json_valid(event)));
    CREATE INDEX store_audit_outbox_order ON store_audit_outbox(at, seq);
    CREATE INDEX store_audit_outbox_collection ON store_audit_outbox(collection);`,
+  // 1 -> 2. Result-aware Idempotency-Key replay: a claim keeps the request fingerprint (method, target and canonical
+  // body, hashed) and the committed result (status and the record id), never record values. Version 1 claims carry
+  // no fingerprint, so they cannot be replayed safely and are dropped: a retry of a version 1 request runs again.
+  `DROP TABLE store_idempotency;
+   CREATE TABLE store_idempotency(seq INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, key TEXT NOT NULL,
+     fingerprint TEXT NOT NULL, status INTEGER NOT NULL, record_id TEXT, claimed_at INTEGER NOT NULL, UNIQUE(collection, key));
+   CREATE INDEX store_idempotency_order ON store_idempotency(collection, seq);`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /** How long one statement waits for a lock another process holds before failing (it blocks this process meanwhile). */

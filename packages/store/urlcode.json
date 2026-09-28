@@ -121,6 +121,10 @@
                   "maximum": {
                     "type": "number",
                     "description": "Largest numeric value; numbers only."
+                  },
+                  "transitionOnly": {
+                    "type": "boolean",
+                    "description": "true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments; a screen cannot show the collection yet."
                   }
                 }
               }
@@ -163,7 +167,7 @@
               "description": "Numeric fields with a numeric default that POST <mount>/<id>/increment/<field> raises by exactly one in one database transaction, within the field's bounds."
             },
             "idempotency": {
-              "description": "Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the network client (and the principal on an owned collection).",
+              "description": "Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE, increment and transitions. A retry with a retained key and the same request (method, path, body) replays the first answer's status with the record as it is now; the same key on a different request answers 422 idempotency_key_reused. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the request principal, or to the network client when there is none.",
               "type": "object",
               "additionalProperties": false,
               "required": [
@@ -174,7 +178,7 @@
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 1000,
-                  "description": "Newest distinct keys the collection retains, across all clients; an evicted key is no longer protected."
+                  "description": "Newest distinct keys the collection retains, across all callers; an evicted key is no longer protected and a retry with it runs again."
                 }
               }
             },
@@ -214,6 +218,97 @@
             "audit": {
               "type": "boolean",
               "description": "true: every write is recorded in the audit log (field names and the principal, never values). Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain."
+            },
+            "transitions": {
+              "description": "Declared conditional state changes by name: POST <mount>/<id>/<name> moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language.",
+              "type": "object",
+              "maxProperties": 16,
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "from",
+                  "set"
+                ],
+                "properties": {
+                  "from": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "maxProperties": 8,
+                    "propertyNames": {
+                      "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                    },
+                    "additionalProperties": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 256
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    "description": "Declared fields and the exact value each must currently hold; each value must be valid for its field."
+                  },
+                  "set": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "maxProperties": 8,
+                    "propertyNames": {
+                      "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                    },
+                    "additionalProperties": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 256
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    "description": "Declared fields and the constant value the transition writes; not the collection key."
+                  },
+                  "stamp": {
+                    "type": "object",
+                    "maxProperties": 4,
+                    "propertyNames": {
+                      "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                    },
+                    "additionalProperties": {
+                      "enum": [
+                        "actor",
+                        "now"
+                      ]
+                    },
+                    "description": "String fields the store fills: actor (the principal id, needs maxLength of at least 128) or now (the commit time in ISO 8601, needs maxLength of at least 24). No enum or format."
+                  },
+                  "by": {
+                    "enum": [
+                      "owner",
+                      "others"
+                    ],
+                    "description": "With ownership: owner only. owner (default): only the record's owner, on the collection mount. others: any principal except the record's owner (the owner gets 403 own_record_refused), served on its own mount."
+                  },
+                  "mount": {
+                    "type": "string",
+                    "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
+                    "maxLength": 256,
+                    "description": "Required with by: others, refused otherwise: the transition is served as POST <mount>/<id> on a route <mount>/* with extension: store (POST) and a principal-providing policy. Who may reach that route is the route's policy: the store has no roles."
+                  }
+                }
+              }
             }
           }
         },

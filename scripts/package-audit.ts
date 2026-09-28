@@ -271,7 +271,13 @@ export const budgets: Record<string, Budget> = {
     // dist/records.js and their declarations, and the README contract) take the
     // packed tarball from 40915 to 42040 bytes, just over the old 40 KiB.
     // #822 generated field reference in the README (measured 56504 packed).
-    packed: 58 * 1024,
+    // Raised to 72 KiB packed and 285 KiB unpacked for #835's second slice:
+    // declared transitions, transitionOnly fields, result-aware Idempotency-Key
+    // replay and host transactions (dist/collection.js, dist/records.js,
+    // dist/store.js; the transition schema appears again in collection.d.ts,
+    // urlcode.json and the README field reference) measure 68802 packed and
+    // 276905 unpacked bytes.
+    packed: 72 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -294,7 +300,8 @@ export const budgets: Record<string, Budget> = {
     // collection outbox and its producer, with declarations and the
     // README/SECURITY contract): 46693 packed and 177677 unpacked bytes.
     // #822 generated field reference in the README (measured 220290 unpacked).
-    unpacked: 225 * 1024,
+    // #835 transitions and retries: see the packed note above.
+    unpacked: 285 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

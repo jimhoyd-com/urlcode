@@ -99,3 +99,8 @@ test('end to end: the scaffolded Todos screen is served by ui from the store con
   const listed = await (await fetch(`${base}/api/todos`)).json() as { items: { title: string }[] };
   assert.deepEqual(listed.items.map(item => item.title), ['first']);
 });
+
+test('a screen over a collection with transitionOnly fields is refused, not half-served (#835)', () => {
+  const collections = { requests: { mount: '/api/requests', ownership: 'owner', fields: { ...fields, status: { type: 'string', enum: ['open', 'closed'], default: 'open', transitionOnly: true } }, transitions: { close: { from: { status: 'open' }, set: { status: 'closed' } } } } };
+  assert.throws(() => storeScreens({ collections, screens: { '/requests': { collection: 'requests' } } }), /declares transitionOnly fields, which screens do not support yet/);
+});

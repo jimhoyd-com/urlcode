@@ -47,8 +47,8 @@ test('an idempotent replay does not count twice toward the per-owner limit', asy
   const { as, create } = await running(t, { collection: capped });
   assert.equal((await post(as, 'alice', 'a1', { 'idempotency-key': 'once' })).status, 201);
   const replay = await post(as, 'alice', 'a1', { 'idempotency-key': 'once' });
-  assert.equal(replay.status, 409);
-  assert.equal(await codeOf(replay), 'idempotency_duplicate');
+  assert.equal(replay.status, 201);
+  assert.equal(replay.headers.get('idempotency-replayed'), 'true', 'a replay, not a second create');
   await create('alice', 'a2');
   assert.equal(((await (await as('alice')('/api/notes')).json()) as { total: number }).total, 2);
 });

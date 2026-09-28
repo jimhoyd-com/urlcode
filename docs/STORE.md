@@ -105,6 +105,7 @@ A hand-authored public mount, as in the YAML above, stays supported.
 | `PUT /api/todos/<id>` | replaces every declared field (omitted fields take their default), `200` |
 | `PATCH /api/todos/<id>` | updates the supplied fields and removes those set to `null` ([clearing a field](#clearing-a-field)), `200` |
 | `DELETE /api/todos/<id>` | `204` |
+| `POST /api/todos/<id>/<transition>` | runs a [declared transition](#conditional-transitions-and-result-aware-retries), `200` |
 
 Every record carries a server-assigned UUID `id`, `createdAt` and `updatedAt`
 (ISO 8601). Clients cannot set them. On an
@@ -116,9 +117,12 @@ neither `--origin` nor an operator
 [alias origin](EXTENSIONS.md#site-origins-and-same-origin-checks) is refused
 (`403`). Errors are `{error: {code, message, fields?}}` where
 `fields` maps field names to fixed messages; submitted values are never echoed.
-Status codes: `400` invalid record or JSON, `404`, `405` with `Allow`, `409`
-`collection_full` (or `owner_quota_exceeded` on an
-[owned collection with a per-owner limit](#per-owner-record-limit)), `413` body or record too large, `415`, `503`
+Status codes: `400` invalid record or JSON, `403` `own_record_refused` (a
+`by: others` transition on the caller's own record), `404`, `405` with
+`Allow`, `409` `collection_full` (or `owner_quota_exceeded` on an
+[owned collection with a per-owner limit](#per-owner-record-limit), or
+`transition_conflict`), `412` stale `If-Match`, `413` body or record too
+large, `415`, `422` `idempotency_key_reused`, `503`
 `storage_unavailable` when the database write failed or another process held its
 lock past the busy timeout (nothing is written), `500` for anything unexpected
 (no cause in the body).
@@ -167,19 +171,21 @@ routes:
   maximum limits. There is no caller-provided delta, conditional expression or
   multi-record operation.
 - `idempotency: {maxKeys: N}` enables an optional `Idempotency-Key` header on
-  a collection's `POST`, `PUT`, `PATCH`, `DELETE`, and increment endpoints.
-  A key is 1–128 characters with no control character. The store claims it in
-  the same database transaction as the accepted mutation. A retained repeat
-  is always `409 idempotency_duplicate`; invalid/failed mutations do not claim
-  the key. The collection retains its newest `N` distinct keys, across all
-  callers, in order, so an evicted key is intentionally no longer protected.
+  a collection's `POST`, `PUT`, `PATCH`, `DELETE`, increment and
+  [transition](#conditional-transitions-and-result-aware-retries) endpoints.
+  A key is 1–128 characters with no control character. The store claims it,
+  with the request's fingerprint and its result, in the same database
+  transaction as the accepted mutation. A retry with the same key and the same
+  request replays the first answer's status with the record as it is now
+  (`Idempotency-Replayed: true`); the same key on a different request is
+  `422 idempotency_key_reused`. Refused and failed mutations claim nothing. The
+  collection retains its newest `N` distinct keys, across all callers, so an
+  evicted key is intentionally no longer protected and its retry runs again.
   Supplying the header to a collection that did not enable idempotency is
   `400 idempotency_not_enabled`, rather than silently offering a false
-  guarantee. A key is scoped to the network client (the runtime's caller
-  identity), so two different callers choosing the same key value do not
-  collide; an unauthenticated mount has no stronger caller identity than that
-  to scope by. The repeat answers `409`, not the first response: the store
-  keeps the claim, not the result.
+  guarantee. A key is scoped to the request principal, or to the network
+  client when the request has none. The full contract is in
+  [result-aware retries](#result-aware-retries).
 
 `format: http-url` applies only to string fields and accepts an absolute
 HTTP(S) URL without credentials or ASCII whitespace/control characters. A `shortLinks` entry combines a collection's
@@ -238,7 +244,9 @@ store's own quoted hex format) is `400`, not a silent bypass. The ETag is
 derived from the record's `id` and `updatedAt`, and every write moves
 `updatedAt` by at least one millisecond, so two writes in the same millisecond
 still give two ETags: of concurrent writes holding the same `If-Match`,
-exactly one applies and the rest answer `412`.
+exactly one applies and the rest answer `412`. A
+[declared transition](#conditional-transitions-and-result-aware-retries) honours
+`If-Match` the same way.
 
 An idempotency claim is a durable *state/delivery decision*, not delivery
 itself: the store does not send webhooks, provide an outbox, retry a remote
@@ -246,6 +254,217 @@ request or prove that another system received anything. It is suitable for a
 webhook handler to record exactly one accepted transition before its own
 operator-owned delivery mechanism; external side effects still need their own
 idempotency protocol.
+
+## Conditional transitions and result-aware retries
+
+[#835](https://github.com/jimhoyd-com/urlcode/issues/835) asks for the
+smallest store-owned contract behind a reviewed conditional mutation with an
+expected revision and result-aware retries. It has three parts, each bounded:
+
+1. **Declared transitions**: a named change of one record from exact field
+   values to constant ones, served by the store with no project code.
+2. **Result-aware retries**: a retried `Idempotency-Key` answers what the first
+   request committed instead of `409`.
+3. **Host transactions**: trusted extension code runs several store operations
+   as one database transaction, for contracts a declaration cannot express.
+
+This is not a transaction language, an expression language or a workflow
+engine. The first concrete fixture is the owner/reviewer approval of
+[#843](https://github.com/jimhoyd-com/urlcode/issues/843):
+
+```yaml
+collections:
+  requests:
+    mount: /api/requests
+    ownership: owner
+    idempotency: {maxKeys: 1000}
+    fields:
+      title: {type: string, required: true, maxLength: 120}
+      status: {type: string, enum: [pending, approved, withdrawn], default: pending, transitionOnly: true}
+      reviewedBy: {type: string, maxLength: 128, transitionOnly: true}
+      reviewedAt: {type: string, maxLength: 32, transitionOnly: true}
+    transitions:
+      approve:                     # POST /api/approvals/<id>
+        from: {status: pending}
+        set: {status: approved}
+        stamp: {reviewedBy: actor, reviewedAt: now}
+        by: others                 # any principal except the record's owner
+        mount: /api/approvals
+      withdraw:                    # POST /api/requests/<id>/withdraw, owner only
+        from: {status: pending}
+        set: {status: withdrawn}
+routes:
+  /api/requests/*: {extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true}
+  /api/approvals/*: {extension: store, methods: [POST], auth: true}
+```
+
+### Declared transitions
+
+- `from` names 1 to 8 declared fields and the exact value each must hold now;
+  `set` names 1 to 8 fields and the constant each gets; `stamp` names up to 4
+  string fields the store fills with `actor` (the principal's id, or
+  `anonymous`) or `now` (the commit time, equal to the new `updatedAt`).
+  Activation checks every value against its field, refuses `set` or `stamp` on
+  the collection `key`, a field both set and stamped, a stamp field that could
+  not hold its value (a string with no enum or format, `maxLength` at least 128
+  for `actor` and 24 for `now`), and the name `increment`.
+- `POST <mount>/<id>/<name>` takes no body (`400 body_not_allowed`), an
+  optional `If-Match` and an optional `Idempotency-Key`, and answers `200` with
+  the record and its new `ETag`. It is a write: the same-origin rule,
+  `readOnly`, `maxRecordBytes` and `audit: true` apply exactly as to `PATCH`.
+  An audited transition is recorded as `store.record.transitioned` with the
+  transition's name and the changed field names.
+- On an owned collection `by` chooses who may run it. `owner` (the default) is
+  the record's owner, on the collection mount, scoped like every other write.
+  `others` is any principal **except** the owner: the transition is served only
+  as `POST <transition mount>/<id>`, a separate route that must carry a
+  principal-providing policy, so the operator guards it independently of the
+  collection. The store has no roles: who may reach that route is the route's
+  policy alone. On a shared collection `by` is refused, since records have no
+  owner to compare, and anyone who can reach the mount may run the transition.
+- A field declared `transitionOnly: true` changes only through a transition's
+  `set` or `stamp`: a create stores its default (or leaves it unset), `PUT`
+  keeps its current value, and any body naming it is `400` with the field error
+  `is changed only by a transition`. Without it, the owner in the example could
+  `PATCH` `status: approved` and skip the review. Activation refuses it with
+  `required`, on the key or an increment field, and when no transition sets or
+  stamps it. A [screen](#a-screen-for-the-collection) over such a collection
+  is refused until screens can show transitions.
+
+### Result-aware retries
+
+- **Scope.** The stored key is the SHA-256 of the header value and the caller:
+  the request principal when there is one (so a signed-in client's retry from
+  another network address still replays, and another principal's identical key
+  never collides), otherwise the network client the runtime attributed the
+  request to. Keys are per collection. An anonymous mount has no stronger
+  caller identity than the network client.
+- **Fingerprint.** The SHA-256 of the method, the path and the body as
+  canonical JSON (object keys sorted, so key order does not matter; empty for a
+  request without one). `If-Match` is not part of it: it is a precondition of
+  the first attempt, and a committed attempt's retry replays whatever
+  `If-Match` it carries.
+- **Replay.** A retry with a retained key and the same fingerprint writes
+  nothing and answers the first answer's status (`201` with `Location`, `200`,
+  or `204`) with the record **as it is now** and its current `ETag`, plus
+  `Idempotency-Replayed: true`. A record since deleted, or moved out of the
+  caller's scope, is the ordinary `404`, never recreated. This is the "current
+  entity" replay #835 asks for, chosen over replaying a snapshot of the first
+  response because the claim then holds no record values (a delete deletes the
+  data; nothing is left in the claim table to leak or to size), and because the
+  `ETag` a client gets from a replay is one its next `If-Match` can use. The
+  cost: a retry after a later change sees the later state, not the first
+  response body.
+- **Reuse.** The same key with a different fingerprint is
+  `422 idempotency_key_reused`; nothing is written.
+- **Races.** The claim is read and written inside the write's `BEGIN
+  IMMEDIATE` transaction, so of racing requests with one key exactly one runs
+  the mutation and every other replays it, in one process and across
+  connections to the same file.
+- Only committed successes are retained. A refused request (`400`, `404`,
+  `409`, `412`) or a failed one (`503`) claims nothing, so its retry is
+  evaluated again against the current state.
+
+### Host transactions
+
+`ctx.get('store').transaction(work)` runs `work(tx)` inside one `BEGIN
+IMMEDIATE` transaction and returns its result. `tx.records(name)` offers
+`create`, `get`, `update`, `remove`, `transition` and `list` with exactly the
+records export's rules (ownership scope by the principal passed, field
+validation, quotas, `ifMatch`, `transitionOnly`, audit), synchronously. Every
+write and its audit events commit together or not at all.
+
+```js
+// Moves value between two account records; the total never changes.
+store.transaction(tx => {
+  const accounts = tx.records('accounts');
+  const from = accounts.get(null, fromId), to = accounts.get(null, toId);
+  accounts.update(null, fromId, { available: from.record.available - amount }, { ifMatch: from.etag }); // minimum: 0 refuses an overdraft
+  accounts.update(null, toId, { available: to.record.available + amount }, { ifMatch: to.etag });
+});
+```
+
+- `work` must be synchronous. A returned promise is refused and everything it
+  did is rolled back; `tx` refuses every call once `work` has returned, so a
+  handle kept across an `await` cannot write outside the transaction.
+  Transactions do not nest, and the ordinary records export cannot be used
+  inside one.
+- A `StoreError` thrown inside (a `412`, a `409`, a field error) or the caller's
+  own error rolls everything back and is rethrown unchanged; a SQLite failure
+  becomes `503 storage_unavailable`.
+- It is trusted host code: reachable only from an operator-installed extension
+  that requires the store, never from a route `function`, `middleware` or a
+  `sandbox: true` route. `work` runs unsandboxed with full Node access, and the
+  principals it passes are taken as given.
+- It takes no `Idempotency-Key`: a host extension that serves retries keeps its
+  own key, or uses a declared transition.
+
+### Design decisions
+
+**Authorization ordering.** The route's policies run first (for example
+`auth: true` sets the principal). Then the store answers, in order: `401` on an
+owned collection or a `by: others` transition without a principal; `403` for a
+cross-origin write; `400` for a malformed `Idempotency-Key` or `If-Match`, a
+key on a collection without `idempotency`, or a body problem it can see before
+the database (JSON syntax, a body on a transition); `405` on a `readOnly`
+collection. Inside the write transaction: the retained key (`422` or a
+replay); the record in the caller's scope (`404`, so another owner's record is
+a missing one); for `by: others` the owner check (`403 own_record_refused`);
+`If-Match` (`412`); the transition's `from` values
+(`409 transition_conflict`); field validation (`400`); quotas (`409`); then
+the write, the claim and the audit event.
+
+**Conflict and no-mutation behavior.** Every refusal is thrown inside the
+transaction before or instead of its writes and rolls it back: no record, no
+claim and no audit event. Of concurrent transitions on one record exactly one
+finds the `from` values and commits; the others answer `409`. Of concurrent
+writes with one `If-Match`, exactly one commits; the others answer `412`.
+
+**Persistence failure.** A failure at any statement (a full disk, a lock
+another process held past the 2 second busy timeout, an injected trigger)
+rolls back the record, the claim and the audit event together and answers
+`503 storage_unavailable` with no detail. The tests inject the failure after
+the record write, as a SQLite trigger on the claim and on a second record.
+
+**Retention and migration.** A collection keeps its newest `maxKeys` claims (at
+most 1000), evicted by count and never by time: an evicted key's retry runs
+again. A claim is a fixed-size row (two hashes, a status, a record id), never
+record values, and backups carry the retry history with the records. Schema
+version 2 drops version 1 claims, which have no fingerprint. Transitions are
+declarations: changing one changes the project revision and needs a new pin,
+and changes no stored data.
+
+**Operator capabilities.** The operator chooses the database path, pins the
+revision that declares every transition, guards each `by: others` transition
+mount with its own route policy and installs the extensions that may call
+`transaction`. The store adds no roles, no membership table and no command to
+edit claims; `urlcode-store reassign` leaves claims as they are.
+
+**One process and several.** Every guarantee here is a SQLite `BEGIN
+IMMEDIATE` transaction on one database file, so it holds for every connection
+to that file: the tests race retries and approvals from separate threads, each
+with its own connection, as separate processes would. The supported deployment
+is still one serving process (see [storage](#storage-and-concurrency-what-it-does-and-does-not-guarantee));
+several hosts, network filesystems and clustered workers are unsupported, and
+nothing spans the store and another database.
+
+**Sandbox and targets.** The store declares `targets: ['node']`, so the aws
+and vercel targets refuse it before serving. Transitions and retries are
+served by the store itself and need no project code. `transaction` is trusted
+extension code as described above; it is not offered to sandboxed code, and
+nothing about it is sandboxed.
+
+### What is not covered
+
+The #835 counterexamples, and what serves each:
+
+| Contract | Served by | Not built |
+|---|---|---|
+| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `transitionOnly` state | a declarative reviewer gate: the store has no roles, so a reviewer-only route needs a policy the operator installs; reviewer reads of other owners' records and a pending list across owners |
+| Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a host transaction (list, check overlap, create or `update` with `ifMatch`) | a declarative non-overlap constraint; an interval index (the check reads the caller's records, at most `maxRecords`) |
+| Simulated credits: hold, commit, cancel across records, conserving the total | a host transaction (`minimum: 0` refuses an overdraft and rolls the whole transfer back) | a declarative transfer; `Idempotency-Key` on host transactions |
+| Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
+
 
 ## Field schema
 
@@ -358,8 +577,8 @@ On an owned collection:
 - A request with no principal is `401 principal_required` before any data is
   read, for every method. With `auth: true` auth itself answers first; this
   covers a policy that allowed the request without setting one.
-- `Idempotency-Key` retention is scoped by principal as well as by network
-  client.
+- `Idempotency-Key` retention is scoped by principal, and a replay reads the
+  record in the caller's scope.
 - Activation refuses the collection when its mount's route carries no
   principal-providing policy (for example no `auth: true`), and refuses `key`
   (and so short links) on it: a collection-wide unique key would tell one
@@ -404,7 +623,7 @@ notes:
   is no owner to count.
 - Only a create adds a record, and the limit is counted in the same database
   transaction as the create, so concurrent creates cannot overshoot it. A
-  replayed `Idempotency-Key` is refused as a duplicate before anything is
+  replayed `Idempotency-Key` answers the first create before anything is
   counted.
 - The counts are an indexed count of the principal's rows at create time;
   nothing extra is stored. Records with no owner (see below) count toward the
@@ -479,7 +698,8 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   a lock held past the busy timeout) rolls all of them back. Like the
   `ownerless` commands it may run while the server serves.
 - It does not touch `Idempotency-Key` retention, which is scoped by principal: a
-  retry by `--to` with a key `--from` used is not recognised as a duplicate.
+  retry by `--to` with a key `--from` used is a new request, and a retry by
+  `--from` of a write to a moved record replays as `404`.
 
 The same operation is exported as `reassignOwner(database, {from, to,
 collections, collection?, dryRun?})`, where `collections` is the declared
@@ -556,7 +776,8 @@ answers `503 audit_backlog` and changes nothing until audit catches up. Turning
 - Every collection lives as rows of three shared tables, keyed by the
   collection name: `store_records` (one row per record; the declared fields are
   one JSON object, beside the `id`, timestamps, owner and unique key columns),
-  `store_idempotency` (retained `Idempotency-Key` claims) and
+  `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
+  the request fingerprint, the status and the record id, never record values) and
   `store_audit_outbox` (undelivered audit events). Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   schema; the rows of a collection that is no longer declared stay untouched.
@@ -566,7 +787,9 @@ answers `503 audit_backlog` and changes nothing until audit catches up. Turning
   transaction with the new version (`PRAGMA user_version`). A file that is not
   a store database (`PRAGMA application_id`) or comes from a newer release
   refuses activation. The JSON data files of earlier releases are not read or
-  imported.
+  imported. Version 2 replaced the claim table for result-aware retries: claims
+  a version 1 database retained carry no fingerprint and are dropped by the
+  upgrade, so a retry of a request made before it runs again.
 - Write-ahead log with `synchronous=FULL`: a write is answered only after a
   durable commit, and a crash leaves the last committed transaction.
 - Every write is one `BEGIN IMMEDIATE` transaction that reads what it checks
@@ -592,10 +815,10 @@ answers `503 audit_backlog` and changes nothing until audit catches up. Turning
   only in the process that wrote the event). Network filesystems, several hosts
   and clustered workers are unsupported.
 - Transactions span collections of this one database (`urlcode-store reassign`
-  uses that), but each API request changes exactly one record: there is no
-  multi-record or cross-collection operation in the API. Nothing is atomic
-  across the store and another extension's database (auth, audit); none is
-  claimed. There is no query language beyond paginated listing with declared
+  and [host transactions](#host-transactions) use that), but each HTTP request
+  changes exactly one record: there is no multi-record or cross-collection
+  operation in the HTTP API. Nothing is atomic across the store and another
+  extension's database (auth, audit); none is claimed. There is no query language beyond paginated listing with declared
   sorting and equality filtering, and no history. Omitting `If-Match` remains
   last-write-wins for `PUT`/`PATCH`.
 - This is durable local state, not a distributed exactly-once or
@@ -728,8 +951,12 @@ principal (`request.principal`):
   the collection's `pageSize`, and `next` and `previous` are the cursors of
   the adjacent pages (a malformed cursor is `400 invalid_query`).
 
-`create`, `get` and `update` return `{record, etag}` (a record never includes
-its owner) and
+- `transition(principal, id, name, {ifMatch})` runs a
+  [declared transition](#conditional-transitions-and-result-aware-retries)
+  exactly as its HTTP endpoint does, without an `Idempotency-Key`.
+
+`create`, `get`, `update` and `transition` return `{record, etag}` (a record
+never includes its owner) and
 applies exactly the JSON API's rules: another owner's record and a missing id
 are the same `404`, no principal on an owned collection is `401`, field
 errors are `400` with field names, `maxRecords` is `409 collection_full`, and
@@ -738,14 +965,17 @@ code as the HTTP answer. The export performs no request admission of its own:
 the consumer handles CSRF and origins for the requests it serves.
 [form-records](../packages/form-records/README.md) uses it to save a declared
 form into an owned collection, with a confirmation, a constrained edit page
-and an optional per-user list page.
+and an optional per-user list page. `transaction(work)` runs several of these
+operations as one database transaction: see
+[host transactions](#host-transactions).
 
 ## Not built yet
 
-Result-aware `Idempotency-Key` replay (answering a retry with the first
-response rather than `409`), conditional multi-record transitions and SQL
-ordering for sorted lists are the next steps of
-[#835](https://github.com/jimhoyd-com/urlcode/issues/835). Recorded in
+SQL ordering for sorted lists, a declarative interval (non-overlap)
+constraint, a declarative multi-record transfer, role or membership gates for
+transitions and screen controls for transitions are not built
+([#835](https://github.com/jimhoyd-com/urlcode/issues/835); the
+[transition design](#what-is-not-covered) lists what each needs). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search, and richer screens beyond the first slice ([#262]): labels,
 columns, sort and filter controls have all shipped
 ([#330](https://github.com/jimhoyd-com/urlcode/issues/330)). Owned collections

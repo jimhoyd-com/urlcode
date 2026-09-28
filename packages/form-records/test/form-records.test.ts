@@ -297,7 +297,7 @@ test('trailing slashes are trimmed in linear time: a record path still resolves,
 
 test('the registration refuses exports of another contract version', () => {
   const projectSha256 = 'a'.repeat(64);
-  const store = { version: 1, active: false, records() { throw new Error('unused'); } } as const;
+  const store = { version: 1, active: false, records() { throw new Error('unused'); }, transaction() { throw new Error('unused'); } } as const;
   assert.throws(() => createFormRecordsExtension({ projectSha256, forms: { version: 2 } as never, store }), /forms export contract version 1/);
   assert.throws(() => createFormRecordsExtension({ projectSha256: 'short', forms: { version: 1 } as never, store }), /revision pin/);
 });

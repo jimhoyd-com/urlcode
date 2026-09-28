@@ -27,11 +27,36 @@ const AUDIT_FIELDS_BYTES = 3_584;
 
 export type FieldType = 'string' | 'integer' | 'number' | 'boolean';
 export type Scalar = string | number | boolean;
+const TRANSITION_LIMITS = { transitions: 16, fields: 8, stamps: 4 } as const;
+const MOUNT = { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 } as const;
+const FIELD_NAME = '^[a-z][A-Za-z0-9_]{0,63}$';
+const SCALAR = { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }, { type: 'boolean' }] } as const;
 export interface FieldSpec {
   type: FieldType; required?: boolean; default?: Scalar;
   minLength?: number; maxLength?: number; format?: 'http-url'; enum?: (string | number)[]; minimum?: number; maximum?: number;
+  /** Only a declared transition changes it: a create takes its default, and a body naming it is refused. */
+  transitionOnly?: boolean;
 }
 interface IdempotencySpec { maxKeys: number }
+/** Who may run a transition on an owned collection: the record's owner, or any principal except its owner. */
+export type TransitionActor = 'owner' | 'others';
+/**
+ * One declared transition (#835): `POST <mount>/<id>/<name>` (or `POST <transition mount>/<id>` for `by: others`)
+ * changes one record from the state `from` names to the constants `set` names and the store-owned values `stamp`
+ * names, in one transaction, or refuses and writes nothing. It is a bounded state change, not an expression language.
+ */
+export interface TransitionSpec {
+  /** Every named field must currently hold exactly this value, or the transition answers 409 transition_conflict. */
+  from: Record<string, Scalar>;
+  /** The constant values the transition writes. */
+  set: Record<string, Scalar>;
+  /** String fields the store fills: `actor` (the principal's id) or `now` (the commit time, ISO 8601). */
+  stamp?: Record<string, 'actor' | 'now'>;
+  /** Owned collections only: `owner` (default) or `others` (any principal but the record's owner; needs its own mount). */
+  by?: TransitionActor;
+  /** With `by: others` only, and required there: the separate mount serving `POST <mount>/<id>`, guarded by its own route. */
+  mount?: string;
+}
 export interface CollectionSpec {
   mount: string; fields: Record<string, FieldSpec>;
   maxRecords?: number; maxRecordBytes?: number; pageSize?: number; readOnly?: boolean;
@@ -57,6 +82,8 @@ export interface CollectionSpec {
    * table in the same transaction as the record, and audit drains it from there. Field names only, never values.
    */
   audit?: boolean;
+  /** Declared conditional state changes by name (#835). */
+  transitions?: Record<string, TransitionSpec>;
 }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
@@ -84,6 +111,7 @@ export const collectionSchema = {
         enum: { type: 'array', minItems: 1, maxItems: 64, items: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }] }, description: 'The only values the field accepts; not for booleans.' },
         minimum: { type: 'number', description: 'Smallest numeric value; numbers only.' },
         maximum: { type: 'number', description: 'Largest numeric value; numbers only.' },
+        transitionOnly: { type: 'boolean', description: 'true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments; a screen cannot show the collection yet.' },
       },
     } },
     maxRecords: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'Records the collection may hold (default 1000); a create beyond it answers 409 collection_full.' },
@@ -92,12 +120,22 @@ export const collectionSchema = {
     readOnly: { type: 'boolean', description: 'true: the API serves only GET and HEAD (other methods answer 405); short-link click counting still works.' },
     key: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$', description: 'A required string field (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner.' },
     increments: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, description: 'Numeric fields with a numeric default that POST <mount>/<id>/increment/<field> raises by exactly one in one database transaction, within the field\'s bounds.' },
-    idempotency: { description: 'Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the network client (and the principal on an owned collection).', type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys, description: 'Newest distinct keys the collection retains, across all clients; an evicted key is no longer protected.' } } },
+    idempotency: { description: 'Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE, increment and transitions. A retry with a retained key and the same request (method, path, body) replays the first answer\'s status with the record as it is now; the same key on a different request answers 422 idempotency_key_reused. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the request principal, or to the network client when there is none.', type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys, description: 'Newest distinct keys the collection retains, across all callers; an evicted key is no longer protected and a retry with it runs again.' } } },
     sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, description: 'Declared fields a list request may sort by (sort=<field> or sort=-<field>).' },
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, description: 'Declared fields a list request may filter by equality (<field>=<value>); limit, cursor and sort cannot be filterable.' },
     ownership: { enum: ['shared', 'owner'], description: 'shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true.' },
     maxRecordsPerOwner: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded.' },
     audit: { type: 'boolean', description: 'true: every write is recorded in the audit log (field names and the principal, never values). Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain.' },
+    transitions: { description: 'Declared conditional state changes by name: POST <mount>/<id>/<name> moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language.', type: 'object', maxProperties: TRANSITION_LIMITS.transitions, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
+      type: 'object', additionalProperties: false, required: ['from', 'set'],
+      properties: {
+        from: { type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Declared fields and the exact value each must currently hold; each value must be valid for its field.' },
+        set: { type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Declared fields and the constant value the transition writes; not the collection key.' },
+        stamp: { type: 'object', maxProperties: TRANSITION_LIMITS.stamps, propertyNames: { pattern: FIELD_NAME }, additionalProperties: { enum: ['actor', 'now'] }, description: 'String fields the store fills: actor (the principal id, needs maxLength of at least 128) or now (the commit time in ISO 8601, needs maxLength of at least 24). No enum or format.' },
+        by: { enum: ['owner', 'others'], description: 'With ownership: owner only. owner (default): only the record\'s owner, on the collection mount. others: any principal except the record\'s owner (the owner gets 403 own_record_refused), served on its own mount.' },
+        mount: { ...MOUNT, description: 'Required with by: others, refused otherwise: the transition is served as POST <mount>/<id> on a route <mount>/* with extension: store (POST) and a principal-providing policy. Who may reach that route is the route\'s policy: the store has no roles.' },
+      },
+    } },
   },
 } as const;
 
@@ -134,7 +172,44 @@ function checkValue(spec: FieldSpec, value: unknown): string | undefined {
 export interface NormalizedSpec {
   mount: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
-  maxRecordsPerOwner?: number; audit: boolean;
+  maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
+}
+/** A validated transition. `by` is `any` on a shared collection, whose records have no owner to compare. */
+export interface NormalizedTransition { from: Record<string, Scalar>; set: Record<string, Scalar>; stamp: Record<string, 'actor' | 'now'>; by: TransitionActor | 'any'; mount?: string }
+
+/** Validates the declared transitions against the collection's fields and ownership; throws plain Errors for the operator. */
+function transitionsOf(name: string, spec: CollectionSpec, ownership: Ownership, key: string | undefined): Record<string, NormalizedTransition> {
+  const out: Record<string, NormalizedTransition> = {};
+  for (const [transition, declared] of Object.entries(spec.transitions ?? {})) {
+    const where = `Collection ${name}: transition ${transition}`;
+    if (transition === 'increment') throw new Error(`${where}: the name increment is reserved`);
+    const values = (kind: 'from' | 'set'): Record<string, Scalar> => {
+      for (const [field, value] of Object.entries(declared[kind])) {
+        const fieldSpec = hasOwn(spec.fields, field) ? spec.fields[field] : undefined;
+        if (!fieldSpec) throw new Error(`${where}: ${kind} names ${field.slice(0, 64)}, which is not a declared field`);
+        const problem = checkValue(fieldSpec, value);
+        if (problem) throw new Error(`${where}: ${kind} value for ${field} ${problem}`);
+        if (kind === 'set' && field === key) throw new Error(`${where}: set cannot change the collection key`);
+      }
+      return { ...declared[kind] };
+    };
+    const stamp = { ...declared.stamp ?? {} };
+    for (const [field, source] of Object.entries(stamp)) {
+      const fieldSpec = hasOwn(spec.fields, field) ? spec.fields[field] : undefined;
+      if (!fieldSpec) throw new Error(`${where}: stamp names ${field.slice(0, 64)}, which is not a declared field`);
+      if (hasOwn(declared.set, field)) throw new Error(`${where}: ${field} is both set and stamped`);
+      if (field === key) throw new Error(`${where}: stamp cannot change the collection key`);
+      const needed = source === 'actor' ? 128 : 24;
+      if (fieldSpec.type !== 'string' || fieldSpec.enum || fieldSpec.format || (fieldSpec.maxLength ?? LIMITS.stringLength) < needed || (fieldSpec.minLength ?? 0) > 1) throw new Error(`${where}: stamp field ${field} must be a string with no enum or format and maxLength of at least ${needed}`);
+    }
+    const by = declared.by;
+    if (ownership === 'shared' && by !== undefined) throw new Error(`${where}: by needs ownership: owner`);
+    if (by === 'others' && declared.mount === undefined) throw new Error(`${where}: by: others needs its own mount`);
+    if (by !== 'others' && declared.mount !== undefined) throw new Error(`${where}: mount is only for by: others`);
+    if (declared.mount === spec.mount) throw new Error(`${where}: mount must differ from the collection mount`);
+    out[transition] = { from: values('from'), set: values('set'), stamp, by: ownership === 'shared' ? 'any' : by ?? 'owner', ...(declared.mount === undefined ? {} : { mount: declared.mount }) };
+  }
+  return out;
 }
 /** Validates a declaration beyond JSON Schema; throws plain Errors for the operator. */
 export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
@@ -185,12 +260,42 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if (!field) throw new Error(`Collection ${name}: increment field ${fieldName} is not declared`);
     if (!['integer', 'number'].includes(field.type) || typeof field.default !== 'number') throw new Error(`Collection ${name}: increment field ${fieldName} must be numeric with a numeric default`);
   }
-  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false };
+  const transitions = transitionsOf(name, spec, ownership, key);
+  for (const [field, f] of Object.entries(spec.fields)) {
+    if (!f.transitionOnly) continue;
+    if (f.required) throw new Error(`Collection ${name}: field ${field} cannot be both required and transitionOnly`);
+    if (field === key || increments.includes(field)) throw new Error(`Collection ${name}: field ${field} is the key or an increment and cannot be transitionOnly`);
+    if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field))) throw new Error(`Collection ${name}: field ${field} is transitionOnly but no transition sets or stamps it`);
+  }
+  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions };
 }
 
 /** What an audited collection needs from the audit extension: its pure event validator, and a wake-up for the drain after a commit that wrote an event. */
 export interface CollectionAuditor { validate(value: unknown): AuditEvent; notify(): void }
-type AuditAction = 'created' | 'replaced' | 'updated' | 'deleted' | 'incremented';
+type AuditAction = 'created' | 'replaced' | 'updated' | 'deleted' | 'incremented' | 'transitioned';
+/**
+ * An `Idempotency-Key` a write carries (#835): `key`, the header value hashed with the caller's scope (the principal,
+ * or the network client when there is none), and `fingerprint`, the hash of the request it was first used for.
+ */
+export interface Retry { key: string; fingerprint: string }
+/**
+ * A write's answer: its success status, the record (absent after a delete) and whether it replays a retained
+ * `Idempotency-Key`. A replay carries the first answer's status and the record as it is now.
+ */
+export interface Written { status: number; record: StoredRecord | undefined; replayed: boolean }
+/** What one write step inside a transaction produced: the record it left and whether it inserted an audit event. */
+export interface Step { record: StoredRecord | undefined; audited: boolean }
+/**
+ * Maps a failure inside a store transaction to what a caller may see: a StoreError is kept, a row this declaration
+ * cannot represent or a SQLite failure (a full disk, a lock held past the busy timeout) is a 503 with no detail, and
+ * with `rethrowOthers` anything else (a trusted host transaction's own error) is rethrown unchanged.
+ */
+export function storageFailure(error: unknown, rethrowOthers: boolean): never {
+  if (error instanceof StoreError) throw error;
+  if (error instanceof RowError) throw new StoreError(503, 'storage_unavailable', 'This collection was redeclared by a reload; try again');
+  if (rethrowOthers && !(error instanceof Error && 'code' in error && error.code === 'ERR_SQLITE_ERROR')) throw error;
+  throw new StoreError(503, 'storage_unavailable', 'The store could not save this change');
+}
 
 /** One `store_records` row. */
 interface RecordRow { id: string; owner: string | null; key: string | null; created_at: string; updated_at: string; data: string }
@@ -253,7 +358,8 @@ export class Collection {
   /** Stops serving from the database; the registration closes it with its last activation. Idempotent. */
   close(): void { this.db = undefined; }
 
-  private database(): StoreDatabase {
+  /** The open database this view serves from; a closed one is a 503. Host transactions (records.ts) open theirs here. */
+  database(): StoreDatabase {
     if (!this.db?.open) throw new StoreError(503, 'storage_unavailable', 'The store is not available');
     return this.db;
   }
@@ -272,33 +378,29 @@ export class Collection {
     try { this.check(fields, false); } catch { throw new RowError(`Collection ${this.name}: a stored record no longer matches the declared fields`); }
     return { id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, ...(row.owner === null ? {} : { [OWNER_FIELD]: row.owner }), ...fields as StoredRecord };
   }
-  private diverged(error: unknown): never {
-    if (error instanceof StoreError) throw error;
-    if (error instanceof RowError) throw new StoreError(503, 'storage_unavailable', 'This collection was redeclared by a reload; try again');
-    throw new StoreError(503, 'storage_unavailable', 'The store could not read this collection'); // no path or SQLite detail
-  }
   /** A consistent read (one deferred transaction), with storage and validation failures mapped to 503. */
   private read<T>(work: (db: StoreDatabase) => T): T {
     const db = this.database();
-    try { return db.transaction(() => work(db), 'DEFERRED'); } catch (error) { return this.diverged(error); }
+    try { return db.transaction(() => work(db), 'DEFERRED'); }
+    catch (error) {
+      if (error instanceof StoreError || error instanceof RowError) return storageFailure(error, false);
+      throw new StoreError(503, 'storage_unavailable', 'The store could not read this collection'); // no path or SQLite detail
+    }
   }
   /**
-   * One write transaction. `work` returns its result and whether it inserted an audit event; the audit drain is woken
+   * One write transaction. `work` returns its answer and whether it inserted an audit event; the audit drain is woken
    * only after the commit. A StoreError from `work` rolls back and is rethrown; anything else (a full disk, a lock
    * another process held past the busy timeout) rolls back and is a 503 with no detail.
    */
-  private write<T>(work: (db: StoreDatabase) => { result: T; audited: boolean }): T {
+  private write(work: (db: StoreDatabase) => { result: Written; audited: boolean }): Written {
     const db = this.database();
-    let outcome: { result: T; audited: boolean };
-    try { outcome = db.transaction(() => work(db)); }
-    catch (error) {
-      if (error instanceof StoreError) throw error;
-      if (error instanceof RowError) throw new StoreError(503, 'storage_unavailable', 'This collection was redeclared by a reload; try again');
-      throw new StoreError(503, 'storage_unavailable', 'The store could not save this change');
-    }
-    if (outcome.audited) this.auditor?.notify();
+    let outcome: { result: Written; audited: boolean };
+    try { outcome = db.transaction(() => work(db)); } catch (error) { return storageFailure(error, false); }
+    if (outcome.audited) this.notifyAudit();
     return outcome.result;
   }
+  /** Wakes the audit drain after a commit that inserted one of this collection's events. */
+  notifyAudit(): void { this.auditor?.notify(); }
 
   /**
    * Validates caller input against the field schema. `full` applies defaults and required checks. With `unset` (a
@@ -326,6 +428,12 @@ export class Collection {
     if (Object.keys(errors).length) throw new StoreError(400, 'invalid_record', 'Record does not match the collection fields', errors);
     return out;
   }
+  /** A body may not name a `transitionOnly` field: only a declared transition changes it. */
+  private guarded(input: Record<string, unknown>): void {
+    const errors: FieldErrors = {};
+    for (const [field, spec] of Object.entries(this.spec.fields)) if (spec.transitionOnly && hasOwn(input, field)) errors[field] = 'is changed only by a transition';
+    if (Object.keys(errors).length) throw new StoreError(400, 'invalid_record', 'Record does not match the collection fields', errors);
+  }
   private sized(record: StoredRecord): void {
     if (Buffer.byteLength(JSON.stringify(record)) > this.spec.maxRecordBytes) throw new StoreError(413, 'record_too_large', `Record exceeds ${this.spec.maxRecordBytes} bytes`);
   }
@@ -344,38 +452,46 @@ export class Collection {
    * the backlog cap the write is refused (and rolled back). The event names the changed fields, never their values; a
    * list too long for audit's metadata bound is cut and marked `truncated`. Returns whether an event was inserted.
    */
-  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined): boolean {
+  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, transition?: string): boolean {
     if (!this.spec.audit) return false;
     // Activation refuses an audited collection without an active audit, so this is a wiring error, never a request's.
     if (!this.auditor) throw new StoreError(503, 'audit_unavailable', 'The audit log is unavailable');
     if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', this.name)!.n >= AUDIT_BACKLOG) throw new StoreError(503, 'audit_backlog', 'The audit log is behind; try again later');
     const names = [...fields]; let truncated = false;
     while (Buffer.byteLength(JSON.stringify(names)) > AUDIT_FIELDS_BYTES) { names.pop(); truncated = true; }
-    const event = this.auditor.validate({ id: randomUUID(), source: 'store', action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, at: Date.now(), metadata: { collection: this.name, fields: names, ...(truncated ? { truncated: true } : {}) } });
+    const event = this.auditor.validate({ id: randomUUID(), source: 'store', action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, at: Date.now(), metadata: { collection: this.name, ...(transition === undefined ? {} : { transition }), fields: names, ...(truncated ? { truncated: true } : {}) } });
     db.run('INSERT INTO store_audit_outbox(id, collection, at, event) VALUES (?, ?, ?, ?)', event.id, this.name, event.at, JSON.stringify(event));
     return true;
   }
   /** Declared fields whose value differs between two versions of a record (a removed field counts), in declaration order. */
   private changed(before: StoredRecord | undefined, after: StoredRecord | undefined): string[] { return Object.keys(this.spec.fields).filter(field => before?.[field] !== after?.[field]); }
   /**
-   * Checks the key against the retained claims (inside the write's transaction, so two concurrent writes with one key
-   * cannot both pass), then records it after the write and evicts all but the newest `maxKeys` of this collection.
-   * Returns the function that stores the claim; a rollback removes it with everything else.
+   * Result-aware `Idempotency-Key` handling inside the write's transaction (#835). Without a key, `work` just runs.
+   * With one, the retained claim is read under the write lock, so of racing requests with one key exactly one runs
+   * `work`: a claim with the same request fingerprint replays (the first answer's status, and the record `reread`
+   * finds now, in the caller's scope: a record since deleted or moved out of it is the ordinary 404), and a claim with
+   * a different fingerprint is 422 `idempotency_key_reused`. Neither writes anything. Otherwise `work` runs and the
+   * claim, with its result, is inserted in the same transaction; the newest `maxKeys` claims of the collection stay.
+   * A refused or failed write rolls back and retains nothing, so its retry is evaluated again.
    */
-  private claim(db: StoreDatabase, key: string | undefined): () => void {
-    const config = this.idempotencyConfig(db, key);
-    if (!key || !config) return () => undefined;
-    return () => {
-      db.run('INSERT INTO store_idempotency(collection, key, claimed_at) VALUES (?, ?, ?)', this.name, key, Date.now());
-      db.run('DELETE FROM store_idempotency WHERE collection = ? AND seq <= (SELECT seq FROM store_idempotency WHERE collection = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)', this.name, this.name, config.maxKeys);
-    };
+  private idempotent(db: StoreDatabase, retry: Retry | undefined, status: number, reread: (id: string) => StoredRecord, work: () => Step): { result: Written; audited: boolean } {
+    if (retry === undefined) { const step = work(); return { result: { status, record: step.record, replayed: false }, audited: step.audited }; }
+    const config = this.idempotencyConfig(retry.key)!;
+    const claimed = db.get<{ fingerprint: string; status: number; record_id: string | null }>('SELECT fingerprint, status, record_id FROM store_idempotency WHERE collection = ? AND key = ?', this.name, retry.key);
+    if (claimed) {
+      if (claimed.fingerprint !== retry.fingerprint) throw new StoreError(422, 'idempotency_key_reused', 'This Idempotency-Key was already used for a different request');
+      return { result: { status: claimed.status, record: claimed.status === 204 || claimed.record_id === null ? undefined : reread(claimed.record_id), replayed: true }, audited: false };
+    }
+    const step = work();
+    db.run('INSERT INTO store_idempotency(collection, key, fingerprint, status, record_id, claimed_at) VALUES (?, ?, ?, ?, ?, ?)', this.name, retry.key, retry.fingerprint, status, (step.record?.id as string | undefined) ?? null, Date.now());
+    db.run('DELETE FROM store_idempotency WHERE collection = ? AND seq <= (SELECT seq FROM store_idempotency WHERE collection = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)', this.name, this.name, config.maxKeys);
+    return { result: { status, record: step.record, replayed: false }, audited: step.audited };
   }
-  private idempotencyConfig(db: StoreDatabase, key: string | undefined): IdempotencySpec | undefined {
-    if (!key) return undefined;
-    const config = this.spec.idempotency;
-    if (!config) throw new StoreError(400, 'idempotency_not_enabled', 'This collection does not accept Idempotency-Key');
-    if (db.get('SELECT 1 AS found FROM store_idempotency WHERE collection = ? AND key = ?', this.name, key) !== undefined) throw new StoreError(409, 'idempotency_duplicate', 'This mutation has already been processed');
-    return config;
+  /** The collection's idempotency settings when `key` is given; a key on a collection that did not enable them is a 400. */
+  idempotencyConfig(key: string | undefined): IdempotencySpec | undefined {
+    if (key === undefined) return undefined;
+    if (!this.spec.idempotency) throw new StoreError(400, 'idempotency_not_enabled', 'This collection does not accept Idempotency-Key');
+    return this.spec.idempotency;
   }
   private writable(): void { if (this.spec.readOnly) throw new StoreError(405, 'read_only', 'This collection is read-only'); }
   /**
@@ -384,8 +500,11 @@ export class Collection {
    */
   private scope(owner: string | undefined): string | undefined {
     if (!this.owned) return undefined;
-    if (typeof owner !== 'string' || !principalIdPattern.test(owner)) throw new StoreError(401, 'principal_required', 'Sign in to use this collection');
-    return owner;
+    return this.principal(owner);
+  }
+  private principal(id: string | undefined): string {
+    if (typeof id !== 'string' || !principalIdPattern.test(id)) throw new StoreError(401, 'principal_required', 'Sign in to use this collection');
+    return id;
   }
   /** The row filter for the caller's scope: the collection, and on an owned collection the caller's own records only (a record with no owner is in nobody's scope). */
   private where(scope: string | undefined): { sql: string; values: string[] } {
@@ -397,38 +516,48 @@ export class Collection {
     if (!row || (this.owned && row.owner !== scope)) throw new StoreError(404, 'not_found', 'No such record');
     return this.parse(row);
   }
+  /** For a `by: others` transition: any owned record (a record with no owner is nobody's, so a 404 like a missing id). */
+  private anyOwned(db: StoreDatabase, id: string): StoredRecord {
+    const row = db.get<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? AND id = ?`, this.name, id);
+    if (!row || row.owner === null) throw new StoreError(404, 'not_found', 'No such record');
+    return this.parse(row);
+  }
 
   /**
    * Lists one page of the caller's scope. On an owned collection `total`, the page and the cursor are all computed
    * over the caller's own records only. Throws a 400 StoreError for an undeclared sort or filter name, a malformed
    * value or a cursor that does not belong to the sort.
-   *
-   * An unsorted, unfiltered page is a counted `LIMIT`/`OFFSET` query in creation order. A sorted or filtered one reads
-   * only the id and the named fields of every record in scope (each field as its exact JSON text, so numbers and
-   * strings compare exactly as the declared-type rules in query.ts say), orders and filters those in memory, and then
-   * reads the page's records by id: bounded by `maxRecords`, never a scan of the full record bodies.
    */
   list(params: URLSearchParams, owner?: string): { items: StoredRecord[]; total: number; next?: string | number } {
-    const scope = this.scope(owner), query = parseListQuery(this.spec, params), where = this.where(scope);
-    return this.read(db => {
-      if (!query.sort && !query.filters.length) {
-        const total = db.get<{ n: number }>(`SELECT count(*) AS n FROM store_records WHERE ${where.sql}`, ...where.values)!.n;
-        const items = db.all<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE ${where.sql} ORDER BY seq LIMIT ? OFFSET ?`, ...where.values, query.limit, query.offset).map(row => this.parse(row));
-        const end = query.offset + items.length;
-        return { items, total, ...(end < total ? { next: end } : {}) };
-      }
-      const fields = [...new Set([...query.filters.map(([field]) => field), ...(query.sort ? [query.sort.field] : [])])];
-      const rows = db.all<Record<string, string | null>>(`SELECT id, ${fields.map((_, index) => `data -> ? AS v${index}`).join(', ')} FROM store_records WHERE ${where.sql} ORDER BY seq`, ...fields.map(field => `$.${field}`), ...where.values);
-      const projected = rows.map(row => {
-        const record: StoredRecord = { id: row.id! };
-        fields.forEach((field, index) => { const text = row[`v${index}`]; if (text !== null && text !== undefined) record[field] = JSON.parse(text) as Scalar; });
-        return record;
-      });
-      const page = runList(projected, query);
-      const ids = page.items.map(item => item.id as string);
-      const found = new Map(db.all<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? AND id IN (SELECT value FROM json_each(?))`, this.name, JSON.stringify(ids)).map(row => [row.id, row]));
-      return { ...page, items: ids.map(id => this.parse(found.get(id)!)) };
+    const scope = this.scope(owner), query = parseListQuery(this.spec, params);
+    return this.read(db => this.listIn(db, query, scope));
+  }
+  /**
+   * One page inside an open transaction. An unsorted, unfiltered page is a counted `LIMIT`/`OFFSET` query in creation
+   * order. A sorted or filtered one reads only the id and the named fields of every record in scope (each field as its
+   * exact JSON text, so numbers and strings compare exactly as the declared-type rules in query.ts say), orders and
+   * filters those in memory, and then reads the page's records by id: bounded by `maxRecords`, never a scan of the
+   * full record bodies.
+   */
+  private listIn(db: StoreDatabase, query: ReturnType<typeof parseListQuery>, scope: string | undefined): { items: StoredRecord[]; total: number; next?: string | number } {
+    const where = this.where(scope);
+    if (!query.sort && !query.filters.length) {
+      const total = db.get<{ n: number }>(`SELECT count(*) AS n FROM store_records WHERE ${where.sql}`, ...where.values)!.n;
+      const items = db.all<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE ${where.sql} ORDER BY seq LIMIT ? OFFSET ?`, ...where.values, query.limit, query.offset).map(row => this.parse(row));
+      const end = query.offset + items.length;
+      return { items, total, ...(end < total ? { next: end } : {}) };
+    }
+    const fields = [...new Set([...query.filters.map(([field]) => field), ...(query.sort ? [query.sort.field] : [])])];
+    const rows = db.all<Record<string, string | null>>(`SELECT id, ${fields.map((_, index) => `data -> ? AS v${index}`).join(', ')} FROM store_records WHERE ${where.sql} ORDER BY seq`, ...fields.map(field => `$.${field}`), ...where.values);
+    const projected = rows.map(row => {
+      const record: StoredRecord = { id: row.id! };
+      fields.forEach((field, index) => { const text = row[`v${index}`]; if (text !== null && text !== undefined) record[field] = JSON.parse(text) as Scalar; });
+      return record;
     });
+    const page = runList(projected, query);
+    const ids = page.items.map(item => item.id as string);
+    const found = new Map(db.all<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? AND id IN (SELECT value FROM json_each(?))`, this.name, JSON.stringify(ids)).map(row => [row.id, row]));
+    return { ...page, items: ids.map(id => this.parse(found.get(id)!)) };
   }
   /** A record in the caller's scope. A record that exists but belongs to someone else (or to nobody) is the same 404 as a missing id. */
   get(id: string, owner?: string): StoredRecord {
@@ -443,90 +572,142 @@ export class Collection {
       return record;
     });
   }
-  /** The early Idempotency-Key check `dispatch` makes before reading the body; the write's transaction checks again. */
-  validateIdempotency(key: string | undefined): IdempotencySpec | undefined {
-    return this.read(db => this.idempotencyConfig(db, key));
-  }
 
   /** Every write takes `actor`: the request principal's id, or `anonymous`. On an audited collection it is the event's actor. */
-  create(input: unknown, idempotencyKey?: string, owner?: string, actor?: string): StoredRecord {
+  create(input: unknown, retry?: Retry, owner?: string, actor?: string): Written {
     const scope = this.scope(owner);
     this.writable();
-    return this.write(db => {
-      const claim = this.claim(db, idempotencyKey);
-      if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
-      const clean = this.check(input, true);
-      if (this.spec.key && this.keyTaken(db, clean[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
-      // Checked before the collection-wide ceiling, and the message is fixed: it states neither the caller's count, any
-      // other owner's count nor the collection total (urlcode#731).
-      if (scope !== undefined && this.spec.maxRecordsPerOwner !== undefined && db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ? AND owner = ?', this.name, scope)!.n >= this.spec.maxRecordsPerOwner) throw new StoreError(409, 'owner_quota_exceeded', 'You hold the most records this collection allows each user');
-      if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ?', this.name)!.n >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
-      const now = stamp(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
-      this.sized(record);
-      this.insert(db, record); claim();
-      return { result: record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor) };
-    });
+    return this.write(db => this.idempotent(db, retry, 201, id => this.current(db, id, scope), () => this.createIn(db, input, scope, actor)));
   }
   /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change, and a
    * supplied `null` removes an optional field (refused with a field error for a required or increment field).
    * `expectedEtag`, when given, must match the record's current ETag, read inside the same transaction as the write,
    * or the update is refused with 412 instead of silently overwriting a change the caller never saw. */
-  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string, expectedEtag?: string, owner?: string, actor?: string): StoredRecord {
+  update(id: string, input: unknown, replace: boolean, retry?: Retry, expectedEtag?: string, owner?: string, actor?: string): Written {
     const scope = this.scope(owner);
     this.writable();
-    return this.write(db => {
-      const claim = this.claim(db, idempotencyKey);
-      // Scoped before the ETag and body checks, so another owner's record answers exactly like a missing one.
-      const current = this.current(db, id, scope);
-      if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
-      if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
-      const unset: string[] = [];
-      const clean = this.check(input, replace, replace ? undefined : unset);
-      if (!replace && Object.keys(clean).length === 0 && unset.length === 0) throw new StoreError(400, 'invalid_record', 'Body must set or clear at least one declared field');
-      const kept = replace ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key) && key !== OWNER_FIELD && !unset.includes(key)));
-      // The owner is carried over from the stored record, never from the body (check() refuses an `_owner` key).
-      const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: stamp(current.updatedAt as string), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...kept, ...clean };
-      if (this.spec.key && record[this.spec.key] !== current[this.spec.key] && this.keyTaken(db, record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
-      this.sized(record);
-      this.replaceRow(db, record); claim();
-      return { result: record, audited: this.audited(db, replace ? 'replaced' : 'updated', id, this.changed(current, record), actor) };
-    });
+    return this.write(db => this.idempotent(db, retry, 200, found => this.current(db, found, scope), () => this.updateIn(db, id, input, replace, expectedEtag, scope, actor)));
   }
-  remove(id: string, idempotencyKey?: string, expectedEtag?: string, owner?: string, actor?: string): void {
+  remove(id: string, retry?: Retry, expectedEtag?: string, owner?: string, actor?: string): Written {
     const scope = this.scope(owner);
     this.writable();
-    this.write(db => {
-      const claim = this.claim(db, idempotencyKey);
-      const current = this.current(db, id, scope);
-      if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
-      db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', this.name, id); claim();
-      return { result: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor) };
-    });
+    return this.write(db => this.idempotent(db, retry, 204, found => this.current(db, found, scope), () => this.removeIn(db, id, expectedEtag, scope, actor)));
   }
   /** Public increment API (`POST .../increment/<field>`): refused on a `readOnly` collection like every other write. */
-  increment(id: string, field: string, idempotencyKey?: string, owner?: string, actor?: string): StoredRecord {
+  increment(id: string, field: string, retry?: Retry, owner?: string, actor?: string): Written {
     const scope = this.scope(owner);
     this.writable();
-    return this.write(db => {
-      const claim = this.claim(db, idempotencyKey);
+    return this.write(db => this.idempotent(db, retry, 200, found => this.current(db, found, scope), () => {
       const record = this.incremented(db, id, field, scope);
-      claim();
-      return { result: record, audited: this.audited(db, 'incremented', id, [field], actor) };
-    });
+      return { record, audited: this.audited(db, 'incremented', id, [field], actor) };
+    }));
   }
   /**
-   * Store-owned click-counter bookkeeping for a short-link redirect (dispatchShortLink in
-   * store.ts), never reachable from the public record API. Per the #552 triage decision, this is
-   * the one write a `readOnly` collection still accepts: `readOnly` is documented as closing the
-   * public create/update/delete/increment surface, not as disabling the redirect's own click
-   * count. It intentionally skips `writable()` and takes no Idempotency-Key — the short-link GET
-   * that drives it isn't itself idempotency-scoped. It is never audited: anyone can drive it without credentials or
-   * a budget, and audit's retention is shared with every producer's events, which a flood of clicks would prune.
+   * Runs the declared transition `name` on record `id` for `principal` (#835). An unknown name is a 404. Checked in
+   * this order, all inside the one write transaction: the retained `Idempotency-Key`; the record in the transition's
+   * scope (404); for `by: others`, that the caller is not its owner (403); `If-Match` (412); every `from` value (409
+   * `transition_conflict`). Only then are the `set` values, the `stamp` values and `updatedAt` written with the claim
+   * and the audit event. Any refusal writes nothing.
    */
+  transition(id: string, name: string, retry?: Retry, expectedEtag?: string, principal?: string, actor?: string): Written {
+    const transition = hasOwn(this.spec.transitions, name) ? this.spec.transitions[name]! : undefined;
+    if (!transition) throw new StoreError(404, 'not_found', 'No such transition');
+    // `principal` is checked before anything is read: owner scoping, or the caller an others transition compares.
+    const caller = transition.by === 'any' ? principal : this.principal(principal);
+    this.writable();
+    return this.write(db => this.idempotent(db, retry, 200, found => this.transitionTarget(db, found, transition, caller), () => this.transitionIn(db, id, name, expectedEtag, caller, actor)));
+  }
   recordClick(id: string, field: string): StoredRecord {
-    // Short links need a key, which an owned collection refuses; this stays unreachable for owned records.
+    // Store-owned click-counter bookkeeping for a short-link redirect (dispatchShortLink in store.ts), never reachable
+    // from the public record API. Per the #552 triage decision, this is the one write a `readOnly` collection still
+    // accepts: `readOnly` closes the public create/update/delete/increment surface, not the redirect's own click
+    // count. It skips `writable()` and takes no Idempotency-Key. It is never audited: anyone can drive it without
+    // credentials or a budget, and audit's retention is shared with every producer's events, which a flood of clicks
+    // would prune. Short links need a key, which an owned collection refuses; this stays unreachable for owned records.
     if (this.owned) throw new StoreError(404, 'not_found', 'No such record');
-    return this.write(db => ({ result: this.incremented(db, id, field, undefined), audited: false }));
+    return this.write(db => ({ result: { status: 200, record: this.incremented(db, id, field, undefined), replayed: false }, audited: false })).record!;
+  }
+
+  // The write steps. Each runs inside a transaction its caller opened (`write` above, or a host transaction in
+  // records.ts) and returns the record it left and whether it inserted an audit event. They are the only code that
+  // changes a record, so the HTTP API, the records export and host transactions apply one set of rules.
+
+  /** The record `id` in the owner's scope, inside an open transaction (a host transaction's `get`). */
+  getIn(db: StoreDatabase, id: string, owner: string | undefined): StoredRecord { return this.current(db, id, this.scope(owner)); }
+  /** One page inside an open transaction (a host transaction's `list`). */
+  listPageIn(db: StoreDatabase, params: URLSearchParams, owner: string | undefined): { items: StoredRecord[]; total: number; next?: string | number } {
+    const scope = this.scope(owner);
+    return this.listIn(db, parseListQuery(this.spec, params), scope);
+  }
+  createIn(db: StoreDatabase, input: unknown, scope: string | undefined, actor: string | undefined): Step {
+    this.writable();
+    if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
+    this.guarded(input);
+    const clean = this.check(input, true);
+    if (this.spec.key && this.keyTaken(db, clean[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
+    // Checked before the collection-wide ceiling, and the message is fixed: it states neither the caller's count, any
+    // other owner's count nor the collection total (urlcode#731).
+    if (scope !== undefined && this.spec.maxRecordsPerOwner !== undefined && db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ? AND owner = ?', this.name, scope)!.n >= this.spec.maxRecordsPerOwner) throw new StoreError(409, 'owner_quota_exceeded', 'You hold the most records this collection allows each user');
+    if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ?', this.name)!.n >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
+    const now = stamp(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
+    this.sized(record);
+    this.insert(db, record);
+    return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor) };
+  }
+  /** Creates in the owner's scope inside an open transaction (a host transaction's `create`). */
+  createFor(db: StoreDatabase, input: unknown, owner: string | undefined, actor: string | undefined): Step { return this.createIn(db, input, this.scope(owner), actor); }
+  updateIn(db: StoreDatabase, id: string, input: unknown, replace: boolean, expectedEtag: string | undefined, scope: string | undefined, actor: string | undefined): Step {
+    this.writable();
+    // Scoped before the ETag and body checks, so another owner's record answers exactly like a missing one.
+    const current = this.current(db, id, scope);
+    if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
+    if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
+    this.guarded(input);
+    const unset: string[] = [];
+    const clean = this.check(input, replace, replace ? undefined : unset);
+    if (!replace && Object.keys(clean).length === 0 && unset.length === 0) throw new StoreError(400, 'invalid_record', 'Body must set or clear at least one declared field');
+    // PUT rebuilds the declared fields from the body and defaults, except transitionOnly ones, which keep their value.
+    const only = (key: string) => this.spec.fields[key]?.transitionOnly === true;
+    if (replace) for (const key of Object.keys(clean)) if (only(key)) delete clean[key];
+    const kept = Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key) && key !== OWNER_FIELD && (replace ? only(key) : !unset.includes(key))));
+    // The owner is carried over from the stored record, never from the body (check() refuses an `_owner` key).
+    const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: stamp(current.updatedAt as string), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...kept, ...clean };
+    if (this.spec.key && record[this.spec.key] !== current[this.spec.key] && this.keyTaken(db, record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
+    this.sized(record);
+    this.replaceRow(db, record);
+    return { record, audited: this.audited(db, replace ? 'replaced' : 'updated', id, this.changed(current, record), actor) };
+  }
+  /** A partial update in the owner's scope inside an open transaction (a host transaction's `update`). */
+  updateFor(db: StoreDatabase, id: string, patch: unknown, expectedEtag: string | undefined, owner: string | undefined, actor: string | undefined): Step { return this.updateIn(db, id, patch, false, expectedEtag, this.scope(owner), actor); }
+  removeIn(db: StoreDatabase, id: string, expectedEtag: string | undefined, scope: string | undefined, actor: string | undefined): Step {
+    this.writable();
+    const current = this.current(db, id, scope);
+    if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
+    db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', this.name, id);
+    return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor) };
+  }
+  /** Deletes in the owner's scope inside an open transaction (a host transaction's `remove`). */
+  removeFor(db: StoreDatabase, id: string, expectedEtag: string | undefined, owner: string | undefined, actor: string | undefined): Step { return this.removeIn(db, id, expectedEtag, this.scope(owner), actor); }
+  /** The record a transition acts on: in the owner's scope, any owned record for `by: others`, any record on a shared collection. */
+  private transitionTarget(db: StoreDatabase, id: string, transition: NormalizedTransition, caller: string | undefined): StoredRecord {
+    return transition.by === 'others' ? this.anyOwned(db, id) : this.current(db, id, transition.by === 'owner' ? caller : undefined);
+  }
+  transitionIn(db: StoreDatabase, id: string, name: string, expectedEtag: string | undefined, principal: string | undefined, actor: string | undefined): Step {
+    this.writable();
+    const transition = hasOwn(this.spec.transitions, name) ? this.spec.transitions[name]! : undefined;
+    if (!transition) throw new StoreError(404, 'not_found', 'No such transition');
+    const caller = transition.by === 'any' ? principal : this.principal(principal);
+    const current = this.transitionTarget(db, id, transition, caller);
+    // The owner learns nothing here it does not already know: the record is its own.
+    if (transition.by === 'others' && current[OWNER_FIELD] === caller) throw new StoreError(403, 'own_record_refused', 'This transition cannot be applied to your own record');
+    if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
+    if (Object.entries(transition.from).some(([field, value]) => current[field] !== value)) throw new StoreError(409, 'transition_conflict', 'The record is not in a state this transition applies to');
+    const updatedAt = stamp(current.updatedAt as string);
+    const stamped = Object.fromEntries(Object.entries(transition.stamp).map(([field, source]) => [field, source === 'now' ? updatedAt : actor ?? 'anonymous']));
+    const record: StoredRecord = { ...current, updatedAt, ...transition.set, ...stamped };
+    this.sized(record);
+    this.replaceRow(db, record);
+    return { record, audited: this.audited(db, 'transitioned', id, this.changed(current, record), actor, name) };
   }
   private incremented(db: StoreDatabase, id: string, field: string, owner: string | undefined): StoredRecord {
     if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');

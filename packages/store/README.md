@@ -64,9 +64,10 @@ Short version: one server process per database (supported and tested, not
 enforced: SQLite's locks keep another process from corrupting it, and a write
 blocked past the 2-second busy timeout answers `503`); every write is one SQLite
 transaction that commits the record, its key, its `Idempotency-Key` claim and
-its audit event together or not at all; per-collection record and byte quotas;
-last write wins unless a caller sends `If-Match`; each request changes one
-record. A `urlcode dev` hot reload shares the database connection with the
+its audit event together or not at all; a retried `Idempotency-Key` replays the
+first status with the current record (a different request under it is `422`);
+per-collection record and byte quotas; last write wins unless a caller sends
+`If-Match`; each HTTP request changes one record. A `urlcode dev` hot reload shares the database connection with the
 replacement runtime (see [reload](../../docs/STORE.md#reload)). A collection is shared by default; one that holds
 per-user data declares `ownership: owner`, and every request is then scoped to
 the principal a policy such as `auth: true` on its mount sets (another user's
@@ -99,7 +100,22 @@ Another extension that requires the store reaches declared collections through
 its typed export, `StoreExports` (`ctx.get('store')`): `create`, `get`, a
 partial `update` (which clears a field given `null`, like `PATCH`) and a
 paginated `list`, each scoped to the request principal exactly as the JSON API
-is. See [using a collection from another extension](../../docs/STORE.md#using-a-collection-from-another-extension).
+is, a declared `transition`, and `transaction(work)`, which runs several of those
+operations synchronously as one database transaction (trusted host code only,
+never sandboxed). See [using a collection from another extension](../../docs/STORE.md#using-a-collection-from-another-extension).
+
+## Transitions
+
+A collection may declare named `transitions` (#835): `POST <mount>/<id>/<name>`
+moves one record from the exact `from` values to the constant `set` values
+(and the `stamp` values `actor` or `now`) in one transaction, honouring
+`If-Match` and `Idempotency-Key`, or answers `409 transition_conflict` and
+writes nothing. On an owned collection `by: others` lets any principal except
+the owner run it, on a separate mount whose route policy decides who may; a
+`transitionOnly` field can only change through a transition. It is not an
+expression language: interval constraints and multi-record transfers use a
+host transaction. See
+[conditional transitions and result-aware retries](../../docs/STORE.md#conditional-transitions-and-result-aware-retries).
 
 ## Short links
 
@@ -173,19 +189,26 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.fields.*.enum` | array | no | minItems: 1; maxItems: 64; items: string / number (one of: string (maxLength: 256); number) | The only values the field accepts; not for booleans. |
 | `extensions.store.config.collections.*.fields.*.minimum` | number | no | — | Smallest numeric value; numbers only. |
 | `extensions.store.config.collections.*.fields.*.maximum` | number | no | — | Largest numeric value; numbers only. |
+| `extensions.store.config.collections.*.fields.*.transitionOnly` | boolean | no | — | true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments; a screen cannot show the collection yet. |
 | `extensions.store.config.collections.*.maxRecords` | integer | no | minimum: 1; maximum: 10000 | Records the collection may hold (default 1000); a create beyond it answers 409 collection_full. |
 | `extensions.store.config.collections.*.maxRecordBytes` | integer | no | minimum: 256; maximum: 65536 | Largest serialized record in bytes (default 4096); larger answers 413. |
 | `extensions.store.config.collections.*.pageSize` | integer | no | minimum: 1; maximum: 200 | Records per list page, and the cap on a list request's limit (default 50). |
 | `extensions.store.config.collections.*.readOnly` | boolean | no | — | true: the API serves only GET and HEAD (other methods answer 405); short-link click counting still works. |
 | `extensions.store.config.collections.*.key` | string | no | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A required string field (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner. |
 | `extensions.store.config.collections.*.increments` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Numeric fields with a numeric default that POST `<mount>/<id>/increment/<field>` raises by exactly one in one database transaction, within the field's bounds. |
-| `extensions.store.config.collections.*.idempotency` | object | no | unknown keys rejected | Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE and increment; a repeated retained key answers 409 idempotency_duplicate. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the network client (and the principal on an owned collection). |
-| `extensions.store.config.collections.*.idempotency.maxKeys` | integer | yes | minimum: 1; maximum: 1000 | Newest distinct keys the collection retains, across all clients; an evicted key is no longer protected. |
+| `extensions.store.config.collections.*.idempotency` | object | no | unknown keys rejected | Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE, increment and transitions. A retry with a retained key and the same request (method, path, body) replays the first answer's status with the record as it is now; the same key on a different request answers 422 idempotency_key_reused. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the request principal, or to the network client when there is none. |
+| `extensions.store.config.collections.*.idempotency.maxKeys` | integer | yes | minimum: 1; maximum: 1000 | Newest distinct keys the collection retains, across all callers; an evicted key is no longer protected and a retry with it runs again. |
 | `extensions.store.config.collections.*.sortable` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields a list request may sort by (sort=`<field>` or sort=`-<field>`). |
 | `extensions.store.config.collections.*.filterable` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields a list request may filter by equality (`<field>`=`<value>`); limit, cursor and sort cannot be filterable. |
 | `extensions.store.config.collections.*.ownership` | string | no | enum: ["shared","owner"] | shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true. |
 | `extensions.store.config.collections.*.maxRecordsPerOwner` | integer | no | minimum: 1; maximum: 10000 | With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded. |
 | `extensions.store.config.collections.*.audit` | boolean | no | — | true: every write is recorded in the audit log (field names and the principal, never values). Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain. |
+| `extensions.store.config.collections.*.transitions` | object | no | maxProperties: 16; keys: "^[a-z][a-z0-9_-]{0,63}$" | Declared conditional state changes by name: POST `<mount>/<id>/<name>` moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language. |
+| `extensions.store.config.collections.*.transitions.*.from` | object | yes | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Declared fields and the exact value each must currently hold; each value must be valid for its field. |
+| `extensions.store.config.collections.*.transitions.*.set` | object | yes | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Declared fields and the constant value the transition writes; not the collection key. |
+| `extensions.store.config.collections.*.transitions.*.stamp` | object | no | maxProperties: 4; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string (enum: ["actor","now"]) | String fields the store fills: actor (the principal id, needs maxLength of at least 128) or now (the commit time in ISO 8601, needs maxLength of at least 24). No enum or format. |
+| `extensions.store.config.collections.*.transitions.*.by` | string | no | enum: ["owner","others"] | With ownership: owner only. owner (default): only the record's owner, on the collection mount. others: any principal except the record's owner (the owner gets 403 own_record_refused), served on its own mount. |
+| `extensions.store.config.collections.*.transitions.*.mount` | string | no | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | Required with by: others, refused otherwise: the transition is served as POST `<mount>/<id>` on a route `<mount>/*` with extension: store (POST) and a principal-providing policy. Who may reach that route is the route's policy: the store has no roles. |
 | `extensions.store.config.shortLinks` | object | no | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | Public redirect mounts by name: GET `<mount>/<key>` atomically increments a counter and answers 302 to the record's stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route `<mount>/*` with extension: store (GET, HEAD). |
 | `extensions.store.config.shortLinks.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the redirect mount, separate from the collection's CRUD mount. |
 | `extensions.store.config.shortLinks.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A declared shared collection with a key; the key value is the path segment after the mount. |
