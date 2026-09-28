@@ -1,5 +1,5 @@
 import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders, installPrincipalSlot } from './extensions.ts';
-import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
+import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext, InvocationContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
 import { executeProxy } from './proxy.ts';
@@ -417,6 +417,25 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         const context: FunctionContext = { ...contextFor(route, path, parsed.query, guestHeaders, headerCounts), requestId };
         // Never into the sandbox: an AbortSignal is host state and cannot cross the worker boundary.
         if (route.sandbox !== true) context.signal = signal;
+        // RIM-EXT-CAPABILITY-001: bind this request's capability objects, one call per declared name per named
+        // extension, never into the sandbox (router.ts refuses that combination before serving) and never for an
+        // extension with nothing declared. `provide()` returning undefined just omits that one entry.
+        if (route.sandbox !== true && route.extensionPolicyNames?.length) {
+          const invocation: InvocationContext = Object.freeze({ requestId, route: Object.freeze({ pattern: route.pattern }), principal: extensionRequest.principal ?? null, ...(signal ? { signal } : {}) });
+          const capabilities: Record<string, Record<string, unknown>> = {};
+          for (const name of route.extensionPolicyNames) {
+            const entry = extensionRegistry.entries.get(name)!;
+            const declared = entry.registration.capabilities ?? [];
+            if (!declared.length || typeof entry.instance.provide !== 'function') continue;
+            const bound: Record<string, unknown> = {};
+            for (const capability of declared) {
+              const value = await entry.instance.provide(capability, invocation);
+              if (value !== undefined) bound[capability] = value;
+            }
+            if (Object.keys(bound).length) capabilities[name] = Object.freeze(bound);
+          }
+          if (Object.keys(capabilities).length) context.capabilities = Object.freeze(capabilities);
+        }
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;

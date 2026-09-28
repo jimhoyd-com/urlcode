@@ -216,8 +216,13 @@ export const budgets: Record<string, Budget> = {
     // entries.
     // Session identity guidance and the authenticated-handlers recipe (#832):
     // measured 882184 packed / 3510731 unpacked bytes, 499 entries on Node 26.
-    packed: 864 * 1024,
-    unpacked: 3430 * 1024,
+    // Raised for #837/#839 (RIM-EXT-CAPABILITY-001, the generic request-bound
+    // capability handoff: extensions.ts/router.ts/runtime.ts/functions.ts and
+    // the EXTENSIONS.md "Request-bound capabilities" section with its
+    // llms-full.txt copy; no new recipe or schema field). Measured on Node 26:
+    // 885375 packed / 3525136 unpacked bytes, 499 entries.
+    packed: 870 * 1024,
+    unpacked: 3445 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

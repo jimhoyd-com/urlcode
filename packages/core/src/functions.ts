@@ -37,7 +37,14 @@ export interface FunctionWorkerData { sources: Record<string, string>; dependenc
 export type FunctionContext = RequestContext & { requestId: string; args?: Record<string, ParameterValue>; route?: { pattern: string };
   /** Trusted routes only (never sent into the sandbox): aborted when the client disconnects, or when a streamed
    * response ends early; `signal.reason` is then the end reason string such as `client-closed` or `idle-timeout`. */
-  signal?: AbortSignal };
+  signal?: AbortSignal;
+  /**
+   * Trusted routes only (never sent into the sandbox; RIM-EXT-CAPABILITY-001): the request-bound capability objects
+   * of every extension named in this route's effective `policies.extensions` that declared one, keyed by that
+   * extension's name and then by capability name. Absent when the route names no such extension, or is
+   * `sandbox: true` (refused at compile time), or every named extension declared none for this request.
+   */
+  capabilities?: Readonly<Record<string, Readonly<Record<string, unknown>>>> };
 export interface FunctionWorkerRequest {
   id: string; source: string | undefined; name: string | undefined;
   chain: { source: string | undefined; name: string }[];

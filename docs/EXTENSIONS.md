@@ -517,6 +517,62 @@ non-auth provider. Extensions are trusted in-process code, so this contract
 fails closed on mistakes and misconfiguration; it is not a sandbox between
 extensions.
 
+### Request-bound capabilities
+
+An ordinary `function`/`middleware` route's own guest code can call very
+little today: static imports of a package's pure types and helpers, and the
+one derived value the [reserved header channel](#session-identity-in-functions)
+carries forward. Everything else an extension exports — a store collection
+scoped to the caller, a declared form flow, a templated email — exists only as
+a live object passed between extensions through `HostContext.get`, never
+reachable from a route's own handler. **Request-bound capabilities**
+(`RIM-EXT-CAPABILITY-001` in [runtime implementation](RUNTIME-IMPLEMENTATION.md))
+close that gap with one generic mechanism, without adding new YAML: a route
+that already names an extension in `policies.extensions` may receive a live,
+per-invocation object from that extension, in `context.capabilities`.
+
+- **Declaring what's offered.** A registration lists the capability names its
+  active instance can provide: `capabilities: ['records']`. This is a pure
+  availability signal, parallel to `providesPrincipal` and `streams`; it
+  changes nothing about `policies.extensions` gating.
+- **Providing it.** The instance implements
+  `provide(capability, invocation)`, called once per declared name, per
+  request, only for a route whose effective `policies.extensions` names this
+  extension. `invocation` is a frozen `InvocationContext`: `requestId`,
+  `route.pattern`, the same `principal` the request carries (`null` when
+  unset) and, off the sandbox path, the request's `AbortSignal`. Returning
+  `undefined` simply omits that entry for this one call — an anonymous
+  request asking for a capability that needs a principal, for example — and
+  is not an error.
+- **Receiving it.** The route's own `context.capabilities` is
+  `{[extensionName]: {[capability]: value}}`, present only for extensions the
+  route names that both declared the capability and returned something other
+  than `undefined` for this request. An extension named in `policies.extensions`
+  with no declared capabilities, or whose `provide()` returns `undefined` for
+  every declared name, leaves its key out entirely.
+- **Never into the sandbox.** A live bound object cannot cross the sandbox
+  worker's JSON boundary, the same reason a request's `AbortSignal` does not.
+  A `sandbox: true` route naming an extension that declares any capability
+  refuses activation before serving, exactly like `stream: true` combined with
+  `sandbox: true`; a sandboxed route can still use the pure header-projection
+  channel above.
+- **Still gated.** Naming an extension in `policies.extensions` already
+  requires it to implement `authorize()` or `middleware()`
+  ([request principal](#request-principal)); a capability provider is no
+  exception. Capability access rides on the same admission decision as
+  everything else that extension already gates on this route — it is not a
+  side door around it.
+
+This closes the gap the identity slice (`sessionUserId`,
+[session identity](#session-identity-in-functions)) opened but could not
+generalize: that channel only carries a bounded, precomputed string written
+before the handler runs. A capability is a live call bound to the actual
+invocation, for extensions whose facades cannot be reduced to one header
+value. The core fixture `test/extension-capability.test.ts` proves the seam
+with a synthetic, non-first-party provider; naming the specific store, mail,
+audit and abuse operations an application can reach this way is a later,
+separate decision for each package.
+
 ### Request context: route env and request id
 
 Every `ExtensionRequest` carries two more generic fields, whether it reaches an
