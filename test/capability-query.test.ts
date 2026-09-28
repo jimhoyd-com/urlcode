@@ -60,7 +60,7 @@ test('CLI prints one handler, one policy, schema fragments and fails closed on u
 test('get_schema and get_capability state the whole request.body.schema profile up front, matching the validator (#587, #845)',()=>{
  const described=getSchemaFragment('request.body.schema').schema.description as string;
  const constraints=getCapability('request.body').constraints.join('\n');
- const word=(keyword:string)=>new RegExp('(^|[^\\w$])'+keyword.replace('$','\\$')+'\\b');
+ const word=(keyword:string)=>new RegExp('(^|[^\\w$])'+keyword.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b');
  for(const keyword of bodySchemaProfile.keywords){assert.match(described,word(keyword),keyword);assert.match(constraints,word(keyword),keyword);}
  for(const type of bodySchemaProfile.types)assert.ok(described.includes(type)&&constraints.includes(type),type);
  assert.ok(described.includes(bodySchemaProfile.dialect)&&constraints.includes(bodySchemaProfile.dialect),'the one dialect is named');
