@@ -1,5 +1,5 @@
 [
-  {"path": "/api/todos", "status": 200, "expectBody": "{\"items\":[],\"total\":0}", "expectHeaders": {"cache-control": "no-store"}},
+  {"path": "/api/todos", "status": 200, "expectBody": "{\"items\":[],\"total\":0,\"etags\":{}}", "expectHeaders": {"cache-control": "no-store"}},
   {"steps": [
     {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"title\":\"first\"}", "status": 201, "expectHeaders": {"cache-control": "no-store"}, "capture": {"id": {"json": "id"}}},
     {"path": "/api/todos/{{id}}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},

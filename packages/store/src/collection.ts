@@ -126,7 +126,7 @@ export const collectionSchema = {
         enum: { type: 'array', minItems: 1, maxItems: 64, items: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }] }, description: 'The only values the field accepts; not for booleans.' },
         minimum: { type: 'number', description: 'Smallest numeric value; numbers only.' },
         maximum: { type: 'number', description: 'Largest numeric value; numbers only.' },
-        transitionOnly: { type: 'boolean', description: 'true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments; a screen cannot show the collection yet.' },
+        transitionOnly: { type: 'boolean', description: 'true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments. A screen shows it read-only.' },
       },
     } },
     maxRecords: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'Records the collection may hold (default 1000); a create beyond it answers 409 collection_full.' },

@@ -152,14 +152,24 @@ beside it and without changing the exports above:
   --extensions` applies the same rule against each package definition's name.
   `screens` is an optional `UiScreenSource`, a function ui calls once
   at activation with `{root}` (the route project) that returns `{<path>:
-  {title, collection: {mount, fields, readOnly?, sortable?, filterable?},
-  columns?}}`; ui serves each at its exact `extension: ui` mount, and a path
+  {title, collection: {mount, fields, readOnly?, sortable?, filterable?,
+  transitions?, idempotency?}, columns?}}`; ui serves each at its exact `extension: ui` mount, and a path
   two extensions claim refuses naming both contributors. Beyond that name, ui
   does not know how the contributing extension declares a screen:
   it never loads the project document or reads another extension's block. The
   scaffold never adds another extension's screen; the owner scaffolds its own
   (the store adds `/todos` when ui is installed). `requires` on forms and form-records makes `composeHost` activate
   `ui` before them and hand them the kit.
+
+- Data screens (`crudScreen`, `crudMarkup`, `crudFields`): a field may be
+  `transitionOnly` (shown read-only, never a control and never sent), and the
+  collection may declare `transitions: [{name, from, mount?}]` (at most 16,
+  checked by `crudTransitions`) and `idempotency`. Each transition is a button
+  on the rows holding its `from` values; the `crud` script posts it with no
+  body, `If-Match` from the list's `etags` map or its own last write, and a
+  fresh `Idempotency-Key` when `idempotency` is set, and shows `409`, `412`,
+  `403` and other refusals as page messages (`crudTransitionCopyKeys`). A
+  screen without transitions renders the same shell as before.
 
 The main entry stays dependency-free and free of Node imports. The `./host`
 entry uses `node:fs` and `node:path` and mirrors the runtime's extension

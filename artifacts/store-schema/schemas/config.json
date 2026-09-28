@@ -112,7 +112,7 @@
                 },
                 "transitionOnly": {
                   "type": "boolean",
-                  "description": "true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments; a screen cannot show the collection yet."
+                  "description": "true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments. A screen shows it read-only."
                 }
               }
             }
@@ -399,6 +399,10 @@
             "minLength": 1,
             "maxLength": 80,
             "description": "Page title. Default: the collection name in sentence case."
+          },
+          "readers": {
+            "type": "boolean",
+            "description": "true: the screen lists the collection's readers mount (every owner's records, read-only) and offers its by: others transitions; the collection must declare readers. Default false: the collection mount, with create, edit, delete and the transitions its owner runs."
           },
           "columns": {
             "type": "array",

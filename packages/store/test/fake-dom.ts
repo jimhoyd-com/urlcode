@@ -1,8 +1,8 @@
 /**
- * A deliberately small DOM for running the shipped client scripts under node:test:
- * only what `crud-script.ts` uses (createElement, attributes, listeners, text and
- * form values, focus). It is not a general DOM; a script that reaches for anything
- * else fails loudly here instead of passing by accident.
+ * A deliberately small DOM for running ui's served `crud` script against a real store under node:test: a copy of
+ * packages/ui/test/support/fake-dom.ts without its scripted fetch, kept in this package because package tests stay
+ * self-contained. Only what the script uses (createElement, attributes, listeners, text and form values, focus); a
+ * script that reaches for anything else fails loudly here instead of passing by accident.
  */
 export type Listener = (event: { type: string; preventDefault(): void }) => void;
 export class FakeElement {
@@ -56,20 +56,3 @@ export class FakeDocument {
         return this.roots;
     }
 }
-export interface FetchCall { method: string; url: string; body: unknown }
-/** A queue of canned answers; each call is recorded. A function answer may return a promise to hold a request in flight. */
-export function fakeFetch(answers: (Response | ((call: FetchCall) => Response | Promise<Response>))[]): { fetch: typeof fetch; calls: FetchCall[]; headers: Record<string, string>[] } {
-    const calls: FetchCall[] = [], headers: Record<string, string>[] = [];
-    const fetcher = (async (input: string, init?: RequestInit) => {
-        const call = { method: init?.method ?? 'GET', url: String(input), body: init?.body === undefined ? undefined : JSON.parse(String(init.body)) as unknown };
-        calls.push(call);
-        // Kept beside the call, so the calls' deepEqual assertions stay about method, URL and body.
-        headers.push({ ...(init?.headers as Record<string, string> | undefined) });
-        const next = answers.shift();
-        if (!next) throw new Error(`unexpected request ${call.method} ${call.url}`);
-        return typeof next === 'function' ? next(call) : next;
-    }) as unknown as typeof fetch;
-    return { fetch: fetcher, calls, headers };
-}
-export const json = (body: unknown, status = 200, extra: Record<string, string> = {}): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...extra } });
-export const settle = async (): Promise<void> => { for (let turn = 0; turn < 8; turn++) await new Promise<void>(resolve => setImmediate(resolve)); };

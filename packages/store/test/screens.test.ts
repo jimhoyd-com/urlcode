@@ -33,6 +33,8 @@ test('the store configuration schema carries the screens block', async () => {
   const config = (screens: unknown) => ({ collections: { todos: { mount: '/api/todos', fields } }, screens });
   assert.equal(validate(config({ '/todos': { collection: 'todos', title: 'Todos' } })), true);
   assert.equal(validate(config({ '/todos': { collection: 'todos', columns: ['title', { field: 'done', label: 'Done?' }] } })), true);
+  assert.equal(validate(config({ '/review': { collection: 'todos', readers: true } })), true);
+  assert.equal(validate(config({ '/review': { collection: 'todos', readers: 'yes' } })), false);
   assert.equal(validate(config({ todos: { collection: 'todos' } })), false);
   assert.equal(validate(config({ '/todos': {} })), false);
   assert.equal(validate(config({ '/todos': { collection: 'todos', script: 'x' } })), false);
@@ -100,7 +102,24 @@ test('end to end: the scaffolded Todos screen is served by ui from the store con
   assert.deepEqual(listed.items.map(item => item.title), ['first']);
 });
 
-test('a screen over a collection with transitionOnly fields is refused, not half-served (#835)', () => {
-  const collections = { requests: { mount: '/api/requests', ownership: 'owner', fields: { ...fields, status: { type: 'string', enum: ['open', 'closed'], default: 'open', transitionOnly: true } }, transitions: { close: { from: { status: 'open' }, set: { status: 'closed' } } } } };
-  assert.throws(() => storeScreens({ collections, screens: { '/requests': { collection: 'requests' } } }), /declares transitionOnly fields, which screens do not support yet/);
+test('screens over collections with transitionOnly fields show them read-only and offer the viewer\'s transitions (#863)', () => {
+  const reviewers = { membership: true, key: 'userId', fields: { userId: { type: 'string', required: true, maxLength: 128 } } };
+  const requestFields = { ...fields, status: { type: 'string', enum: ['open', 'closed', 'approved'], default: 'open', transitionOnly: true } };
+  const requests = {
+    mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 10 }, filterable: ['status'], fields: requestFields,
+    transitions: { close: { from: { status: 'open' }, set: { status: 'closed' } }, approve: { from: { status: 'open' }, set: { status: 'approved' }, by: 'others', members: 'reviewers', mount: '/api/approvals' } },
+    readers: { mount: '/api/review', members: 'reviewers' },
+  };
+  const collections = { reviewers, requests };
+  const screens = storeScreens({ collections, screens: { '/requests': { collection: 'requests' }, '/review': { collection: 'requests', readers: true, title: 'Review' } } });
+  // The owner's screen: the collection mount, the transitions its owner runs there, never the by: others one.
+  assert.deepEqual(screens['/requests'], { title: 'Requests', collection: { mount: '/api/requests', fields: requestFields, filterable: ['status'], transitions: [{ name: 'close', from: { status: 'open' } }], idempotency: true } });
+  // The reviewer's screen: the readers mount, read-only, with exactly the by: others transitions on their own mount.
+  assert.deepEqual(screens['/review'], { title: 'Review', collection: { mount: '/api/review', fields: requestFields, readOnly: true, filterable: ['status'], transitions: [{ name: 'approve', from: { status: 'open' }, mount: '/api/approvals' }], idempotency: true } });
+  // A readOnly collection refuses every transition, so its screen offers none; no idempotency flag without a button.
+  const frozen = storeScreens({ collections: { requests: { ...requests, readOnly: true } }, screens: { '/requests': { collection: 'requests' } } });
+  assert.equal(frozen['/requests']!.collection.transitions, undefined);
+  assert.equal(frozen['/requests']!.collection.idempotency, undefined);
+  assert.throws(() => storeScreens({ collections: { todos: { mount: '/api/todos', fields } }, screens: { '/todos': { collection: 'todos', readers: true } } }), /readers: true needs collection todos to declare readers/);
+  assert.throws(() => storeScreens({ collections, screens: { '/reviewers': { collection: 'reviewers' } } }), /membership collection, which has no mount/);
 });
