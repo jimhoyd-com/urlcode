@@ -1,6 +1,6 @@
 import Ajv from 'ajv/dist/2020.js';
 import { ConfigError } from './errors.ts';
-import { assertBodySchema, bodyIssues, bodySchemaAjvOptions, bodySchemaLine, declaredBodyNames, uuidFormat } from './body-validation.ts';
+import { assertBodySchema, bodyIssues, bodySchemaAjvOptions, bodySchemaLine, bodySchemaRefusal, declaredBodyNames, uuidFormat } from './body-validation.ts';
 import type { BodySchema, BodySchemaIssue, BodyValidator, CompiledBodySchema } from './body-validation.ts';
 
 // Also published as the public `@jimhoyd/urlcode/body-schema` subpath: an operator-installed extension
@@ -28,7 +28,9 @@ export function compileBodySchema(schema: unknown): CompiledBodySchema {
   }
   let validate: BodyValidator;
   try { validate = ajv.compile(schema) as BodyValidator; }
-  catch (error) { throw new ConfigError(`Body schema: refused by the JSON Schema 2020-12 validator: ${String((error as Error).message).slice(0, 200)}`, {}, { cause: error }); }
+  // The profile walk pre-checks every refusal it can foresee; anything Ajv still refuses is reported in the same
+  // pointer form, redacted (bodySchemaRefusal). Ajv leaves meta-schema errors, if any, on the instance.
+  catch (error) { throw new ConfigError(bodySchemaRefusal(error, ajv.errors), {}, { cause: error }); }
   // The compiled function stands alone; dropping Ajv's strong cache entry keeps a reloaded project's old schemas collectable.
   finally { ajv.removeSchema(schema); }
   const compiled: CompiledBodySchema = { validate, names: declaredBodyNames(schema) };

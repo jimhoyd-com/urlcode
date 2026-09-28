@@ -4,7 +4,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import Ajv from 'ajv/dist/2020.js';
 import { assertBodySchema, bodySchemaIssues, compileBodySchema } from '../packages/core/src/body-schema.ts';
+import { bodySchemaAjvOptions, bodySchemaRefusal } from '../packages/core/src/body-validation.ts';
 import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
@@ -34,6 +36,8 @@ test('accepted fixtures: valid values pass and invalid values report the fixed i
 test('refused fixtures fail at load with a bounded diagnostic naming the keyword and pointer, and never echo a $ref value', async t => {
   for (const fixture of fixtures.refused) {
     assert.throws(() => assertBodySchema(fixture.schema), (error: Error) => { assert.equal(error.message, fixture.message, fixture.name); return true; });
+    // Compiling reports the identical diagnostic: every refusal is the profile's, before Ajv sees the schema.
+    assert.throws(() => compileBodySchema(fixture.schema), (error: Error) => { assert.equal(error.message, fixture.message, fixture.name); return true; });
     assert.doesNotMatch(fixture.message, /hunter2|schemas\.example\.com\/a\.json/);
   }
   // The same refusal happens before serving: validate, the server and the Cloudflare build all refuse the project.
@@ -44,6 +48,51 @@ test('refused fixtures fail at load with a bounded diagnostic naming the keyword
   await assert.rejects(buildCloudflare(root, { out }), /\$ref must be a local/);
   // A key that is not a string keyword is bounded in the diagnostic.
   assert.throws(() => assertBodySchema({ type: 'object', ['x'.repeat(5000)]: 1 }), (error: Error) => error.message.length < 600);
+});
+
+test('what Ajv strict mode refused raw is now a pointed profile diagnostic, on every host', async t => {
+  const overlap = fixtures.refused.find(fixture => fixture.name === 'properties matched by patternProperties')!;
+  const root = await project(t, { '/x': route(overlap.schema) });
+  await assert.rejects(startServer({ project: root, port: 0, log: () => {} }), (error: Error) => { assert.match(error.message, /Body schema \/properties\/x-id: is also matched by/); return true; });
+  const out = await mkdtemp(join(tmpdir(), 'urlcode-cf-')); t.after(() => rm(out, { recursive: true, force: true }));
+  await assert.rejects(buildCloudflare(root, { out }), /Body schema \/properties\/x-id: is also matched by/);
+  // A control character in a declared name never reaches the diagnostic.
+  assert.throws(() => assertBodySchema({ type: 'object', propertyNames: { maxLength: 32 }, properties: { 'x\u0007a': true }, patternProperties: { '^x': true } }), (error: Error) => /^Body schema \/properties\/x\?a: is also matched/.test(error.message));
+  // Satisfiable neighbours of the refused conditions stay admitted.
+  for (const schema of [
+    { type: 'object', required: ['b'], properties: { a: true } }, // required without additionalProperties: false
+    { type: 'object', required: ['x-b'], additionalProperties: false, propertyNames: { maxLength: 32 }, patternProperties: { '^x-': true } }, // required name matched by a pattern
+    { minLength: 1 }, { type: ['string', 'number'], minLength: 1, minimum: 0 }, { type: 'number', enum: [1, 2.5], const: 1 }, { type: 'integer', const: 2 },
+    { type: 'array', prefixItems: [{ type: 'string' }], items: { type: 'number' }, minItems: 3 }, { type: 'array', prefixItems: [true, true], items: false, minItems: 2 },
+  ]) assert.doesNotThrow(() => compileBodySchema(schema), JSON.stringify(schema));
+});
+
+test('an Ajv refusal the profile did not foresee is mapped to a pointer and redacted', () => {
+  // Ajv run directly on schemas the profile would refuse first, to reach each of its refusal shapes.
+  const refuse = (schema: object): string => {
+    const ajv = new Ajv.default({ ...bodySchemaAjvOptions });
+    try { ajv.compile(schema); } catch (error) { return bodySchemaRefusal(error, ajv.errors); }
+    throw new Error('Ajv compiled the schema');
+  };
+  // Strict-mode refusal without a path: root pointer, Ajv's option hint dropped.
+  assert.equal(refuse({ type: 'object', properties: { xa: true }, patternProperties: { '^x': true } }),
+    'Body schema /: the JSON Schema 2020-12 validator refused this schema (property xa matches pattern ^x)');
+  // Unknown format: the pointer comes from Ajv's path, the quoted format is elided.
+  assert.equal(refuse({ type: 'object', properties: { a: { type: 'string', format: 'hunter2-format' } } }),
+    'Body schema /properties/a: the JSON Schema 2020-12 validator refused this schema (unknown format "...")');
+  // Meta-schema failure: the pointer is Ajv's instancePath into the schema.
+  assert.equal(refuse({ type: 'object', properties: { a: { minLength: -1 } } }),
+    'Body schema /properties/a/minLength: does not satisfy the JSON Schema 2020-12 meta-schema at keyword minimum');
+  // An unresolvable $ref never echoes the reference, which may carry credentials.
+  assert.equal(refuse({ type: 'object', properties: { a: { $ref: 'https://user:hunter2@schemas.example.com/a.json' } } }),
+    'Body schema /: a $ref could not be resolved (only a local #/$defs/<name> reference is supported)');
+  // An arbitrary message: quoted text, URLs and # references elided, control characters replaced, length capped.
+  const odd = bodySchemaRefusal(new Error(`strict mode: const 'sk_live_1' from https://u:hunter2@x.test/s#/a at \u0001 ${'z'.repeat(400)} (use allowSomething)`));
+  assert.match(odd, /^Body schema \/: the JSON Schema 2020-12 validator refused this schema \(const "\.\.\." from <ref> at \? z+\.\.\.\)$/);
+  assert.doesNotMatch(odd, /sk_live|hunter2|allowSomething|\u0001/);
+  assert.ok(odd.length < 260);
+  assert.equal(bodySchemaRefusal('odd'), 'Body schema /: the JSON Schema 2020-12 validator refused this schema (odd)');
+  assert.equal(bodySchemaRefusal(new Error('x'), [{ instancePath: '/a\u0000b', keyword: '"><script>' }]), 'Body schema /a?b: does not satisfy the JSON Schema 2020-12 meta-schema at keyword schema');
 });
 
 test('resource limits: schema nodes, depth, $ref uses, $defs entries and the size a schema expands to through $ref', () => {
