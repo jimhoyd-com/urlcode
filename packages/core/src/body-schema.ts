@@ -1,170 +1,48 @@
-import { assert } from './errors.ts';
-import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
-import { isRecord, own } from './object-guards.ts';
+import Ajv from 'ajv/dist/2020.js';
+import { ConfigError } from './errors.ts';
+import { assertBodySchema, bodyIssues, bodySchemaAjvOptions, bodySchemaLine, declaredBodyNames, uuidFormat } from './body-validation.ts';
+import type { BodySchema, BodySchemaIssue, BodyValidator, CompiledBodySchema } from './body-validation.ts';
 
-// Also published as the public `@jimhoyd/urlcode/body-schema` subpath: an
-// operator-installed extension (docs/EXTENSIONS.md) that declares its own
-// bounded per-request input contract (for example a tool's `arguments`) can
-// validate against exactly this subset instead of hand-rolling or pulling in
-// a second JSON Schema engine. This is the same code `request.body.schema`
-// itself runs (src/http-policy.ts); an extension package must never
-// reimplement it.
+// Also published as the public `@jimhoyd/urlcode/body-schema` subpath: an operator-installed extension
+// (docs/EXTENSIONS.md) that declares its own bounded per-request input contract (for example a tool's
+// `arguments`) validates against exactly the profile `request.body.schema` uses, compiled by the same Ajv
+// options, instead of hand-rolling or configuring a second JSON Schema engine. This module compiles with Ajv,
+// which generates code, so it runs on Node hosts only; the Cloudflare Worker imports body-validation.ts and
+// receives build-time standalone validators instead (build-cloudflare.ts).
+export { assertBodySchema, bodyIssues, bodySchemaDialect, bodySchemaEnvelope, bodySchemaJson, bodySchemaLine, bodySchemaProfile, declaredBodyNames, maxRequestBodyBytes, uuidFormat } from './body-validation.ts';
+export type { BodySchema, BodySchemaIssue, BodySchemaType, BodyValidator, CompiledBodySchema } from './body-validation.ts';
+
+let ajv: InstanceType<typeof Ajv.default> | undefined;
+const compiledSchemas = new WeakMap<object, CompiledBodySchema>();
 /**
- * The JSON Schema subset a route may declare for `request.body.schema`.
- * It is interpreted here rather than compiled by Ajv so the same code runs on
- * every host, including the Worker, with no code generation and no author
- * regex outside `pattern-guard.ts`.
+ * Checks `schema` against the supported JSON Schema 2020-12 profile and compiles it once (cached per schema object).
+ * Local `#/$defs` references only: the Ajv instance has no `loadSchema`, so nothing is ever fetched.
  */
-export interface BodySchema {
-  type?: 'object' | 'array' | 'string' | 'integer' | 'number' | 'boolean' | 'null';
-  properties?: Record<string, BodySchema>; required?: string[]; additionalProperties?: boolean;
-  items?: BodySchema; enum?: (string | number | boolean | null)[];
-  minLength?: number; maxLength?: number; pattern?: string; format?: 'uuid';
-  minimum?: number; maximum?: number; minItems?: number; maxItems?: number;
+export function compileBodySchema(schema: unknown): CompiledBodySchema {
+  if (typeof schema === 'object' && schema !== null) { const cached = compiledSchemas.get(schema); if (cached) return cached; }
+  assertBodySchema(schema);
+  if (!ajv) {
+    // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
+    ajv = new Ajv.default({ ...bodySchemaAjvOptions });
+    ajv.addFormat('uuid', uuidFormat);
+  }
+  let validate: BodyValidator;
+  try { validate = ajv.compile(schema) as BodyValidator; }
+  catch (error) { throw new ConfigError(`Body schema: refused by the JSON Schema 2020-12 validator: ${String((error as Error).message).slice(0, 200)}`, {}, { cause: error }); }
+  // The compiled function stands alone; dropping Ajv's strong cache entry keeps a reloaded project's old schemas collectable.
+  finally { ajv.removeSchema(schema); }
+  const compiled: CompiledBodySchema = { validate, names: declaredBodyNames(schema) };
+  compiledSchemas.set(schema, compiled);
+  return compiled;
 }
-export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const types = ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'];
-const keywords = new Set(['type','properties','required','additionalProperties','items','enum','minLength','maxLength','pattern','format','minimum','maximum','minItems','maxItems']);
-/**
- * The largest request body any route admits: `request.body.maxBytes` is at most
- * this and defaults to it, on every host (#713). A JSON string can never hold
- * more characters than its body has bytes, so it is also the string-length cap
- * of this subset. A `pattern` node keeps the much smaller
- * `maxPatternInputLength`, which bounds regex cost rather than size.
- */
-export const maxRequestBodyBytes = 1048576;
-const limits = { depth: 6, nodes: 128, properties: 64, enums: 64, length: maxRequestBodyBytes, items: 10000 };
-/** The supported subset, stated up front by the capability catalog and checked against the schema description (#587). */
-export const bodySchemaSubset = { keywords: [...keywords], types: [...types], formats: ['uuid'], patternMaxLength: maxPatternInputLength, limits: { ...limits } } as const;
-const patterns = new WeakMap<BodySchema, RegExp>();
-
-/** Rejects, at load time, any schema outside the supported subset or its limits. */
-export function assertBodySchema(schema: unknown): asserts schema is BodySchema {
-  let nodes = 0;
-  const walk = (node: unknown, depth: number): void => {
-    assert(isRecord(node), 'Body schema must be an object');
-    assert(depth <= limits.depth && ++nodes <= limits.nodes, 'Body schema is too large or deeply nested');
-    for (const key of Object.keys(node)) assert(keywords.has(key), `Unsupported body schema keyword: ${key}`);
-    const kind = node.type;
-    assert(kind === undefined || (typeof kind === 'string' && types.includes(kind)), 'Body schema type must be one of ' + types.join(', '));
-    const isKind = (...allowed: string[]): boolean => typeof kind === 'string' && allowed.includes(kind);
-    const uses = (...names: string[]): boolean => names.some(name => own(node, name));
-    assert(!uses('properties', 'required', 'additionalProperties') || isKind('object'), 'properties, required and additionalProperties require type object');
-    assert(!uses('items', 'minItems', 'maxItems') || isKind('array'), 'items, minItems and maxItems require type array');
-    assert(!uses('minLength', 'maxLength', 'pattern', 'format') || isKind('string'), 'String keywords require type string');
-    assert(!uses('minimum', 'maximum') || isKind('integer', 'number'), 'Numeric bounds require type integer or number');
-    for (const name of ['minLength', 'maxLength', 'minItems', 'maxItems']) {
-      if (!own(node, name)) continue;
-      const value = node[name], cap = name.endsWith('Items') ? limits.items : limits.length;
-      assert(Number.isInteger(value) && (value as number) >= 0 && (value as number) <= cap, `${name} must be an integer from 0 to ${cap}`);
-    }
-    for (const name of ['minimum', 'maximum']) assert(!own(node, name) || (typeof node[name] === 'number' && Number.isFinite(node[name])), `${name} must be a finite number`);
-    if (own(node, 'format')) assert(node.format === 'uuid', 'Unsupported body schema format (supported: uuid)');
-    if (own(node, 'pattern')) {
-      assert(typeof node.pattern === 'string', 'pattern must be a string');
-      assertSafePattern(node.pattern);
-      assert(typeof node.maxLength === 'number' && node.maxLength <= maxPatternInputLength, `pattern requires maxLength of at most ${maxPatternInputLength}`);
-    }
-    if (own(node, 'enum')) {
-      assert(Array.isArray(node.enum) && node.enum.length >= 1 && node.enum.length <= limits.enums, `enum must list 1 to ${limits.enums} values`);
-      assert(node.enum.every(value => value === null || ['string', 'number', 'boolean'].includes(typeof value)), 'enum values must be scalars');
-    }
-    if (own(node, 'required')) {
-      assert(Array.isArray(node.required) && node.required.every(name => typeof name === 'string') && new Set(node.required).size === node.required.length, 'required must be a list of unique names');
-      const declared = isRecord(node.properties) ? node.properties : {};
-      assert((node.required as string[]).every(name => own(declared, name)), 'required names must be declared in properties');
-    }
-    if (own(node, 'additionalProperties')) assert(typeof node.additionalProperties === 'boolean', 'additionalProperties must be true or false');
-    if (own(node, 'properties')) {
-      assert(isRecord(node.properties) && Object.keys(node.properties).length <= limits.properties, `properties must declare at most ${limits.properties} names`);
-      for (const child of Object.values(node.properties)) walk(child, depth + 1);
-    }
-    if (own(node, 'items')) walk(node.items, depth + 1);
-  };
-  walk(schema, 1);
-}
-
-const maxExtras = 3;
-const nameable = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
-const describe = (value: unknown): string => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
-/**
- * One validation failure. `pointer` is an RFC 6901 pointer built only from names
- * the schema declared (array positions appear as `[]`, not an index), `keyword`
- * is the schema keyword that failed, and `expected` is the schema's own
- * constraint. No client value is ever placed in an issue; the only client text is
- * an identifier-shaped undeclared property name in `property`.
- */
-interface BodySchemaIssue { pointer: string; keyword: string; message: string; expected?: string | number | (string | number | boolean | null)[]; property?: string }
-const escapePointer = (name: string): string => name.replace(/~/g, '~0').replace(/\//g, '~1');
-/** Structured failures for `value`; `checkBodySchema` renders the same list as text. */
-export function bodySchemaIssues(schema: BodySchema, value: unknown, path = '', issues: BodySchemaIssue[] = [], max = 8): BodySchemaIssue[] {
-  const fail = (keyword: string, message: string, extra: Partial<BodySchemaIssue> = {}): void => { if (issues.length < max) issues.push({ pointer: path, keyword, message, ...extra }); };
-  const kind = schema.type;
-  if (kind) {
-    const actual = describe(value);
-    const ok = kind === 'integer' ? Number.isInteger(value) : kind === 'number' ? typeof value === 'number' : actual === kind;
-    if (!ok) { fail('type', `must be ${kind === 'array' || kind === 'object' || kind === 'integer' ? 'an' : 'a'} ${kind}`, { expected: kind }); return issues; }
-  }
-  if (schema.enum && !schema.enum.some(item => item === value)) {
-    const listable = schema.enum.length <= 16 && schema.enum.every(item => typeof item !== 'string' || item.length <= 64);
-    fail('enum', 'must be one of the declared values', listable ? { expected: schema.enum } : {});
-  }
-  if (typeof value === 'string') {
-    if (schema.minLength !== undefined && [...value].length < schema.minLength) fail('minLength', `must be at least ${schema.minLength} characters`, { expected: schema.minLength });
-    if (schema.maxLength !== undefined && [...value].length > schema.maxLength) fail('maxLength', `must be at most ${schema.maxLength} characters`, { expected: schema.maxLength });
-    else {
-      if (schema.format === 'uuid' && !uuidFormat.test(value)) fail('format', 'must be a uuid', { expected: 'uuid' });
-      if (schema.pattern !== undefined) {
-        let regex = patterns.get(schema);
-        if (!regex) patterns.set(schema, regex = new RegExp(schema.pattern, 'u'));
-        if (!regex.test(value)) fail('pattern', 'does not match the declared pattern');
-      }
-    }
-  }
-  if (typeof value === 'number') {
-    if (schema.minimum !== undefined && value < schema.minimum) fail('minimum', `must be at least ${schema.minimum}`, { expected: schema.minimum });
-    if (schema.maximum !== undefined && value > schema.maximum) fail('maximum', `must be at most ${schema.maximum}`, { expected: schema.maximum });
-  }
-  if (Array.isArray(value)) {
-    if (schema.minItems !== undefined && value.length < schema.minItems) fail('minItems', `must have at least ${schema.minItems} items`, { expected: schema.minItems });
-    if (schema.maxItems !== undefined && value.length > schema.maxItems) fail('maxItems', `must have at most ${schema.maxItems} items`, { expected: schema.maxItems });
-    else if (schema.items) for (const item of value) { if (issues.length >= max) break; bodySchemaIssues(schema.items, item, `${path}/[]`, issues, max); }
-  }
-  if (isRecord(value)) {
-    const declared = schema.properties || {};
-    for (const name of schema.required || []) if (!own(value, name)) fail('required', `is missing required property ${name}`, { property: name });
-    if (schema.additionalProperties === false) {
-      // One issue per undeclared property, at most three. An identifier-shaped name is the client's own key, echoed
-      // back in `property` so the sender can see which one; any other name is left out rather than escaped.
-      const extras = Object.keys(value).filter(name => !own(declared, name));
-      for (const name of extras.slice(0, maxExtras)) fail('additionalProperties', 'has a property the schema does not declare', nameable.test(name) ? { property: name } : {});
-    }
-    for (const [name, child] of Object.entries(declared)) if (own(value, name)) bodySchemaIssues(child, value[name], `${path}/${escapePointer(name)}`, issues, max);
-  }
-  return issues;
+/** Structured failures of `value` against `schema` (compiled on first use); `checkBodySchema` renders them as text. */
+export function bodySchemaIssues(schema: BodySchema, value: unknown, max?: number): BodySchemaIssue[] {
+  return bodyIssues(compileBodySchema(schema), value, max);
 }
 /**
- * Returns fixed-wording failures for `value`, each naming only a path the
- * schema itself declared (array positions appear as `[]`). Nothing the client
- * sent is echoed, so the answer stays safe to render as plain text.
+ * Returns fixed-wording failures for `value`, each naming only a path the schema itself declared (array positions
+ * appear as `[]`). Nothing the client sent is echoed, so the answer stays safe to render as plain text.
  */
 export function checkBodySchema(schema: BodySchema, value: unknown): string[] {
   return bodySchemaIssues(schema, value).map(bodySchemaLine);
-}
-/** The plain-text line for an issue: array positions print as `[]` appended to the path, root as `/`. */
-export const bodySchemaLine = (issue: BodySchemaIssue): string => `${issue.pointer.replace(/\/\[\]/g, '[]') || '/'} ${issue.message}`;
-
-const maxIssueBytes = 4096;
-/** Renders the JSON answer: never more than `maxIssueBytes`, dropping trailing issues and saying so. */
-export function bodySchemaJson(issues: BodySchemaIssue[]): string {
-  return bounded(issues, (list, truncated) => JSON.stringify({ error: 'body_validation_failed', message: 'Request body failed validation', ...(truncated ? { truncated } : {}), issues: list }));
-}
-/** The same answer in the JSON error envelope (`errors.format: json`), bounded the same way. */
-export function bodySchemaEnvelope(issues: BodySchemaIssue[]): string {
-  return bounded(issues, (list, truncated) => JSON.stringify({ error: { code: 'UNPROCESSABLE_CONTENT', message: 'Request body failed validation', ...(truncated ? { truncated } : {}), issues: list } }));
-}
-function bounded(issues: BodySchemaIssue[], shape: (list: BodySchemaIssue[], truncated: boolean) => string): string {
-  let list = issues, text = shape(list, false);
-  while (new TextEncoder().encode(text).length > maxIssueBytes && list.length) { list = list.slice(0, -1); text = shape(list, true); }
-  return text;
 }

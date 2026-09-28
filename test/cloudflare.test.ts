@@ -10,7 +10,7 @@ import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, request, param } from './helpers.ts';
 import type { ProjectFiles, ProjectSettings } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
+import type { Artifact, Validators, BodyValidators } from '../packages/core/src/cloudflare.ts';
 import type { RouteConfig } from '../packages/core/src/types.ts';
 
 // The Worker runtime consumes a build artifact, so a test that hand-writes one
@@ -25,8 +25,8 @@ async function build(t: TestContext, root: string) {
   t.after(() => rm(out,{ recursive:true, force:true }));
   const report = await buildCloudflare(root,{ out });
   const artifact = await loadArtifact(out);
-  const validators = (await import(pathToFileURL(join(out,'validators.js')).href)) as Validators;
-  return { report, out, fetch: createFetchHandler(artifact, validators) };
+  const validators = (await import(pathToFileURL(join(out,'validators.js')).href)) as Validators; const bodyValidators = (await import(pathToFileURL(join(out, 'body-validators.js')).href)) as BodyValidators;
+  return { report, out, fetch: createFetchHandler(artifact, validators, bodyValidators) };
 }
 
 const read = async (response: Response) => ({

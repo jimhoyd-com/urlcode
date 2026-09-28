@@ -32,3 +32,29 @@ routes:
         schema: {type: string, pattern: "^[a-z0-9-]+$", maxLength: 32}
     respond:
       json: {ok: true}
+  /contacts:
+    methods: [POST]
+    request:
+      body:
+        maxBytes: 4096
+        contentTypes: [application/json]
+        format: json
+        required: true
+        schema:
+          $schema: https://json-schema.org/draft/2020-12/schema
+          $defs:
+            email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^@\\s]+@[^@\\s]+$"}
+          type: object
+          required: [name, email, phone]
+          additionalProperties: false
+          properties:
+            name: {type: string, minLength: 1, maxLength: 100}
+            email: {$ref: "#/$defs/email"}
+            phone: {type: [string, "null"], maxLength: 32}
+            channel:
+              anyOf:
+                - {const: email}
+                - {const: phone}
+    respond:
+      status: 201
+      json: {ok: true}

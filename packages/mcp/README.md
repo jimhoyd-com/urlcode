@@ -83,9 +83,12 @@ instance); `tools/list`, `resources/list` and `prompts/list` return every
 entry in one response.
 
 `inputSchema` (and the optional `outputSchema` below) is the same bounded
-JSON Schema subset `request.body.schema` accepts (`type`, `properties`,
-`required`, `additionalProperties`, `items`, `enum`, string/number/array
-bounds, `pattern` and `format: uuid`) and must declare `type: object` — an
+JSON Schema 2020-12 profile `request.body.schema` accepts (local `$defs`/`$ref`,
+type lists, `anyOf`/`oneOf`/`allOf`/`not`, `properties`, `required`,
+`additionalProperties`, `items`, scalar `enum`/`const`, string/number/array
+bounds, a bounded `pattern` and `format: uuid`; see
+[HTTP](../../docs/HTTP.md#body-schema-and-input-patterns)), compiled once at
+activation, and must declare `type: object` — an
 MCP tool call's `arguments`, and its structured result, are always objects. A
 call whose arguments fail `inputSchema` never reaches the handler. Under
 MCP revision `2025-11-25` it answers a tool result with `isError: true` whose
@@ -303,7 +306,7 @@ extension has no identity or authorization model of its own.
   execution error (`isError: true`, the schema issues as text) so the model
   can correct them, under every revision; the handler never runs.
 - Tool `outputSchema` / `structuredContent`, validated against the same
-  bounded schema subset as `inputSchema` (see "Declare a server" above).
+  bounded schema profile as `inputSchema` (see "Declare a server" above).
 - Optional `title` on tools, resources and prompts, and optional tool
   `annotations` (the four boolean behavior hints), echoed in the list
   responses.
@@ -381,8 +384,8 @@ Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema
 | `extensions.mcp.config.servers.*.tools.*.annotations.destructiveHint` | boolean | no | — | Hint that the tool may perform destructive updates. |
 | `extensions.mcp.config.servers.*.tools.*.annotations.idempotentHint` | boolean | no | — | Hint that repeated calls with the same arguments have no additional effect. |
 | `extensions.mcp.config.servers.*.tools.*.annotations.openWorldHint` | boolean | no | — | Hint that the tool interacts with external entities beyond the site. |
-| `extensions.mcp.config.servers.*.tools.*.inputSchema` | object | yes | — | Schema of the arguments object, in the bounded request.body.schema subset (checked at activation); a call whose arguments fail it never reaches the handler. |
-| `extensions.mcp.config.servers.*.tools.*.outputSchema` | object | no | — | Optional schema, in the same subset, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error. |
+| `extensions.mcp.config.servers.*.tools.*.inputSchema` | object | yes | — | Schema of the arguments object, in the bounded request.body.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler. |
+| `extensions.mcp.config.servers.*.tools.*.outputSchema` | object | no | — | Optional schema, in the same profile, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error. |
 | `extensions.mcp.config.servers.*.tools.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
 | `extensions.mcp.config.servers.*.tools.*.handler.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
 | `extensions.mcp.config.servers.*.tools.*.handler.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |

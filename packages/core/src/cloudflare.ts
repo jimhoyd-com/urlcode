@@ -2,6 +2,8 @@ import { parseTarget, matchRoute, contextFor, redirectLocation } from './match.t
 import type { CompiledParameter, CompiledRoutes, MatchableRoute, ParameterLocation, ParameterSchema } from './match.ts';
 import { checkRequest, decorateResponse } from './http-policy.ts';
 import type { RequestBodyPolicy } from './http-policy.ts';
+import { declaredBodyNames } from './body-validation.ts';
+import type { BodyValidator, CompiledBodySchema } from './body-validation.ts';
 import { prepareResponse, errorResponse, errorScope, resolveErrorFormat, methodNotAllowed } from './http-response.ts';
 import type { ErrorFormat, HandlerResult, HeaderPair, ResponseBody } from './http-response.ts';
 import { HttpError } from './errors.ts';
@@ -21,18 +23,21 @@ export interface ArtifactRoute {
   pattern: string; parts: string[]; names: string[]; methods: string[]; parameters: ArtifactParameter[]; responseHeaders: HeaderPair[];
   request?: { body?: RequestBodyPolicy }; redirect?: CompiledRedirect; reply?: ArtifactReply; enabled?: false; expiresAt?: number;
   policies?: Record<string, unknown>; errors?: { format: ErrorFormat };
+  /** The export name of this route's build-time standalone `request.body.schema` validator in body-validators.js. */
+  bodyValidator?: string;
 }
 /** `errorPaths` is the validated `site.errors.paths` scope: runtime-generated errors there use the JSON envelope. */
 export interface Artifact { format: number; version: string; routes: ArtifactRoute[]; policies?: { security: SecurityConfig }; notFound?: true; errorPaths?: string[] }
 export type Validator = (value: unknown) => boolean;
 export type Validators = Record<string, Validator | undefined>;
+export type BodyValidators = Record<string, BodyValidator | undefined>;
 /** A route's compiled policy chain on this target: the same hook pairs the Node runtime holds. */
 export interface WorkerPolicy { request: [PolicyModule, unknown][]; response: [PolicyModule, unknown][]; security?: SecurityState; agents?: AgentsState }
 /** A rehydrated route: MatchableRoute plus what the request path reads. The reply body is bytes, not a Buffer. */
 export interface WorkerRoute extends MatchableRoute {
   names: string[]; methods: string[]; responseHeaders: HeaderPair[]; request?: { body?: RequestBodyPolicy }; redirect?: CompiledRedirect;
   reply: { status: number; headers: HeaderPair[]; body: Uint8Array<ArrayBuffer> } | undefined; enabled?: false; expiresAt?: number;
-  middleware: never[]; policy: WorkerPolicy | null; errors?: { format: ErrorFormat };
+  middleware: never[]; policy: WorkerPolicy | null; errors?: { format: ErrorFormat }; bodySchema?: CompiledBodySchema | undefined;
 }
 export interface RehydratedArtifact extends CompiledRoutes<WorkerRoute> { errorPolicy: SecurityState | null }
 // A Web-standard runtime for a compiled artifact. It shares the matching,
@@ -71,11 +76,19 @@ async function readCappedBody(request: Request, limit: number): Promise<Uint8Arr
 // The artifact stores what the compiler produced; validators arrive separately
 // because a schema validator cannot be serialised and this platform forbids
 // compiling one at runtime.
-export function rehydrate(artifact: Artifact, validators: Validators = {}): RehydratedArtifact {
+export function rehydrate(artifact: Artifact, validators: Validators = {}, bodyValidators: BodyValidators = {}): RehydratedArtifact {
   if (artifact?.format !== 1) throw new Error('Unsupported URLCode artifact; rebuild with this runtime version');
   const exact = new Map<string, WorkerRoute>(), byLength = new Map<number, WorkerRoute[]>(), shared: PolicyShared = { target: 'cloudflare' };
   for (const route of artifact.routes) {
-    const prepared: WorkerRoute = { ...route,
+    const bodySchema = route.request?.body?.schema;
+    let compiledBody: CompiledBodySchema | undefined;
+    if (bodySchema) {
+      const validate = route.bodyValidator ? bodyValidators[route.bodyValidator] : undefined;
+      if (!validate) throw new Error(`Artifact is missing the request.body.schema validator for ${route.pattern}; rebuild`);
+      compiledBody = { validate, names: declaredBodyNames(bodySchema) };
+    }
+    const { bodyValidator: _bodyValidator, ...served } = route;
+    const prepared: WorkerRoute = { ...served, ...(compiledBody ? { bodySchema: compiledBody } : {}),
       parameters: (route.parameters || []).map((parameter): CompiledParameter => {
         const validate = validators[parameter.validator];
         if (!validate) throw new Error(`Artifact is missing the validator for ${route.pattern} ${parameter.in}:${parameter.name}`);
@@ -117,8 +130,8 @@ export function rehydrate(artifact: Artifact, validators: Validators = {}): Rehy
   return { exact, byLength, mounts: [], errorPolicy };
 }
 
-export function createFetchHandler(artifact: Artifact, validators?: Validators): (request: Request) => Promise<Response> {
-  const compiled = rehydrate(artifact, validators);
+export function createFetchHandler(artifact: Artifact, validators?: Validators, bodyValidators?: BodyValidators): (request: Request) => Promise<Response> {
+  const compiled = rehydrate(artifact, validators, bodyValidators);
   const inErrorScope = errorScope(artifact.errorPaths);
   return async function fetch(request: Request): Promise<Response> {
     const requestId = crypto.randomUUID();

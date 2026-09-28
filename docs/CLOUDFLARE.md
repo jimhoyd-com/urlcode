@@ -77,7 +77,7 @@ POST. See [What has run on workerd](#what-has-run-on-workerd).
 
 ## What the build emits
 
-`--out` receives three generated files. None of them are edited by hand, and
+`--out` receives four generated files. None of them are edited by hand, and
 `dist/` belongs in `.gitignore`:
 
 - `artifact.js` — the compiled routes. **This is an internal build output, not a
@@ -87,7 +87,12 @@ POST. See [What has run on workerd](#what-has-run-on-workerd).
 - `validators.js` — the parameter schemas, precompiled by Ajv into standalone ES
   modules. The platform forbids runtime code generation, so a validator cannot
   be compiled on the Worker; it has to be compiled by the build.
-- `index.js` — the Worker entry, which is three lines over
+- `body-validators.js` — every `request.body.schema`, admitted against the
+  [JSON Schema 2020-12 profile](HTTP.md#body-schema-and-input-patterns) and
+  compiled by Ajv with the same options the self-hosted runtime uses, as
+  standalone ES module code. The Worker never compiles a schema; a route whose
+  validator is missing from this file refuses to start (`rebuild`).
+- `index.js` — the Worker entry, which is a few lines over
   `createFetchHandler` from `@jimhoyd/urlcode/cloudflare`. That import resolves to the
   package's built `dist/cloudflare.js` (and its declarations, for a TypeScript
   Worker); the artifact never depends on the TypeScript sources or on type
@@ -150,26 +155,25 @@ workerd, locally, through `wrangler dev --local`, with nothing deployed and no
 Cloudflare account or credentials involved. The Cloudflare build of
 [`examples/body-validation/`](../examples/body-validation/) (plus two routes
 with a `pattern` at the 128-character cap, one in a body and one in a query
-parameter) was run next to the self-hosted server, and 16 requests were sent
+parameter) was run next to the self-hosted server, and 21 requests were sent
 to both: a valid body; an invalid body and a missing required property with
-`Accept: application/json` (422 with the structured JSON body); the same
-invalid body with `Accept: text/plain`, no `Accept`, `*/*` and
-`application/json;q=0` (422 plain text); malformed JSON (400); an oversize body
-(413); a wrong content type (415); a valid and an invalid `format: uuid` path
-parameter; a non-matching query `pattern`; and the worst-case `pattern` input
-(128 characters, three unbounded quantifiers) in a body and a query parameter,
-plus 129 characters. Status, headers and body were identical to the server's,
-and no client value appeared in any error body. That run predates the change
-that made a JSON-schema route answer every 422 as JSON whatever the `Accept`
-header; the Worker and the server share that code, and `npm run test:workerd`
-sends the same requests, but the workerd run has not been repeated since.
+`Accept: application/json`; the same invalid body with `Accept: text/plain`, no
+`Accept`, `*/*` and `application/json;q=0` (all 422 JSON); malformed JSON (400);
+an oversize body (413); a wrong content type (415); a valid and an invalid
+`format: uuid` path parameter; a non-matching query `pattern`; the worst-case
+`pattern` input (128 characters, three unbounded quantifiers) in a body and a
+query parameter, plus 129 characters; and five requests to the JSON Schema
+2020-12 route (`$schema`, a local `$defs` reference, a `[string, "null"]` type
+and `anyOf`): a valid body with `null`, an absent required property, a failing
+`$ref` target, a wrong type and a failing `anyOf`. Status, headers and body were
+identical to the server's, and no client value appeared in any error body.
 
-- **Versions.** Wrangler 4.136.0 with the workerd it bundles (2026-09-21),
+- **Versions.** Wrangler 4.143.0 with the workerd it bundles (2026-09-28),
   `compatibility_date = "2026-09-01"`, no `nodejs_compat`, on macOS arm64 with
   Node 26. Other platforms and versions are untested.
 - **No code generation.** The Worker started and answered every request, and
   workerd refuses `eval` and `new Function`, so neither is needed. The generated
-  `artifact.js` and `validators.js` contain neither.
+  `artifact.js`, `validators.js` and `body-validators.js` contain neither.
 - **Timing.** The worst-case `pattern` input took about 2 ms per request on
   workerd and about the same on the server (single requests on an idle laptop; a
   smoke measurement, not a benchmark).

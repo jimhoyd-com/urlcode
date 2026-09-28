@@ -1,6 +1,6 @@
 import { extensionHookContext, extensionHookReferenceSchema, isSameOriginRequest, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
-import { assertBodySchema, bodySchemaIssues, bodySchemaLine } from '@jimhoyd/urlcode/body-schema';
+import { bodySchemaIssues, bodySchemaLine, compileBodySchema } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
 import { createMcpHandler, ProtocolError, ProtocolErrorCode, Server } from '@modelcontextprotocol/server';
 
@@ -55,7 +55,7 @@ export interface McpToolSpec {
   /** Optional behavior hints, echoed in `tools/list`. */
   annotations?: McpToolAnnotations;
   /**
-   * Optional JSON Schema (the same bounded `request.body.schema` subset as
+   * Optional JSON Schema (the same bounded `request.body.schema` JSON Schema 2020-12 profile as
    * `inputSchema`) a tool result's `structuredContent` must conform to. When
    * declared, the handler's return value must be an object satisfying this
    * schema; `tools/call` then returns both a serialized-JSON text content
@@ -171,10 +171,10 @@ const toolConfigSchema = {
     description: { type: 'string', minLength: 1, maxLength: 1024, description: 'What the tool does, shown to MCP clients in tools/list.' },
     annotations: { ...toolAnnotationsSchema, description: 'Optional MCP behavior hints, passed to clients as declared; they are advisory and grant or restrict nothing.' },
     // Loosely typed here (any JSON object); the bounded `request.body.schema`
-    // subset itself is enforced strictly at activation via `assertBodySchema`,
+    // profile itself is enforced strictly, and compiled, at activation via `compileBodySchema`,
     // the same rule a native route's `request.body.schema` is held to.
-    inputSchema: { type: 'object', description: 'Schema of the arguments object, in the bounded request.body.schema subset (checked at activation); a call whose arguments fail it never reaches the handler.' },
-    outputSchema: { type: 'object', description: 'Optional schema, in the same subset, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error.' },
+    inputSchema: { type: 'object', description: 'Schema of the arguments object, in the bounded request.body.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler.' },
+    outputSchema: { type: 'object', description: 'Optional schema, in the same profile, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error.' },
     handler: handlerSchema('Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer.'),
   },
 };
@@ -450,11 +450,11 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         const contracts: ExtensionHookContract[] = [];
         const hooksConfig: Record<string, ExtensionHookConfig> = {};
         for (const [toolName, tool] of Object.entries(spec.tools)) {
-          try { assertBodySchema(tool.inputSchema); }
+          try { compileBodySchema(tool.inputSchema); }
           catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} inputSchema: ${(error as Error).message}`, { cause: error }); }
           if (tool.inputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} inputSchema must declare type: object (MCP tool arguments are always an object)`);
           if (tool.outputSchema !== undefined) {
-            try { assertBodySchema(tool.outputSchema); }
+            try { compileBodySchema(tool.outputSchema); }
             catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} outputSchema: ${(error as Error).message}`, { cause: error }); }
             if (tool.outputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} outputSchema must declare type: object (MCP structuredContent is always an object)`);
           }

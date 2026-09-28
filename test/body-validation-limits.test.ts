@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '../packages/core/src/server.ts';
-import { assertBodySchema, bodySchemaSubset, checkBodySchema, maxRequestBodyBytes } from '../packages/core/src/body-schema.ts';
+import { assertBodySchema, bodySchemaProfile, checkBodySchema, maxRequestBodyBytes } from '../packages/core/src/body-schema.ts';
 import { assertSafePattern } from '../packages/core/src/pattern-guard.ts';
 import type { BodySchema } from '../packages/core/src/body-schema.ts';
 import { project, request, param } from './helpers.ts';
@@ -61,8 +61,8 @@ test('body schema limits: bytes, depth, node count, property count, string, item
   for (let i = 0; i < 65; i++) wide[`p${i}`] = { type: 'string' };
   for (let i = 0; i < 64; i++) many[`p${i}`] = { type: 'string' };
   assert.throws(() => assertBodySchema({ type: 'object', properties: wide }), /at most 64/);
-  assert.throws(() => assertBodySchema({ type: 'object', properties: { a: { type: 'object', properties: many }, b: { type: 'object', properties: many } } }), /too large/);
-  assert.throws(() => assertBodySchema({ type: 'string', maxLength: maxRequestBodyBytes + 1 }), /maxLength must be an integer from 0 to 1048576/);
+  assert.throws(() => assertBodySchema({ type: 'object', properties: { a: { type: 'object', properties: many }, b: { type: 'object', properties: many }, c: { type: 'object', properties: many }, d: { type: 'object', properties: many } } }), /more than 256 schema nodes/);
+  assert.throws(() => assertBodySchema({ type: 'string', maxLength: maxRequestBodyBytes + 1 }), /\/maxLength: must be an integer from 0 to 1048576/);
   assert.throws(() => assertBodySchema({ type: 'string', minLength: maxRequestBodyBytes + 1 }), /minLength/);
   assert.throws(() => assertBodySchema({ type: 'array', maxItems: 10001 }), /maxItems/);
   assert.throws(() => assertBodySchema({ type: 'string', enum: Array.from({ length: 65 }, (_, i) => `v${i}`) }), /1 to 64/);
@@ -89,14 +89,14 @@ test('sandboxed routes get the same body and parameter validation before any gue
 
 test('a string without a pattern may be as long as the request body limit; a pattern keeps its regex cap (#713)', async t => {
   assert.equal(maxRequestBodyBytes, 1048576);
-  assert.equal(bodySchemaSubset.limits.length, maxRequestBodyBytes, 'the published subset states the new string cap');
+  assert.equal(bodySchemaProfile.limits.length, maxRequestBodyBytes, 'the published profile states the string cap');
   for (const maxLength of [8193, 100000, maxRequestBodyBytes]) {
     assert.doesNotThrow(() => assertBodySchema({ type: 'string', maxLength }), String(maxLength));
     assert.doesNotThrow(() => assertBodySchema({ type: 'string', minLength: maxLength, maxLength }), String(maxLength));
   }
   assert.throws(() => assertBodySchema({ type: 'string', pattern: '^[a-z]+$', maxLength: 129 }), /pattern requires maxLength of at most 128/);
   assert.throws(() => assertBodySchema({ type: 'string', pattern: '^[a-z]+$', maxLength: 8193 }), /pattern requires maxLength of at most 128/);
-  assert.throws(() => assertBodySchema({ type: 'array', maxItems: 10001 }), /maxItems must be an integer from 0 to 10000/, 'item bounds are unchanged');
+  assert.throws(() => assertBodySchema({ type: 'array', maxItems: 10001 }), /\/maxItems: must be an integer from 0 to 10000/, 'item bounds are unchanged');
 
   const note = { type: 'object', required: ['text'], additionalProperties: false, properties: { text: { type: 'string', minLength: 9000, maxLength: 100000 } } } satisfies BodySchema;
   const app = await serve(t, { '/notes': { methods: ['POST'], request: { body: { format: 'json', contentTypes: ['application/json'], schema: note } }, respond: { status: 201, json: { ok: true } } } });

@@ -4,7 +4,7 @@ import {Ajv} from 'ajv';
 import {capabilityNames,capabilityTargets,capabilityDetails} from '../packages/core/src/capabilities.ts';
 import {getCapability,formatCapability} from '../packages/core/src/capability-query.ts';
 import {getSchemaFragment,schemaPathNames} from '../packages/core/src/schema-query.ts';
-import {bodySchemaSubset} from '../packages/core/src/body-schema.ts';
+import {bodySchemaProfile} from '../packages/core/src/body-validation.ts';
 import {getCapability as sdkCapability,getSchemaFragment as sdkSchema} from '../packages/core/src/tooling.ts';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const run=(...args:string[])=>spawnSync(process.execPath,['--conditions=development',cli,...args],{encoding:'utf8',timeout:15000});
@@ -57,12 +57,15 @@ test('CLI prints one handler, one policy, schema fragments and fails closed on u
  assert.equal(run('schema').status,1);
 });
 
-test('get_schema and get_capability state the whole request.body.schema subset up front, matching the validator (#587)',()=>{
+test('get_schema and get_capability state the whole request.body.schema profile up front, matching the validator (#587, #845)',()=>{
  const described=getSchemaFragment('request.body.schema').schema.description as string;
  const constraints=getCapability('request.body').constraints.join('\n');
- for(const keyword of bodySchemaSubset.keywords){assert.match(described,new RegExp('\\b'+keyword+'\\b'),keyword);assert.ok(constraints.includes(keyword),keyword);}
- for(const type of bodySchemaSubset.types)assert.ok(described.includes(type)&&constraints.includes(type),type);
- assert.match(described,new RegExp('maxLength of at most '+bodySchemaSubset.patternMaxLength));assert.match(described,/format \(uuid only\)/);
- assert.match(constraints,new RegExp('at most '+bodySchemaSubset.patternMaxLength));
- for(const text of [described,constraints])assert.ok(text.includes(String(bodySchemaSubset.limits.length))&&text.includes(String(bodySchemaSubset.limits.items)),'string and item caps are stated (#713)');
+ const word=(keyword:string)=>new RegExp('(^|[^\\w$])'+keyword.replace('$','\\$')+'\\b');
+ for(const keyword of bodySchemaProfile.keywords){assert.match(described,word(keyword),keyword);assert.match(constraints,word(keyword),keyword);}
+ for(const type of bodySchemaProfile.types)assert.ok(described.includes(type)&&constraints.includes(type),type);
+ assert.ok(described.includes(bodySchemaProfile.dialect)&&constraints.includes(bodySchemaProfile.dialect),'the one dialect is named');
+ assert.match(described,new RegExp('maxLength of at most '+bodySchemaProfile.patternMaxLength));assert.match(described,/format \(uuid only\)/);
+ assert.match(constraints,new RegExp('at most '+bodySchemaProfile.patternMaxLength));
+ for(const text of [described,constraints])assert.ok(text.includes(String(bodySchemaProfile.limits.length))&&text.includes(String(bodySchemaProfile.limits.items)),'string and item caps are stated (#713)');
+ for(const text of [described,constraints])for(const limit of [bodySchemaProfile.limits.depth,bodySchemaProfile.limits.nodes,bodySchemaProfile.limits.expandedNodes,bodySchemaProfile.limits.refs,bodySchemaProfile.limits.properties,bodySchemaProfile.limits.uniqueItems])assert.ok(text.includes(String(limit)),String(limit));
 });

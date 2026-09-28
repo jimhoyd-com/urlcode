@@ -3,7 +3,7 @@
 // refuses ambiguity, and one same-origin admission rule. Pure functions over `ExtensionRequest` fields, written with
 // web-standard APIs only (TextDecoder, URL, URLSearchParams) so every target can run them; they keep no state and
 // know no extension.
-import { maxRequestBodyBytes } from './body-schema.ts';
+import { maxRequestBodyBytes } from './body-validation.ts';
 import { isSiteOrigin } from './site-origins.ts';
 import type { ExtensionRequest } from './extensions.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';

@@ -8,7 +8,7 @@ import { effectivePolicies } from './policies.ts';
 import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { compileHttp } from './http-policy.ts';
 import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
-import { uuidFormat } from './body-schema.ts';
+import { compileBodySchema, uuidFormat } from './body-schema.ts';
 import Ajv from 'ajv/dist/2020.js';
 import { assert, revisionPinHint, routeError } from './errors.ts';
 import { functionFile } from './config.ts';
@@ -98,6 +98,8 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
         }
       }
       compileHttp(route);
+      // Compiled once here, before serving; a request only runs the compiled validator (RIM-HTTP-001).
+      if (route.request?.body?.schema) route.bodySchema = compileBodySchema(route.request.body.schema);
       if (config.match) route.match = normalizeMatch(config.match);
       if (config.stream) {
         assert(config.function, `${pattern}: stream: true needs a function route; an extension mount streams through its registration's streams declaration`, { code: 'stream-without-function' });

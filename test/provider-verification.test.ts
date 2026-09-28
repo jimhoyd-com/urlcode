@@ -11,7 +11,7 @@ import { createVercelHandler } from '../packages/core/src/vercel.ts';
 import { createLambdaHandler } from '../packages/core/src/aws.ts';
 import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
-import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
+import type { Artifact, Validators, BodyValidators } from '../packages/core/src/cloudflare.ts';
 import { providerConformanceCases, runProviderConformance, verifyProviderDeployment } from '../packages/core/src/provider-verification.ts';
 import type { ProviderTransport, ProviderProbe } from '../packages/core/src/provider-verification.ts';
 import { request } from './helpers.ts';
@@ -28,8 +28,8 @@ test('the versioned fixture passes self-hosted, AWS, Vercel and built Cloudflare
   const out=await mkdtemp(join(tmpdir(),'urlcode-provider-conformance-'));t.after(()=>rm(out,{recursive:true,force:true}));
   await buildCloudflare(project,{out});
   const artifact=((await import(pathToFileURL(join(out,'artifact.js')).href))as{default:Artifact}).default;
-  const validators=(await import(pathToFileURL(join(out,'validators.js')).href))as Validators;
-  const cloudflare=createFetchHandler(artifact,validators);
+  const validators=(await import(pathToFileURL(join(out,'validators.js')).href))as Validators; const bodyValidators = (await import(pathToFileURL(join(out, 'body-validators.js')).href)) as BodyValidators;
+  const cloudflare=createFetchHandler(artifact, validators, bodyValidators);
   const httpTransport=(app:{address:{port:number}}):ProviderTransport=>async probe=>{
     const result=await request(app,probe.path,{method:probe.method,headers:probe.headers,body:probe.body});
     const headers:Record<string,string>={};for(const [name,value]of Object.entries(result.headers))if(value!==undefined)headers[name]=Array.isArray(value)?value.join(', '):value;
