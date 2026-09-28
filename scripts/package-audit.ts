@@ -277,7 +277,13 @@ export const budgets: Record<string, Budget> = {
     // dist/store.js; the transition schema appears again in collection.d.ts,
     // urlcode.json and the README field reference) measure 68802 packed and
     // 276905 unpacked bytes.
-    packed: 72 * 1024,
+    // Raised to 80 KiB packed and 315 KiB unpacked for #863's membership gates:
+    // membership collections, gated transitions and readers mounts
+    // (dist/collection.js, dist/store.js), the operator addMember/removeMember/
+    // listMembers (dist/membership.js with declarations), the schema again in
+    // urlcode.json and the README field reference, and the SECURITY/CHANGELOG
+    // contract measure 75895 packed and 308658 unpacked bytes (30 entries).
+    packed: 80 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -300,8 +306,8 @@ export const budgets: Record<string, Budget> = {
     // collection outbox and its producer, with declarations and the
     // README/SECURITY contract): 46693 packed and 177677 unpacked bytes.
     // #822 generated field reference in the README (measured 220290 unpacked).
-    // #835 transitions and retries: see the packed note above.
-    unpacked: 285 * 1024,
+    // #835 transitions and retries, #863 membership gates: see the packed note above.
+    unpacked: 315 * 1024,
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

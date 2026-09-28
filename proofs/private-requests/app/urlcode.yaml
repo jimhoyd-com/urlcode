@@ -2,6 +2,37 @@ version: "1"
 extensions:
   # Provider settings (secret, database, enabled endpoints) belong to the operator's host.mjs and data/, not here.
   auth: {version: "1", config: {}}
+  store:
+    version: "1"
+    config:
+      collections:
+        # Review is an application permission, not a sign-in fact: one record per reviewer, keyed by the opaque
+        # Better Auth user id. It has no mount; the operator maintains it (npm run setup).
+        reviewers:
+          membership: true
+          key: userId
+          fields:
+            userId: {type: string, required: true, maxLength: 128}
+        requests:
+          mount: /api/requests
+          ownership: owner
+          fields:
+            title: {type: string, required: true, minLength: 1, maxLength: 120}
+            details: {type: string, maxLength: 2000, default: ""}
+            status: {type: string, enum: [pending, approved], default: pending, transitionOnly: true}
+            reviewedAt: {type: string, maxLength: 32, transitionOnly: true}
+          filterable: [status]
+          transitions:
+            # The one business transition: a reviewer moves another user's pending request to approved.
+            approve:
+              from: {status: pending}
+              set: {status: approved}
+              stamp: {reviewedAt: now}
+              by: others
+              members: reviewers
+              mount: /api/approvals
+          # Reviewers list and read every owner's requests; owners see only their own on /api/requests.
+          readers: {mount: /api/review, members: reviewers}
 routes:
   /:
     description: The single-page frontend; it signs in through Better Auth's own client.
@@ -13,56 +44,18 @@ routes:
     description: Better Auth's own endpoints. @jimhoyd/urlcode-auth serves an exact allowlist; npm run inventory lists it.
     extension: auth
     methods: [GET, POST]
-  /api/me:
-    description: The signed-in user's opaque id and whether this application lets them review.
-    methods: [GET]
-    auth: true
-    env: {APP_DATABASE: {env: APP_DATABASE}}
-    sandboxReason: Opens the application's SQLite database in trusted Node.
-    function: {source: functions/me.mjs}
-  /api/requests:
-    description: GET lists the caller's own requests, optionally one status; POST creates a pending request owned by the caller.
+  /api/requests/*:
+    description: The signed-in user's own requests. GET lists them (status=pending or approved filters) or reads one; POST creates a pending one.
+    extension: store
     methods: [GET, POST]
-    parameters:
-      - {in: query, name: status, schema: {type: string, enum: [pending, approved]}}
     auth: true
-    request:
-      body:
-        maxBytes: 8192
-        contentTypes: [application/json]
-        format: json
-        schema:
-          type: object
-          additionalProperties: false
-          required: [title]
-          properties:
-            title: {type: string, minLength: 1, maxLength: 120}
-            details: {type: string, maxLength: 2000}
-    env: {APP_DATABASE: {env: APP_DATABASE}}
-    sandboxReason: Opens the application's SQLite database in trusted Node.
-    function: {source: functions/requests.mjs}
-  /api/requests/{id}:
-    description: One request, readable by its owner or a reviewer; anyone else gets 404.
-    methods: [GET]
-    parameters:
-      - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
-    auth: true
-    env: {APP_DATABASE: {env: APP_DATABASE}}
-    sandboxReason: Opens the application's SQLite database in trusted Node.
-    function: {source: functions/request.mjs}
-  /api/requests/{id}/approve:
-    description: The one business transition. A reviewer moves another user's pending request to approved.
+  /api/approvals/*:
+    description: POST /api/approvals/<id> approves another user's pending request; reviewers only.
+    extension: store
     methods: [POST]
-    parameters:
-      - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
     auth: true
-    env: {APP_DATABASE: {env: APP_DATABASE}}
-    sandboxReason: Opens the application's SQLite database in trusted Node.
-    function: {source: functions/approve.mjs}
-  /api/review/pending:
-    description: Every pending request, for reviewers only.
+  /api/review/*:
+    description: Every owner's requests, read-only, for reviewers only; GET /api/review?status=pending is the review queue.
+    extension: store
     methods: [GET]
     auth: true
-    env: {APP_DATABASE: {env: APP_DATABASE}}
-    sandboxReason: Opens the application's SQLite database in trusted Node.
-    function: {source: functions/pending.mjs}

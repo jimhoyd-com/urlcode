@@ -421,9 +421,12 @@ caller id from `context.capabilities.auth.identity.userId` (a
 [request-bound capability](EXTENSIONS.md#request-bound-capabilities)) and
 implements only the application's rules; it never receives the cookie or an
 `Authorization` header. A `sandbox: true` route cannot name `auth`.
-Permissions are application data keyed by that id:
+Permissions are application data keyed by that id, and the store holds them
+declaratively before any function is needed: a
+[membership collection](STORE.md#membership-gates-and-cross-owner-reads) gates
+a transition or a read-only cross-owner mount.
 [proofs/private-requests](../proofs/private-requests/README.md) is an
-end-to-end example with owners and a reviewer. A function that reads a session
+end-to-end example with owners and a reviewer and no application code. A function that reads a session
 cookie, checks a password or compares a session token reimplements what auth
 already enforces.
 

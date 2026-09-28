@@ -11,12 +11,13 @@
     "proposal": "urlcode permissions --project app",
     "validate": "urlcode validate --local --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4180",
     "test": "urlcode test --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4180",
-    "audit": "urlcode audit --expect-routes 8 --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4180",
+    "audit": "urlcode audit --expect-routes 6 --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4180",
     "report": "urlcode report --project app --host-file host.mjs --policy operator/policy.json",
     "start": "urlcode serve --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4180 --port 4180"
   },
   "dependencies": {
     "@jimhoyd/urlcode-auth": "file:../../packages/auth",
+    "@jimhoyd/urlcode-store": "file:../../packages/store",
     "better-auth": "1.7.6"
   },
   "devDependencies": {

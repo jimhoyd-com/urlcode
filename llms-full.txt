@@ -142,6 +142,13 @@ Each rung's YAML is valid on every rung above it.
    leaves that handler for you, unlike the other rungs here). Add `auth: true` where a
    mount needs a signed-in caller.
 
+Owner-private records, a reviewed state change and a reviewer permission are
+declarative: an owned store collection, a `by: others` transition and a
+[membership collection](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#membership-gates-and-cross-owner-reads) keyed
+by the signed-in user id. The
+[private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) is an
+end-to-end application built that way, with no application server code.
+
 When the declarative contracts do not express an application's rules, keep
 each operation as an ordinary YAML function route with `auth: true`, explicit
 methods and bounded request bodies (the
@@ -151,9 +158,7 @@ reads the verified user id from
 `context.capabilities.auth.identity.userId`
 ([request-bound capabilities](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-bound-capabilities)).
 Better Auth owns accounts and sessions; the application owns its business
-rules and authorization. The
-[private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) is an
-end-to-end application built this way.
+rules and authorization.
 
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md)); core has no native `link` route.
@@ -940,9 +945,12 @@ caller id from `context.capabilities.auth.identity.userId` (a
 [request-bound capability](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-bound-capabilities)) and
 implements only the application's rules; it never receives the cookie or an
 `Authorization` header. A `sandbox: true` route cannot name `auth`.
-Permissions are application data keyed by that id:
+Permissions are application data keyed by that id, and the store holds them
+declaratively before any function is needed: a
+[membership collection](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#membership-gates-and-cross-owner-reads) gates
+a transition or a read-only cross-owner mount.
 [proofs/private-requests](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) is an
-end-to-end example with owners and a reviewer. A function that reads a session
+end-to-end example with owners and a reviewer and no application code. A function that reads a session
 cookie, checks a password or compares a session token reimplements what auth
 already enforces.
 
@@ -4231,8 +4239,8 @@ review never implies those endpoints were checked. The
 [embedded Better Auth proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) (#843) is
 an end-to-end application on this seam: the first-party `auth` extension
 mounts Better Auth's own handler, turns its verified session into the request
-principal, and hands application routes the user id as a capability. The proof
-lists the provider's served endpoints with its own probe, outside URLCode's
+principal, and the store scopes, gates and stamps its records with that
+principal. The proof lists the provider's served endpoints with its own probe, outside URLCode's
 review facts.
 
 #### Request context: route env and request id
@@ -5618,7 +5626,7 @@ Two distinctions hold throughout:
 | `forms` | Declarative server-rendered form flows with CSRF, field validation and a confirmation page, rendered through ui. | requires ui; uses abuse, mail | config 49, hook input/output 2 | [@jimhoyd/urlcode-forms](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#field-reference) |
 | `mail` | Plain-text transactional email: templates contributed by other extensions, one operator transport. | — | config 2 | [@jimhoyd/urlcode-mail](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mail/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 43 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 48 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference) |
 | `ui` | Shared presentation kit: theme, copy, templates and the data screens other extensions contribute, for every extension page. | — | config 64, hook input/output 3 | [@jimhoyd/urlcode-ui](https://github.com/jimhoyd-com/urlcode/blob/main/packages/ui/README.md#field-reference) |
 <!-- extension-reference:end -->
 
@@ -5637,6 +5645,7 @@ full definition and a checked example live.
 | Save a form as a per-user record | form-records: `records.<name>: {mount, collection, form}` over an `ownership: owner` store collection | [form-records field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/form-records/README.md#field-reference) |
 | A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference), [recipe `store-crud`](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/store-crud/README.md) |
 | Records private to each signed-in user | store: `ownership: owner` on the collection, and a principal-providing policy (`auth: true`) on its route | [per-record ownership](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#per-record-ownership) |
+| A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {mount, members}`; the operator adds members with `addMember` | [membership gates](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) |
 | Sign-in and protected routes | auth: mount Better Auth at `/api/auth/*` with `extension: auth`; `auth: true` on a protected route; the function reads `context.capabilities.auth.identity.userId` | [auth extension guide](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) |
 | Form rate limits | forms: `flows.<name>.abuse`, which needs the abuse extension; sign-in is throttled by Better Auth's own limiter, keyed by the admitted client address | [forms field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md#field-reference), [auth security model](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/SECURITY.md) |
 | An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md#field-reference) |

@@ -1,5 +1,5 @@
 // Browser code for the frontend. Sign-in, sign-out and session state go through Better Auth's own client;
-// application data goes through the site's ordinary JSON routes. Built into app/public/assets/app.js.
+// application data goes through the store's declared JSON mounts. Built into app/public/assets/app.js.
 import { createAuthClient } from 'better-auth/client';
 
 const auth = createAuthClient({ basePath: '/api/auth' });
@@ -9,7 +9,7 @@ const say = text => { $('status').textContent = text; };
 async function api(path, init = {}) {
   const response = await fetch(path, { ...init, headers: { accept: 'application/json', ...(init.body ? { 'content-type': 'application/json' } : {}) } });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
+  if (!response.ok) throw Object.assign(new Error(body.error?.message ?? `HTTP ${response.status}`), { status: response.status });
   return body;
 }
 
@@ -32,16 +32,17 @@ async function render() {
   $('signed-in').hidden = !data;
   if (!data) return;
   $('who').textContent = data.user.email;
-  const me = await api('/api/me');
-  const { requests } = await api('/api/requests');
-  $('mine').replaceChildren(...requests.map(request => item(request)));
-  $('review').hidden = !me.reviewer;
-  if (!me.reviewer) return;
-  const pending = await api('/api/review/pending');
-  $('pending').replaceChildren(...pending.requests.filter(request => request.ownerId !== me.userId).map(request => {
+  const mine = (await api('/api/requests')).items;
+  $('mine').replaceChildren(...mine.map(request => item(request)));
+  // Only members of the reviewers collection may read the queue: anyone else gets 403.
+  const pending = await api('/api/review?status=pending').catch(error => { if (error.status === 403) return null; throw error; });
+  $('review').hidden = !pending;
+  if (!pending) return;
+  const own = new Set(mine.map(request => request.id));
+  $('pending').replaceChildren(...pending.items.filter(request => !own.has(request.id)).map(request => {
     const button = document.createElement('button');
     button.textContent = 'Approve';
-    button.onclick = () => api(`/api/requests/${request.id}/approve`, { method: 'POST' }).then(render, error => say(error.message));
+    button.onclick = () => api(`/api/approvals/${request.id}`, { method: 'POST' }).then(render, error => say(error.message));
     return item(request, button);
   }));
 }

@@ -461,8 +461,8 @@ review never implies those endpoints were checked. The
 [embedded Better Auth proof](../proofs/private-requests/README.md) (#843) is
 an end-to-end application on this seam: the first-party `auth` extension
 mounts Better Auth's own handler, turns its verified session into the request
-principal, and hands application routes the user id as a capability. The proof
-lists the provider's served endpoints with its own probe, outside URLCode's
+principal, and the store scopes, gates and stamps its records with that
+principal. The proof lists the provider's served endpoints with its own probe, outside URLCode's
 review facts.
 
 ### Request context: route env and request id

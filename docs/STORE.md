@@ -262,7 +262,8 @@ smallest store-owned contract behind a reviewed conditional mutation with an
 expected revision and result-aware retries. It has three parts, each bounded:
 
 1. **Declared transitions**: a named change of one record from exact field
-   values to constant ones, served by the store with no project code.
+   values to constant ones, served by the store with no project code, and
+   optionally gated by a [membership collection](#membership-gates-and-cross-owner-reads).
 2. **Result-aware retries**: a retried `Idempotency-Key` answers what the first
    request committed instead of `409`.
 3. **Host transactions**: trusted extension code runs several store operations
@@ -274,6 +275,11 @@ engine. The first concrete fixture is the owner/reviewer approval of
 
 ```yaml
 collections:
+  reviewers:                       # who may review: principal ids, maintained by the operator
+    membership: true
+    key: userId
+    fields:
+      userId: {type: string, required: true, maxLength: 128}
   requests:
     mount: /api/requests
     ownership: owner
@@ -289,13 +295,16 @@ collections:
         set: {status: approved}
         stamp: {reviewedBy: actor, reviewedAt: now}
         by: others                 # any principal except the record's owner
+        members: reviewers         # ...who is also a member of reviewers
         mount: /api/approvals
       withdraw:                    # POST /api/requests/<id>/withdraw, owner only
         from: {status: pending}
         set: {status: withdrawn}
+    readers: {mount: /api/review, members: reviewers}   # GET /api/review?status=pending
 routes:
   /api/requests/*: {extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true}
   /api/approvals/*: {extension: store, methods: [POST], auth: true}
+  /api/review/*: {extension: store, methods: [GET, HEAD], auth: true}
 ```
 
 ### Declared transitions
@@ -319,9 +328,12 @@ routes:
   `others` is any principal **except** the owner: the transition is served only
   as `POST <transition mount>/<id>`, a separate route that must carry a
   principal-providing policy, so the operator guards it independently of the
-  collection. The store has no roles: who may reach that route is the route's
-  policy alone. On a shared collection `by` is refused, since records have no
-  owner to compare, and anyone who can reach the mount may run the transition.
+  collection. Without `members`, anyone that route admits may run it; with
+  `members` only a member of that
+  [membership collection](#membership-gates-and-cross-owner-reads) may. On a
+  shared collection `by` is refused, since records have no owner to compare,
+  and anyone who can reach the mount may run the transition unless it names
+  `members`.
 - A field declared `transitionOnly: true` changes only through a transition's
   `set` or `stamp`: a create stores its default (or leaves it unset), `PUT`
   keeps its current value, and any body naming it is `400` with the field error
@@ -330,6 +342,67 @@ routes:
   `required`, on the key or an increment field, and when no transition sets or
   stamps it. A [screen](#a-screen-for-the-collection) over such a collection
   is refused until screens can show transitions.
+
+### Membership gates and cross-owner reads
+
+Identity comes from the principal-providing policy (with `auth`, the Better
+Auth user id); permission is application data keyed by that id, in the store
+itself ([#863](https://github.com/jimhoyd-com/urlcode/issues/863)). The store
+still has no roles, and `auth` gains none.
+
+- **A membership collection** declares `membership: true` and a `key`: one
+  record per member, whose key field holds the member's principal id (a value
+  that is not a principal id is `400 must be a principal id`). It reuses the
+  unique-key machinery instead of a new table, so membership is one indexed
+  lookup inside the request's own transaction. It has **no mount and no HTTP
+  API**: a membership list served on a collection mount would let anyone the
+  route admits add themselves or enumerate members. Activation therefore
+  refuses it with `mount`, and with `ownership`, `transitions`, `readers`,
+  `increments`, `idempotency`, `sortable`, `filterable`, `readOnly` or
+  `audit`, and refuses a screen over it.
+- **Maintaining it** reuses the operator paths the store already has, not a new
+  admin surface. The operator calls `addMember`, `removeMember` and
+  `listMembers` from `@jimhoyd/urlcode-store` (each one transaction on its own
+  connection, safe while the server is serving, validated against the
+  project's declared collections like `reassignOwner`; `addMember` creates the
+  database for a site that has not served yet). Trusted extension code uses
+  [`StoreExports`](#using-a-collection-from-another-extension):
+  `records('reviewers').create(null, {userId})`, and `remove` inside a
+  [host transaction](#host-transactions).
+- **A gated transition** adds `members: <membership collection>`. The order is
+  principal (`401`), then membership (`403 membership_required`), then
+  everything in [the ordering below](#design-decisions), starting with the
+  retained `Idempotency-Key`. The membership check is the first statement of
+  the write transaction, before any record of the collection is read. A
+  non-member therefore gets the same `403` for an existing id and a missing
+  one, and a removed member's retry is refused rather than replayed.
+  `by: others` still refuses the owner, member or not (`403
+  own_record_refused`). Host transactions pass the same gate.
+- **Cross-owner reads.** An owned collection may declare
+  `readers: {mount, members}`. Members then list and read **every** owner's
+  records, read-only, on that separate mount: `GET <mount>` takes the
+  collection's `limit`, `cursor`, `sort` and filters (so `?status=pending` is
+  a review queue), and `GET <mount>/<id>` reads one record with its `ETag`.
+  Any other method is `405`. The mount needs its own route with a
+  principal-providing policy. The principal and membership come first, in the
+  same read transaction as the read, before the query is parsed or any record
+  is read. A non-member gets one `403` for the list, an existing id, a missing
+  id and a malformed one. Records with no owner are left out, the stored owner
+  is never shown, and owners keep their own view on the collection mount.
+- **Changes apply immediately.** Membership is read inside each gated
+  request's transaction, so an addition or removal committed before a request
+  begins applies to it; there is no cache. Of concurrent approvals by members
+  exactly one commits, as for any transition.
+- **Activation** refuses a `members` naming a collection that is not declared
+  or is not a membership collection, and `readers` on a shared collection or
+  on a mount that another store mount already uses.
+- **Why this shape.** Only `members` on a transition, `readers` on a
+  collection and `membership: true` are new. Richer rules (roles with
+  hierarchies, per-record sharing, a reader scope narrower than "every
+  owner") would be an authorization language; this is one named set per gate.
+  `urlcode-store reassign` moves owned records and does not rewrite
+  membership keys: a principal that changes id needs `removeMember` and
+  `addMember`.
 
 ### Result-aware retries
 
@@ -403,11 +476,13 @@ store.transaction(tx => {
 
 **Authorization ordering.** The route's policies run first (for example
 `auth: true` sets the principal). Then the store answers, in order: `401` on an
-owned collection or a `by: others` transition without a principal; `403` for a
+owned collection, a `by: others` transition or a gated one without a
+principal; `403` for a
 cross-origin write; `400` for a malformed `Idempotency-Key` or `If-Match`, a
 key on a collection without `idempotency`, or a body problem it can see before
 the database (JSON syntax, a body on a transition); `405` on a `readOnly`
-collection. Inside the write transaction: the retained key (`422` or a
+collection. Inside the write transaction: for a gated transition the
+membership check (`403 membership_required`); the retained key (`422` or a
 replay); the record in the caller's scope (`404`, so another owner's record is
 a missing one); for `by: others` the owner check (`403 own_record_refused`);
 `If-Match` (`412`); the transition's `from` values
@@ -436,9 +511,10 @@ and changes no stored data.
 
 **Operator capabilities.** The operator chooses the database path, pins the
 revision that declares every transition, guards each `by: others` transition
-mount with its own route policy and installs the extensions that may call
-`transaction`. The store adds no roles, no membership table and no command to
-edit claims; `urlcode-store reassign` leaves claims as they are.
+and readers mount with its own route policy, maintains the membership
+collections and installs the extensions that may call `transaction`. The store
+adds no roles and no command to edit claims; `urlcode-store reassign` leaves
+claims and membership keys as they are.
 
 **One process and several.** Every guarantee here is a SQLite `BEGIN
 IMMEDIATE` transaction on one database file, so it holds for every connection
@@ -460,7 +536,7 @@ The #835 counterexamples, and what serves each:
 
 | Contract | Served by | Not built |
 |---|---|---|
-| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `transitionOnly` state | a declarative reviewer gate: the store has no roles, so a reviewer-only route needs a policy the operator installs; reviewer reads of other owners' records and a pending list across owners |
+| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `transitionOnly` state, gated by a membership collection; a readers mount for the pending list across owners ([the proof](../proofs/private-requests/README.md) has no application code) | audit of membership changes (a membership collection refuses `audit`); a CLI command for `addMember`/`removeMember` |
 | Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a host transaction (list, check overlap, create or `update` with `ifMatch`) | a declarative non-overlap constraint; an interval index (the check reads the caller's records, at most `maxRecords`) |
 | Simulated credits: hold, commit, cancel across records, conserving the total | a host transaction (`minimum: 0` refuses an overdraft and rolls the whole transfer back) | a declarative transfer; `Idempotency-Key` on host transactions |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
@@ -591,8 +667,9 @@ collection, and `409 collection_full` still tells any caller that it is full
 so size `maxRecords` for them); all owners' records share
 one database and its one-writer-at-a-time transactions; the store is still trusted operator
 code on one host, not a hostile multi-tenant boundary; and backups copy every
-owner's records together. Access by an operator or support role to another
-user's records is not modelled.
+owner's records together. Read-only access for designated principals to every
+owner's records is a [readers mount](#membership-gates-and-cross-owner-reads);
+write access by an operator or support role is not modelled.
 
 ### Per-owner record limit
 
@@ -953,7 +1030,12 @@ principal (`request.principal`):
 
 - `transition(principal, id, name, {ifMatch})` runs a
   [declared transition](#conditional-transitions-and-result-aware-retries)
-  exactly as its HTTP endpoint does, without an `Idempotency-Key`.
+  exactly as its HTTP endpoint does, without an `Idempotency-Key`, and
+  through the same membership gate.
+
+A [membership collection](#membership-gates-and-cross-owner-reads) has no
+mount, so this export (and the operator's `addMember`) is how code maintains
+it: `create(null, {userId})` adds a member.
 
 `create`, `get`, `update` and `transition` return `{record, etag}` (a record
 never includes its owner) and
@@ -972,12 +1054,14 @@ operations as one database transaction: see
 ## Not built yet
 
 SQL ordering for sorted lists, a declarative interval (non-overlap)
-constraint, a declarative multi-record transfer, role or membership gates for
-transitions and screen controls for transitions are not built
+constraint, a declarative multi-record transfer, roles beyond a
+[membership collection](#membership-gates-and-cross-owner-reads) and screen
+controls for transitions are not built
 ([#835](https://github.com/jimhoyd-com/urlcode/issues/835); the
 [transition design](#what-is-not-covered) lists what each needs). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search, and richer screens beyond the first slice ([#262]): labels,
 columns, sort and filter controls have all shipped
 ([#330](https://github.com/jimhoyd-com/urlcode/issues/330)). Owned collections
-([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only: sharing a record with other principals and manager or support access are not
+([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only apart from
+[readers mounts](#membership-gates-and-cross-owner-reads): sharing one record with chosen principals and write access for managers or support are not
 built.
