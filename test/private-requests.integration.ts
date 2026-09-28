@@ -1,7 +1,7 @@
 // The #843 proof end to end with real npm: pack this checkout's core as a release does, install it with the
 // pinned Better Auth into a copy of proofs/private-requests, run the site's own scripts, and exercise the served
 // application over HTTP. It needs the npm registry for better-auth and esbuild; run after `npm run build`
-// (npm run test:proof). The test acts as the evaluator: it writes the operator policy from `urlcode permissions`
+// (npm run test:proof); like the other packaging tests it packs the built core with --ignore-scripts. The test acts as the evaluator: it writes the operator policy from `urlcode permissions`
 // explicitly, the step a person performs after review.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,7 +52,7 @@ const signIn = async (client: ReturnType<typeof browser>, email: string, passwor
 test('private-requests: packed consumer, upstream auth, owner-private records and reviewer approval', { timeout: 1200000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-proof-'));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
-  const packed = run(t, repositoryRoot, npm, ['pack', '--silent', '--pack-destination', root]);
+  const packed = run(t, repositoryRoot, npm, ['pack', '--ignore-scripts', '--silent', '--pack-destination', root]);
   assert.equal(packed.status, 0, packed.stderr);
   const tarball = join(root, packed.stdout.trim().split('\n').at(-1)!);
   const site = join(root, 'site');
