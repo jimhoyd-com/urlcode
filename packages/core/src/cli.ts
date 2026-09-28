@@ -174,10 +174,13 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'artifacts', group:'Extensions', text:
 `  urlcode artifacts available [--json]
-  urlcode artifacts add <name> [<name>…] [--site directory]
+  urlcode artifacts add <name|package spec|tarball> […] [--site directory]
   urlcode artifacts remove <name> [--site directory]
   urlcode artifacts list [--strict] [--json] [--site directory]
-    # artifacts are inert data add-ons (JSON schemas, example configuration) with the same shape, release and pinning as extensions; they never execute and are never wired into host.mjs
+  urlcode artifacts inspect <name> [--strict] [--json] [--site directory]
+    # artifacts are inert data add-ons (JSON, YAML and Markdown: OpenAPI and JSON Schema documents, example configuration); they never execute and are never wired into host.mjs
+    # released ones are pinned by this runtime like extensions; an operator's independent package (npm spec or local tarball carrying a urlcode.json artifact descriptor) is pinned by its package-lock sha512
+    # inspect reads the documents its urlcode.json lists, offline and as untrusted data: media type, OpenAPI version or JSON Schema dialect, sha256, size, origin, local $refs resolved inside the package; remote refs are listed, never fetched; --strict exits 1 on an error diagnostic
 ` },
   { name:'explain', group:'Agent tooling', text:
 `  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--policy /absolute/policy.json] [--json]
@@ -357,7 +360,7 @@ try {
     if (values['no-mcp'] && !(command === 'init' || (command === 'bootstrap' && values.create))) throw new ConfigError('--no-mcp is only supported by init and bootstrap --create');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
-    if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions and artifacts list');
+    if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions list and artifacts list|inspect');
     if (values.site !== undefined && !['extensions', 'artifacts', 'upgrade'].includes(command)) throw new ConfigError('--site is only supported by extensions, artifacts and upgrade');
     if ((values.to !== undefined || values.check) && command !== 'upgrade') throw new ConfigError('--to and --check are only supported by upgrade');
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
@@ -365,7 +368,7 @@ try {
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','bootstrap','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
-      if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list');
+      if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list|inspect');
       const code=await runAddonCommand(command,arg!,extra,values,print);
       if(code!==undefined)process.exitCode=code;
     }else if(command==='import'||command==='export'){

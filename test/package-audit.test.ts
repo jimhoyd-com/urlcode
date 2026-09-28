@@ -22,8 +22,9 @@ test('packFileProblems refuses node_modules, a copy of core, and anything but da
   assert.match(leaks[1]!, /copy of @jimhoyd\/urlcode/);
   assert.match(leaks[2]!, /copy of @jimhoyd\/urlcode/);
   assert.deepEqual(packFileProblems('artifact', ['package.json', 'urlcode.json', 'README.md', 'LICENSE', 'NOTICE', 'SECURITY.md', 'schemas/config.json', 'config/example.json']), []);
-  const extra = packFileProblems('artifact', ['schemas/config.json', 'dist/index.js', 'schemas/nested/x.json', 'config/example.yaml', 'CHANGELOG.md']);
-  assert.deepEqual(extra.map(line => line.split(':')[0]), ['dist/index.js', 'schemas/nested/x.json', 'config/example.yaml', 'CHANGELOG.md']);
+  // JSON, YAML and Markdown data anywhere under a plain path is an artifact's content (#844); code and dotfiles are not.
+  const extra = packFileProblems('artifact', ['schemas/config.json', 'dist/index.js', 'schemas/nested/x.json', 'openapi/api.yaml', 'CHANGELOG.md', 'scripts/setup.sh', '.npmrc', 'data/.hidden.json', 'bin/tool']);
+  assert.deepEqual(extra.map(line => line.split(':')[0]), ['dist/index.js', 'scripts/setup.sh', '.npmrc', 'data/.hidden.json', 'bin/tool']);
 });
 
 test('the audited package list is core plus every add-on, and every one has a budget', async () => {

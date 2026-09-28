@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -258,4 +259,70 @@ test('an independent extension package installs from a pinned local tarball, val
   const removed = await urlcode(t, dir, ['extensions', 'remove', 'greeting']);
   assert.equal(removed.status, 0, removed.stdout + removed.stderr);
   assert.doesNotMatch(await readFile(join(dir, 'host.mjs'), 'utf8'), /urlcode-greeting/);
+});
+
+// #844 operation 1: an artifact package outside @jimhoyd, packed to a local tarball, installs through `artifacts add`
+// with npm's lock integrity as its pin, and `artifacts inspect` reads its standard documents offline. Its lifecycle
+// scripts never run, and a tarball replaced after locking is refused.
+test('an independent artifact package installs from a pinned local tarball, inspects offline, refuses a stale tarball and removes', { timeout: 900000 }, async t => {
+  const { root, dir } = await site(t);
+  const fixture = join(repositoryRoot, 'test', 'fixtures', 'addons', 'petstore-docs');
+  const packFrom = (source: string): string => {
+    const packed = npmRun(['pack', '--silent', '--pack-destination', root, source], root);
+    assert.equal(packed.status, 0, packed.stderr);
+    return join(root, packed.stdout.trim().split('\n').at(-1)!);
+  };
+
+  // A copy with install scripts: npm runs none of them (--ignore-scripts), and the artifact is refused as not inert.
+  const scripted = join(root, 'scripted');
+  await cp(fixture, scripted, { recursive: true });
+  const marker = join(root, 'lifecycle.marker'), write = `node -e "require('fs').appendFileSync(${JSON.stringify(marker)}, 'ran')"`;
+  const manifest = JSON.parse(await readFile(join(scripted, 'package.json'), 'utf8')) as Record<string, unknown>;
+  await writeFile(join(scripted, 'package.json'), JSON.stringify({ ...manifest, version: '1.4.1', scripts: { preinstall: write, install: write, postinstall: write } }));
+  const before = await readFile(join(dir, 'package.json'), 'utf8');
+  const refused = await urlcode(t, dir, ['artifacts', 'add', packFrom(scripted)]);
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /Refusing @example\/urlcode-petstore-docs: .*(?:hasInstallScript|declares scripts)/);
+  await assert.rejects(access(marker), 'no lifecycle script ran');
+  assert.equal(await readFile(join(dir, 'package.json'), 'utf8'), before, 'the refused artifact is rolled back');
+
+  const tarball = packFrom(fixture);
+  const added = await urlcode(t, dir, ['artifacts', 'add', tarball]);
+  assert.equal(added.status, 0, added.stdout + added.stderr);
+  assert.deepEqual((JSON.parse(added.stdout) as { added: string[] }).added, ['petstore-docs']);
+  const lock = JSON.parse(await readFile(join(dir, 'package-lock.json'), 'utf8')) as { packages: Record<string, { integrity?: string; resolved?: string }> };
+  const entry = lock.packages['node_modules/@example/urlcode-petstore-docs']!;
+  assert.match(entry.integrity ?? '', /^sha512-/);
+  assert.match(entry.resolved ?? '', /^file:.*\.tgz$/);
+  const listed = await urlcode(t, dir, ['artifacts', 'list', '--strict']);
+  assert.equal(listed.status, 0, listed.stdout + listed.stderr);
+  const report = JSON.parse(listed.stdout) as { addons: { name: string; package: string; independent?: boolean; pinned: boolean; version: string }[] };
+  assert.deepEqual(report.addons.map(item => [item.name, item.package, item.independent, item.pinned, item.version]), [['petstore-docs', '@example/urlcode-petstore-docs', true, true, '1.4.0']]);
+
+  const inspected = await urlcode(t, dir, ['artifacts', 'inspect', 'petstore-docs', '--strict']);
+  assert.equal(inspected.status, 0, inspected.stdout + inspected.stderr);
+  const inspection = JSON.parse(inspected.stdout) as { artifact: { verification: string; integrity: string; version: string }; documents: { path: string; mediaType: string; kind: string; version: string | null; sha256: string; refs: { target: string }[]; diagnostics: unknown[] }[]; referencedFiles: { path: string }[] };
+  assert.deepEqual([inspection.artifact.verification, inspection.artifact.integrity, inspection.artifact.version], ['local-tarball', entry.integrity, '1.4.0']);
+  const installed = join(dir, 'node_modules', '@example', 'urlcode-petstore-docs');
+  for (const document of inspection.documents) assert.equal(document.sha256, createHash('sha256').update(await readFile(join(installed, document.path))).digest('hex'), document.path);
+  assert.deepEqual(inspection.documents.map(item => [item.path, item.mediaType, item.kind, item.version, item.diagnostics.length]), [
+    ['openapi/petstore.yaml', 'application/vnd.oai.openapi', 'openapi', '3.1.0', 0],
+    ['schemas/order.json', 'application/schema+json', 'json-schema', 'https://json-schema.org/draft/2020-12/schema', 0],
+    ['README.md', 'text/markdown', 'markdown', null, 0],
+  ]);
+  assert.ok(inspection.documents[0]!.refs.some(ref => ref.target === 'schemas/pet.json#'), 'the OpenAPI document resolves its local file $ref');
+  assert.deepEqual(inspection.referencedFiles.map(item => item.path), ['schemas/pet.json']);
+
+  // Replace the locked tarball: npm's recorded integrity no longer describes it, so inspection and list --strict refuse.
+  const original = await readFile(tarball);
+  await writeFile(tarball, await readFile(packFrom(scripted)));
+  const stale = await urlcode(t, dir, ['artifacts', 'inspect', 'petstore-docs']);
+  assert.notEqual(stale.status, 0);
+  assert.match(stale.stderr, /no longer matches the sha512 integrity package-lock\.json recorded/);
+  assert.notEqual((await urlcode(t, dir, ['artifacts', 'list', '--strict'])).status, 0);
+  await writeFile(tarball, original);
+
+  const removed = await urlcode(t, dir, ['artifacts', 'remove', 'petstore-docs']);
+  assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+  assert.equal((JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies['@example/urlcode-petstore-docs'], undefined);
 });

@@ -34,6 +34,24 @@ export interface AddonPin {
   integrity: string | null;
 }
 export interface AddonManifest { format: 1; version: string; addons: Record<string, AddonPin> }
+/**
+ * The standard document media types an artifact descriptor may list (#844), each with the file extensions it may
+ * carry. A closed set: OpenAPI (YAML or JSON), JSON Schema, Markdown and plain JSON or YAML data.
+ */
+export const artifactMediaTypes = {
+  'application/vnd.oai.openapi': ['.yaml', '.yml'],
+  'application/vnd.oai.openapi+json': ['.json'],
+  'application/schema+json': ['.json'],
+  'text/markdown': ['.md'],
+  'application/json': ['.json'],
+  'application/yaml': ['.yaml', '.yml'],
+} as const satisfies Record<string, readonly string[]>;
+export type ArtifactMediaType = keyof typeof artifactMediaTypes;
+/** One standard document an artifact ships, by its path inside the package. */
+export interface ArtifactDocument { path: string; mediaType: ArtifactMediaType }
+export const MAX_ARTIFACT_DOCUMENTS = 32;
+/** A relative path inside a package: at most eight segments, none of them empty, `.`, `..` or hidden. */
+export const packageDataPath = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\/){0,7}[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** The static descriptor every add-on package carries as `urlcode.json`. */
 export interface AddonDescriptor {
   kind: AddonKind;
@@ -55,6 +73,8 @@ export interface AddonDescriptor {
   hooks?: ExtensionHookContract[];
   authoring?: ExtensionAuthoringContract;
   agent?: AddonAgentTooling;
+  /** An artifact's standard documents (#844), read only as data by `urlcode artifacts inspect`. */
+  documents?: ArtifactDocument[];
 }
 
 export const addonNamePattern = /^[a-z][a-z0-9-]{0,63}$/;
@@ -115,14 +135,30 @@ function assertAgentTooling(agent: unknown, source: string): asserts agent is Ad
   for (const reference of agent.references) assert(isRecord(reference) && typeof reference.name === 'string' && reference.name.length > 0 && reference.name.length <= 128 && typeof reference.description === 'string' && reference.description.length > 0 && reference.description.length <= 300 && typeof reference.path === 'string' && /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|json)$/.test(reference.path), `${source}: agent reference must name a bounded local .md or .json file`);
 }
 
+function assertDocuments(documents: unknown, source: string): asserts documents is ArtifactDocument[] {
+  assert(Array.isArray(documents) && documents.length <= MAX_ARTIFACT_DOCUMENTS, `${source}: documents must be a list of at most ${MAX_ARTIFACT_DOCUMENTS} entries`);
+  const paths = new Set<string>();
+  for (const document of documents) {
+    assert(isRecord(document) && Object.keys(document).every(key => key === 'path' || key === 'mediaType') && typeof document.path === 'string' && packageDataPath.test(document.path), `${source}: each document needs a relative package path (no \`..\`, no leading \`/\`) and a mediaType`);
+    const extensions: readonly string[] | undefined = typeof document.mediaType === 'string' && Object.hasOwn(artifactMediaTypes, document.mediaType) ? artifactMediaTypes[document.mediaType as ArtifactMediaType] : undefined;
+    assert(extensions, `${source}: document ${document.path} has mediaType ${String(document.mediaType)}; use one of ${Object.keys(artifactMediaTypes).join(', ')}`);
+    const path = document.path;
+    assert(extensions.some(extension => path.endsWith(extension)), `${source}: document ${path} must end in ${extensions.join(' or ')} for ${String(document.mediaType)}`);
+    assert(!paths.has(document.path), `${source}: document ${document.path} is listed twice`);
+    paths.add(document.path);
+  }
+}
+
 export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   assert(isRecord(raw) && (raw.kind === 'extension' || raw.kind === 'artifact') && typeof raw.name === 'string' && addonNamePattern.test(raw.name) && typeof raw.description === 'string', `${source} is not an add-on descriptor`);
   assert(Array.isArray(raw.requires) && raw.requires.every(item => typeof item === 'string'), `${source}: requires must be a list of names`);
   assert(raw.uses === undefined || Array.isArray(raw.uses) && raw.uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== raw.name && !(raw.requires as unknown[]).includes(item)) && new Set(raw.uses).size === raw.uses.length, `${source}: uses must be a list of other extension names, disjoint from requires`);
   assert(raw.contributes === undefined || Array.isArray(raw.contributes) && raw.contributes.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== raw.name), `${source}: contributes must be a list of other extension names`);
   if (raw.agent !== undefined) assertAgentTooling(raw.agent, source);
-  if (raw.kind === 'artifact') assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.contributes === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension contract`);
-  else assert(isRecord(raw.schema), `${source}: an extension descriptor needs its configuration schema`);
+  if (raw.kind === 'artifact') {
+    assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.contributes === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension contract`);
+    if (raw.documents !== undefined) assertDocuments(raw.documents, source);
+  } else assert(isRecord(raw.schema) && raw.documents === undefined, `${source}: an extension descriptor needs its configuration schema and lists no documents`);
   return (Array.isArray(raw.uses) ? { ...raw, uses: [...raw.uses as string[]].sort() } : raw) as unknown as AddonDescriptor;
 }
 
