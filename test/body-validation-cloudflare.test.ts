@@ -8,7 +8,7 @@ import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
 import { startServer } from '../packages/core/src/server.ts';
 import { project, request, param } from './helpers.ts';
-import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
+import type { Artifact, Validators, BodyValidators } from '../packages/core/src/cloudflare.ts';
 
 // Runs the built Worker artifact's fetch handler in Node (not workerd): it proves
 // the artifact carries the body schema and the compiled uuid/pattern validators, and
@@ -25,8 +25,8 @@ test('the built Worker artifact enforces body schemas and uuid/pattern parameter
   const out = await mkdtemp(join(tmpdir(), 'urlcode-cf-')); t.after(() => rm(out, { recursive: true, force: true }));
   await buildCloudflare(root, { out });
   const artifact = ((await import(pathToFileURL(join(out, 'artifact.js')).href)) as { default: Artifact }).default;
-  const validators = (await import(pathToFileURL(join(out, 'validators.js')).href)) as Validators;
-  const worker = createFetchHandler(artifact, validators);
+  const validators = (await import(pathToFileURL(join(out, 'validators.js')).href)) as Validators; const bodyValidators = (await import(pathToFileURL(join(out, 'body-validators.js')).href)) as BodyValidators;
+  const worker = createFetchHandler(artifact, validators, bodyValidators);
   const app = await startServer({ project: root, port: 0, log: () => {} }); t.after(() => app.close());
   const headers = { 'content-type': 'application/json' };
   const cases: [string, string, string?][] = [

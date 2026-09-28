@@ -1,7 +1,7 @@
 // Small, dependency-free predicates shared across the runtime and its
 // scripts. Kept separate from extension-transport.ts, which owns GitHub
 // release/cache/lockfile plumbing (and imports Node-only modules) rather
-// than generic object checks; router.ts and body-schema.ts reach this file
+// than generic object checks; router.ts and body-validation.ts reach this file
 // instead so a Worker/edge bundle never pulls in Node builtins through it.
 
 export type UnknownRecord = Record<string, unknown>;

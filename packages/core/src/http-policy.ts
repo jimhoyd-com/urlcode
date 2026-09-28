@@ -3,8 +3,8 @@ import { assert, HttpError } from './errors.ts';
 import { byteLength } from './http-response.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
-import { assertBodySchema, bodySchemaIssues, bodySchemaLine, bodySchemaJson, bodySchemaEnvelope, maxRequestBodyBytes } from './body-schema.ts';
-import type { BodySchema } from './body-schema.ts';
+import { assertBodySchema, bodyIssues, bodySchemaLine, bodySchemaJson, bodySchemaEnvelope, maxRequestBodyBytes } from './body-validation.ts';
+import type { BodySchema, CompiledBodySchema } from './body-validation.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
 export interface RequestBodyPolicy { maxBytes?: number; required?: boolean; contentTypes?: string[]; format?: 'json' | 'text'; schema?: BodySchema }
@@ -16,6 +16,11 @@ export interface HttpRoute {
   request?: { body?: RequestBodyPolicy };
   respond?: RespondSpec; page?: unknown; static?: unknown; download?: unknown;
   responseHeaders?: HeaderPair[]; reply?: Reply | undefined;
+  /**
+   * The compiled `request.body.schema`, attached by the host that loaded the route: Ajv at load time on Node
+   * (router.ts), the build's standalone validator on the Worker (cloudflare.ts). Never serialised.
+   */
+  bodySchema?: CompiledBodySchema | undefined;
 }
 
 export const reservedResponseHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
@@ -69,10 +74,12 @@ export function checkRequest(route: HttpRoute, body: Uint8Array, headers: Header
       let parsed: unknown;
       try { parsed = JSON.parse(text); } catch { throw new HttpError(400,'Invalid JSON body'); }
       if (policy.schema) {
-        const issues = bodySchemaIssues(policy.schema, parsed);
+        // A declared schema that no host compiled is a runtime defect, never a reason to skip validation.
+        if (!route.bodySchema) throw new Error('request.body.schema was not compiled for this route');
+        const issues = bodyIssues(route.bodySchema, parsed);
         if (issues.length) {
           const text = `Request body failed validation\n${issues.map(bodySchemaLine).join('\n')}`;
-          // A route that declares a JSON body schema is a JSON endpoint: its 422 is always JSON, listing every issue.
+          // A route that declares a JSON body schema is a JSON endpoint: its 422 is always JSON, listing its bounded issues.
           throw new HttpError(422, text, { contentType: 'application/json', text: bodySchemaJson(issues), envelope: bodySchemaEnvelope(issues) });
         }
       }

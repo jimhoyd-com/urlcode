@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '../packages/core/src/server.ts';
-import { assertBodySchema, checkBodySchema } from '../packages/core/src/body-schema.ts';
+import { assertBodySchema, checkBodySchema, compileBodySchema } from '../packages/core/src/body-schema.ts';
 import { assertSafePattern } from '../packages/core/src/pattern-guard.ts';
 import { compileHttp, checkRequest } from '../packages/core/src/http-policy.ts';
 import type { HttpRoute } from '../packages/core/src/http-policy.ts';
@@ -37,21 +37,22 @@ test('pattern guard accepts bounded patterns and refuses backtracking constructs
   assert.doesNotThrow(() => assertSafePattern('^\\(a\\)*$'), 'escaped parentheses are literals');
 });
 
-test('body schema subset rejects unsupported keywords and oversized schemas at load time', () => {
+test('the body schema profile refuses what it does not support at load time, naming the keyword and pointer', () => {
   assert.doesNotThrow(() => assertBodySchema(todo));
   const bad: [unknown, RegExp][] = [
-    [{ type: 'object', $ref: '#/x' }, /Unsupported body schema keyword/], [{ type: 'object', oneOf: [] }, /Unsupported body schema keyword/],
-    [{ type: 'money' }, /type must be one of/], [{ properties: {} }, /require type object/], [{ type: 'string', minimum: 1 }, /Numeric bounds/],
+    [{ type: 'object', oneOf: [] }, /\/oneOf: must list 1 to 16 schemas/], [{ type: 'object', if: {} }, /\/if: keyword "if" is not in the supported JSON Schema 2020-12 profile/],
+    [{ type: 'money' }, /\/type: must be one of/], [{ type: ['string', 'string'] }, /distinct/],
     [{ type: 'string', format: 'email' }, /supported: uuid/], [{ type: 'string', pattern: '^a$' }, /requires maxLength/],
-    [{ type: 'string', pattern: '^a$', maxLength: 5000 }, /at most 128/], [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, /repeat a group/],
-    [{ type: 'object', required: ['x'], properties: {} }, /declared in properties/], [{ type: 'array', maxItems: -1 }, /maxItems/],
-    [{ type: 'object', additionalProperties: {} }, /true or false/], [{ type: 'string', enum: [] }, /1 to 64/], [{ type: 'string', enum: [{}] }, /scalars/],
+    [{ type: 'string', pattern: '^a$', maxLength: 5000 }, /at most 128/], [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, /\/pattern: Pattern cannot repeat a group/],
+    [{ type: 'array', maxItems: -1 }, /\/maxItems: must be an integer/], [{ type: 'string', enum: [] }, /1 to 64/], [{ type: 'string', enum: [{}] }, /scalar/],
+    [{ type: 'object', properties: { a: { default: 1 } } }, /\/properties\/a\/default: .*does not fill in request body defaults/],
+    [{ type: 'object', properties: { a: { nullable: true } } }, /use a type list that includes "null"/],
     ['x', /must be an object/],
   ];
   for (const [schema, message] of bad) assert.throws(() => assertBodySchema(schema), message, JSON.stringify(schema));
   let deep: Record<string, unknown> = { type: 'string' };
-  for (let i = 0; i < 6; i++) deep = { type: 'object', properties: { a: deep } };
-  assert.throws(() => assertBodySchema(deep), /too large or deeply nested/);
+  for (let i = 0; i < 8; i++) deep = { type: 'object', properties: { a: deep } };
+  assert.throws(() => assertBodySchema(deep), /nests deeper than 8 levels/);
 });
 
 test('checkBodySchema reports fixed-wording failures and never echoes client data', () => {
@@ -73,11 +74,13 @@ test('checkBodySchema reports fixed-wording failures and never echoes client dat
   assert.deepEqual(checkBodySchema(slug, 'abc'), []);
   assert.deepEqual(checkBodySchema(slug, 'ABC'), ['/ does not match the declared pattern']);
   assert.deepEqual(checkBodySchema(slug, 'a'.repeat(9)), ['/ must be at most 8 characters'], 'over-long input is refused before the regex runs');
-  assert.equal(checkBodySchema({ type: 'array', items: { type: 'string' } }, Array(50).fill(1)).length, 8, 'reports at most eight failures');
+  assert.deepEqual(checkBodySchema({ type: 'array', items: { type: 'string' } }, Array(50).fill(1)), ['[] must be a string'], 'the validator stops at the first failure (allErrors: false)');
 });
 
 test('checkRequest returns 422 for schema failures and keeps 400/415 for syntax and media type', () => {
   const route: HttpRoute = { request: { body: { format: 'json', schema: todo } } }; compileHttp(route);
+  assert.throws(() => checkRequest(route, encode('{"title":"ok"}'), jsonHeaders), /was not compiled/, 'a declared schema is never skipped');
+  route.bodySchema = compileBodySchema(todo);
   const run = (text: string) => { try { checkRequest(route, encode(text), jsonHeaders); return 200; } catch (error) { return (error as { status: number }).status; } };
   assert.equal(run('{"title":"ok"}'), 200);
   assert.equal(run('{"title":1}'), 422);
@@ -96,8 +99,10 @@ test('a route with request.body.schema answers a JSON 422 with declared paths on
   assert.equal(invalid.headers['content-type'], 'application/json');
   const answer = JSON.parse(invalid.body) as { message: string; issues: { pointer: string; keyword: string; message: string }[] };
   assert.equal(answer.message, 'Request body failed validation');
-  assert.ok(answer.issues.some(issue => issue.pointer === '/title' && issue.message === 'must be a string'));
+  assert.deepEqual(answer.issues, [{ pointer: '', keyword: 'additionalProperties', message: 'has a property the schema does not declare' }], 'a non-identifier key is never echoed');
   assert.doesNotMatch(invalid.body, /img|<|Buy/);
+  const typed = JSON.parse((await post('{"title":5,"completed":"x"}')).body) as typeof answer;
+  assert.deepEqual(typed.issues.map(issue => [issue.pointer, issue.message]), [['/title', 'must be a string']]);
   assert.equal((await post('{nope')).status, 400);
 });
 

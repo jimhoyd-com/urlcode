@@ -1,0 +1,95 @@
+{
+  "description": "Shared behavioral fixtures for the request.body.schema JSON Schema 2020-12 profile (#845). test/body-schema-profile.test.ts runs every accepted case through the Node validator and through the Cloudflare build's standalone validators, and every refused case through load-time admission.",
+  "accepted": [
+    {
+      "name": "object",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["title"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 20 },
+          "done": { "type": "boolean" },
+          "tags": { "type": "array", "maxItems": 3, "uniqueItems": true, "items": { "type": "string", "maxLength": 8 } },
+          "count": { "type": "integer", "exclusiveMinimum": 0, "multipleOf": 2 },
+          "legacy": false,
+          "code": { "type": "string", "maxLength": 8, "not": { "const": "root" } }
+        }
+      },
+      "valid": [{ "title": "a" }, { "title": "a", "done": false, "tags": ["x", "y"], "count": 4 }],
+      "invalid": [
+        { "value": {}, "issues": [{ "pointer": "", "keyword": "required", "message": "is missing required property title", "property": "title" }] },
+        { "value": { "title": "" }, "issues": [{ "pointer": "/title", "keyword": "minLength", "message": "must be at least 1 characters", "expected": 1 }] },
+        { "value": { "title": "a", "tags": ["x", "x"] }, "issues": [{ "pointer": "/tags", "keyword": "uniqueItems", "message": "must not contain duplicate items" }] },
+        { "value": { "title": "a", "count": 0 }, "issues": [{ "pointer": "/count", "keyword": "exclusiveMinimum", "message": "must be greater than 0", "expected": 0 }] },
+        { "value": { "title": "a", "count": 3 }, "issues": [{ "pointer": "/count", "keyword": "multipleOf", "message": "must be a multiple of 2", "expected": 2 }] },
+        { "value": { "title": "a", "legacy": 1 }, "issues": [{ "pointer": "/legacy", "keyword": "false", "message": "is not allowed here" }] },
+        { "value": { "title": "a", "code": "root" }, "issues": [{ "pointer": "/code", "keyword": "not", "message": "must not match the schema declared in not" }] },
+        { "value": [], "issues": [{ "pointer": "", "keyword": "type", "message": "must be an object", "expected": "object" }] }
+      ]
+    },
+    {
+      "name": "nullable union",
+      "schema": {
+        "type": "object",
+        "required": ["note"],
+        "properties": {
+          "note": { "type": ["string", "null"], "maxLength": 10 },
+          "size": { "oneOf": [{ "type": "integer", "minimum": 1 }, { "enum": ["small", "large"] }] },
+          "owner": { "anyOf": [{ "type": "null" }, { "type": "object", "required": ["id"], "properties": { "id": { "type": "string", "format": "uuid" } } }] }
+        }
+      },
+      "valid": [
+        { "note": null },
+        { "note": "hi", "size": 3 },
+        { "note": null, "size": "small", "owner": null },
+        { "note": null, "owner": { "id": "123e4567-e89b-42d3-a456-426614174000" } }
+      ],
+      "invalid": [
+        { "value": {}, "issues": [{ "pointer": "", "keyword": "required", "message": "is missing required property note", "property": "note" }] },
+        { "value": { "note": 5 }, "issues": [{ "pointer": "/note", "keyword": "type", "message": "must be string or null", "expected": ["string", "null"] }] },
+        { "value": { "note": null, "size": "medium" }, "issues": [{ "pointer": "/size", "keyword": "oneOf", "message": "must match exactly one declared alternative" }] },
+        { "value": { "note": null, "owner": { "id": "nope" } }, "issues": [{ "pointer": "/owner", "keyword": "anyOf", "message": "must match at least one declared alternative" }] }
+      ]
+    },
+    {
+      "name": "local $defs ref",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {
+          "slug": { "type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 32 },
+          "address": { "type": "object", "required": ["city"], "additionalProperties": false, "properties": { "city": { "$ref": "#/$defs/slug" } } }
+        },
+        "type": "object",
+        "properties": {
+          "home": { "$ref": "#/$defs/address" },
+          "extra": { "type": "object", "propertyNames": { "maxLength": 16 }, "patternProperties": { "^x-[a-z]+$": { "type": "integer" } }, "additionalProperties": false },
+          "pair": { "type": "array", "prefixItems": [{ "type": "string", "maxLength": 4 }, { "type": "number" }], "items": false }
+        }
+      },
+      "valid": [{}, { "home": { "city": "oslo" } }, { "extra": { "x-a": 1 } }, { "pair": ["ab", 2] }],
+      "invalid": [
+        { "value": { "home": { "city": "Oslo" } }, "issues": [{ "pointer": "/home/city", "keyword": "pattern", "message": "does not match the declared pattern" }] },
+        { "value": { "home": {} }, "issues": [{ "pointer": "/home", "keyword": "required", "message": "is missing required property city", "property": "city" }] },
+        { "value": { "extra": { "x-a": "1" } }, "issues": [{ "pointer": "/extra/*", "keyword": "type", "message": "must be an integer", "expected": "integer" }] },
+        { "value": { "extra": { "a-very-long-property-name": 1 } }, "issues": [{ "pointer": "/extra", "keyword": "propertyNames", "message": "has a property name the schema does not allow" }] },
+        { "value": { "pair": ["ab", 2, 3] }, "issues": [{ "pointer": "/pair", "keyword": "items", "message": "must have at most 2 items", "expected": 2 }] }
+      ]
+    }
+  ],
+  "refused": [
+    { "name": "unsupported keyword", "schema": { "type": "object", "properties": { "a": { "type": "object", "unevaluatedProperties": false } } }, "message": "Body schema /properties/a/unevaluatedProperties: keyword \"unevaluatedProperties\" is not in the supported JSON Schema 2020-12 profile" },
+    { "name": "dynamic ref", "schema": { "type": "object", "properties": { "a": { "$dynamicRef": "#node" } } }, "message": "Body schema /properties/a/$dynamicRef: keyword \"$dynamicRef\" is not in the supported JSON Schema 2020-12 profile (dynamic references are not supported)" },
+    { "name": "remote ref", "schema": { "type": "object", "properties": { "a": { "$ref": "https://user:hunter2@schemas.example.com/a.json" } } }, "message": "Body schema /properties/a/$ref: $ref must be a local #/$defs/<name> reference; remote, $id-relative and JSON-pointer references into other keywords are not resolved or fetched" },
+    { "name": "schema id", "schema": { "$id": "https://schemas.example.com/root.json", "type": "object" }, "message": "Body schema /$id: keyword \"$id\" is not in the supported JSON Schema 2020-12 profile (schema identifiers are not resolved; use a local #/$defs reference)" },
+    { "name": "other dialect", "schema": { "$schema": "http://json-schema.org/draft-07/schema#", "type": "object" }, "message": "Body schema /$schema: only https://json-schema.org/draft/2020-12/schema is supported" },
+    { "name": "undeclared def", "schema": { "type": "object", "properties": { "a": { "$ref": "#/$defs/missing" } } }, "message": "Body schema /properties/a/$ref: $ref names a $defs entry that is not declared" },
+    { "name": "recursive ref", "schema": { "$defs": { "node": { "type": "object", "properties": { "child": { "$ref": "#/$defs/node" } } } }, "$ref": "#/$defs/node" }, "message": "Body schema /$defs/node/properties/child/$ref: recursive $ref (a cycle through $defs) is not supported" },
+    { "name": "regex DoS pattern", "schema": { "type": "object", "properties": { "a": { "type": "string", "maxLength": 64, "pattern": "^(a+)+$" } } }, "message": "Body schema /properties/a/pattern: Pattern cannot repeat a group without a bound" },
+    { "name": "regex DoS patternProperties", "schema": { "type": "object", "propertyNames": { "maxLength": 32 }, "patternProperties": { "^(a|aa)*$": true } }, "message": "Body schema /patternProperties/^(a|aa)*$: Pattern cannot repeat a group without a bound" },
+    { "name": "patternProperties without a name bound", "schema": { "type": "object", "patternProperties": { "^x-": true } }, "message": "Body schema /patternProperties: patternProperties requires propertyNames with maxLength of at most 128 on the same schema" },
+    { "name": "unbounded uniqueItems", "schema": { "type": "array", "uniqueItems": true }, "message": "Body schema /uniqueItems: uniqueItems requires maxItems of at most 64 on the same schema" },
+    { "name": "unknown format", "schema": { "type": "string", "format": "email" }, "message": "Body schema /format: unsupported format (supported: uuid)" }
+  ]
+}

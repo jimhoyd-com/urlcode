@@ -13,13 +13,15 @@ no functions:
   when a body breaks a rule, 400 for malformed JSON and 415 for another content
   type, all before `respond` answers `202 {"accepted":true}`.
 
-The 422 names the failing fields and never echoes what the client sent
+The 422 names the first failing field and never echoes what the client sent
 ([HTTP](../../docs/HTTP.md#body-schema-and-input-patterns) describes the
-format). The schema accepts a subset of JSON Schema: `type`, `properties`,
-`required`, `additionalProperties` (true or false), `items`, scalar `enum`,
-`minLength`/`maxLength`, `pattern` (with `maxLength` of at most 128 on the same
-field), `format: uuid`, `minimum`/`maximum` and `minItems`/`maxItems`. Anything
-else, such as `format: email`, `$ref` or `oneOf`, fails activation.
+format). The schema is JSON Schema 2020-12 in a bounded profile: besides
+`type`, `properties`, `required`, `additionalProperties`, `items`, scalar
+`enum`/`const` and the length, count and number bounds, it takes local
+`$defs`/`$ref`, type lists such as `[string, "null"]` and
+`anyOf`/`oneOf`/`allOf`/`not`. A `pattern` needs `maxLength` of at most 128 on
+the same field. Anything outside the profile, such as `format: email`, a remote
+`$ref` or `if`/`then`, fails activation naming the keyword.
 
 The runtime's own errors here are text lines by default (`Method not allowed`
 for a POST to `/api/status`, `Unsupported media type`). When the API's clients

@@ -47,6 +47,12 @@ const cases: Record<string, { path: string; method?: string; headers?: Record<st
   'body pattern, 128-char worst case': post('/pat', { v: 'a'.repeat(128) }, 'application/json'),
   'body pattern, 129 chars': post('/pat', { v: 'a'.repeat(129) }, 'application/json'),
   'query pattern, 128-char worst case': { path: `/q?v=${'a'.repeat(128)}` },
+  // JSON Schema 2020-12 profile (#845): local $defs reference, a nullable type list and anyOf, through the build's standalone validators.
+  '2020-12 valid, phone null': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: null }, 'application/json'),
+  '2020-12 absent required phone': post('/contacts', { name: 'Ada', email: 'ada@example.com' }, 'application/json'),
+  '2020-12 $defs pattern fails': post('/contacts', { name: 'Ada', email: secret, phone: null }, 'application/json'),
+  '2020-12 nullable type fails': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: 5 }, 'application/json'),
+  '2020-12 anyOf fails': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: null, channel: secret }, 'application/json'),
 };
 const volatile = new Set(['date', 'server', 'connection', 'keep-alive', 'transfer-encoding', 'content-length', 'x-request-id']);
 // workerd gzips a response when the client sends Accept-Encoding (docs/CLOUDFLARE.md: compression is delegated to the edge); fetch() decodes it, so the body still compares byte for byte.

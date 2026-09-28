@@ -839,7 +839,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | `stream: true` on a trusted `function` route (self-hosted only): the Response body is sent as it is produced, bounded by operator stream limits | Streaming from a `sandbox: true` route, on AWS/Cloudflare/static, WebSocket, or a route-level stream limit |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
-| Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
+| Parameter validation, JSON body syntax checks and `request.body.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, OpenAPI documents or export |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
 | File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md)) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
@@ -1353,7 +1353,7 @@ See [organization](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/or
 | `shared.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `shared.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `shared.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `shared.*.request.body.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `shared.*.response` | object | no | unknown keys rejected | Response headers a route inherits when it names this block with use. |
 | `shared.*.response.headers` | object | no | maxProperties: 64 | Literal response headers added to the route's answer; only Set-Cookie takes a list, and runtime-owned headers are refused (docs/HTTP.md). |
 | `shared.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -1417,7 +1417,7 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `routes.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `routes.*.request.body.schema` | object | no | — | A JSON Schema subset checked after parsing (requires format: json); a body that breaks it answers 422. Supported keywords: type (object, array, string, integer, number, boolean, null), properties, required, additionalProperties (true or false), items, enum (scalar values), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, minItems, maxItems (up to 10000). Anything else, including $ref, oneOf, default and format: email, fails activation. At most 6 levels, 128 nodes and 64 properties per object. |
+| `routes.*.request.body.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid only), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `routes.*.response` | object | no | unknown keys rejected | Literal response headers added to every answer; declaring it replaces the response block of a shared block named by use. |
 | `routes.*.response.headers` | object | no | maxProperties: 64 | Literal response headers added to the route's answer; only Set-Cookie takes a list, and runtime-owned headers are refused (docs/HTTP.md). |
 | `routes.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -2059,8 +2059,8 @@ Duplicate scalar query/header inputs return 400. Required missing inputs return
 Supported validation: `type`, scalar `enum`, `default`, string `minLength`/
 `maxLength`, string `format: uuid` and a bounded `pattern` ([restrictions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)),
 numeric `minimum`/`maximum`, query array `items` and `maxItems`. JSON bodies are
-validated by `request.body.schema`, not by a parameter (a failure answers 422 as
-JSON listing every issue; see [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
+validated by `request.body.schema`, a bounded JSON Schema 2020-12 profile, not
+by a parameter (a failure answers 422 as JSON naming the first failure; see [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
 OpenAPI `style`/`explode` fields are not implemented. This uses a documented
 OpenAPI-like input subset; it is not an OpenAPI document or full JSON Schema
 input vocabulary. Parameter string limits are at most 8,192 characters; a
@@ -2570,7 +2570,7 @@ status or default `Cache-Control: no-store` on functions/redirects.
 | `request.body.maxBytes` | 0–1048576; tighter per-route budget, enforced while reading fixed/chunked bodies; 413 on overflow |
 | `request.body.contentTypes` | Exact lowercase MIME essences for nonempty bodies; parameters ignored; mismatch/missing type returns 415 |
 | `request.body.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax; malformed input returns 400 |
-| `request.body.schema` | Requires `format: json`. A JSON Schema subset checked after parsing; a body that breaks it returns 422 (see below) |
+| `request.body.schema` | Requires `format: json`. A JSON Schema 2020-12 document in a bounded profile, compiled at load and checked after parsing; a body that breaks it returns 422 (see below) |
 
 The operator request limit remains an upper bound; YAML cannot raise it. A route
 without body policy keeps the existing server limit. A configured body policy
@@ -2629,53 +2629,116 @@ JSON declarations require a JSON type. No response header secret interpolation.
 
 #### Body schema and input patterns
 
-`request.body.schema` accepts `type` (`object`, `array`, `string`, `integer`,
-`number`, `boolean`, `null`), `properties`, `required`, `additionalProperties`
-(true or false), `items`, scalar `enum`, `minLength`/`maxLength`, `pattern`,
-`format: uuid`, `minimum`/`maximum` and `minItems`/`maxItems`. Anything else,
-including `$ref`, `oneOf` and `default`, fails activation. A schema is limited to
-6 levels, 128 nodes and 64 properties per object. It is checked by the runtime
-itself, so it behaves the same on every host and is not compiled from author
-code.
+`request.body.schema` is a [JSON Schema 2020-12](https://json-schema.org/draft/2020-12)
+document restricted to a bounded profile. The runtime checks it against the
+profile when the project loads and compiles it once with
+[Ajv](https://ajv.js.org/); a request only runs the compiled validator. A
+schema that leaves the profile fails validation and activation with a message
+naming the keyword and the JSON pointer inside the schema, for example
+`Body schema /properties/a/unevaluatedProperties: keyword "unevaluatedProperties"
+is not in the supported JSON Schema 2020-12 profile`. Nothing outside the
+profile is silently ignored.
+
+| Keyword | In the profile |
+|---|---|
+| `$schema` | Root only, and only `https://json-schema.org/draft/2020-12/schema`. A schema without it is read as 2020-12 |
+| `$defs`, `$ref` | `$defs` at the root only (at most 32 entries). `$ref` only as a local `#/$defs/<name>` to a declared entry. Remote, `$id`-relative and other JSON-pointer references are refused, never resolved or fetched, and a reference cycle is refused |
+| `$comment`, `title`, `description`, `examples`, `deprecated` | Annotations; they change nothing |
+| `type` | `object`, `array`, `string`, `integer`, `number`, `boolean`, `null`, or a list of distinct ones such as `[string, "null"]` |
+| `enum`, `const` | Scalar values only (string, number, boolean or `null`); `enum` lists 1 to 64 |
+| `allOf`, `anyOf`, `oneOf`, `not` | 1 to 16 schemas per list |
+| `properties`, `additionalProperties`, `required`, `propertyNames`, `minProperties`, `maxProperties` | At most 64 properties per object; `additionalProperties` is a boolean or a schema |
+| `patternProperties` | 1 to 16 patterns, each admitted like `pattern` below, and only beside `propertyNames` with a `maxLength` of at most 128 |
+| `items`, `prefixItems`, `minItems`, `maxItems`, `uniqueItems` | Counts up to 10,000; `uniqueItems: true` only beside `maxItems` of at most 64 |
+| `minLength`, `maxLength`, `pattern`, `format` | Lengths up to 1,048,576; `pattern` only beside `maxLength` of at most 128; `format` only `uuid` |
+| `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` | Finite numbers; `multipleOf` greater than 0 |
+
+Everything else is refused, including `$id`, `$anchor`, `$dynamicRef`,
+`$dynamicAnchor`, `$vocabulary`, `if`/`then`/`else`, `dependentSchemas`,
+`dependentRequired`, `unevaluatedProperties`, `unevaluatedItems`, `contains`,
+the `content*` keywords, `readOnly`/`writeOnly`, draft-07 spellings
+(`definitions`, `dependencies`), OpenAPI's `nullable` (write a type list with
+`"null"`) and `default` (the runtime never fills in a request body). A `format`
+other than `uuid`, such as `email`, is refused rather than skipped: the runtime
+ships no format library.
+
+A schema is limited to 8 levels, 256 schema nodes, 32 `$ref` uses and 1,024
+nodes once every `$ref` is expanded, so a chain of small definitions used many
+times is refused like one large schema. Standard JSON Schema semantics apply:
+a keyword constrains only values of the type it is about, `required` checks
+presence, and only the object's own properties count. An absent property and a
+`null` one differ: `required: [phone]` with `phone: {type: [string, "null"]}`
+accepts `{"phone": null}` and refuses `{}`.
+
+```yaml
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  $defs:
+    email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^@\\s]+@[^@\\s]+$"}
+  type: object
+  required: [name, email, phone]
+  additionalProperties: false
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    email: {$ref: "#/$defs/email"}
+    phone: {type: [string, "null"], maxLength: 32}
+    channel:
+      anyOf:
+        - {const: email}
+        - {const: phone}
+```
 
 A string `minLength`/`maxLength` may be as large as 1,048,576, the largest
 request body any route admits (`request.body.maxBytes` defaults to it and
 cannot exceed it), so a long text field such as a document or a pasted log
 needs no workaround. A string with a `pattern` keeps the 128-character
 `maxLength` described below, because that bound limits regex cost rather than
-size. `minItems`/`maxItems` go up to 10,000. The route's own `maxBytes` is not
-compared with the schema: it is checked first and answers 413, so a
-`maxLength` larger than `maxBytes` allows is accepted but never reached.
-Earlier releases capped string lengths at 8,192.
+size; the validator checks `maxLength` before `pattern`, and `propertyNames`
+before `patternProperties`, so an over-long value or key never reaches the
+regex. The route's own `maxBytes` is not compared with the schema: it is
+checked first and answers 413, so a `maxLength` larger than `maxBytes` allows
+is accepted but never reached.
+
+On the Cloudflare Worker, which forbids code generation at runtime,
+`urlcode build --target cloudflare` compiles every body schema with the same
+Ajv options into a standalone `body-validators.js` module, so the Worker runs
+the same validator as the server. See [Cloudflare](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#what-has-run-on-workerd)
+for what has run on workerd.
 
 A failing body answers **422** as `application/json`, whatever the client's
 `Accept` header: a route that declares a JSON body schema is a JSON endpoint,
 so its validation errors are JSON too (the server and the Cloudflare Worker
-agree). Every failure is listed, not only the first:
+agree). The validator stops at the first failure, following Ajv's own advice
+for untrusted input, so one request cannot make it record an error per array
+element:
 
 ```json
-{"error":"body_validation_failed","message":"Request body failed validation","issues":[{"pointer":"/title","keyword":"maxLength","message":"must be at most 8 characters","expected":8},{"pointer":"","keyword":"additionalProperties","message":"has a property the schema does not declare","property":"emial"}]}
+{"error":"body_validation_failed","message":"Request body failed validation","issues":[{"pointer":"/title","keyword":"maxLength","message":"must be at most 8 characters","expected":8}]}
 ```
 
-Each issue carries `pointer` (RFC 6901, built only from names the schema
-declared; array positions are `/[]`, not an index; the root is `""`), `keyword`
-(`type`, `enum`, `required`, `additionalProperties`, `minLength`, `maxLength`,
-`format`, `pattern`, `minimum`, `maximum`, `minItems` or `maxItems`), the fixed
-`message`, and where the schema states one, `expected` (the type, bound, format
-or, for `enum`, up to 16 short declared values) or `property`: the missing name
-for `required`, and for `additionalProperties` the undeclared property the
-client sent. An undeclared property is named only when it looks like an
-identifier (a letter or `_`, then up to 63 letters, digits, `_` or `-`); any
-other name is left out rather than echoed. Each of the first three undeclared
-properties is its own issue. Property values are never included, because they
-may hold a secret. At most 8 issues are listed and the body is capped at 4096
-bytes; when trailing issues are dropped to fit, `"truncated":true` is added.
-Malformed JSON stays 400 and a wrong media type 415, and the same checks run
-before any function or sandbox code.
+Each issue carries `pointer` (RFC 6901; the root is `""`), `keyword`, the fixed
+`message`, and where the schema states one, `expected` (the type or list of
+types, bound, format, `multipleOf` or, for `enum` and `const`, up to 16 short
+declared values) or `property`: the missing name for `required`, and for
+`additionalProperties` the undeclared property the client sent. The pointer
+names only properties the schema declares: an array position is `/[]`, not an
+index, and any other key the client chose (under `additionalProperties` or
+`patternProperties`) is `/*`. An undeclared property is named in `property`
+only when it looks like an identifier (a letter or `_`, then up to 63 letters,
+digits, `_` or `-`); any other name is left out rather than echoed. A
+`propertyNames` failure never names the property. Values are never included,
+because they may hold a secret. When an `anyOf` or `oneOf` fails, the issue is
+the alternative itself (`must match at least one declared alternative`), not
+each branch's failure. The body is capped at 4096 bytes; when trailing issues
+are dropped to fit, `"truncated":true` is added. Malformed JSON stays 400 and a
+wrong media type 415, and the same checks run after the route's identity and
+access checks (a request an extension's `authorize()` refuses gets that refusal,
+not a 422) and before any function or sandbox code.
 
-Earlier releases answered `text/plain` unless the client explicitly accepted
-`application/json`, and did not name an undeclared property. A client that
-parsed that text needs to read the JSON `issues` instead.
+Earlier releases interpreted a private subset (no `$schema`, `$defs`, `$ref`,
+type lists or combinators) and listed up to 8 issues, three of them for
+undeclared properties. A client that relied on several issues in one answer
+now receives the first.
 
 Parameter schemas (path, query, header) also accept `format: uuid` and `pattern`
 on string inputs, rejecting a mismatch with 400. `pattern` runs on every request
@@ -2803,7 +2866,7 @@ error, so it refuses `errors: {format: json}` and `site.errors` before building
 
 Automatic CORS/preflight policy, cookie parsing/signing, authentication
 (beyond the operator-installed auth extension), JSON Schema beyond the
-`request.body.schema` subset above, multipart/file uploads, streaming, content negotiation,
+`request.body.schema` profile above, OpenAPI export, multipart/file uploads, streaming, content negotiation,
 WebSocket upgrades and proxies are not implemented. Do not advertise these as
 supported just because raw headers can be declared. Compression negotiation,
 security-header profiles, per-client throttling, User-Agent policy and HTTP
@@ -3758,8 +3821,8 @@ principal-providing policy. See the [form-records package](https://github.com/ji
 
 The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
 server: named tools with a description, a `request.body.schema`-shaped input
-schema (validated with the exact same bounded validator, reused rather than
-reimplemented) and a trusted project handler loaded the same way as other
+schema (the same bounded JSON Schema 2020-12 profile, compiled by the same
+`@jimhoyd/urlcode/body-schema` code, reused rather than reimplemented) and a trusted project handler loaded the same way as other
 extension hooks. The official MCP SDK serves the protocol statelessly (JSON-RPC
 over Streamable HTTP, version negotiation, request ids and error codes; #846),
 and the extension refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks))

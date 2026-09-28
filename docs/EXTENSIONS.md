@@ -51,8 +51,8 @@ principal-providing policy. See the [form-records package](../packages/form-reco
 
 The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
 server: named tools with a description, a `request.body.schema`-shaped input
-schema (validated with the exact same bounded validator, reused rather than
-reimplemented) and a trusted project handler loaded the same way as other
+schema (the same bounded JSON Schema 2020-12 profile, compiled by the same
+`@jimhoyd/urlcode/body-schema` code, reused rather than reimplemented) and a trusted project handler loaded the same way as other
 extension hooks. The official MCP SDK serves the protocol statelessly (JSON-RPC
 over Streamable HTTP, version negotiation, request ids and error codes; #846),
 and the extension refuses a foreign `Origin` (403; see [site origins](#site-origins-and-same-origin-checks))

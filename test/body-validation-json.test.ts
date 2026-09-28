@@ -10,7 +10,7 @@ import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
 import { bodySchemaIssues, bodySchemaJson } from '../packages/core/src/body-schema.ts';
 import type { BodySchema } from '../packages/core/src/body-schema.ts';
 import { project, request } from './helpers.ts';
-import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
+import type { Artifact, Validators, BodyValidators } from '../packages/core/src/cloudflare.ts';
 
 const secret = 'sk_live_TOPSECRET_9f8e7d';
 const schema = { type: 'object', required: ['title', 'kind'], additionalProperties: false, properties: {
@@ -33,17 +33,17 @@ test('a JSON-schema route always answers 422 as JSON, names identifier-shaped ex
     assert.equal(json.headers['content-type'], 'application/json');
     assert.equal(json.headers['cache-control'], 'no-store');
     assert.doesNotMatch(json.body, /TOPSECRET/); assert.doesNotMatch(json.body, /guest ran/);
-    const parsed = JSON.parse(json.body) as { error: string; issues: { pointer: string; keyword: string; expected?: unknown }[] };
+    const parsed = JSON.parse(json.body) as { error: string; issues: { pointer: string; keyword: string; expected?: unknown; property?: string }[] };
     assert.equal(parsed.error, 'body_validation_failed');
-    const has = (pointer: string, keyword: string) => parsed.issues.find(issue => issue.pointer === pointer && issue.keyword === keyword);
-    assert.equal(has('/title', 'maxLength')?.expected, 8);
-    assert.deepEqual(has('/kind', 'enum')?.expected, ['a', 'b']);
-    assert.equal(has('/count', 'maximum')?.expected, 3);
-    const extras = parsed.issues.filter(issue => issue.pointer === '' && issue.keyword === 'additionalProperties') as { property?: string }[];
-    assert.deepEqual(extras.map(issue => issue.property), ['extra', undefined]);
-    assert.ok(parsed.issues.length <= 8);
-    const missing = JSON.parse((await post(path, {}, 'application/json')).body) as { issues: { property?: string }[] };
-    assert.deepEqual(missing.issues.map(issue => issue.property), ['title', 'kind']);
+    // Ajv stops at the first failure: here the first undeclared property, named because it looks like an identifier.
+    assert.deepEqual(parsed.issues, [{ pointer: '', keyword: 'additionalProperties', message: 'has a property the schema does not declare', property: 'extra' }]);
+    const first = async (body: unknown) => (JSON.parse((await post(path, body, 'application/json')).body) as typeof parsed).issues;
+    assert.deepEqual((await first({ title: secret, kind: 'a' }))[0], { pointer: '/title', keyword: 'maxLength', message: 'must be at most 8 characters', expected: 8 });
+    assert.deepEqual((await first({ title: 'x', kind: secret }))[0]?.expected, ['a', 'b']);
+    assert.deepEqual((await first({ title: 'x', kind: 'a', count: 99 }))[0]?.expected, 3);
+    assert.deepEqual((await first({ title: 'x', kind: 'a', list: ['ok', secret] }))[0], { pointer: '/list/[]', keyword: 'maxLength', message: 'must be at most 8 characters', expected: 8 });
+    assert.deepEqual(await first({ title: 'x', kind: 'a', ['<' + secret + '>']: secret }), [{ pointer: '', keyword: 'additionalProperties', message: 'has a property the schema does not declare' }]);
+    assert.deepEqual((await first({})).map(issue => issue.property), ['title']);
     for (const accept of textAccepts) {
       const answer = await post(path, bad, accept);
       assert.equal(answer.status, 422); assert.equal(answer.headers['content-type'], 'application/json', String(accept));
@@ -58,8 +58,8 @@ test('the built Worker answers the same JSON 422 body as the server, whatever th
   const out = await mkdtemp(join(tmpdir(), 'urlcode-cf-')); t.after(() => rm(out, { recursive: true, force: true }));
   await buildCloudflare(root, { out });
   const artifact = ((await import(pathToFileURL(join(out, 'artifact.js')).href)) as { default: Artifact }).default;
-  const validators = (await import(pathToFileURL(join(out, 'validators.js')).href)) as Validators;
-  const worker = createFetchHandler(artifact, validators);
+  const validators = (await import(pathToFileURL(join(out, 'validators.js')).href)) as Validators; const bodyValidators = (await import(pathToFileURL(join(out, 'body-validators.js')).href)) as BodyValidators;
+  const worker = createFetchHandler(artifact, validators, bodyValidators);
   const app = await startServer({ project: root, port: 0, log: () => {} }); t.after(() => app.close());
   const body = JSON.stringify(bad);
   for (const accept of ['application/json', ...textAccepts]) {
@@ -74,14 +74,13 @@ test('the built Worker answers the same JSON 422 body as the server, whatever th
 });
 
 test('the JSON 422 body is bounded, RFC 6901 escaped and omits nothing silently', () => {
-  const properties: Record<string, BodySchema> = {}; const required: string[] = [];
-  for (let i = 0; i < 40; i++) { const name = `field${i}_${'n'.repeat(400)}`; properties[name] = { type: 'string' }; required.push(name); }
-  const text = bodySchemaJson(bodySchemaIssues({ type: 'object', properties, required }, {}, '', [], 40));
+  const issues = Array.from({ length: 40 }, (_, i) => ({ pointer: `/field${i}_${'n'.repeat(400)}`, keyword: 'required', message: 'is missing a required property' }));
+  const text = bodySchemaJson(issues);
   assert.ok(new TextEncoder().encode(text).length <= 4096);
   const parsed = JSON.parse(text) as { truncated?: boolean; issues: unknown[] };
   assert.equal(parsed.truncated, true); assert.ok(parsed.issues.length > 0 && parsed.issues.length < 40);
   assert.equal((JSON.parse(bodySchemaJson(bodySchemaIssues(schema, {}))) as { truncated?: boolean }).truncated, undefined);
-  assert.equal(bodySchemaIssues({ type: 'array', items: { type: 'string' } }, Array(50).fill(1)).length, 8);
+  assert.equal(bodySchemaIssues({ type: 'array', items: { type: 'string' } }, Array(50).fill(1)).length, 1);
   const escaped = bodySchemaIssues(schema, { title: 'x', kind: 'a', 'a/b~c': 1 });
   assert.equal(escaped[0]?.pointer, '/a~1b~0c');
 });
