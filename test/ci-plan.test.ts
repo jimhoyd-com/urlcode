@@ -63,7 +63,7 @@ test('real git history selects prose only when every changed path is prose', asy
 
 test('required gate rejects missing, failed, canceled and unplanned jobs', () => {
   const always = ['plan', 'docs'];
-  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
+  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'multiprocess', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
   const full = Object.fromEntries([...always, ...conditional].map(name => [name, { result: 'success' }]));
   gate('full', full, true, true, true, true, true, true);
   for (const name of [...always, ...conditional]) {
@@ -73,6 +73,9 @@ test('required gate rejects missing, failed, canceled and unplanned jobs', () =>
   }
   const extension = Object.fromEntries([...always, ...conditional].map(name => [name, { result: ['verify', 'checks', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'].includes(name) ? 'skipped' : 'success' }]));
   gate('full', extension);
+  // The multi-process harness (#927) runs in every full plan, extension-only included; only the docs lane skips it.
+  assert.throws(() => gate('full', { ...extension, multiprocess: { result: 'skipped' } }), /multiprocess/);
+  gate('docs', Object.fromEntries([...always, ...conditional].map(name => [name, { result: always.includes(name) ? 'success' : 'skipped' }])));
   assert.throws(() => gate('full', extension, false, true));
   assert.throws(() => gate('full', extension, false, false, true));
   assert.throws(() => gate('', {}));
@@ -251,7 +254,7 @@ test('main pushes and exact-commit coverage are unchanged by high-impact selecti
 });
 
 test('the gate requires the packed integration exactly when the plan selected it', () => {
-  const names = ['plan', 'docs', 'static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
+  const names = ['plan', 'docs', 'static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'multiprocess', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
   const all = Object.fromEntries(names.map(name => [name, { result: 'success' }]));
   gate('full', all, true, true, true, true, true, true);
   assert.throws(() => gate('full', { ...all, 'workspace-integration': { result: 'skipped' } }, true, true, true, true, true, true), /workspace-integration/);

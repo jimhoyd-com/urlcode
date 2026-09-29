@@ -166,7 +166,12 @@ Policy counters are derived from the `throttle`, `agents` and `cache` events
 as they pass through the sink, so the policies themselves have no metrics
 code. Runtime facts that never become events (admission, shedding, slot
 health) are recorded by the server directly. Counters are per process;
-aggregation across replicas is the scraper's job.
+aggregation across replicas is the scraper's job. That includes several
+`urlcode serve` processes on one host behind a proxy: scrape each process's
+own port, because a scrape through the proxy reaches whichever process it
+picks. Their `throttle` and `cache` counters describe that process's own
+budgets and cache
+([several serving processes](CAPACITY.md#several-serving-processes-on-one-host)).
 
 ## Prometheus exposition
 

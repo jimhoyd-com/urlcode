@@ -166,6 +166,18 @@ Back audit up **after** the producers' data (the store database): events a
 producer has not delivered yet are still in its outbox, so they travel in its
 backup and are drained again, once, after a restore.
 
+Several serving processes on one host may share `data/audit.sqlite` (WAL, a
+2 second busy timeout). With the store, one process at a time drains its
+outbox. A database directory on a Linux network filesystem is refused. Nothing
+else detects a second host: that check is the store's lease, so a site that
+runs audit without the store is not refused on two hosts. It is still
+unsupported; keep the file on one host's local disk
+([several serving processes][store-several-processes]).
+
+<!-- urlcode-current-version:start -->
+[store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host
+<!-- urlcode-current-version:end -->
+
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 
 <!-- extension-reference:start -->
