@@ -77,12 +77,11 @@ Never recreate these in a function; report a missing capability.
 
 ## Build one application
 
-Treat routes, extensions and UI as one application with different owners. Use
-published surfaces in order: configuration/theme/copy, smallest template, CSS,
-then a declared hook. Keep each extension's security and workflows package-owned; add
-an extension only for a reusable missing capability. Use the official shadcn/ui
-skill only in a React frontend with \`components.json\`; start with \`shadcn info
---json\`. Do not put React components in the server renderer.
+Treat routes, extensions and the frontend as one application with different
+owners. The frontend is the app's own code calling JSON routes with \`fetch\`
+(reference: URLCode's proofs/private-requests/client). Keep extension security
+and workflows package-owned; add an extension only for a reusable missing
+capability. For shadcn/ui use the official tooling, then \`urlcode artifacts stage\`.
 
 ## Functions and middleware are trusted by default; sandbox is opt-in
 

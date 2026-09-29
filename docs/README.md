@@ -14,7 +14,7 @@ artifact — before the guides below use those words without redefining them.
 | Build a redirect | [Redirects](yaml/redirects.md) |
 | Build a JSON API | [Functions, inputs and methods](yaml/functions.md) |
 | Build a static site, or deploy to S3 + CloudFront | [Static hosting](STATIC.md) |
-| Build a site with UI, accounts and data | [Framework: the composition contract](FRAMEWORK.md#the-composition-contract) |
+| Build a site with accounts and data | [Framework: the composition contract](FRAMEWORK.md#the-composition-contract) |
 | Have an AI author a project | [AI authoring](AI-AUTHORING.md), [agent index](../llms.txt), [hosted agent guide](https://urlcode.ai/llms.txt) |
 | Deploy and operate a project | [Operations](OPERATIONS.md) |
 | Contribute to URLCode | [Contributing](../CONTRIBUTING.md), [local development](LOCAL-DEVELOPMENT.md) |
@@ -58,7 +58,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Add accounts, sign-in and protected routes | [urlcode-auth](../packages/auth#readme), [auth security](../packages/auth/SECURITY.md) |
 | Keep an audit log | [urlcode-audit](../packages/audit#readme) |
 | Accept a form, rate-limit it and send email | [contact-form recipe](../recipes/contact-form/README.md), [`policies.throttle`](policies/throttle.md) |
-| Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
+| Build the frontend over store collections | [store: a frontend for the collection](STORE.md#a-frontend-for-the-collection), [private-requests client](../proofs/private-requests/client/main.js) |
 | Serve a declared collection as a CRUD API (`store` extension) | [Data store](STORE.md) |
 | Add, remove or write an extension | [Extensions](EXTENSIONS.md), [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts), [example fixture](../examples/extensions/README.md) |
 | Install inert extension schemas for tools or agents | [Artifacts](EXTENSIONS.md#artifacts), [tooling and MCP](TOOLING.md) |

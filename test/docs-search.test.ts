@@ -67,7 +67,7 @@ test('the generated instructions name the bounded search fallback, and the comma
   }
 
   // Run exactly what the guide tells an agent to run, from the site.
-  const root = await site(t, ['mcp', 'ui']);
+  const root = await site(t, ['mcp', 'audit']);
   const run = spawnSync(process.execPath, [cli, 'docs', 'search', 'serverVersion', '--project', 'app', '--json'], { cwd: root, encoding: 'utf8', timeout: 30000 });
   assert.equal(run.status, 0, run.stderr);
   const found = JSON.parse(run.stdout) as DocsSearch;
@@ -81,7 +81,7 @@ test('the generated instructions name the bounded search fallback, and the comma
 });
 
 test('serverVersion reaches the mcp guide section and the mcp schema path', async t => {
-  const root = await site(t, ['mcp', 'ui']);
+  const root = await site(t, ['mcp', 'audit']);
   const found = await searchDocs('serverVersion', { project: join(root, 'app') });
   bounded(found);
   const guide = found.results.find(result => result.id === 'mcp:README.md');
@@ -100,7 +100,7 @@ test('serverVersion reaches the mcp guide section and the mcp schema path', asyn
 });
 
 test('an add-on named by the whole query reaches its own guide and schema first', async t => {
-  const root = await site(t, ['store', 'ui', 'audit']);
+  const root = await site(t, ['store', 'audit']);
   const found = await searchDocs('store', { project: join(root, 'app') });
   bounded(found);
   const [first, second] = found.results;
@@ -115,7 +115,7 @@ test('an add-on named by the whole query reaches its own guide and schema first'
 });
 
 test('an unknown term is an honest no-match with the coverage limits, never "unsupported"', async t => {
-  const root = await site(t, ['mcp', 'ui']);
+  const root = await site(t, ['mcp', 'audit']);
   const found = await searchDocs('zzqxnonexistent', { project: join(root, 'app') });
   bounded(found);
   assert.deepEqual(found.results, []);
@@ -124,7 +124,7 @@ test('an unknown term is an honest no-match with the coverage limits, never "uns
   assert.match(found.note ?? '', /not evidence the feature is unsupported/);
   assert.doesNotMatch(JSON.stringify(found).replace(/not evidence the feature is unsupported/g, ''), /unsupported/i, 'nothing else in the answer calls the term unsupported');
   assert.deepEqual(found.coverage.searched.core, [...corePaths]);
-  assert.deepEqual(found.coverage.searched.installed.map(item => item.package), ['@jimhoyd/urlcode-mcp', '@jimhoyd/urlcode-ui']);
+  assert.deepEqual(found.coverage.searched.installed.map(item => item.package), ['@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-mcp']);
   const notInstalled = found.coverage.notSearched.find(gap => gap.names !== undefined);
   assert.ok(notInstalled?.names?.includes('store') && notInstalled.names.includes('auth'), 'catalog add-ons that are not installed are listed as not searched');
   assert.ok(!notInstalled?.names?.includes('mcp'));
@@ -183,7 +183,7 @@ test('only pin-verified add-ons are read, as data, never imported', async t => {
 });
 
 test('broad queries stay bounded', async t => {
-  const root = await site(t, ['store', 'ui', 'auth', 'audit', 'mcp', 'store-schema']);
+  const root = await site(t, ['store', 'auth', 'audit', 'mcp', 'store-schema']);
   for (const query of ['extension config schema route', 'form', 'the a of to', 'auth', 'sandbox', 'x'.repeat(200) + ' route']) {
     const found = await searchDocs(query, { project: join(root, 'app') });
     bounded(found);
@@ -192,7 +192,7 @@ test('broad queries stay bounded', async t => {
 });
 
 test('MCP search_docs searches the operator-selected site and states its coverage', async t => {
-  const root = await site(t, ['mcp', 'ui']);
+  const root = await site(t, ['mcp', 'audit']);
   let text = '';
   const output = new Writable({ write(chunk, _encoding, callback) { text += String(chunk); callback(); } });
   const messages = [
@@ -230,7 +230,7 @@ test('agent-facts rejects prose that shrinks the search back to the core corpus 
 
 // #826: a `#` comment inside a fenced code block is not a Markdown heading, so it never names the section.
 test('a shell comment in a code fence is not the section of a store README match (#826)', async t => {
-  const root = await site(t, ['store', 'ui']);
+  const root = await site(t, ['store']);
   const found = await searchDocs('maxRecordsPerOwner', { project: join(root, 'app') });
   bounded(found);
   const guide = found.results.find(result => result.id === 'store:README.md');
@@ -271,11 +271,11 @@ test('a fence comment above a match does not rank it as opening a section (#826)
   ].join('\n');
   const copy = await mkdtemp(join(tmpdir(), 'urlcode-docs-search-fence-'));
   t.after(() => rm(copy, { recursive: true, force: true }));
-  await cp(source('ui'), copy, { recursive: true, filter: path => !path.includes('node_modules') });
+  await cp(source('audit'), copy, { recursive: true, filter: path => !path.includes('node_modules') });
   await writeFile(join(copy, 'README.md'), readme);
-  const root = await site(t, [], { copies: { ui: copy } });
+  const root = await site(t, [], { copies: { audit: copy } });
   const found = await searchDocs('widgetQuota', { project: join(root, 'app') });
-  const guide = found.results.find(result => result.id === 'ui:README.md');
+  const guide = found.results.find(result => result.id === 'audit:README.md');
   assert.ok(guide, 'the copied guide is a result');
   // Both occurrences start a line; the first sits just below `# comment`, which is code, not a heading, so the tie
   // keeps the first occurrence, under the real Setup heading.

@@ -14,11 +14,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - Protect the mount with `auth: true` (the example adds it when auth is installed) unless the
   example's explicit `--ack store:public-write` was given; an unprotected write mount has no rate
   limiting, abuse protection or multi-tenant isolation of its own.
-- Optional list-and-form screens: `extensions.store.config.screens: { /todos: { collection: todos, title?, columns? } }`
-  plus a route `/todos/*: { extension: ui, methods: [GET, HEAD] }`. The store contributes them to the
-  `ui` extension (`contributes.ui.screens`); they are declared here, never under `extensions.ui`.
+- The store serves JSON only; the frontend is the application's own (`fetch` to the mounts, reading
+  `etags` and `may` from a list), as `proofs/private-requests/client` does.
 - `urlcode extensions add store` writes an empty `collections` block and no mount; `--example`
-  adds the `todos` collection on `/api/todos` (and the `/todos` screen when ui is installed); with
+  adds the `todos` collection on `/api/todos` (API only); with
   auth installed the mount gets `auth: true` and the collection `ownership: owner` (per-user
   records) and, with audit installed, `audit: true`.
 - `audit: true` on a collection records every write in the audit extension's log (field names, never

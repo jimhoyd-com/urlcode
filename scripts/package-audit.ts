@@ -356,20 +356,6 @@ export const budgets: Record<string, Budget> = {
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
-  '@jimhoyd/urlcode-ui': {
-    packed: 100 * 1024,
-    // Raised from 350 KiB for transition controls on data screens (#863: the
-    // crud script's transition buttons, which dist/crud-script.js and the
-    // content-hashed kit asset both carry, crudTransitions in dist/crud.js with
-    // declarations, the English and French copy, README and CONTRACT):
-    // 367111 unpacked bytes.
-    unpacked: 360 * 1024,
-    // Raised from 61: the extension definition adds dist/extension.js,
-    // dist/extension.d.ts and urlcode.json to every extension package, which
-    // took ui to 64.
-    entries: 68,
-    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'urlcode.json', 'vendor'],
-  },
   // Artifacts are inert JSON: a few KiB, and the exact file shape below.
   '@jimhoyd/urlcode-store-schema': {
     packed: 16 * 1024,

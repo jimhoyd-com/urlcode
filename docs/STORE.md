@@ -21,7 +21,7 @@ extension; `urlcode extensions add store` does that.
 ## Recipe: a Todo API in three steps
 
 ```sh
-npx @jimhoyd/urlcode init todo-site --with store --example --ack store:public-write   # or --with ui,auth,store --example: see below
+npx @jimhoyd/urlcode init todo-site --with store --example --ack store:public-write   # or --with auth,store --example: see below
 cd todo-site
 ```
 
@@ -70,9 +70,9 @@ npx urlcode serve --host-file host.mjs --policy /etc/urlcode/policy.json --origi
 curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://todo.example.com/api/todos
 ```
 
-With `auth` installed (`--with ui,auth,store --example` in any order, or `urlcode
+With `auth` installed (`--with auth,store --example` in any order, or `urlcode
 extensions add auth` before `store --example`) the example adds `auth: true` to
-the API mount and to the screen, so only signed-in callers reach either, and
+the API mount, so only signed-in callers reach it, and
 declares the `todos` collection `ownership: owner`, so each signed-in user sees
 and changes only their own todos ([per-record ownership](#per-record-ownership));
 no acknowledgement is needed. `auth: true` admits the API's JSON writes with the
@@ -82,7 +82,7 @@ session cookie and same-origin provenance, and refuses a cross-origin write with
 collection stays shared, because there is no principal to own a record.
 
 Without `auth` the mount would be a public writable endpoint, so adding `store`
-(with or without `ui`) refuses, rolls back, and names the two ways forward: add
+refuses, rolls back, and names the two ways forward: add
 `auth` first, or re-run the exact command it prints, which ends in `--ack
 store:public-write`, when public writes are really intended. Core's generic
 `--ack <extension>:<id>` flag (see [extensions](EXTENSIONS.md)) is visible in
@@ -344,8 +344,7 @@ routes:
   `is changed only by a transition`. Without it, the owner in the example could
   `PATCH` `status: approved` and skip the review. Activation refuses it with
   `required`, on the key or an increment field, and when no transition sets or
-  stamps it. A [screen](#transitions-on-a-screen) shows such a field
-  read-only and offers the transitions as buttons.
+  stamps it.
 
 ### Membership gates and cross-owner reads
 
@@ -362,8 +361,7 @@ still has no roles, and `auth` gains none.
   API**: a membership list served on a collection mount would let anyone the
   route admits add themselves or enumerate members. Activation therefore
   refuses it with `mount`, and with `ownership`, `transitions`, `readers`,
-  `increments`, `idempotency`, `sortable`, `filterable` or `readOnly`, and
-  refuses a screen over it. A member is added and removed, never renamed: an
+  `increments`, `idempotency`, `sortable`, `filterable` or `readOnly`. A member is added and removed, never renamed: an
   update that changes the key field is `400`.
 - **Maintaining it** reuses the operator paths the store already has, not a new
   admin surface. The operator runs `urlcode-store members` (below), or calls
@@ -1136,127 +1134,42 @@ operator pin. The mount responses are `no-store`.
 `urlcode recipes search "crud store persist"` finds `store-crud`
 ([recipes](RECIPES.md)), the same collection as above with ordered fixtures for
 the whole create, read, update, delete lifecycle. It does not install anything:
-`urlcode extensions add store` (or `init --with ui,auth,store`) installs the
+`urlcode extensions add store` (or `init --with auth,store`) installs the
 extension and wires `host.mjs`; add `--example` for the `todos` collection.
 Without `auth` the example needs `--ack store:public-write`.
 
-## A screen for the collection
+## A frontend for the collection
 
-`npx @jimhoyd/urlcode init todo-site --with ui,auth,store --example` (or `--with ui,store --example --ack store:public-write`) also serves `/todos`, a
-list with a create form, inline edit and delete. The store owns the screen: it
-is declared under `extensions.store.config.screens`, next to the collection it
-shows, so a Todo app declares its fields once and gets both the API and the
-screen (per user when `auth` is installed, since the example collection is then
-owned); add a field, re-review and re-pin, and it appears on both. The store
-example writes the entry and the screen's route when `ui` is installed:
+The store serves JSON only; it ships no screens and no component kit
+([#883](https://github.com/jimhoyd-com/urlcode/issues/883)). The frontend is
+the application's own: a page served by a `static` route (or any other host)
+calls the collection's mount with `fetch` from the same origin, sending and
+reading `application/json`. The
+[private-requests client](../proofs/private-requests/client/main.js) is the
+reference pattern: Better Auth's own browser client signs in, and every other
+call is a same-origin `fetch` to a store mount.
 
-```yaml
-extensions:
-  store:
-    version: "1"
-    config:
-      collections:
-        todos: {mount: /api/todos, fields: {title: {type: string, required: true}}}
-      screens:
-        /todos: {collection: todos, title: Todos}
-routes:
-  /todos/*: {extension: ui, methods: [GET, HEAD]}
-```
+What such a client reads from the HTTP contract:
 
-The `ui` extension renders it without reading the store's configuration: the
-store's definition contributes a screen source to ui (`contributes.ui.screens`),
-which resolves each screen to a generic `{title, collection: {mount, fields,
-...}, columns?}` description when ui activates. A screen naming a collection the
-store does not declare refuses at activation, and so does a screen path with no
-`extension: ui` route. `ui` is an optional peer of the store: without it the
-`screens` block is accepted but nothing serves it. `title` defaults to the
-collection name.
+- **`etags`** on a list, keyed by id, and the `ETag` header on one record: send
+  it back as [`If-Match`](#conditional-writes) on an edit, delete or
+  transition, so a page left open while someone else changed the record gets
+  `412` and the store writes nothing.
+- **`may`** on a list and **`Allow-Transitions`** on one record: the
+  [transitions the caller may run now](#what-the-caller-may-run), so the page
+  offers only those. They are a hint, not a grant; the transition still checks
+  everything in its own transaction.
+- **`transitionOnly` fields** never go in a create or update body (`400`); only
+  a [declared transition](#declared-transitions) changes them.
+- **Owner and readers mounts.** An owner lists the collection mount; a member
+  lists the [readers mount](#membership-gates-and-cross-owner-reads) and runs
+  the `by: others` transitions on their own mounts.
 
-The page is server-rendered escaped shell only; the browser loads the records
-from the store's own `/api/todos` with the kit's `crud` script, served
-content-hashed and loaded with the page nonce, under a strict CSP (`connect-src
-'self'`, no inline script). Record values are only ever written as text. An
-edit in progress survives a reload of the list, and a checkbox toggle that the
-server refuses is rolled back. Every edit, toggle and delete sends
-[`If-Match`](#conditional-writes) with the ETag the list returned for that
-record in `etags` (or the ETag of the screen's own last write to it), so a page
-left open while someone else changed the record gets `412`: the page says the
-item changed since the list was loaded, keeps the edit as typed, rolls a toggle
-back and keeps a deleted row, and the store writes nothing. Refresh to see the
-current record. With `auth` composed, the screen route carries
-`auth: true` like the API mount, which gates who can *reach* it — not who owns
-which record. The screen is multi-user-safe **only for an
-[owned](#per-record-ownership) collection**: it reads and writes through the
-store's own API with the signed-in caller's session, so on a collection with
-`ownership: owner` each user sees, edits and deletes only their own records. On
-a shared collection (the default, and the `--example` `todos` when `auth` is
-not installed) every
-signed-in caller sees and edits the whole collection through this screen, so
-it is a single-user or trusted-group surface; do not read `auth` on the route
-as record-level access control there. Text
-fields become inputs (a textarea above 200
-characters), enums selects, numbers number inputs and booleans checkboxes;
-labels come from the field names unless the screen sets `columns`
-(`columns: [title, {field: done, label: Finished}]`) to choose, order and
-relabel the fields shown. Details and limits are in the
-[ui package README](../packages/ui/README.md#data-bound-screens).
-
-### Transitions on a screen
-
-A screen over a collection with
-[declared transitions](#declared-transitions) shows every `transitionOnly`
-field read-only (never in the create form or an edit row, never in a request
-body) and offers each transition the screen's viewer can run as a button, on
-the rows whose [`may`](#what-the-caller-may-run) names it. The owner's reads and
-the reviewer's reads live on different mounts, so there are two kinds of
-screen:
-
-```yaml
-# snippet: partial (the collections and routes of the approval example above)
-extensions:
-  store:
-    version: "1"
-    config:
-      screens:
-        /requests: {collection: requests, title: My requests}      # the collection mount
-        /review: {collection: requests, readers: true, title: Review}   # the readers mount
-routes:
-  /requests/*: {extension: ui, methods: [GET, HEAD], auth: true}
-  /review/*: {extension: ui, methods: [GET, HEAD], auth: true}
-```
-
-- **A collection screen** (the default) lists the collection mount, so an
-  owner sees their own records with create, edit and delete, and gets a
-  button for each transition served on that mount: `by: owner`, or any
-  transition of a shared collection. A `by: others` transition is never
-  offered there, since the store refuses it to the owner.
-- **A readers screen** (`readers: true`) lists the collection's
-  [readers mount](#membership-gates-and-cross-owner-reads): every owner's
-  records, read-only, with the collection's sort and filter controls (a
-  `status` filter is the review queue). It offers exactly the `by: others`
-  transitions, each posted to its own mount. The collection must declare
-  `readers`, or activation refuses the screen.
-- **A click** sends `POST <mount>/<id>/<name>` (or `POST <transition
-  mount>/<id>`) from the page's own origin, with no body, `If-Match` set to
-  the ETag the record was listed with (or the ETag of the screen's own last
-  write to it), and a fresh `Idempotency-Key` when the collection declares
-  `idempotency`. The row then shows the record the store returns, and its
-  buttons follow that answer's `Allow-Transitions`.
-- **A refusal is a page message**, and the row keeps its state:
-  `412` (the record changed since the list was loaded; refresh and try
-  again; the same message as a stale edit or delete), `409 transition_conflict`, `403` (`membership_required` or
-  `own_record_refused`), and a generic message for anything else. Because
-  `If-Match` is checked before `from`, a stale row answers `412`; a `409`
-  reaches the page only for a record listed without an ETag.
-- **Buttons follow `may`.** A viewer outside a transition's `members` gate
-  gets no button for it, and a reviewer's own request on the readers screen
-  shows no `by: others` button. The screen needs no membership data of its
-  own: the store computes `may` for the viewer. An API that sends no `may`
-  (not this store) gets the older behavior, a button wherever the record holds
-  the transition's `from` values. `may` can go stale like any listed value, so
-  a refusal is still possible, and it is a page message as above.
-- A `readOnly` collection offers no transitions (the store refuses them).
-  Membership collections have no mount and are refused, as before.
+With `auth` composed, `auth: true` on the mount gates who can reach it, not who
+owns which record: only an [owned](#per-record-ownership) collection scopes
+each caller to their own records. For shadcn/ui components, use the official
+shadcn tooling and bring an item into the app's source with
+[`urlcode artifacts stage`](EXTENSIONS.md#staging-source-assets).
 
 ## Using a collection from another extension
 
@@ -1306,9 +1219,7 @@ constraint, a declarative multi-record transfer and roles beyond a
 [membership collection](#membership-gates-and-cross-owner-reads) are not built
 ([#835](https://github.com/jimhoyd-com/urlcode/issues/835); the
 [transition design](#what-is-not-covered) lists what each needs). Recorded in
-[open decisions](OPEN-DECISIONS.md): ranges and text search, and richer screens beyond the first slice ([#262]): labels,
-columns, sort and filter controls have all shipped
-([#330](https://github.com/jimhoyd-com/urlcode/issues/330)). Owned collections
+[open decisions](OPEN-DECISIONS.md): ranges and text search. Owned collections
 ([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only apart from
 [readers mounts](#membership-gates-and-cross-owner-reads): sharing one record with chosen principals and write access for managers or support are not
 built.

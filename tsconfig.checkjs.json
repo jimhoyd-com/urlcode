@@ -9,7 +9,6 @@
     "noEmit": true
   },
   "include": [
-    "action/comment.mjs",
-    "packages/ui/scripts"
+    "action/comment.mjs"
   ]
 }

@@ -1,7 +1,7 @@
 # Operator-installed extensions
 
 Extensions are trusted operator modules, separate from a project's own
-`function`/`middleware` code. The first-party extensions (`ui`, `audit`,
+`function`/`middleware` code. The first-party extensions (`audit`,
 `auth`, `store`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
@@ -524,8 +524,7 @@ cache busting. Every loaded hook is called as `hook(input, context)`: `input`
 is the contract-validated value, and `context` is a frozen copy of the generic
 `ExtensionHookContext`, `{requestId, env}`, which the extension builds from the
 request with `extensionHookContext(request)`. A hook that does not run on
-behalf of a request (the UI presentation filters) gets `requestId: null` and an
-empty `env`. An extension may add its own fields; `mcp` adds `server`, `tool`
+behalf of a request gets `requestId: null` and an empty `env`. An extension may add its own fields; `mcp` adds `server`, `tool`
 and `kind`. Hook entry bytes participate in the project revision, so editing
 a hook invalidates the operator's extension pin.
 
@@ -533,17 +532,17 @@ Projects select those declared hooks in the extension's own configuration:
 
 ```yaml
 extensions:
-  ui:
+  notifier:
     version: "1"
     config:
       hooks:
-        transformView:
-          source: ./hooks/transform-ui-view.mjs
+        transformMessage:
+          source: ./hooks/transform-message.mjs
           export: default
 ```
 
-with `transformView` a filter that returns the view model a `ui` template
-renders. Hook names and lifecycle timing remain the
+with `transformMessage` a filter a hypothetical `notifier` extension declares
+(`mcp` declares its tool, resource and prompt handlers the same way). Hook names and lifecycle timing remain the
 extension's domain, while their declaration, loading and discovery are shared.
 
 Hooks are first-party project code and run trusted in-process by default, with
@@ -552,16 +551,6 @@ does not define an arbitrary-value sandbox hook protocol. A hook reference with
 `sandbox: true` is rejected during activation rather than silently run trusted.
 Only the entry module is refreshed during reactivation; its imported dependencies
 remain in Node's module cache until restart.
-
-The UI extension exposes `transformView`, a synchronous filter called before a
-named kit template renders. It receives `{template, view}` and returns the view
-model to render. Use copy, templates, theme and CSS for ordinary presentation
-changes; use this hook for project-specific computed view data that those
-declarative layers cannot express. It also exposes `transformPage`, called
-before the shared layout renders. It receives the editable title, layout,
-navigation, account menu and flash message and returns those page fields. This
-lets a product join extension screens (store lists) to its own shell without replacing their
-security or workflow behavior. Both filters are synchronous and trusted.
 
 ## Building an extension
 
@@ -600,8 +589,7 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    reviewed cost model (`RIM-PATTERN-001` in
    [runtime implementation](RUNTIME-IMPLEMENTATION.md)).
 3. Publishes an `authoring` contract listing its supported project-owned
-   configuration, theme/copy, component/template, stylesheet and hook surfaces,
-   plus focused `fastChecks`. Keep descriptions concrete enough that an agent
+   configuration and hook surfaces, plus focused `fastChecks`. Keep descriptions concrete enough that an agent
    can choose a supported surface instead of copying package behavior.
 4. Activates all configuration, files, services and hooks before serving a
    request. Invalid or stale configuration fails activation. Throw an `Error`
@@ -712,9 +700,9 @@ const registration: RuntimeExtension = {
 A registration that declares `immutableAssets: {prefix}` (see [the cache
 exception](#wrapping-a-route-extension-middleware)) may also say which of its
 mounts serve nothing else. The activated instance returns
-`assetMounts: ['/assets/ui']`: entries of `context.mounts` whose route serves
+`assetMounts: ['/assets/example']`: entries of `context.mounts` whose route serves
 only content-hashed files under `<mount><prefix>/`, and 404 for any other path.
-`ui` names its one asset mount there and leaves its screen mounts out.
+No first-party extension declares one today.
 
 - Activation is refused, naming the extension, when an instance declares
   `assetMounts` without `immutableAssets`, or names anything but distinct
@@ -823,14 +811,13 @@ other registrations of the same extension is unchanged: only a reload shares.
 
 An extension that holds nothing exclusive leaves `handoff()` out and behaves as
 before. The same overlap applies to any per-registration "current activation"
-an extension keeps for its exports (the served kit, a records export, a
-delivery context): make the newest live activation current and, when it
+an extension keeps for its exports (a records export, a delivery context): make the newest live activation current and, when it
 closes, fall back to the previous live one rather than to nothing, so a failed
 reload's close cannot switch off the runtime that is still serving. No
 first-party extension needs the hand-off today: the store shares one database
 connection among its registration's live activations instead
-([store reload](STORE.md#reload)), and the store's records export and ui
-keep their current activation that way.
+([store reload](STORE.md#reload)), and the store's records export keeps its
+current activation that way.
 
 ### Site origins and same-origin checks
 
@@ -894,8 +881,8 @@ Every extension also follows the
 Consumers add it with `urlcode extensions add <name>`, which declares its YAML
 block and routes and registers it in `host.mjs`. Keep that `scaffold` to the
 capability; put a demo in the definition's optional `example`, which core writes
-only with `--example`. They modify it through declared configuration,
-presentation layers and hooks. A fork is reserved for changing behavior the
+only with `--example`. They modify it through declared configuration
+and hooks. A fork is reserved for changing behavior the
 extension has not exposed; that is evidence for a new declarative field or hook.
 
 ## Generic add-on authoring rules
@@ -907,9 +894,9 @@ internals. An add-on **must** follow them:
 1. **Own only your declared surface.** An extension owns its declared
    configuration, mounts, policies and exported or contributed contract, and
    nothing else. It must not read, parse or depend on another extension's
-   private YAML or configuration layout. Pattern: `store` contributes generic
-   descriptions of its CRUD screens to `ui`, and `ui` never reads
-   `extensions.store.config` (#709; see [nesting](#nesting)).
+   private YAML or configuration layout. Pattern: an owned store collection
+   reads only the generic request principal `auth` sets, never auth's
+   configuration (see [nesting](#nesting)).
 2. **Make every cross-extension dependency explicit.** Use `requires`, or a
    `uses` entry for an optional one, a typed, versioned export read with `ctx.get`, or a typed, versioned
    contribution (`contributes` on the giver, `ctx.contributions` on the
@@ -1170,7 +1157,7 @@ check it against core's pin.
 
 The first-party add-ons are:
 
-- Extensions: `ui`, `audit`, `auth`, `store`, `mcp`.
+- Extensions: `audit`, `auth`, `store`, `mcp`.
 - Artifacts: `store-schema`, the `store` extension's configuration schema and an
   example configuration. Its schema is generated from the store extension's
   definition by `npm run build:addons`, so the two cannot drift.
@@ -1254,18 +1241,16 @@ one entry:
 
 ```js
 import { composeHost } from '@jimhoyd/urlcode/host';
-import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
 import store from '@jimhoyd/urlcode-store/extension';
 
 export default await composeHost(import.meta.url, [
-  ui(),
   auth(),
   store(),
 ]);
 ```
 
-That is the host after `urlcode extensions add ui auth store`. Operator options
+That is the host after `urlcode extensions add auth store`. Operator options
 go inside the call, for example `auth({signUp: true})`. The
 generated npm scripts run from the site directory (`urlcode dev --project app
 --host-file host.mjs`, and the same for `serve`, `validate`, `test`, `routes`
@@ -1331,8 +1316,8 @@ package was downloaded and extracted but never run: every npm call passes
 command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
-on `/api/todos` (and, with `ui`, its `/todos` screen; per-user `ownership: owner`
-when `auth` is installed); ui, audit, auth and mcp ship none.
+on `/api/todos` (per-user `ownership: owner` when `auth` is installed); audit,
+auth and mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
 the `store` example without `auth` would expose public write on its collection. The refusal
@@ -1363,7 +1348,7 @@ lock integrity and resolved URL are still checked against core's pin, and
 nested copies still fail, but the missing declaration and import are not drift.
 As soon as either file names it, the other must agree.
 
-`urlcode init <directory> --with ui,auth [--example] [--ack extension:id]` is `init`
+`urlcode init <directory> --with auth,store [--example] [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.
 
 `urlcode upgrade` moves core and every installed add-on to one version
@@ -1386,7 +1371,7 @@ reports the current and target versions and changes nothing. Configuration is
 not migrated: if an extension's schema changed, validation names the field.
 
 Add-on command-line tools are ordinary npm bins once installed in the site, for
-example `npx urlcode-auth migrate` or `npx urlcode-ui doctor --project app`.
+example `npx urlcode-auth migrate` or `npx urlcode-store members list ...`.
 
 ### Independent extension packages
 
@@ -1430,9 +1415,9 @@ Each extension declares what it needs:
 
 | Extension | `requires` | `uses` (optional) | Contributes to |
 |---|---|---|---|
-| `ui`, `audit`, `mcp` | none | none | |
+| `audit`, `mcp` | none | none | |
 | `auth` | none | none | |
-| `store` | none | `audit` | `ui` |
+| `store` | none | `audit` | |
 
 A sibling add-on is an optional exact peer dependency, never a nested
 dependency, so every add-on is installed once at the top level of the site;
@@ -1451,14 +1436,8 @@ does not matter. They close in reverse order.
 
 A contribution is an optional edge too: an extension may contribute to one it
 does not require, and the value is simply unused when the target is not
-installed. `ui` accepts templates and copy catalogues through
-`contributes.ui`, which it collects with `ctx.contributions('ui')`, though no
-first-party extension contributes templates to it today. The store does not
-require `ui`, but contributes `screens`, a source ui calls at activation to
-receive generic descriptions of the CRUD screens declared under
-`extensions.store.config.screens`, so ui never reads the store's
-configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
-`package.json` declares `ui` an optional peer.
+installed. The descriptor records the edge (`contributes: ["<target>"]`). No
+first-party extension contributes to another today.
 
 #### Contributions
 
@@ -1475,14 +1454,8 @@ configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
   receiver.
 - A receiver that keys anything by extension name (a namespace, an owned
   prefix) checks it against `from` and refuses a mismatch in `host()`, which
-  `composeHost` reports as a `ConfigError` for the receiving extension. `ui`
-  accepts a `templates` entry only when its `name` is `from` and every
-  template or view-model key is `<from>/…`. The error names the claimed
-  namespace and the contributing extension, for example `ui template namespace
-  "store" is contributed by extension "notifier": an extension contributes ui
-  templates only under its own name`. ui's contributed screens are keyed by route path,
-  not by extension name, so ui uses `from` only to name both contributors when
-  two claim one path.
+  `composeHost` reports as a `ConfigError` for the receiving extension. The
+  error should name the claimed namespace and the contributing extension.
 
 Exports are typed and versioned (`version: 1`, plus `active`). `auth`
 exports nothing to other extensions; it reaches them only through the
@@ -1494,7 +1467,7 @@ exports nothing to other extensions; it reaches them only through the
 | `StoreExports` | `store` | no first-party reader: an ownership-honouring records API for an operator's own extension |
 
 Two copies of one extension cannot exist in a site, so duplicate-instance bugs
-(such as a second `ui` kit that never received another extension's templates)
+(such as a second copy that never received another extension's contributions)
 cannot happen.
 
 ### Audit log
@@ -1535,7 +1508,7 @@ export default defineExtension<MyHostOptions>({
   schema,                     // JSON Schema of extensions.<name>.config
   policySchema,               // optional: per-route policies.extensions.<name>
   hooks, authoring,           // optional project customization contracts
-  contributes: {},            // optional static values for another extension, e.g. {ui: {...}}
+  contributes: {},            // optional static values for another extension, e.g. {notifier: {...}}
   scaffold(request) { return { config, routes, files, env, notes }; },  // the capability
   example(request) { return { config, routes, notes }; },               // optional demo, only with --example
   host(ctx, options) { return { registration, exports, close }; },

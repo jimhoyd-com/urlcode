@@ -14,13 +14,13 @@ async function fixture(version = '1.0.0'): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-bump-'));
   const files: Record<string, string> = {
     'package.json': json({ name: core, version, devDependencies: { typescript: '6.0.3' } }),
-    'packages/ui/urlcode.json': json({ kind: 'extension', name: 'ui' }),
-    'packages/ui/package.json': json({ name: '@jimhoyd/urlcode-ui', version, peerDependencies: { [core]: version } }),
-    'packages/auth/urlcode.json': json({ kind: 'extension', name: 'auth', requires: ['ui'] }),
+    'packages/audit/urlcode.json': json({ kind: 'extension', name: 'audit' }),
+    'packages/audit/package.json': json({ name: '@jimhoyd/urlcode-audit', version, peerDependencies: { [core]: version } }),
+    'packages/auth/urlcode.json': json({ kind: 'extension', name: 'auth', requires: ['audit'] }),
     'packages/auth/package.json': json({
       name: '@jimhoyd/urlcode-auth', version,
-      peerDependencies: { [core]: version, '@jimhoyd/urlcode-ui': version, typescript: '>=6.0.3 <7.0.0' },
-      peerDependenciesMeta: { '@jimhoyd/urlcode-ui': { optional: true }, typescript: { optional: true } },
+      peerDependencies: { [core]: version, '@jimhoyd/urlcode-audit': version, typescript: '>=6.0.3 <7.0.0' },
+      peerDependenciesMeta: { '@jimhoyd/urlcode-audit': { optional: true }, typescript: { optional: true } },
     }),
     'artifacts/site/urlcode.json': json({ kind: 'artifact', name: 'site' }),
     'artifacts/site/package.json': json({ name: '@jimhoyd/urlcode-site', version }),
@@ -34,9 +34,9 @@ async function fixture(version = '1.0.0'): Promise<string> {
     '.claude-plugin/marketplace.json': json({ name: 'urlcode', metadata: { version } }),
     'README.md': `Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: ${version}.\n<!-- urlcode-current-version:end -->\n`,
     'docs/GUIDE.md': 'No version here.\n',
-    'packages/ui/CHANGELOG.md': `## ${version}\n`,
+    'packages/audit/CHANGELOG.md': `## ${version}\n`,
   };
-  const manifests = ['packages/ui', 'packages/auth', 'artifacts/site'];
+  const manifests = ['packages/audit', 'packages/auth', 'artifacts/site'];
   const lock = { name: core, version, lockfileVersion: 3, packages: Object.fromEntries([
     ['', { name: core, version }],
     ...manifests.map(dir => {
@@ -67,14 +67,14 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert.equal(await check(root), '1.0.0');
   const changed = await bump('1.1.0-alpha.1', root);
   assert.equal(await check(root), '1.1.0-alpha.1');
-  for (const path of ['package.json', 'packages/ui/package.json', 'packages/auth/package.json', 'artifacts/site/package.json']) {
+  for (const path of ['package.json', 'packages/audit/package.json', 'packages/auth/package.json', 'artifacts/site/package.json']) {
     assert.equal((await readJson(root, path)).version, '1.1.0-alpha.1', path);
     assert(changed.includes(path), path);
   }
   const lock = await readJson<{ version: string; packages: Record<string, { version: string; peerDependencies?: Record<string, string> }> }>(root, 'package-lock.json');
   assert.equal(lock.version, '1.1.0-alpha.1');
-  for (const key of ['', 'packages/ui', 'packages/auth', 'artifacts/site']) assert.equal(lock.packages[key]!.version, '1.1.0-alpha.1', key);
-  assert.deepEqual(lock.packages['packages/auth']!.peerDependencies, { [core]: '1.1.0-alpha.1', '@jimhoyd/urlcode-ui': '1.1.0-alpha.1', typescript: '>=6.0.3 <7.0.0' });
+  for (const key of ['', 'packages/audit', 'packages/auth', 'artifacts/site']) assert.equal(lock.packages[key]!.version, '1.1.0-alpha.1', key);
+  assert.deepEqual(lock.packages['packages/auth']!.peerDependencies, { [core]: '1.1.0-alpha.1', '@jimhoyd/urlcode-audit': '1.1.0-alpha.1', typescript: '>=6.0.3 <7.0.0' });
   // An example that depends on core is pinned exactly and keeps its other fields; one that does not is left alone.
   assert.deepEqual(await readJson(root, 'examples/cloudflare/package.json'), { name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: '1.1.0-alpha.1' }, devDependencies: { wrangler: '^4' } });
   assert(changed.includes('examples/cloudflare/package.json'));
@@ -87,16 +87,16 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert.deepEqual((await readJson(root, '.claude-plugin/marketplace.json')).metadata, { version: '1.1.0-alpha.1' });
   // Only the marked block moves; history outside it and changelogs are left alone, and untouched files are not rewritten.
   assert.equal(await read(root, 'README.md'), 'Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: 1.1.0-alpha.1.\n<!-- urlcode-current-version:end -->\n');
-  assert.equal(await read(root, 'packages/ui/CHANGELOG.md'), '## 1.0.0\n');
+  assert.equal(await read(root, 'packages/audit/CHANGELOG.md'), '## 1.0.0\n');
   assert(!changed.includes('docs/GUIDE.md'));
 }));
 
 test('peers on core and sibling add-ons become exact, siblings optional, other peers untouched', () => withFixture(async root => {
   await bump('2.0.0', root);
   const auth = await readJson<{ peerDependencies: Record<string, string>; peerDependenciesMeta: Record<string, { optional?: boolean }> }>(root, 'packages/auth/package.json');
-  assert.deepEqual(auth.peerDependencies, { [core]: '2.0.0', '@jimhoyd/urlcode-ui': '2.0.0', typescript: '>=6.0.3 <7.0.0' });
-  assert.deepEqual(auth.peerDependenciesMeta, { '@jimhoyd/urlcode-ui': { optional: true }, typescript: { optional: true } });
-  assert.deepEqual((await readJson(root, 'packages/ui/package.json')).peerDependencies, { [core]: '2.0.0' });
+  assert.deepEqual(auth.peerDependencies, { [core]: '2.0.0', '@jimhoyd/urlcode-audit': '2.0.0', typescript: '>=6.0.3 <7.0.0' });
+  assert.deepEqual(auth.peerDependenciesMeta, { '@jimhoyd/urlcode-audit': { optional: true }, typescript: { optional: true } });
+  assert.deepEqual((await readJson(root, 'packages/audit/package.json')).peerDependencies, { [core]: '2.0.0' });
   assert.equal((await readJson(root, 'artifacts/site/package.json')).peerDependencies, undefined);
 }));
 
@@ -118,8 +118,8 @@ test('bump refuses to start from a checkout whose declarations already disagree'
 const drifts: [string, (root: string) => Promise<void>, RegExp][] = [
   ['an add-on version', root => edit(root, 'artifacts/site/package.json', text => text.replace('"1.0.0"', '"1.0.1"')), /artifacts\/site\/package\.json is 1\.0\.1/],
   ['the lockfile', root => edit(root, 'package-lock.json', text => text.replace('"version": "1.0.0"', '"version": "0.9.0"')), /package-lock\.json version differs/],
-  ['a ranged core peer', root => edit(root, 'packages/ui/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /must peer on @jimhoyd\/urlcode 1\.0\.0 exactly/],
-  ['a required sibling peer', root => edit(root, 'packages/auth/package.json', text => text.replace('"@jimhoyd/urlcode-ui": {\n      "optional": true\n    },', '')), /sibling peer @jimhoyd\/urlcode-ui must be optional/],
+  ['a ranged core peer', root => edit(root, 'packages/audit/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /must peer on @jimhoyd\/urlcode 1\.0\.0 exactly/],
+  ['a required sibling peer', root => edit(root, 'packages/auth/package.json', text => text.replace('"@jimhoyd/urlcode-audit": {\n      "optional": true\n    },', '')), /sibling peer @jimhoyd\/urlcode-audit must be optional/],
   ['a stale example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "0.3.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode 0\.3\.0/],
   ['a ranged example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode \^1\.0\.0; an example pins core's version 1\.0\.0 exactly/],
   ['a runtime literal', root => edit(root, 'packages/core/src/mcp.ts', text => text.replace('1.0.0', '0.9.0')), /mcp\.ts must declare 1\.0\.0 exactly once/],

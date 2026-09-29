@@ -14,7 +14,7 @@ before promising a deployment. Stored short links have no dedicated package;
 a project declares a collection through the `store` extension instead (see
 [docs/STORE.md](docs/STORE.md)).
 
-Auth, UI, audit, store and MCP are optional packages, developed in this
+Auth, audit, store and MCP are optional packages, developed in this
 repository under `packages/` and released independently. Middleware is not a
 package: per-route `middleware:` is native to core. Auth is a thin adapter
 over [Better Auth](https://better-auth.com/) (#841); URLCode's own account
@@ -25,8 +25,8 @@ not future phases. See [the framework](docs/FRAMEWORK.md).
 
 ## Next work
 
-Auth and UI are workspace packages here, released from this repository;
-the migration is complete and its historical plan is retained privately. The separate
+Auth is a workspace package here, released from this repository; the
+migration is complete and its historical plan is retained privately. The separate
 middleware package was withdrawn rather than migrated
 ([the decision](docs/OPEN-DECISIONS.md#accepted-middleware-withdrawn-rather-than-consolidated)).
 Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and

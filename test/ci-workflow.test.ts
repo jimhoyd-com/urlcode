@@ -85,8 +85,8 @@ test('workflow command bodies call the tested CI scripts', async () => {
 
 test('build fidelity compares every tarball and the add-on pins, not the timestamped SBOM', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'urlcode-fidelity-test-'));
-  await writeFile(join(directory, 'SHA256SUMS'), ['b  jimhoyd-urlcode-ui-1.0.0.tgz', 'c  sbom.cdx.json', 'a  addons.json', 'd  jimhoyd-urlcode-1.0.0.tgz', 'e  urlcode.rb'].join('\n') + '\n');
-  assert.deepEqual(await reproducible(directory), ['a  addons.json', 'b  jimhoyd-urlcode-ui-1.0.0.tgz', 'd  jimhoyd-urlcode-1.0.0.tgz']);
+  await writeFile(join(directory, 'SHA256SUMS'), ['b  jimhoyd-urlcode-auth-1.0.0.tgz', 'c  sbom.cdx.json', 'a  addons.json', 'd  jimhoyd-urlcode-1.0.0.tgz', 'e  urlcode.rb'].join('\n') + '\n');
+  assert.deepEqual(await reproducible(directory), ['a  addons.json', 'b  jimhoyd-urlcode-auth-1.0.0.tgz', 'd  jimhoyd-urlcode-1.0.0.tgz']);
 });
 
 test('workflows time out jobs and use safe installs', async () => {

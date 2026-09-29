@@ -8,7 +8,6 @@ import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecor
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
 import { openStoreDatabase } from './database.ts';
 import type { StoreDatabase } from './database.ts';
-import { screensSchema, storeScreens } from './screens.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
 import type { StoreExports } from './records.ts';
@@ -38,7 +37,7 @@ const failure = (error: StoreError, extra: [string, string][] = []): HandlerResu
 const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record, OWNER_FIELD)) return record; const { [OWNER_FIELD]: _owner, ...rest } = record; return rest; };
 /**
  * A list page as the HTTP API answers it: the records, `may` (each listed record's transitions the caller may run
- * now, by id; #873), and `etags`, each listed record's current ETag by id, so a client (the ui screen's transition
+ * now, by id; #873), and `etags`, each listed record's current ETag by id, so a client (a frontend's transition
  * buttons) can offer only what will be accepted and send `If-Match` for the version it listed, without a read per record.
  */
 const listView = (page: Page, project: (record: StoredRecord) => StoredRecord = view) => ({ ...page, items: page.items.map(project), etags: Object.fromEntries(page.items.map(record => [record.id as string, etagOf(record)])) });
@@ -83,7 +82,6 @@ export const storeConfigSchema = { type: 'object', additionalProperties: false, 
       clicks: { type: 'string', pattern: FIELD.source, description: 'A field listed in the collection\'s increments, raised by one on each GET (even when the collection is readOnly).' },
     },
   } },
-  screens: screensSchema,
 } };
 
 /** The operator-installed registration. Storage location and the revision pin are operator choices, never project YAML. */
@@ -150,8 +148,6 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('Store database must be outside the route project');
       const declared = (config as { collections: Record<string, CollectionSpec>; shortLinks?: Record<string, ShortLinkSpec> }).collections;
       const declaredLinks = (config as { shortLinks?: Record<string, ShortLinkSpec> }).shortLinks ?? {};
-      // Screens are served by ui, but they name store collections, so an unknown one refuses here too.
-      storeScreens(config);
       const byMount = new Map<string, Collection>();
       const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor));
       for (const collection of collections) if (collection.spec.audit && !audit?.active) throw new Error(`collection ${collection.name} declares audit: true; install the audit extension (urlcode extensions add audit)`);

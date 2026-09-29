@@ -11,7 +11,7 @@ The store is not core and does not activate on its own.
 
 - In a site, `urlcode extensions add store` installs the extension core pins
   and registers it in `host.mjs`, kept outside the project.
-  `urlcode init DIR --with ui,auth,store --example` scaffolds a protected site
+  `urlcode init DIR --with auth,store --example` scaffolds a protected site
   with this collection in one step, declared `ownership: owner` so each
   signed-in user has their own todos; without `auth`, the store example needs
   `--ack store:public-write`. Without `--example` the store installs with no

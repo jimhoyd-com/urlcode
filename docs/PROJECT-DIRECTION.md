@@ -131,23 +131,28 @@ private fork or privileged capability. If an application needs something the
 runtime cannot express, that is a gap in the public contract to close in the
 open, not a reason for a special path. See the [roadmap](../ROADMAP.md).
 
-An application remains one product even when core, UI, auth and other
-extensions have separate package ownership. A product change should customize
-the installed contracts and keep only its distinct behavior and presentation in
-the project. It should not copy an authentication flow or framework component
-merely to change its appearance.
+An application remains one product even when core, auth and other extensions
+have separate package ownership. A product change should customize the
+installed contracts and keep only its distinct behavior in the project. It
+should not copy an authentication flow merely to change its appearance.
+
+URLCode owns the HTTP and data contracts, not the presentation. The frontend,
+its components, styling and copy are the application's own code, calling JSON
+routes and store mounts with `fetch`, as the
+[private-requests client](../proofs/private-requests/client/main.js) does. For
+shadcn/ui components, use the official shadcn tooling or skill and bring an item
+into the app's source with `urlcode artifacts stage`, which records what it
+would write.
 
 Extensions publish their supported authoring surfaces for people and agents to
-discover: configuration first, then theme/copy, component or template overrides,
-project CSS and declared trusted hooks. A new extension is appropriate when the
-missing behavior is a reusable application capability. Repeatedly ejecting or
-rebuilding package-owned behavior is evidence that the public contract needs a
-smaller customization surface.
+discover: configuration first, then declared trusted hooks. A new extension is
+appropriate when the missing behavior is a reusable application capability.
+Repeatedly rebuilding package-owned behavior is evidence that the public
+contract needs a smaller customization surface.
 
-Fast feedback is part of the contract. Project theme, copy and component changes
-should not rebuild unrelated framework packages or restart durable services.
-Each extension should publish focused checks for its surfaces; complete project
-validation and tests remain the handoff evidence.
+Fast feedback is part of the contract. Each extension should publish focused
+checks for its surfaces; complete project validation and tests remain the
+handoff evidence.
 
 ## Why: your AI should build your application, not your framework
 

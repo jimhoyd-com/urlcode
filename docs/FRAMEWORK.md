@@ -1,23 +1,22 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the six workspace packages are, how a
+One page for people and AI agents. It says what the five workspace packages are, how a
 project grows from a handful of redirects into an application with accounts,
 data and tools, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Six workspace packages, one project shape
+## Five workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
 | `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract | `urlcode.yaml` with `version: "1"` |
-| `@jimhoyd/urlcode-ui` | [`packages/ui`](../packages/ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
 | `@jimhoyd/urlcode-audit` | [`packages/audit`](../packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
-| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
+| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All six are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The five extensions, and the inert `store-schema` artifact in
+All five are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The four extensions, and the inert `store-schema` artifact in
 [`artifacts/store-schema`](../artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
@@ -33,9 +32,8 @@ for installation, AI discovery and validation outside the release catalog.
 A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
-([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). The
-[ui status file](../packages/ui/IMPLEMENTATION-STATUS.md) says exactly what is
-built; auth's [README](../packages/auth/README.md#not-included) lists what it
+([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Auth's
+[README](../packages/auth/README.md#not-included) lists what it
 does not include.
 The current version of each package is its own manifest, and the peer ranges it
 declares are in that manifest too; do not read a version number out of this
@@ -69,16 +67,16 @@ Each rung's YAML is valid on every rung above it.
    the mount and the empty configuration. Browsers sign in with Better Auth's
    own client. Roles, ownership and approvals stay application data keyed by
    the user id.
-5. **Your own look.** The `ui` extension's kit renders every store
-   screen; its theme, project copy, template and stylesheet overrides restyle
-   them together.
-6. **Bounded data.** The `store` extension supplies declared durable
+5. **Bounded data.** The `store` extension supplies declared durable
    collections, a trusted operator extension rather than a core YAML handler.
    Add `auth: true` where a collection is per-account. A form is an ordinary
    frontend that posts JSON to a store mount, or to a function route whose
    `request.body.POST.schema` validates it before code runs (the
-   [contact-form recipe](../recipes/contact-form/README.md)).
-7. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
+   [contact-form recipe](../recipes/contact-form/README.md)). The frontend,
+   its components and its look are the application's own: it calls the JSON
+   mounts with `fetch`, as the
+   [private-requests client](../proofs/private-requests/client/main.js) does.
+6. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
    tool server: the official MCP SDK serves the protocol; each tool's own logic is a trusted project handler module the
    operator writes (`urlcode extensions add mcp` wires the extension but
    leaves that handler for you, unlike the other rungs here). Add `auth: true` where a
@@ -105,12 +103,11 @@ rules and authorization.
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
 
-Rungs 1 to 3 need only the core package. Rungs 4 to 7 need an extension added
+Rungs 1 to 3 need only the core package. Rungs 4 to 6 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
 operator host. Auth and audit additionally need the Node/SQLite
 runtime their packages document; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
 self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](../packages/auth/README.md),
-[ui](../packages/ui/README.md),
 [audit](../packages/audit/README.md),
 [store](../packages/store/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
@@ -146,19 +143,19 @@ executable check, with zod.
 An extended project is a site: core plus the add-ons that core pins.
 
 ```sh
-npx @jimhoyd/urlcode init my-site --with ui,auth,store --example
+npx @jimhoyd/urlcode init my-site --with auth,store --example
 ```
 
-That is `urlcode init my-site` followed by `urlcode extensions add ui auth
+That is `urlcode init my-site` followed by `urlcode extensions add auth
 store --example` in it. Without `--example` each extension installs only its
-capability (auth's `/api/auth/*` mount and secret, ui's assets); with it, each
+capability (auth's `/api/auth/*` mount and secret); with it, each
 extension that ships a demo also writes it, such as the store's per-user
 `todos` collection below. Nothing else is discovered by convention:
 
 ```
 my-site/
   app/                   the route project: urlcode.yaml, routes/, functions (Git-owned, untrusted content)
-  host.mjs               trusted operator code: composeHost(import.meta.url, [ui(), auth(), store()])
+  host.mjs               trusted operator code: composeHost(import.meta.url, [auth(), store()])
   package.json           exact core pin and the add-on tarball URLs core pins
   package-lock.json      integrity of every installed package
   data/                  private: auth.secret, auth.sqlite (after npx urlcode-auth migrate), store.sqlite (gitignored)
@@ -169,7 +166,6 @@ The project declares logical extensions and exclusive mounts:
 ```yaml
 version: "1"
 extensions:
-  ui:    { version: "1", config: { theme: { name: Acme, colors: { primary: "24 95% 53%" } } } }
   auth:  { version: "1", config: {} }
   store:
     version: "1"
@@ -184,7 +180,6 @@ extensions:
             title: { type: string, required: true, minLength: 1, maxLength: 200 }
             done: { type: boolean, default: false }
 routes:
-  /assets/ui/*: { extension: ui,   methods: [GET, HEAD] }
   /api/auth/*:  { extension: auth, methods: [GET, POST] }
   /api/todos/*:
     extension: store
@@ -200,12 +195,10 @@ boundary; it does not isolate trusted application code from the host:
 
 ```js
 import { composeHost } from '@jimhoyd/urlcode/host';
-import ui from '@jimhoyd/urlcode-ui/extension';
 import auth from '@jimhoyd/urlcode-auth/extension';
 import store from '@jimhoyd/urlcode-store/extension';
 
 export default await composeHost(import.meta.url, [
-  ui(),
   auth(),
   store(),
 ]);
@@ -218,20 +211,13 @@ exports nothing to other extensions: it reaches the owned store collection
 only through the generic request principal, and the route's own code only
 through its `identity` capability. Everything about the Better Auth instance
 (sign-up, extra endpoints, plugins, database and secret file) is an option of
-`auth({...})` in `host.mjs`, never YAML. The store contributes to `ui` without
-requiring it: the CRUD screens declared under
-`extensions.store.config.screens` reach ui as generic screen descriptions
-through `contributes.ui.screens`, so ui never reads another extension's
-configuration ([nesting](EXTENSIONS.md#nesting)). Core stamps each
-contribution with the name of the extension that made it, so ui accepts a
-template namespace only from the extension of that name
-([contributions](EXTENSIONS.md#contributions)). Operator options go inside a
+`auth({...})` in `host.mjs`, never YAML. No extension reads another's
+configuration ([nesting](EXTENSIONS.md#nesting)). Operator options go inside a
 call, for example `auth({signUp: true})`.
 
 The whole graph, as each extension declares it:
 
 ```
-ui       requires []
 audit    requires []
 auth     requires []
 store    requires []                  uses [audit]
@@ -242,14 +228,13 @@ A `requires` entry must be installed and declared; a `uses` entry is optional,
 and the extension works without it (store refuses only a collection that asks
 for `audit: true` when audit is absent).
 
-Treat that composition as one application with package ownership boundaries,
-not as separate user interfaces. Keep accounts, passwords and sessions in
+Treat that composition as one application with package ownership boundaries. Keep accounts, passwords and sessions in
 Better Auth behind the auth extension, roles and permissions in the
 application's own data, the durable log in audit and email delivery in the
-application's own function code, through the provider's library.
+application's own function code, through the provider's library, and the
+frontend, its components and styling in the application's own source.
 Apply product differences through the installed extensions' declared authoring
-surfaces, in this order: configuration and theme, copy, a component or screen
-template, stylesheet, then a supported hook. Create another extension only for
+surfaces: configuration first, then a supported hook. Create another extension only for
 a reusable capability those surfaces cannot express. `urlcode extensions`
 and the MCP `get_extensions` tool report those surfaces and their fast checks,
 so people and agents can discover the supported path instead of replacing
@@ -284,7 +269,7 @@ auth's `context.capabilities.auth.identity.userId`
 self-hosted server and Vercel adapter write as it is produced under operator
 stream limits and every other target refuses before serving
 ([streamed responses](EXTENSIONS.md#streamed-responses)). A mount that serves
-only content-hashed files (ui's `/assets/ui/*`) is named in the instance's
+only content-hashed files is named in the instance's
 generic `assetMounts`, and `urlcode audit` covers it by that contract after
 probing an unknown name for 404
 ([extension asset mounts](EXTENSIONS.md#extension-asset-mounts)). A composition reaches
@@ -314,13 +299,6 @@ For auth, `npx urlcode-auth migrate` then creates Better Auth's tables and
 [the revision pin](EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval.
 
-The presentation tooling composes the same way. `npx urlcode-ui` with
-`--extensions <package>,…` adds the template namespaces those installed
-packages contribute (read from each package's `./extension` definition,
-`contributes.ui`), so `list`, `doctor`, `eject`, `preview` and
-`copy --missing` cover them too, and a project override of an extension
-template is checked against the shipped view model.
-
 ## Rules an agent must follow
 
 These are the facts that keep generated projects valid. The full matrix is in
@@ -331,9 +309,9 @@ These are the facts that keep generated projects valid. The full matrix is in
   logical names; the host file chooses the implementation. There is no
   `--extension` flag, no `import` in YAML, no interpolation.
 - **Build one product through declared authoring surfaces.** Inspect extension
-  authoring metadata before generating code. Prefer configuration/theme, copy,
-  the smallest template override, stylesheet and supported hooks, in that
-  order. Add an extension only for a reusable missing capability. Run the
+  authoring metadata before generating code. Prefer configuration, then
+  supported hooks. The frontend is the application's own code; for shadcn/ui
+  use the official tooling and `urlcode artifacts stage`. Add an extension only for a reusable missing capability. Run the
   reported fast checks while iterating and the full repository checks before
   handoff.
 - **One handler per route.** `redirect`, `respond`, `page`, `static`, `download`,
@@ -376,6 +354,6 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
 | Audit log | [audit](../packages/audit/README.md) |
 | Rate limits, email | [`policies.throttle`](POLICIES.md), [contact-form recipe](../recipes/contact-form/README.md) |
-| Restyle every page | [ui README](../packages/ui/README.md), [ui contract](../packages/ui/CONTRACT.md) |
+| Build the frontend | [private-requests client](../proofs/private-requests/client/main.js), [what the caller may run](STORE.md#what-the-caller-may-run), [staging source assets](EXTENSIONS.md#staging-source-assets) |
 | Write an extension | [extensions](EXTENSIONS.md), [authoring rules](EXTENSIONS.md#generic-add-on-authoring-rules) |
 | Run it | [operations](OPERATIONS.md), [install](INSTALL.md), [deployment checks](DEPLOYMENT-CHECKS.md) |

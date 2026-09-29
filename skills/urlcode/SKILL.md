@@ -88,25 +88,23 @@ project already uses.
 
 ## Build one application
 
-Treat core routes, installed extensions and product UI as one application with
+Treat core routes, installed extensions and the frontend as one application with
 different owners. Core owns routing and policy mechanics; each extension owns its
 security and workflow behavior (Better Auth, through auth, owns sign-in and
-sessions; permissions stay application data); the project owns its product pages, brand and
-the smallest set of overrides that make it distinct.
+sessions; permissions stay application data); the project owns its frontend,
+brand and copy, calling JSON routes and store mounts with `fetch` as
+`proofs/private-requests/client` does.
 
 For an installed extension, follow its `authoring` surfaces from
-`get_extensions` in this order: configuration; theme and copy; component or
-template override; project CSS; declared trusted hook. Build a new extension
-only for a reusable capability the installed contracts do not provide. A visual
-change is not a reason to fork core or copy an extension's flow.
+`get_extensions`: configuration first, then a declared trusted hook. Build a new
+extension only for a reusable capability the installed contracts do not provide.
 
-For a React frontend with `components.json`, load the official shadcn/ui skill,
-run `shadcn info --json`, then use its docs/search or MCP registry before
-generating components. The URLCode skill still owns routing, extension and trust;
-do not put React components in its shadcn-compatible server template renderer.
+For shadcn/ui components, use the official shadcn tooling or skill and bring an
+item into the app's source with `urlcode artifacts stage`; URLCode ships no
+component kit. The URLCode skill still owns routing, extension and trust.
 
 Use published `fastChecks` while iterating, then the full project checks before
-handoff. Theme/copy should not rebuild framework packages; full workspace checks
+handoff. Full workspace checks
 may take several minutes, so let them finish instead of repeatedly rebuilding.
 
 ## 4. Prove it
