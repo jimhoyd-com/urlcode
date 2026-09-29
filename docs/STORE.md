@@ -659,7 +659,9 @@ filterable: [kind, done]         # <field>=<value>, equality only
   memory by the rules above, and then reads the page's records. On a shared
   collection sorting and filtering apply to every record; on an
   [owned](#per-record-ownership) one they apply to the caller's own records
-  only, and `total` and cursors count only those.
+  only, and `total` and cursors count only those. At the 10,000-record maximum such
+  a page took about 9 ms of synchronous work in
+  [one local measurement](CAPACITY.md#measured-the-sqlite-store).
 
 ## Per-record ownership
 
@@ -941,7 +943,8 @@ answers `503 audit_backlog` and changes nothing until audit catches up. Turning
   are therefore checked against committed state and cannot be overshot by
   concurrent requests. Statements are synchronous: within the process no other
   request runs between a transaction's checks and its commit, and each commit's
-  fsync blocks the event loop while it runs.
+  fsync blocks the event loop while it runs. [Capacity](CAPACITY.md#measured-the-sqlite-store)
+  records one local measurement of what that costs.
 - Nothing is cached in memory: every read queries the database. Activation
   still validates every stored record against the declaration and refuses a
   database that no longer matches it rather than serving bad data.

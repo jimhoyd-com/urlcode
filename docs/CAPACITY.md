@@ -133,8 +133,108 @@ Mail's options and the store's database path are operator choices in
 `host.mjs`; the store, audit and abuse bounds are reviewed YAML. See the
 [store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee),
 [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md) and
-[mail](../packages/mail/README.md) packages. No store write throughput has been
-measured on this engine; establish it for your disk before relying on it.
+[mail](../packages/mail/README.md) packages. One local measurement of the store
+follows; establish your own on your disk before relying on it.
+
+### Measured: the SQLite store
+
+Evidence for [#859](https://github.com/jimhoyd-com/urlcode/issues/859) items 1
+and 5, from `npm run bench:store` (source:
+[`packages/store/bench/store-throughput.ts`](../packages/store/bench/store-throughput.ts);
+`-- --quick` for a short check, `-- --json <file>` for raw results). It is a
+single-machine development measurement, not a production guarantee or a
+sizing rule.
+
+**Machine.** Apple M4 Pro (12 cores, 48 GiB), macOS 26.6 on the internal APFS
+SSD, Node 26.10.0 with its bundled SQLite 3.53.4, 2026-09-28. Two full runs;
+the figures below are the first, and the second agreed within about 15%.
+
+**Method.** The server runs in a child process (`startServer` with the store,
+audit and a header-based principal extension, no TLS, no proxy, logging off);
+the parent drives it with a keep-alive `node:http` client at a fixed
+concurrency over loopback. The collection is `ownership: owner` with
+`idempotency: {maxKeys: 1000}`, `maxRecords: 10000`, `pageSize: 100`, two
+sortable and one filterable field and a declared transition; one copy has
+`audit: true` (its events drain into a real audit database), one does not.
+Every write sends a fresh `Idempotency-Key`; each `PATCH` and transition sends
+the record's current `If-Match`. The server samples its own event loop with
+`monitorEventLoopDelay` (1 ms resolution, so values near 1 ms are the floor)
+during each phase. List sizes are seeded directly into the database before the
+server starts, all owned by the calling principal.
+
+**Writes** (3,000 requests each, concurrency 16, every one answered 2xx):
+
+| Write | audit off: writes/s | p50 / p99 ms | audit on: writes/s | p50 / p99 ms |
+|---|---:|---:|---:|---:|
+| `POST` create | 5,127 | 2.8 / 10.3 | 2,968 | 4.9 / 11.7 |
+| `PATCH` with `If-Match` | 7,033 | 2.1 / 4.7 | 3,033 | 4.8 / 11.4 |
+| transition with `If-Match` | 7,527 | 1.9 / 4.5 | 3,061 | 4.7 / 10.9 |
+
+Event-loop delay during these writes was 1.9–4.8 ms at p50 and at most
+19 ms, which at concurrency 16 is mostly the queue of ordinary request work,
+not the commit. Auditing roughly halves write throughput: each event is a
+second row in the same transaction plus a drain into the audit database.
+
+**Commit cost in isolation** (one-row `BEGIN IMMEDIATE` transactions on a WAL
+database, 3,000 each; the store's own setting was not changed):
+
+| Setting | commits/s | p50 / p99 µs |
+|---|---:|---:|
+| `synchronous=FULL` (what the store uses) | 19,313 | 41 / 136 |
+| `synchronous=NORMAL` | 54,482 | 12 / 65 |
+| `synchronous=FULL` with `fullfsync=ON` | 235 | 4,018 / 7,996 |
+
+On this machine a `FULL` commit costs about 30 µs more than `NORMAL`, 1–2% of
+a 2 ms write request, so the fsync is not what bounds store writes here. That
+is a property of macOS: SQLite's default `fsync()` there does not flush the
+drive's cache, and the `fullfsync` row shows what a real flush costs on the
+same disk (about 4 ms, capping one database near 250 commits/s and blocking the
+event loop for each). Linux `fsync` does flush, so `FULL` on a Linux server
+costs something between these rows depending on the disk. **Measure on the
+deployment's Linux host before reading these numbers as the store's write
+ceiling there.**
+
+**Lists** (HTTP, concurrency 1, 400 requests each; the last row at
+concurrency 16):
+
+| Records | Query | page 20: p50 / p99 ms | page 100: p50 / p99 ms |
+|---:|---|---:|---:|
+| 1,000 | unsorted | 0.24 / 0.65 | 0.40 / 1.15 |
+| 1,000 | `sort=title` | 0.96 / 1.45 | 1.28 / 1.84 |
+| 1,000 | `kind=b&sort=title` | 1.05 / 1.42 | 1.27 / 1.74 |
+| 10,000 | unsorted | 0.39 / 0.87 | 0.60 / 1.29 |
+| 10,000 | `sort=title` | 8.7 / 11.2 | 10.1 / 12.7 |
+| 10,000 | `kind=b&sort=title` | 9.9 / 13.1 | 11.0 / 81 |
+| 10,000 | `sort=title`, concurrency 16 | — | 152 / 712 (80 lists/s) |
+
+A sorted or filtered list reads every record in scope and orders it in memory,
+synchronously: at the 10,000-record maximum each one holds the event loop for
+about 9 ms, so concurrent sorted lists queue behind each other (and behind
+every write) and one process serves about 100 of them a second. Unsorted
+lists stay under 1.3 ms at p99 at either size.
+
+**Ordering in SQL instead** (in-process, no HTTP; the store's projection and
+`runList` path against `ORDER BY ... LIMIT` over the same rows; 50,000 is above
+the configurable `maxRecords` and shown only for the curve; p50 ms, page 100):
+
+| Records | store (JS order) | SQL, no index | SQL, expression index on the sort field | filter + sort, SQL with that index |
+|---:|---:|---:|---:|---:|
+| 1,000 | 0.85 | 0.46 | 0.12 | 0.50 |
+| 10,000 | 8.4 | 3.0 | 0.28 | 3.9 |
+| 50,000 | 45.9 | 14.2 | 1.43 | 43 to 79 |
+
+The SQL rows compare bytes (SQLite `BINARY`, UTF-8 order) rather than the
+documented UTF-16 code-unit order; the benchmark's titles are ASCII, where the
+two agree, so this measures cost, not a correct replacement. An `ORDER BY`
+without an index is about 3× faster; only an index on the sort expression
+removes the scan, and an equality filter it does not cover still scans (and
+counts) every record in scope.
+
+**Caveats.** Loopback only, one client process on the same machine, no TLS,
+proxy or request logging; small records (about 150 bytes); one principal
+holding every record; a fresh database per run; short runs (seconds), so no
+WAL checkpoint pressure, fragmentation or long-run GC behaviour is captured;
+macOS `fsync` semantics as described above.
 
 ## Sandbox and trusted dispatch
 
