@@ -319,8 +319,10 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // #938 installed strings (llms.txt pinned reference definitions, llms-full.txt on the release tag, dist/release.js)
     // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
-    packed: 1006 * 1024,
-    unpacked: 3970 * 1024,
+    // #902 item 6's plumbing measurement (FRAMEWORK.md and STORE.md, copied into llms-full.txt): measured on Node 26 at
+    // 1027527 packed / 4066532 unpacked bytes, 527 entries, over the unpacked budget; ~3 KiB headroom over Node 24.
+    packed: 1008 * 1024,
+    unpacked: 3975 * 1024,
     entries: 529,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

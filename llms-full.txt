@@ -584,9 +584,8 @@ For #902 item 6, both counterexamples were declared with no handler code:
   Overdraft, fractions and non-issuers are refused, and an `Idempotency-Key`
   retry replays.
 
-The edit effort was one validate per task. The run did not write the
-host-transaction version, so the plumbing these features remove is still
-unmeasured.
+The edit effort was one validate per task. The plumbing these features
+remove is measured [below](#plumbing-removed-by-intervals-and-transfers).
 
 Nine gaps were found. The main five:
 
@@ -606,6 +605,99 @@ Nine gaps were found. The main five:
   installed, so `docs search` cannot find them.
 
 Each gap was drafted as an issue.
+
+#### Plumbing removed by intervals and transfers
+
+For [#902](https://github.com/jimhoyd-com/urlcode/issues/902) item 6, both
+counterexamples were also written without the declarations: trusted operator
+extensions that serve the same mount through
+[`StoreExports.transaction`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#host-transactions). They are measurement
+fixtures in `packages/store/test/plumbing/`, not recipes. The declarations are
+what to use.
+
+**Method.**
+
+- Each counterexample serves its recipe's API: the statuses,
+  `Cache-Control: no-store`, `401` without a principal, `403` for a
+  cross-origin write, another owner's record as `404`, the `409`s
+  (`interval_conflict`, `insufficient_balance`, `balance_not_zero`,
+  `owner_quota_exceeded`), the `422`s and `If-Match`. The credits version also
+  has the issuer's membership gate and `Idempotency-Key` retries.
+- `packages/store/test/plumbing.test.ts` runs each recipe's own
+  `tests/requests.json` against its counterexample through the CLI, twice, and
+  the audit reports it ready. The recipe fixtures send no `Idempotency-Key`, so
+  a ten-request retry fixture (`credits-retries.json`) runs against both the
+  recipe and the counterexample.
+- `npm run measure:plumbing` (`scripts/docs/measure-plumbing.ts`) counts, per
+  file kind, lines that are neither blank nor only a comment. It also reports
+  physical lines, which is what the #843 approval's "127 lines removed"
+  counted.
+- Both sides run on the same `host.mjs`. The counterexample adds two lines to
+  register its extension, counted as code.
+
+Counted when the counterexamples were added:
+
+| Contract | Declared: YAML / code | Host transaction: YAML / code | Code removed | Physical lines, declared / host |
+|---|---:|---:|---:|---:|
+| Scheduling (`store-booking`) | 38 / 0 | 39 / 137 | 137 | 43 / 201 |
+| Credits (`store-credits`) | 42 / 0 | 43 / 170 | 170 | 50 / 246 |
+
+The declarations remove 137 and 170 lines of trusted code, and the YAML stays
+the same size. The counterexamples drop the 5 `intervals` lines and the 4
+`transfers` and `readOnlyProperties` lines, along with `ownership`,
+`maxRecordsPerOwner` and `idempotency`, which move into the code. They add an
+`owner` property, the extension's declaration and a disabled store route.
+
+Most of the removed code is not the rule itself:
+
+- **Scheduling.** The overlap check is 12 lines, plus 8 to page through every
+  booking.
+- **Credits.** The transfers are 33 lines (the floors, the body check and the
+  transfer), and retries 9.
+- **Both.** The rest is what the store already serves for a declared
+  collection: routing, bodies, the error shape, the owner, the quota and the
+  extension registration (33 lines in the booking version).
+
+The owner is plumbing because of the scope rule. A host transaction on an
+owned collection sees only the caller's records, so it cannot find another
+owner's overlapping booking or credit another owner's wallet. Each
+counterexample therefore uses a shared collection with an `owner` property.
+The extension stamps it and filters by it on every read, and it refuses any
+body that names it.
+
+**Caveats.**
+
+- Route `function`s cannot reach `StoreExports.transaction`, which is for
+  trusted extensions only. So each counterexample is an operator extension
+  serving the mount, not a function route. A function route version would
+  need an extension to hand it the store as well.
+- Every store collection needs a store mount, so each counterexample declares
+  one on a disabled route.
+- The fixtures check statuses and some headers, not bodies. The
+  counterexamples use the store's error shape and codes, but the equivalence
+  is only as good as the fixtures and the retry cases.
+- Known differences from the store:
+  - A list answers all of the caller's records (at most 100 bookings or 10
+    wallets) in one page, without cursors, `etags`, `may`, sorting or
+    filtering.
+  - A retried request replays a kept snapshot, where the store answers the
+    records as they are now.
+  - With `audit: true`, a transfer would record two updates, not
+    `store.record.transferred`.
+  - There is no OpenAPI description (`describe`), so `urlcode openapi` leaves
+    the mount opaque.
+- Cost differs too. The overlap check, the quota and the membership lookup
+  scan every record of the collection inside the write transaction. The
+  declared `intervals` check is one index step (2.4 µs against 197 µs for one
+  room's records in JavaScript; see [cost](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#non-overlapping-intervals)).
+- Line counts depend on style. The counterexamples use one statement per line,
+  with lines of at most 140 characters.
+- The edit effort of the host version is not comparable. One agent wrote both
+  counterexamples with the recipes, the fixtures and the store source at hand,
+  and both passed the recipe fixtures on their first run. The agent in the
+  second trial read no source.
+- The counterexamples' concurrency is not tested here. Each request is one
+  `BEGIN IMMEDIATE` transaction, like the store's own writes.
 
 ### Where to read next
 
