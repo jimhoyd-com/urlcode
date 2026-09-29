@@ -1,0 +1,10 @@
+[hidden] { display: none !important; }
+body { font: 16px/1.5 system-ui, sans-serif; margin: 0; background: #f7f7f5; color: #1d1d1b; }
+main { max-width: 40rem; margin: 0 auto; padding: 1rem; }
+form { display: grid; gap: .5rem; margin: 1rem 0; }
+label { display: grid; gap: .25rem; }
+input, textarea, button { font: inherit; padding: .4rem .6rem; }
+li { margin: .5rem 0; }
+.state { font-size: .85em; padding: 0 .4rem; border: 1px solid; border-radius: .3rem; margin-left: .4rem; }
+#status:empty { display: none; }
+#status { background: #fff3cd; padding: .5rem; }

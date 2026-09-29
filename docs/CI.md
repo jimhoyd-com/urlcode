@@ -134,8 +134,12 @@ workspace outputs fail. The same job then runs the embedded Better Auth proof
 it packs core and the add-ons, installs core, `@jimhoyd/urlcode-auth` and
 `@jimhoyd/urlcode-store` at core's pins into a copy of
 [`proofs/private-requests`](../proofs/private-requests/README.md) and exercises
-it over HTTP, so it needs the npm registry like the add-on suite. A change under
-`proofs/` or to that test is high-impact and selects this job.
+it over HTTP, so it needs the npm registry like the add-on suite. It then runs
+the same application with Auth.js as an independent provider package
+(`npm run test:proof:authjs`, [#841](https://github.com/jimhoyd-com/urlcode/issues/841),
+[`proofs/private-requests-authjs`](../proofs/private-requests-authjs/README.md)),
+which installs `@auth/core` from the registry the same way. A change under
+`proofs/` or to either test is high-impact and selects this job.
 
 Packaging tests use `npm pack --ignore-scripts` against the already-built core.
 The source `prepare` entry also checks npm's `ignore-scripts` setting because

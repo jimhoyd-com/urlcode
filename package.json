@@ -119,7 +119,7 @@
     "test:workerd": "npm run build && node scripts/workerd-parity.ts",
     "verify": "npm run lint && npm run typecheck && npm run typecheck:tooling && npm run check && npm run build && npm test && npm run verify:workspaces",
     "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
-    "verify:workspaces": "node scripts/workspaces.ts run verify && node scripts/build-addon-manifest.ts --check && npm run audit:packages && npm run test:addons && npm run test:proof",
+    "verify:workspaces": "node scripts/workspaces.ts run verify && node scripts/build-addon-manifest.ts --check && npm run audit:packages && npm run test:addons && npm run test:proof && npm run test:proof:authjs",
     "audit:packages": "node scripts/package-audit.ts --all",
     "test:package": "npm run build && npm run test:package:built",
     "dev": "node packages/core/src/cli.ts dev --project starters/default/app",
@@ -156,6 +156,7 @@
     "build:addons": "node scripts/workspaces.ts run build && node scripts/build-addon-manifest.ts && node scripts/generate-extension-reference.ts",
     "test:addons": "node --test test/addons.integration.ts",
     "test:proof": "node --test test/private-requests.integration.ts",
+    "test:proof:authjs": "node --test test/authjs-provider.integration.ts",
     "verify:addons": "npm run build && node scripts/workspaces.ts run build && npm run audit:packages && npm run test:addons"
   },
   "repository": {
