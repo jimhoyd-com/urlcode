@@ -1,0 +1,50 @@
+# The host-transaction counterexample of recipes/store-credits (#902 item 6): the same API, served by the trusted
+# `wallets` extension in wallets.mjs instead of declared `transfers`. A measurement fixture, not a recipe.
+version: "1"
+extensions:
+  auth:
+    version: "1"
+    config: {}
+  store:
+    version: "1"
+    config:
+      collections:
+        # Who may issue credits: principal ids, maintained by the operator (`urlcode-store members add`); no mount.
+        issuers:
+          membership: true
+          key: userId
+          schema:
+            type: object
+            additionalProperties: false
+            required: [userId]
+            properties:
+              userId: {type: string, maxLength: 128}
+        wallets:
+          # A transfer credits another owner's wallet, which a host transaction on an owned collection cannot reach. The
+          # collection is shared, and the extension keeps and enforces the owner. Without a declared transfer,
+          # `balance` cannot be read-only either: the extension refuses a body that names it.
+          mount: /internal/wallets
+          schema:
+            type: object
+            additionalProperties: false
+            required: [name, balance, owner]
+            properties:
+              name: {type: string, minLength: 1, maxLength: 40}
+              balance: {type: integer}
+              owner: {type: string, maxLength: 128}
+          defaults: {balance: 0}
+          maxRecords: 10000
+  wallets:
+    version: "1"
+    config: {}
+routes:
+  # Every collection needs a store mount; nobody may reach this one.
+  /internal/wallets/*:
+    extension: store
+    methods: [GET]
+    enabled: false
+  /api/wallets/*:
+    description: Signed-in users hold credit wallets, pay each other and receive credits from an issuer; every transfer keeps the total.
+    extension: wallets
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true
