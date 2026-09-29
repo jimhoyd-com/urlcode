@@ -280,9 +280,14 @@ lifecycle fixtures (`steps`, `capture`, `restart`), coverage and the audit rules
 are in [readiness][docs/READINESS.md]. An `auth: true` route is covered by a `steps`
 fixture that signs in through the provider's own endpoint and sends
 `"origin":"{{origin}}"` on unsafe requests; see
-[authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]. A case
+[authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]. Declare
+its accounts and memberships in `tests/seed.json`: each test and audit run
+starts from a fresh database holding exactly that seed
+([test data and seeds][docs/READINESS.md#test-data-and-seeds]). Assert a JSON body
+that carries generated ids with `expectJson` pointers rather than an exact
+`expectBody`. A case
 passing with a status below 400 counts toward coverage only when it also
-asserts `expectBody` or `expectHeaders`
+asserts `expectBody`, `expectJson` or `expectHeaders`
 ([coverage rules][docs/READINESS.md#coverage-rules]).
 
 ### Reading errors
@@ -765,6 +770,7 @@ programmatic compatibility analysis and provider verification limits.
 [proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
 [docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [docs/READINESS.md#coverage-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#coverage-rules
+[docs/READINESS.md#test-data-and-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
 [docs/LOCAL-DEVELOPMENT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/LOCAL-DEVELOPMENT.md
 [docs/EXTENSIONS.md#activation-warnings]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#activation-warnings
 [docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns

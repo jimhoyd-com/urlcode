@@ -519,11 +519,11 @@ test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,projectSha256:_pin,...data}=await registration(root);
   const host=join(dir,'host.mjs'),policy=join(dir,'policy.json'),stale=join(dir,'stale.json');
-  // host() sees only the revision in its context: no policy grants, no file path.
+  // host() sees the revision, the site, its data directory and whether the run is hermetic: no policy grants, no policy path.
   await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
 const data=${JSON.stringify(data)};
 const demo={definition:{name:'demo',contract:1,targets:data.targets,schema:data.schema,host(context){
-  if(Object.keys(context).sort().join()!=='get,projectSha256,site')throw new Error('unexpected host context '+Object.keys(context));
+  if(Object.keys(context).sort().join()!=='data,get,hermetic,projectSha256,site')throw new Error('unexpected host context '+Object.keys(context));
   return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned '+context.projectSha256};}};}}};
 }},options:{}};
 export default await composeHost(import.meta.url,[demo]);

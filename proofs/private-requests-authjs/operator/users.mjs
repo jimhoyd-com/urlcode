@@ -16,14 +16,14 @@ async function readUsers(file) {
   catch (error) { if (error?.code === 'ENOENT') return []; throw error; }
 }
 
-/** Adds each account that is not already present (by email) and returns every account's stable id by email. */
+/** Adds each account that is not already present (by email), with its `id` when it names one, and returns every account's stable id by email. */
 export async function ensureUsers(file, accounts) {
   const users = await readUsers(file);
   for (const account of accounts) {
     if (users.some(user => user.email === account.email)) continue;
     const salt = randomBytes(16).toString('base64url');
     const hash = (await derive(account.password, salt, keyLength)).toString('base64url');
-    users.push({ id: randomUUID(), email: account.email, name: account.name, salt, hash });
+    users.push({ id: account.id ?? randomUUID(), email: account.email, name: account.name, salt, hash });
   }
   await writeFile(`${file}.tmp`, JSON.stringify(users, null, 2) + '\n', { mode: 0o600 });
   await rename(`${file}.tmp`, file);

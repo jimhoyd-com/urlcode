@@ -310,8 +310,11 @@ export const budgets: Record<string, Budget> = {
     // definition pinned to this repository's current version (README, SECURITY, the shipped docs, examples and
     // recipes, with their llms-full.txt copies): measured on Node 26 at 1013978 packed / 4010632 unpacked bytes,
     // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 994 * 1024,
-    unpacked: 3920 * 1024,
+    // With #930 hermetic test runs, seeds, expectJson and resolved captures (READINESS/EXTENSIONS/CI docs and their
+    // llms-full.txt copies) on top of #937's main: measured on Node 26 at 1021513 packed / 4038619 unpacked bytes,
+    // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 1002 * 1024,
+    unpacked: 3948 * 1024,
     entries: 521,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -328,8 +331,10 @@ export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode-auth': {
     // Rebuilt on Better Auth (#841, #843): the adapter, definition and CLI with their declarations and docs.
     // First measured at 13593/42819/14 packed bytes, unpacked bytes and files.
-    packed: 18 * 1024,
-    unpacked: 56 * 1024,
+    // #930 hermetic host (fresh database, throwaway secret, migrate at activation) and the users seed with its README
+    // section: 19155 packed / 60229 unpacked bytes, 14 entries (Node 26); ~800 bytes for Node 24 plus ~3 KiB headroom.
+    packed: 23 * 1024,
+    unpacked: 63 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
@@ -376,7 +381,9 @@ export const budgets: Record<string, Budget> = {
     // schema 5 migration and drain lease in dist/database.js, dist/topology.{js,d.ts} for the network filesystem check
     // and the server lease) with the README/SECURITY/CHANGELOG contract: 131979 packed / 510186 unpacked bytes,
     // 34 entries (Node 26); +3 KiB headroom.
-    packed: 134 * 1024,
+    // #930 hermetic database and the members seed (storeSeedSchema, README/CHANGELOG) on top of #927: 134276 packed /
+    // 518485 unpacked bytes, 34 entries (Node 26); ~800 bytes for Node 24 plus ~3 KiB headroom on each.
+    packed: 135 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -407,7 +414,7 @@ export const budgets: Record<string, Budget> = {
     // #902 intervals and host transaction retries, and declared transfers: see the packed note above.
     // #927 several serving processes on one host and #928 transfer balances kept on delete, together: 133206 packed /
     // 514563 unpacked bytes, 34 entries (Node 26), +3 KiB headroom.
-    unpacked: 506 * 1024,
+    unpacked: 511 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     // #927 adds dist/topology.js and dist/topology.d.ts: 34 entries.

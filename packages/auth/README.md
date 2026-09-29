@@ -79,11 +79,26 @@ export default function me(request, context) {
 ```
 
 Test a protected route with a request fixture that signs in through
-`POST /api/auth/sign-in/email` inside a `steps` fixture, as a browser does,
-with an account `create-user` made for testing; the fixture's cookie jar keeps
-the session, and `"origin":"{{origin}}"` passes the same-origin check. There is
-no test principal that skips the gate. See
+`POST /api/auth/sign-in/email` inside a `steps` fixture, as a browser does; the
+fixture's cookie jar keeps the session, and `"origin":"{{origin}}"` passes the
+same-origin check. There is no test principal that skips the gate. See
 [authenticated routes][readiness-authenticated-routes].
+
+`urlcode test`, `audit` and `benchmark` never open the site's
+`data/auth.sqlite`: each run uses a fresh database in a temporary directory,
+creates Better Auth's tables itself, signs sessions with a secret that lives
+only for the run (the `database` and `secretFile` options and
+`BETTER_AUTH_SECRET` are ignored), and creates the accounts `app/tests/seed.json`
+declares, with the ids a store membership names:
+
+```json
+{"auth": {"users": [{"id": "alice", "email": "alice@example.test", "password": "alice-local-demo-password", "name": "Alice"}]}}
+```
+
+Each user needs an `id` (a principal id), an `email` and a password of 8 to
+128 characters; `name` defaults to the email. No `migrate` or `create-user`
+is needed for tests, and a rerun starts from the same accounts. See
+[test data and seeds][readiness-seeds].
 
 Identity is not permission. Roles, ownership and approvals are application
 data keyed by that id. A `sandbox: true` route cannot name `auth`: the
@@ -194,4 +209,5 @@ Fast checks: `urlcode validate --project app`, `urlcode validate --local --proje
 
 <!-- urlcode-current-version:start -->
 [readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
+[readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
 <!-- urlcode-current-version:end -->

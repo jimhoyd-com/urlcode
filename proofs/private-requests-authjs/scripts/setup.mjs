@@ -15,11 +15,12 @@ const { data, secretFile, usersFile, storeDatabase } = siteFiles(site);
 mkdirSync(data, { recursive: true, mode: 0o700 });
 if (!process.env.AUTH_SECRET && !existsSync(secretFile)) writeFileSync(secretFile, randomBytes(32).toString('base64url') + '\n', { mode: 0o600 });
 
-// Synthetic local accounts only; the same ones the Better Auth proof uses.
+// Synthetic local accounts only; the same ones the Better Auth proof uses. The ids are fixed so app/tests/seed.json can
+// name rita's reviewer membership for the test runs, which use a fresh store database of their own.
 export const accounts = [
-  { name: 'Ann Owner', email: 'ann@example.test', password: 'ann-local-demo-password' },
-  { name: 'Bob Owner', email: 'bob@example.test', password: 'bob-local-demo-password' },
-  { name: 'Rita Reviewer', email: 'rita@example.test', password: 'rita-local-demo-password', reviewer: true },
+  { id: 'ann', name: 'Ann Owner', email: 'ann@example.test', password: 'ann-local-demo-password' },
+  { id: 'bob', name: 'Bob Owner', email: 'bob@example.test', password: 'bob-local-demo-password' },
+  { id: 'rita', name: 'Rita Reviewer', email: 'rita@example.test', password: 'rita-local-demo-password', reviewer: true },
 ];
 const users = await ensureUsers(usersFile, accounts);
 const { collections } = (await loadDocument(join(site, 'app'))).document.extensions.store.config;

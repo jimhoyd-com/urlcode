@@ -11,6 +11,9 @@ export const policyCommands = ['dev','serve','validate','test','routes','audit',
 // Read-only commands that may load the host file without a revision pin: their registrations are composed unpinned
 // and cannot activate, so reading them never needs approval while serving always does (#910).
 export const inspectionHostCommands = ['explain','context','plan-feature','review','report','studio','extensions','mcp','openapi'] as const;
+// Commands that replay requests: they activate the extensions on a fresh, empty temporary data directory, never the site's live data
+// (RIM-EXT-HERMETIC-001). `dev`, `serve`, `validate` and `routes` use the site's data: validate checks what serve will use.
+export const hermeticHostCommands = ['test','audit','benchmark'] as const;
 // Commands that activate the project locally and so accept the operator's `--alias-origin`.
 export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit','benchmark'] as const;
 
