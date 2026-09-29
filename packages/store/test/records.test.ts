@@ -14,7 +14,7 @@ import { records } from './rows.ts';
 
 // #529: the store's export contract (StoreExports, version 1). A synthetic consumer ("jot") reads it the way an
 // extension that requires store would, alongside a synthetic principal provider ("badge"), so the seam is proven
-// without form-records or auth.
+// without auth.
 const origin = 'https://records.example.test';
 const notes = { mount: '/api/notes', ownership: 'owner', maxRecords: 3, pageSize: 2, fields: { title: { type: 'string', required: true, maxLength: 20 }, pinned: { type: 'boolean', default: false }, rank: { type: 'integer', minimum: 1 } } };
 const board = { mount: '/api/board', maxRecords: 5, fields: { title: { type: 'string', required: true, maxLength: 20 } } };

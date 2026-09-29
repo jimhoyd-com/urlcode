@@ -99,19 +99,17 @@ test('requiredWhen reaches the forms guide section and the forms schema path', a
   assert.equal(found.note, undefined);
 });
 
-test('form-records reaches its own composition contract first', async t => {
-  const root = await site(t, ['forms', 'store', 'ui', 'form-records']);
-  const found = await searchDocs('form-records', { project: join(root, 'app') });
+test('an add-on named by the whole query reaches its own guide and schema first', async t => {
+  const root = await site(t, ['store', 'ui', 'audit']);
+  const found = await searchDocs('store', { project: join(root, 'app') });
   bounded(found);
   const [first, second] = found.results;
-  assert.equal(first?.id, 'form-records:README.md');
-  assert.equal(first.title, 'form-records extension guide');
-  assert.match(first.excerpt, /owns only the composition/);
-  assert.match(first.excerpt, /never reads `extensions\.forms\.config` or `extensions\.store\.config`/);
-  assert.equal(second?.id, 'form-records:urlcode.json');
-  assert.equal(second.configPath, 'extensions.form-records.config');
-  assert.match(second.excerpt, /"requires": \[\s*"forms",\s*"store",\s*"ui"/);
-  const catalog = found.catalog.find(match => match.name === 'form-records');
+  assert.equal(first?.id, 'store:README.md');
+  assert.equal(first.title, 'store extension guide');
+  assert.match(first.excerpt, /bounded JSON CRUD API/);
+  assert.equal(second?.id, 'store:urlcode.json');
+  assert.equal(second.configPath, 'extensions.store.config');
+  const catalog = found.catalog.find(match => match.name === 'store');
   assert.equal(catalog?.availability, 'release-catalog');
   assert.equal(catalog.installedInProject, true);
 });
@@ -128,7 +126,7 @@ test('an unknown term is an honest no-match with the coverage limits, never "uns
   assert.deepEqual(found.coverage.searched.core, [...corePaths]);
   assert.deepEqual(found.coverage.searched.installed.map(item => item.package), ['@jimhoyd/urlcode-forms', '@jimhoyd/urlcode-ui']);
   const notInstalled = found.coverage.notSearched.find(gap => gap.names !== undefined);
-  assert.ok(notInstalled?.names?.includes('form-records') && notInstalled.names.includes('auth'), 'catalog add-ons that are not installed are listed as not searched');
+  assert.ok(notInstalled?.names?.includes('store') && notInstalled.names.includes('auth'), 'catalog add-ons that are not installed are listed as not searched');
   assert.ok(!notInstalled?.names?.includes('forms'));
   for (const source of ['llms-full.txt', 'project files', 'operator host registrations']) assert.ok(found.coverage.notSearched.some(gap => gap.source.includes(source)), source);
   assert.ok(found.next.length > 0);
@@ -141,9 +139,9 @@ test('extension guides outside the fixed core corpus are covered only when insta
   assert.deepEqual(core.results, []);
   assert.ok(core.coverage.notSearched.some(gap => /no project was given/.test(gap.reason)));
   assert.ok(core.next.some(step => /--project app/.test(step)));
-  const named = await searchDocs('form-records');
+  const named = await searchDocs('store');
   assert.ok(named.results.every(result => result.source === 'core'));
-  assert.equal(named.catalog.find(match => match.name === 'form-records')?.installedInProject, null);
+  assert.equal(named.catalog.find(match => match.name === 'store')?.installedInProject, null);
 
   // An installed artifact and an installed extension are both outside core's corpus.
   const root = await site(t, ['store-schema', 'mail']);
@@ -154,10 +152,10 @@ test('extension guides outside the fixed core corpus are covered only when insta
   assert.match(hit.next, /get_extension_artifact/);
   const mail = await searchDocs('transport', { project: join(root, 'app') });
   assert.ok(mail.results.some(result => result.package === '@jimhoyd/urlcode-mail'), 'the mail guide is searched');
-  // form-records is in the release catalog, not installed here: a catalog match, never a result.
-  const absent = await searchDocs('form-records', { project: join(root, 'app') });
-  assert.ok(absent.results.every(result => result.package !== '@jimhoyd/urlcode-form-records'));
-  const listed = absent.catalog.find(match => match.name === 'form-records');
+  // store is in the release catalog, not installed here: a catalog match, never a result.
+  const absent = await searchDocs('store', { project: join(root, 'app') });
+  assert.ok(absent.results.every(result => result.package !== '@jimhoyd/urlcode-store'));
+  const listed = absent.catalog.find(match => match.name === 'store');
   assert.equal(listed?.installedInProject, false);
   assert.match(listed.next, /not evidence this project has it/);
 });
@@ -185,7 +183,7 @@ test('only pin-verified add-ons are read, as data, never imported', async t => {
 });
 
 test('broad queries stay bounded', async t => {
-  const root = await site(t, ['forms', 'store', 'ui', 'form-records', 'auth', 'admin', 'mail', 'abuse', 'audit', 'mcp', 'store-schema']);
+  const root = await site(t, ['forms', 'store', 'ui', 'auth', 'admin', 'mail', 'abuse', 'audit', 'mcp', 'store-schema']);
   for (const query of ['extension config schema route', 'form', 'the a of to', 'auth', 'sandbox', 'x'.repeat(200) + ' route']) {
     const found = await searchDocs(query, { project: join(root, 'app') });
     bounded(found);

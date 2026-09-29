@@ -48,7 +48,7 @@ console shell (sidebar, content region, page header) from `nav`, `menu` and
 
 No first-party extension contributes ui templates now: the auth and admin
 packages that did were replaced (auth by a Better Auth adapter with no pages)
-or deleted (admin). forms, form-records and the store's screens render through
+or deleted (admin). forms and the store's screens render through
 the kit. Shared primitives remain supported without the kit.
 Shared form/deadline helpers live in `src/forms.ts`. The `ui` registration
 declares `immutableAssets: { prefix: '/static' }` (core PR #93), so the

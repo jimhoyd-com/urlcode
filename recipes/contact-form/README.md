@@ -55,10 +55,10 @@ route:
   plain-text email per valid submission through the
   [mail](../../packages/mail/README.md) extension, to a recipient the operator
   names in `host.mjs`.
-- Persistence: [form-records](../../packages/form-records/README.md) saves a
-  forms flow into an owned [store](../../packages/store/README.md) collection
-  for a signed-in user.
+- Persistence: an `ownership: owner` [store](../../packages/store/README.md)
+  collection mount accepts the JSON a frontend posts, as a record private to
+  the signed-in user.
 
 Both are operator-installed (`urlcode extensions add forms`, `urlcode
-extensions add form-records`) and take an HTML form's URL-encoded body rather
-than this route's JSON.
+extensions add store`). A forms flow takes an HTML form's URL-encoded body
+rather than this route's JSON.

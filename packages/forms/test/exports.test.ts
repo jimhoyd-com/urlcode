@@ -11,8 +11,7 @@ import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
 import { createForms, formFlowBodySchema, formsConfigSchema } from '../src/index.ts';
 import type { FormFlowBody, FormsExports, FormsFlow } from '../src/index.ts';
 
-// #529: forms' export contract (FormsExports, version 1), proven with a synthetic consumer ("survey") rather than
-// form-records: it defines its own flow body, serves it on its own mount and decides what a valid submission does.
+// #529: forms' export contract (FormsExports, version 1), proven with a synthetic consumer ("survey"): it defines its own flow body, serves it on its own mount and decides what a valid submission does.
 const origin = 'https://forms.example.test';
 const body: FormFlowBody = {
   title: 'Survey <1>', submitLabel: 'Send',

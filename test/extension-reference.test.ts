@@ -18,8 +18,8 @@ import { agentProblems, declaredProperties, declaredSchemas, END, expected, firs
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const sources = await firstPartyExtensions();
-// The nine extensions AGENTS.md names; a new one must be added here deliberately, with its reference and agent entry.
-const FIRST_PARTY = ['abuse', 'audit', 'auth', 'form-records', 'forms', 'mail', 'mcp', 'store', 'ui'];
+// The eight extensions AGENTS.md names; a new one must be added here deliberately, with its reference and agent entry.
+const FIRST_PARTY = ['abuse', 'audit', 'auth', 'forms', 'mail', 'mcp', 'store', 'ui'];
 
 test('the first-party extension set is the one the repository documents', () => {
   assert.deepEqual(sources.map(source => source.name).sort(), FIRST_PARTY);
@@ -51,8 +51,9 @@ test('every declared configuration, route-policy and hook property has a descrip
     assert.deepEqual(missingDescriptions(source.descriptor), [], `${source.name} has undescribed properties`);
     total += declaredProperties(source.descriptor).length;
   }
-  // 299 at the #822 audit; 243 once the Better Auth rebuild (#841) removed the old auth and admin schemas.
-  assert.ok(total >= 243, `the nine descriptors declare ${total} properties; at least 243 are expected in schema and policySchema alone`);
+  // 299 at the #822 audit; 243 once the Better Auth rebuild (#841) removed the old auth and admin schemas;
+  // 215 once the forms-to-store composition was deleted (#883).
+  assert.ok(total >= 215, `the eight descriptors declare ${total} properties; at least 215 are expected in schema and policySchema alone`);
 });
 
 test('every described schema still compiles under the strict Ajv options core prepares extensions with', async () => {

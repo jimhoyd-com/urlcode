@@ -427,8 +427,7 @@ if (!sent.ok) return sent.response;                  // 403, 405, 413, 415 or th
   flow; the consumer honours it.
 
 A flow defined this way has no mount and no `onSubmit` hook: the consumer
-decides what a valid submission does. [form-records](../form-records/README.md)
-is the first-party consumer.
+decides what a valid submission does. No first-party extension consumes it.
 
 <!-- extension-reference:start -->
 <!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->

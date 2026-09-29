@@ -357,16 +357,6 @@ export const budgets: Record<string, Budget> = {
     entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
-  // The forms-to-store composition (#529): a small module over the forms and
-  // store exports, with no dependencies of its own. First measured at 18226
-  // packed and 77778 unpacked bytes in 12 files.
-  '@jimhoyd/urlcode-form-records': {
-    packed: 30 * 1024,
-    // #822 generated field reference in the README (measured 115346 unpacked).
-    unpacked: 118 * 1024,
-    entries: 20,
-    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
-  },
   // Unpacked raised from 140 KiB for the opt-in streaming transport (#659):
   // dist/sessions.{js,d.ts} and the README section took it to 151597 bytes.
   '@jimhoyd/urlcode-mcp': {
