@@ -274,4 +274,7 @@ test('activation refuses while a live peer serves the audit database from anothe
   finally { writer.close(); }
   const { audit: after } = await openAudit(t, { database, probe: here });
   (await after.registration.activate({}, activation(dir))).close?.();
+  // Every audit here shares the first one's database, whose directory the first openAudit's cleanup removes before the
+  // later audits' own cleanup closes them; Windows cannot delete a directory holding an open SQLite handle, so close now.
+  await after.close();
 });
