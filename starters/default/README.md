@@ -62,7 +62,7 @@ or updates the policy for you; re-review it after a project change.
 
 The frontend is your own code calling those JSON routes with `fetch`; URLCode
 ships no component kit. The
-[private-requests client](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/client/main.js)
+[private-requests client][proofs/private-requests/client/main.js]
 is the reference pattern.
 
 Start with the local MCP `get_context` tool (or `npx urlcode context --project
@@ -73,6 +73,12 @@ tooling at https://urlcode.ai/llms.txt.
 Keep this site in your own Git repository. Secrets stay in ignored `.env.local`,
 `data/` or provider environment values, with external operator policy for
 function grants. See
-[security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)
-and [readiness](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md).
+[security][docs/FUNCTION-SECURITY.md]
+and [readiness][docs/READINESS.md].
 URLCode is licensed under the Apache License 2.0.
+
+<!-- urlcode-current-version:start -->
+[proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
+[docs/FUNCTION-SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md
+[docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
+<!-- urlcode-current-version:end -->

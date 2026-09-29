@@ -50,7 +50,8 @@
 // to this repository is checked like a relative link against the checkout:
 // the path must exist and a Markdown fragment must name an anchor.
 //
-// What it scans: every authored Markdown file in the checkout. Build output,
+// What it scans: every authored Markdown file in the checkout, and the root
+// llms.txt (its pinned links are checked like any other, #938). Build output,
 // dependencies and dotted directories are skipped -- the latter also keeps the
 // walk out of `.claude/worktrees`, where each entry is a full second copy of
 // this repository (the same exclusion check-guidance-claims.ts makes).
@@ -87,7 +88,7 @@ async function markdownFiles(prefix = ''): Promise<string[]> {
     if (entry.isDirectory()) {
       if (SKIP_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) continue;
       found.push(...(await markdownFiles(`${prefix}${entry.name}/`)));
-    } else if (entry.name.endsWith('.md')) {
+    } else if (entry.name.endsWith('.md') || (prefix === '' && entry.name === 'llms.txt')) {
       found.push(`${prefix}${entry.name}`);
     }
   }

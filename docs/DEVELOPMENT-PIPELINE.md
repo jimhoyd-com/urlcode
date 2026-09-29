@@ -68,14 +68,33 @@ When reader-facing Markdown must name the current core version, wrap the
 smallest complete paragraph or fenced example containing it with
 `urlcode-current-version:start` and `urlcode-current-version:end` HTML comments
 on their own lines. `npm run release:bump` discovers these markers in every
-tracked Markdown file and both `llms` indexes, so a newly added guide needs no
+tracked Markdown file and `llms.txt`, so a newly added guide needs no
 central file-list update. It replaces the old core version only inside marked
-blocks. Generated `llms-full.txt` preserves the source markers and advances in
-the same bump, keeping it byte-aligned with its sources.
+blocks. The bump then regenerates `llms-full.txt` from its sources: it keeps the
+source markers, and its `Source:` lines and rewritten relative links name the
+release tag (`blob/v<version>/`), read from `package.json` by
+`scripts/build-llms-full.ts`.
 
 `node scripts/release-bump.ts --check` fails when markers are unbalanced, a
-marked block does not contain the manifest's current version, or a tracked
-Markdown file mentions that version outside a marker. Add markers in the same
+marked block does not contain the manifest's current version, a tracked
+Markdown file or `llms.txt` mentions that version outside a marker, or
+`llms-full.txt` differs from a fresh build. Add markers in the same
 pull request as a new current-version reference. Changelogs are not scanned.
+
+A link to this repository from a file the package ships, `llms.txt` and
+`llms-full.txt` included, names the release tag, never `blob/main`: an
+installed copy should read the docs of its own version, and main may already
+describe the next one. There is one copy of each index. The repository's own
+`llms.txt` is the same file the package ships, and a reader of a checkout has
+the pages under `docs/` directly, so there is no separate main-branch copy.
+
+Text the runtime prints or generates follows the same rule. CLI output,
+capability reasons, compliance references and exported OpenAPI descriptions
+link a page as `docsUrl('HTTP.md#error-format')` from
+`packages/core/src/release.ts`, which builds this release's
+`blob/v<version>/docs/...` URL from `CORE_VERSION`, the one version literal in
+core's source that the bump rewrites. The package audit parses every packed
+script and fails when a string or template literal (not a comment) names a
+`docs/*.md` page the package does not ship (#938).
 The release procedure is in
 [release operations](RELEASE-OPERATIONS.md#release-a-version).

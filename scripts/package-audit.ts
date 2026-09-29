@@ -4,6 +4,7 @@ import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import ts from 'typescript';
 import { parsePackJson } from './pack-json.ts';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { isArtifactFile } from '../packages/core/src/addon-install.ts';
@@ -316,8 +317,10 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // #929 slots, members-gated create and projected readers on top of #942: measured on Node 26 at 1023995 packed / 4053327 unpacked bytes, 525 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 1004 * 1024,
-    unpacked: 3962 * 1024,
+    // #938 installed strings (llms.txt pinned reference definitions, llms-full.txt on the release tag, dist/release.js)
+    // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
+    packed: 1006 * 1024,
+    unpacked: 3970 * 1024,
     entries: 529,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -465,15 +468,18 @@ export function packFileProblems(kind: PackageKind, paths: readonly string[]): s
 const INLINE_LINK = /\[[^\]]*\]\(([^()\s]+)\)/g;
 const REFERENCE_LINK = /^ {0,3}\[[^\]]+\]:\s+(\S+)/;
 
-/** Whether a packed path is documentation an installed reader follows links in: Markdown, and the llms.txt entrypoint. */
-export const isPackedDocument = (path: string): boolean => path.endsWith('.md') || path === 'llms.txt';
+/** Whether a packed path is documentation an installed reader follows links in: Markdown and the llms indexes. */
+export const isPackedDocument = (path: string): boolean => path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt';
+/** This repository's main branch, which may already describe a later release than the one installed (#916, #938). */
+const MAIN_BRANCH = /https:\/\/github\.com\/jimhoyd-com\/urlcode\/(?:blob|tree)\/main(?=[/)\s]|$)[^\s)]*/g;
 
 /**
  * Relative link targets in one packed document (`path`, its `source`) that name nothing in the packed file list
  * (#931). An installed copy holds only what `npm pack` ships, so a link that resolves in this checkout but not in
  * the tarball is dead there: ship the target, or link this repository's `blob/v<current version>/...` inside a
  * urlcode-current-version block. Absolute, protocol-relative, mail and bare `#fragment` links are not checked, nor
- * links inside fenced code blocks or code spans. A directory link resolves when anything under it ships.
+ * links inside fenced code blocks or code spans. A directory link resolves when anything under it ships. Any mention
+ * of this repository's `blob/main` or `tree/main` outside a fence is a problem too, link or not (#938).
  */
 export function packedLinkProblems(path: string, source: string, packed: ReadonlySet<string>): string[] {
   const directories = new Set<string>();
@@ -486,6 +492,7 @@ export function packedLinkProblems(path: string, source: string, packed: Readonl
     const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (opening) { fence = opening[1]; continue; }
     const text = line.replace(/(`+)[^`]*?\1/g, '');
+    for (const match of line.matchAll(MAIN_BRANCH)) problems.push(`${path}:${index + 1} names \`${match[0]}\`, this repository's main branch; link blob/v<current version>/... instead`);
     const targets = [...text.matchAll(INLINE_LINK)].map(match => match[1] ?? '');
     const reference = REFERENCE_LINK.exec(line)?.[1];
     if (reference) targets.push(reference);
@@ -499,6 +506,35 @@ export function packedLinkProblems(path: string, source: string, packed: Readonl
       if (!packed.has(resolved) && !directories.has(resolved)) problems.push(`${path}:${index + 1} links \`${target}\`, but \`${resolved}\` is not in the package`);
     }
   }
+  return problems;
+}
+
+/** Whether a packed path is code whose string literals reach an installed reader (CLI output, reasons, generated documents). */
+export const isPackedCode = (path: string): boolean => /\.[cm]?js$/.test(path);
+/** A repository-relative docs page: `docs/X.md` not preceded by a path or URL (a pinned `.../blob/v<version>/docs/X.md` is fine). */
+const DOCS_PAGE = /(?<![\w/.-])docs\/[\w./-]+?\.md\b/g;
+
+/**
+ * String and template literals in one packed script (`path`, its `source`) that name a `docs/*.md` page the package
+ * does not ship (#938). They are printed by the CLI or written into generated output such as an OpenAPI document, so
+ * an installed reader meets a path that exists only in this checkout. Name a page that ships, a `urlcode docs search`
+ * query, or this release's copy through `docsUrl` (packages/core/src/release.ts). Comments are not read: type
+ * stripping keeps source comments in `dist/`, and those address maintainers, not installed readers.
+ */
+export function packedStringProblems(path: string, source: string, packed: ReadonlySet<string>): string[] {
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const problems: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+      for (const match of node.text.matchAll(DOCS_PAGE)) {
+        if (packed.has(match[0])) continue;
+        const line = file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
+        problems.push(`${path}:${line} names \`${match[0]}\`, which the package does not ship`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
   return problems;
 }
 
@@ -589,6 +625,9 @@ async function auditOne(target: string): Promise<void> {
     const deadLinks: string[] = [];
     for (const path of [...shipped].filter(isPackedDocument).sort()) deadLinks.push(...packedLinkProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
     assert.deepEqual(deadLinks, [], `Shipped documents link files ${pack.name} does not ship (#931); ship the target, or link this repository's blob/v<current version>/... inside a urlcode-current-version block:\n${deadLinks.join('\n')}`);
+    const deadStrings: string[] = [];
+    for (const path of [...shipped].filter(isPackedCode).sort()) deadStrings.push(...packedStringProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
+    assert.deepEqual(deadStrings, [], `Shipped code names docs pages ${pack.name} does not ship (#938); link this release's copy with docsUrl() from packages/core/src/release.ts, name a shipped page, or a urlcode docs search query:\n${deadStrings.join('\n')}`);
     // Core also carries its add-on pins and the release-wide add-on agent catalog beside them (#721).
     const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {}), ...(kind === 'core' ? ['dist/addons.json', 'dist/addon-catalog.json'] : [])]
       .map(path => path.replace(/^\.\//, ''));

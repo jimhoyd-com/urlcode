@@ -4,18 +4,21 @@ import {dirname,posix,resolve} from 'node:path';
 // The authoring documents in reading order. Missing files are skipped with a
 // note in the output so the build works on branches that lack one.
 export const DOCUMENTS: readonly string[]=['docs/FRAMEWORK.md','docs/CONCEPTS.md','docs/AI-AUTHORING.md','docs/YAML-GUIDE.md','docs/YAML-REFERENCE.md','docs/SPECIFICATION.md','docs/ROUTING.md','docs/HTTP.md','docs/MIDDLEWARE.md','docs/ASSETS.md','docs/POLICIES.md','docs/SITE.md','docs/CONDITIONS.md','docs/EGRESS.md','docs/EXTENSIONS.md','docs/EXTENSION-REFERENCE.md','docs/FUNCTION-SECURITY.md'];
-export const GITHUB_BLOB='https://github.com/jimhoyd-com/urlcode/blob/main/';
+// The repository tree at a release tag. llms-full.txt ships in the npm package, so
+// an installed copy links the docs of its own version, never main (#938); the tag
+// comes from package.json, and `npm run release:bump` regenerates this file.
+export const githubBlob=(version: string): string=>`https://github.com/jimhoyd-com/urlcode/blob/v${version}/`;
 // Rewrites relative Markdown link targets in a document at `relPath` (repo-relative,
-// POSIX separators) to absolute GitHub URLs. Absolute URLs, mailto: and
+// POSIX separators) to absolute URLs under `base`. Absolute URLs, mailto: and
 // same-page anchors are left alone; anchors on relative links are preserved.
-export function absolutizeLinks(markdown: string,relPath: string): string {
-  const base=posix.dirname(relPath);
+export function absolutizeLinks(markdown: string,relPath: string,base: string): string {
+  const directory=posix.dirname(relPath);
   return markdown.replace(/\]\(([^)\s]+)\)/g,(whole,target: string)=>{
     if(/^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(target))return whole;
     const [path,anchor]=target.split('#',2) as [string,string|undefined];
-    const joined=posix.normalize(posix.join(base,path));
+    const joined=posix.normalize(posix.join(directory,path));
     if(joined.startsWith('..'))return whole;
-    return `](${GITHUB_BLOB}${joined}${anchor===undefined?'':`#${anchor}`})`;
+    return `](${base}${joined}${anchor===undefined?'':`#${anchor}`})`;
   });
 }
 // Demotes every ATX heading outside fenced code blocks by one level so each
@@ -34,24 +37,25 @@ async function readOptional(root: string,relPath: string): Promise<string|null> 
   try {return await readFile(resolve(root,relPath),'utf8');}
   catch(error) {if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;}
 }
-async function buildLlmsFull(root: string): Promise<string> {
+export async function buildLlmsFull(root: string): Promise<string> {
+  const blob=githubBlob((JSON.parse(await readFile(resolve(root,'package.json'),'utf8')) as {version: string}).version);
   const index=await readOptional(root,'llms.txt');
   if(index===null)throw new Error('llms.txt is missing');
   // The llms.txt header is everything before its first section heading.
-  const preamble=absolutizeLinks(index.split(/^## /m)[0]!.trim(),'llms.txt');
+  const preamble=absolutizeLinks(index.split(/^## /m)[0]!.trim(),'llms.txt',blob);
   const sections: {title: string;body: string;path: string;present: boolean}[]=[];
   for(const path of DOCUMENTS){
     const source=await readOptional(root,path);
     const fallback=path.replace(/^docs\//,'').replace(/\.md$/,'');
     if(source===null){sections.push({title:fallback,body:`_Not present in this revision: \`${path}\`._`,path,present:false});continue;}
     const title=/^# (.+)$/m.exec(source)?.[1]?.trim() ?? fallback;
-    const body=demoteHeadings(absolutizeLinks(source.replace(/^# .+\n+/,''),path)).trim();
+    const body=demoteHeadings(absolutizeLinks(source.replace(/^# .+\n+/,''),path,blob)).trim();
     sections.push({title,body,path,present:true});
   }
   const toc=sections.map((s,i)=>`${i+1}. [${s.title}](#${slug(s.title)})${s.present?'':' (missing)'}`).join('\n');
   // What this file is and is not (#822): an agent must not read an absent extension key here as an unsupported one.
   const coverage=`## Coverage\n\nThis file bundles exactly the pages listed under Contents, and nothing else. It omits the add-on package READMEs, which hold each extension's guide and its generated field reference, along with the other docs/ pages, recipes and examples. A key or feature missing here is not evidence that URLCode lacks it. Bounded ways to reach what is omitted:\n\n- the add-ons installed in a project: \`urlcode docs search "<term>" --project app\` (MCP \`search_docs\`) reads their README and \`urlcode.json\`;\n- every first-party extension's configuration, route policy and hooks: the index in [Extension field references](#${slug('Extension field references')}), each row linking to \`packages/<name>/README.md#field-reference\`;\n- this release's add-ons and their agent references, installed or not: MCP \`get_release_addon_catalog\`.`;
-  const content=sections.map(s=>`# ${s.title}\n\nSource: ${GITHUB_BLOB}${s.path}\n\n${s.body}\n`).join('\n---\n\n');
+  const content=sections.map(s=>`# ${s.title}\n\nSource: ${blob}${s.path}\n\n${s.body}\n`).join('\n---\n\n');
   const body=`${preamble}\n\n${coverage}\n\n## Contents\n\n${toc}\n\n---\n\n${content}`;
   // Keep this header invariant. A changing aggregate count turns unrelated
   // documentation edits into a guaranteed merge conflict at the same line.

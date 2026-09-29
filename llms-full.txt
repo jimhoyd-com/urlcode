@@ -50,7 +50,7 @@ This file bundles exactly the pages listed under Contents, and nothing else. It 
 
 # The URLCode framework
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
 
 One page for people and AI agents. It says what the five workspace packages are, how a
 project grows from a handful of redirects into an application with accounts,
@@ -62,35 +62,35 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
 | `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract | `urlcode.yaml` with `version: "1"` |
-| `@jimhoyd/urlcode-audit` | [`packages/audit`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
-| `@jimhoyd/urlcode-auth` | [`packages/auth`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
-| `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount |
-| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
+| `@jimhoyd/urlcode-audit` | [`packages/audit`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
+| `@jimhoyd/urlcode-auth` | [`packages/auth`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
+| `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount |
+| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
 All five are Apache-2.0. Core is published through npm, GitHub Releases and
 Homebrew. The four extensions, and the inert `store-schema` artifact in
-[`artifacts/store-schema`](https://github.com/jimhoyd-com/urlcode/blob/main/artifacts/store-schema), are add-ons: each is
+[`artifacts/store-schema`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
 `addons.json`. A site installs them with `urlcode extensions add` and `urlcode
 artifacts add`, never by choosing an npm package. See
-[add-ons](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts).
+[add-ons](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts).
 
 Prefer tested first-party extensions when suitable. External/private extensions
 are also supported through the same public host contract; follow the
-[external-extension workflow](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#external-extensions-and-ai-tooling)
+[external-extension workflow](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#external-extensions-and-ai-tooling)
 for installation, AI discovery and validation outside the release catalog.
 
 A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
 ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Auth's
-[README](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#not-included) lists what it
+[README](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#not-included) lists what it
 does not include.
 The current version of each package is its own manifest, and the peer ranges it
 declares are in that manifest too; do not read a version number out of this
 page. How versions, channels and release tags line up is recorded in
-[package and channel alignment](https://github.com/jimhoyd-com/urlcode/blob/main/docs/VERSION-ALIGNMENT.md); the GitHub Releases
+[package and channel alignment](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/VERSION-ALIGNMENT.md); the GitHub Releases
 page and `npm view @jimhoyd/urlcode dist-tags` show the live state.
 
 ### The ladder
@@ -124,10 +124,10 @@ Each rung's YAML is valid on every rung above it.
    Add `auth: true` where a collection is per-account. A form is an ordinary
    frontend that posts JSON to a store mount, or to a function route whose
    `request.body.POST.schema` validates it before code runs (the
-   [contact-form recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md)). The frontend,
+   [contact-form recipe](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md)). The frontend,
    its components and its look are the application's own: it calls the JSON
    mounts with `fetch`, as the
-   [private-requests client](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/client/main.js) does.
+   [private-requests client](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js) does.
 6. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
    tool server: the official MCP SDK serves the protocol; each tool's own logic is a trusted project handler module the
    operator writes (`urlcode extensions add mcp` wires the extension but
@@ -136,33 +136,33 @@ Each rung's YAML is valid on every rung above it.
 
 Owner-private records, a reviewed state change and a reviewer permission are
 declarative: an owned store collection, a `by: others` transition and a
-[membership collection](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#membership-gates-and-cross-owner-reads) keyed
+[membership collection](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads) keyed
 by the signed-in user id. The
-[private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) is an
+[private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) is an
 end-to-end application built that way, with no application server code.
 
 When the declarative contracts do not express an application's rules, keep
 each operation as an ordinary YAML function route with `auth: true`, explicit
 methods and bounded request bodies (the
-[authenticated-json-api recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/authenticated-json-api/README.md)
+[authenticated-json-api recipe](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/authenticated-json-api/README.md)
 shows the route shape). With the first-party auth extension, a trusted function
 reads the verified user id from
 `context.capabilities.auth.identity.userId`
-([request-bound capabilities](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-bound-capabilities)).
+([request-bound capabilities](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-bound-capabilities)).
 Better Auth owns accounts and sessions; the application owns its business
 rules and authorization.
 
 Stored short links are a collection declared through the `store` extension
-above (see [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md)); core has no native `link` route.
+above (see [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md)); core has no native `link` route.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 6 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
 operator host. Auth and audit additionally need the Node/SQLite
 runtime their packages document; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
-self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md),
-[audit](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md),
-[store](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md),
-[mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md)) for the exact requirement.
+self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md),
+[audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md),
+[store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md),
+[mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md)) for the exact requirement.
 
 ### Using npm libraries directly
 
@@ -180,14 +180,14 @@ Use a library for what the vocabulary cannot express.
   not waive the sandbox.
 - Review labels the route `execution: trusted (in-process)`. It does not list
   what the route imports, and the operator approval digest covers only the
-  entry file ([function security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md#granting-selected-bindings)).
+  entry file ([function security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md#granting-selected-bindings)).
 - Functions run only on the self-hosted Node runtime, including a runtime
   embedded in another Node host
-  ([operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#hosting-urlcode-inside-another-framework)).
+  ([operations](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#hosting-urlcode-inside-another-framework)).
 
 Write an extension only when a library must take part in URLCode's own
 behavior: verified identity, admission, lifecycle, or a mount the operator
-hosts. The [ecosystem fixture](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/ecosystem/README.md) is the
+hosts. The [ecosystem fixture](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/ecosystem/README.md) is the
 executable check, with zod.
 
 ### The composition contract
@@ -269,7 +269,7 @@ only through the generic request principal, and the route's own code only
 through its `identity` capability. Everything about the Better Auth instance
 (sign-up, extra endpoints, plugins, database and secret file) is an option of
 `auth({...})` in `host.mjs`, never YAML. No extension reads another's
-configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)). Operator options go inside a
+configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#nesting)). Operator options go inside a
 call, for example `auth({signUp: true})`.
 
 The whole graph, as each extension declares it:
@@ -303,37 +303,37 @@ contract: `ExtensionRequest.requestId` (the response's `X-Request-Id`, also
 route `env` block resolved under the same revision-pinned operator grant a
 function route uses. Project hooks are called as `hook(input, context)` with
 `{requestId, env}` plus any fields the extension adds (mcp adds the server and
-tool names). See [request context](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-context-route-env-and-request-id).
+tool names). See [request context](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-context-route-env-and-request-id).
 Activation likewise carries the canonical `origin` and the operator's full
 `origins` list (`--alias-origin`); every same-origin check goes through core's
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
 `isSameOriginRequest`, so mcp, store and auth admit the same
-origins ([site origins](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#site-origins-and-same-origin-checks)).
+origins ([site origins](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
 an `extension_warning` event and never a response
-([activation warnings](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#activation-warnings)).
+([activation warnings](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#activation-warnings)).
 Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store
 collection) reads it, without either knowing the other
-([request principal](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-principal)). The route's own code
+([request principal](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-principal)). The route's own code
 receives what an extension declares as a request-bound capability, such as
 auth's `context.capabilities.auth.identity.userId`
-([request-bound capabilities](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-bound-capabilities)). A long-lived answer
+([request-bound capabilities](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-bound-capabilities)). A long-lived answer
 (server-sent events, progress) is generic too: a registration that declares
 `streams: true` may return `HandlerResult.stream` instead of `body`, which the
 self-hosted server and Vercel adapter write as it is produced under operator
 stream limits and every other target refuses before serving
-([streamed responses](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#streamed-responses)). A composition reaches
+([streamed responses](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#streamed-responses)). A composition reaches
 the add-ons it requires only through their typed, versioned exports, read with
-`ctx.get`, never their configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#nesting)).
+`ctx.get`, never their configuration ([nesting](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#nesting)).
 
 An artifact is a separate, optional authoring input, not another way to
 compose executable behavior. `urlcode artifacts add store-schema` installs
 inert schema/example data that MCP `get_extension_artifacts` and
 `get_extension_artifact` expose; the extension and the explicit operator host
-remain the executable path. See [artifacts](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#artifacts).
+remain the executable path. See [artifacts](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts).
 
 ```sh
 cd my-site
@@ -345,20 +345,20 @@ its optional `example`, merged on top) and writes its
 configuration into `app/urlcode.yaml`, its routes into `app/routes/<name>.yaml`,
 its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is
-documented under [add-ons](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts)).
+documented under [add-ons](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 For auth, `npx urlcode-auth migrate` then creates Better Auth's tables and
 `npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id). `extensions add` prints the project revision the host must be pinned to
 (the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
-[the revision pin](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
+[the revision pin](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval before serving. The site's check scripts
 (`npm run validate`, `npm test`, `npm run audit`) pass `--local-review` and
 review each edit locally without one
-([the local review loop](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#the-local-review-loop)).
+([the local review loop](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop)).
 
 ### Rules an agent must follow
 
 These are the facts that keep generated projects valid. The full matrix is in
-[AI authoring](https://github.com/jimhoyd-com/urlcode/blob/main/docs/AI-AUTHORING.md); this is the short list.
+[AI authoring](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/AI-AUTHORING.md); this is the short list.
 
 - **Extension YAML names logical extensions, not host packages or credentials.**
   Function and middleware `source` fields do name project modules. Extensions are
@@ -397,7 +397,7 @@ These are the facts that keep generated projects valid. The full matrix is in
   proxy, signals and extensions. The `static` target (S3 + CloudFront,
   no server) refuses everything that needs request-time logic, keeping only
   `redirect`/`respond`/`page`/`static`/`download` — see [static
-  hosting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STATIC.md). Check `urlcode capabilities --target NAME` before
+  hosting](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STATIC.md). Check `urlcode capabilities --target NAME` before
   promising a deployment.
 - **Report evidence, not hope.** The commands above are the evidence. Local
   tests are not deployment, soak or independent security review.
@@ -540,7 +540,7 @@ every method of an `auth: true` mount is uncovered. The audit also ignores
 `steps` fixture that signs in through the provider's own endpoint covers an
 `auth: true` route, a waiver on a fully gated route counts once the gate's
 `401` is asserted, and fixtures name the origin as `{{origin}}`
-([authenticated routes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#authenticated-routes-auth-true)).
+([authenticated routes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true)).
 
 The measured defects and gaps were drafted as GitHub issues. This is a single
 run by one agent, not a benchmark.
@@ -611,20 +611,20 @@ Each gap was drafted as an issue.
 
 | Need | Read |
 |---|---|
-| Write or change routes | [YAML guide](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-GUIDE.md), [field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-REFERENCE.md), [cookbook](https://github.com/jimhoyd-com/urlcode/blob/main/examples/cookbook/README.md) |
-| Configure an extension: every key it accepts | [extension field references](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
-| Add accounts | [auth README](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md), [auth security](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/SECURITY.md) |
-| Audit log | [audit](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md) |
-| Rate limits, email | [`policies.throttle`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md), [contact-form recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md) |
-| Build the frontend | [private-requests client](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/client/main.js), [what the caller may run](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#what-the-caller-may-run), [staging source assets](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#staging-source-assets) |
-| Write an extension | [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md), [authoring rules](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#generic-add-on-authoring-rules) |
-| Run it | [operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md), [install](https://github.com/jimhoyd-com/urlcode/blob/main/docs/INSTALL.md), [deployment checks](https://github.com/jimhoyd-com/urlcode/blob/main/docs/DEPLOYMENT-CHECKS.md) |
+| Write or change routes | [YAML guide](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md), [field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-REFERENCE.md), [cookbook](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/cookbook/README.md) |
+| Configure an extension: every key it accepts | [extension field references](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
+| Add accounts | [auth README](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md), [auth security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md) |
+| Audit log | [audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md) |
+| Rate limits, email | [`policies.throttle`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md), [contact-form recipe](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md) |
+| Build the frontend | [private-requests client](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js), [what the caller may run](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#what-the-caller-may-run), [staging source assets](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#staging-source-assets) |
+| Write an extension | [extensions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md), [authoring rules](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#generic-add-on-authoring-rules) |
+| Run it | [operations](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md), [install](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INSTALL.md), [deployment checks](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/DEPLOYMENT-CHECKS.md) |
 
 ---
 
 # Concepts
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/CONCEPTS.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONCEPTS.md
 
 The vocabulary URLCode's other pages assume. Read this once before the YAML
 guide or the framework page; it does not introduce new behavior, only the
@@ -641,13 +641,13 @@ handlers.
 **Middleware** is code that runs before and, if it calls `await next()`,
 after a route's handler — logging, headers, short-circuiting a request. It is
 declared per route in an ordered `middleware:` array, not registered globally.
-See [middleware](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MIDDLEWARE.md).
+See [middleware](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md).
 
 A **policy** is host-level, opt-in behavior around a route: `throttle`,
 `agents`, `security`, `compression`, `cache`. Policies are declared under
 top-level `policies` (project defaults), `profiles.<name>` (a reusable named
 set), or a route's own `policies` (an override). Every policy is off until
-declared. See [policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md).
+declared. See [policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md).
 
 An **extension** is a trusted, operator-installed module — `auth`,
 `store`, `mcp`, `audit` — that a project *references* by logical name under
@@ -655,7 +655,7 @@ An **extension** is a trusted, operator-installed module — `auth`,
 its own route with the `auth` short form (which names whichever declared
 extension provides the request principal). The project YAML never names an
 npm package, a database, or a file path for an extension; the operator's host
-file supplies the implementation. See [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md).
+file supplies the implementation. See [extensions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md).
 
 These compose in the order above: a request matches a route, its middleware
 runs around its handler, policies wrap the whole thing at the host level, and
@@ -678,8 +678,8 @@ host, or activate an extension it declares just by asking in YAML — an
 operator has to grant it, outside the project, pinned to the exact reviewed
 project revision. This split is what makes a project portable: the same
 `urlcode.yaml` runs unmodified against a different operator's grants. See
-[function security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md) for the binding-grant model in
-full and [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md) for host-file wiring.
+[function security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md) for the binding-grant model in
+full and [extensions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md) for host-file wiring.
 
 ### Trusted vs sandbox
 
@@ -697,8 +697,8 @@ runs, not **what context it receives**. Sandboxing is a per-route opt-in for
 isolating code you do not fully trust, not a blanket guarantee the runtime
 applies to all guest code, and there is no fallback from sandboxed to
 trusted execution. See
-[docs/SPIKE-DEFAULT-TRUST-MODEL.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-DEFAULT-TRUST-MODEL.md) and
-[function security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md).
+[docs/SPIKE-DEFAULT-TRUST-MODEL.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPIKE-DEFAULT-TRUST-MODEL.md) and
+[function security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md).
 
 ### Extension vs artifact: same shape, different purpose
 
@@ -717,13 +717,13 @@ Release as core and pinned by core (download URL and sha512 in its
   add <name>` installs it; nothing ever imports or runs it.
 
 Installing an artifact does not install or activate any extension. See
-[add-ons](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts).
+[add-ons](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts).
 
 ---
 
 # Building URLCode projects with an AI assistant
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/AI-AUTHORING.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/AI-AUTHORING.md
 
 Use this as project-authoring context. It describes the implemented source contract,
 not a general server framework. Runtime/schema/docs
@@ -742,7 +742,7 @@ onto the site (`app/public` on disk is `public` in YAML), and for the
 capabilities you name, that runtime's schema fragments with one bundled example
 each. It never creates a site unless you add `--create` with an explicit
 destination, which runs `init` there once. See
-[local agent bootstrap](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#local-agent-bootstrap).
+[local agent bootstrap](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#local-agent-bootstrap).
 
 Then make the next retrieval one bounded query: the MCP tool `get_context` when the
 `urlcode` server is registered, otherwise `urlcode context --project DIR` (add
@@ -773,7 +773,7 @@ extensions publish (`extensions.surfaces`): "their own notes" names store
 revision pin: `explain`, `plan-feature`, `context` and `review` read the
 registrations without activating them, while `validate`, `test`, `dev` and
 `serve` still need the reviewed pin
-([inspection without a revision pin](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#inspection-without-a-revision-pin)).
+([inspection without a revision pin](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#inspection-without-a-revision-pin)).
 A site's `npm run validate`, `npm test` and `npm run audit` pass
 `--local-review`, which pins one local run to the current revision with no
 grants, so the edit loop needs no new pin; serving still does
@@ -785,7 +785,7 @@ plan names the issuer pattern (a transfer with a negative `min` and
 `members`).
 
 The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
-[llms.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms.txt) index and the generated [llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms-full.txt)
+[llms.txt](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/llms.txt) index and the generated [llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/llms-full.txt)
 stay available as deliberate fallback and reference, not as the opening move.
 The reading order below is for that reference use.
 
@@ -806,11 +806,11 @@ for installation, host registration, discovery and validation. The managed
 
 ### Sources of truth and reading order
 
-1. [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/main/schemas/urlcode.schema.json): exact accepted structure.
-2. [Field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-REFERENCE.md) and [implemented semantics][docs/SPECIFICATION.md].
-3. [YAML cookbook][docs/YAML-GUIDE.md] and [runnable files](https://github.com/jimhoyd-com/urlcode/blob/main/examples/cookbook/urlcode.yaml).
+1. [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/schemas/urlcode.schema.json): exact accepted structure.
+2. [Field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-REFERENCE.md) and [implemented semantics][docs/SPECIFICATION.md].
+3. [YAML cookbook][docs/YAML-GUIDE.md] and [runnable files](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/cookbook/urlcode.yaml).
 4. [Routing][docs/ROUTING.md], [HTTP][docs/HTTP.md], [middleware][docs/MIDDLEWARE.md], [assets][docs/ASSETS.md].
-5. [Trust model, sandbox opt-in and operator grants](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md).
+5. [Trust model, sandbox opt-in and operator grants](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md).
 6. [Readiness][docs/READINESS.md], [capacity][docs/CAPACITY.md], [DDoS/recovery][docs/RESILIENCE.md].
 7. [The framework][docs/FRAMEWORK.md] for sign-in, data and MCP tools:
    `extensions.<name>` blocks and `extension` mounts are the only YAML those
@@ -822,8 +822,8 @@ for installation, host registration, discovery and validation. The managed
    described. The page maps a capability (stored short links, a validated
    form submission, per-user records) to the keys and a checked example.
 
-The root [llms.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms.txt) is a compact discovery index; the generated
-[llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms-full.txt) concatenates the authoring documents above in
+The root [llms.txt](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/llms.txt) is a compact discovery index; the generated
+[llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/llms-full.txt) concatenates the authoring documents above in
 reading order for agents that want complete context in one fetch. Its opening
 coverage note lists what it leaves out: the add-on package READMEs and their
 field references, which `search_docs` reads for installed add-ons. It is a convenience,
@@ -831,7 +831,7 @@ not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
 [URLCode AI](https://urlcode.ai/) is the optional hosted companion for
 version-pinned reference and shared skills. It complements the project-local MCP
-server; see [hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp) for its
+server; see [hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#optional-hosted-ai-mcp) for its
 anonymous remote endpoint. Its machine-readable entry point is
 [`https://urlcode.ai/llms.txt`](https://urlcode.ai/llms.txt).
 Every add-on's agent references for a release are in core's
@@ -860,7 +860,7 @@ before any YAML is written (#806):
    contents, paths or project. The runtime version is not sent, because the
    tool accepts only `task`; the agent compares it with the kit's
    `kit.runtime.version` instead.
-3. Prefer a registered hosted MCP server ([setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp)).
+3. Prefer a registered hosted MCP server ([setup](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#optional-hosted-ai-mcp)).
    Without one, where network use is allowed, the skill runs the bounded HTTP
    fallback shipped beside its `SKILL.md`, `hosted-plan.mjs`: one MCP
    `initialize`, `notifications/initialized` and `tools/call` exchange with
@@ -969,7 +969,7 @@ The benchmark operates locally; it is not a load test of an external deployment.
 
 `urlcode test` and `urlcode audit` replay `tests/requests.json`, a JSON array of
 request cases. Its contract is the shipped
-[`schemas/requests.schema.json`](https://github.com/jimhoyd-com/urlcode/blob/main/schemas/requests.schema.json); unknown keys
+[`schemas/requests.schema.json`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/schemas/requests.schema.json); unknown keys
 are rejected, so a misspelled assertion cannot pass silently. A case has these
 keys and no others:
 
@@ -1004,7 +1004,7 @@ proxy, extension, pattern-constrained and binding route under `gaps` instead
 of covering it. Supplied YAML (MCP `yaml`) is read as text only, so its
 includes are gaps too.
 Start from its `fixtures`, then write the cases it names under `gaps` and
-`review` yourself; see [fixture suggestions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#fixture-suggestions).
+`review` yourself; see [fixture suggestions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#fixture-suggestions).
 
 A failing case prints its method, path and each failed assertion with the
 expected and actual value, shortened to about 200 characters around the first
@@ -1130,8 +1130,8 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 | Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects][docs/yaml/redirects.md] |
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects][docs/yaml/redirects.md] |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site][docs/SITE.md] |
-| Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/spa-shell/README.md) |
-| Application rules that need the signed-in caller | an ordinary `function` route with `auth: true` (recipe `authenticated-json-api`); the function reads the verified user id from `context.capabilities.auth.identity.userId` | [auth][packages/auth/README.md#protect-a-route], [authenticated-json-api](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/authenticated-json-api/README.md) |
+| Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/spa-shell/README.md) |
+| Application rules that need the signed-in caller | an ordinary `function` route with `auth: true` (recipe `authenticated-json-api`); the function reads the verified user id from `context.capabilities.auth.identity.userId` | [auth][packages/auth/README.md#protect-a-route], [authenticated-json-api](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/authenticated-json-api/README.md) |
 | Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision][docs/OPEN-DECISIONS.md] |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security][docs/policies/security.md] |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets][docs/yaml/assets.md] |
@@ -1168,7 +1168,7 @@ per-user (`ownership: owner`). A collection's records are described by its
 `schemas:` map so a route body and an MCP tool share it; the collection's
 `defaults` and `readOnlyProperties` carry what the store does beyond value
 shape. It is never a field list of the store's own ([record
-schema](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#record-schema)). The example is API only; the frontend is the
+schema](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#record-schema)). The example is API only; the frontend is the
 application's own code. The store example
 without `auth` refuses until the operator re-runs with `--ack
 store:public-write`, and its collection stays shared. Report anything beyond
@@ -1201,10 +1201,10 @@ This repository ships two agent skills, each a thin trigger pointing at the
 version-matched CLI/schema and documentation bundle that are the actual source
 of truth, so there is one place to keep current rather than two:
 
-- [`urlcode-authoring`](https://github.com/jimhoyd-com/urlcode/blob/main/.claude/skills/urlcode-authoring/SKILL.md) — this
+- [`urlcode-authoring`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/.claude/skills/urlcode-authoring/SKILL.md) — this
   guide, the schema and the reference. It loads the capability limits and the
   validate/test/audit loop before YAML is written.
-- [`urlcode-operations`](https://github.com/jimhoyd-com/urlcode/blob/main/.claude/skills/urlcode-operations/SKILL.md) —
+- [`urlcode-operations`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/.claude/skills/urlcode-operations/SKILL.md) —
   deployment, `verify-deployment`, capacity, resilience, monitoring and the
   private management API. Authoring and operating are deliberately separate
   skills so neither triggers on the other's task.
@@ -1261,12 +1261,12 @@ routes added, removed and changed with the changed keys, capability names,
 trusted and sandboxed code seams including `sandbox:` flips, and the env,
 secret, egress and extension grants the new version asks the operator for.
 Report those grants to the user; never approve them yourself. See
-[YAML change summaries](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#yaml-change-summaries). For the person
+[YAML change summaries](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#yaml-change-summaries). For the person
 reviewing the change, `urlcode report BEFORE > report.html` renders the same
 summary with the review findings and each route's request path as one
 read-only page, with the files that changed since `BEFORE`, and `urlcode
 studio BEFORE` serves it on localhost, rebuilt on every reload
-([review report](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#review-report)).
+([review report](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#review-report)).
 
 ### Deciding when a route needs `sandbox: true`
 
@@ -1391,14 +1391,14 @@ providers refuse them. Signals are bounded best effort with drops, no retries
 or persistence. Never turn a user request into an implicit network grant.
 
 Before using a feature, ask `urlcode capabilities <name>` for its constraints, grants and target support and `urlcode schema <path>` for only that YAML fragment (MCP: `get_capability`, `get_schema`), instead of guessing. For an installed extension, use `urlcode extensions --host-file ... --json` or MCP `get_extensions`; its hook contracts include the accepted names, purpose and input/output schemas. Prefer extension configuration and UI copy/templates/theme/CSS, then a declared project hook, and only then a new extension or fork.
-The [tooling SDK and stdio MCP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md) inspect, validate, explain and preview
+The [tooling SDK and stdio MCP](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md) inspect, validate, explain and preview
 without guest execution, environment reads or writes. Run `urlcode explain /route`
 to check effective methods, policies and cache outcome, and `urlcode manifest`
 for the generated route, capability and requirement summary, instead of
 inferring either from the YAML. `urlcode openapi` (MCP `get_openapi`) gives a
 client-facing OpenAPI 3.1 description of the same operations; a function's
 answer is handler-defined there, so do not add a response schema to it by hand
-([OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#openapi-export)). `urlcode openapi --check` validates
+([OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#openapi-export)). `urlcode openapi --check` validates
 that export (or an OpenAPI file) against the official OpenAPI 3.1 schema shipped
 with core and exits `1` when it is invalid; use it instead of a third-party validator. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
@@ -1412,18 +1412,18 @@ The CLI and the server read an absent `--origin` or `--policy` from
 `URLCODE_ORIGIN` or `URLCODE_POLICY`, so a site's generated npm scripts run
 unchanged with operator context in the environment, and a refusal for a missing
 origin or revision prints one complete command with placeholders for exactly
-what is missing ([operator context](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#operator-context-for-commands-and-npm-scripts)).
+what is missing ([operator context](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#operator-context-for-commands-and-npm-scripts)).
 Supplying context never creates or repins a policy.
 `urlcode init` writes `.mcp.json`, the project-scoped file Claude Code reads to
 register the read-only server. Codex does not read it: register the same pinned
 command in `~/.codex/config.toml` or a trusted project `.codex/config.toml`
 under `[mcp_servers.urlcode]` with the site root as `cwd`, or with `codex mcp
-add` ([registering the server](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#registering-the-server)).
+add` ([registering the server](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#registering-the-server)).
 Claude Code loads `.mcp.json` only at session start, so an agent
 whose first turn is `init` itself does not see these tools that turn. Run
 `urlcode mcp print-config > .mcp.json` in the target directory before starting
 that session to register the server ahead of `init`
-([pre-session bootstrap](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#registering-before-init-runs-pre-session-bootstrap-542));
+([pre-session bootstrap](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#registering-before-init-runs-pre-session-bootstrap-542));
 otherwise run the first turn's `init` as a plain CLI call and rely on MCP from
 the next session or turn.
 If the agent's sandbox forbids writing client configuration, `init` stops with
@@ -1431,11 +1431,11 @@ If the agent's sandbox forbids writing client configuration, `init` stops with
 `urlcode init <directory> --no-mcp` (or `urlcode bootstrap <directory> --create
 --no-mcp`) instead of working around the policy. The site is the same without
 `.mcp.json`, the output reports `mcpRegistration: skipped`, and the agent works
-through the CLI ([without client configuration](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#creating-a-site-without-client-configuration---no-mcp)).
+through the CLI ([without client configuration](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#creating-a-site-without-client-configuration---no-mcp)).
 The optional hosted URLCode AI MCP is a separate, anonymous connection for
 version-pinned reference and shared skills, used by your agent's own model; it
 does not replace the local project server. Its endpoint is in
-[hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp).
+[hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#optional-hosted-ai-mcp).
 Inspection is not activation/deployment readiness: real grants, asset snapshots
 and service availability still need normal runtime checks. Provider conformance replay is local evidence; only
 explicit live [deployment observations][docs/PROVIDER-VERIFICATION.md] test ingress.
@@ -1532,18 +1532,18 @@ programmatic compatibility analysis and provider verification limits.
 
 # YAML guide and recipe book
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-GUIDE.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
 
 <!-- urlcode-current-version:start -->
 This guide targets URLCode 0.6.5. Start with the function example below,
 then add only the fields your route needs. The authoritative machine-readable
-shape is [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/main/schemas/urlcode.schema.json); semantic rules are in the
-[specification](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md). Unsupported fields fail validation.
+shape is [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/schemas/urlcode.schema.json); semantic rules are in the
+[specification](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md). Unsupported fields fail validation.
 <!-- urlcode-current-version:end -->
 
 ### Run all the examples
 
-The [cookbook project](https://github.com/jimhoyd-com/urlcode/blob/main/examples/cookbook/urlcode.yaml) includes six of URLCode's
+The [cookbook project](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/cookbook/urlcode.yaml) includes six of URLCode's
 nine handler types (`redirect`, `respond`, `page`, `static`, `download`, `function`;
 `conditional`, `proxy` and the `extension` mount are not stateless demo routes and
 live in their own recipes and docs), plus middleware, typed/defaulted inputs,
@@ -1566,12 +1566,12 @@ npx --no --package @jimhoyd/urlcode urlcode dev --project "$COOKBOOK"
 
 Working from a clone of this repository instead, run the same commands with
 `node packages/core/src/cli.ts` in place of `npx --no --package @jimhoyd/urlcode urlcode`
-(see [Contributing](https://github.com/jimhoyd-com/urlcode/blob/main/CONTRIBUTING.md)).
+(see [Contributing](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/CONTRIBUTING.md)).
 
 The cookbook is the largest of several runnable demo projects under `examples/`
 (each its own complete `urlcode.yaml`, like `examples/data-dir`); `recipes/` is
 a separate catalog of small YAML snippets copied *into* your own project with
-`urlcode recipes add` rather than run in place — see [recipes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RECIPES.md). The
+`urlcode recipes add` rather than run in place — see [recipes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md). The
 normal `urlcode init ../my-links` creates a bare zero-route scaffold; add only
 the routes the application needs; the site's `package.json` pins the runtime.
 
@@ -1581,15 +1581,15 @@ Each page holds the recipes for one task; the section numbers continue across pa
 
 | Page | Sections |
 |---|---|
-| [Functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/functions.md) | 1. A URL that runs code; 4. Input types and constraints; 5. Methods and body validation; 6. All function argument sources |
-| [Redirects](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/redirects.md) | 2. Ordinary and permanent redirects; 3. Parameterized redirects and explicit query forwarding |
-| [Middleware](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/middleware.md) | 7. Middleware before and after a handler |
-| [Declared responses, headers and cookies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/responses.md) | 8. Native responses, headers and cookies; 9. Explicit OPTIONS response (not automatic CORS); 9b. JSON errors for an API |
-| [Pages, static folders and downloads](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/assets.md) | 10. Pages, static folders, downloads and MIME |
-| [Enable, disable and expire](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/conditions.md) | 11. Enable, disable and expire |
-| [Bindings, split files and tests](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/organization.md) | 12. Environment and secret references; 13. Split files and folders; 14. Assert inputs and outputs |
-| [Policies and profiles](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/policies.md) | 15. Protect a route with an extension; 16. Hardened profile and per-route overrides |
-| [Site conventions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/site.md) | 17. Site conventions |
+| [Functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/functions.md) | 1. A URL that runs code; 4. Input types and constraints; 5. Methods and body validation; 6. All function argument sources |
+| [Redirects](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/redirects.md) | 2. Ordinary and permanent redirects; 3. Parameterized redirects and explicit query forwarding |
+| [Middleware](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/middleware.md) | 7. Middleware before and after a handler |
+| [Declared responses, headers and cookies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/responses.md) | 8. Native responses, headers and cookies; 9. Explicit OPTIONS response (not automatic CORS); 9b. JSON errors for an API |
+| [Pages, static folders and downloads](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/assets.md) | 10. Pages, static folders, downloads and MIME |
+| [Enable, disable and expire](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/conditions.md) | 11. Enable, disable and expire |
+| [Bindings, split files and tests](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/organization.md) | 12. Environment and secret references; 13. Split files and folders; 14. Assert inputs and outputs |
+| [Policies and profiles](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/policies.md) | 15. Protect a route with an extension; 16. Hardened profile and per-route overrides |
+| [Site conventions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/site.md) | 17. Site conventions |
 
 ### Common mistakes
 
@@ -1598,7 +1598,7 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | Two handlers on one route | Choose exactly one; put reusable logic in middleware |
 | `/r/:id`, `/r/{id:.*}` or a regex | Use `/r/{id}` plus a required path input; no regex/greedy matching |
 | `${TOKEN}` in YAML, or reading `process.env` directly in code | YAML has no interpolation; declare route-level `env`/`secrets` bindings and read them from the `env`/`secrets` context a function receives, backed by an external operator grant |
-| Assuming `fetch`, npm and Node imports are unsupported | They run fine in the trusted, in-process default; only an explicit `sandbox: true` route drops them (see [function security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)) |
+| Assuming `fetch`, npm and Node imports are unsupported | They run fine in the trusted, in-process default; only an explicit `sandbox: true` route drops them (see [function security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md)) |
 | Asset MIME/header overrides in `response.headers` | Configure `contentType`, `cacheControl`, `filename` on the asset handler |
 | `methods: [GET]` expecting HEAD | Declare HEAD too or omit methods for default GET/HEAD |
 | YAML fields for rate limits/workers/DNS/TLS | Deployment controls live outside portable route YAML |
@@ -1610,7 +1610,7 @@ Each page holds the recipes for one task; the section numbers continue across pa
 
 # YAML field reference
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-REFERENCE.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-REFERENCE.md
 
 Generated from the bundled JSON Schema by `npm run docs:reference`. Required
 means required within its containing object, not that the object itself must be
@@ -2280,9 +2280,9 @@ See [YAML guide][docs/YAML-GUIDE.md] for examples.
 
 # Implemented project contract
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
 
-This document and [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/main/schemas/urlcode.schema.json) describe
+This document and [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/schemas/urlcode.schema.json) describe
 the implemented source contract.
 `version: "1"` remains the project-format contract. Unsupported fields
 are rejected rather than interpreted as future behavior.
@@ -2292,7 +2292,7 @@ are rejected rather than interpreted as future behavior.
 `urlcode.yaml` contains `version`, `routes`, and optional `includes` (an explicit
 list of project-relative YAML files). Included files have the same version/routes
 shape and cannot recursively include files. Duplicate paths across files fail.
-See [organization examples](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ORGANIZATION.md) for one-file, multi-file and mixed
+See [organization examples](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ORGANIZATION.md) for one-file, multi-file and mixed
 layouts. All references resolve from the project root, not the including file.
 File references resolve inside the project; escaping symlinks fail. No glob,
 remote config or arbitrary infrastructure configuration.
@@ -2314,12 +2314,12 @@ Parameters occupy whole segments, e.g. `/p/{id}`, with distinct identifier names
 Each parameter matches exactly one nonempty segment, never across `/`; it is not
 greedy. No regex paths, client-controlled host dispatch or dot segments. Only static directory mounts
 support a terminal `/*` wildcard with an otherwise literal path; a `redirect` alone supports a
-terminal `/**` (one or more remaining segments, at least a one-segment literal prefix, see [route matching](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ROUTING.md)). Route keys cannot contain
+terminal `/**` (one or more remaining segments, at least a one-segment literal prefix, see [route matching](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md)). Route keys cannot contain
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
 
 One handler per route: `function`, `redirect`, `page`, `static`, `download`, `respond`, `conditional`, `proxy` or an `extension` mount.
-See [asset configuration](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ASSETS.md) for file handlers. Optional properties:
+See [asset configuration](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md) for file handlers. Optional properties:
 
 - `methods`: unique HTTP methods; default GET and HEAD. Explicit lists are exact;
   adding GET does not implicitly add HEAD. Wrong method returns 405 plus Allow,
@@ -2331,10 +2331,10 @@ See [asset configuration](https://github.com/jimhoyd-com/urlcode/blob/main/docs/
   envelope `{"error":{"code","message"}}` with a closed code set keyed by
   status. The 405 keeps `Allow`, HEAD keeps no body and the security headers are
   unchanged; handler, policy, plugin and extension responses are never
-  rewritten. See [error format](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#error-format).
+  rewritten. See [error format](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format).
 - `description`: optional authoring metadata.
 - `middleware`: ordered list of up to 16 `{source, export?}` modules wrapping any
-  handler. See [middleware](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MIDDLEWARE.md) for the portable contract.
+  handler. See [middleware](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md) for the portable contract.
 - `parameters`, `env`, `secrets`: inputs and explicit binding references.
 
 Literal paths win; parameter routes with more literal segments win next;
@@ -2344,14 +2344,14 @@ mount. An extension mount owns its path and everything below it: an exact,
 parameterized or mount route that could match there, or an extension mount
 enclosing it, fails validation naming both routes; a shorter route or a
 non-extension mount enclosing it is allowed
-([mount ownership](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ROUTING.md#extension-mounts-own-their-namespace)).
+([mount ownership](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md#extension-mounts-own-their-namespace)).
 Equally specific overlapping patterns fail even if methods differ. Match a route
 before checking its methods; do not fall back to a less specific route for 405.
 Requests decode the path once; invalid UTF-8/percent encoding, encoded slashes or
 backslashes, control characters and dot segments return 400. Query values decode
 once. Incoming query data is not automatically forwarded.
 
-See [route matching](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ROUTING.md) for examples, precedence, wildcard
+See [route matching](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md) for examples, precedence, wildcard
 limits and reload behavior.
 
 The optional top-level `site` block (entry file only) generates native routes
@@ -2365,7 +2365,7 @@ those paths, matched or not, use the JSON error envelope unless the matched
 route declares its own `errors`, and an unmatched path in that scope gets the
 JSON 404 rather than a `site.notFound` page. Static hosting refuses it. Absolute URLs come from
 the operator's `--origin`; `sitemap` refuses activation without one. See
-[site conventions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SITE.md).
+[site conventions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md).
 
 ### Exact conditions and duplicate-path alternatives
 
@@ -2373,7 +2373,7 @@ Optional route `match` conjunctively compares exact query/header/cookie strings,
 an uppercase method and the canonical authority of the operator-configured
 public origin. Host/forwarded headers never select the trusted host (a
 self-hosted server bound to loopback refuses an unexpected `Host` before routing;
-see [host admission](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#host-admission-on-a-loopback-bind)). A guard
+see [host admission](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#host-admission-on-a-loopback-bind)). A guard
 mismatch returns 404 without trying a less-specific path; route method admission
 still applies after the guard. Conditions are not authentication or authorization.
 
@@ -2397,14 +2397,14 @@ inference, wildcard or arbitrary-code conditions are supported.
 Conditional routing requires cache disabled or no-store and forces downstream
 no-store responses. Explicit fixtures are required for branch coverage.
 Self-hosted, AWS and Vercel use the shared matcher; Cloudflare refuses conditions
-until its artifact compiler supports them. See [conditions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CONDITIONS.md) and
-the [executable example](https://github.com/jimhoyd-com/urlcode/blob/main/examples/conditions).
+until its artifact compiler supports them. See [conditions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md) and
+the [executable example](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/conditions).
 
 ### HTTP request/response configuration
 
 Routes accept per-method `request.body.<METHOD>` validation and `response.headers` overrides. The
 `respond` handler serves declared text/JSON with a status without running code.
-See [HTTP configuration](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md) for the exact supported fields, precedence,
+See [HTTP configuration](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md) for the exact supported fields, precedence,
 security restrictions and examples.
 
 ### Shared blocks
@@ -2430,7 +2430,7 @@ anchors, aliases and merge keys stay rejected. Rules:
   out for now, so each trust decision stays on its route.
 - No cross-file or remote reuse of blocks.
 
-See the [shared-blocks example](https://github.com/jimhoyd-com/urlcode/blob/main/examples/shared-blocks/README.md).
+See the [shared-blocks example](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/shared-blocks/README.md).
 
 ### Named schemas
 
@@ -2454,7 +2454,7 @@ repeating it. Rules:
 - A schema describes a JSON value only; authorization, parameter coercion,
   display metadata and stored defaults are declared elsewhere.
 
-See [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas) for the full contract.
+See [named schemas](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas) for the full contract.
 
 ### Policies
 
@@ -2465,8 +2465,8 @@ over the project's, `false` disables one, and a target that cannot enforce a
 policy refuses activation naming the route. The five policies are implemented
 for the self-hosted server; Vercel and AWS accept `agents`, `security`, `cache`
 and route-partitioned `throttle`; the Cloudflare build compiles `agents` and
-`security` only. See [policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md) for the pipeline position, merge
-rules and the per-target table, and [plugins](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PLUGINS.md) for the host hook API
+`security` only. See [policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md) for the pipeline position, merge
+rules and the per-target table, and [plugins](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PLUGINS.md) for the host hook API
 operators pass in code.
 
 ### Inputs
@@ -2478,14 +2478,14 @@ Duplicate scalar query/header inputs return 400. Required missing inputs return
 400; defaults apply only to absent inputs. Empty strings are present values.
 
 Supported validation: `type`, scalar `enum`, `default`, string `minLength`/
-`maxLength`, string `format: uuid` and a bounded `pattern` ([restrictions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)),
+`maxLength`, string `format: uuid` and a bounded `pattern` ([restrictions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns)),
 numeric `minimum`/`maximum`, query array `items` and `maxItems`. JSON bodies are
 validated by `request.body.<METHOD>.schema`, a bounded JSON Schema 2020-12 profile, not
-by a parameter (a failure answers 422 as JSON naming the first failure; see [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
+by a parameter (a failure answers 422 as JSON naming the first failure; see [HTTP](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
 OpenAPI `style`/`explode` fields are not implemented. This uses a documented
 OpenAPI-like input subset; it is not an OpenAPI document or full JSON Schema
 input vocabulary. Parameter string limits are at most 8,192 characters; a
-body schema string may be as long as the request body limit ([HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)).
+body schema string may be as long as the request body limit ([HTTP](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns)).
 
 Integers use `-?(0|[1-9][0-9]*)` and must be safe JavaScript integers. Numbers
 allow the same grammar plus a fractional suffix; no exponent, plus sign, leading
@@ -2517,7 +2517,7 @@ removed. The `urlcode-dynamic-link` extension package that replaced them has
 been retired and unpublished; there is no in-core replacement or deprecation
 shim for `link`/`dynamicLinks`. Stored short links are declared through the
 operator-installed `store` extension's `extensions.store.config.shortLinks`
-([data store](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md)).
+([data store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md)).
 
 ### Functions
 
@@ -2568,14 +2568,14 @@ on one path, branch on `request.method` inside the function. A path is one
 route key, so it cannot be split into one route per method, and a `methods:`
 map of per-method functions is not implemented. Body rules can still differ per
 method: `request.body` is keyed by method
-([per-method body rules](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#per-method-body-rules)).
+([per-method body rules](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#per-method-body-rules)).
 
 ES modules only. `.mjs` is loaded as ESM in both modes. A `sandbox: true` route
 also reads `.js` as ESM independently of Node package settings, but a trusted
 route imports `.js` through Node's own loader, so an ESM `.js` module needs the
 nearest `package.json` to declare `"type": "module"`; under `"type": "commonjs"`
 it fails activation. Prefer `.mjs` for modules that must work in either mode.
-[Build-time TypeScript authoring](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TYPESCRIPT-AUTHORING.md) can produce these
+[Build-time TypeScript authoring](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md) can produce these
 JavaScript modules in a separate output project; serving does not transpile them.
 The build never imports application code into Node, uses fixed compiler settings,
 and does not perform semantic type checking. Grants must target the built
@@ -2611,7 +2611,7 @@ export default function progress(request, { signal }) {
 - **Declaration.** `stream: true` needs `function` and is refused with
   `sandbox: true`: the sandbox always answers with a whole buffered response.
   An extension mount streams when its operator registration declares
-  `streams: true` ([extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#streamed-responses)). A route
+  `streams: true` ([extensions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#streamed-responses)). A route
   that declares neither never streams: a trusted function's Response body is
   read whole and bounded by the function response limit exactly as before,
   and a streamed result from anywhere else (an extension without `streams`,
@@ -2623,7 +2623,7 @@ export default function progress(request, { signal }) {
   provider decides whether chunks reach the client as they are written, and
   functions are refused there anyway). AWS, Cloudflare and static refuse a
   project that streams before serving, at activation or build, never by
-  buffering it ([capabilities](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPABILITIES.md)).
+  buffering it ([capabilities](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md)).
 - **Head.** The status and headers get the runtime's usual decoration (route
   `response.headers`, policies, `X-Request-Id`, `X-Content-Type-Options`,
   default `Cache-Control: no-store`) and are written when the first chunk
@@ -2658,7 +2658,7 @@ export default function progress(request, { signal }) {
   accepted by the connection.
 - **Limits** are operator settings, not route YAML: concurrent streams, idle
   time without progress, total duration and total bytes
-  ([operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#streamed-responses)). The short-request
+  ([operations](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#streamed-responses)). The short-request
   admission and timeouts do not end a healthy stream.
 - **Policies.** Nothing reads a stream whole. The cache policy never stores a
   streamed response and adds no strategy headers or ETag to it (logged as
@@ -2671,7 +2671,7 @@ export default function progress(request, { signal }) {
 
 A route's `function`/`middleware` chain runs one of two ways, chosen by the
 route's `sandbox` field (false or absent — the default — versus `true`; see
-[docs/SPIKE-DEFAULT-TRUST-MODEL.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-DEFAULT-TRUST-MODEL.md)):
+[docs/SPIKE-DEFAULT-TRUST-MODEL.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPIKE-DEFAULT-TRUST-MODEL.md)):
 
 - **`sandbox` false/absent (trusted, the default):** the module is imported
   directly into the host process with ordinary Node module resolution — bare
@@ -2718,7 +2718,7 @@ alone. Literal non-secret values need no grant. Every external environment or
 secret binding is denied unless an operator policy grants that exact name to
 the route and matches the SHA-256 of the current configuration/source
 snapshot. A project cannot grant itself capabilities. See
-[policy setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md). Missing bindings reject activation
+[policy setup](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md). Missing bindings reject activation
 (the combined form always resolves, via its default). Inspection parses
 source without running it.
 
@@ -2737,7 +2737,7 @@ worker replacement is bounded. A trusted route has none of this: no fresh
 heap/module reset, no fixed worker-pool ceiling (bounded instead by ordinary
 Node concurrency and the HTTP admission cap), and its deadline races the
 call's promise rather than force-terminating a worker — see
-[capacity](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPACITY.md) for both models side by side.
+[capacity](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md) for both models side by side.
 
 HEAD invokes the handler as HEAD and suppresses body output. Code must guard
 its own application side effects when future brokered integrations are enabled.
@@ -2750,14 +2750,14 @@ A trusted (non-`sandbox`) route already has unrestricted host execution by
 design — that is the point of the default described above. For a `sandbox:
 true` route, there is no unrestricted host-execution fallback: declarative
 proxy and webhook signals use the separately granted host broker described in
-[egress](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EGRESS.md), and that route's guests still have no fetch API or
+[egress](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md), and that route's guests still have no fetch API or
 general persistent state capability. Approved secrets can be returned by code
 that receives them, in either mode; isolation does not automatically enforce
 information-flow rules on authorized inputs. Keep grants narrow and review the
 exact pinned revision. The `sandbox: true` path still needs independent
 security review before hostile multi-tenant use of that specific mode; that
 review's scope was never a claim about a route that opts out of the sandbox
-(see [docs/SANDBOX-REVIEW.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SANDBOX-REVIEW.md)).
+(see [docs/SANDBOX-REVIEW.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SANDBOX-REVIEW.md)).
 
 ### Reload and status
 
@@ -2777,34 +2777,34 @@ operator-policy changes. Config/code edits invalidate old binding grants.
 The health `version` combines route-definition and asset-representation digests,
 not a full artifact digest
 or secret fingerprint. Production release identity should be the Git commit and
-container image digest. See [operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md).
+container image digest. See [operations](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md).
 
-See [capabilities and normalized route representation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPABILITIES.md) for the target catalog,
+See [capabilities and normalized route representation](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md) for the target catalog,
 programmatic compatibility analysis and provider verification limits.
 
 ### Authoring, conversion and verification tools
 
-[Interchange](https://github.com/jimhoyd-com/urlcode/blob/main/docs/INTERCHANGE.md) imports and exports a strict literal redirect
+[Interchange](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md) imports and exports a strict literal redirect
 subset with source diagnostics and dry-run reports. Provider conversions refuse
 semantic differences by default; explicit acknowledgment retains warnings and
-never reports lossless behavior. [Bulk import](https://github.com/jimhoyd-com/urlcode/blob/main/docs/BULK.md) shards CSV/JSON/YAML rows
-into ordinary includes while retaining runtime resource limits. [Recipes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RECIPES.md)
-are local Git-owned examples; they grant no capabilities. [Build-time TypeScript](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TYPESCRIPT-AUTHORING.md)
+never reports lossless behavior. [Bulk import](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md) shards CSV/JSON/YAML rows
+into ordinary includes while retaining runtime resource limits. [Recipes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md)
+are local Git-owned examples; they grant no capabilities. [Build-time TypeScript](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md)
 is separate from runtime execution.
 
-The [tooling SDK and optional local MCP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md) inspect and validate without
+The [tooling SDK and optional local MCP](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md) inspect and validate without
 executing handlers or reading binding values. MCP defaults to inspection; the
 explicit `--allow-authoring` option enables bounded project writes and the runner
-tools that execute project code, separately from host-file loading and grants. [Provider conformance](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PROVIDER-VERIFICATION.md)
+tools that execute project code, separately from host-file loading and grants. [Provider conformance](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROVIDER-VERIFICATION.md)
 distinguishes local adapter replay from actual deployment observations; no real
-provider deployment is implied by CI. [Proxy and signal egress](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EGRESS.md) requires
+provider deployment is implied by CI. [Proxy and signal egress](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md) requires
 external revision-pinned operator grants and bounded host-owned transport;
 project declarations cannot grant network authority to themselves or guests.
 
 ### Bounded outbound behavior
 
 The proxy handler and webhook signals require external revision-pinned origin
-grants. [Egress](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EGRESS.md) specifies request and response semantics, DNS pinning,
+grants. [Egress](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md) specifies request and response semantics, DNS pinning,
 header filtering, size/time/concurrency limits, secret binding, signal guarantees
 and shutdown. Project declarations cannot grant network authority to themselves.
 All non-self-hosted targets refuse these capabilities.
@@ -2815,14 +2815,14 @@ The optional `extensions` map declares version-1 extension configuration.
 `extension: name` handlers require exclusive literal `/prefix/*` mounts and
 explicit operator registration pinned to the project revision. Optional
 `policies.extensions` requirements are validated by the named extension and
-authorized before cache access. See [extension contracts](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md) for
+authorized before cache access. See [extension contracts](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md) for
 configuration, trust boundaries, lifecycle and target restrictions.
 
 ---
 
 # Route matching
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/ROUTING.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md
 
 ### Supported path patterns
 
@@ -2862,7 +2862,7 @@ as `.` and `+` have no regex meaning in a literal path. Do not paste a regex int
 a route key: some regex-looking text is legal literal text, while unsupported
 syntax may fail validation. To constrain a segment's value, declare a bounded
 `pattern` or `format: uuid` in its parameter schema instead
-([inputs](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md#inputs)); a value that does not match returns 400.
+([inputs](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md#inputs)); a value that does not match returns 400.
 
 ### Precedence and ambiguity
 
@@ -2884,7 +2884,7 @@ also fail, including duplicates across included files.
 Selection happens before method, enabled/expiry and input validation. A selected
 route returning 405, 404, 410 or 400 does not fall through to another route.
 Likewise, a missing file in the longest selected static mount does not fall back
-to a shorter mount. See [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md) and [the contract](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md).
+to a shorter mount. See [HTTP](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md) and [the contract](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md).
 
 #### Extension mounts own their namespace
 
@@ -2936,7 +2936,7 @@ routes:
 `/api/auth/...` and `/api/requests/...` reach their extensions whatever files
 `public/` holds. A file under `public/api/auth/` is never served. A client-routed
 single-page app whose deep links must answer `index.html` adds the
-[`spa-shell` recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/spa-shell/README.md) plugin, with `/api` in its
+[`spa-shell` recipe](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/spa-shell/README.md) plugin, with `/api` in its
 `exclude` so API paths keep their own answers; an exact `/` `page`
 plus an `/assets/*` mount is the alternative when the frontend is one page.
 
@@ -2962,8 +2962,8 @@ single-route insertion. Existing requests finish on the old snapshot; new
 requests use the replacement once it is ready. An invalid candidate leaves the
 previous snapshot serving. Watcher exclusions and binding-policy rules still
 apply: configuration changes invalidate revision-pinned external binding grants.
-See [reload details](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md#reload-and-status) and
-[operator policy](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md).
+See [reload details](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md#reload-and-status) and
+[operator policy](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md).
 
 ### A TinyURL-style service: application data versus route definitions
 
@@ -2977,7 +2977,7 @@ their own persistence, backup and export lifecycle.
 Core has no native handler for this: the `link` handler that implemented it was
 removed, and the `urlcode-dynamic-link` package that replaced it is retired.
 The operator-installed `store` extension now covers it declaratively through
-`extensions.store.config.shortLinks`; see [data store](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
+`extensions.store.config.shortLinks`; see [data store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md).
 
 A trusted function runs in Node and could reach a database itself, but that
 makes the project own the storage; a `sandbox: true` function cannot reach
@@ -2988,7 +2988,7 @@ General application state and realtime sessions remain future work.
 
 # HTTP request and response configuration
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md
 
 This is a documented HTTP subset, not a promise that every
 HTTP feature is configurable. It builds on [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html).
@@ -3150,8 +3150,8 @@ refuse a body that differs from the stated length, as a self-check on top of
 that measured length -- except on Node 22.13.0-22.14.x, where that Node
 self-check is itself broken and asking for it turns a correct response into a
 crash, so it is skipped only on that narrow, documented-floor range
-(`engines`: `>=22.13.0`; [RIM-OUTPUT-001](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)).
-A [streamed response](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md#streamed-responses) is the one
+(`engines`: `>=22.13.0`; [RIM-OUTPUT-001](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RUNTIME-IMPLEMENTATION.md)).
+A [streamed response](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md#streamed-responses) is the one
 exception: its length is not known when its head is sent, so it carries no
 Content-Length (on HEAD either) and HTTP/1.1 frames it with chunked transfer;
 `response.headers` and every other header rule above still apply to it.
@@ -3284,7 +3284,7 @@ On the Cloudflare Worker, which forbids code generation at runtime,
 `urlcode build --target cloudflare` compiles every body schema with the same
 Ajv options into a standalone `body-validators.js` module, one validator per route and method (one per
 [named schema](#named-schemas), however many routes name it), so the Worker runs
-the same validator as the server. See [Cloudflare](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#what-has-run-on-workerd)
+the same validator as the server. See [Cloudflare](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CLOUDFLARE.md#what-has-run-on-workerd)
 for what has run on workerd.
 
 A failing body answers **422** as `application/json`, whatever the client's
@@ -3365,7 +3365,7 @@ when either fits.
 
 Functions still return their own Response/status/body. YAML header policy does
 not replace function status/body. Asset handlers retain conditional/HEAD/range
-behavior described in [assets](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ASSETS.md). Use OPTIONS explicitly if you need a
+behavior described in [assets](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md). Use OPTIONS explicitly if you need a
 declared response; merely adding a header does not implement CORS preflight.
 
 #### Named schemas
@@ -3410,10 +3410,10 @@ activates, whether a route, an extension or nothing names it yet. Every route
 that names it gets the same validator and the same 422, and an MCP tool whose
 `inputSchema` names it refuses the same invalid arguments at the same pointer
 with the same line (`/email must be an email`); see
-[packages/mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#named-schemas). A store collection
+[packages/mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#named-schemas). A store collection
 whose `schema` names it takes it as its record shape, so a write the schema
 refuses answers `422 invalid_record` with the same issues; see
-[a named schema as the record schema](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#a-named-schema-as-the-record-schema).
+[a named schema as the record schema](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-named-schema-as-the-record-schema).
 
 **A schema file** (`{file: <path>}`, an object whose only key is `file`) is a
 project-relative `.json`, `.yaml` or `.yml` file holding an independently
@@ -3524,7 +3524,7 @@ none today. The envelope has no configurable fields.
 
 **One parser for runtime and store errors.** The store extension writes its own
 refusals as `{"error":{"code","message","issues"?,"fields"?}}`
-([store HTTP contract](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#http-contract)), the same nesting as this
+([store HTTP contract](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#http-contract)), the same nesting as this
 envelope, and `issues` is the same issue list. With `format: json` on the API
 paths, a client reads `error.code`, `error.message` and `error.issues` from
 both. The code vocabularies differ: the runtime's are the status-keyed
@@ -3577,7 +3577,7 @@ document: each method's body policy is that operation's `requestBody`, and the
 an undeclared method. A `site.errors` entry that covers only some concrete
 paths of a templated route (an exact `/users/42` beside `/users/{id}`) makes
 that path's format `mixed`. A function's own answer is stated as
-handler-defined, with no schema. See [OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#openapi-export).
+handler-defined, with no schema. See [OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#openapi-export).
 
 ### Still outside this contract
 
@@ -3588,27 +3588,27 @@ WebSocket upgrades and proxies are not implemented. Do not advertise these as
 supported just because raw headers can be declared. Compression negotiation,
 security-header profiles, per-client throttling, User-Agent policy and HTTP
 caching strategies exist only as optional, off-by-default
-[policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md); a project that declares none keeps the identity-only
+[policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md); a project that declares none keeps the identity-only
 behavior described here, and YAML `response.headers` beat any header a policy
 would add. Future features need their own portable semantics and tests; unknown
 YAML fields fail.
 
 Middleware runs after route/method/input/body validation and before YAML response
-header overrides. See [middleware](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MIDDLEWARE.md) for ordering and native body
+header overrides. See [middleware](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md) for ordering and native body
 preservation rules.
 
 ---
 
 # Middleware
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/MIDDLEWARE.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md
 
 Middleware is reusable JavaScript around any route handler. It is optional and
 route-local; plain redirects and assets retain their native fast path when no
 middleware is attached. Middleware runs trusted and unsandboxed by default,
 in-process with full Node access, the same as a `function` route; add
 `sandbox: true` on the route to run the whole chain isolated instead (see
-[trust model and sandbox opt-in](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)).
+[trust model and sandbox opt-in](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md)).
 
 ```yaml
 version: "1"
@@ -3635,7 +3635,7 @@ Paths resolve from the project root. Up to 16 entries are allowed; each accepts
 There are no global middleware settings or middleware-specific argument fields.
 This is URLCode's small portable API, not Express/Node middleware compatibility.
 Fourteen ready-to-copy patterns (auth, CORS, tracing, error boundary, ETag and
-more) are in [middleware examples](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MIDDLEWARE-EXAMPLES.md).
+more) are in [middleware examples](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE-EXAMPLES.md).
 
 ### Order and responses
 
@@ -3670,7 +3670,7 @@ status, destination or content, return a new `Response` instead. Replacement
 responses follow the normal response size limits, and (on a `sandbox: true`
 route) the guest's text/JSON constraints. To wrap a shared
 template around file content, render it through a function at build time and
-publish the result: see [prerendering](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PRERENDER.md).
+publish the result: see [prerendering](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PRERENDER.md).
 
 Route selection, enabled/expiry checks, methods and input/body validation run
 before middleware. Their errors do not pass through the chain. A missing file
@@ -3688,14 +3688,14 @@ one fresh QuickJS/WASM guest with one memory budget and one deadline: no
 Node, filesystem, shell, fetch or ambient environment, and modules limited to
 this route's declared dependency graph. Either way, all middleware on a route
 receive that route's approved bindings, so review the whole chain; source
-changes invalidate grants. See [trust model and sandbox opt-in](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md).
+changes invalidate grants. See [trust model and sandbox opt-in](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md).
 
 Invalid responses and repeated `next()` calls fail with 502, and the deadline
 returns 504 either way. A `sandbox: true` chain also sheds load with 503 when
 the shared worker pool is exhausted, and cannot extend the deadline or catch
 the outer worker termination; forgotten downstream work is still drained
 within it. A trusted chain has no worker pool to exhaust (see
-[capacity](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPACITY.md)), but its deadline is a race against the call's own
+[capacity](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md)), but its deadline is a race against the call's own
 promise rather than a forced kill — it cannot preempt code that blocks the
 event loop synchronously.
 
@@ -3708,11 +3708,11 @@ with middleware enabled to measure its actual overhead, sandboxed or trusted.
 
 # Pages, static files and downloads
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/ASSETS.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
 
 Native file handlers are implemented. They work in the local Node runtime and
 self-hosted process/container; each provider target supports them only as far
-as [capabilities](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPABILITIES.md) states.
+as [capabilities](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md) states.
 They do not run user functions or expose filesystem APIs to guest code, trusted
 or sandboxed.
 
@@ -3758,9 +3758,9 @@ host outside the project. `page` sends one file inline; `download` sends one fil
 attachment; `static` publishes a dedicated directory tree. There is no remote
 fetch/proxy, directory listing, automatic trailing-slash redirect, framework
 server, SPA fallback or runtime template evaluation. Use prebuilt assets;
-[prerendering](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PRERENDER.md) is the tested recipe for building them from
+[prerendering](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PRERENDER.md) is the tested recipe for building them from
 function and middleware routes. For a single-page app whose client routes must
-answer `index.html`, the [`spa-shell` recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/spa-shell/README.md)
+answer `index.html`, the [`spa-shell` recipe](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/spa-shell/README.md)
 is the tested composition: a root `/*` static mount plus a small operator
 plugin ([#809](https://github.com/jimhoyd-com/urlcode/issues/809)).
 
@@ -3777,7 +3777,7 @@ when the requested path ends in `/`. A mount `/assets/*` matches `/assets/` and
 its descendants, not `/assets`. Missing files return 404. Exact routes precede
 parameterized routes; mounts follow, longest prefix first. No fallback between
 mounts. A root `/*` mount can serve a frontend beside `/api/...` extension mounts
-([site-root frontend](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ROUTING.md#a-site-root-frontend-beside-api-extension-mounts)). Asset routes accept only GET/HEAD (both default); normal enabled/expiry
+([site-root frontend](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md#a-site-root-frontend-beside-api-extension-mounts)). Asset routes accept only GET/HEAD (both default); normal enabled/expiry
 and declared input validation still apply. Choose exactly one handler per route.
 
 MIME detection uses the filename extension through `mime-types`; it does not
@@ -3835,7 +3835,7 @@ good snapshot. `serve` is fixed until restart. Function grants remain pinned to
 configuration/source, not asset bytes; an asset-only edit does not authorize new
 code or new bindings. Asset changes do update the health version and ETags.
 
-The runnable [asset example](https://github.com/jimhoyd-com/urlcode/blob/main/examples/assets/urlcode.yaml) includes page,
+The runnable [asset example](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/assets/urlcode.yaml) includes page,
 static and download routes with local HTTP assertions. HTTP semantics follow
 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html); MIME mappings use
 [mime-types](https://github.com/jshttp/mime-types).
@@ -3844,7 +3844,7 @@ static and download routes with local HTTP assertions. HTTP semantics follow
 
 # Policies
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md
 
 Policies are host-enforced behavior declared in YAML around a route: a
 per-client request budget, a User-Agent deny list, a security-header profile,
@@ -3852,7 +3852,7 @@ content-coding negotiation and an HTTP caching strategy. They run in the host
 process, outside function/middleware execution — trusted or sandboxed alike —
 so they can see the client address, keep counters across requests and touch
 the transport, which route middleware by design cannot
-([middleware](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MIDDLEWARE.md), [function security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)).
+([middleware](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md), [function security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md)).
 
 Everything here is optional and off by default. A project with no `policies`
 key and no `profiles` key behaves exactly as before: no policy module is
@@ -3860,14 +3860,14 @@ compiled and the request path is unchanged. Each policy has its own page:
 
 | Policy | Page | What it does |
 |---|---|---|
-| `throttle` | [throttle](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/throttle.md) | Sliding-window request budget with `RateLimit`/`RateLimit-Policy` headers, 429 and `Retry-After`. Put it on a form's submission route too; Better Auth limits sign-in on its own mount ([rate limits](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#rate-limits)) |
-| `agents` | [agents](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/agents.md) | Deny or allow by `User-Agent`, from bundled lists, project files and bounded patterns |
-| `security` | [security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/security.md) | OWASP Secure Headers Project response headers, with per-header `set`/`unset` |
-| `compression` | [compression](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/compression.md) | `Accept-Encoding` negotiation; assets precompressed at snapshot time |
-| `cache` | [cache](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/cache.md) | Named strategies from RFC 9111/5861/8246/9213 plus an origin memory cache |
+| `throttle` | [throttle](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/throttle.md) | Sliding-window request budget with `RateLimit`/`RateLimit-Policy` headers, 429 and `Retry-After`. Put it on a form's submission route too; Better Auth limits sign-in on its own mount ([rate limits](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#rate-limits)) |
+| `agents` | [agents](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/agents.md) | Deny or allow by `User-Agent`, from bundled lists, project files and bounded patterns |
+| `security` | [security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/security.md) | OWASP Secure Headers Project response headers, with per-header `set`/`unset` |
+| `compression` | [compression](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/compression.md) | `Accept-Encoding` negotiation; assets precompressed at snapshot time |
+| `cache` | [cache](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/cache.md) | Named strategies from RFC 9111/5861/8246/9213 plus an origin memory cache |
 
 Operators who need behavior the declarative block cannot express pass host
-[plugins](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PLUGINS.md) in code; plugins are never named in YAML.
+[plugins](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PLUGINS.md) in code; plugins are never named in YAML.
 
 ### Declaring policies
 
@@ -3887,13 +3887,13 @@ routes:
 `policies` at the top level sets project defaults; `routes.<path>.policies`
 adjusts them for one route. Two route-level short forms exist. `auth`
 expands to `policies.extensions.<provider>`, where the provider is the one
-declared [extension](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form)
+declared [extension](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form)
 whose descriptor declares `providesPrincipal` (whatever its name), carrying the
 same keys minus `required`;
 `required: false` documents the intent and emits no policy. The installed
 extension's policy schema decides which other keys are accepted: the
 first-party `auth` accepts none, so write `auth: true`
-([auth](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#protect-a-route)). Like
+([auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#protect-a-route)). Like
 `cache` below, it is refused rather than silently ignored in three cases: when
 no declared extension provides a principal or more than one does (name it with
 `policies.extensions.<name>`), when the route also sets
@@ -3914,8 +3914,8 @@ routes:
 Both accept the same keys: `profile` plus one entry
 per policy, each either an object or `false`. Unknown keys fail validation, as
 everywhere in the project format. The
-[field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-REFERENCE.md) lists every accepted field with its
-bounds; the [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/main/schemas/urlcode.schema.json) is the source.
+[field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-REFERENCE.md) lists every accepted field with its
+bounds; the [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/schemas/urlcode.schema.json) is the source.
 
 Values are behavior, never infrastructure: a quota is a number a proxy or CDN
 can restate, while trusted proxy ranges, storage URLs and vendor rule
@@ -4061,16 +4061,16 @@ chains. When none is declared, no policy code runs.
 
 | Page | Sections |
 |---|---|
-| [The built-in `hardened` profile and hardening guidance](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/hardened.md) | The built-in `hardened` profile; Hardened configuration guidance |
-| [The policy contract and your own patterns](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/contract.md) | The policy contract in TypeScript; Supplying your own patterns |
-| [Client identity, inventory and logging](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/operations.md) | Client identity and `--trusted-proxies`; What `routes` and `audit` report; Logging |
-| [Interoperability between policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/interoperability.md) | Interoperability |
+| [The built-in `hardened` profile and hardening guidance](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/hardened.md) | The built-in `hardened` profile; Hardened configuration guidance |
+| [The policy contract and your own patterns](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/contract.md) | The policy contract in TypeScript; Supplying your own patterns |
+| [Client identity, inventory and logging](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/operations.md) | Client identity and `--trusted-proxies`; What `routes` and `audit` report; Logging |
+| [Interoperability between policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/interoperability.md) | Interoperability |
 
 ---
 
 # Site conventions
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/SITE.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md
 
 The optional top-level `site` block generates the small well-known files a
 site is expected to serve. Every key is off unless declared, and each declared
@@ -4104,7 +4104,7 @@ routes:
   /: {page: {file: public/index.html}}
 ```
 
-The [cookbook](https://github.com/jimhoyd-com/urlcode/blob/main/examples/cookbook/urlcode.yaml) declares `robots`, `favicon`,
+The [cookbook](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/cookbook/urlcode.yaml) declares `robots`, `favicon`,
 `securityTxt` and `llms` with request fixtures; `sitemap` is exercised by the
 unit tests because it needs a public origin (below).
 
@@ -4137,7 +4137,7 @@ operator's `--origin https://links.example` flag on `serve`, `dev`,
 
 | Field | Meaning |
 | --- | --- |
-| `disallow` | bundled agent list names (`ai-crawlers`, `crawlers`, `seo`, `monitoring`, the same lists as the [`agents` policy](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/agents.md)) and/or paths starting with `/` |
+| `disallow` | bundled agent list names (`ai-crawlers`, `crawlers`, `seo`, `monitoring`, the same lists as the [`agents` policy](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/agents.md)) and/or paths starting with `/` |
 | `allow` | the same shapes, emitted as `Allow:` |
 | `sitemap` | `true` appends `Sitemap: <origin>/sitemap.xml` when the origin is known |
 | `extra` | literal lines appended verbatim (comments, `Crawl-delay`, ...) |
@@ -4185,7 +4185,7 @@ sitemaps.
 A project-relative `.ico`, `.svg` or `.png` file, served as a `page` route
 with `image/x-icon`, `image/svg+xml` or `image/png` and
 `cacheControl: public, max-age=3600` (the closest value in the
-[allowed vocabulary](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ASSETS.md)). The route has the usual asset semantics:
+[allowed vocabulary](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md)). The route has the usual asset semantics:
 ETag, Last-Modified, conditional requests and ranges.
 
 #### `securityTxt` → `/.well-known/security.txt` (RFC 9116)
@@ -4226,18 +4226,18 @@ sitemap leaves it out. A route you declare at `/404.html` wins and is served
 as the not-found page instead. The page answers every unknown URL, so it cannot depend on the path requested.
 
 `urlcode build --target static` writes it as the object `404.html` (see
-[static hosting](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STATIC.md)); point the host's error document at that key.
+[static hosting](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STATIC.md)); point the host's error document at that key.
 Cloudflare inlines it: the page is small, singular and static, so the build
 reads it (64 KiB cap, must decode as UTF-8) and carries it in the artifact as a
 `respond` route at `/404.html`, answering the same status, headers and method
-rules as every other target. See [`docs/CLOUDFLARE.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#sitenotfound-is-inlined).
+rules as every other target. See [`docs/CLOUDFLARE.md`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CLOUDFLARE.md#sitenotfound-is-inlined).
 `favicon` and `llms` stay refused there like any other `page` route (no asset
 binding).
 
 #### `errors` (no route)
 
 `site.errors` is the one key that generates no route. It selects the
-[JSON error envelope](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#error-format) for runtime-generated errors on a
+[JSON error envelope](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format) for runtime-generated errors on a
 path scope, whether a route matches or not:
 
 ```yaml
@@ -4271,7 +4271,7 @@ no signed `security.txt`, and no project `.json` agent lists in `robots`
 
 # Conditional routing
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/CONDITIONS.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
 
 Conditions are exact string comparisons over a bounded, portable input subset.
 A route's `match` is a conjunction: every declared query/header/cookie, host and
@@ -4333,7 +4333,7 @@ apply. Cloudflare refuses conditions until an artifact lowering and conformance
 tests exist. `urlcode capabilities` reports these distinctions. Operator plugins
 remain trusted host code; conditions add no guest authority.
 
-The [executable conditions project](https://github.com/jimhoyd-com/urlcode/blob/main/examples/conditions) includes explicit
+The [executable conditions project](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/conditions) includes explicit
 branch, fallback, duplicate and trusted-origin requests. Run:
 
 ```sh
@@ -4350,7 +4350,7 @@ match, while all shared parameter validation still runs before a case handler.
 
 # Bounded proxy and webhook transport
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/EGRESS.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
 
 Outbound requests use a host-owned HTTPS transport. Guests do not receive a fetch
 API. Project declarations express behavior; an external operator policy, pinned
@@ -4476,7 +4476,7 @@ each one in process instead, with the outcome `captured`, and never opens a
 connection or resolves a name for it. The grant is still required, so
 activation checks the same policy it would for `serve`. A fixture asserts what
 a request emitted with `expectSignals`
-([fixture format](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#generated-checks-plus-explicit-examples)):
+([fixture format](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#generated-checks-plus-explicit-examples)):
 
 ```json
 {"path":"/contact","method":"POST","headers":{"content-type":"application/json"},
@@ -4514,7 +4514,7 @@ runtime metrics and the Prometheus `signals_total` series (`captured` counts sig
 new requests, aborts egress and drains bounded pending work. Client disconnects
 are not currently propagated into the runtime transport; the five-second deadline
 still applies. All non-self-hosted targets currently refuse proxy and signals.
-See the [executable example](https://github.com/jimhoyd-com/urlcode/blob/main/examples/egress/README.md).
+See the [executable example](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/egress/README.md).
 
 Revision hashes also include declared project policies, profiles and site
 configuration. Changing an inherited pre-egress restriction invalidates grants
@@ -4527,7 +4527,7 @@ network authority under changed behavior.
 
 # Operator-installed extensions
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
 
 Extensions are trusted operator modules, separate from a project's own
 `function`/`middleware` code. The first-party extensions (`audit`,
@@ -4541,11 +4541,11 @@ Stored short links are declared through the `store` extension's
 `extensions.store.config.shortLinks`: a collection with a bounded unique key, a
 required HTTP(S) destination field and one counter, served on a public
 `GET`/`HEAD` redirect mount with no function. See
-[short links in the data store](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
+[short links in the data store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md).
 
 The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See
-[data store](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
+[data store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md).
 
 The `audit` extension serves no route and exists for other extensions to use
 through its typed exports. It is the durable audit log: a producer (every store
@@ -4557,10 +4557,10 @@ No extension renders or processes forms. A form is an ordinary frontend that
 posts JSON to a store mount, or to a route whose `request.body.POST.schema`
 validates it before anything runs and whose `respond` answers it, with an
 optional `signals` notification (the
-[contact-form recipe](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md)).
-[`policies.throttle`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/throttle.md) limits its request rate. To email
+[contact-form recipe](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md)).
+[`policies.throttle`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/throttle.md) limits its request rate. To email
 a submission, a trusted function route calls the provider's own library
-([sending mail from your own code](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md#sending-mail-from-your-own-code-instead)).
+([sending mail from your own code](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md#sending-mail-from-your-own-code-instead)).
 
 The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
 server: named tools with a description, a `request.body.<METHOD>.schema`-shaped input
@@ -4575,10 +4575,10 @@ mounted behind a principal-providing extension. Streamed progress replies are an
 operator opt-in, `mcp({ streaming: true })`, off by default; on, the registration
 declares [`streams: true`](#streamed-responses), so aws refuses it. There are no
 sessions. A tool's `inputSchema` or `outputSchema` may name one of the
-project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas) (`inputSchema: contact`), so a
+project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas) (`inputSchema: contact`), so a
 POST route and a tool validate against one document and refuse the same input
 at the same pointer; `tools/list` advertises the schema resolved. See the
-[mcp package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#named-schemas).
+[mcp package](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#named-schemas).
 
 A project declares versioned configuration and exclusive route mounts:
 
@@ -4666,7 +4666,7 @@ or written in time it answers `503 {"error":"auth_unavailable"}` instead of a
 per-route CSRF option: a mount that accepts JSON only (a store collection)
 uses the same `auth: true`. Identity is not permission: roles, ownership and approvals are
 application data keyed by the user id (see the
-[auth package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md)).
+[auth package](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md)).
 
 The auth policy schema is applied at validate time as well as at startup:
 `urlcode validate` checks it against the installed package's `urlcode.json`
@@ -4687,12 +4687,12 @@ a typo there does not wait until the route is switched back on.
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
-[policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md)).
+[policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md)).
 
 The configuration and requirement objects above are validated by the installed
 extension's schemas. They are examples of extension-owned fields, not built-in
 authentication behavior. See the executable generic fixture in
-[examples/extensions](https://github.com/jimhoyd-com/urlcode/blob/main/examples/extensions). Included files can declare
+[examples/extensions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/extensions). Included files can declare
 extensions; duplicate names fail rather than silently override one another.
 
 The operator passes `extensions: RuntimeExtension[]` to `createRuntime`,
@@ -4716,7 +4716,7 @@ bounded requests and, when named in a route's policies, gates the request via
 [Wrapping a route](#wrapping-a-route-extension-middleware) above). Missing
 registrations, stale grants, invalid configuration and unsupported targets fail
 activation. An extension mount owns its path and every path below it; the
-[mount ownership rule](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ROUTING.md#extension-mounts-own-their-namespace) says
+[mount ownership rule](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md#extension-mounts-own-their-namespace) says
 which other routes may sit beside or above it, and `urlcode validate` checks it
 with or without a host file.
 
@@ -4754,12 +4754,12 @@ rather than saying `auth` must be `true`.
 For extension-protected routes, agents/throttle run before authorization and
 cache access happens only after authorization. Method admission sits between
 them: a method the route does not declare is answered `405` with `Allow`, in
-the route's [error format](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#error-format), and neither `authorize()` nor
+the route's [error format](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format), and neither `authorize()` nor
 `middleware()` runs for it. That holds on an `extension:` mount and on a core
 route an extension policy protects alike, so `auth: true` never turns an
 undeclared method into a `401` or `403`. It reveals only which methods the route
 declares, which an unprotected route's `405` and the
-[OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#openapi-export) already publish; the throttle and agents policies
+[OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#openapi-export) already publish; the throttle and agents policies
 still count and can refuse these requests first. This part is unconditional:
 naming any extension in `policies.extensions` always runs its `authorize()`
 (when it implements one) before the route's own handler, whatever this
@@ -4849,7 +4849,7 @@ from all application guest requests and mapped parameters, on every route,
 including routes that never name an extension. A project with no active
 extension (and no operator plugin declaring credential headers) withholds
 nothing, so its own trusted middleware can read Authorization and Cookie (see
-[the security policy](https://github.com/jimhoyd-com/urlcode/blob/main/SECURITY.md)). The projection keeps credentials away
+[the security policy](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/SECURITY.md)). The projection keeps credentials away
 from code that does not need them; it does not confine trusted Node code.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
@@ -4883,10 +4883,10 @@ through a [request-bound capability](#request-bound-capabilities) instead.
 #### Request principal
 
 Other extensions on a route sometimes need to know *who* the request is for,
-not just that it was allowed: an [owned store collection](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#per-record-ownership)
+not just that it was allowed: an [owned store collection](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership)
 scopes every record to its owner. Core carries that as an opaque **principal**
 on the request (`RIM-EXT-PRINCIPAL-001` in
-[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)). Core is unaware of auth:
+[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RUNTIME-IMPLEMENTATION.md)). Core is unaware of auth:
 it only transports a bounded id that an operator-installed extension vouched
 for.
 
@@ -4950,7 +4950,7 @@ Everything else an extension exports — a store collection
 scoped to the caller or an audit log query — exists only as
 a live object passed between extensions through `HostContext.get`, never
 reachable from a route's own handler. **Request-bound capabilities**
-(`RIM-EXT-CAPABILITY-001` in [runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md))
+(`RIM-EXT-CAPABILITY-001` in [runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RUNTIME-IMPLEMENTATION.md))
 close that gap with one generic mechanism, without adding new YAML: a route
 that already names an extension in `policies.extensions` may receive a live,
 per-invocation object from that extension, in `context.capabilities`.
@@ -5003,7 +5003,7 @@ context.capabilities.<name>: ...`). They do not enumerate what an extension
 serves below its own mount: the mount's handler carries
 `subpaths: provider-defined, not enumerated or inspected by URLCode`, so a
 review never implies those endpoints were checked. The
-[embedded Better Auth proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) (#843) is
+[embedded Better Auth proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) (#843) is
 an end-to-end application on this seam: the first-party `auth` extension
 mounts Better Auth's own handler, turns its verified session into the request
 principal, and the store scopes, gates and stamps its records with that
@@ -5011,7 +5011,7 @@ principal. The proof lists the provider's served endpoints with its own probe, o
 review facts.
 
 The same application runs with a second, independently owned provider behind
-the same boundary: [Auth.js](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests-authjs/README.md)
+the same boundary: [Auth.js](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests-authjs/README.md)
 (`@auth/core`), connected by an independent package
 (`@example/urlcode-authjs`, installed from a local tarball with
 `urlcode extensions add`) that imports only Auth.js and
@@ -5065,7 +5065,7 @@ reads its credentials from the host, not from project YAML.
 This is an injection convenience under the operator grant, not a restriction:
 extensions and their hooks are trusted in-process code that can read
 `process.env` directly. The grant governs only what URLCode hands them through
-`ExtensionRequest.env` (see [granting selected bindings](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md#granting-selected-bindings)).
+`ExtensionRequest.env` (see [granting selected bindings](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md#granting-selected-bindings)).
 The request id and env reach project hooks through the hook context described
 below.
 
@@ -5140,7 +5140,7 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    input/output properties: `get_extensions`, `search_docs` and editors show
    it. For the first-party packages in this repository `npm run check` fails an
    undescribed property and renders each package README's
-   [field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md) from the descriptor.
+   [field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSION-REFERENCE.md) from the descriptor.
 2. Publishes every project hook through `hooks` and reuses
    `extensionHooksSchema` plus `loadExtensionHooks`; it does not implement its
    own path resolver or dynamic-import cache. If it admits an author-supplied
@@ -5149,14 +5149,14 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    `@jimhoyd/urlcode/extensions` entry point rather than writing its own
    ReDoS admission check, so every pattern in a project is bound by the one
    reviewed cost model (`RIM-PATTERN-001` in
-   [runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)).
+   [runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RUNTIME-IMPLEMENTATION.md)).
 3. Publishes an `authoring` contract listing its supported project-owned
    configuration and hook surfaces, plus focused `fastChecks`. Keep descriptions concrete enough that an agent
    can choose a supported surface instead of copying package behavior. A surface
    may list `goals`: at most 32 lowercase words (a word or hyphenated word) that
    `plan-feature` matches against a feature goal to name that surface, so the
    extension, not core, owns its planning vocabulary
-   ([feature planning](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#feature-planning)). The release catalog
+   ([feature planning](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#feature-planning)). The release catalog
    carries each extension's contract, so a goal plans it before it is installed.
 4. Activates all configuration, files, services and hooks before serving a
    request. Invalid or stale configuration fails activation. Throw an `Error`
@@ -5185,10 +5185,10 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    buffered answer open or polling.
 10. Describes the endpoints of its mount for `urlcode openapi` with an optional,
    pure [`describe()`](#openapi-description), and validates any JSON a project
-   declares for it with core's [body-schema profile](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)
+   declares for it with core's [body-schema profile](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns)
    (`@jimhoyd/urlcode/body-schema`) rather than a vocabulary of its own. Where
    its configuration takes a schema, it accepts the name of one of the
-   project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas) too and resolves it against
+   project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas) too and resolves it against
    `context.schemas` at activation (each already admitted and compiled by core,
    self-contained, `RIM-SCHEMA-001`), refusing a name the map does not hold.
 
@@ -5196,7 +5196,7 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 
 `@jimhoyd/urlcode/extensions` exports one bounded implementation of the request
 chores every extension has (`RIM-EXT-HTTP-001` in
-[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)). Do not hand-roll body
+[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RUNTIME-IMPLEMENTATION.md)). Do not hand-roll body
 parsing, JSON responses or origin checks; use these:
 
 | Helper | What it does |
@@ -5210,14 +5210,14 @@ parsing, JSON responses or origin checks; use these:
 #### OpenAPI description
 
 A registration may implement `describe(request)` so the
-[OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#openapi-export) lists its mount's endpoints instead
+[OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#openapi-export) lists its mount's endpoints instead
 of an opaque mount (`RIM-OPENAPI-001` in
-[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)). The export calls it only
+[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RUNTIME-IMPLEMENTATION.md)). The export calls it only
 when the operator's host file is loaded (`urlcode openapi --host-file`, or
 `buildOpenApi(project, {extensions})`), once per mount of the extension, with
 `{mount, methods, config, schemas}`: the mount path, the route's declared
 methods, `extensions.<name>.config` as the project declares it and the
-project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas). It is never called while
+project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas). It is never called while
 serving and must be pure: no database, network, filesystem or clock.
 
 It returns `undefined` to leave the mount opaque, or an `ExtensionOpenApi`,
@@ -5258,14 +5258,14 @@ the response keeps both descriptions and claims no body schema. A throw from
 mount for OpenAPI: <message>`.
 
 The store describes each collection from its record schema
-([store OpenAPI](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#openapi)); the other first-party extensions leave
+([store OpenAPI](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#openapi)); the other first-party extensions leave
 their mounts opaque.
 
 #### Streamed responses
 
 A mount's `handle()` may answer with a body sent as it is produced (server-sent
 events, progress, logs) when the registration declares it (`RIM-STREAM-001` in
-[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)):
+[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RUNTIME-IMPLEMENTATION.md)):
 
 ```ts
 import type { RuntimeExtension, HandlerResult, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
@@ -5310,7 +5310,7 @@ const registration: RuntimeExtension = {
   commits them without body bytes. An error before the first chunk is
   answered with the ordinary generic error; after it, the connection closes
   without the chunked terminator. HEAD never pulls the producer.
-- Operator [stream limits](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#streamed-responses) bound every
+- Operator [stream limits](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#streamed-responses) bound every
   stream: concurrent streams, idle time, total duration and bytes. `close()`
   of the runtime (shutdown, or a retired dev reload) waits for open streams,
   so an extension's own `close()` runs only after its last stream ended.
@@ -5337,7 +5337,7 @@ names no extension and interprets no message.
   It never reaches an HTTP response.
 - The message is cut to one line of at most 500 characters (control characters
   and runs of whitespace become one space), the same bound as
-  [activation errors](https://github.com/jimhoyd-com/urlcode/blob/main/docs/LOCAL-DEVELOPMENT.md#environment-and-troubleshooting). It
+  [activation errors](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/LOCAL-DEVELOPMENT.md#environment-and-troubleshooting). It
   carries no stack.
 - At most 20 warnings are recorded per extension per activation
   (`maxExtensionWarnings`); the next call records one
@@ -5419,7 +5419,7 @@ closes, fall back to the previous live one rather than to nothing, so a failed
 reload's close cannot switch off the runtime that is still serving. No
 first-party extension needs the hand-off today: the store shares one database
 connection among its registration's live activations instead
-([store reload](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#reload)), and the store's records export keeps its
+([store reload](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#reload)), and the store's records export keeps its
 current activation that way.
 
 #### Site origins and same-origin checks
@@ -5475,7 +5475,7 @@ an endpoint that accepts JSON exclusively, which a cross-site browser cannot
 send without a preflight the runtime never grants, while non-browser clients
 (curl, MCP clients, API keys) send no provenance header: `store` and `mcp` use
 it. The rule is admission only: Better Auth applies its own origin checks on its mount. On a loopback bind the server's
-[host admission](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
+[host admission](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
 alias authority too.
 
 Every extension also follows the
@@ -5520,7 +5520,7 @@ internals. An add-on **must** follow them:
    and consumer checks. In this repository, descriptor, build and add-on
    verification uses: `node scripts/build-addon-manifest.ts --check`,
    `npm run audit:packages` and `npm run test:addons`
-   ([validation and CI](#validation-and-ci), [changing an add-on](https://github.com/jimhoyd-com/urlcode/blob/main/CONTRIBUTING.md#changing-an-add-on)).
+   ([validation and CI](#validation-and-ci), [changing an add-on](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/CONTRIBUTING.md#changing-an-add-on)).
 
 #### Author checklist
 
@@ -5705,7 +5705,7 @@ running any code.
 The same report is available as `inspectExtensions({project, hostFile?})` from
 the package root and, for assistants, as the MCP tool `get_extensions`, which the
 server advertises only when the operator started `urlcode mcp` with
-`--host-file`. No tool argument can name a host file. See [TOOLING.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md).
+`--host-file`. No tool argument can name a host file. See [TOOLING.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md).
 
 ### CLI host binding
 
@@ -5876,7 +5876,7 @@ whether an extension ships an `--example`; the catalog does not either.
 
 Every first-party extension declares `agent` references, and at least one of
 them is its `README.md`, which ends with the generated
-[field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md). `npm run check` fails when an
+[field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSION-REFERENCE.md). `npm run check` fails when an
 extension has none, or names a file its package does not ship, so an installed
 extension always appears in `get_addon_agent_tooling`.
 
@@ -6211,12 +6211,12 @@ outbox reaches its cap (`auditOutboxLimits`: 1000 per store collection) the
 write answers 503 until audit catches up. The log keeps the newest `retention`
 events (default 100000). Events carry names, ids and field names, never
 submitted values or secrets. Operators read the log with `urlcode-audit list`.
-See the [audit package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md)
-and its [security notes](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/SECURITY.md).
+See the [audit package](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md)
+and its [security notes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/SECURITY.md).
 
 #### Rate limits
 
-The core [`throttle` policy](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/throttle.md) is YAML on any route,
+The core [`throttle` policy](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/throttle.md) is YAML on any route,
 including an extension mount: a fixed per-client budget on a bounded in-memory
 table, the same on every target, reset on restart. Better Auth's own rate
 limiter guards sign-in.
@@ -6287,7 +6287,7 @@ revision or registers a schema that differs from the definition.
   composes its registrations with an unpinned inspection revision instead
   (#910). They are reported as not pinned, and every activation refuses them
   (`revision-pin-required`), so an unpinned host can be read but never serve
-  ([inspection without a revision pin](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#inspection-without-a-revision-pin)).
+  ([inspection without a revision pin](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#inspection-without-a-revision-pin)).
   The loader signals inspection through a second process-global slot,
   `Symbol.for('urlcode.host.inspection')`, set only while it imports the host file.
 
@@ -6308,7 +6308,7 @@ exactly like `serve`. After that, a hot reload accepts a registration pinned
 to exactly the revision `dev` started from and activates it for the edited
 revision (`context.projectSha256` is the new revision), logging one
 `{"event":"extension_pin_followed","extensions":[...],"from":"<startup>","to":"<edited>"}`
-record per reload ([observability](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OBSERVABILITY.md#event-catalogue)). Every
+record per reload ([observability](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OBSERVABILITY.md#event-catalogue)). Every
 other check still runs on each reload: the target, the contract version, the
 configuration and policy schemas, origins and mounts. The registration object
 is not changed, and no project YAML, environment variable, CLI flag or tool
@@ -6318,7 +6318,7 @@ argument can turn this on: `urlcode dev` alone enables it, through
 hosted adapters keep the strict check. What `dev` ran is not reviewed: review
 the edited project and pin its revision before `serve` runs it. `--policy`
 grants are not followed; see
-[local development](https://github.com/jimhoyd-com/urlcode/blob/main/docs/LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
+[local development](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
 
 ##### The local review loop
 
@@ -6633,7 +6633,7 @@ extensions, checks each `extensions.<name>.config` and each route's
 `urlcode.json` schemas. No extension code runs. Pass `--host-file host.mjs` to
 activate the extensions and validate the whole runtime.
 
-The [GitHub Action](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md#what-it-runs) installs the site with `npm ci
+The [GitHub Action](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CI.md#what-it-runs) installs the site with `npm ci
 --ignore-scripts` (a committed `package-lock.json` is required), runs `urlcode
 extensions list --strict` and `urlcode artifacts list --strict`, then validates
 the project. Without a `host-file` input it validates declared extensions
@@ -6644,9 +6644,9 @@ with one it computes `PROJECT_SHA256` for that CI run only.
 
 # Extension field references
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION-REFERENCE.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSION-REFERENCE.md
 
-The [YAML field reference](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-REFERENCE.md) is core's schema, and it stops at
+The [YAML field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-REFERENCE.md) is core's schema, and it stops at
 `extensions.<name>.config`: core accepts any object there and hands it to the
 extension. Each first-party extension owns the syntax below that key. Its
 package README ends with a **Field reference** generated from the package's
@@ -6675,10 +6675,10 @@ Two distinctions hold throughout:
 
 | Extension | What it declares | Peers | Described fields | Field reference |
 |---|---|---|---|---|
-| `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md#field-reference) |
-| `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#field-reference) |
-| `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 59 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference) |
+| `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md#field-reference) |
+| `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#field-reference) |
+| `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 59 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ### Capability to reference
@@ -6688,20 +6688,20 @@ full definition and a checked example live.
 
 | I need | Declare | Reference and example |
 |---|---|---|
-| Stored short links: create, redirect, click count | store: a collection with a `key`, a required `format: uri` destination property (HTTP(S) only) and one `increments` counter, plus `shortLinks.<name>: {mount, collection, destination, clicks}` and a `/go/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference); the complete YAML is in [bounded keyed transitions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#bounded-keyed-transitions) |
-| Accept a form submission as JSON, validated before code runs | core: a route with `request.body.POST.schema` (JSON Schema 2020-12, standard formats such as `format: email`), answered by `respond` or a trusted `function`; the runtime answers 422 first | [recipe `contact-form`](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md), [body schema](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns) |
-| Email each submission | core: a trusted `function` route that calls the mail provider's API, SDK or nodemailer directly, with its credentials in granted `secrets` | [sending mail from your own code](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md#sending-mail-from-your-own-code-instead) |
-| A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference), [recipe `store-crud`](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/store-crud/README.md) |
-| Records private to each signed-in user | store: `ownership: owner` on the collection, and a principal-providing policy (`auth: true`) on its route | [per-record ownership](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#per-record-ownership) |
-| A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {mount, members}`; the operator adds members with `addMember` | [membership gates](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) |
-| Sign-in and protected routes | auth: mount Better Auth at `/api/auth/*` with `extension: auth`; `auth: true` on a protected route; the function reads `context.capabilities.auth.identity.userId` | [auth extension guide](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/README.md) |
-| Submission rate limits | core: `policies.throttle` on the route; sign-in is throttled by Better Auth's own limiter, keyed by the admitted client address | [policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md), [auth security model](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/SECURITY.md) |
-| An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md#field-reference) |
-| A frontend over the store's JSON mounts | your own code: `fetch` to the mounts, reading a list's `etags` and `may`; styling and components are the app's (for shadcn, the official tooling plus `urlcode artifacts stage`) | [the private-requests client](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/client/main.js), [what the caller may run](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#what-the-caller-may-run) |
-| MCP tools, resources and prompts | mcp: `servers.<name>` with `tools`, each backed by a trusted handler module | [mcp field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#field-reference) |
+| Stored short links: create, redirect, click count | store: a collection with a `key`, a required `format: uri` destination property (HTTP(S) only) and one `increments` counter, plus `shortLinks.<name>: {mount, collection, destination, clicks}` and a `/go/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference); the complete YAML is in [bounded keyed transitions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#bounded-keyed-transitions) |
+| Accept a form submission as JSON, validated before code runs | core: a route with `request.body.POST.schema` (JSON Schema 2020-12, standard formats such as `format: email`), answered by `respond` or a trusted `function`; the runtime answers 422 first | [recipe `contact-form`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md), [body schema](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns) |
+| Email each submission | core: a trusted `function` route that calls the mail provider's API, SDK or nodemailer directly, with its credentials in granted `secrets` | [sending mail from your own code](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md#sending-mail-from-your-own-code-instead) |
+| A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference), [recipe `store-crud`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/store-crud/README.md) |
+| Records private to each signed-in user | store: `ownership: owner` on the collection, and a principal-providing policy (`auth: true`) on its route | [per-record ownership](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership) |
+| A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {mount, members}`; the operator adds members with `addMember` | [membership gates](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) |
+| Sign-in and protected routes | auth: mount Better Auth at `/api/auth/*` with `extension: auth`; `auth: true` on a protected route; the function reads `context.capabilities.auth.identity.userId` | [auth extension guide](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) |
+| Submission rate limits | core: `policies.throttle` on the route; sign-in is throttled by Better Auth's own limiter, keyed by the admitted client address | [policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md), [auth security model](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md) |
+| An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md#field-reference) |
+| A frontend over the store's JSON mounts | your own code: `fetch` to the mounts, reading a list's `etags` and `may`; styling and components are the app's (for shadcn, the official tooling plus `urlcode artifacts stage`) | [the private-requests client](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js), [what the caller may run](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#what-the-caller-may-run) |
+| MCP tools, resources and prompts | mcp: `servers.<name>` with `tools`, each backed by a trusted handler module | [mcp field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#field-reference) |
 
 A plain per-route request budget is core's `policies.throttle`, not an
-extension ([policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md)).
+extension ([policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md)).
 
 ### Bounded retrieval
 
@@ -6719,14 +6719,14 @@ An agent does not need the whole corpus to find one key.
 - **A source checkout or GitHub:** `packages/<name>/README.md#field-reference`,
   one file per extension, linked from the table above.
 
-[llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/main/llms-full.txt) bundles core's authoring pages and this page,
+[llms-full.txt](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/llms-full.txt) bundles core's authoring pages and this page,
 but not the package READMEs; its coverage note says so.
 
 ---
 
 # Function execution: trusted by default, sandboxed opt-in
 
-Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md
+Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md
 
 `function` and `middleware` routes run **trusted and unsandboxed by default**:
 in the host process, with full Node, filesystem and network access, exactly

@@ -1,3 +1,4 @@
+import {docsUrl} from './release.ts';
 import {readdirSync,readFileSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {capabilityDetails,capabilityNames,capabilityTargets,formatCapabilities,getCapabilities,routeCapabilities} from './capabilities.ts';
@@ -65,6 +66,6 @@ export function formatCapability(entry:CapabilityEntry):string {
     ...capabilityTargets.map(target=>`  ${target.padEnd(12)}${entry.targets[target].support.padEnd(12)}${entry.targets[target].reason}`),
     '','Unsupported:',...(entry.refused.length?entry.refused.map(item=>`  - ${item.target}: ${item.reason}`):['  (none)']),
     '','Recipes:',...usageLines(entry.recipes),'','Cookbook routes:',...usageLines(entry.cookbook),
-    '','Provider deployments: unverified; see docs/CAPABILITIES.md.',''].join('\n');
+    '',`Provider deployments: unverified; see ${docsUrl('CAPABILITIES.md')}.`,''].join('\n');
 }
 export {formatCapabilities};

@@ -1,5 +1,6 @@
 import { profiles as securityProfiles } from '../policies/security.ts';
 import type { Standard } from '../compliance.ts';
+import { docsUrl } from '../release.ts';
 import type { EffectivePolicies, PlanInventoryEntry, PolicyInventory, RouteConfig } from '../types.ts';
 
 // Facts every rule module reads the same way. Nothing here guesses: each
@@ -11,8 +12,8 @@ export const rfc9110: Standard = Object.freeze({ name: 'RFC 9110 HTTP Semantics'
 export const rfc6585: Standard = Object.freeze({ name: 'RFC 6585 Additional HTTP Status Codes', reference: 'https://www.rfc-editor.org/rfc/rfc6585', section: '4. 429 Too Many Requests' });
 export const rfc9309: Standard = Object.freeze({ name: 'RFC 9309 Robots Exclusion Protocol', reference: 'https://www.rfc-editor.org/rfc/rfc9309' });
 export const breach: Standard = Object.freeze({ name: 'BREACH (compression side channel)', reference: 'https://www.breachattack.com/', section: 'Mitigations' });
-export const monitoring: Standard = Object.freeze({ name: 'URLCode logging guarantees', reference: 'docs/MONITORING.md', section: 'Log records' });
-export const agentLists: Standard = Object.freeze({ name: 'URLCode bundled agent lists', reference: 'docs/policies/agents.md', section: 'Bundled lists' });
+export const monitoring: Standard = Object.freeze({ name: 'URLCode logging guarantees', reference: docsUrl('MONITORING.md'), section: 'Log records' });
+export const agentLists: Standard = Object.freeze({ name: 'URLCode bundled agent lists', reference: docsUrl('policies/agents.md'), section: 'Bundled lists' });
 
 export const active = (route: PlanInventoryEntry): boolean => route.state === 'active';
 export const functionLike = (route: PlanInventoryEntry): boolean => route.handler === 'function' || route.middleware > 0;
