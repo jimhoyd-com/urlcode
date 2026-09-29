@@ -262,7 +262,7 @@ process.stdout.write(JSON.stringify(skills.map(skill => ({name:skill.name, versi
     // application would have installed its own.
     const tsc = resolve('node_modules','typescript','bin','tsc');
     if (existsSync(tsc)) {
-      await writeFile(join(install,'consumer.ts'),`import { getCapabilities, analyzeProjectCapabilities, type CapabilityCatalog, createRuntime, startServer, loadDocument, type Runtime, type RuntimeOptions, type Server } from '@jimhoyd/urlcode';
+      await writeFile(join(install,'consumer.ts'),`import { getCapabilities, analyzeProjectCapabilities, type CapabilityCatalog, createRuntime, startServer, loadDocument, createEmbeddedHandler, type EmbeddedHandler, type EmbeddedHandlerOptions, type EmbeddedRequestInfo, type Runtime, type RuntimeOptions, type Server } from '@jimhoyd/urlcode';
 const catalog: CapabilityCatalog = getCapabilities('cloudflare');
 void catalog; void analyzeProjectCapabilities;
 import {listRecipes, showRecipe, addRecipe, buildTypeScriptProject, importBulkProject, inspectProject, validateProject, explainRoute, previewImport, previewExport, serveMcp, providerConformanceCases, runProviderConformance, verifyProviderDeployment, matchesRoute, importRoutes, exportRoutes, type BulkImportReport, type TypeScriptBuildReport, type RecipeSummary, type McpOptions, type RouteMatch} from '@jimhoyd/urlcode';
@@ -304,6 +304,9 @@ declare const standard: Standard; declare const report: ComplianceReport;
 declare const sandboxPoolOptions: SandboxPoolOptions; declare const sandboxInvocation: SandboxInvocation;
 declare const shippedSkill: ShippedSkill;
 const runtimeOf: (project: string, options?: RuntimeOptions) => Promise<Runtime> = createRuntime;
+const embed: (runtime: Runtime, options?: EmbeddedHandlerOptions) => EmbeddedHandler = createEmbeddedHandler;
+declare const embedInfo: EmbeddedRequestInfo;
+void [embed, embedInfo];
 void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydrate, prerenderPages, assertNativeProject, createVercelHandler,
   validatePlugins, activatePlugins, registry, compilePolicies, createObserverSink, createMetrics, runCompliance, loadComplianceRules, runtimeOf,
   SandboxPool, functionFile, sandboxPoolOptions, sandboxInvocation,

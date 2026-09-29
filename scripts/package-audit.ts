@@ -263,9 +263,16 @@ export const budgets: Record<string, Budget> = {
     // Measured on Node 26 against main with #875, #886 and #890 merged: 927468 packed bytes (3820 over 902 KiB)
     // and 3681030 unpacked bytes (11014 over 3584 KiB), so packed is raised to 909 KiB and unpacked to 3598 KiB,
     // about 3 KiB of headroom on each.
-    packed: 909 * 1024,
-    unpacked: 3598 * 1024,
-    entries: 500,
+    // #889's embedded fetch handler: dist/embed.js and dist/host-request.js with their declarations, the
+    // OPERATIONS "Hosting URLCode inside another framework" section, RIM-EMBED-001 and their llms-full.txt copies.
+    // Measured on Node 26 after rebasing onto #875/#887/#890: 929130 packed bytes (5482 over 902 KiB) and 3686818
+    // unpacked bytes (16802 over 3584 KiB), 499 entries. Packed raised to 911 KiB, unpacked to 3604 KiB and entries
+    // to 504, each keeping about 3.7 KiB (or 5 entries) of headroom for the ~2 KiB cross-Node gzip variance above.
+    // With #888 (principal provider), #889 (embedding adapter) and #883 slice 1 merged, measured on Node 26:
+    // 933787 packed / 3704490 unpacked bytes, 499 entries; about 3 KiB of headroom on each.
+    packed: 915 * 1024,
+    unpacked: 3621 * 1024,
+    entries: 504,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

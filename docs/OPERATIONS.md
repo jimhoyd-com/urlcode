@@ -138,44 +138,100 @@ in real operation rather than treating a mutable tag as a rollback identity.
 
 ## Hosting URLCode inside another framework
 
-A Node application built on another framework can host a URLCode project
-in-process. [proofs/ecosystem](../proofs/ecosystem/README.md) does this with
-Hono; the steps are the same for any framework:
+A Node application built on another framework (Hono, a plain `node:http`
+server, anything that speaks fetch `Request`/`Response`) can host a URLCode
+project in-process. `createEmbeddedHandler` from `@jimhoyd/urlcode` turns a
+runtime into a fetch handler that answers exactly as `urlcode serve` does for
+the same project: the same request reading, client resolution, body limits,
+error format and response rules, from the same code.
+[proofs/ecosystem](../proofs/ecosystem/README.md) does this with Hono and is
+the executable check.
 
-1. Call `createRuntime(project, {origin, extensions, plugins, permissions})`
-   from `@jimhoyd/urlcode` before the host listens. It activates the whole
-   project, or refuses it, first.
-2. Route the paths the project declares to `runtime.handle()`, keeping their
-   full paths. There is no base-path setting: behind a prefix-stripping mount,
-   generated redirects and a function's `request.url` lose the prefix.
-3. Call `runtime.close()` after the host's own server has closed.
+```js
+import { createRuntime, createEmbeddedHandler } from '@jimhoyd/urlcode';
 
-There is no exported Request/Response adapter yet. The host turns its request
-into a `RuntimeRequest` and the returned `HandlerResult` into its own
-response. The fixture's `hono/urlcode-fetch.mjs` is a working example, and it
-copies the output rules it cannot import.
+// Activates the whole project, or refuses it, before the host listens.
+const runtime = await createRuntime(project, { origin, extensions, plugins, permissions });
+const urlcode = createEmbeddedHandler(runtime, {
+  origin,                          // the public origin; see below
+  trustedProxies: ['10.0.0.0/8'],  // as --trusted-proxies
+  basePath: '/app',                // only behind a prefix-stripping mount
+});
+// Per request, with what the host knows about the connection:
+const response = await urlcode(request, { peer: socket.remoteAddress, rawHeaders: incoming.rawHeaders });
+// On shutdown, after the host's own server has closed:
+await runtime.close();
+```
 
-Some protections belong to `urlcode serve`, not the runtime, so the host
-provides them or goes without:
+With Hono on `@hono/node-server`, `peer` and `rawHeaders` are
+`c.env.incoming.socket.remoteAddress` and `c.env.incoming.rawHeaders`.
 
-- **Client address.** The host passes `client`, applying its own
-  trusted-proxy rule; `--trusted-proxies` does not apply.
-- **Repeated request headers.** Pass `headerCounts` from the raw header
-  lines. A plain fetch `Request` has already joined them, which weakens the
-  duplicate-header refusals.
-- **Server-level guards and operations.** The host has none of these:
-  - the [loopback `Host` check](#host-admission-on-a-loopback-bind);
-  - the `/_urlcode/*` probes and the readiness drain;
-  - the request event log;
-  - in-flight admission and connection timeouts;
-  - [stream limits](#streamed-responses);
-  - hot reload.
+Options:
+
+- `origin`: what a request sees as its own origin (a function's
+  `request.url`, conditions, policies). Omitted, it is the incoming Request
+  URL's origin, which a Node host builds from the client's `Host` header. Set
+  it for a public site, as `--origin` is set for `urlcode serve`.
+- `maxBodyBytes` (default 1048576): the request body limit before a route's
+  own `request.body.<METHOD>.maxBytes`, as `--max-body-bytes`.
+- `trustedProxies`: the peers allowed to speak for a client, as
+  `--trusted-proxies`. A request from one of them that carries exactly one
+  `X-Forwarded-For` header is attributed to the first untrusted address from
+  the right; from any other peer, or with the header repeated, the `peer` is
+  the client. Without `peer` the client is unknown.
+- `headerLines` (default `provided`): each call passes the original header
+  lines as `rawHeaders` (Node's `name, value, …` shape), so a header sent twice
+  is counted twice. A host that only has a fetch `Request` has lost that: its
+  `Headers` joins repeats with `, `. Such a host sets
+  `headerLines: 'unavailable'` and the handler then counts a joined value that
+  contains a comma as two lines. Every refusal of a repeated header (a declared
+  header parameter, a condition header, `Content-Type` on a checked body,
+  `Cookie`, `Origin`, `Sec-Fetch-Site` and `Referer` for same-origin checks,
+  the store's `Idempotency-Key` and `If-Match`) therefore still fires, and a
+  single line whose value contains a comma is refused by those checks too. A
+  handler created with the default and called without `rawHeaders` throws
+  rather than guess. `runtime.handle()` called without `headerCounts` applies
+  the same comma rule.
+- `basePath`: the prefix a host mounts the site under and strips before
+  calling the handler (Hono's `app.mount('/app', …)`). A function's
+  `request.url` keeps the prefix, and every path-absolute `Location` in an
+  answer (a `redirect` route to `/new`, a function or extension returning
+  `/after`) gets it; an absolute or `//host` location is unchanged. Routes are
+  still declared from the site root. Links inside HTML bodies and absolute
+  URLs generated from `origin` (sitemaps, canonical links) are not rewritten.
+  A host that keeps full paths (`app.all('/app/*', …)` with routes declared
+  under `/app`) needs no `basePath`.
+- `loopbackHost: { address, port, aliasOrigins? }`: the host listens on this
+  loopback address and port, so apply the
+  [loopback `Host` check](#host-admission-on-a-loopback-bind): a request
+  whose single `Host` is not a loopback name on that port, `origin` or an alias
+  origin is refused with 421. A non-loopback address is not checked, as on the
+  Node server. Without `rawHeaders` the check reads the joined `Host`, so a
+  repeated one is refused too.
+
+A streamed route answers with a streamed body: status and headers follow the
+producer's first chunk, so a producer that fails before it gets the ordinary
+502, and one that fails later ends the body with an error.
+
+These belong to `urlcode serve` and are not provided by the embedded handler.
+The host supplies its own or goes without:
+
+- the `/_urlcode/health`, `/_urlcode/ready` and `/_urlcode/metrics` probes and
+  the readiness drain before close;
+- the request event log and `--debug-errors` diagnostics (the runtime's own
+  events still reach the `log` and `observers` given to `createRuntime`);
+- in-flight admission (`--max-in-flight`), header, request and keep-alive
+  timeouts, and the connection limits;
+- [stream limits](#streamed-responses): concurrent streams, idle and total
+  duration, and bytes per stream;
+- trusting an upstream `X-Request-Id`: each answer gets a fresh id;
+- hot reload and project watching.
 
 The reverse direction also works. A framework application can answer from
 a trusted function route (`return app.fetch(request)`, one declared route per
 path, because function routes have no wildcard), or from an operator
 extension mount when its own router should own a prefix. The fixture's
-README lists each gap with its source location.
+README lists each remaining gap with its source location.
 
 ## Domains, HTTPS and exposure
 
