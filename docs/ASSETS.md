@@ -66,7 +66,8 @@ plugin ([#809](https://github.com/jimhoyd-com/urlcode/issues/809)).
 when the requested path ends in `/`. A mount `/assets/*` matches `/assets/` and
 its descendants, not `/assets`. Missing files return 404. Exact routes precede
 parameterized routes; mounts follow, longest prefix first. No fallback between
-mounts. Asset routes accept only GET/HEAD (both default); normal enabled/expiry
+mounts. A root `/*` mount can serve a frontend beside `/api/...` extension mounts
+([site-root frontend](ROUTING.md#a-site-root-frontend-beside-api-extension-mounts)). Asset routes accept only GET/HEAD (both default); normal enabled/expiry
 and declared input validation still apply. Choose exactly one handler per route.
 
 MIME detection uses the filename extension through `mime-types`; it does not

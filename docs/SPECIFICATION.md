@@ -40,7 +40,8 @@ One handler per route: `function`, `redirect`, `page`, `static`, `download`, `re
 See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 
 - `methods`: unique HTTP methods; default GET and HEAD. Explicit lists are exact;
-  adding GET does not implicitly add HEAD. Wrong method returns 405 plus Allow.
+  adding GET does not implicitly add HEAD. Wrong method returns 405 plus Allow,
+  before any extension `authorize()` or `middleware()` runs.
 - `enabled`: false returns 404, the same as unknown paths.
 - `expires`: UTC ISO timestamp (`...ssZ` or `...ss.sssZ`); expired routes return 410.
 - `errors`: `{format: text}` (the default) or `{format: json}`. It selects how
@@ -55,8 +56,13 @@ See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 - `parameters`, `env`, `secrets`: inputs and explicit binding references.
 
 Literal paths win; parameter routes with more literal segments win next;
-static mounts follow, longest prefix first. A missing file in the selected mount
-returns 404 without falling back to a shorter mount.
+mounts (`static`, `extension`, `/**` redirects) follow, longest prefix first. A
+missing file in the selected mount returns 404 without falling back to a shorter
+mount. An extension mount owns its path and everything below it: an exact,
+parameterized or mount route that could match there, or an extension mount
+enclosing it, fails validation naming both routes; a shorter route or a
+non-extension mount enclosing it is allowed
+([mount ownership](ROUTING.md#extension-mounts-own-their-namespace)).
 Equally specific overlapping patterns fail even if methods differ. Match a route
 before checking its methods; do not fall back to a less specific route for 405.
 Requests decode the path once; invalid UTF-8/percent encoding, encoded slashes or
