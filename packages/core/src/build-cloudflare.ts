@@ -125,6 +125,8 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
   bodyAjv.addFormat('uuid',uuidFormat);
   for (const [name, check] of Object.entries(bodySchemaFormatChecks().formats)) bodyAjv.addFormat(name, check);
   const validators: Record<string, string> = {}, bodyValidators: Record<string, string> = {}, serialised: ArtifactRoute[] = [];
+  // A named schema (RIM-SCHEMA-001) becomes one standalone validator, shared by every route and method that names it.
+  const namedValidators = new Map<string, string>();
   for (const route of routes) {
     const parameters: ArtifactParameter[] = [];
     for (const parameter of route.parameters) {
@@ -138,13 +140,19 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
         schema:parameter.schema, validator:id });
     }
     // compileRoutes above already admitted the schema against the profile (assertBodySchema) and compiled it once.
-    // One standalone validator per route and method that declares a schema; the artifact maps each method to its export.
+    // One standalone validator per route and method that declares an inline schema, and one per named schema; the
+    // artifact maps each method to its export.
     let routeBodyValidators: Record<string, string> | undefined;
     for (const [method, policy] of Object.entries(route.request?.body ?? {})) {
       if (!policy?.schema) continue;
-      const id = `b${Object.keys(bodyValidators).length}`;
-      bodyAjv.addSchema(policy.schema, id);
-      bodyValidators[id] = id;
+      if (typeof policy.schema === 'string') throw new Error(`request.body.${method}.schema of ${route.pattern} was not resolved`);
+      let id = policy.schemaName === undefined ? undefined : namedValidators.get(policy.schemaName);
+      if (id === undefined) {
+        id = `b${Object.keys(bodyValidators).length}`;
+        bodyAjv.addSchema(policy.schema, id);
+        bodyValidators[id] = id;
+        if (policy.schemaName !== undefined) namedValidators.set(policy.schemaName, id);
+      }
       (routeBodyValidators ??= {})[method] = id;
     }
     serialised.push({ pattern:route.pattern, parts:route.parts, names:route.names, methods:route.methods,

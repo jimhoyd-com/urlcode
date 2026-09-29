@@ -1504,6 +1504,7 @@ schema-valid combinations activate successfully.
 - [Policies and profiles](#policies-and-profiles)
 - [Site conventions](#site-conventions)
 - [Extensions (top-level)](#extensions-top-level)
+- [Other](#other)
 
 ### Project entry: version, includes, shared
 
@@ -1528,21 +1529,21 @@ See [organization](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/or
 | `shared.*.request.body.POST.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `shared.*.request.body.POST.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.POST.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `shared.*.request.body.POST.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `shared.*.request.body.POST.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `shared.*.request.body.PUT` | object | no | unknown keys rejected | The body policy for PUT requests; PUT must be one of the route's methods. |
 | `shared.*.request.body.PUT.required` | boolean | no | — | Whether an empty body is refused with 400. |
 | `shared.*.request.body.PUT.maxBytes` | integer | no | minimum: 0; maximum: 1048576 | Largest body accepted, in bytes; a larger one answers 413. |
 | `shared.*.request.body.PUT.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `shared.*.request.body.PUT.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.PUT.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `shared.*.request.body.PUT.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `shared.*.request.body.PUT.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `shared.*.request.body.PATCH` | object | no | unknown keys rejected | The body policy for PATCH requests; PATCH must be one of the route's methods. |
 | `shared.*.request.body.PATCH.required` | boolean | no | — | Whether an empty body is refused with 400. |
 | `shared.*.request.body.PATCH.maxBytes` | integer | no | minimum: 0; maximum: 1048576 | Largest body accepted, in bytes; a larger one answers 413. |
 | `shared.*.request.body.PATCH.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `shared.*.request.body.PATCH.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.PATCH.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `shared.*.request.body.PATCH.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `shared.*.request.body.PATCH.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `shared.*.request.body.DELETE` | object | no | unknown keys rejected | The body policy for DELETE requests; DELETE must be one of the route's methods. RFC 9110 gives a DELETE body no defined meaning, so only maxBytes is accepted; maxBytes: 0 refuses any body with 413. |
 | `shared.*.request.body.DELETE.maxBytes` | integer | no | minimum: 0; maximum: 1048576 | Largest body accepted, in bytes; a larger one answers 413. |
 | `shared.*.request.body.OPTIONS` | object | no | unknown keys rejected | The body policy for OPTIONS requests; OPTIONS must be one of the route's methods. |
@@ -1551,7 +1552,7 @@ See [organization](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/or
 | `shared.*.request.body.OPTIONS.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `shared.*.request.body.OPTIONS.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `shared.*.request.body.OPTIONS.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `shared.*.request.body.OPTIONS.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `shared.*.request.body.OPTIONS.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `shared.*.response` | object | no | unknown keys rejected | Response headers a route inherits when it names this block with use. |
 | `shared.*.response.headers` | object | no | maxProperties: 64 | Literal response headers added to the route's answer; only Set-Cookie takes a list, and runtime-owned headers are refused (docs/HTTP.md). |
 | `shared.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -1620,21 +1621,21 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.request.body.POST.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `routes.*.request.body.POST.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.POST.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `routes.*.request.body.POST.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `routes.*.request.body.POST.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `routes.*.request.body.PUT` | object | no | unknown keys rejected | The body policy for PUT requests; PUT must be one of the route's methods. |
 | `routes.*.request.body.PUT.required` | boolean | no | — | Whether an empty body is refused with 400. |
 | `routes.*.request.body.PUT.maxBytes` | integer | no | minimum: 0; maximum: 1048576 | Largest body accepted, in bytes; a larger one answers 413. |
 | `routes.*.request.body.PUT.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `routes.*.request.body.PUT.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.PUT.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `routes.*.request.body.PUT.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `routes.*.request.body.PUT.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `routes.*.request.body.PATCH` | object | no | unknown keys rejected | The body policy for PATCH requests; PATCH must be one of the route's methods. |
 | `routes.*.request.body.PATCH.required` | boolean | no | — | Whether an empty body is refused with 400. |
 | `routes.*.request.body.PATCH.maxBytes` | integer | no | minimum: 0; maximum: 1048576 | Largest body accepted, in bytes; a larger one answers 413. |
 | `routes.*.request.body.PATCH.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `routes.*.request.body.PATCH.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.PATCH.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `routes.*.request.body.PATCH.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `routes.*.request.body.PATCH.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `routes.*.request.body.DELETE` | object | no | unknown keys rejected | The body policy for DELETE requests; DELETE must be one of the route's methods. RFC 9110 gives a DELETE body no defined meaning, so only maxBytes is accepted; maxBytes: 0 refuses any body with 413. |
 | `routes.*.request.body.DELETE.maxBytes` | integer | no | minimum: 0; maximum: 1048576 | Largest body accepted, in bytes; a larger one answers 413. |
 | `routes.*.request.body.OPTIONS` | object | no | unknown keys rejected | The body policy for OPTIONS requests; OPTIONS must be one of the route's methods. |
@@ -1643,7 +1644,7 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.request.body.OPTIONS.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true | Lowercase media types a nonempty body may declare; any other answers 415. |
 | `routes.*.request.body.OPTIONS.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" | — |
 | `routes.*.request.body.OPTIONS.format` | string | no | enum: ["text","json"] | text checks the body is UTF-8; json also checks it parses as JSON; malformed input answers 400. |
-| `routes.*.request.body.OPTIONS.schema` | object | no | — | A JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
+| `routes.*.request.body.OPTIONS.schema` | any JSON value | no | — | The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object. |
 | `routes.*.response` | object | no | unknown keys rejected | Literal response headers added to every answer; declaring it replaces the response block of a shared block named by use. |
 | `routes.*.response.headers` | object | no | maxProperties: 64 | Literal response headers added to the route's answer; only Set-Cookie takes a list, and runtime-owned headers are refused (docs/HTTP.md). |
 | `routes.*.response.headers.*` | one of the shapes below | no | — | — |
@@ -2111,6 +2112,15 @@ See [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION
 | `extensions.*.version` | constant | yes | const: "1" | Version of this extension configuration contract; always "1". |
 | `extensions.*.config` | object | yes | — | The extension's own settings, validated against the configuration schema its registration declares (urlcode extensions --json). |
 
+### Other
+
+See [YAML guide](https://github.com/jimhoyd-com/urlcode/blob/main/docs/YAML-GUIDE.md) for examples.
+
+| Field | Type | Required | Schema constraints | Description |
+|---|---|---|---|---|
+| `schemas` | object | no | maxProperties: 64 | Named JSON Schema 2020-12 documents in the request body profile, each written inline or loaded from a project file with {file: <path>}. A route's request.body.<METHOD>.schema and an extension such as mcp (a tool's inputSchema or outputSchema) name one by its key instead of repeating it, so HTTP and MCP validate against the same document with the same diagnostics; the OpenAPI export emits each named schema once as a component. A schema carries only the shape of a JSON value: authorization, query/path parameter coercion, display metadata and stored defaults stay with the route, the parameters, the page and the store (docs/HTTP.md#named-schemas). Names are a letter then letters, digits or _ (Urlcode... is reserved). Entry urlcode.yaml only. Each schema is admitted against the same profile, limits and diagnostics as an inline body schema, and its content (and every schema file's sha256) is part of the project revision. |
+| `schemas.*` | object | no | — | A JSON Schema 2020-12 document in the request body profile (see request.body.<METHOD>.schema), or {file: <path>}: a project-relative .json, .yaml or .yml file holding one. A file is read offline: its relative $refs to other project files are followed and bundled into /$defs (a whole file as <stem>, one of its /$defs entries as <stem>.<name>); a remote reference, a path that leaves the project, a symlink, a missing target and more than 256 KiB per file, 2 MiB or 64 files in all are refused before serving. An object whose only key is file is a file reference. |
+
 ---
 
 # Implemented project contract
@@ -2260,6 +2270,30 @@ anchors, aliases and merge keys stay rejected. Rules:
 - No cross-file or remote reuse of blocks.
 
 See the [shared-blocks example](https://github.com/jimhoyd-com/urlcode/blob/main/examples/shared-blocks/README.md).
+
+### Named schemas
+
+An optional top-level `schemas` map (entry `urlcode.yaml` only; at most 64
+names matching `^[A-Za-z][A-Za-z0-9_]{0,63}$`, `Urlcode...` reserved) holds
+JSON Schema 2020-12 documents in the request body profile, written inline or
+loaded from a project file with `{file: <path>}`. A route's
+`request.body.<METHOD>.schema` and an extension's schema-valued setting (an mcp
+tool's `inputSchema`/`outputSchema`) name one with a string instead of
+repeating it. Rules:
+
+- An unknown name fails validation. The authored route keeps the name; the
+  compiled route holds the schema.
+- A schema file is read offline: relative `$ref`s to project JSON/YAML files
+  are followed and bundled into one self-contained schema; a remote reference,
+  an escape from the project, a symlink, a missing target, a cycle and the size
+  limits refuse the load.
+- Each schema is admitted and compiled like an inline body schema, once.
+- The schemas' content and each schema file's bytes are part of the project
+  revision.
+- A schema describes a JSON value only; authorization, parameter coercion,
+  display metadata and stored defaults are declared elsewhere.
+
+See [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas) for the full contract.
 
 ### Policies
 
@@ -3031,7 +3065,8 @@ is accepted but never reached.
 
 On the Cloudflare Worker, which forbids code generation at runtime,
 `urlcode build --target cloudflare` compiles every body schema with the same
-Ajv options into a standalone `body-validators.js` module, one validator per route and method, so the Worker runs
+Ajv options into a standalone `body-validators.js` module, one validator per route and method (one per
+[named schema](#named-schemas), however many routes name it), so the Worker runs
 the same validator as the server. See [Cloudflare](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CLOUDFLARE.md#what-has-run-on-workerd)
 for what has run on workerd.
 
@@ -3115,6 +3150,100 @@ Functions still return their own Response/status/body. YAML header policy does
 not replace function status/body. Asset handlers retain conditional/HEAD/range
 behavior described in [assets](https://github.com/jimhoyd-com/urlcode/blob/main/docs/ASSETS.md). Use OPTIONS explicitly if you need a
 declared response; merely adding a header does not implement CORS preflight.
+
+#### Named schemas
+
+A schema a route and an MCP tool (or several routes) share is declared once
+under the top-level `schemas:` map of the entry `urlcode.yaml` and named where
+it is used:
+
+```yaml
+version: "1"
+schemas:
+  contact: {file: schemas/contact.json}
+  note:
+    type: object
+    required: [text]
+    additionalProperties: false
+    properties:
+      text: {type: string, minLength: 1, maxLength: 2000}
+routes:
+  /contacts:
+    methods: [POST]
+    request:
+      body:
+        POST: {format: json, required: true, maxBytes: 4096, schema: contact}
+    respond: {status: 201, json: {ok: true}}
+```
+
+**The reference is a string.** `schema: contact` names the schema; a JSON
+Schema is always an object or a boolean, so a name can never be mistaken for
+one. `$ref` keeps its standard meaning inside a schema (a local
+`#/$defs/<name>` only), so no reference is ever resolved against the
+`urlcode.yaml` document itself. An unknown name fails at load, naming the
+route, the method and the closest declared name. Names are a letter followed
+by up to 63 letters, digits or `_`; `Urlcode...` is reserved for the
+runtime's own OpenAPI components. At most 64 schemas, entry file only (an
+include that declares `schemas` is refused).
+
+**Each named schema is admitted exactly like an inline one**: the same
+profile, limits and `Body schema`-style diagnostics (prefixed
+`schemas.<name>`), the same Ajv options, and compiled once when the project
+activates, whether a route, an extension or nothing names it yet. Every route
+that names it gets the same validator and the same 422, and an MCP tool whose
+`inputSchema` names it refuses the same invalid arguments at the same pointer
+with the same line (`/email must be an email`); see
+[packages/mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#named-schemas).
+
+**A schema file** (`{file: <path>}`, an object whose only key is `file`) is a
+project-relative `.json`, `.yaml` or `.yml` file holding an independently
+authored JSON Schema 2020-12 document. YAML is read with the inert-document
+profile (JSON values only; no aliases, anchors or tags). It is read offline by
+the same bounded resolver `urlcode artifacts inspect` uses: a relative `$ref`
+to another project file (`common/address.json`, or
+`common/address.json#/$defs/zip`) is followed and the files it reaches are
+bundled into one self-contained schema, each contributed location hoisted
+into `$defs` (a whole file as `<stem>`, one of its `$defs` entries as
+`<stem>.<name>`) and the reference rewritten to it. A reference must name a
+whole file or one of its `$defs` entries. These refuse the load, naming the
+file and the pointer of the reference and never echoing its text:
+
+- a remote reference (`https://...`, or anything resolved against an absolute
+  `$id`); nothing is fetched;
+- a path that leaves the project directory, or a file reached through a
+  symlink (or a path whose case differs);
+- a missing file or pointer, a `$anchor` fragment, or a reference cycle;
+- a file over 256 KiB, more than 2 MiB or 64 files in all, more than 512
+  references or a reference chain deeper than 16.
+
+The bundled result must then pass the profile like any schema, so a file's
+`$id`, `default` or `readOnly` is refused as it would be inline. The bytes of
+every schema file read are hashed into the project revision
+(`projectSha256`), with each schema's content: editing a schema file, even by
+whitespace, changes the revision, so an operator's extension pin and binding
+grants need a fresh review.
+
+**What a schema carries, and what it does not.** A named schema describes the
+shape of a JSON value and nothing else. It never carries:
+
+- authorization: who may call a route or a tool stays with `auth:`,
+  `policies.extensions` and the extension's own checks, which run before the
+  body is validated;
+- transport coercion: path, query and header inputs are strings on the wire
+  and keep their own `parameters` schemas (with their own `default`); a named
+  schema is never applied to them;
+- display metadata: labels, placeholders and field order belong to the page or
+  form that renders the value (`title` and `description` are annotations and
+  change nothing);
+- stored defaults: the profile refuses `default` and `readOnly`, and a store
+  collection keeps its own record schema, where those are store facts. A store
+  collection cannot name a project schema yet.
+
+**OpenAPI and Cloudflare.** The OpenAPI export writes each named schema an
+operation uses once, as `components.schemas.<name>` (its `$defs` beside it as
+`<name>_<def>`), and every operation that names it references that component.
+`urlcode build --target cloudflare` compiles one standalone validator per
+named schema, shared by every route and method that names it.
 
 ### Error format
 
@@ -4164,7 +4293,11 @@ Clients connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
 mounted behind a principal-providing extension. Streamed progress replies are an
 operator opt-in, `mcp({ streaming: true })`, off by default; on, the registration
 declares [`streams: true`](#streamed-responses), so aws refuses it. There are no
-sessions. See the [mcp package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md).
+sessions. A tool's `inputSchema` or `outputSchema` may name one of the
+project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas) (`inputSchema: contact`), so a
+POST route and a tool validate against one document and refuse the same input
+at the same pointer; `tools/list` advertises the schema resolved. See the
+[mcp package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#named-schemas).
 
 A project declares versioned configuration and exclusive route mounts:
 
@@ -4759,7 +4892,11 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 10. Describes the endpoints of its mount for `urlcode openapi` with an optional,
    pure [`describe()`](#openapi-description), and validates any JSON a project
    declares for it with core's [body-schema profile](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)
-   (`@jimhoyd/urlcode/body-schema`) rather than a vocabulary of its own.
+   (`@jimhoyd/urlcode/body-schema`) rather than a vocabulary of its own. Where
+   its configuration takes a schema, it accepts the name of one of the
+   project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas) too and resolves it against
+   `context.schemas` at activation (each already admitted and compiled by core,
+   self-contained, `RIM-SCHEMA-001`), refusing a name the map does not hold.
 
 #### Request helpers
 
@@ -5133,10 +5270,14 @@ For an AI assistant integrating an extension:
    `get_extensions` when the operator has configured the local MCP server with
    the host file; otherwise use the CLI below. Hosted release catalogs describe
    first-party releases, not an external package's installed behavior.
-5. Report compatibility and tests actually exercised. Keep external package
-   upgrades explicit; core's `extensions add/remove`, release catalog and
-   `upgrade` do not manage arbitrary third-party packages. Do not override the
-   development catalog to impersonate a managed release add-on.
+5. Report compatibility and tests actually exercised. A package that carries a
+   `urlcode.json` descriptor is managed by its npm spec
+   ([independent extension packages](#independent-extension-packages)):
+   `extensions add <spec>` installs, re-running it upgrades, and `remove` takes
+   it out; core's release catalog and `upgrade` never move it. A private
+   operator module without a descriptor is wired by hand and stays invisible to
+   descriptor-only tooling. Do not override the development catalog to
+   impersonate a managed release add-on.
 
 #### Minimal external operator module
 
@@ -5157,7 +5298,9 @@ const authoring = {
     description: 'Plain text returned by the greeting mount.' }],
 };
 export default defineExtension({
-  name: 'greeting', description: 'A minimal external greeting extension.', targets: ['node'],
+  name: 'greeting', description: 'A minimal external greeting extension.',
+  contract: 1, // the URLCode extension contract it is built for
+  targets: ['node'],
   schema, authoring,
   host({ projectSha256 }) {
     return { registration: {
@@ -5220,12 +5363,19 @@ urlcode test --project app --host-file host.mjs --origin http://localhost:3000
 Use the site's installed CLI (or prefix with `npx --no --package @jimhoyd/urlcode`).
 For commands accepting `--policy`, an external reviewed operator policy can
 supply the revision instead; see [the revision pin](#the-revision-pin).
-Always pass the host for external schemas: descriptor-only discovery assumes
-managed package conventions and is not a general third-party package resolver.
+Pass the host for a private operator module like this one: it has no
+package and no `urlcode.json`, so validation without `--host-file` cannot see
+its schemas. Descriptor-only discovery covers every direct dependency of the
+site that carries a `urlcode.json` at its package root, whatever its name or
+scope: a first-party add-on pinned by core, or an
+[independent package](#independent-extension-packages) pinned by its npm lock
+integrity. It reads only those top-level descriptors, never walks transitive
+dependencies and never imports a package.
 
 An external author should publish configuration/policy schemas, hook contracts,
-`authoring` surfaces and fast checks in the registration, plus compatible core
-versions, supported targets and lifecycle cleanup instructions. Test the packed
+`authoring` surfaces and fast checks in the registration, plus the
+[extension contract](#the-extension-contract) it is built for, supported
+targets and lifecycle cleanup instructions. Test the packed
 package in a separate consumer, including invalid configuration, unsupported
 targets, revision mismatch and relevant authorization failures. The generic
 rules apply; this repository's `build:addons`, descriptor and release scripts
@@ -5301,8 +5451,10 @@ URLCode ships two kinds of add-on with one shape:
 | Commands | `urlcode extensions …` | `urlcode artifacts …` |
 
 Every add-on is an npm-packable workspace carrying a static `urlcode.json`
-descriptor: `{kind, name, description, requires, uses?, targets, schema?,
-policySchema?, hooks?, authoring?}`. For an extension the descriptor is written from its
+descriptor: `{kind, name, description, contract, requires, uses?, targets,
+schema?, policySchema?, hooks?, authoring?}`. `contract` is required for both
+kinds: the [extension contract](#the-extension-contract) the package is built
+for. For an extension the descriptor is written from its
 `defineExtension` definition by `npm run build:addons`, and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
 contracts without running any of its code. `targets` is required for an
@@ -5311,8 +5463,10 @@ definition declares. `composeHost` refuses a `host()` whose registration
 declares different targets, and the capability preflight reads the descriptor's
 `targets` so a recipe or project that uses the extension on a target it does not
 declare is `refused` there, before any host file is loaded (#859). An artifact descriptor carries only
-`kind`, `name`, `description`, `requires` and, optionally, `agent` and the
-[`documents`](#artifact-documents) it ships.
+`kind`, `name`, `description`, `contract`, `requires` and, optionally, `agent`
+and the [`documents`](#artifact-documents) it ships. `npm run build:addons`
+stamps a first-party artifact's hand-written descriptor with the contract core
+implements.
 
 Add-ons are versioned in lockstep with core. Only core is published to npm;
 each add-on is released as a tarball on the same GitHub Release as core. The
@@ -5332,6 +5486,46 @@ The first-party add-ons are:
 
 `urlcode extensions available` and `urlcode artifacts available` list what the
 running core pins.
+
+#### The extension contract
+
+Core implements one URLCode extension contract, an integer exported as
+`extensionContract` from `@jimhoyd/urlcode/extensions` (#844). It covers
+everything a package relies on from core: the `urlcode.json` descriptor format,
+`defineExtension` and `composeHost`, the registration and activation interfaces
+and the rest of the `@jimhoyd/urlcode/extensions` exports. It moves only when
+that contract changes incompatibly, never with core's own semver: a core
+release that only adds to the contract keeps the same integer, so a package
+does not need a new release for every core release.
+
+Every descriptor declares `contract`, and every `defineExtension` definition
+declares the same value. There is no range. A contract version that changes
+only on breaking changes has nothing in between to span, and a range such as
+`>=1 <3` would claim compatibility with a contract nobody has tested. Core
+refuses any package whose `contract` differs from its own, naming both:
+
+```text
+Refusing @example/urlcode-beyond: @example/urlcode-beyond@3.0.0 is built for
+URLCode extension contract 2, but this core implements extension contract 1;
+install a version of it built for contract 1, or a core that implements contract 2
+```
+
+The contract is checked at every point where a package enters the site or runs:
+
+- `extensions add` and `artifacts add` read it from the installed descriptor
+  before any extension entry is imported, and roll the install back.
+- `extensions list --strict` and static `validate` report it for every
+  installed or declared extension. The inert checks behind `artifacts list`,
+  inspection and `upgrade` refuse an artifact with the wrong contract.
+- `defineExtension` refuses a definition that omits it or declares another
+  value. `composeHost` checks it again before any `host()` runs, so a
+  definition made by another copy of core, or shaped by hand, cannot skip the
+  check.
+
+For first-party packages, `npm run build:addons` writes `contract` into each
+extension's `urlcode.json` from its definition, and refuses to build one that
+does not declare the contract core implements. Core's own catalog is one
+release, so its entries carry no separate contract.
 
 #### The release-wide agent catalog
 
@@ -5645,10 +5839,15 @@ locked` for a `file:` directory), static `validate` checks its declaration
 against its descriptor's schemas, and `remove` takes it out by name.
 
 `add` refuses a package with no valid extension descriptor, a descriptor of
-kind `artifact`, a name that a first-party add-on of this core already has,
+kind `artifact`, a descriptor or definition built for another
+[extension contract](#the-extension-contract), a name that a first-party add-on of this core already has,
 a `@jimhoyd/urlcode*` package (those install from core's pins), two installed
-packages providing the same name, and an independent extension whose
-`requires` are not installed. When two installed packages still provide one
+packages providing the same name, an independent extension whose
+`requires` are not installed, and any package that brings a nested copy of
+`@jimhoyd/urlcode` (bundled in its tarball or pinned to another version): a
+site has one core, so every extension shares one `defineExtension` and one
+contract. `list --strict` reports such a nested copy when it was installed some
+other way. When two installed packages still provide one
 name (for example after editing `package.json` by hand), the first by package
 name is kept and the problem is reported once: by `extensions list` when the
 package set aside is an extension, by `artifacts list` when it is an artifact.
@@ -5728,6 +5927,7 @@ import { defineExtension } from '@jimhoyd/urlcode/extensions';
 export default defineExtension<MyHostOptions>({
   name: 'store',
   description: 'One line shown by `urlcode extensions available`',
+  contract: 1,                // the URLCode extension contract it is built for
   requires: [],               // extension names that must be installed and declared
   uses: [],                   // optional: extension names read only when installed
   schema,                     // JSON Schema of extensions.<name>.config

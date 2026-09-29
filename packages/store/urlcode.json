@@ -2,6 +2,7 @@
   "kind": "extension",
   "name": "store",
   "description": "SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code",
+  "contract": 1,
   "requires": [],
   "uses": [
     "audit"

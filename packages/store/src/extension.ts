@@ -74,6 +74,7 @@ export default defineExtension<StoreHostOptions>({
   name: 'store',
   targets: ['node'],
   description: 'SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code',
+  contract: 1,
   requires: [],
   // Optional: a collection that declares `audit: true` records its writes through the audit extension, and refuses
   // to activate when audit is not installed. Without such a collection the store never touches audit.

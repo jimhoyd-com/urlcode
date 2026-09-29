@@ -18,7 +18,7 @@ const origin = 'https://audit.example.test';
 /** A consumer that requires audit and attaches a producer from host(), before activation, as auth and store do. */
 function consumer(seen: { exports?: AuditExports }, producer = fakeProducer('consumer')) {
   return defineExtension({
-    name: 'consumer', description: 'Synthetic audit consumer', targets: ['node'], requires: ['audit'], schema: { type: 'object' },
+    name: 'consumer', description: 'Synthetic audit consumer', contract: 1, targets: ['node'], requires: ['audit'], schema: { type: 'object' },
     host(ctx) {
       const exports = ctx.get<AuditExports>('audit');
       seen.exports = exports;

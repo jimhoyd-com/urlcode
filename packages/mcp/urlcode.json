@@ -2,6 +2,7 @@
   "kind": "extension",
   "name": "mcp",
   "description": "Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers",
+  "contract": 1,
   "requires": [],
   "targets": [
     "node",
@@ -105,12 +106,28 @@
                     "description": "Optional MCP behavior hints, passed to clients as declared; they are advisory and grant or restrict nothing."
                   },
                   "inputSchema": {
-                    "type": "object",
-                    "description": "Schema of the arguments object, in the bounded request.body.<METHOD>.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler."
+                    "anyOf": [
+                      {
+                        "type": "object"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+                      }
+                    ],
+                    "description": "Schema of the arguments object, in the bounded request.body.<METHOD>.schema JSON Schema 2020-12 profile (checked and compiled at activation), or the name of one of the project's named schemas (top-level schemas:), which a route's request.body.<METHOD>.schema can name too; a call whose arguments fail it never reaches the handler."
                   },
                   "outputSchema": {
-                    "type": "object",
-                    "description": "Optional schema, in the same profile, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error."
+                    "anyOf": [
+                      {
+                        "type": "object"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+                      }
+                    ],
+                    "description": "Optional schema, in the same profile or named the same way, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error."
                   },
                   "handler": {
                     "oneOf": [

@@ -288,14 +288,15 @@ export const budgets: Record<string, Budget> = {
     // 3768213 unpacked bytes, 507 entries; CI (Node 24) packed 954811. About 3 KiB of headroom on each.
     // With #834's context fallbacks and plan_feature list vocabulary on top of #903's main, measured on Node 26:
     // 958684 packed / 3783392 unpacked bytes, 507 entries; about 3 KiB of headroom on each.
-    // Raised for #910 and #913: unpinned inspection in operator-host/host/extensions, the expect-routes sync in
-    // addon-install, authoring-surface planning in feature-plan, the release catalog's authoring contracts, and the
-    // TOOLING/AI-AUTHORING/EXTENSIONS/RUNTIME-IMPLEMENTATION sections with their llms-full.txt copies. Measured on
-    // Node 26: 969304 packed bytes (7768 over 939 KiB) and 3821266 unpacked bytes (34514 over 3698 KiB), 507
-    // entries. Packed raised to 950 KiB and unpacked to 3735 KiB, keeping about 3.4 KiB of headroom on each.
-    packed: 950 * 1024,
-    unpacked: 3735 * 1024,
-    entries: 510,
+    // With #844's extension contract on top of main after #905, measured on Node 26: 962375 packed / 3796521
+    // unpacked bytes, 507 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
+    // With #845 named project schemas on top of #906's main, measured on Node 26: 975469 packed / 3839342
+    // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
+    // With #910/#913 (pin-free inspection, extension goals in planning) on top of #907's main, measured on Node 26:
+    // 984339 packed / 3874238 unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 966 * 1024,
+    unpacked: 3787 * 1024,
+    entries: 515,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

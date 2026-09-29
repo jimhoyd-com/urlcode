@@ -48,7 +48,7 @@ test('explain describes a cookbook function route from the compiled IR',async()=
   const echo=await explainRoute(cookbook,'/echo');assert.ok(echo.matched);assert.deepEqual(echo.inputs.body,{POST:{required:true,maxBytes:4096,contentTypes:['application/json'],format:'json'}});
   // GET and POST on one path: explain and its text output list each method's own body policy (#861).
   const both=await explainRoute(fileURLToPath(new URL('../examples/body-validation/',import.meta.url)),'/requests');assert.ok(both.matched);
-  assert.deepEqual(Object.keys(both.inputs.body??{}),['GET','POST']);assert.deepEqual(both.inputs.body?.GET,{maxBytes:0});assert.equal(both.inputs.body?.POST?.required,true);assert.equal(both.inputs.body?.POST?.schema?.type,'object');
+  assert.deepEqual(Object.keys(both.inputs.body??{}),['GET','POST']);assert.deepEqual(both.inputs.body?.GET,{maxBytes:0});assert.equal(both.inputs.body?.POST?.required,true);assert.equal((both.inputs.body?.POST?.schema as {type?:string}|undefined)?.type,'object');
 });
 test('explain reports the route\'s actual sandbox boolean at route level, explicit either way',async t=>{
   const trusted=await explainRoute(cookbook,'/hello/world');

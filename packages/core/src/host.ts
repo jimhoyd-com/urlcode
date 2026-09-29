@@ -2,6 +2,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, assert, extensionError } from './errors.ts';
 import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
+import { contractProblem } from './addon-manifest.ts';
 import { hostRevisionPin, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
@@ -45,6 +46,9 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
 export async function composeHost(hostUrl: string | URL, entries: readonly ExtensionEntry[], { plugins }: ComposeOptions = {}): Promise<OperatorHost> {
   const site = dirname(fileURLToPath(hostUrl));
   assert(Array.isArray(entries) && entries.every(entry => entry && typeof entry === 'object' && typeof entry.definition?.host === 'function'), 'composeHost takes the extension list from host.mjs, for example [audit(), auth(), store()]');
+  // Checked again here, not only in defineExtension: a definition made by another copy of core, or shaped by hand,
+  // never passed this core's defineExtension (#844).
+  for (const { definition } of entries) { const problem = contractProblem(definition.contract, `Extension ${definition.name}`); if (problem) throw new ConfigError(problem); }
   // A site with no extensions has nothing to pin.
   if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
   const projectSha256 = hostRevisionPin();

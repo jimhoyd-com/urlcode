@@ -49,7 +49,11 @@ function boundedText(text: string): string {
  */
 export interface McpToolAnnotations { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean }
 export interface McpToolSpec {
-  description: string; inputSchema: BodySchema; handler: ExtensionHookConfig;
+  /**
+   * `inputSchema` (and `outputSchema`) is a schema in the request body profile, or the name of one of the project's
+   * named `schemas` (the top-level `schemas:` map), which `tools/list` advertises resolved.
+   */
+  description: string; inputSchema: BodySchema | string; handler: ExtensionHookConfig;
   /** Optional human-readable display name, echoed in `tools/list`. */
   title?: string;
   /** Optional behavior hints, echoed in `tools/list`. */
@@ -65,7 +69,7 @@ export interface McpToolSpec {
    * violation: the caller gets the same generic `isError: true` failure a
    * thrown handler produces, and `onToolError` observes the real mismatch.
    */
-  outputSchema?: BodySchema;
+  outputSchema?: BodySchema | string;
 }
 export interface McpResourceSpec { uri: string; name: string; title?: string; description?: string; mimeType?: string; handler: ExtensionHookConfig }
 export interface McpPromptArgumentSpec { name: string; description?: string; required?: boolean }
@@ -139,7 +143,8 @@ export interface McpHandlerContext extends ExtensionHookContext {
 /** Reports progress for the current tool call. */
 export type ProgressFn = (progress: number, total?: number, message?: string) => void;
 type McpHandler = (input: unknown, context: McpHandlerContext) => unknown;
-interface ActiveTool { spec: McpToolSpec; call: McpHandler }
+/** A tool as served: its declaration, its handler and its schemas with any project schema name resolved. */
+interface ActiveTool { spec: McpToolSpec; call: McpHandler; input: BodySchema; output?: BodySchema }
 interface ActiveResource { spec: McpResourceSpec; call: McpHandler }
 interface ActivePrompt { spec: McpPromptSpec; call: McpHandler; argumentsSchema: BodySchema }
 interface ActiveServer {
@@ -164,6 +169,8 @@ const toolAnnotationsSchema = {
     openWorldHint: { type: 'boolean', description: 'Hint that the tool interacts with external entities beyond the site.' },
   },
 };
+/** A project schema name (core's top-level `schemas:` keys), resolved against the activation's `schemas` map. */
+const schemaNameSchema = { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_]{0,63}$' };
 const toolConfigSchema = {
   type: 'object', additionalProperties: false, required: ['description', 'inputSchema', 'handler'],
   properties: {
@@ -173,8 +180,8 @@ const toolConfigSchema = {
     // Loosely typed here (any JSON object); the bounded `request.body.<METHOD>.schema`
     // profile itself is enforced strictly, and compiled, at activation via `compileBodySchema`,
     // the same rule a native route's `request.body.<METHOD>.schema` is held to.
-    inputSchema: { type: 'object', description: 'Schema of the arguments object, in the bounded request.body.<METHOD>.schema JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler.' },
-    outputSchema: { type: 'object', description: 'Optional schema, in the same profile, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error.' },
+    inputSchema: { anyOf: [{ type: 'object' }, schemaNameSchema], description: 'Schema of the arguments object, in the bounded request.body.<METHOD>.schema JSON Schema 2020-12 profile (checked and compiled at activation), or the name of one of the project\'s named schemas (top-level schemas:), which a route\'s request.body.<METHOD>.schema can name too; a call whose arguments fail it never reaches the handler.' },
+    outputSchema: { anyOf: [{ type: 'object' }, schemaNameSchema], description: 'Optional schema, in the same profile or named the same way, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error.' },
     handler: handlerSchema('Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer.'),
   },
 };
@@ -325,15 +332,15 @@ function serverFor(server: ActiveServer, options: McpExtensionOptions, request: 
 
   sdk.setRequestHandler('tools/list', () => ({ tools: [...server.tools].map(([name, tool]) => ({
     name, ...(tool.spec.title ? { title: tool.spec.title } : {}),
-    description: tool.spec.description, inputSchema: tool.spec.inputSchema as { type: 'object' },
-    ...(tool.spec.outputSchema ? { outputSchema: tool.spec.outputSchema as { type: 'object' } } : {}),
+    description: tool.spec.description, inputSchema: tool.input as { type: 'object' },
+    ...(tool.output ? { outputSchema: tool.output as { type: 'object' } } : {}),
     ...(tool.spec.annotations ? { annotations: tool.spec.annotations } : {}),
   })) }));
   sdk.setRequestHandler('tools/call', async (call, ctx) => {
     const name = call.params.name, tool = server.tools.get(name);
     if (!tool) throw invalid(`Unknown tool: ${name}`);
     const args = call.params.arguments ?? {};
-    const issues = bodySchemaIssues(tool.spec.inputSchema, args);
+    const issues = bodySchemaIssues(tool.input, args);
     // An input validation failure is a tool execution error the model can act on (SEP-1303); the handler never runs.
     if (issues.length) return { content: [{ type: 'text' as const, text: boundedText(`Invalid arguments for tool ${name}: ${issues.map(bodySchemaLine).join('; ')}`) }], isError: true };
     const token = call.params._meta?.progressToken;
@@ -348,11 +355,11 @@ function serverFor(server: ActiveServer, options: McpExtensionOptions, request: 
     };
     try {
       const value = await tool.call(args, context);
-      if (!tool.spec.outputSchema) { report('success'); return toolContent(value); }
+      if (!tool.output) { report('success'); return toolContent(value); }
       // Output schema declared: the MCP tools specification requires structuredContent conforming to it; a
       // non-conforming handler result is a server-side contract violation, answered like a thrown handler error.
       if (!isRecord(value)) return fail(new Error('tool handler result is not an object, but the tool declares an outputSchema'));
-      const outputIssues = bodySchemaIssues(tool.spec.outputSchema, value);
+      const outputIssues = bodySchemaIssues(tool.output, value);
       if (outputIssues.length) return fail(new Error(`tool handler result failed its declared outputSchema: ${outputIssues.map(bodySchemaLine).join('; ')}`));
       report('success');
       return { content: [{ type: 'text' as const, text: JSON.stringify(value) }], structuredContent: value, isError: false };
@@ -360,8 +367,8 @@ function serverFor(server: ActiveServer, options: McpExtensionOptions, request: 
       if (!isMcpToolError(error)) return fail(error);
       // A handler-chosen, caller-facing failure: its own (bounded) message, never the generic one.
       let structuredContent: Record<string, unknown> | undefined;
-      if (error.data !== undefined && tool.spec.outputSchema) {
-        const dataIssues = isRecord(error.data) ? bodySchemaIssues(tool.spec.outputSchema, error.data) : [];
+      if (error.data !== undefined && tool.output) {
+        const dataIssues = isRecord(error.data) ? bodySchemaIssues(tool.output, error.data) : [];
         if (isRecord(error.data) && !dataIssues.length) structuredContent = error.data;
         else observe(new Error(`McpToolError data failed the tool's declared outputSchema and was not returned: ${dataIssues.map(bodySchemaLine).join('; ') || 'not an object'}`), name, 'tool');
       }
@@ -449,15 +456,25 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         if (clash) throw new Error(`MCP servers ${clash.name} and ${name} share mount ${spec.mount}`);
         const contracts: ExtensionHookContract[] = [];
         const hooksConfig: Record<string, ExtensionHookConfig> = {};
+        const schemasOf = new Map<string, { input: BodySchema; output?: BodySchema }>();
         for (const [toolName, tool] of Object.entries(spec.tools)) {
-          try { compileBodySchema(tool.inputSchema); }
-          catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} inputSchema: ${(error as Error).message}`, { cause: error }); }
-          if (tool.inputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} inputSchema must declare type: object (MCP tool arguments are always an object)`);
-          if (tool.outputSchema !== undefined) {
-            try { compileBodySchema(tool.outputSchema); }
-            catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} outputSchema: ${(error as Error).message}`, { cause: error }); }
-            if (tool.outputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} outputSchema must declare type: object (MCP structuredContent is always an object)`);
-          }
+          /** The tool's schema, a project schema name resolved; admitted and compiled either way. */
+          const resolve = (key: 'inputSchema' | 'outputSchema', declared: BodySchema | string, requirement: string): BodySchema => {
+            const where = `MCP server ${name}: tool ${toolName} ${key}`;
+            let schema: BodySchema;
+            if (typeof declared === 'string') {
+              const named = context.schemas && Object.hasOwn(context.schemas, declared) ? context.schemas[declared] : undefined;
+              if (!named) throw new Error(`${where} names schema ${declared}, which the project does not declare under schemas`);
+              schema = named;
+            } else schema = declared;
+            try { compileBodySchema(schema); }
+            catch (error) { throw new Error(`${where}: ${(error as Error).message}`, { cause: error }); }
+            if (schema.type !== 'object') throw new Error(`${where} must declare type: object (${requirement})`);
+            return schema;
+          };
+          const input = resolve('inputSchema', tool.inputSchema, 'MCP tool arguments are always an object');
+          const output = tool.outputSchema === undefined ? undefined : resolve('outputSchema', tool.outputSchema, 'MCP structuredContent is always an object');
+          schemasOf.set(toolName, { input, ...(output ? { output } : {}) });
           // The hook contract's schema is deliberately permissive (any object): each call's arguments are checked
           // against the tool's own declared inputSchema, with the same request.body.<METHOD>.schema rules a native route uses.
           contracts.push({ name: `tool:${toolName}`, kind: 'action', description: tool.description, inputSchema: { type: 'object' } });
@@ -481,7 +498,7 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           hooksConfig[`prompt:${promptId}`] = prompt.handler;
         }
         const handlers = await loadExtensionHooks<string, McpHandlerContext>(hooksConfig, contracts, context);
-        const tools = new Map<string, ActiveTool>(Object.entries(spec.tools).map(([toolName, tool]) => [toolName, { spec: tool, call: handlers[`tool:${toolName}`]! }]));
+        const tools = new Map<string, ActiveTool>(Object.entries(spec.tools).map(([toolName, tool]) => [toolName, { spec: tool, call: handlers[`tool:${toolName}`]!, ...schemasOf.get(toolName)! }]));
         const resources = new Map<string, ActiveResource>(Object.entries(spec.resources ?? {}).map(([resourceId, resource]) => [resourceId, { spec: resource, call: handlers[`resource:${resourceId}`]! }]));
         const prompts = new Map<string, ActivePrompt>(Object.entries(spec.prompts ?? {}).map(([promptId, prompt]) => [promptId, { spec: prompt, call: handlers[`prompt:${promptId}`]!, argumentsSchema: promptArgumentsSchema(prompt.arguments) }]));
         byMount.set(spec.mount, { name, spec, tools, resources, resourcesByUri, prompts });
