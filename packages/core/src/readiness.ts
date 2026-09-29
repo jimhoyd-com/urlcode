@@ -15,6 +15,8 @@ import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.
 import { runCompliance } from './compliance.ts';
 import { handlerNames as handlers } from './types.ts';
 import { bodyPolicy } from './http-policy.ts';
+import { unmetSignals } from './signal-recorder.ts';
+import type { SignalExpectation, SignalRecorder } from './signal-recorder.ts';
 import type { CompiledRedirect, CompiledRoute, HandlerName, LogFn, PlanInventoryEntry, PolicyInventory } from './types.ts';
 import type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 import type { CompiledRoutes, RequestContext } from './match.ts';
@@ -33,6 +35,8 @@ export interface RouteInventory extends PlanInventoryEntry {
 export interface RequestCase {
   path: string; method?: string | undefined; status: number; headers?: Record<string, string> | undefined; body?: string | undefined;
   expectHeaders?: Record<string, string> | undefined; expectBody?: string | undefined;
+  /** Signals the request must emit; checked only where the host records signals (`urlcode test`, `urlcode audit`). */
+  expectSignals?: SignalExpectation[] | undefined;
   /** Only inside `steps`: values kept from this step's response for later steps' `{{name}}` references. */
   capture?: Record<string, CaptureSpec> | undefined;
 }
@@ -60,7 +64,7 @@ interface HitResult { pass: boolean; status: number; durationMs: number; error?:
  * (from just before `firstDifference`, the first differing character index, when that is further in).
  * `actual` is null when the response had no such header. Only `urlcode test` prints these, for the author's own project.
  */
-interface Mismatch { check: 'status' | 'header' | 'body'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number;
+interface Mismatch { check: 'status' | 'header' | 'body' | 'signals'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number;
   /** A status mismatch only: the start of the response body, so a refusal's reason code (`{"error":"cross_origin_refused"}`) is shown. */
   body?: string }
 const MAX_SHOWN = 200, STATUS_BODY_BYTES = 1024;
@@ -89,7 +93,7 @@ function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: Rea
   const redact = (text: string): string => { for (const [secret, placeholder] of secrets) text = text.split(secret!).join(placeholder); return text; };
   return { ...result, mismatches: list.map(item => {
     if (item.body !== undefined) item = { ...item, body: shown(redact(item.body)) };
-    if (typeof item.expected !== 'string' || typeof item.actual !== 'string') return { ...item, expected: typeof item.expected === 'string' ? shown(redact(item.expected)) : item.expected, actual: typeof item.actual === 'string' ? shown(redact(item.actual)) : item.actual };
+    if (item.check === 'signals' || typeof item.expected !== 'string' || typeof item.actual !== 'string') return { ...item, expected: typeof item.expected === 'string' ? shown(redact(item.expected)) : item.expected, actual: typeof item.actual === 'string' ? shown(redact(item.actual)) : item.actual };
     const expected = redact(item.expected), actual = redact(item.actual);
     // Long texts that differ late are shown from just before the first difference, so the cut never hides it.
     let at = 0;
@@ -117,7 +121,7 @@ export type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 interface AuditDeployment { trustedProxies?: string | string[] | undefined; metrics?: boolean | undefined }
 /** A non-blocking finding about how the project will be deployed rather than about one route. */
 interface DeploymentAdvisory { code: 'client-throttle-without-trusted-proxies' | 'metrics-on-public-listener'; message: string; routes?: string[] }
-interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined; deployment?: AuditDeployment | undefined }
+interface AuditOptions { /** The recorder `app` captures signals into, so fixtures' `expectSignals` are checked. */ signals?: SignalRecorder | undefined; expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined; deployment?: AuditDeployment | undefined }
 interface AuditReport {
   elapsedMs: number; ready: boolean;
   /** Empty when `ready`; otherwise one stable code per failed condition:
@@ -349,6 +353,8 @@ async function readCases(root: string, optional = false): Promise<RequestCase[]>
 interface FixtureStep { case: number; fixture: number; test: RequestCase; original: RequestCase; result: HitResult }
 interface FixtureHost {
   app: AuditableApp; agent: Agent; target?: BenchmarkTarget | undefined;
+  /** The recorder the local runtime captures signals into. Absent (a deployment): `expectSignals` is not checked. */
+  signals?: SignalRecorder | undefined;
   /** Close and restart the runtime on the same project and data directory. Absent: the host cannot restart. */
   restart?: (() => Promise<void>) | undefined;
   /** Called with the 1-based fixture number and a reason when a fixture with a restart step is skipped because the host cannot restart. Absent: such a fixture is refused with an error. */
@@ -396,8 +402,9 @@ export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit:
     if (!isStepsFixture(fixture)) {
       const resolved = resolveStep(fixture,references(host));
       if (!resolved) { await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:{pass:false,status:0,durationMs:0,error:'unresolved'}}); continue; }
+      host.signals?.take();
       const {setCookies, ...result} = await hit(host.app,resolved,host.agent,host.target);
-      await visit({case:n++,fixture:f+1,test:resolved,original:fixture,result:presented(result,new Map(),responseCookies(setCookies))}); continue;
+      await visit({case:n++,fixture:f+1,test:resolved,original:fixture,result:presented(checkSignals(resolved,host,result),new Map(),responseCookies(setCookies))}); continue;
     }
     if (fixture.steps.some(isRestart) && host.restart === undefined) {
       const reason = 'contains a restart step, which needs a runtime this host can close and restart';
@@ -413,7 +420,9 @@ export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit:
         // An explicit Cookie header is sent as written; the jar adds only the cookies it does not name.
         const explicit = Object.entries(resolved.headers ?? {}).find(([name]) => name.toLowerCase() === 'cookie')?.[1];
         const stored = jar.send(resolved.path, cookieNames(explicit ?? '')).map(({name,value}) => `${name}=${value}`);
-        const sent = await hit(host.app,resolved,host.agent,host.target,stored.length ? [...(explicit ? [explicit] : []),...stored].join('; ') : undefined);
+        host.signals?.take();
+        const hitResult = await hit(host.app,resolved,host.agent,host.target,stored.length ? [...(explicit ? [explicit] : []),...stored].join('; ') : undefined);
+        const sent = checkSignals(resolved,host,hitResult);
         jar.store(sent.setCookies ?? [],resolved.path);
         const {captured: kept, setCookies: _stored, ...response} = sent;
         let captured = kept, visible: HitResult = response;
@@ -431,6 +440,19 @@ export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit:
       await visit({case:n++,fixture:f+1,test:resolved ?? step,original:step,result});
     }
   }
+}
+/**
+ * Fails a sent request whose captured signals break its `expectSignals`. The report names each unmet entry, how many
+ * captured signals matched it, and what was captured (destination origin and the fixed payload only).
+ */
+function checkSignals(test: RequestCase, host: FixtureHost, result: HitResult): HitResult {
+  const records = host.signals?.take() ?? [];
+  if (!host.signals || test.expectSignals === undefined || result.error !== undefined) return result;
+  const unmet = unmetSignals(test.expectSignals, records);
+  if (!unmet.length) return result;
+  const captured = records.map(({ destination, payload }) => `${payload.method} ${payload.route} ${payload.status} to ${destination}`).join('; ') || 'none';
+  return { ...result, pass: false, mismatches: [...(result.mismatches ?? []), ...unmet.map(({ index, expected, matched }): Mismatch => ({
+    check: 'signals', name: index < 0 ? 'none' : `expectSignals.${index}`, expected: index < 0 ? 'no signal' : JSON.stringify(expected), actual: `${matched} matched; captured: ${captured}` }))] };
 }
 const acceptable = (text: string): boolean => text.length > 0 && Buffer.byteLength(text) <= MAX_CAPTURE_BYTES && !control.test(text);
 /** A json or header capture; cookie captures read the jar in runFixtures. */
@@ -520,7 +542,7 @@ function coverageNotesFor(unassertedCases: number[], uncovered: { route: string 
     message: 'A coveredElsewhere waiver counts only once the route is shown to be served: another of its methods covered by a passing, asserted fixture, or, on a sign-in-gated route, a passing 401 fixture with expectBody or expectHeaders.' });
   return notes;
 }
-export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},compliance,deployment}: AuditOptions = {}): Promise<AuditReport> {
+export async function auditProject(app: AuditableApp, {signals,expectRoutes,log=()=>{},compliance,deployment}: AuditOptions = {}): Promise<AuditReport> {
   const began=performance.now();
   const plan=app.testPlan(), fixtures=await readFixtures(app.root,true);
   const metadata=new Map(plan.inventory.map(r=>[r.path,r]));
@@ -545,7 +567,7 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   try {
     for (const [i,test] of plan.cases.entries()) record(i+1,test,await hit(app,test,agent),'generated');
     const restart=isRestartable(app)?()=>app.restart():undefined;
-    await runFixtures(fixtures,{app,agent,restart},step=>record(step.case,step.test,step.result,'fixture'),plan.cases.length+1);
+    await runFixtures(fixtures,{app,agent,restart,signals},step=>record(step.case,step.test,step.result,'fixture'),plan.cases.length+1);
   } finally {agent.destroy();}
   const key=(route: string,method: string): string=>JSON.stringify([route,method]);
   // HEAD is GET without a body: the runtime strips it for every handler, so a covered GET implies HEAD on the same route.

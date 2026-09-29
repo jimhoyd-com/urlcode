@@ -29,13 +29,15 @@ import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.t
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, realpath, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
 import { cliInvocation, shellWord } from './context.ts';
+import { SignalRecorder } from './signal-recorder.ts';
 
 // Stamped by scripts/release-bump.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
 // the starter's schema pin and CI action); `release-bump.ts --check` asserts this literal, not a read of
@@ -63,6 +65,7 @@ const helpEntries: HelpEntry[] = [
     capacity/logging/policies/health/shutdown/timeouts: same flags as \`serve\`, see \`urlcode serve --help\`
     # stderr names the route, source file and stack of a failing function (the response stays a generic 502) and why a reload was rejected
     # loads .env.local and watches the project; on a TTY, prints readable startup and request lines instead of JSON (--json forces JSON; piped stdout always uses JSON)
+    signals:  [--signal-sink stdout|/outside/project/signals.jsonl]  # record each would-be signal delivery as a JSON line with outcome captured and deliver none; dev only (serve refuses it)
 ` },
   { name:'validate', group:'Start', text:
 `  urlcode validate [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--local] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]  # origin: absolute URLs in site.* files
@@ -342,6 +345,19 @@ process.on('unhandledRejection', reason => {
   process.exitCode = 1;
   process.exit(1);
 });
+/**
+ * `dev --signal-sink stdout|<file.jsonl>`: record would-be signal deliveries as JSON lines instead of sending them. A
+ * file inside the project is refused, because the dev watcher would reload on every line written to it.
+ */
+async function signalSink(target: string, project: string): Promise<SignalRecorder> {
+  if (target === 'stdout') return SignalRecorder.sink(target);
+  if (!target.endsWith('.jsonl')) throw new ConfigError('--signal-sink takes stdout or a file path ending in .jsonl');
+  let parent: string;
+  try { parent = await realpath(dirname(resolve(target))); } catch { throw new ConfigError('--signal-sink names a file in a directory that does not exist'); }
+  const file = join(parent, basename(target)), real = await realpath(file).catch(() => file), root = await realpath(project);
+  for (const path of [file, real]) { const rel = relative(root, path); if (!rel.startsWith('..') && !isAbsolute(rel)) throw new ConfigError('--signal-sink file must be outside the project: dev reloads whenever a project file changes'); }
+  return SignalRecorder.sink(file);
+}
 let operatorHost: OperatorHost = {};
 let verifiedPolicy: OperatorPolicy | undefined;
 let serving = false;
@@ -390,6 +406,7 @@ try {
     if (values.adopt && !(command === 'init' || (command === 'bootstrap' && values.create))) throw new ConfigError('--adopt is only supported by init and bootstrap --create');
     if (values['no-mcp'] && !(command === 'init' || (command === 'bootstrap' && values.create))) throw new ConfigError('--no-mcp is only supported by init and bootstrap --create');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
+    if (values['signal-sink'] !== undefined && command !== 'dev') throw new ConfigError(command === 'serve' ? '--signal-sink is only supported by dev: serve always delivers signals to their granted destinations' : '--signal-sink is only supported by dev; test and audit already record signals without delivering them');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions list and artifacts list|inspect');
     if (values.online && !(['extensions', 'artifacts'].includes(command) && arg === 'verify')) throw new ConfigError('--online is only supported by extensions verify and artifacts verify');
@@ -529,7 +546,9 @@ try {
           if(!['json','markdown'].includes(format))throw new ConfigError('Use --format json or markdown');
           if(values.format!==undefined && values.compare===undefined)throw new ConfigError('--format applies to routes --compare');
           const started=performance.now();
-          const serverOptions={...hostOptions,project:values.project,port:0,local:true,permissions,origin:values.origin,aliasOrigins:values['alias-origin'],log:()=>{}};
+          // audit records signals in process (as test does) so its fixtures deliver nothing and can assert them.
+          const signals=command==='audit'?new SignalRecorder():undefined;
+          const serverOptions={...hostOptions,project:values.project,port:0,local:true,permissions,origin:values.origin,aliasOrigins:values['alias-origin'],log:()=>{},signalRecorder:signals};
           // Only audit replays fixtures, so only audit needs a server its restart steps can restart.
           const app=command==='audit'?await startRestartable(serverOptions):await startServer(serverOptions);
           const startupMs=performance.now()-started;
@@ -544,7 +563,7 @@ try {
                 print(format==='markdown'?renderRouteDiff(diff):diff);
               }
             } else if(command==='audit') {
-              const report=await auditProject(app,{expectRoutes:expected,log:print,compliance,deployment:{trustedProxies:values['trusted-proxies'],metrics:values.metrics}});print(report);if(!report.ready)process.exitCode=1;
+              const report=await auditProject(app,{signals,expectRoutes:expected,log:print,compliance,deployment:{trustedProxies:values['trusted-proxies'],metrics:values.metrics}});print(report);if(!report.ready)process.exitCode=1;
               if(report.compliance && !report.compliance.pass && !values['compliance-warn'])process.exitCode=1;
             } else {
               const report=await benchmarkProject(app,{requests:number('requests',1000),concurrency:number('concurrency',2),seconds:number('seconds',30),maxP95Ms:number('max-p95-ms'),warmup:number('warmup',0),target:values.target});
@@ -680,7 +699,8 @@ try {
           // human line needs, so human mode asks for it unless the operator picked a level explicitly.
           if (human && values['request-log'] === undefined) values['request-log'] = 'detailed';
           const routes = { count: 0 };
-          const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
+          const signalRecorder = values['signal-sink'] === undefined ? undefined : await signalSink(values['signal-sink'], values.project);
+          const app = await startServer({ signalRecorder, ...hostOptions, project:values.project, host:values.host, port,
             local:command === 'dev', watch:command === 'dev', followExtensionPinOnReload:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, aliasOrigins:values['alias-origin'], permissions,
             ...(human ? { log:createJsonLogger(process.stdout, undefined, createDevEventFormatter(routes)) } : {}),
             ...serverCapacity(values) });
@@ -696,7 +716,7 @@ try {
               process.stderr.write(JSON.stringify({ event:'error', message:'Shutdown failed: ' + (error instanceof Error ? error.message : String(error)) }) + '\n');
               process.exitCode = 1;
             }
-            finally { await operatorHost.close?.(); }
+            finally { signalRecorder?.close(); await operatorHost.close?.(); }
           };
           process.once('SIGINT',stop); process.once('SIGTERM',stop);
           break;

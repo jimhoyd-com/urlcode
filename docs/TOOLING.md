@@ -357,7 +357,9 @@ existing operations.
 
 These SDK functions have explicit write or execution effects and are available
 to trusted callers only. Project tests use normal runtime activation, grants and
-sandboxing; granted proxy/signal fixtures can perform real outbound operations.
+sandboxing; granted proxy fixtures can perform real outbound operations.
+Signals are recorded in process, never delivered, so fixtures can assert them
+with `expectSignals` ([EGRESS](EGRESS.md#checking-signals-locally)).
 Compilation and authoring write caller-selected destinations under each existing
 helper's documented rules. They are **not** MCP tools. MCP remains limited to
 the read-only operations below; adding a package-root export does not grant an

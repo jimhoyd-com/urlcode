@@ -298,8 +298,11 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With the #911/#916/#917 trial fixes on top of #919's main: measured on Node 26 at 990298 packed / 3912067 unpacked bytes, 515 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 971 * 1024,
-    unpacked: 3824 * 1024,
+    // With #917's signal recorder (dist/signal-recorder.js, expectSignals, dev --signal-sink and their docs) on top of
+    // #919's main: measured on Node 26 at 996230 packed / 3929960 unpacked bytes, 517 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 977 * 1024,
+    unpacked: 3841 * 1024,
     entries: 519,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

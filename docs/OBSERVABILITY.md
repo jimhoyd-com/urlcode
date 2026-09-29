@@ -36,7 +36,7 @@ named.
 | `watch` | `status` `failed` | The development watcher could not fingerprint the project. |
 | `extension_pin_followed` | `extensions` string array, `from` string, `to` string | `urlcode dev` only, once per reload: the edited project (revision `to`) activated extensions whose registration is still pinned to `from`, the revision dev started from ([the revision pin](EXTENSIONS.md#the-revision-pin)). Emitted after the reload fully activated, never for a rejected one and never by `serve`. |
 | `function_worker` | `status` `started`/`restarting`, `slot` integer; `attempt` and `delayMs` integers on `restarting` | A function worker became ready or is scheduled for replacement. |
-| `signal` | `outcome` (`accepted`, `delivered`, `failed`, `dropped`), positive `count` | Best-effort webhook totals; no destination, request data or secrets. |
+| `signal` | `outcome` (`accepted`, `delivered`, `failed`, `dropped`, or `captured` when `urlcode test`, `audit` or `dev --signal-sink` records instead of delivering), positive `count` | Best-effort webhook totals; no destination, request data or secrets. |
 | `logs_dropped` | `count` integer | The JSON logger shed records because stdout was not writable. Written by the logger itself, so observers do not see it. |
 | `observer` | `status` `failed`, `name` string | An observer hook threw or rejected. Written to the default log only, never to observers. |
 | `throttle` | `route`, `outcome` `allowed`/`exceeded`, `remaining` integer | A throttle decision. `allowed` is logged only in `mode: report`; enforce mode logs refusals. |
@@ -158,7 +158,7 @@ and capped at 10 000 keys.
 | `policies.throttle.{allowed,exceeded}` | counter | Throttle decisions (see the catalogue for what enforce mode logs). |
 | `policies.agents.{denied,reported}` | counter | Agents decisions. |
 | `policies.cache.{hit,stale,miss,store}` | counter | Cache outcomes. |
-| `signals.{accepted,delivered,failed,dropped}` | counter | Best-effort webhook outcomes; exposed as `signals_total` with outcome labels. |
+| `signals.{accepted,delivered,failed,dropped,captured}` | counter | Best-effort webhook outcomes; exposed as `signals_total` with outcome labels. |
 | `logsDropped` | counter | Records the JSON logger shed. |
 | `observers.errors` | counter | Observer hooks that threw or rejected. |
 

@@ -69,7 +69,11 @@ need fixtures in `tests/requests.json`:
 ```
 
 Each case may supply `method`, string-valued `headers`, a text `body`, expected
-`status`, string-valued `expectHeaders`, and exact UTF-8 `expectBody`. Status is
+`status`, string-valued `expectHeaders`, exact UTF-8 `expectBody`, and
+`expectSignals`, the signals the request must emit
+([checking signals locally](EGRESS.md#checking-signals-locally)). `test` and
+`audit` record signals without delivering them. `verify-deployment` cannot
+observe signals and notes `expectSignals` as not checked. Status is
 required. The file is checked against the shipped
 [`schemas/requests.schema.json`](../schemas/requests.schema.json) before any
 request is sent: any other key (a `json`, `expectJson` or misspelled
@@ -85,7 +89,8 @@ means a transport/response-limit failure.
 values or fixture URLs that may contain private data. `urlcode test` is the
 author's own debugging loop, so a failing case there also prints the fixture's
 `method` and `path` as written and a `failures` list: for each failed assertion
-its `check` (`status`, `header` or `body`), the header `name`, and the
+its `check` (`status`, `header`, `body` or `signals`), the header `name` (or
+the unmet `expectSignals.N` entry), and the
 `expected` and `actual` values, each cut to about 200 characters from just
 before the first difference (`firstDifference`). A `status` failure also
 carries the start of the response `body` (at most 1 KiB read, shown cut the same
