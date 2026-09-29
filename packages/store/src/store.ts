@@ -387,7 +387,14 @@ interface Connection { readonly opening: Promise<{ db: StoreDatabase; lease: Ser
 function opener(database: string, durability: StoreDurability, probe: HostProbe): Connection {
   const opening = (async () => {
     const db = await openStoreDatabase(database, { durability, probe });
-    try { return { db, lease: await joinServers(db, probe) }; } catch (error) { db.close(); throw error; }
+    let lease: ServerLease;
+    try { lease = await joinServers(db, probe); } catch (error) { db.close(); throw error; }
+    // Every write transaction checks the lease under its write lock first (#978): a process that lost it to another
+    // host answers 503 and writes nothing until it holds it again.
+    db.writeGuard = () => {
+      try { lease.verify(); } catch { throw new StoreError(503, 'storage_unavailable', 'The store is not available'); }
+    };
+    return { db, lease };
   })();
   const connection: Connection = { opening, refs: 0 };
   opening.then(({ db, lease }) => { connection.db = db; connection.lease = lease; }, () => undefined);

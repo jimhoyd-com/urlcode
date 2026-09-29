@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- A sign-out whose session delete fails answers `503 auth_unavailable` with no `Set-Cookie`, and the session keeps working (#980).
+  Better Auth answered `200 {"success":true}` and cleared the cookie while the session stayed valid. The mount now
+  confirms against the database that a successful `/sign-out` removed the session. A `401` from `/list-sessions`, the
+  revoke endpoints or `/change-password` is confirmed the same way, because Better Auth's session middleware reads a
+  storage failure as "no session"; when the session exists or cannot be read, the answer is `503`.
+- The host lease (core's `joinHostLease`) never compares two hosts' clocks (#978): each renewal writes a larger `heartbeat_at`, and a process judges another host's row by whether it advances, timed on its own monotonic clock. A joiner watches another host's row for up to 20 s, refusing if it advances and deleting it if it stays silent, so a joiner whose clock runs ahead no longer evicts a live holder and a crashed host whose clock ran ahead blocks a restart for 20 s, not for the skew. Every heartbeat re-checks the table: a process that finds another host's row loses the lease, deletes its own row, logs it, does not re-insert it, and rejoins by itself once no other host holds one. A failed heartbeat is logged. A serving process that lost the lease answers `503 auth_unavailable` to every auth request, checked once per request before Better Auth runs.
+- An activation that fails after joining the host lease (a seed that breaks, Better Auth failing to start) releases it
+  (#979). Before, its `auth_servers` row blocked another host until it expired and its heartbeat kept firing against the
+  closed connection.
 - A mount endpoint Better Auth fails on the database (a sign-in whose session cannot be stored because the disk is
   full or the lock was held past the busy timeout) answers `503 {"error":"auth_unavailable"}` with `Retry-After: 1` and
   no `Set-Cookie` (#902). Before, a full disk was Better Auth's bare `500`, and a lock timeout a throw that core answered

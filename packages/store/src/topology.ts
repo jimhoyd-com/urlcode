@@ -9,7 +9,15 @@ export { hostProbe, NETWORK_FILESYSTEMS, refuseNetworkFilesystem, SERVER_LEASE }
 export type { HostProbe } from '@jimhoyd/urlcode/extensions';
 export type ServerLease = HostLease;
 
-/** Joins `store_servers`, refusing activation while a live peer serves the database from another host (`joinHostLease`). */
+/**
+ * Joins `store_servers`, refusing activation while a live peer serves the database from another host (`joinHostLease`).
+ * The lease's own transactions skip the database's write guard, which is the lease itself once the store sets it.
+ */
 export function joinServers(db: StoreDatabase, probe?: Partial<HostProbe>, now?: () => number): Promise<ServerLease> {
-  return joinHostLease(db, { table: 'store_servers', what: 'store', probe, now });
+  const statements = {
+    transaction: <T>(work: () => T): T => db.transaction(work, 'IMMEDIATE', false),
+    run: (sql: string, ...values: (string | number | null)[]) => db.run(sql, ...values),
+    all: <T>(sql: string, ...values: (string | number | null)[]): T[] => db.all<T>(sql, ...values),
+  };
+  return joinHostLease(statements, { table: 'store_servers', what: 'store', probe, now });
 }
