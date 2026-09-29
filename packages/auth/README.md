@@ -66,7 +66,7 @@ Test a protected route with a request fixture that signs in through
 with an account `create-user` made for testing; the fixture's cookie jar keeps
 the session, and `"origin":"{{origin}}"` passes the same-origin check. There is
 no test principal that skips the gate. See
-[authenticated routes](../../docs/READINESS.md#authenticated-routes-auth-true).
+[authenticated routes][readiness-authenticated-routes].
 
 Identity is not permission. Roles, ownership and approvals are application
 data keyed by that id. A `sandbox: true` route cannot name `auth`: the
@@ -161,3 +161,7 @@ Accounts and sessions served by Better Auth on one extension mount. Protect a ro
 
 Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --origin <origin>`.
 <!-- extension-reference:end -->
+
+<!-- urlcode-current-version:start -->
+[readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
+<!-- urlcode-current-version:end -->

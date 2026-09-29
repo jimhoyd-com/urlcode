@@ -219,7 +219,7 @@ handler error answers `-32603`.
 A tool's `inputSchema` or `outputSchema` may be the name of one of the
 project's named schemas (the top-level `schemas:` map in `urlcode.yaml`,
 inline or loaded from a schema file; see
-[HTTP](../../docs/HTTP.md#named-schemas)), so a POST route and a tool validate
+[HTTP][http-named-schemas]), so a POST route and a tool validate
 against one document:
 
 ```yaml
@@ -418,6 +418,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [extensions-streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#streamed-responses
 [operations-streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#streamed-responses
 [extensions-site-origins-and-same-origin-checks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks
+[http-named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
 <!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
