@@ -14,7 +14,6 @@ import {startServer} from '../packages/core/src/server.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
 import {byReplyId,project,request} from './helpers.ts';
 import {inspectExtensionRevision,isSameOriginRequest} from '../packages/core/src/extensions.ts';
-import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import type {Addressed,Response} from './helpers.ts';
 import {pathToFileURL} from 'node:url';
 
