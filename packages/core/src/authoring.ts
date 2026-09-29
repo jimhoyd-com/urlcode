@@ -44,10 +44,10 @@ function packageName(directory: string): string {
  * `npm init` and `npm install @jimhoyd/urlcode`) keeps every key and script; only a missing runtime pin and missing
  * scripts are added.
  */
-function sitePackageJson(existing: string | undefined, directory: string, version: string, routes: number): string {
+function sitePackageJson(existing: string | undefined, directory: string, version: string): string {
   const manifest = existing === undefined ? { name: packageName(directory), private: true, version: '0.0.0', type: 'module' } as Record<string, unknown> : JSON.parse(existing) as Record<string, unknown>;
   const scripts = { ...(manifest.scripts as Record<string, string> | undefined) };
-  for (const [name, command] of Object.entries(projectScripts(routes))) if (scripts[name] === undefined || (name === 'test' && scripts[name] === npmPlaceholderTest)) scripts[name] = command;
+  for (const [name, command] of Object.entries(projectScripts())) if (scripts[name] === undefined || (name === 'test' && scripts[name] === npmPlaceholderTest)) scripts[name] = command;
   const dependencies = { ...(manifest.dependencies as Record<string, string> | undefined) };
   const dev = manifest.devDependencies as Record<string, string> | undefined;
   if (dependencies['@jimhoyd/urlcode'] === undefined && dev?.['@jimhoyd/urlcode'] === undefined) dependencies['@jimhoyd/urlcode'] = version;
@@ -247,7 +247,7 @@ export async function initSite(destination: string, options: InitOptions = {}): 
     // implements; the starter carries a committed copy for clones, kept identical by test.
     await write('AGENTS.md', renderAgentsGuide({ routes }));
     await write(mcpConfigFile, renderMcpConfig(PROJECT_DIRECTORY, { local: true }));
-    const manifest = sitePackageJson(packageJson, target, version, routes);
+    const manifest = sitePackageJson(packageJson, target, version);
     if (packageJson !== undefined) { manifestWritten = true; await writeFile(join(target, 'package.json'), manifest).catch((error: unknown) => { throw initWriteError(error, 'writing', 'package.json'); }); }
     else await write('package.json', manifest);
   } catch (error) { await undo(); throw error; }

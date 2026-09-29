@@ -32,7 +32,8 @@ async function vault(root: string): Promise<RuntimeExtension> {
   return {
     name: 'vault', version: '1', projectSha256: await inspectExtensionRevision(root), targets: ['node'],
     schema: { type: 'object', additionalProperties: false },
-    activate() { return { handle(request: ExtensionRequest) { return { status: 200, headers: [['content-type', 'application/json']], body: JSON.stringify({ id: request.principal?.id ?? null }) }; } }; },
+    // PATCH is refused (a validation-style 422), so a fixture can assert only its refusal.
+    activate() { return { handle(request: ExtensionRequest) { return { status: request.method === 'PATCH' ? 422 : 200, headers: [['content-type', 'application/json']], body: JSON.stringify({ id: request.principal?.id ?? null }) }; } }; },
   } as RuntimeExtension;
 }
 const declarations = { extensions: { badge: { version: '1', config: {} }, vault: { version: '1', config: {} } } };
@@ -64,6 +65,20 @@ test('a fully gated route honours coveredElsewhere once its gate refusal is asse
   assert.equal(unproven.ready, false);
   assert.equal(unproven.ignoredWaivers.length, 2);
   assert.deepEqual(unproven.coverageNotes.map(note => [note.code, note.routes]), [['gated-route-uncovered', ['/v/*']], ['waiver-without-proof', ['/v/*']]]);
+});
+
+// #959: a signed-in route whose other methods are covered is reached; the note names the method with no success case.
+test('a method covered only by an asserted refusal is named as the gap, not the sign-in', async t => {
+  const signedIn = { authorization: 'Badge alice' };
+  const app = await gatedApp(t, { '/v/*': { extension: 'vault', methods: ['GET', 'HEAD', 'PATCH'], policies: { extensions: { badge: {} } } } },
+    [anonymous, { path: '/v/x', headers: signedIn, status: 200, expectBody: '{"id":"alice"}' }, { path: '/v/x', method: 'PATCH', headers: signedIn, status: 422, expectBody: '{"id":"alice"}' }]);
+  const report = await auditProject(app);
+  assert.deepEqual([report.ready, report.uncovered], [false, [{ route: '/v/*', method: 'PATCH' }]]);
+  assert.deepEqual(report.coverageNotes.map(note => [note.code, note.methods, note.cases?.length]), [['method-without-success', [{ route: '/v/*', method: 'PATCH' }], 1]], JSON.stringify(report.coverageNotes));
+  assert.match(report.coverageNotes[0]!.message, /A refusal \(400 or more\) proves only the refusal/);
+  // With nothing of the route covered, the gap is still the sign-in.
+  const anonymousOnly = await auditProject(await gatedApp(t, { '/v/*': { extension: 'vault', methods: ['GET', 'PATCH'], policies: { extensions: { badge: {} } } } }, [anonymous]));
+  assert.deepEqual(anonymousOnly.coverageNotes.map(note => [note.code, note.routes]), [['gated-route-uncovered', ['/v/*']]]);
 });
 
 test('an ungated route answering 401 cannot use the gate-refusal basis', async t => {

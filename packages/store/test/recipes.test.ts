@@ -8,10 +8,10 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { addRecipe } from '@jimhoyd/urlcode';
 import { cleanup } from './cleanup.ts';
-import { records } from './rows.ts';
 
 const cli = fileURLToPath(new URL('../../core/src/cli.ts', import.meta.url));
 const hostModule = pathToFileURL(fileURLToPath(new URL('../../core/src/host.ts', import.meta.url))).href;
@@ -70,12 +70,12 @@ function commands(run: Run) {
 test('the store-booking recipe refuses overlapping bookings of a room and frees a cancelled slot, with no pin given', async t => {
   const { database, run } = await site(t, 'store-booking');
   commands(run);
-  assert.deepEqual(records(database, 'bookings'), [], 'test and audit wrote nothing to the configured database');
+  assert.equal(existsSync(database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
 });
 
 test('the store-credits recipe funds wallets from a members-only issuer and keeps the total, with no pin given', async t => {
   const { database, run } = await site(t, 'store-credits');
   // Who may issue is data: tests/seed.json seeds the issuer the fixtures sign in as into each run's throwaway database.
   commands(run);
-  assert.deepEqual(records(database, 'wallets'), [], 'test and audit wrote nothing to the configured database');
+  assert.equal(existsSync(database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
 });

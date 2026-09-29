@@ -1855,7 +1855,7 @@ generated `npm run validate`, `npm test`, `npm run routes` and
 ```sh
 npm run validate   # urlcode validate --local --project app --host-file host.mjs --local-review
 npm test           # urlcode test --project app --host-file host.mjs --local-review
-npm run audit      # urlcode audit --expect-routes N --project app --host-file host.mjs --local-review
+npm run audit      # urlcode audit --project app --host-file host.mjs --local-review
 ```
 
 With the flag and no operator pin (no `--policy`, `URLCODE_POLICY` or
@@ -1866,15 +1866,29 @@ stderr, so the output shows the run was not a reviewed one. Edit, run the
 three scripts, and repeat. When the change is ready, review it, pin the
 revision (`urlcode permissions --project app`), then serve.
 
+A local review also activates the extensions on a fresh, empty temporary data
+directory, as `test` and `audit` always do
+([test data and seeds](READINESS.md#test-data-and-seeds)), so `validate` and
+`routes` need nothing set up in the site's `data/`: no `urlcode-auth migrate`
+and no signing secret ([#954](https://github.com/jimhoyd-com/urlcode/issues/954)). The site's own `data/` is checked by the
+pinned run instead: with `--policy`, `URLCODE_POLICY` or `PROJECT_SHA256`,
+`validate` activates on it exactly as `serve` will, so a missing migration or
+secret surfaces there, before serving, with the command that fixes it.
+
 The boundary holds for these reasons:
 
-- **Serving refuses it.** Only `validate`, `test`, `routes` and `audit` accept
-  the flag. `serve`, `dev`, `benchmark` and every other command refuse it
-  (`code` `local-review-unsupported`), so a served runtime is always pinned by
-  the operator.
+- **Serving refuses it.** Only `validate`, `test`, `routes` and `audit` act on
+  the flag. The read-only commands that need no pin (`explain`, `context`,
+  `plan-feature`, `review`, `report` and `openapi`) accept it and ignore it
+  ([#958](https://github.com/jimhoyd-com/urlcode/issues/958)), so the flag the check scripts pass works on every check. `serve`
+  and `dev` refuse it because serving always needs the reviewed pin, and
+  every other command, such as `benchmark`, refuses it too; the refusal
+  names the command (`code` `local-review-unsupported`). A served runtime is
+  always pinned by the operator.
 - **Nothing is persisted.** The derived pin exists only in the process for
   that run. It writes no policy, sets no environment variable and changes no
-  file, so the next `serve` still refuses until the operator pins a revision.
+  file, and the run's temporary data directory is removed when it ends, so
+  the next `serve` still refuses until the operator pins a revision.
 - **An operator pin wins.** When `--policy`, `URLCODE_POLICY` or
   `PROJECT_SHA256` is given, the flag does nothing: that pin and its policy
   apply exactly as without it. A stale pin still refuses.

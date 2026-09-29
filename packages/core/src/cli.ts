@@ -33,7 +33,7 @@ import { access, readFile, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
-import { commandOptions as options, aliasOriginCommands, hermeticHostCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, localReviewOrigin, policyCommands } from './cli-command-metadata.ts';
+import { commandOptions as options, aliasOriginCommands, hermeticHostCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, localReviewOrigin, pinFreeReviewCommands, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
 import { cliInvocation, shellWord } from './context.ts';
@@ -70,7 +70,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'validate', group:'Start', text:
 `  urlcode validate [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--local] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs] [--local-review]  # origin: absolute URLs in site.* files
-    # --local-review: with no --policy or PROJECT_SHA256, pin the host to the current revision for this run only, read no policy (no grants) and default --origin to http://localhost; serve and dev refuse it
+    # --local-review: with no --policy or PROJECT_SHA256, pin the host to the current revision for this run only, read no policy (no grants), default --origin to http://localhost and activate extensions on a fresh temporary data directory; serve and dev refuse it. With the reviewed pin, validate checks the data/ serve will use
     # --target: also preflight the project for that target; without --host-file an extension is refused on a target its urlcode.json does not declare
 ` },
   { name:'test', group:'Start', text:
@@ -108,6 +108,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'audit', group:'Check', text:
 `  urlcode audit [--project directory] [--expect-routes 2] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs] [--local-review]
+    # the expected route count: --expect-routes, else the project's committed tests/audit.json {"expectRoutes": N}, else unchecked
     compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
                 [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
     deployment: [--trusted-proxies 10.0.0.0/8] [--metrics]  # as passed to serve; drives deploymentAdvisories, never fails the audit
@@ -264,7 +265,7 @@ const helpEntries: HelpEntry[] = [
 const helpFooter = `${hostFileCommands.join('/')}: --host-file /absolute/operator/host.mjs (trusted code outside project)
 ${policyCommands.join('/')}: --policy /absolute/policy.mjs (external bindings; outside the project)
 An absent --origin or --policy is read from URLCODE_ORIGIN or URLCODE_POLICY, so the generated npm scripts take operator context from the environment.
-${localReviewCommands.join('/')}: --local-review reviews the current revision locally when no operator pin is given; the generated validate, test, routes and audit scripts pass it.
+${localReviewCommands.join('/')}: --local-review reviews the current revision locally, on throwaway data, when no operator pin is given; the generated validate, test, routes and audit scripts pass it. ${pinFreeReviewCommands.join('/')} need no pin and ignore it.
 Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation.
 Run \`urlcode <command> --help\` for one command's usage, or \`urlcode --version\`/\`-v\` for the runtime version.
 `;
@@ -389,13 +390,14 @@ try {
     // #932: a local, non-serving review. It pins the host to the current revision only when the operator supplied no
     // pin, reads no policy (so no grant exists) and defaults the origin to loopback; an operator pin always wins.
     let localReview: { revision: string } | undefined;
-    if (values['local-review']) {
-      if (!(localReviewCommands as readonly string[]).includes(command)) throw new ConfigError(`--local-review is only supported by ${localReviewCommands.join('/')}; serve and dev always need the reviewed revision pin (--policy or PROJECT_SHA256)`, { code: 'local-review-unsupported' });
+    if (values['local-review'] && !(pinFreeReviewCommands as readonly string[]).includes(command)) {
+      if (command === 'serve' || command === 'dev') throw new ConfigError(`${command} does not take --local-review: serving always needs the reviewed revision pin (--policy or PROJECT_SHA256)`, { code: 'local-review-unsupported' });
+      if (!(localReviewCommands as readonly string[]).includes(command)) throw new ConfigError(`${command} does not take --local-review; it is for the checks ${localReviewCommands.join('/')} and the pin-free read-only commands ${pinFreeReviewCommands.join('/')}`, { code: 'local-review-unsupported' });
       if (values.policy === undefined && !process.env.PROJECT_SHA256) {
         localReview = { revision: (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256 };
         values.origin ??= localReviewOrigin;
         supplied.origin = values.origin;
-        process.stderr.write(JSON.stringify({ event:'local_review', revision:localReview.revision, origin:values.origin, note:'Pinned to the current project revision for this run only. No operator policy was read, so no binding or egress grant applies. serve and dev still need the reviewed pin (--policy or PROJECT_SHA256).' }) + '\n');
+        process.stderr.write(JSON.stringify({ event:'local_review', revision:localReview.revision, origin:values.origin, note:'Pinned to the current project revision for this run only. No operator policy was read, so no binding or egress grant applies, and extensions use a fresh temporary data directory, never the site\'s data/. serve and dev still need the reviewed pin (--policy or PROJECT_SHA256); with it, validate checks the data they will use.' }) + '\n');
       }
     }
     if (values['host-file'] !== undefined) {
@@ -405,7 +407,7 @@ try {
         // A verified --policy pins the host to its reviewed revision, so no PROJECT_SHA256 bridge is needed (#723).
         // Only the revision reaches the host; the grants stay with core.
         if (values.policy !== undefined && (policyCommands as readonly string[]).includes(command)) verifiedPolicy = await loadOperatorPolicy(values.policy, values.project);
-        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 ?? localReview?.revision, inspection: (inspectionHostCommands as readonly string[]).includes(command) && !(command === 'extensions' && arg !== undefined), hermetic: (hermeticHostCommands as readonly string[]).includes(command) });
+        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 ?? localReview?.revision, inspection: (inspectionHostCommands as readonly string[]).includes(command) && !(command === 'extensions' && arg !== undefined), hermetic: (hermeticHostCommands as readonly string[]).includes(command) || localReview !== undefined });
         if (verifiedPolicy && operatorHost.extensions?.length) {
           const actual = (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256;
           if (verifiedPolicy.projectSha256 !== actual) throw new ConfigError(`The extension host is pinned by --policy${revisionPinHint(verifiedPolicy.projectSha256, actual)}`, { code: 'revision-pin-mismatch' });

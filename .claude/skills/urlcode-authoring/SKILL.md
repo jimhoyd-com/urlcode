@@ -275,7 +275,8 @@ urlcode audit --project ./my-links/app --expect-routes <actual intended count>
 
 Use the real intended route count, including any `site`-generated routes. In a
 runtime checkout, substitute `node packages/core/src/cli.ts` for `urlcode`; in a site made
-by `urlcode init`, the equivalent npm scripts work. External bindings
+by `urlcode init`, the equivalent npm scripts work, and the count is committed
+once in `app/tests/audit.json`, which `audit` reads without the flag. External bindings
 require an already reviewed policy — add `--policy` where needed.
 
 ## Feedback after a real attempt

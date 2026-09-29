@@ -325,11 +325,13 @@ export const budgets: Record<string, Budget> = {
     // packed / 4113484 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #948 pinned docs links in schema descriptions, example and starter YAML comments and llms-full.txt prose on top of
     // #902 item 6: 1043430 packed / 4117481 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1024 * 1024,
+    // #954/#955/#958/#959 on top of #963: 1046837 packed / 4129103 unpacked bytes, 531 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 1027 * 1024,
     // #960 on top of #965: 1043428 packed / 4114713 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #948 on top of #960: 1043801 packed / 4118710 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #940 on top of #963: 1044524 packed / 4121652 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 4029 * 1024,
+    // #954/#955/#958/#959 on top of #962: 1047608 packed / 4132045 unpacked bytes, 531 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 4039 * 1024,
     entries: 534,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

@@ -5,6 +5,7 @@
 // scripts/measure-plumbing.ts takes of both compare like with like. Not recipes: the declarations are what to use.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,7 +13,6 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { addRecipe } from '@jimhoyd/urlcode';
 import { cleanup } from './cleanup.ts';
-import { records } from './rows.ts';
 
 const cli = fileURLToPath(new URL('../../core/src/cli.ts', import.meta.url));
 const hostModule = pathToFileURL(fileURLToPath(new URL('../../core/src/host.ts', import.meta.url))).href;
@@ -79,7 +79,7 @@ function commands({ run }: Site, routes: number) {
 test('the booking counterexample passes the store-booking recipe fixtures through a host transaction', async t => {
   const host = await site(t, 'booking', 'host');
   commands(host, 2);
-  assert.deepEqual(records(host.database, 'bookings'), [], 'test and audit wrote nothing to the configured database');
+  assert.equal(existsSync(host.database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
 });
 
 test('the credits counterexample passes the store-credits recipe fixtures, and both versions replay a retried transfer', async t => {
@@ -92,6 +92,6 @@ test('the credits counterexample passes the store-credits recipe fixtures, and b
     const fixtures = join(current.project, 'tests', 'requests.json');
     await writeFile(fixtures, JSON.stringify(retries));
     passes(current.run, `${version} retries`);
-    if (version === 'host') assert.deepEqual(records(current.database, 'wallets'), [], 'test and audit wrote nothing to the configured database');
+    if (version === 'host') assert.equal(existsSync(current.database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
   }
 });
