@@ -1,0 +1,33 @@
+id: store-booking
+description: Room booking by the hour for signed-in users, where the store refuses an overlapping booking of the same room and a cancel transition frees the slot, with no handler code.
+tags: [booking, bookings, book, schedule, scheduling, reservation, reservations, appointment, slot, slots, room, rooms, calendar, availability, overlap, intervals, store, auth, extension, "409"]
+complexity: advanced
+capabilities: [enabled, extension, methods, policies.extensions]
+targets: {self-hosted: conditional, cloudflare: refused, aws: refused, vercel: refused, static: refused}
+routes: 1
+services:
+  - name: store extension
+    description: The store (`urlcode extensions add store`) keeps the bookings in its SQLite database outside the project and checks every write against the declared intervals.
+  - name: auth extension
+    description: "A principal-providing auth extension behind `auth: true` (`urlcode extensions add auth` in a real site); the README shows the stand-in bearer principal the bundled fixtures sign in with."
+grants:
+  - kind: extension
+    description: The host registers the project revision it is pinned to. `--local-review` pins validate, test and audit to the current revision for one local run; serving needs the reviewed revision (--policy or PROJECT_SHA256).
+  - kind: origin
+    description: The canonical origin passed as --origin when serving; a local review uses http://localhost. Cross-origin writes are refused.
+inputs:
+  - name: rooms
+    file: urlcode.yaml
+    description: The bookable rooms (the room enum), the hour pattern on start and end, and the booking limits.
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project . --host-file /operator/host.mjs --local-review
+    - urlcode test --project . --host-file /operator/host.mjs --local-review
+    - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --local-review
+behavior:
+  - POST /api/bookings with a room and whole-hour UTC start and end answers 201 with status booked, owned by the caller
+  - a booking that overlaps a booked booking of the same room, whoever owns it, answers 409 interval_conflict; an adjacent booking or another room is accepted
+  - POST /api/bookings/<id>/cancel moves booked to cancelled and frees the slot for anyone to book; a body cannot set the status (422)
+  - a request without a signed-in principal answers 401; a caller never sees or changes another owner's booking (404)

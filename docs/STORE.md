@@ -756,8 +756,10 @@ claims as they are and moves membership with the owned records.
 **One process and several.** Every guarantee here is a SQLite `BEGIN
 IMMEDIATE` transaction on one database file, so it holds for every connection
 to that file: the tests race retries and approvals from separate threads, each
-with its own connection, and run the declaration fence across real child
-processes. Several serving processes on one host, on one release, are
+with its own connection, run the declaration fence across real child
+processes, and race idempotency, a transition, transfers and intervals across
+three real `urlcode serve` processes over HTTP
+([the harness](#what-the-multi-process-harness-proves)). Several serving processes on one host, on one release, are
 supported ([several serving processes](#several-serving-processes-on-one-host));
 several hosts, network filesystems and clustered workers are unsupported, and
 nothing spans the store and another database.
@@ -780,8 +782,9 @@ The #835 counterexamples, and what serves each:
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
 [#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
-of this contract: supported multi-process serving (with crash and disk-full evidence beyond injected
-failures), sorted lists in SQL, and measuring the plumbing and edit effort the
+of this contract: disk-full evidence for multi-process serving (the
+[harness](#what-the-multi-process-harness-proves) covers a `SIGKILL`, not a
+full disk), sorted lists in SQL, and measuring the plumbing and edit effort the
 scheduling and credit counterexamples save.
 
 
@@ -793,6 +796,8 @@ appointment slots, shifts. The store checks it inside every write's
 transaction, through an index, with no application code. It replaces the host
 transaction the scheduling counterexample of #835 needed, which could only
 see the caller's own records.
+The [`store-booking` recipe](../recipes/store-booking/README.md)
+(`urlcode recipes add store-booking`) is this declaration with fixtures.
 
 ```yaml
 collections:
@@ -1006,6 +1011,10 @@ Idempotency-Key: 5f0c...
   double-entry bookkeeping. An issuer's own negative record is refused
   deletion like any nonzero one, so the outstanding supply cannot be written
   off by deleting it.
+
+The [`store-credits` recipe](../recipes/store-credits/README.md)
+(`urlcode recipes add store-credits`) declares these wallets with an issuer
+and fixtures that fund, pay, refuse an overdraft and close every wallet at `0`.
 
 ### Who may debit whom
 
@@ -1717,9 +1726,10 @@ The supported topology is N `urlcode serve` processes or containers on **one
 host**, on distinct ports behind a proxy, all on **one release**, with the
 database on **local disk**. Every guarantee above is one `BEGIN IMMEDIATE`
 transaction, so it holds across processes. The tests race the invariants
-from threads, each with its own connection, and run the declaration fence and
-the host lease across real `node` child processes; the race suites do not yet
-run across processes. More processes do not add write throughput:
+from threads, each with its own connection, run the declaration fence and
+the host lease across real `node` child processes, and run the race suites
+across real `urlcode serve` processes
+([below](#what-the-multi-process-harness-proves)). More processes do not add write throughput:
 SQLite takes one writer at a time, and each commit's fsync blocks its
 process ([capacity](CAPACITY.md#measured-the-sqlite-store)). `node:cluster`
 workers, several hosts and network filesystems stay unsupported.
@@ -1780,6 +1790,66 @@ ack leaves the rows for the new holder. An event written in any process is
 drained within the holder's 1 second poll. `audit.flush()` waits for its own
 process's drain only, so in a process that does not hold the lease it does
 not wait for a peer's delivery.
+
+**Only the store detects another host.** The `store_servers` lease lives in
+the store database, so it guards only a site that runs the store. The audit
+extension refuses a network filesystem by the same `statfs` list, and the auth
+extension checks neither; neither keeps a lease of its own. A site running
+audit or auth without the store on two hosts is therefore not refused when
+`auth.sqlite` is shared through any filesystem, or `audit.sqlite` through one
+that list does not name or on macOS or Windows, where the check is skipped.
+It is still unsupported, for the same WAL and locking reasons: keep those
+files on one host's local disk
+([#941](https://github.com/jimhoyd-com/urlcode/issues/941)).
+
+**Per process, not per host.** Throttle counters, origin caches and metrics
+stay per process: a `throttle` quota across N processes allows up to N times
+the declared budget, each process fills its own cache, and each serves its
+own `/_urlcode/metrics`
+([capacity](CAPACITY.md#several-serving-processes-on-one-host)). Better
+Auth's sign-in limit is the exception: it counts in `auth.sqlite`, so it is
+one budget across the processes.
+
+#### What the multi-process harness proves
+
+`npm run test:multiprocess`
+([`test/multiprocess.integration.ts`](../test/multiprocess.integration.ts)),
+which CI runs on Linux in every code-lane run ([CI](CI.md#checking-this-repository)),
+starts three `urlcode serve` processes from the built CLI on distinct
+loopback ports. They serve one site whose `host.mjs` composes audit, auth and
+store over one data directory, and every collection declares `audit: true`
+behind `auth: true`. The harness asserts:
+
+- **Across the processes, released at once:** 240 interleaved transfers keep
+  the sum over the accounts at zero, with no account below its floor. Twelve
+  requests with one `Idempotency-Key` run the create once, and every other
+  answer replays that record. Of twelve claims of one ticket exactly one
+  transition wins. Of 24 overlapping bookings the committed ones never overlap.
+  An answer is either the documented refusal or a `503
+  storage_unavailable` that wrote nothing.
+- **One drainer, exactly once:** only one process holds the drain lease
+  throughout. Once the outbox is empty, `audit.sqlite` holds one event per
+  committed change and each event id once: one per created record, two per
+  committed transfer (counted by the retained `Idempotency-Key` claims) and one
+  per claimed ticket. They are stored in commit order: no event's `at` is
+  earlier than the one stored before it.
+- **No false 401:** 24 correct sign-ins spread over the processes run while
+  60 signed-in reads hit all three. Every sign-in answers `200`, `429` or
+  `503`, every read `200` or `503`, and at most the shared limit's remaining
+  budget signs in.
+- **`SIGKILL` mid-load:** the process holding the audit drain lease is killed
+  while all three write. A survivor takes the lease over and empties the
+  outbox, and a replacement process starts beside the dead one's lease row.
+  After the rest stop, `PRAGMA integrity_check` is `ok` on `store.sqlite`,
+  `auth.sqlite` and `audit.sqlite`, the sum and non-overlap invariants hold,
+  and the exactly-once count above still matches.
+
+It does not prove throughput, behaviour under a full disk or a power loss,
+long-running WAL growth, or anything about several hosts. Its load lasts
+seconds, so it is not a soak test, and it runs on CI's disk rather than a
+production one. The declaration fence and the host lease are proved
+separately in
+[`packages/store/test/multiprocess.test.ts`](../packages/store/test/multiprocess.test.ts).
 
 ### Durability
 
@@ -1984,7 +2054,7 @@ operations as one database transaction: see
 
 ## Not built yet
 
-SQL ordering for sorted lists and supported multi-process serving are not
+SQL ordering for sorted lists is not
 built (a [declared transfer](#declared-transfers) moves value between two
 records; holds still need a host transaction)
 ([#902](https://github.com/jimhoyd-com/urlcode/issues/902); the

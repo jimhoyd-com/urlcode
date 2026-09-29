@@ -235,7 +235,7 @@ test('the order extensions are named in never changes the site', { timeout: 6000
 // #834: the generated npm scripts of an auth site reach validation with operator context and no source searching.
 // `init --with auth` is init followed by `extensions add auth` in the new site; the two steps are run apart here only
 // so the site's core is the packed checkout rather than the registry release of the same version.
-test('an auth site\'s generated validate script names one complete command when context is missing, and passes with it', { timeout: 900000 }, async t => {
+test('an auth site\'s generated validate script reviews locally with no context, serving names one complete command when context is missing, and a policy is used as given', { timeout: 900000 }, async t => {
   const { dir } = await site(t);
   const added = await urlcode(t, dir, ['extensions', 'add', 'auth']);
   assert.equal(added.status, 0, added.stderr);
@@ -246,12 +246,16 @@ test('an auth site\'s generated validate script names one complete command when 
     : spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', '--silent', script], { cwd: dir, encoding: 'utf8', timeout: 300000, env: { ...ambient, ...env }, shell: process.platform === 'win32' });
   const refusal = (stderr: string) => JSON.parse(stderr.trim().split('\n').filter(line => line.startsWith('{')).at(-1)!) as { message: string; code: string; command: string };
 
-  // No context at all: one command, the actual invocation plus a placeholder for each missing value.
-  const bare = npmScript('validate', {});
+  // No context at all: the generated validate script reviews the current revision locally (#932), with no pin or origin.
+  const local = npmScript('validate', {});
+  assert.equal(local.status, 0, local.stdout + local.stderr);
+  assert.match(local.stderr, /"event":"local_review"/);
+  // Serving still refuses: one command, the actual invocation plus a placeholder for each missing value.
+  const bare = npmScript('start', {});
   assert.notEqual(bare.status, 0);
   const missing = refusal(bare.stderr);
   assert.equal(missing.code, 'revision-pin-required', bare.stderr);
-  assert.match(missing.command, / validate --local --project app --host-file host\.mjs --origin <https:\/\/your\.site> --policy <operator\/policy\.json>$/);
+  assert.match(missing.command, / serve --project app --host-file host\.mjs --origin <https:\/\/your\.site> --policy <operator\/policy\.json>$/);
   assert.equal(missing.message.split('Run: ').length, 2, 'exactly one command');
   assert.ok(missing.message.includes(`Run: ${missing.command} where`), missing.message);
   assert.match(missing.message, /URLCODE_ORIGIN and URLCODE_POLICY/);
@@ -268,7 +272,7 @@ test('an auth site\'s generated validate script names one complete command when 
   assert.notEqual(noOrigin.status, 0);
   const origin = refusal(noOrigin.stderr);
   assert.equal(origin.code, 'origin-required', noOrigin.stderr);
-  assert.match(origin.command, / validate --local --project app --host-file host\.mjs --origin <https:\/\/your\.site>$/);
+  assert.match(origin.command, / validate --local --project app --host-file host\.mjs --local-review --origin <https:\/\/your\.site>$/);
 
   // Both, from the environment the unchanged scripts inherit: validation passes.
   const context = { URLCODE_ORIGIN: 'https://site.example', URLCODE_POLICY: 'operator/policy.json' };

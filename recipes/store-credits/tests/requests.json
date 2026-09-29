@@ -1,0 +1,28 @@
+[
+  {"path": "/api/wallets", "status": 401},
+  {"steps": [
+    {"path": "/api/wallets", "method": "POST", "headers": {"authorization": "Bearer treasurer", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"name\":\"mint\"}", "status": 201, "expectHeaders": {"cache-control": "no-store"}, "capture": {"mint": {"json": "id"}}},
+    {"path": "/api/wallets", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"name\":\"alice\"}", "status": 201, "capture": {"alice": {"json": "id"}}},
+    {"path": "/api/wallets", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"name\":\"bob\"}", "status": 201, "capture": {"bob": {"json": "id"}}},
+    {"path": "/api/wallets/transfers/issue", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{alice}}\",\"to\":\"{{bob}}\",\"amount\":5}", "status": 403},
+    {"path": "/api/wallets/transfers/issue", "method": "POST", "headers": {"authorization": "Bearer treasurer", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{mint}}\",\"to\":\"{{alice}}\",\"amount\":100}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/wallets/transfers/pay", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{alice}}\",\"to\":\"{{bob}}\",\"amount\":30}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/wallets/transfers/pay", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{alice}}\",\"to\":\"{{bob}}\",\"amount\":500}", "status": 409},
+    {"path": "/api/wallets/transfers/pay", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{alice}}\",\"to\":\"{{bob}}\",\"amount\":1.5}", "status": 422},
+    {"path": "/api/wallets/transfers/pay", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{alice}}\",\"to\":\"{{bob}}\",\"amount\":1}", "status": 404},
+    {"path": "/api/wallets/{{alice}}", "headers": {"authorization": "Bearer alice"}, "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/wallets/{{alice}}", "method": "HEAD", "headers": {"authorization": "Bearer alice"}, "status": 200, "expectBody": ""},
+    {"path": "/api/wallets/{{alice}}", "method": "PATCH", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"balance\":1000}", "status": 422},
+    {"path": "/api/wallets/{{alice}}", "method": "PATCH", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"name\":\"alice's\"}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/wallets/{{alice}}", "method": "PUT", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"name\":\"alice\"}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/wallets/{{alice}}", "method": "DELETE", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 409},
+    {"path": "/api/wallets/transfers/pay", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{bob}}\",\"to\":\"{{mint}}\",\"amount\":30}", "status": 200},
+    {"path": "/api/wallets/transfers/pay", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"from\":\"{{alice}}\",\"to\":\"{{mint}}\",\"amount\":70}", "status": 200},
+    {"path": "/api/wallets", "headers": {"authorization": "Bearer treasurer"}, "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/wallets/{{alice}}", "method": "DELETE", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 204, "expectBody": ""},
+    {"path": "/api/wallets/{{bob}}", "method": "DELETE", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}"}, "status": 204, "expectBody": ""},
+    {"path": "/api/wallets/{{mint}}", "method": "DELETE", "headers": {"authorization": "Bearer treasurer", "origin": "{{origin}}"}, "status": 204, "expectBody": ""}
+  ]},
+  {"path": "/api/wallets", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"name\":\"rich\",\"balance\":50}", "status": 422},
+  {"path": "/api/wallets/transfers/pay", "headers": {"authorization": "Bearer alice"}, "status": 405}
+]

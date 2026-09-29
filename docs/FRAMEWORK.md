@@ -298,7 +298,10 @@ For auth, `npx urlcode-auth migrate` then creates Better Auth's tables and
 `npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id). `extensions add` prints the project revision the host must be pinned to
 (the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
 [the revision pin](EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
-needs an explicit operator reapproval.
+needs an explicit operator reapproval before serving. The site's check scripts
+(`npm run validate`, `npm test`, `npm run audit`) pass `--local-review` and
+review each edit locally without one
+([the local review loop](EXTENSIONS.md#the-local-review-loop)).
 
 ## Rules an agent must follow
 
