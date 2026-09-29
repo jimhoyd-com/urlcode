@@ -1,0 +1,19 @@
+{
+  "name": "urlcode-ecosystem-proof",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Conformance fixture (#841): an npm library used directly from a trusted route, and URLCode hosted inside Hono.",
+  "scripts": {
+    "validate": "urlcode validate --local --project app --host-file host.mjs --origin http://localhost:4190",
+    "test": "urlcode test --project app --host-file host.mjs --origin http://localhost:4190",
+    "start": "urlcode serve --project app --host-file host.mjs --origin http://localhost:4190 --port 4190",
+    "start:hono": "node hono/server.mjs --origin http://localhost:4191 --port 4191"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@jimhoyd/urlcode": "file:../..",
+    "hono": "4.13.10",
+    "zod": "4.6.5"
+  }
+}

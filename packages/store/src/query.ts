@@ -1,4 +1,4 @@
-import { StoreError } from './collection.ts';
+import { StoreError, checkValue } from './collection.ts';
 import type { FieldSpec, NormalizedSpec, Scalar, StoredRecord } from './collection.ts';
 
 /** Bounds on what a list request may ask for. A value the caller can make larger than this never reaches a comparison. */
@@ -75,10 +75,12 @@ export function parseListQuery(spec: NormalizedSpec, params: URLSearchParams): L
     const field = own(spec.fields, key) && spec.filterable.includes(key) ? spec.fields[key] : undefined;
     if (!field) { errors[named(key)] = 'is not a filterable field'; continue; }
     const value = filterValue(field, params.get(key)!);
-    // A value the field can never hold is refused rather than answered with an empty page (#866).
-    if (value === undefined) errors[key] = `must be a valid ${field.type}`;
-    else if (field.enum && !field.enum.includes(value as string | number)) errors[key] = 'is not one of the allowed values';
-    else filters.push([key, value]);
+    // A value the field can never hold (outside its enum, #866; its minimum/maximum, length limits or format, #875) is
+    // refused rather than answered with an empty page. The write path's own check judges it, and its message names the
+    // declared bound, never the value.
+    const invalid = value === undefined ? `must be a valid ${field.type}` : checkValue(field, value);
+    if (invalid !== undefined) errors[key] = invalid;
+    else filters.push([key, value!]);
   }
   if (filters.length > QUERY_LIMITS.filters) errors.filter = `at most ${QUERY_LIMITS.filters} filters per request`;
   let sort: SortKey | undefined;

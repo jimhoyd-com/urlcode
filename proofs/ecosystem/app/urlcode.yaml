@@ -1,0 +1,51 @@
+version: "1"
+extensions:
+  # An operator extension registered in ../host.mjs: plain host code, no package, descriptor or catalog entry. It
+  # reports the origin, client address and same-origin verdict URLCode computed, so both hosting modes compare.
+  probe: {version: "1", config: {}}
+  # A Hono application the operator mounts (host.mjs); the application only declares where.
+  hono: {version: "1", config: {}}
+routes:
+  /app/api/validate:
+    description: Validates a sign-up payload with zod's own API, imported directly from node_modules.
+    methods: [POST]
+    function: functions/validate.mjs
+  /app/api/echo:
+    description: Echoes what the function saw of the request and answers with two cookies and a custom header.
+    methods: [GET, POST]
+    function: functions/echo.mjs
+  /app/api/stream:
+    description: A streamed body in three chunks.
+    stream: true
+    function: functions/stream.mjs
+  /app/api/who/{name}:
+    description: A declarative JSON response with a validated path parameter; no code.
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string, maxLength: 16, pattern: "^[a-z]+$"}}
+    respond:
+      json: {hello: someone}
+  /app/go:
+    description: A declarative redirect to a path under the same prefix.
+    redirect: {url: /app/api/who/ada, status: 302}
+  /app/probe/*:
+    description: The operator probe extension's mount.
+    extension: probe
+    methods: [GET, POST]
+  # The reverse direction, application side: one Hono app behind trusted function routes. A function route has no
+  # wildcard, so every path shape the sub-app serves is declared here and each one is visible to review.
+  /app/sub/hello:
+    description: Hono sub-application, GET /hello.
+    function: functions/hono-subapp.mjs
+  /app/sub/items:
+    description: Hono sub-application, POST /items.
+    methods: [POST]
+    function: functions/hono-subapp.mjs
+  /app/sub/items/{id}:
+    description: Hono sub-application, GET /items/:id; the id is also validated by URLCode.
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, maxLength: 16, pattern: "^[0-9]+$"}}
+    function: functions/hono-subapp.mjs
+  /app/hono/*:
+    description: The reverse direction, operator side - a whole Hono app mounted as the host's `hono` extension.
+    extension: hono
+    methods: [GET, POST]

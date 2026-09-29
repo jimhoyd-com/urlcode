@@ -88,6 +88,8 @@ const HIGH_IMPACT: readonly RegExp[] = [
   /^test\/addons\.integration\.ts$/,
   // The embedded-provider proofs (#843, and Auth.js as the second provider for #841): their packed-consumer suites run in the same job.
   /^test\/(?:private-requests|authjs-provider)\.integration\.ts$/,
+  // The ecosystem conformance fixture (#841): npm library use and a Hono host, packed consumer, same job.
+  /^test\/ecosystem\.integration\.ts$/,
   /^proofs\//,
   /^scripts\/test-addons[^/]*$/,
   /^packages\/[^/]+\/test\/cleanup\.ts$/,

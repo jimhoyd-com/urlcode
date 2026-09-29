@@ -234,13 +234,13 @@ export function analyzeProjectCapabilities(loaded: LoadedDocument, target: strin
 }
 
 /** Analyze normalized route semantics without exporting validators, resources or resolved secrets. */
-export function analyzeCompiledCapabilities(document: ProjectDocument, compiled: CompiledRouteTable, target: string, registrations?: readonly RuntimeExtension[]): CompatibilityReport {
+export function analyzeCompiledCapabilities(document: ProjectDocument, compiled: CompiledRouteTable, target: string, registrations?: readonly RuntimeExtension[], declared?: DeclaredExtensionTargets): CompatibilityReport {
   function* entries(): Generator<readonly [string, CompiledRoute]> {
     for (const route of compiled.exact.values()) yield [route.pattern, route];
     for (const bucket of compiled.byLength.values()) for (const route of bucket) yield [route.pattern, route];
     for (const route of compiled.mounts) yield [route.pattern, route];
   }
-  return analyze(document, entries(), target, registrations);
+  return analyze(document, entries(), target, registrations, declared);
 }
 
 export function assertTargetCompatibility(report: CompatibilityReport): void {

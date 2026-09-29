@@ -30,7 +30,7 @@ test('reassign reports first on --dry-run, then moves only the --from records in
   await write('tasks', [owned('t1', 'apikey:old'), owned('t2', 'bob')]);
   const before = { notes: await read('notes'), tasks: await read('tasks'), board: await read('board') };
   const dry = await reassignOwner(data, { from: 'apikey:old', to: 'alice', collections, dryRun: true });
-  assert.deepEqual(dry, { from: 'apikey:old', to: 'alice', dryRun: true, moved: 3, collections: [
+  assert.deepEqual(dry, { from: 'apikey:old', to: 'alice', dryRun: true, moved: 3, auditEvents: 0, collections: [
     { collection: 'notes', moved: 2, toBefore: 1, toAfter: 3, maxRecordsPerOwner: null },
     { collection: 'tasks', moved: 1, toBefore: 0, toAfter: 1, maxRecordsPerOwner: 3 },
   ], memberships: [] });

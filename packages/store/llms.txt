@@ -41,9 +41,12 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `increments` counter, plus a route `<mount>/*: {extension: store, methods: [GET, HEAD]}`; no
   function. See the README's "Short links" example.
 - `urlcode-store reassign --database <file> --project <app> --from <id>
-  --to <id> [--collection <name>] [--dry-run]` moves one principal's records to another in one transaction (it may run
-  while the server serves); it refuses as a whole if `--to` would exceed a collection's `maxRecordsPerOwner`, and moves
-  `--from`'s membership in every `membership: true` collection with the records.
+  --to <id> [--collection <name>] [--dry-run] [--actor <id>]` moves one principal's records to another in one
+  transaction (it may run while the server serves); it refuses as a whole if `--to` would exceed a collection's
+  `maxRecordsPerOwner` or an audited collection's outbox backlog, records each moved record
+  (`store.record.reassigned`) on an `audit: true` collection, and moves `--from`'s membership in every
+  `membership: true` collection with the records. `--actor` (default `operator`) is operator-asserted, not
+  authenticated; `ownerless-assign`/`ownerless-delete` take `--project` and `--actor` and record the same way.
 - `urlcode-store members add|remove|list --database <file> --project <app> --collection <name> [--principal <id>]`
   maintains a membership collection (no HTTP API exists for it). `audit: true` on it records every added and removed
   member in the same transaction. `readers.showOwner: true` shows the owner's principal id as `_owner` on the readers
@@ -65,7 +68,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `Idempotency-Key` replays the first answer's status with the record as it is now, and the same key on a
   different request is `422`.
 - `sortable`/`filterable` field lists are declared per collection; `?sort=`/`?<field>=` queries
-  against an undeclared name, or a filter value outside the field's `enum`, are `400`s, not silently ignored.
+  against an undeclared name, or a filter value the field can never hold (outside its `enum`, `minimum`/`maximum`,
+  `minLength`/`maxLength` or `format`), are `400`s, not silently ignored.
 - The database is operator-owned, outside the project, on local disk, not a network
   filesystem; the store creates its directory `0700` and the file `0600`.
 - The `store-schema` artifact is the configuration schema and an example as inert JSON:

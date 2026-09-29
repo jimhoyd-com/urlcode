@@ -9,7 +9,8 @@
  *
  * On a collection declared `audit: true` (#866) each added or removed member also inserts its
  * `store.membership.added`/`removed` event into the outbox in the same transaction, validated by audit's own pure
- * validator, with the actor `operator`. The serving process's audit drain picks it up on its next poll.
+ * validator, with the actor `operator` or the operator's `--actor`. The serving process's audit drain picks it up on its
+ * next poll.
  */
 import { isAbsolute } from 'node:path';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
@@ -18,8 +19,18 @@ import { Collection, StoreError } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec } from './collection.ts';
 import { openStoreDatabase } from './database.ts';
 
-/** The actor of every change made through the operator path. */
+/** The actor of a change made through the operator path when the operator names none (`--actor`). */
 export const OPERATOR_ACTOR = 'operator';
+/**
+ * The audit actor for an operator change (#875): `actor` when given, else `operator`. It must be a principal id, like
+ * every other actor the store records. It is operator-asserted, never authenticated: whoever can run the CLI against
+ * the database can write any id here, so it attributes a change without proving who made it.
+ */
+export function operatorActor(actor: string | undefined): string {
+  if (actor === undefined) return OPERATOR_ACTOR;
+  if (typeof actor !== 'string' || !principalIdPattern.test(actor)) throw new Error('--actor must be a principal id: 1 to 128 ASCII letters, digits, ".", "_", ":" or "-", starting with a letter or digit');
+  return actor;
+}
 /**
  * Audit's pure event validator, for an operator command that writes events into the outbox itself (no audit instance
  * runs in the CLI). Loaded only when a collection it touches declares `audit: true`; audit is an optional peer.
@@ -34,6 +45,8 @@ export interface MembershipOptions {
   collections: Record<string, CollectionSpec>;
   /** A declared collection with `membership: true`. */
   collection: string;
+  /** The audit actor recorded for the change (a principal id; default `operator`). Operator-asserted, not authenticated. */
+  actor?: string;
 }
 export interface MemberOptions extends MembershipOptions {
   /** The member's principal id, exactly as the principal provider sets it (for auth, the Better Auth user id). */
@@ -64,20 +77,20 @@ const principalOf = (principal: string): string => {
 
 /** Adds `principal` to the membership collection; `changed` is false when it was already a member. Creates the database when absent. */
 export async function addMember(database: string, options: MemberOptions): Promise<MemberReport> {
-  const principal = principalOf(options.principal);
+  const principal = principalOf(options.principal), actor = operatorActor(options.actor);
   return withCollection(database, options, true, collection => {
-    try { collection.create({ [collection.spec.key!]: principal }, undefined, undefined, OPERATOR_ACTOR); }
+    try { collection.create({ [collection.spec.key!]: principal }, undefined, undefined, actor); }
     catch (error) { if (error instanceof StoreError && error.code === 'key_exists') return { collection: collection.name, principal, changed: false }; throw error; }
     return { collection: collection.name, principal, changed: true };
   });
 }
 /** Removes `principal` from the membership collection; `changed` is false when it was not a member. */
 export async function removeMember(database: string, options: MemberOptions): Promise<MemberReport> {
-  const principal = principalOf(options.principal);
+  const principal = principalOf(options.principal), actor = operatorActor(options.actor);
   return withCollection(database, options, false, collection => {
     let id: string;
     try { id = collection.getByKey(principal).id as string; } catch (error) { if (error instanceof StoreError && error.status === 404) return { collection: collection.name, principal, changed: false }; throw error; }
-    try { collection.remove(id, undefined, undefined, undefined, OPERATOR_ACTOR); } catch (error) { if (error instanceof StoreError && error.status === 404) return { collection: collection.name, principal, changed: false }; throw error; }
+    try { collection.remove(id, undefined, undefined, undefined, actor); } catch (error) { if (error instanceof StoreError && error.status === 404) return { collection: collection.name, principal, changed: false }; throw error; }
     return { collection: collection.name, principal, changed: true };
   });
 }
