@@ -6739,5 +6739,19 @@ For a public arbitrary-code/multi-tenant service, require independent security
 review plus process/VM-level isolation and operational controls before launch.
 Do not advertise this release as an audited hostile multi-tenant hosting platform.
 
+**Node 24 and `sandbox: true`.** Node 24.x up to at least v24.21.0 carries a V8 bug
+([nodejs/node#66366](https://github.com/nodejs/node/issues/66366)): when worker
+threads running WebAssembly are terminated, as the sandbox pool does on a guest
+deadline or failure, V8 can double-free a wasm-to-JS import wrapper and abort
+the **whole process** with `Check failed: jit_page_->allocations_.erase(addr) == 1`.
+Guest deadlines are reachable from request input. Until a Node 24 release
+includes the backport ([nodejs/node#66376](https://github.com/nodejs/node/pull/66376)),
+start a Node 24 server that serves `sandbox: true` routes with
+`node --no-wasm-code-gc`. The flag only delays reclaiming unused wasm machine
+code, and sandbox limits are unchanged. It must be on the command line, because
+`NODE_OPTIONS` does not accept it. Alternatively, run Node 22 or 26, where the
+bug was not reproduced upstream. The repository's test runner passes the flag
+(`npm run test:shard`); see #708.
+
 Implementation references: [QuickJS/WASM project](https://github.com/justjake/quickjs-emscripten)
 and its [runtime isolation/limits API](https://github.com/justjake/quickjs-emscripten/blob/main/doc/quickjs-emscripten/classes/QuickJSRuntime.md).
