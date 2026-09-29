@@ -154,8 +154,8 @@ function relocate(schema:unknown,defsBase:string):unknown {
 }
 /**
  * The request body a method's policy describes, registering its schema as a component. An OpenAPI `$ref` of
- * `#/$defs/x` would resolve against the whole document, so each `$defs` entry becomes its own component and the
- * references are rewritten to it; every other keyword is the author's schema as written.
+ * `#/$defs/x` would resolve against the whole document, so each `$defs` entry becomes its own component
+ * (`<component>_<name>`) and the references are rewritten to it; every other keyword is the author's schema as written.
  */
 function requestBody(policy:RequestBodyPolicy,name:string,schemas:Record<string,unknown>):Json|undefined {
   if(policy.maxBytes===0)return undefined;
@@ -164,9 +164,17 @@ function requestBody(policy:RequestBodyPolicy,name:string,schemas:Record<string,
   if(!types.length)return undefined;
   let schema:unknown;
   if(policy.schema){
-    const component=`${name}RequestBody`,{$defs,...root}=policy.schema as Json;
-    for(const [def,value] of Object.entries(($defs??{}) as Json))schemas[`${component}_${def}`]=relocate(value,`${component}_`);
-    schemas[component]=relocate(root,`${component}_`);
+    // A named schema (RIM-SCHEMA-001) is one component under its own name, written the first time an operation uses
+    // it and referenced by every operation that does; an inline schema is its operation's own component.
+    const component=policy.schemaName??`${name}RequestBody`;
+    if(policy.schemaName===undefined||!Object.hasOwn(schemas,component)){
+      const {$defs,...root}=policy.schema as Json,add=(key:string,value:unknown):void=>{
+        if(Object.hasOwn(schemas,key))throw new ConfigError(`OpenAPI component ${key} would be written twice: rename the named schema (top-level schemas:) or the $defs entry that produces it`,{code:'openapi-component-clash'});
+        schemas[key]=value;
+      };
+      for(const [def,value] of Object.entries(($defs??{}) as Json))add(`${component}_${def}`,relocate(value,`${component}_`));
+      add(component,relocate(root,`${component}_`));
+    }
     schema={$ref:`#/components/schemas/${component}`};
   }else if(policy.format==='text')schema={type:'string'};
   const content:Json={};

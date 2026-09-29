@@ -58,6 +58,11 @@ export const packageDataPath = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\/){0,7}[A-Za-z0-9
 export interface AddonDescriptor {
   kind: AddonKind;
   name: string;
+  /**
+   * The URLCode extension contract (`extensionContract`) the package is built for. Required; any value other than
+   * the running core's is refused (`contractProblem`). The build writes it for first-party packages.
+   */
+  contract: number;
   description: string;
   requires: string[];
   /**
@@ -87,6 +92,22 @@ export interface AddonDescriptor {
 }
 
 export const addonNamePattern = /^[a-z][a-z0-9-]{0,63}$/;
+/**
+ * The URLCode extension contract this core implements (#844): one integer for everything a package relies on from
+ * core — the `urlcode.json` descriptor format, `defineExtension`/`composeHost`, the registration and activation
+ * interfaces, and the `@jimhoyd/urlcode/extensions` exports. It moves only on a breaking change to that contract,
+ * never with core's own semver: a release that only adds to the contract keeps it. Every descriptor and every
+ * `defineExtension` definition declares the contract it was built for as `contract`, and core refuses any other
+ * value by name at `extensions add`/`artifacts add`, `list --strict`, static `validate` and activation.
+ */
+export const extensionContract = 1;
+/** Why a package's declared `contract` is missing or not this core's, naming both; undefined when they agree. */
+export function contractProblem(declared: unknown, who: string): string | undefined {
+  if (!isContractVersion(declared)) return `${who} must declare contract, the URLCode extension contract it is built for (this core implements ${extensionContract})`;
+  return declared === extensionContract ? undefined : `${who} is built for URLCode extension contract ${declared}, but this core implements extension contract ${extensionContract}; install a version of it built for contract ${extensionContract}, or a core that implements contract ${declared}`;
+}
+/** A positive integer: the only shape a declared `contract` takes. */
+export const isContractVersion = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
 /**
  * The deployment targets an extension can declare (`ExtensionDefinition.targets`, `RuntimeExtension.targets`). A
  * Worker (cloudflare) and static hosting run no extension, so neither can be declared.
@@ -172,11 +193,12 @@ function assertDocuments(documents: unknown, source: string): asserts documents 
 
 export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   assert(isRecord(raw) && (raw.kind === 'extension' || raw.kind === 'artifact') && typeof raw.name === 'string' && addonNamePattern.test(raw.name) && typeof raw.description === 'string', `${source} is not an add-on descriptor`);
+  assert(isContractVersion(raw.contract), `${source}: contract must be the URLCode extension contract the package is built for, a positive integer (this core implements ${extensionContract})`);
   assert(Array.isArray(raw.requires) && raw.requires.every(item => typeof item === 'string'), `${source}: requires must be a list of names`);
   assert(raw.uses === undefined || Array.isArray(raw.uses) && raw.uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== raw.name && !(raw.requires as unknown[]).includes(item)) && new Set(raw.uses).size === raw.uses.length, `${source}: uses must be a list of other extension names, disjoint from requires`);
   if (raw.agent !== undefined) assertAgentTooling(raw.agent, source);
   if (raw.kind === 'artifact') {
-    assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension contract`);
+    assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension schema, policySchema, hooks, authoring or uses`);
     assert(raw.targets === undefined && raw.providesPrincipal === undefined, `${source}: an artifact descriptor declares no targets and provides no principal`);
     if (raw.documents !== undefined) assertDocuments(raw.documents, source);
   } else {
@@ -209,7 +231,7 @@ export interface AddonCatalog { format: 1; scope: 'release'; version: string; ad
 /** One add-on's signed descriptor and the package that carries it. */
 export interface AddonCatalogSource { descriptor: unknown; package: string; version: string; source: string }
 
-const entryOf = (descriptor: AddonDescriptor, pkg: string, version: string): AddonCatalogEntry => ({
+const entryOf = (descriptor: Omit<AddonDescriptor, 'contract'>, pkg: string, version: string): AddonCatalogEntry => ({
   name: descriptor.name, kind: descriptor.kind, package: pkg, version, description: descriptor.description, requires: [...descriptor.requires],
   ...(descriptor.uses?.length ? { uses: [...descriptor.uses] } : {}),
   ...(descriptor.targets ? { targets: [...descriptor.targets] } : {}),

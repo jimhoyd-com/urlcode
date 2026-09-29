@@ -15,6 +15,7 @@ import { assert, ConfigError, revisionPinHint, routeError } from './errors.ts';
 import { functionFile } from './config.ts';
 import { parameterName } from './match.ts';
 import type { CompiledParameter, ParameterSchema, Scalar, ValueRef } from './match.ts';
+import type { RequestBodyPolicies } from './http-policy.ts';
 import type { CompiledRedirect, CompiledRoute, CompiledRouteTable, LoadedDocument, RedirectConfig, RouteConfig } from './types.ts';
 // Re-exported so existing importers keep one entry point for routing.
 export { parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './match.ts';
@@ -84,6 +85,22 @@ export function assertExtensionMountsDisjoint(routes: Record<string, RouteConfig
     throw new ConfigError(`Extension mount ${owner.pattern} overlaps route ${other.pattern}: ${enclosing ? `${other.pattern} is itself an extension mount and owns every path below it; mount the extensions side by side` : `extension "${owner.config.extension}" answers /${owner.base.join('/')} and every path below it, so move ${other.pattern} outside it`}`, { code: 'extension-mount-overlap', route: owner.pattern, pointer: `/routes/${owner.pattern.replace(/~/g, '~0').replace(/\//g, '~1')}` });
   }
 }
+
+/**
+ * A route's body policies with each named schema (`schema: <name>`) replaced by the project's schema of that name, the
+ * name kept as `schemaName` for the OpenAPI export and the Worker build (RIM-SCHEMA-001). The authored route keeps the
+ * name; only the compiled route holds the schema.
+ */
+function namedBodySchemas(body: RequestBodyPolicies, schemas: LoadedDocument['schemas']): RequestBodyPolicies {
+  const out: RequestBodyPolicies = {};
+  for (const [method, policy] of Object.entries(body)) {
+    if (typeof policy?.schema !== 'string') { out[method] = policy; continue; }
+    const name = policy.schema, schema = schemas !== undefined && Object.hasOwn(schemas, name) ? schemas[name] : undefined;
+    assert(schema, `request.body.${method}.schema names schema ${name}, which the project does not declare under schemas`, { code: 'unknown-schema' });
+    out[method] = { ...policy, schema, schemaName: name };
+  }
+  return out;
+}
 export async function compileRoutes(loaded: LoadedDocument, bindings: Record<string, string | undefined>, permissions: BindingPermissions = {}, projectSha256?: string, extensions?: readonly Pick<RuntimeExtension,'name'|'cacheSensitive'|'capabilities'>[]): Promise<CompiledRouteTable> {
   const deadline=performance.now()+10000;
   let processed=0;
@@ -93,6 +110,11 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
   // Parameters take the same standard formats, with the same checks and caps, as a request body schema (body-formats.ts).
   ajv.addFormat('uuid', uuidFormat);
   for (const [name, check] of Object.entries(bodySchemaFormatChecks().formats)) ajv.addFormat(name, check);
+  // Every named schema compiles here, once, whether a route, an extension (an MCP tool) or nothing names it yet.
+  for (const [name, schema] of Object.entries(loaded.schemas ?? {})) {
+    try { compileBodySchema(schema); }
+    catch (error) { throw new ConfigError(`schemas.${name}: ${(error as Error).message.replace(/^Body schema /, '')}`, { code: 'invalid-schema', pointer: `/schemas/${name}` }, { cause: error }); }
+  }
   for (const [pattern, config] of Object.entries(loaded.routes)) {
     if (++processed % 64 === 0) await yieldTurn();
     assert(performance.now()<deadline, 'Route compilation deadline exceeded');
@@ -119,8 +141,10 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
           assert(typeof reason === 'string' && reason.trim().length > 0, `coveredElsewhere.${method} needs a non-empty reason`);
         }
       }
+      if (route.request?.body) route.request = { ...route.request, body: namedBodySchemas(route.request.body, loaded.schemas) };
       compileHttp(route);
-      // Compiled once here, before serving; a request only runs the compiled validator (RIM-HTTP-001).
+      // Compiled once here, before serving; a request only runs the compiled validator (RIM-HTTP-001). A named schema
+      // is one object shared by every route that names it, so it compiles once (compileBodySchema caches per object).
       for (const [method, policy] of Object.entries(route.request?.body ?? {})) if (policy?.schema) (route.bodySchemas ??= {})[method] = compileBodySchema(policy.schema);
       if (config.match) route.match = normalizeMatch(config.match);
       if (config.stream) {

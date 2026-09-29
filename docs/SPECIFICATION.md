@@ -150,6 +150,30 @@ anchors, aliases and merge keys stay rejected. Rules:
 
 See the [shared-blocks example](../examples/shared-blocks/README.md).
 
+## Named schemas
+
+An optional top-level `schemas` map (entry `urlcode.yaml` only; at most 64
+names matching `^[A-Za-z][A-Za-z0-9_]{0,63}$`, `Urlcode...` reserved) holds
+JSON Schema 2020-12 documents in the request body profile, written inline or
+loaded from a project file with `{file: <path>}`. A route's
+`request.body.<METHOD>.schema` and an extension's schema-valued setting (an mcp
+tool's `inputSchema`/`outputSchema`) name one with a string instead of
+repeating it. Rules:
+
+- An unknown name fails validation. The authored route keeps the name; the
+  compiled route holds the schema.
+- A schema file is read offline: relative `$ref`s to project JSON/YAML files
+  are followed and bundled into one self-contained schema; a remote reference,
+  an escape from the project, a symlink, a missing target, a cycle and the size
+  limits refuse the load.
+- Each schema is admitted and compiled like an inline body schema, once.
+- The schemas' content and each schema file's bytes are part of the project
+  revision.
+- A schema describes a JSON value only; authorization, parameter coercion,
+  display metadata and stored defaults are declared elsewhere.
+
+See [named schemas](HTTP.md#named-schemas) for the full contract.
+
 ## Policies
 
 Optional top-level `policies` and `profiles` keys, and `routes.<path>.policies`,

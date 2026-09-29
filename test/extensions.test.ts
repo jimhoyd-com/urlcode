@@ -368,7 +368,7 @@ async function principalSite(t:{after(fn:()=>unknown):void},providers:Record<str
   const app=join(site,'app');await mkdir(app);
   const describe=async(current:Record<string,boolean>)=>{for(const [name,provides]of Object.entries(current)){
     const directory=join(site,'node_modules','@example',`urlcode-${name}`);await mkdir(directory,{recursive:true});
-    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,requires:[],targets:['node','aws','vercel'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
+    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,contract:1,requires:[],targets:['node','aws','vercel'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
   }};
   await describe(providers);
   await writeFile(join(site,'package.json'),JSON.stringify({private:true,dependencies:Object.fromEntries(Object.keys(providers).map(name=>[`@example/urlcode-${name}`,'1.0.0']))}));
@@ -480,8 +480,8 @@ test('validate, test and dev print a host file load failure and an extension hos
   const files={
     topLevel:[`throw new Error('host.mjs setup failed:\\n  line two');\n`],
     missing:[`import '@jimhoyd/urlcode-not-installed/extension';\nexport default {};\n`],
-    hook:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',host(){throw new Error('CSRF key data/csrf.key must be 32 bytes\\n'+'x'.repeat(2000));}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
-    refusal:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',host(){return {registration:{name:'other'}};}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+    hook:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',contract:1,host(){throw new Error('CSRF key data/csrf.key must be 32 bytes\\n'+'x'.repeat(2000));}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+    refusal:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',contract:1,host(){return {registration:{name:'other'}};}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
   };
   const paths=Object.fromEntries(await Promise.all(Object.entries(files).map(async([name,[text]])=>{const file=join(dir,`${name}.mjs`);await writeFile(file,text!);return [name,file] as const;})));
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
@@ -522,7 +522,7 @@ test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and
   // host() sees only the revision in its context: no policy grants, no file path.
   await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
 const data=${JSON.stringify(data)};
-const demo={definition:{name:'demo',targets:data.targets,schema:data.schema,host(context){
+const demo={definition:{name:'demo',contract:1,targets:data.targets,schema:data.schema,host(context){
   if(Object.keys(context).sort().join()!=='get,projectSha256,site')throw new Error('unexpected host context '+Object.keys(context));
   return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned '+context.projectSha256};}};}}};
 }},options:{}};

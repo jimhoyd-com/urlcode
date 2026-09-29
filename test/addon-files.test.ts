@@ -9,10 +9,12 @@ import type { AddressInfo } from 'node:net';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { initSite } from '../packages/core/src/authoring.ts';
-import { addAddons, describeInstalledArtifacts, listAddons, outdatedAddons, removeAddon, verifyAddons } from '../packages/core/src/addon-install.ts';
+import { addAddons, describeInstalledArtifacts, listAddons, outdatedAddons, removeAddon, validateDeclaredExtensions, verifyAddons } from '../packages/core/src/addon-install.ts';
+import { composeHost } from '../packages/core/src/host.ts';
+import type { ExtensionEntry } from '../packages/core/src/extensions.ts';
 import { parseAddonManifest } from '../packages/core/src/addon-manifest.ts';
 import type { AddonManifest } from '../packages/core/src/addon-manifest.ts';
 import { inspectInstalledArtifact } from '../packages/core/src/artifact-inspect.ts';
@@ -285,4 +287,62 @@ test('naming an installed but unrecorded package to add again records its files,
   assert.deepEqual([again.added, again.upgraded], [[], []]);
   assert.deepEqual(await readFilesLock(dir), recorded);
   assert.deepEqual((await listAddons(dir, 'artifact', { manifest })).problems, []);
+});
+
+/** The files a refused add must leave exactly as they were. */
+const siteFiles = async (dir: string): Promise<string[]> => Promise.all(['package.json', 'package-lock.json', ADDON_FILES_LOCK, 'host.mjs', join('app', 'urlcode.yaml')].map(file => readFile(join(dir, file), 'utf8').catch(() => '')));
+/** Installs a tarball as plain npm would, outside `urlcode … add`: what an operator's own `npm install` leaves behind. */
+async function npmInstall(dir: string, name: string, file: string): Promise<void> {
+  const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
+  pkg.dependencies[name] = `file:${file}`;
+  await writeFile(join(dir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
+  const { execFileSync } = await import('node:child_process');
+  execFileSync(process.execPath, [process.env.URLCODE_NPM!, 'install', '--ignore-scripts'], { cwd: dir });
+}
+
+test('a package declares the URLCode extension contract it is built for: add, list --strict, validate and activation refuse any other by name (#844)', async t => {
+  const dir = await site(t), packages = await temp(t, 'urlcode-tarballs-');
+  // Compatible: the independent greeting package declares contract 1, the one this core implements.
+  assert.deepEqual((await addAddons(dir, 'extension', [await tarball(t, packages, 'greeting', '2.3.4')], { manifest })).added, ['greeting']);
+  const before = await siteFiles(dir);
+  // Incompatible: beyond declares contract 2. Refused from its descriptor, before its entry is imported, and rolled back.
+  const beyond = await tarball(t, packages, 'beyond', '3.0.0');
+  await assert.rejects(addAddons(dir, 'extension', [beyond], { manifest }), /Refusing @example\/urlcode-beyond: @example\/urlcode-beyond@3\.0\.0 is built for URLCode extension contract 2, but this core implements extension contract 1; install a version of it built for contract 1, or a core that implements contract 2/);
+  assert.deepEqual(await siteFiles(dir), before);
+  // An artifact descriptor declares its contract too.
+  const futureDocs = await tarball(t, packages, 'petstore-docs', '9.0.0', async pkgDir => { const file = join(pkgDir, 'urlcode.json'); await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')) as object, contract: 2 })); });
+  await assert.rejects(addAddons(dir, 'artifact', [futureDocs], { manifest }), /Refusing @example\/urlcode-petstore-docs: @example\/urlcode-petstore-docs@9\.0\.0 is built for URLCode extension contract 2, but this core implements extension contract 1/);
+  const noContract = await tarball(t, packages, 'greeting', '2.3.9', async pkgDir => { const file = join(pkgDir, 'urlcode.json'), { contract: _, ...rest } = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>; await writeFile(file, JSON.stringify(rest)); });
+  await assert.rejects(addAddons(dir, 'extension', [noContract], { manifest }), /carries no valid urlcode\.json extension descriptor \(.*contract must be the URLCode extension contract the package is built for, a positive integer \(this core implements 1\)\)/);
+  assert.deepEqual(await siteFiles(dir), before);
+
+  // Installed by plain npm, outside add, and declared by hand: list --strict, static validate and composeHost refuse it.
+  await npmInstall(dir, '@example/urlcode-beyond', beyond);
+  const yaml = join(dir, 'app', 'urlcode.yaml');
+  await writeFile(yaml, (await readFile(yaml, 'utf8')).replace('extensions:\n', 'extensions:\n  beyond:\n    version: "1"\n    config: {}\n'));
+  const report = await listAddons(dir, 'extension', { manifest });
+  assert.deepEqual(report.problems.filter(problem => /contract/.test(problem)), ['beyond: @example/urlcode-beyond is built for URLCode extension contract 2, but this core implements extension contract 1; install a version of it built for contract 1, or a core that implements contract 2']);
+  const strict = printer();
+  assert.equal(await runAddonCommand('extensions', 'list', [], { site: dir, strict: true }, strict.print), 1);
+  assert.match(String(strict.printed[0]), /Problem: beyond: @example\/urlcode-beyond is built for URLCode extension contract 2/);
+  assert.deepEqual(await validateDeclaredExtensions(join(dir, 'app')), ['extensions.beyond: the installed package is built for URLCode extension contract 2, but this core implements extension contract 1; install a version of it built for contract 1, or a core that implements contract 2']);
+  const entry = (await import(pathToFileURL(join(dir, 'node_modules', '@example', 'urlcode-beyond', 'extension.js')).href) as { default: () => ExtensionEntry }).default;
+  await assert.rejects(composeHost(pathToFileURL(join(dir, 'host.mjs')), [entry()]), /Extension beyond is built for URLCode extension contract 2, but this core implements extension contract 1/);
+});
+
+test('a package that bundles its own @jimhoyd/urlcode is refused at add and reported by list --strict: one core per site (#844)', async t => {
+  const dir = await site(t), packages = await temp(t, 'urlcode-tarballs-');
+  const bundling = await tarball(t, packages, 'greeting', '2.4.0', async pkgDir => {
+    await mkdir(join(pkgDir, 'node_modules', '@jimhoyd', 'urlcode'), { recursive: true });
+    await writeFile(join(pkgDir, 'node_modules', '@jimhoyd', 'urlcode', 'package.json'), JSON.stringify({ name: '@jimhoyd/urlcode', version: '0.0.1' }));
+    const file = join(pkgDir, 'package.json');
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')) as object, dependencies: { '@jimhoyd/urlcode': '0.0.1' }, bundleDependencies: ['@jimhoyd/urlcode'] }));
+  });
+  const before = await siteFiles(dir);
+  await assert.rejects(addAddons(dir, 'extension', [bundling], { manifest }), /npm installed a nested copy of URLCode \(node_modules\/@example\/urlcode-greeting\/node_modules\/@jimhoyd\/urlcode\); core and every add-on must resolve once, at the top level of the site/);
+  assert.deepEqual(await siteFiles(dir), before, 'the refused add is rolled back');
+  await npmInstall(dir, '@example/urlcode-greeting', bundling);
+  const strict = printer();
+  assert.equal(await runAddonCommand('extensions', 'list', [], { site: dir, strict: true }, strict.print), 1);
+  assert.match(String(strict.printed[0]), /Problem: nested copy node_modules\/@example\/urlcode-greeting\/node_modules\/@jimhoyd\/urlcode: core and every add-on must resolve once, at the top level/);
 });
