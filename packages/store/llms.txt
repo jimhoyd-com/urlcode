@@ -53,9 +53,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   integer bounds) fixes every slot's length and `step` puts both bounds on a grid from the epoch (`PT1H`: on the
   hour, UTC); a slot breaking either is `422 invalid_record`.
 - Edit and delete states: `editable: {status: [draft]}` / `deletable: {status: [draft, rejected]}` (a transition
-  `from` shape, each property in `readOnlyProperties`): outside them `PUT`/`PATCH` or `DELETE` answer `409
-  record_locked` and write nothing (HTTP, `StoreExports`, host transactions), after `If-Match`; creates, transitions,
-  increments and transfers are unaffected. `Allow` on a record and `allow: {<id>: [methods]}` on a list are the hint.
+  `from` shape, each property in `readOnlyProperties`): outside them `PUT`/`PATCH`, an increment or `DELETE` answer
+  `409 record_locked` and write nothing (HTTP, `StoreExports`, host transactions), after `If-Match`; creates,
+  transitions, transfers and a short link's click count are unaffected. `Allow` on a record and `allow: {<id>: [methods]}` on a list are the hint.
 - Unique values: `unique: [handle]` (strings, `maxLength` at most 128, no default, not readOnly, not set by a
   transition) is unique across every owner (`key` stays refused on owned collections); a duplicate create, `PUT` or
   `PATCH` is `409 value_taken`, naming the property only. It tells a caller the value is in use: public handles only.

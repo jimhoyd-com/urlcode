@@ -10,8 +10,6 @@ import type { ListQuery } from './query.ts';
 /** Names embedded in the SQL: the configuration schema admits only these. Anything else is served in memory. */
 const COLLECTION_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 const FIELD_NAME = /^[a-z][A-Za-z0-9_]{0,63}$/;
-/** A string holding a lone surrogate, which UTF-8 (and so the SQL key) cannot carry. */
-const LONE_SURROGATE = /\p{Cs}/u;
 
 /**
  * UTF-8 text as a key whose byte order is UTF-16 code unit order. The two orders differ only between the code points
@@ -48,14 +46,12 @@ const bind = (value: Scalar | null): string | number | null => typeof value === 
 
 /**
  * A row whose stored value is not what the key represents exactly: a type other than the declared one (a row written
- * under another declaration, #927), or a string holding a lone surrogate (JSON `\uD800` escape, which `->>` decodes to
- * bytes that do not order as UTF-16). A string's JSON text escapes nothing else as `\uD`, and a false positive (an
- * escaped backslash before `ud`) only costs the in-memory path.
+ * under another declaration, #927). A string holding an unpaired surrogate, which `->>` would decode to bytes that do
+ * not order as UTF-16, is not one: the store refuses it at every write and at activation (#988), so no row holds it.
  */
 function anomaly(spec: NormalizedSpec, field: string): string {
-  const type = `json_type(data, '$.${field}')`, declared = spec.records.properties[field]!.type;
-  if (declared === 'string') return `${type} NOT IN ('text', 'null') OR instr(data -> '$.${field}', '\\ud') > 0 OR instr(data -> '$.${field}', '\\uD') > 0`;
-  return `${type} NOT IN (${declared === 'boolean' ? "'true', 'false'" : "'integer', 'real'"}, 'null')`;
+  const declared = spec.records.properties[field]!.type;
+  return `json_type(data, '$.${field}') NOT IN (${declared === 'string' ? "'text'" : declared === 'boolean' ? "'true', 'false'" : "'integer', 'real'"}, 'null')`;
 }
 
 /**
@@ -86,14 +82,13 @@ export function listPlan(name: string, spec: NormalizedSpec): ListPlan | undefin
 export interface ListedRow { id: string; owner: string | null; key: string | null; created_at: string; updated_at: string; data: string }
 
 /**
- * One sorted or filtered page in SQL, or `undefined` when the in-memory path must answer it: a cursor or filter string
- * holding a lone surrogate, or an anomalous row anywhere in the collection. `scope` is `listIn`'s: a principal (the
+ * One sorted or filtered page in SQL, or `undefined` when the in-memory path must answer it: an anomalous row anywhere
+ * in the collection. A filter or cursor string never holds an unpaired surrogate: `URLSearchParams` decodes to
+ * well-formed text and `parseListQuery` refuses such a cursor (#988). `scope` is `listIn`'s: a principal (the
  * caller's own records), `undefined` (the whole shared collection) or `null` (every owned record, a readers mount).
  * The page is what `runList` answers for the same rows: the same order, `total`, cursors and `next`.
  */
 export function listInSql(db: StoreDatabase, plan: ListPlan, query: ListQuery, scope: string | undefined | null, columns: string, parse: (row: ListedRow) => StoredRecord): { items: StoredRecord[]; total: number; next?: string | number } | undefined {
-  const strings = [...query.filters.map(([, value]) => value), query.after?.value];
-  if (strings.some(value => typeof value === 'string' && LONE_SURROGATE.test(value))) return undefined;
   if (db.get(`SELECT 1 AS found FROM store_records WHERE collection = '${plan.collection}' AND ${plan.anomaly} LIMIT 1`) !== undefined) return undefined;
   const { spec } = plan, terms = [`collection = '${plan.collection}'`], values: (string | number | null)[] = [];
   if (scope === null) terms.push('owner IS NOT NULL');

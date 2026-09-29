@@ -133,7 +133,7 @@ function listParameters(spec: NormalizedSpec): Json[] {
 
 /** The answers every store operation may give, besides its success and what core adds. */
 const unavailable = failure('storage_unavailable, or audit_backlog on an audited collection: try again later.');
-const badRequest = failure('A malformed header, query, JSON body or Idempotency-Key.');
+const badRequest = failure('A malformed header, query, JSON body (invalid_unicode: a string or key with an unpaired surrogate escape) or Idempotency-Key.');
 const notFound = failure('No such record in the caller\'s scope (another owner\'s record answers the same).');
 
 /** An editable or deletable state as a 409 names it: `status is "draft" or "pending"`. */
@@ -197,7 +197,7 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
   paths[`${mount}/{id}`] = item;
   if (!spec.readOnly && spec.increments.length) paths[`${mount}/{id}/increment/{field}`] = {
     parameters: [idParameter, { name: 'field', in: 'path', required: true, description: 'A declared increment property.', schema: { enum: [...spec.increments] } }],
-    post: { summary: `Raise a ${name} counter by one`, parameters: retry, responses: { ...recordAnswer('200', 'Incremented.'), '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'), '404': notFound, '409': failure('increment_limit: one more would break the property\'s schema.'), ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable } },
+    post: { summary: `Raise a ${name} counter by one`, parameters: retry, responses: { ...recordAnswer('200', 'Incremented.'), '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'), '404': notFound, '409': failure([...spec.editable ? [`record_locked: the record is not in an editable state (${state(spec.editable)})`] : [], 'increment_limit: one more would break the property\'s schema'].join('; ') + '.'), ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable } },
   };
   if (!spec.readOnly) for (const [transfer, declared] of Object.entries(spec.transfers)) paths[`${mount}/transfers/${transfer}`] = {
     post: {

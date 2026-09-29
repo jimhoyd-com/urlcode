@@ -62,7 +62,8 @@ function decodeCursor(spec: NormalizedSpec, sort: SortKey, text: string): { valu
   if (!Array.isArray(parsed) || parsed.length !== 4) throw invalid;
   const [field, descending, value, id] = parsed as unknown[];
   if (field !== sort.field || descending !== sort.descending || typeof id !== 'string' || !UUID.test(id)) throw invalid;
-  if (value !== null && !sameType(spec.records.properties[sort.field]!, value)) throw invalid;
+  // No stored string holds an unpaired surrogate (#988), so no cursor the store issued does either.
+  if (value !== null && (!sameType(spec.records.properties[sort.field]!, value) || (typeof value === 'string' && !value.isWellFormed()))) throw invalid;
   return { value: value as Scalar | null, id };
 }
 

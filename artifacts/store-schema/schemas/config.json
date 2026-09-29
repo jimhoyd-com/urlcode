@@ -575,7 +575,7 @@
                 }
               ]
             },
-            "description": "The states in which PUT and PATCH may change a record, in the shape of a transition's from: each property must hold its value, or one of its listed values, for example {status: [draft]}. In any other state a PUT or PATCH (on HTTP, StoreExports or a host transaction) answers 409 record_locked and writes nothing, decided under the write lock. Each property must be in readOnlyProperties, so only a transition moves a record in or out. Transitions, increments and transfers are not affected."
+            "description": "The states in which PUT and PATCH may change a record, in the shape of a transition's from: each property must hold its value, or one of its listed values, for example {status: [draft]}. In any other state a PUT or PATCH (on HTTP, StoreExports or a host transaction) and POST <mount>/<id>/increment/<property> answer 409 record_locked and write nothing, decided under the write lock. Each property must be in readOnlyProperties, so only a transition moves a record in or out. Transitions, transfers and the click count of a short link are not affected."
           },
           "deletable": {
             "type": "object",

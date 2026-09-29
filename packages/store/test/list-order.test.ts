@@ -2,8 +2,8 @@
 // list took before) on random data: the SQL page, `total`, cursor and `next` must equal the reference's for every
 // declared type, both directions, filters, ties, absent values, non-ASCII text (code points on both sides of the
 // surrogate range, surrogate pairs, NUL), every scope (a shared collection, an owner, a readers mount) and a cursor
-// whose record was deleted. Rows the SQL key cannot represent exactly (a lone surrogate, a value of another type) are
-// detected and answered by the reference.
+// whose record was deleted. Rows the SQL key cannot represent exactly (a value of another type) are detected and
+// answered by the reference; a lone surrogate is refused at every write and at activation (#988), so it is not one.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
@@ -169,25 +169,36 @@ test('a row the SQL key cannot represent exactly is answered by the in-memory pa
   db.transaction(() => { for (let n = 0; n < 60; n++) insert(db, 'things', null, { s: make.text(256), n: n % 4, b: n % 3 === 0 }); });
   const params = new URLSearchParams('sort=s&limit=7');
   assert.notEqual(viaSql(db, plan, undefined, params, spec), undefined);
-  // A lone surrogate (valid JSON, and a valid record) decodes to bytes that do not order as UTF-16: "\udbff" sorts after
-  // "𐀀" (U+10000) in UTF-16 but before it as UTF-8.
-  const lone = insert(db, 'things', null, { s: '\udbff' });
-  insert(db, 'things', null, { s: '\u{10000}' });
-  assert.equal(viaSql(db, plan, undefined, params, spec), undefined);
-  const walk = (): string[] => { const out: string[] = []; const query = new URLSearchParams(params); for (;;) { const page = collection.list(query); out.push(...page.items.map(item => item.id as string)); if (page.next === undefined) return out; query.set('cursor', String(page.next)); } };
-  const expected: string[] = []; { const query = new URLSearchParams(params); for (;;) { const page = reference(db, 'things', undefined, query, spec); expected.push(...page.ids); if (page.next === undefined) break; query.set('cursor', String(page.next)); } }
-  assert.deepEqual(walk(), expected);
-  db.run('DELETE FROM store_records WHERE id = ?', lone);
-  assert.notEqual(viaSql(db, plan, undefined, params, spec), undefined);
   // A value of another type than declared (a row written under another declaration) is detected per type.
   for (const [field, value] of [['s', 5], ['n', 'x'], ['i', true], ['b', 1], ['t', false]] as const) {
     const id = insert(db, 'things', null, { [field]: value });
     assert.equal(viaSql(db, plan, undefined, params, spec), undefined, `${field}: ${JSON.stringify(value)}`);
     db.run('DELETE FROM store_records WHERE id = ?', id);
   }
-  // A filter value or cursor with a lone surrogate is never bound as UTF-8 either.
-  const query = parseListQuery(spec, new URLSearchParams('sort=s'));
-  assert.equal(db.transaction(() => listInSql(db, plan, { ...query, after: { value: '\ud800', id: randomUUID() } }, undefined, COLUMNS, parse), 'DEFERRED'), undefined);
+  assert.notEqual(viaSql(db, plan, undefined, params, spec), undefined);
+});
+
+test('ordinary text that looks like an escape keeps the SQL path; a lone surrogate is refused, never ordered (#988, #990)', async t => {
+  const db = await database(t);
+  const collection = new Collection('things', declare('shared', false)), spec = collection.spec, plan = listPlan('things', spec)!;
+  collection.open(db);
+  // Before #990 the detector matched the JSON text `\ud`, so one such string moved every list to the in-memory path.
+  for (const s of ['C:\\udo\\stuff', '\\uD800', '\\\\udfff', 'a\\ud']) collection.create({ s, t: 'x' });
+  collection.create({ s: '\u{10000}' }); collection.create({ s: '\udbff\udfff' });
+  for (const query of ['sort=s&limit=3', 'sort=-s', 't=x', 's=C:%5Cudo%5Cstuff']) {
+    const params = new URLSearchParams(query), sql = viaSql(db, plan, undefined, params, spec);
+    assert.notEqual(sql, undefined, query);
+    assert.deepEqual(sql, reference(db, 'things', undefined, params, spec), query);
+  }
+  // A lone surrogate never reaches a row through the store; one written into the file by hand is not served or ordered:
+  // a list answers 503, and activation names the record.
+  const lone = insert(db, 'things', null, { s: '\udbff' });
+  assert.throws(() => collection.list(new URLSearchParams('sort=s')), (error: { status?: number }) => error.status === 503);
+  assert.throws(() => new Collection('things', declare('shared', false)).open(db), new RegExp(`record ${lone} holds s as a string with an unpaired UTF-16 surrogate`));
+  db.run('DELETE FROM store_records WHERE id = ?', lone);
+  // A cursor holding one is not a cursor the store issued.
+  const cursor = Buffer.from(JSON.stringify(['s', false, '\ud800', randomUUID()])).toString('base64url');
+  assert.throws(() => parseListQuery(spec, new URLSearchParams(`sort=s&cursor=${cursor}`)), (error: { code?: string }) => error.code === 'invalid_query');
 });
 
 test('the list indexes follow the declaration: built on activation, and dropped once no declaration names them', async t => {

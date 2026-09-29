@@ -60,7 +60,7 @@ status or default `Cache-Control: no-store` on functions/redirects.
 | `request.body.<METHOD>.required` | Reject an empty body with 400; default false |
 | `request.body.<METHOD>.maxBytes` | 0–1048576; tighter per-route budget, enforced while reading fixed/chunked bodies; 413 on overflow |
 | `request.body.<METHOD>.contentTypes` | Exact lowercase MIME essences for nonempty bodies; parameters ignored; mismatch/missing type returns 415 |
-| `request.body.<METHOD>.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax; malformed input returns 400 |
+| `request.body.<METHOD>.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax, and refuse a string or key holding an unpaired surrogate escape (`"\ud800"` without its partner, which I-JSON forbids and UTF-8 cannot carry); malformed input returns 400 |
 | `request.body.<METHOD>.schema` | Requires `format: json`. A JSON Schema 2020-12 document in a bounded profile, compiled at load and checked after parsing; a body that breaks it returns 422 (see below) |
 
 The operator request limit remains an upper bound; YAML cannot raise it. A
