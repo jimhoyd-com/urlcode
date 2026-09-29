@@ -180,9 +180,13 @@ const helpEntries: HelpEntry[] = [
   urlcode artifacts remove <name> [--site directory]
   urlcode artifacts list [--strict] [--json] [--site directory]
   urlcode artifacts inspect <name> [--strict] [--json] [--site directory]
+  urlcode artifacts stage <registry-item.json|source directory> [--into directory] [--json] [--site directory]
+  urlcode artifacts stage <source> --materialize --into <directory> [--allow-app] [--json] [--site directory]
     # artifacts are inert data add-ons (JSON, YAML and Markdown: OpenAPI and JSON Schema documents, example configuration); they never execute and are never wired into host.mjs
     # released ones are pinned by this runtime like extensions; an operator's independent package (npm spec or local tarball carrying a urlcode.json artifact descriptor) is pinned by its package-lock sha512
     # inspect reads the documents its urlcode.json lists, offline and as untrusted data: media type, OpenAPI version or JSON Schema dialect, sha256, size, origin, local $refs resolved inside the package; remote refs are listed, never fetched; --strict exits 1 on an error diagnostic
+    # stage reads a local shadcn registry item or Agent Skill directory offline and reports every file it would write (target, sha256, size, media type, code/data/docs), its npm and registry dependencies (listed, never installed or fetched), shadcn cssVars/css/tailwind/envVars as data, and diagnostics (path escapes, absolute targets, symlinks, limits, remote URLs, unknown fields); it exits 1 on an error diagnostic. Staging does not make code inert: a staged source is not an artifact
+    # --into compares each target against a directory (create or exists); --materialize writes exactly the staged bytes there, all or nothing: never overwrites, never writes into the site's app/ without --allow-app, sets no execute bit and installs nothing (it prints the npm command to run after review)
 ` },
   { name:'explain', group:'Agent tooling', text:
 `  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--policy /absolute/policy.json] [--json]
@@ -368,6 +372,7 @@ try {
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions list and artifacts list|inspect');
+    if ((values.materialize || values.into !== undefined || values['allow-app']) && !(command === 'artifacts' && arg === 'stage')) throw new ConfigError('--materialize, --into and --allow-app are only supported by artifacts stage');
     if (values.site !== undefined && !['extensions', 'artifacts', 'upgrade'].includes(command)) throw new ConfigError('--site is only supported by extensions, artifacts and upgrade');
     if ((values.to !== undefined || values.check) && command !== 'upgrade') throw new ConfigError('--to and --check are only supported by upgrade');
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
@@ -375,7 +380,7 @@ try {
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','bootstrap','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
-      if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list|inspect');
+      if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list|inspect|stage');
       const code=await runAddonCommand(command,arg!,extra,values,print);
       if(code!==undefined)process.exitCode=code;
     }else if(command==='import'||command==='export'){
