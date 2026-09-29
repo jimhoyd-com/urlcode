@@ -248,7 +248,7 @@ export const mcpAuthoring: ExtensionAuthoringContract = {
     { kind: 'hook', name: 'prompt handler', description: 'Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler' },
     { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
   ],
-  fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
+  fastChecks: ['urlcode validate --local --project app --host-file host.mjs --local-review', 'urlcode test --project app --host-file host.mjs --local-review'],
 };
 
 type ResourceContent = { uri: string; mimeType?: string; text: string } | { uri: string; mimeType?: string; blob: string };

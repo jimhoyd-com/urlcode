@@ -26,5 +26,5 @@ export const storeAuthoring: ExtensionAuthoringContract = {
       goals: ['shortener', 'short', 'shortlink', 'shortlinks', 'slug', 'slugs', 'clicks'] },
     { kind: 'extension', name: 'mount', description: 'Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Readers routes use GET, HEAD and a `by: others` transition route uses POST. Add `auth: true` to any private mount; an `ownership: owner` collection requires it (or another principal-providing policy).', path: 'urlcode.yaml' },
   ],
-  fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
+  fastChecks: ['urlcode validate --local --project app --host-file host.mjs --local-review', 'urlcode test --project app --host-file host.mjs --local-review'],
 };

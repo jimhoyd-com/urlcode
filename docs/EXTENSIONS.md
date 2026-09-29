@@ -905,8 +905,9 @@ current activation that way.
 
 ### Hermetic runs and test seeds
 
-`urlcode test`, `urlcode audit`, `urlcode benchmark` and the MCP server's
-`run_tests` never touch the site's live data (`RIM-EXT-HERMETIC-001`). Each run
+`urlcode test`, `urlcode audit`, `urlcode benchmark`, the MCP server's
+`run_tests`, and `validate` and `routes` with `--local-review` and no operator
+pin never touch the site's live data (`RIM-EXT-HERMETIC-001`). Each run
 imports `host.mjs` anew with a fresh, empty temporary directory set, and
 `composeHost` hands every `host(ctx, options)` two more fields:
 
@@ -914,7 +915,8 @@ imports `host.mjs` anew with a fresh, empty temporary directory set, and
 interface HostContext {
   // <site>/data, or the run's temporary directory (removed when the host closes).
   data: string;
-  // true for test, audit, benchmark and MCP run_tests.
+  // true for test, audit, benchmark, MCP run_tests and a --local-review
+  // validate or routes.
   hermetic: boolean;
   // projectSha256, site, get as before
 }
@@ -1856,6 +1858,7 @@ generated `npm run validate`, `npm test`, `npm run routes` and
 ```sh
 npm run validate   # urlcode validate --local --project app --host-file host.mjs --local-review
 npm test           # urlcode test --project app --host-file host.mjs --local-review
+npm run routes     # urlcode routes --project app --host-file host.mjs --local-review
 npm run audit      # urlcode audit --project app --host-file host.mjs --local-review
 ```
 
@@ -1864,7 +1867,7 @@ With the flag and no operator pin (no `--policy`, `URLCODE_POLICY` or
 the host to it for that one run. `--origin` defaults to `http://localhost`. It
 prints one `{"event":"local_review","revision":"…","origin":"…"}` line on
 stderr, so the output shows the run was not a reviewed one. Edit, run the
-three scripts, and repeat. When the change is ready, review it, pin the
+checks, and repeat. When the change is ready, review it, pin the
 revision (`urlcode permissions --project app`), then serve.
 
 A local review also activates the extensions on a fresh, empty temporary data

@@ -30,7 +30,7 @@
       }
     ],
     "fastChecks": [
-      "urlcode validate --project . --host-file <host.mjs> --origin <origin>"
+      "urlcode validate --local --project app --host-file host.mjs --local-review"
     ]
   },
   "agent": {

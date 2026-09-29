@@ -162,8 +162,9 @@ export default await composeHost(import.meta.url, [
 
 Every collection lives in one SQLite database (`node:sqlite`, so Node only):
 `store({ database })`, else `STORE_DATABASE`, else `data/store.sqlite` beside
-`host.mjs`; it must be outside `app/`. `urlcode test`, `audit` and `benchmark`
-use a fresh database per run instead, and write the membership members the
+`host.mjs`; it must be outside `app/`. `urlcode test`, `audit` and `benchmark`,
+and a `--local-review` `validate` or `routes` with no operator pin, use a fresh
+database per run instead; `test` and `audit` write the membership members the
 project's `tests/seed.json` declares (`{"store": {"members": {"reviewers": ["alice"]}}}`)
 before the first fixture.
 
@@ -458,7 +459,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 
 Every key `store` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
 
-**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --local --project app --host-file host.mjs --local-review` (`npm run validate`), which activates it.
 
 **Peers.** uses `audit` when installed (optional: the features that need one refuse to activate without it).
 
@@ -546,5 +547,5 @@ Declare collections under extensions.store.config.collections and mount each on 
 - **shortLinks** (configuration, `urlcode.yaml`): Optional public GET redirect mounts that look up a collection key, use a declared `format: uri` destination property that takes only HTTP(S) URLs, and atomically increment a declared counter.
 - **mount** (extension, `urlcode.yaml`): Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Readers routes use GET, HEAD and a `by: others` transition route uses POST. Add `auth: true` to any private mount; an `ownership: owner` collection requires it (or another principal-providing policy).
 
-Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
+Fast checks: `urlcode validate --local --project app --host-file host.mjs --local-review`, `urlcode test --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->

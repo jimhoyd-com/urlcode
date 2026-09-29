@@ -86,12 +86,13 @@ fixture's cookie jar keeps the session, and `"origin":"{{origin}}"` passes the
 same-origin check. There is no test principal that skips the gate. See
 [authenticated routes][readiness-authenticated-routes].
 
-`urlcode test`, `audit` and `benchmark` never open the site's
+`urlcode test`, `audit` and `benchmark`, and a `--local-review` `validate` or
+`routes` with no operator pin, never open the site's
 `data/auth.sqlite`: each run uses a fresh database in a temporary directory,
 creates Better Auth's tables itself, signs sessions with a secret that lives
 only for the run (the `database` and `secretFile` options and
-`BETTER_AUTH_SECRET` are ignored), and creates the accounts `app/tests/seed.json`
-declares, with the ids a store membership names:
+`BETTER_AUTH_SECRET` are ignored). `test` and `audit` then create the accounts
+`app/tests/seed.json` declares, with the ids a store membership names:
 
 ```json
 {"auth": {"users": [{"id": "alice", "email": "alice@example.test", "password": "alice-local-demo-password", "name": "Alice"}]}}
@@ -203,7 +204,7 @@ See [SECURITY.md](SECURITY.md) for the security model.
 
 Every key `auth` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
 
-**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --local --project app --host-file host.mjs --local-review` (`npm run validate`), which activates it.
 
 **Peers.** none.
 
@@ -228,7 +229,7 @@ Accounts and sessions served by Better Auth on one extension mount. Protect a ro
 - **mount** (extension, `urlcode.yaml#routes`): Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404.
 - **route protection** (configuration, `urlcode.yaml#routes`): `auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.
 
-Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --origin <origin>`.
+Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->
 
 <!-- urlcode-current-version:start -->
