@@ -576,10 +576,12 @@ store would accept:
 
 `ctx.get('store').transaction(work)` runs `work(tx)` inside one `BEGIN
 IMMEDIATE` transaction and returns its result. `tx.records(name)` offers
-`create`, `get`, `update`, `remove`, `transition` and `list` with exactly the
-records export's rules (ownership scope by the principal passed, the record
+`create`, `get`, `update`, `remove`, `transition`, `transfer` and `list` with
+exactly the records export's rules (ownership scope by the principal passed, the record
 schema, quotas, `ifMatch`, `readOnly` properties, audit), synchronously. Every
-write and its audit events commit together or not at all.
+write and its audit events commit together or not at all. The example below
+is the shape of such code; moving value between two records of one collection
+needs none, since a [declared transfer](#declared-transfers) does it.
 
 ```js
 // Moves value between two account records; the total never changes.
@@ -709,12 +711,11 @@ The #835 counterexamples, and what serves each:
 |---|---|---|
 | Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `readOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
 | Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a declared [`intervals`](#non-overlapping-intervals) constraint checked through an index, across owners on an owned collection, with `If-Match` and transitions (cancel, reopen); no application code | recurring intervals, capacity above one per slot |
-| Simulated credits: hold, commit, cancel across records, conserving the total | a host transaction (`minimum: 0` refuses an overdraft and rolls the whole transfer back), retry-safe with an [idempotency key](#host-transactions) | a declarative transfer |
+| Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
 [#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
-of this contract: a declarative transfer between records, supported
-multi-process serving (with crash and disk-full evidence beyond injected
+of this contract: supported multi-process serving (with crash and disk-full evidence beyond injected
 failures), sorted lists in SQL, and measuring the plumbing and edit effort the
 scheduling and credit counterexamples save.
 
@@ -814,6 +815,157 @@ collections:
 - **Not covered.** One booking per slot (no capacity above one), no recurring
   intervals, no open-ended interval (both bounds are required), and no
   suggestion of a free slot. Not on a membership collection.
+
+## Declared transfers
+
+A collection may declare transfers: a whole amount moved from one record's
+balance to another's in one transaction, so the sum over the collection never
+changes ([#902](https://github.com/jimhoyd-com/urlcode/issues/902)). It
+replaces the host transaction the simulated-credit counterexample of #835
+needed, with no application code.
+
+```yaml
+collections:
+  treasurers:                  # who may issue: principal ids, maintained by the operator
+    membership: true
+    key: userId
+    schema:
+      type: object
+      additionalProperties: false
+      required: [userId]
+      properties:
+        userId: {type: string, maxLength: 128}
+  wallets:
+    mount: /api/wallets
+    ownership: owner
+    idempotency: {maxKeys: 1000}
+    audit: true
+    schema:
+      type: object
+      additionalProperties: false
+      required: [name, balance]
+      properties:
+        name: {type: string, maxLength: 40}
+        balance: {type: integer}   # in cents: a transfer moves whole numbers only
+    defaults: {balance: 0}
+    readOnlyProperties: [balance]  # only a transfer changes it
+    transfers:
+      pay: {amount: balance}       # POST /api/wallets/transfers/pay; never below 0
+      issue: {amount: balance, min: -100000000, members: treasurers}
+routes:
+  /api/wallets/*: {extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true}
+```
+
+```http
+POST /api/wallets/transfers/pay
+Content-Type: application/json
+Idempotency-Key: 5f0c...
+
+{"from": "<my wallet id>", "to": "<their wallet id>", "amount": 1250}
+```
+
+- **The request.** `POST <mount>/transfers/<name>` takes the JSON body
+  `{from, to, amount}` and nothing else: two record ids of the collection and
+  a positive whole number, at most 2^53 − 1. The schema is generated by the
+  store, not declared; a body that breaks it, and a `to` equal to `from`, is
+  `422 invalid_transfer` with the body-validation `issues`. The same-origin
+  rule, `readOnly` (`405`), `Idempotency-Key` and an optional `If-Match` apply
+  as to any write. `If-Match` is the `from` record's `ETag`: it guards what the
+  caller read before spending. The credit needs no precondition, since adding
+  to a balance does not depend on what it was.
+- **The effect.** In one `BEGIN IMMEDIATE` transaction the store reads both
+  records, subtracts `amount` from `from`'s `amount` property, adds it to
+  `to`'s and writes both with a new `updatedAt` (so both `ETag`s change), with
+  one audit event per record and the `Idempotency-Key` claim. Everything
+  commits or nothing does, so the sum over the collection is the same after
+  every transfer, whatever runs concurrently.
+- **Whole numbers only.** The `amount` property must be a required `integer`
+  with an integer default. There is no decimal amount: count a currency in its
+  minor units (cents), so no transfer ever rounds. A fraction is refused, never
+  rounded. Activation also refuses an amount property that is an increment
+  (which would add value outside a transfer) or that `intervals` names.
+- **The floor.** `min` (default `0`) is the lowest value the debited record may
+  be left holding: a transfer that would go below it answers
+  `409 insufficient_balance` and writes nothing, so `pay` above never
+  overdraws. The new values must also satisfy the property's own schema and
+  stay safe integers, or the answer is `409 transfer_limit`; that refusal
+  carries no issue list and no value, because on an owned collection it would
+  describe another owner's balance.
+- **The answer.** `200 {from, to?}`: each record as the transfer left it, with
+  `from`'s `ETag`. `to` is included only when the caller may read it: always on
+  a shared collection, and on an owned one only when the caller owns it (a
+  move between two of its own wallets). A replayed `Idempotency-Key` answers
+  both records as they are now, with `Idempotency-Replayed: true`, like any
+  [replay](#result-aware-retries); nothing moves twice.
+- **Funding.** A transfer never creates value, so the sum changes only when a
+  record is created with its default or deleted. To bring value in, declare a
+  members-gated issuer: `issue` above lets a member of `treasurers` debit their
+  own wallet down to `min: -100000000`. That wallet's negative balance is the
+  supply outstanding, and the sum over the collection stays zero, as in
+  double-entry bookkeeping. With `readOnlyProperties: [balance]` nothing else
+  can change a balance: `PUT` and `PATCH` bodies naming it are `422`, and
+  activation accepts a read-only property that a transfer moves.
+
+### Who may debit whom
+
+| Collection | Debit (`from`) | Credit (`to`) |
+|---|---|---|
+| `ownership: owner` | only a record the caller owns (another owner's is the `404` of a missing id) | any owned record, the caller's or another owner's (a record with no owner is `404`) |
+| shared | any record | any other record |
+| with `members` | as above, and only for a member of that [membership collection](#membership-gates-and-cross-owner-reads) (`403 membership_required`, checked before any record is read) | as above |
+
+- **Owned.** Paying someone is the point, so the credited record may be
+  anyone's; spending is not, so the debited record must be the caller's. The
+  caller needs the recipient's record id, which the recipient shares, like an
+  account number: ids are random UUIDs and never listed to other owners. The
+  store checks the floor before it looks up the credited record, so a caller
+  cannot learn whether an id exists without the funds to move; a transfer that
+  goes through tells the payer the id exists and nothing else about it.
+  `transfer_limit` does reveal that the recipient's balance is near its
+  property's `maximum`, so leave the amount property without a `maximum`
+  unless that is acceptable (the safe-integer bound still applies).
+- **Shared.** Anyone who reaches the mount may move value between any two
+  records, as anyone may run a shared collection's transition. Guard the route
+  (`auth: true` and a policy) or name `members`.
+- **`members`** narrows who may run the transfer; it does not widen whose
+  record may be debited. A treasurer still debits only their own record on an
+  owned collection. There is no transfer that debits another owner's record.
+- **Trusted code.** `StoreExports` passes the principal it is given:
+  `records(name).transfer(principal, name, {from, to, amount}, {ifMatch})` and
+  the same call on a [host transaction](#host-transactions)'s
+  `tx.records(name)`, which commits or rolls back with the transaction's other
+  writes. Both return `{from, to?}` with the same visibility rule.
+
+### Order of checks
+
+After the principal (`401` on an owned collection or a gated transfer), the
+origin (`403`), the headers (`400`), `readOnly` (`405`) and the body (`422
+invalid_transfer`), inside the write transaction: the membership gate (`403`);
+the retained `Idempotency-Key` (a replay, or `422 idempotency_key_reused`);
+`from` in the caller's scope (`404`); `If-Match` (`412`); the floor
+(`409 insufficient_balance`); `to` (`404`); the property's schema and the
+safe integers (`409 transfer_limit`); the record size (`413`); then the two
+writes, the two audit events and the claim. A stored record without a whole
+balance (written before the property was declared) is
+`409 transfer_conflict`. Every refusal writes nothing.
+
+- **Audit.** On an audited collection each record gets a
+  `store.record.transferred` event (subject `<collection>/<id>`, the caller as
+  actor) with metadata `{collection, transfer, side: from|to, counterpart:
+  <the other record's id>, fields: [<amount property>]}`: names and ids, never
+  the amount or a balance. Both events are in the transfer's transaction; a
+  failure after the first (the tests inject one on the credited record) rolls
+  back the debit and its event.
+- **Races.** Of concurrent transfers from one record, those the balance covers
+  commit and the rest answer `409 insufficient_balance`; the tests run 200
+  interleaved transfers among four accounts in one process and across four
+  connections and check the total and the floor after both.
+- **Not covered.** Holds (moving part of a balance to a second property on the
+  same record, then settling it to another record) and transfers between
+  collections or between properties still need a
+  [host transaction](#host-transactions). One amount property per transfer, one
+  pair of records per request, and no fees, limits per period or scheduled
+  transfers.
 
 ## Record schema
 
@@ -1569,7 +1721,7 @@ the project's declaration alone, without opening the database.
 
 | Mount | Paths |
 |---|---|
-| Collection | `GET`/`HEAD <mount>` (the list: `limit`, `cursor`, `sort` as an enum of the sortable properties, each filter with its property's schema), `POST <mount>`; `GET`/`HEAD`/`PUT`/`PATCH`/`DELETE <mount>/{id}`; `POST <mount>/{id}/increment/{field}`; `POST <mount>/{id}/<transition>` per transition on the mount |
+| Collection | `GET`/`HEAD <mount>` (the list: `limit`, `cursor`, `sort` as an enum of the sortable properties, each filter with its property's schema), `POST <mount>`; `GET`/`HEAD`/`PUT`/`PATCH`/`DELETE <mount>/{id}`; `POST <mount>/{id}/increment/{field}`; `POST <mount>/{id}/<transition>` per transition on the mount; `POST <mount>/transfers/<transfer>` per transfer, taking `Store<Collection>Transfer` and answering `Store<Collection>Transferred` |
 | Readers | `GET`/`HEAD <mount>` and `<mount>/{id}` |
 | `by: others` transition | `POST <mount>/{id}` |
 | Short link | `GET`/`HEAD <mount>/{key}`, a `302` with `Location` |
@@ -1628,6 +1780,9 @@ principal (`request.principal`):
   [declared transition](#conditional-transitions-and-result-aware-retries)
   exactly as its HTTP endpoint does, without an `Idempotency-Key`, and
   through the same membership gate.
+- `transfer(principal, name, {from, to, amount}, {ifMatch})` runs a
+  [declared transfer](#declared-transfers) the same way and returns
+  `{from, to?}`, `to` only when the principal may read it.
 
 A [membership collection](#membership-gates-and-cross-owner-reads) has no
 mount, so this export (and the operator's `addMember`) is how code maintains
@@ -1647,8 +1802,9 @@ operations as one database transaction: see
 
 ## Not built yet
 
-SQL ordering for sorted lists, a declarative multi-record transfer and
-supported multi-process serving are not built
+SQL ordering for sorted lists and supported multi-process serving are not
+built (a [declared transfer](#declared-transfers) moves value between two
+records; holds still need a host transaction)
 ([#902](https://github.com/jimhoyd-com/urlcode/issues/902); the
 [transition design](#what-is-not-covered) lists what each needs), nor are roles
 beyond a [membership collection](#membership-gates-and-cross-owner-reads). Recorded in

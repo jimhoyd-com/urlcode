@@ -32,7 +32,7 @@ Two distinctions hold throughout:
 | `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](../packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](../packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](../packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 50 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 54 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ## Capability to reference

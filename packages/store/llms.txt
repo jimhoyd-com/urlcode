@@ -33,9 +33,16 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   stamps, `If-Match`, `Idempotency-Key`; `409 transition_conflict` otherwise). `by: others` on an owned
   collection lets any principal but the owner act, on its own guarded mount; properties listed in the collection's
   `readOnlyProperties` change only through a transition. `idempotency: {maxKeys}` replays a retried key (same request: first
-  status, current record; different request: `422 idempotency_key_reused`). Multi-record transfers
-  are not declarative: a host extension uses `StoreExports.transaction(work, {idempotencyKey?, fingerprint?})`,
-  which with a key keeps `work`'s JSON result (at most 16 KiB) and returns it to a retry without running `work`.
+  status, current record; different request: `422 idempotency_key_reused`). Other multi-record work
+  (holds, several collections) uses `StoreExports.transaction(work, {idempotencyKey?, fingerprint?})` in a host
+  extension, which with a key keeps `work`'s JSON result (at most 16 KiB) and returns it to a retry without running `work`.
+- Transfers between balances: `transfers.<name>: {amount, min?, members?}` on a collection serves
+  `POST <mount>/transfers/<name>` with `{from, to, amount}` (two distinct record ids, a positive whole number):
+  one transaction subtracts from `from`'s integer `amount` property and adds to `to`'s, so the sum never changes;
+  below `min` (default 0) is `409 insufficient_balance` and nothing is written. Owned: the caller debits only its
+  own record and may credit anyone's (`to` is answered only when the caller owns it). Integers only (minor units);
+  a fraction or `from == to` is `422 invalid_transfer`. `If-Match` (on `from`), `Idempotency-Key` and audit
+  (`store.record.transferred` on both records) apply. A members-gated transfer with a negative `min` is an issuer.
 - Scheduling: `intervals: {start, end, within?, scope?: collection|owner, when?}` on a collection refuses any
   write whose half-open `[start, end)` overlaps another record's in its scope with `409 interval_conflict`
   (checked in the write's transaction through a partial index; `error.conflict.id` only for a record the

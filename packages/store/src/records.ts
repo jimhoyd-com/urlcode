@@ -70,8 +70,14 @@ export interface StoreTransactionRecords {
   remove(principal: StorePrincipal, id: string, options?: { ifMatch?: string }): void;
   /** Runs a declared transition, exactly as its HTTP endpoint does (without an `Idempotency-Key`). */
   transition(principal: StorePrincipal, id: string, name: string, options?: { ifMatch?: string }): StoreRecordResult;
+  /** Runs a declared transfer, exactly as its HTTP endpoint does (without an `Idempotency-Key`; `ifMatch` is the debited record's). */
+  transfer(principal: StorePrincipal, name: string, request: StoreTransferRequest, options?: { ifMatch?: string }): StoreTransferResult;
   list(principal: StorePrincipal, options?: { limit?: number; cursor?: string }): StoreListResult;
 }
+/** A declared transfer's request (#902): the debited and credited record ids and the positive whole amount moved. */
+export interface StoreTransferRequest { readonly from: string; readonly to: string; readonly amount: number }
+/** A transfer's result: the debited record, and the credited one only when the principal may read it. */
+export interface StoreTransferResult { readonly from: StoreRecordResult; readonly to?: StoreRecordResult }
 /** A record as a caller sees it (never its stored owner) and its strong ETag. */
 export interface StoreRecordResult { readonly record: Readonly<StoredRecord>; readonly etag: string }
 /** The principal of the request being served (`request.principal`); `null`/`undefined` when it has none. */
@@ -104,6 +110,8 @@ export interface StoreRecords {
   list(principal: StorePrincipal, options?: { limit?: number; cursor?: string }): StoreListResult;
   /** Runs the declared transition `name` on one record in its own transaction (its HTTP endpoint without an `Idempotency-Key`). */
   transition(principal: StorePrincipal, id: string, name: string, options?: { ifMatch?: string }): Promise<StoreRecordResult>;
+  /** Runs the declared transfer `name` in its own transaction (its HTTP endpoint without an `Idempotency-Key`). */
+  transfer(principal: StorePrincipal, name: string, request: StoreTransferRequest, options?: { ifMatch?: string }): Promise<StoreTransferResult>;
 }
 /** One list page. `next` and `previous` are the cursors of the adjacent pages, absent at either end. */
 export interface StoreListResult { readonly items: readonly Readonly<StoredRecord>[]; readonly total: number; readonly next?: string; readonly previous?: string }
@@ -111,6 +119,9 @@ export interface StoreListResult { readonly items: readonly Readonly<StoredRecor
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const view = (record: StoredRecord): Readonly<StoredRecord> => { const { [OWNER_FIELD]: _owner, ...rest } = record; return Object.freeze(rest); };
 const result = (record: StoredRecord): StoreRecordResult => Object.freeze({ record: view(record), etag: etagOf(record) });
+/** A caller's transfer request as a plain object, so the generated body schema judges exactly what was passed. */
+const plain = (request: StoreTransferRequest): unknown => request !== null && typeof request === 'object' ? { ...request } : request;
+const transferResult = (from: StoredRecord, to: StoredRecord | undefined): StoreTransferResult => Object.freeze({ from: result(from), ...(to === undefined ? {} : { to: result(to) }) });
 const ownerOf = (principal: StorePrincipal): string | undefined => principal === null || principal === undefined ? undefined : principal.id;
 /** The audit actor of a write: the principal's id, or `anonymous` (the HTTP API's rule). */
 const actorOf = (principal: StorePrincipal): string => ownerOf(principal) ?? 'anonymous';
@@ -193,6 +204,12 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
           update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) { live(); return result(step(collection, collection.updateFor(db, known(id), { ...patch }, matchOf(options), ownerOf(principal), actorOf(principal)))!); },
           remove(principal: StorePrincipal, id: string, options: { ifMatch?: string } = {}) { live(); step(collection, collection.removeFor(db, known(id), matchOf(options), ownerOf(principal), actorOf(principal))); },
           transition(principal: StorePrincipal, id: string, transition: string, options: { ifMatch?: string } = {}) { live(); return result(step(collection, collection.transitionIn(db, known(id), String(transition), matchOf(options), ownerOf(principal), actorOf(principal)))!); },
+          transfer(principal: StorePrincipal, transfer: string, request: StoreTransferRequest, options: { ifMatch?: string } = {}) {
+            live();
+            const done = collection.transferIn(db, String(transfer), plain(request), matchOf(options), ownerOf(principal), actorOf(principal));
+            step(collection, done);
+            return transferResult(done.record, collection.visible(done.to, ownerOf(principal)) ? done.to : undefined);
+          },
           list(principal: StorePrincipal, options: { limit?: number; cursor?: string } = {}) { live(); return pageOf(collection, options, collection.listPageIn(db, pageParams(options), ownerOf(principal))); },
         });
         handles.set(name, handle);
@@ -242,6 +259,10 @@ function records(collection: Collection): StoreRecords {
     },
     async transition(principal: StorePrincipal, id: string, name: string, options: { ifMatch?: string } = {}) {
       return result(collection.transition(known(id), String(name), undefined, matchOf(options), ownerOf(principal), actorOf(principal)).record!);
+    },
+    async transfer(principal: StorePrincipal, name: string, request: StoreTransferRequest, options: { ifMatch?: string } = {}) {
+      const done = collection.transfer(String(name), plain(request), undefined, matchOf(options), ownerOf(principal), actorOf(principal));
+      return transferResult(done.from!, done.to);
     },
   });
 }
