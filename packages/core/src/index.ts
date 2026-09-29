@@ -25,6 +25,8 @@ export {inspectProject, validateProject, explainRoute, explainProject, previewIm
 export type {InspectOptions, RouteExplanation, RouteMiss, ExplainedHandler, ExplainedCache, ExplainedExtensionRequirement, ExtensionProvider, TargetSupport, CapabilityEntry, CapabilityUsage, SchemaFragment, ExtensionInspection, ContextOptions, ProjectContext, ContextSection, ContextTask, TaskContext, TaskShape, Bootstrap, BootstrapOptions, BootstrapRuntime, BootstrapState, CapabilityPacketEntry, FeaturePlan, FeaturePlanOptions} from './tooling.ts';
 export {buildManifest, renderManifest, MANIFEST_SCHEMA_VERSION} from './manifest.ts';
 export type {Manifest, ManifestRoute, ManifestModule, RecipeProvenance} from './manifest.ts';
+export {buildOpenApi, renderOpenApi, openApiVersion} from './openapi.ts';
+export type {OpenApiDocument, OpenApiFacts} from './openapi.ts';
 export {serveMcp} from './mcp.ts';
 export type {McpOptions} from './mcp.ts';
 export {providerConformanceCases, runProviderConformance, verifyProviderDeployment} from './provider-verification.ts';

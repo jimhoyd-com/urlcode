@@ -1,0 +1,243 @@
+import {basename} from 'node:path';
+import mime from 'mime-types';
+import {prepare} from './tooling.ts';
+import type {InspectOptions} from './tooling.ts';
+import {explainCompiledRoute} from './explain.ts';
+import {effectiveExtensionPolicies} from './extensions.ts';
+import {bodyPolicy,bodylessMethods} from './http-policy.ts';
+import type {RequestBodyPolicy} from './http-policy.ts';
+import {bodySchemaDialect} from './body-validation.ts';
+import {errorCodes,errorScope,resolveErrorFormat} from './http-response.ts';
+import type {ErrorFormat} from './http-response.ts';
+import {runningCoreVersion} from './version.ts';
+import type {CompiledRoute,PolicyChain} from './types.ts';
+
+// An OpenAPI 3.1 description of the HTTP operations a project declares, derived from the compiled IR (config → router
+// → policies) like explain and manifest. It states only what URLCode enforces or writes itself; a handler-defined
+// answer is a `default` response with no schema, and an opaque mount is listed, never enumerated (#845). Binding
+// names and values, egress targets, module paths and operator policy never appear.
+
+/** The OpenAPI version written; the body-schema profile is JSON Schema 2020-12, which is OpenAPI 3.1's schema dialect family. */
+export const openApiVersion='3.1.1';
+type Json=Record<string,unknown>;
+export interface OpenApiDocument {
+  openapi:typeof openApiVersion; jsonSchemaDialect:string; info:{title:string;version:string;description:string};
+  servers?:{url:string}[]; paths:Record<string,Json>; components:{schemas:Record<string,unknown>;securitySchemes?:Record<string,Json>};
+  'x-urlcode':OpenApiFacts;
+}
+/** Facts about the project that OpenAPI has no field for, under one namespaced extension. */
+export interface OpenApiFacts {
+  urlcode:string; revision:string;
+  /** Paths below an extension, static or wildcard-redirect mount: the provider serves them and URLCode does not enumerate them. */
+  opaqueMounts:{path:string;handler:string;extension?:string;registered?:boolean}[];
+  /** Declared routes left out of `paths`, with the reason. */
+  omitted:{path:string;reason:string}[];
+  note:string;
+}
+
+const methodOrder=['GET','PUT','POST','DELETE','OPTIONS','HEAD','PATCH'];
+const compare=(a:string,b:string):number=>a<b?-1:a>b?1:0;
+/** The media type essence of a Content-Type value. */
+const essence=(value:string):string=>value.split(';')[0]!.trim().toLowerCase();
+const pascal=(text:string):string=>text.split(/[^A-Za-z0-9]+/).filter(Boolean).map(word=>word[0]!.toUpperCase()+word.slice(1)).join('');
+/** `GET /todos/{id}` → `getTodosById`; `/` → `getRoot`. Unique within a document (a numeric suffix settles a clash). */
+function operationName(method:string,pattern:string,taken:Set<string>):string {
+  const words=pattern.split('/').filter(Boolean).map(part=>part.startsWith('{')?`By${pascal(part.slice(1,-1))}`:pascal(part)).join('')||'Root';
+  const base=method.toLowerCase()+words;
+  let name=base;for(let n=2;taken.has(name);n++)name=`${base}${n}`;
+  taken.add(name);return name;
+}
+
+const handlerDefined='Handler-defined; not described by URLCode.';
+const components={
+  UrlcodeErrorEnvelope:{
+    description:'The fixed JSON error envelope URLCode writes for its own errors under `errors.format: json` (docs/HTTP.md#error-format). `issues` and `truncated` appear only on a body-schema 422.',
+    type:'object',required:['error'],additionalProperties:false,
+    properties:{error:{type:'object',required:['code','message'],additionalProperties:false,properties:{
+      code:{type:'string',enum:[...new Set([...Object.values(errorCodes),'ERROR'])]},message:{type:'string'},
+      issues:{type:'array',items:{$ref:'#/components/schemas/UrlcodeBodyValidationIssue'}},truncated:{type:'boolean'},
+    }}},
+  },
+  UrlcodeBodyValidationError:{
+    description:'The JSON 422 a route with a request body schema answers when the body breaks it (docs/HTTP.md#body-schema-and-input-patterns). Capped at 4096 bytes.',
+    type:'object',required:['error','message','issues'],additionalProperties:false,
+    properties:{error:{const:'body_validation_failed'},message:{type:'string'},truncated:{type:'boolean'},issues:{type:'array',items:{$ref:'#/components/schemas/UrlcodeBodyValidationIssue'}}},
+  },
+  UrlcodeBodyValidationIssue:{
+    description:'One body-schema failure. Values the client sent are never included.',
+    type:'object',required:['pointer','keyword','message'],additionalProperties:false,
+    properties:{pointer:{type:'string',description:'RFC 6901 pointer into the body; array positions are /[] and undeclared keys /*.'},keyword:{type:'string'},message:{type:'string'},expected:{description:'The type, bound, format or declared values the schema states, when it states one.'},property:{type:'string'}},
+  },
+} as const;
+const sessionScheme='urlcodeSession';
+
+/** A runtime-written error answer in the route's error format. */
+function runtimeError(format:ErrorFormat,description:string):Json {
+  return {description,content:format==='json'?{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeErrorEnvelope'}}}:{'text/plain':{schema:{type:'string'}}}};
+}
+/** Rewrites each local `#/$defs/<name>` reference in a body schema to the component the definition was hoisted to. Annotation and value keywords are copied as they are. */
+function relocate(schema:unknown,defsBase:string):unknown {
+  if(Array.isArray(schema))return schema.map(item=>relocate(item,defsBase));
+  if(!schema||typeof schema!=='object')return schema;
+  const out:Json={};
+  for(const [key,value] of Object.entries(schema as Json)){
+    if(key==='$ref'&&typeof value==='string'&&value.startsWith('#/$defs/'))out[key]=`#/components/schemas/${defsBase}${value.slice('#/$defs/'.length)}`;
+    else if(key==='properties'||key==='patternProperties')out[key]=Object.fromEntries(Object.entries(value as Json).map(([name,child])=>[name,relocate(child,defsBase)]));
+    else if(['allOf','anyOf','oneOf','prefixItems'].includes(key)&&Array.isArray(value))out[key]=value.map(child=>relocate(child,defsBase));
+    else if(['not','items','additionalProperties','propertyNames'].includes(key))out[key]=relocate(value,defsBase);
+    else out[key]=structuredClone(value);
+  }
+  return out;
+}
+/**
+ * The request body a method's policy describes, registering its schema as a component. An OpenAPI `$ref` of
+ * `#/$defs/x` would resolve against the whole document, so each `$defs` entry becomes its own component and the
+ * references are rewritten to it; every other keyword is the author's schema as written.
+ */
+function requestBody(policy:RequestBodyPolicy,name:string,schemas:Record<string,unknown>):Json|undefined {
+  if(policy.maxBytes===0)return undefined;
+  // A required body with no declared media type or format may be anything.
+  const types=policy.contentTypes??(policy.format==='json'?['application/json']:policy.format==='text'?['text/plain']:policy.required?['*/*']:[]);
+  if(!types.length)return undefined;
+  let schema:unknown;
+  if(policy.schema){
+    const component=`${name}RequestBody`,{$defs,...root}=policy.schema as Json;
+    for(const [def,value] of Object.entries(($defs??{}) as Json))schemas[`${component}_${def}`]=relocate(value,`${component}_`);
+    schemas[component]=relocate(root,`${component}_`);
+    schema={$ref:`#/components/schemas/${component}`};
+  }else if(policy.format==='text')schema={type:'string'};
+  const content:Json={};
+  for(const type of types)content[type]=schema===undefined?{}:{schema};
+  return {...(policy.required?{required:true}:{}),content,'x-urlcode':{...(policy.maxBytes!==undefined?{maxBytes:policy.maxBytes}:{}),...(policy.format?{format:policy.format}:{})}};
+}
+function reply(route:CompiledRoute):{status:number;response:Json} {
+  if(route.redirect)return {status:route.redirect.status??302,response:{description:'Redirect declared by the route.',headers:{Location:{required:true,schema:{type:'string'}}}}};
+  const status=route.reply?.status??route.respond?.status??200;
+  const declared=route.responseHeaders.find(([name])=>name==='content-type')?.[1]??route.reply?.headers.find(([name])=>name==='content-type')?.[1];
+  const response:Json={description:'Declared response.'};
+  if(route.respond&&route.reply?.body.length){
+    const value=Object.hasOwn(route.respond,'json')?route.respond.json:route.respond.text;
+    response.content={[essence(declared??'text/plain')]:{schema:{const:value}}};
+  }
+  return {status,response};
+}
+function assetResponses(route:CompiledRoute):Record<string,Json> {
+  const config=route.page??route.download!;
+  const type=essence(String(mime.contentType(config.contentType||mime.lookup(config.file)||'application/octet-stream')));
+  return {
+    '200':{description:'The declared file.',...(route.download?{headers:{'Content-Disposition':{schema:{type:'string'}}}}:{}),content:{[type]:{}}},
+    '206':{description:'One satisfiable byte range of the file (docs/ASSETS.md).',content:{[type]:{}}},
+    '304':{description:'Not modified: a conditional request matched the current validator.'},
+    '416':{description:'Range not satisfiable.'},
+  };
+}
+/** The responses URLCode itself knows for one method of a route. */
+function responses(route:CompiledRoute,method:string,format:ErrorFormat,chain:PolicyChain|undefined,gates:string[],body:RequestBodyPolicy|undefined):Record<string,Json> {
+  const out:Record<string,Json>={};
+  const kind=route.redirect?'redirect':route.respond?'respond':route.conditional?'conditional':route.page||route.download?'asset':route.proxy?'proxy':'handler';
+  if(kind==='redirect'||kind==='respond'){const {status,response}=reply(route);out[String(status)]=response;}
+  else if(kind==='conditional'){
+    const branches=[...(route.conditionalRoutes?.cases??[]).map(item=>item.route),...(route.conditionalRoutes?.fallback?[route.conditionalRoutes.fallback]:[])];
+    for(const branch of branches){
+      const {status,response}=reply(branch),key=String(status),existing=out[key];
+      if(!existing){out[key]={...response,description:`${String(response.description)} Chosen by a conditional case or the fallback.`};continue;}
+      // Two branches answer the same status: their bodies become alternatives of one response.
+      const merged=(existing.content??{}) as Record<string,{schema?:Json}>;
+      for(const [type,media] of Object.entries((response.content??{}) as Record<string,{schema:Json}>)){
+        const prior=merged[type]?.schema;
+        merged[type]={schema:prior?{anyOf:[...(prior.anyOf as Json[]|undefined??[prior]),media.schema]}:media.schema};
+      }
+      if(Object.keys(merged).length)existing.content=merged;
+      if(response.headers)existing.headers=response.headers;
+    }
+    if(!route.conditionalRoutes?.fallback)out['404']=runtimeError(format,'No conditional case matched and the route declares no fallback.');
+  }
+  else if(kind==='asset')Object.assign(out,assetResponses(route));
+  else out.default={description:kind==='proxy'?'The upstream response, relayed by the proxy; not described by URLCode.':handlerDefined};
+  if(route.match)out['404']??=runtimeError(format,'The route\'s match conditions did not hold.');
+  const admits=body!==undefined&&body.maxBytes!==0;
+  if(route.parameters.length||admits)out['400']=runtimeError(format,'A declared input is missing or invalid, or the body is malformed.');
+  if(body){
+    out['413']=runtimeError(format,'The request body exceeds the route\'s maxBytes.');
+    if(admits)out['415']=runtimeError(format,'Unsupported media type or content encoding.');
+    if(body.schema)out['422']=format==='json'
+      ?{description:'The body failed the declared schema.',content:{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeErrorEnvelope'}}}}
+      :{description:'The body failed the declared schema.',content:{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeBodyValidationError'}}}};
+  }
+  if(gates.includes('auth')){
+    out['401']={description:'No verified session: refused by the auth extension before the handler runs. The body is extension-defined.'};
+    out['403']={description:'Refused by the auth extension before the handler runs (for example a cross-origin unsafe request). The body is extension-defined.'};
+  }
+  const throttle=chain?.describe.throttle,agents=chain?.describe.agents;
+  if(throttle?.mode==='enforce'&&throttle.status!==undefined)out[String(throttle.status)]={description:'Refused by the throttle policy.',headers:{'Retry-After':{schema:{type:'integer'}}},content:{'text/plain':{schema:{type:'string'}}}};
+  if(agents?.mode==='enforce'&&agents.status!==undefined)out[String(agents.status)]??={description:'Refused by the agents policy.',content:{'text/plain':{schema:{type:'string'}}}};
+  const unknown=[...(route.middleware.length?['middleware']:[]),...gates.filter(name=>name!=='auth').map(name=>`the ${name} extension`)];
+  if(unknown.length&&!out.default)out.default={description:`May be answered by ${unknown.join(' or ')} before the handler; not described by URLCode.`};
+  if(method==='HEAD')for(const [key,value] of Object.entries(out)){const {content:_content,...rest}=value;out[key]=rest;}
+  return Object.fromEntries(Object.entries(out).sort(([a],[b])=>compare(a,b)));
+}
+
+/** Build the OpenAPI 3.1 document for a project's declared HTTP operations. Deterministic for a given project and options. */
+export async function buildOpenApi(project:string,options:InspectOptions={}):Promise<OpenApiDocument> {
+  const {loaded,routes,chains,projectSha256}=await prepare(project,options);
+  const scope=errorScope(loaded.document.site?.errors?.paths),taken=new Set<string>();
+  const paths:Record<string,Json>={},schemas:Record<string,unknown>={},facts:OpenApiFacts={urlcode:await runningCoreVersion(),revision:projectSha256,opaqueMounts:[],omitted:[],
+    note:'Generated from the compiled configuration. Handler-defined responses have no schema; paths below opaque mounts are served by their provider and not enumerated. Binding names and values, egress targets, module paths and operator policy are never included.'};
+  let secured=false;
+  for(const route of [...routes].sort((a,b)=>compare(a.pattern,b.pattern))){
+    if(route.enabled===false){facts.omitted.push({path:route.pattern,reason:'disabled'});continue;}
+    if(route.prefix!==undefined){
+      const handler=route.extension?'extension':route.static?'static':'redirect';
+      const registered=route.extension&&options.extensions?options.extensions.some(entry=>entry.name===route.extension):undefined;
+      facts.opaqueMounts.push({path:route.pattern,handler,...(route.extension?{extension:route.extension}:{}),...(registered===undefined?{}:{registered})});
+      continue;
+    }
+    const chain=chains.get(route.pattern),explanation=explainCompiledRoute(loaded,route,chain,{extensions:options.extensions,projectSha256,now:0});
+    const gates=Object.keys(effectiveExtensionPolicies(loaded.document,route)).sort(compare);
+    const format=resolveErrorFormat(route.errors?.format,scope,route.pattern);
+    const item:Json={};
+    if(route.description)item.description=route.description;
+    if(route.parameters.length)item.parameters=route.parameters.map(parameter=>({name:parameter.name,in:parameter.in,...(parameter.required||parameter.in==='path'?{required:true}:{}),schema:structuredClone(parameter.schema)}));
+    for(const method of [...route.methods].sort((a,b)=>methodOrder.indexOf(a)-methodOrder.indexOf(b))){
+      const name=operationName(method,route.pattern,taken),policy=bodyPolicy(route,method);
+      const operation:Json={operationId:name};
+      const body=policy&&!bodylessMethods.includes(method)?requestBody(policy,name[0]!.toUpperCase()+name.slice(1),schemas):undefined;
+      if(body)operation.requestBody=body;
+      else if(policy?.maxBytes!==undefined)operation['x-urlcode']={body:{maxBytes:policy.maxBytes}};
+      operation.responses=responses(route,method,format,chain,gates,policy);
+      if(gates.includes('auth')){operation.security=[{[sessionScheme]:[]}];secured=true;}
+      item[method.toLowerCase()]=operation;
+    }
+    const code=Boolean(route.function)||route.middleware.length>0,policies=explanation.policies.names.filter(name=>!name.startsWith('extensions.'));
+    item['x-urlcode']={
+      handler:explanation.handler.kind,
+      ...(code?{execution:route.sandbox===true?'sandboxed':'trusted'}:{}),
+      ...(route.middleware.length?{middleware:route.middleware.length}:{}),
+      ...(gates.length?{extensions:gates}:{}),
+      ...(policies.length?{policies}:{}),
+      ...(route.match||route.conditional?{conditional:true}:{}),
+      ...(route.stream?{stream:true}:{}),
+      ...(route.generated?{generated:route.generated}:{}),
+      ...(route.expires?{expires:route.expires}:{}),
+      errors:format,
+      targets:Object.fromEntries(Object.entries(explanation.targets).map(([target,support])=>[target,support.compatible])),
+    };
+    paths[route.pattern]=item;
+  }
+  const document:OpenApiDocument={
+    openapi:openApiVersion,jsonSchemaDialect:bodySchemaDialect,
+    info:{title:basename(loaded.root),version:projectSha256.slice(0,12),description:'The HTTP operations this URLCode project declares. Responses list only what URLCode itself enforces or writes; x-urlcode carries the facts OpenAPI has no field for.'},
+    ...(options.origin?{servers:[{url:options.origin}]}:{}),
+    paths,
+    components:{
+      schemas:{...structuredClone(components) as Record<string,unknown>,...Object.fromEntries(Object.entries(schemas).sort(([a],[b])=>compare(a,b)))},
+      ...(secured?{securitySchemes:{[sessionScheme]:{type:'apiKey',in:'cookie',name:'session',
+        description:'A session cookie set by the auth extension at sign-in and sent by the browser. Its real name is the operator\'s auth configuration and is not published here: `session` is a placeholder.',
+        'x-urlcode':{extension:'auth',cookieName:'operator-defined'}}}}:{}),
+    },
+    'x-urlcode':facts,
+  };
+  return document;
+}
+/** The document as the CLI writes it: two-space JSON with a trailing newline. */
+export function renderOpenApi(document:OpenApiDocument):string {return JSON.stringify(document,null,2)+'\n';}

@@ -28,7 +28,7 @@ import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.t
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
@@ -190,6 +190,11 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'manifest', group:'Agent tooling', text:
 `  urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
+` },
+  { name:'openapi', group:'Agent tooling', text:
+`  urlcode openapi [--project directory] [--origin https://links.example] [--out openapi.json] [--host-file ...] [--policy /absolute/policy.json]
+    # OpenAPI 3.1 JSON for the declared HTTP operations: paths, methods, parameters, per-method request bodies (the 2020-12 schema) and only the responses URLCode itself writes
+    # handler-defined answers have no schema; extension, static and /** mounts are listed under x-urlcode.opaqueMounts, never enumerated; no binding, secret, cookie name or operator policy is included
 ` },
   { name:'docs', group:'Agent tooling', text:
 `  urlcode docs search <text> [--project DIR] [--json]  # same as MCP search_docs: at most three bounded excerpts from the core agent docs and the site's installed, pin-verified add-on guides and urlcode.json schemas, with what was and was not searched; instead of grepping llms-full.txt
@@ -384,6 +389,12 @@ try {
       const {runExplainCommand}=await import('./explain-cli.ts');
       const exitCode=await runExplainCommand(command,arg,{project:values.project,target:values.target,origin:values.origin,json:values.json,extensions:operatorHost.extensions},print);
       if(exitCode)process.exitCode=exitCode;
+    }else if(command==='openapi'){
+      // Read from the compiled configuration like manifest; nothing executes and no binding is read (docs/TOOLING.md#openapi-export).
+      const {buildOpenApi,renderOpenApi}=await import('./openapi.ts');
+      const text=renderOpenApi(await buildOpenApi(values.project,{...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})}));
+      if(values.out===undefined)print(text);
+      else{await writeFile(values.out,text);print(human?`Wrote OpenAPI 3.1 to ${values.out}\n`:{event:'written',file:values.out,bytes:Buffer.byteLength(text)});}
     }else if(command==='capabilities'){
       if(arg!==undefined){ if(values.target!==undefined)throw new ConfigError('--target applies to the full catalog, not one entry'); const entry=getCapability(arg); print(values.json ? entry : formatCapability(entry)); }
       else {
