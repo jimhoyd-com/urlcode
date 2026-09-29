@@ -362,17 +362,54 @@ still has no roles, and `auth` gains none.
   API**: a membership list served on a collection mount would let anyone the
   route admits add themselves or enumerate members. Activation therefore
   refuses it with `mount`, and with `ownership`, `transitions`, `readers`,
-  `increments`, `idempotency`, `sortable`, `filterable`, `readOnly` or
-  `audit`, and refuses a screen over it.
+  `increments`, `idempotency`, `sortable`, `filterable` or `readOnly`, and
+  refuses a screen over it. A member is added and removed, never renamed: an
+  update that changes the key field is `400`.
 - **Maintaining it** reuses the operator paths the store already has, not a new
-  admin surface. The operator calls `addMember`, `removeMember` and
-  `listMembers` from `@jimhoyd/urlcode-store` (each one transaction on its own
-  connection, safe while the server is serving, validated against the
-  project's declared collections like `reassignOwner`; `addMember` creates the
-  database for a site that has not served yet). Trusted extension code uses
+  admin surface. The operator runs `urlcode-store members` (below), or calls
+  `addMember`, `removeMember` and `listMembers` from `@jimhoyd/urlcode-store`.
+  Each is one transaction on its own connection, safe while the server is
+  serving, and validated against the project's declared collections like
+  `reassignOwner`; adding creates the database for a site that has not served
+  yet. Trusted extension code uses
   [`StoreExports`](#using-a-collection-from-another-extension):
   `records('reviewers').create(null, {userId})`, and `remove` inside a
   [host transaction](#host-transactions).
+
+  ```sh
+  npx urlcode-store members add --database /srv/site/data/store.sqlite \
+    --project /srv/site/app --collection reviewers --principal <user id>
+  npx urlcode-store members remove ... --principal <user id>
+  npx urlcode-store members list --database /srv/site/data/store.sqlite \
+    --project /srv/site/app --collection reviewers
+  ```
+
+  Each prints JSON: `{collection, principal, changed}` (`changed` is `false`
+  when the principal already was, or was not, a member) or
+  `{collection, members}` in the order they were added. `--principal` must be
+  a principal id exactly as the principal provider sets it (for auth, the user
+  id; for a bearer key, `apikey:<key id>`); anything else is refused and not
+  echoed.
+- **Membership changes are evidence** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
+  A membership collection may declare `audit: true`. Then every added member
+  is recorded as `store.membership.added` and every removed one as
+  `store.membership.removed`, with subject `<collection>/<principal id>`,
+  metadata `{collection}` and the actor of the change: `operator` for
+  `urlcode-store members` and `reassign`, or the principal a `StoreExports`
+  caller passed (`anonymous` for `null`). Whichever path makes the change, the
+  event is inserted into the outbox **in the same transaction** as the member
+  row, so a grant or revocation and its event commit or roll back together; at
+  the backlog cap the change is refused with `503 audit_backlog`. The operator
+  command validates the event with audit's own validator and needs the audit
+  package installed beside the store; the serving process's audit drain picks
+  the event up on its next poll (within a second), because nothing in the CLI
+  can wake it. *Why this shape:* the audited-write path already guarantees
+  "the change and its event together", and every path that changes membership
+  (the CLI, the library functions and `StoreExports`) goes through it. Having
+  only the CLI write events would miss changes made by trusted extension code
+  and would need a second, separate atomicity argument. An unaudited
+  membership collection records nothing, as before; declare `audit: true` on
+  every membership list whose history you need.
 - **A gated transition** adds `members: <membership collection>`. The order is
   principal (`401`), then membership (`403 membership_required`), then
   everything in [the ordering below](#design-decisions), starting with the
@@ -391,8 +428,20 @@ still has no roles, and `auth` gains none.
   principal-providing policy. The principal and membership come first, in the
   same read transaction as the read, before the query is parsed or any record
   is read. A non-member gets one `403` for the list, an existing id, a missing
-  id and a malformed one. Records with no owner are left out, the stored owner
-  is never shown, and owners keep their own view on the collection mount.
+  id and a malformed one. Records with no owner are left out, and owners keep
+  their own view on the collection mount. The stored owner is not shown unless
+  the collection declares `readers.showOwner: true` (below).
+- **Seeing the requester.** With `readers: {mount, members, showOwner: true}`,
+  every record the readers mount answers carries `_owner`: the owner's
+  principal id, the same opaque id the store stamped on create (for auth, the
+  Better Auth user id; never an email or a name). It is shown on the readers
+  mount only. The owner's own mount, transition answers (the `by: others`
+  approval included) and `StoreExports` never show it, and a non-member still
+  gets the `403` before anything is read. It is off by default: a member who
+  can list every owner's records already sees their content, and `showOwner`
+  adds a stable cross-record link to one account. To show something a reviewer
+  can act on (a display name, a team), keep it in an ordinary declared field
+  that the owner writes; see [the store's security notes](../packages/store/SECURITY.md).
 - **Changes apply immediately.** Membership is read inside each gated
   request's transaction, so an addition or removal committed before a request
   begins applies to it; there is no cache. Of concurrent approvals by members
@@ -404,9 +453,8 @@ still has no roles, and `auth` gains none.
   collection and `membership: true` are new. Richer rules (roles with
   hierarchies, per-record sharing, a reader scope narrower than "every
   owner") would be an authorization language; this is one named set per gate.
-  `urlcode-store reassign` moves owned records and does not rewrite
-  membership keys: a principal that changes id needs `removeMember` and
-  `addMember`.
+  [`urlcode-store reassign`](#moving-records-to-another-principal) moves a
+  principal's membership together with its owned records.
 
 ### Result-aware retries
 
@@ -518,7 +566,7 @@ revision that declares every transition, guards each `by: others` transition
 and readers mount with its own route policy, maintains the membership
 collections and installs the extensions that may call `transaction`. The store
 adds no roles and no command to edit claims; `urlcode-store reassign` leaves
-claims and membership keys as they are.
+claims as they are and moves membership with the owned records.
 
 **One process and several.** Every guarantee here is a SQLite `BEGIN
 IMMEDIATE` transaction on one database file, so it holds for every connection
@@ -540,7 +588,7 @@ The #835 counterexamples, and what serves each:
 
 | Contract | Served by | Not built |
 |---|---|---|
-| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `transitionOnly` state, gated by a membership collection; a readers mount for the pending list across owners ([the proof](../proofs/private-requests/README.md) has no application code) | audit of membership changes (a membership collection refuses `audit`); a CLI command for `addMember`/`removeMember` |
+| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `transitionOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
 | Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a host transaction (list, check overlap, create or `update` with `ifMatch`) | a declarative non-overlap constraint; an interval index (the check reads the caller's records, at most `maxRecords`) |
 | Simulated credits: hold, commit, cancel across records, conserving the total | a host transaction (`minimum: 0` refuses an overdraft and rolls the whole transfer back) | a declarative transfer; `Idempotency-Key` on host transactions |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
@@ -588,7 +636,10 @@ filterable: [kind, done]         # <field>=<value>, equality only
   a record without a value never matches. Filters combine with AND and with
   `sort`; `total` is the number of matches.
 - Anything else is `400 invalid_query` with `fields` naming the key: an
-  undeclared sort or filter name, a repeated key, a value that does not parse,
+  undeclared sort or filter name, a repeated key, a value that does not parse
+  as the field's type, a value outside the field's `enum` (`is not one of the
+  allowed values`: a value the field can never hold is refused rather than
+  answered with an empty page, on an owner's mount and a readers mount alike),
   an unrelated parameter such as `q`, more than 16 parameters. Names that are
   not plain identifiers are reported as `(unsupported name)`, and values are
   never echoed. Unknown query parameters are therefore refused rather than
@@ -760,15 +811,23 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   with the same pattern core applies to a principal. The two must differ.
 - `--project` is the site's route project (the `app/` directory). The command
   reads it through core's project loader to learn which collections are
-  declared `ownership: owner` and each one's `maxRecordsPerOwner`; only those
-  collections are touched. `--collection <name>` limits the move to one of them
-  (a shared or undeclared name is refused). A declared collection that holds no
-  records yet has nothing to move and is left out of the report.
+  declared `ownership: owner` (with each one's `maxRecordsPerOwner`) or
+  `membership: true`; only those collections are touched. `--collection <name>`
+  limits the move to one of them (a shared or undeclared name is refused). A
+  declared owned collection that holds no records yet has nothing to move and
+  is left out of the report.
 - Only each record's owner changes. Records owned by anyone else, and records
   with no owner (see below), are left alone.
+- **Membership moves too** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
+  In every [membership collection](#membership-gates-and-cross-owner-reads)
+  that lists `--from`, its entry becomes `--to`'s (the key field and its
+  index together, in its original place), or is removed when `--to` already
+  is a member. On an audited membership collection this is recorded as
+  `--from` removed and, unless it already was a member, `--to` added, with
+  actor `operator`. It happens in the same transaction as the record moves.
 - It prints `{from, to, dryRun, moved, collections: [{collection, moved,
-  toBefore, toAfter, maxRecordsPerOwner}]}` as JSON. `--dry-run` counts and
-  writes nothing.
+  toBefore, toAfter, maxRecordsPerOwner}], memberships: [{collection,
+  toWasMember}]}` as JSON. `--dry-run` counts and writes nothing.
 - **The per-owner limit is respected.** When moving would leave `--to` holding
   more than a collection's `maxRecordsPerOwner`, the whole command is refused,
   naming the collection and the counts, and no collection is changed (a dry run
@@ -776,7 +835,8 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   raise the limit. `maxRecords` is unaffected, since no record is added.
 - It is one database transaction across every affected collection: all counts
   are checked, then every collection moves, and a failure part-way (a full disk,
-  a lock held past the busy timeout) rolls all of them back. Like the
+  a lock held past the busy timeout, a full audit backlog) rolls all of them
+  back, membership and its events included. Like the
   `ownerless` commands it may run while the server serves.
 - It does not touch `Idempotency-Key` retention, which is scoped by principal: a
   retry by `--to` with a key `--from` used is a new request, and a retry by

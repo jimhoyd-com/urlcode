@@ -33,7 +33,11 @@ export interface CapabilityCatalog {
   format: 1;
   targets: { target: CapabilityTarget; deployment: CompatibilityReport['deployment'] }[];
   capabilities: { capability: CapabilityName; targets: Partial<Record<CapabilityTarget, CapabilityDecision>> }[];
+  /** The project's declared extensions whose descriptor targets decided the `extension` rows, when a project was read. */
+  extensions?: string[];
 }
+/** A project's declared extensions and each one's descriptor targets (`declaredExtensionTargetsOf`). */
+export interface ProjectExtensionTargets { extensions: readonly string[]; declared: DeclaredExtensionTargets }
 
 export function normalizeCapabilityTarget(target: string): CapabilityTarget {
   if (target === 'node') return 'self-hosted';
@@ -145,11 +149,18 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
 }
 
 /** Catalog, not a claim that every configuration or provider deployment works. */
-export function getCapabilities(target?: string): CapabilityCatalog {
+/**
+ * The capability catalog. With `project` (a project's declared extensions and their descriptor targets), the
+ * `extension` and `policies.extensions` rows are `refused` on a target one of those extensions does not declare,
+ * instead of the generic `conditional`; a descriptor can only narrow support, never confirm it.
+ */
+export function getCapabilities(target?: string, project?: ProjectExtensionTargets): CapabilityCatalog {
   const selected = target === undefined ? [...capabilityTargets] : [normalizeCapabilityTarget(target)];
+  const extensions = project?.extensions.length ? project : undefined;
   return { format: 1, targets: selected.map(target => ({ target, deployment: deployment(target) })),
     capabilities: capabilityNames.map(capability => ({ capability,
-      targets: Object.fromEntries(selected.map(target => [target, decision(capability, target)])) })) };
+      targets: Object.fromEntries(selected.map(target => [target, decision(capability, target, undefined, extensions?.extensions, undefined, extensions?.declared)])) })),
+    ...(extensions ? { extensions: [...extensions.extensions] } : {}) };
 }
 
 /** A safe projection shared by declaration preflight and the existing compiled IR. No values escape. */
@@ -244,6 +255,7 @@ export function formatCapabilities(catalog: CapabilityCatalog): string {
     ...catalog.capabilities.map(row => row.capability.padEnd(24) + catalog.targets.map(({ target }) => (row.targets[target]?.support ?? 'unknown').padEnd(16)).join('')),
     '', 'Provider deployments: unverified. native/compiled describe local implementation tests.',
     'conditional requires configuration analysis; delegated relies on the provider (unverified).',
+    ...(catalog.extensions ? [`extension rows use the declared targets of this project's extensions: ${catalog.extensions.join(', ')}.`] : []),
     'See docs/CAPABILITIES.md for transport limits and programmatic project analysis.', ''].join('\n');
 }
 

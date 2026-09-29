@@ -36,7 +36,7 @@ Two distinctions hold throughout:
 | `forms` | Declarative server-rendered form flows with CSRF, field validation and a confirmation page, rendered through ui. | requires ui; uses abuse, mail | config 49, hook input/output 2 | [@jimhoyd/urlcode-forms](../packages/forms/README.md#field-reference) |
 | `mail` | Plain-text transactional email: templates contributed by other extensions, one operator transport. | — | config 2 | [@jimhoyd/urlcode-mail](../packages/mail/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](../packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 49 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 50 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
 | `ui` | Shared presentation kit: theme, copy, templates and the data screens other extensions contribute, for every extension page. | — | config 64, hook input/output 3 | [@jimhoyd/urlcode-ui](../packages/ui/README.md#field-reference) |
 <!-- extension-reference:end -->
 

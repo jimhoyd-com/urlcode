@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { getCapabilities, formatCapabilities } from './capabilities.ts';
+import { analyzeProjectCapabilities, assertTargetCompatibility, getCapabilities, formatCapabilities, normalizeCapabilityTarget } from './capabilities.ts';
+import type { ProjectExtensionTargets } from './capabilities.ts';
 import { getCapability, formatCapability } from './capability-query.ts';
 import { getSchemaFragment } from './schema-query.ts';
 import { stringify as stringifyYaml } from 'yaml';
@@ -14,7 +15,7 @@ import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
 import { initSite, addRedirect, boundedList, initListLimit, mcpSkippedNote } from './authoring.ts';
 import { initSiteWith, parseWithNames } from './init-with.ts';
-import { validateDeclaredExtensions } from './addon-install.ts';
+import { declaredExtensionTargetsOf, validateDeclaredExtensions } from './addon-install.ts';
 import { planUpgrade, upgradeSite } from './upgrade.ts';
 import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
@@ -62,7 +63,8 @@ const helpEntries: HelpEntry[] = [
     # loads .env.local and watches the project; on a TTY, prints readable startup and request lines instead of JSON (--json forces JSON; piped stdout always uses JSON)
 ` },
   { name:'validate', group:'Start', text:
-`  urlcode validate [--project directory] [--local] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]  # origin: absolute URLs in site.* files
+`  urlcode validate [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--local] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]  # origin: absolute URLs in site.* files
+    # --target: also preflight the project for that target; without --host-file an extension is refused on a target its urlcode.json does not declare
 ` },
   { name:'test', group:'Start', text:
 `  urlcode test [--project directory] [--origin https://links.example] [--alias-origin https://www.links.example]… [--verbose] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
@@ -197,7 +199,7 @@ const helpEntries: HelpEntry[] = [
   urlcode mcp print-config [project] [--global]  # prints the .mcp.json JSON for a client to register BEFORE running init (pre-session bootstrap, #542); write it into an empty directory before starting an agent session there so MCP tools are loaded on that session's first turn. --global emits the bare 'urlcode' command for a global install; default is the portable 'npx --no --package' form. 'urlcode init' keeps a .mcp.json written this way as-is
 ` },
   { name:'capabilities', group:'Agent tooling', text:
-`  urlcode capabilities [--target self-hosted|cloudflare|aws|vercel|static] [--json]
+`  urlcode capabilities [--target self-hosted|cloudflare|aws|vercel|static] [--project directory] [--json]  # in a site, extension rows use its extensions' declared targets
   urlcode capabilities <name> [--json]  # one catalog entry: schema fragment, constraints, grants, targets, bundled uses
 ` },
   { name:'schema', group:'Agent tooling', text:
@@ -384,7 +386,13 @@ try {
       if(exitCode)process.exitCode=exitCode;
     }else if(command==='capabilities'){
       if(arg!==undefined){ if(values.target!==undefined)throw new ConfigError('--target applies to the full catalog, not one entry'); const entry=getCapability(arg); print(values.json ? entry : formatCapability(entry)); }
-      else { const catalog = getCapabilities(values.target); print(values.json ? catalog : formatCapabilities(catalog)); }
+      else {
+        // A readable project refines the extension rows with its extensions' descriptor targets (#867); no project is
+        // an ordinary absence, and this command still needs none.
+        let project: ProjectExtensionTargets | undefined;
+        try { const loaded = await loadDocument(values.project); project = { extensions: Object.keys(loaded.document.extensions ?? {}), declared: await declaredExtensionTargetsOf(loaded) }; } catch { project = undefined; }
+        const catalog = getCapabilities(values.target, project); print(values.json ? catalog : formatCapabilities(catalog));
+      }
     }else if(command==='schema'){
       if(arg===undefined)throw new ConfigError('Use urlcode schema <path>');
       const fragment=getSchemaFragment(arg);
@@ -580,16 +588,28 @@ try {
           break;
         }
         case 'validate': {
-          const declared = Object.keys((await loadDocument(values.project)).document.extensions ?? {});
+          const loaded = await loadDocument(values.project);
+          const declared = Object.keys(loaded.document.extensions ?? {});
+          const target = values.target === undefined ? undefined : normalizeCapabilityTarget(values.target);
+          // Target preflight (#867). With a host file its registrations decide; without one each extension's descriptor
+          // targets can refuse a target but never confirm it, so that remaining `conditional` is not an error here.
+          const preflight = async (checked: string): Promise<void> => {
+            const registered = values['host-file'] === undefined ? undefined : operatorHost.extensions ?? [];
+            const report = analyzeProjectCapabilities(loaded, checked, registered, registered ? undefined : await declaredExtensionTargetsOf(loaded));
+            const issues = report.issues.filter(issue => registered || issue.support !== 'conditional' || (issue.capability !== 'extension' && issue.capability !== 'policies.extensions'));
+            assertTargetCompatibility({ ...report, compatible: issues.length === 0, issues });
+          };
           if (values['host-file'] === undefined && declared.length) {
             // Without the operator host, declared extensions are checked against their installed schemas; no extension code runs.
             const problems = await validateDeclaredExtensions(values.project);
             if (problems.length) throw new ConfigError(`Extension configuration does not match the installed schemas:\n${problems.map(problem => `  ${problem}`).join('\n')}`);
-            print({ event:'valid', static:true, extensions:declared, note:'Checked against installed extension schemas; pass --host-file to activate them and validate the whole runtime' }); break;
+            await preflight(target ?? 'self-hosted');
+            print({ event:'valid', static:true, target:target ?? 'self-hosted', extensions:declared, note:'Checked against installed extension schemas and their declared targets; pass --host-file to activate them and validate the whole runtime' }); break;
           }
+          if (target !== undefined) await preflight(target);
           // Extension activation warnings are the one runtime event validate prints (RIM-EXT-WARN-001).
           const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin, aliasOrigins:values['alias-origin'], log:(event:object) => { if ((event as {event?:string}).event === 'extension_warning') print(event); } });
-          print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;
+          print({ event:'valid', routes:runtime.count, version:runtime.version, ...(target === undefined ? {} : { target }) }); await runtime.close(); break;
         }
         case 'add':
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');

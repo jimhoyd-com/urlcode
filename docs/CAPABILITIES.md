@@ -12,6 +12,8 @@ urlcode capabilities --target cloudflare --json
 urlcode capabilities --target aws
 urlcode capabilities --target vercel
 urlcode capabilities --target static
+urlcode capabilities --project app --target aws   # in a site: extension rows follow its extensions' descriptors
+urlcode validate --project app --target vercel    # preflight one target; refused extensions fail before any host file
 ```
 
 This command needs no project or credentials. `node` is an alias for
@@ -26,13 +28,22 @@ external revision-pinned origin grants. `conditions` (`match`) and `conditional`
 Cloudflare (no artifact lowering yet) and by `static` (no server to match a
 request against). `extension`/`policies.extensions` report per-extension
 support from the registered extension's own declared `targets` when a
-`--host-file` is supplied; without one they report `conditional`/`unknown`
-rather than a blanket answer. Recipe and example metadata (derived by the same
-analysis and checked by `npm run check`) and the feature planner also read the
-`targets` each extension declares in its `urlcode.json` descriptor, so a target
-the extension does not declare is `refused` rather than `conditional`: the
-`store-crud` recipe is refused on `aws` and `vercel` because the store declares
-only `node`. See [egress](EGRESS.md) and
+`--host-file` is supplied. Without one, the `targets` each extension declares
+in its `urlcode.json` descriptor can refuse a target but never confirm one: a
+target the extension does not declare is `refused`, any other stays
+`conditional`. Recipe and example metadata (derived by the same analysis and
+checked by `npm run check`) and the feature planner read them from the release
+catalog, so the `store-crud` recipe is refused on `aws` and `vercel` because
+the store declares only `node`. In a site, `urlcode capabilities` and
+`urlcode validate` read them from each declared extension's installed
+descriptor, falling back to the release catalog
+([#867](https://github.com/jimhoyd-com/urlcode/issues/867)). `capabilities`
+then lists those extensions as `extensions` and answers the `extension` rows
+for them; with no readable project (`--project` defaults to `app/` in a site
+directory) it prints the generic catalog. `validate` preflights `--target`
+(default `self-hosted`) and fails with the refusal, naming the extension;
+without `--host-file` the remaining `conditional` extension answer is not an
+error there, and with one the registrations decide. See [egress](EGRESS.md) and
 [conditions](CONDITIONS.md).
 
 | Support | Meaning |

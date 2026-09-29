@@ -39,8 +39,13 @@ The tooling API consolidates authoring operations without starting a runtime:
   `explainProject(project, options)` returns every route the same way.
 - `buildManifest(project, options)` returns the generated semantic manifest
   described under [`urlcode manifest`](#explain-and-manifest).
-- `getCapabilities(target?)` describes local implementation support and separate
-  deployment evidence.
+- `getCapabilities(target?, project?)` describes local implementation support and
+  separate deployment evidence. With `project` (`{extensions, declared}`: a
+  project's declared extensions and, from `declaredExtensionTargetsOf(loaded)`,
+  the `targets` their installed descriptors declare), the `extension` rows are
+  `refused` on a target one of them does not declare. The CLI does this for a
+  readable `--project`, and `urlcode validate --target T` fails on such a
+  refusal without a host file ([capabilities](CAPABILITIES.md#inspect-target-support)).
 - `getCapability(name)` returns one catalog entry: kind, summary, resolved schema
   fragments, constraints, required operator grants, per-target support, refused
   targets and the bundled recipes and cookbook routes that use it. Unknown names

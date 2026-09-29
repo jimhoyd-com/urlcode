@@ -2,17 +2,23 @@
 // principal id; a `by: others` transition and a readers mount admit only its members. A non-member gets the same 403
 // for an existing and a missing id, before any record is read; a membership change applies to the next request; of
 // concurrent member approvals exactly one wins; activation refuses a gate naming an unknown or ordinary collection.
+//
+// The #866 follow-ups: the `urlcode-store members` CLI, audited membership changes (the member and its event commit or
+// roll back together), `reassign` moving membership with records, enum filter refusal and `readers.showOwner`.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { validateAuditEvent } from '@jimhoyd/urlcode-audit';
 import type { AuditExports } from '@jimhoyd/urlcode-audit';
 import type { CollectionSpec } from '../src/index.ts';
-import { addMember, createStore, listMembers, removeMember, storeScreens } from '../src/index.ts';
+import { AUDIT_BACKLOG, addMember, createStore, listMembers, reassignOwner, removeMember, storeScreens } from '../src/index.ts';
 import { direct, race } from './direct.ts';
-import { outbox, records, seed } from './rows.ts';
+import { counts, execute, outbox, records, seed, seedOutbox } from './rows.ts';
 
 const reviewers = { membership: true, key: 'userId', fields: { userId: { type: 'string', required: true, maxLength: 128 } } };
 const requests = {
@@ -179,4 +185,188 @@ test('activation refuses a gate naming an unknown or ordinary collection, and a 
   const store = createStore({ database: join(nowhere, 'store.sqlite'), projectSha256: 'a'.repeat(64) });
   await assert.rejects(async () => store.registration.activate(config, { origin: 'https://x.example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts, principalMounts: ['/api/requests', '/api/approvals'], root: join(nowhere, 'app') }), /readers: route \/api\/review\/\* needs a principal-providing policy/);
   assert.throws(() => storeScreens({ collections: config.collections, screens: { '/reviewers': { collection: 'reviewers' } } }), /membership collection, which has no mount/);
+});
+
+const cliPath = join(import.meta.dirname, '..', 'src', 'cli.ts');
+const cli = (...args: string[]) => promisify(execFile)(process.execPath, ['--conditions=development', cliPath, ...args]).then(
+  result => ({ code: 0, stdout: result.stdout, stderr: result.stderr }), (error: { code: number; stdout: string; stderr: string }) => ({ code: error.code, stdout: error.stdout, stderr: error.stderr }));
+/** Writes the route project the CLI reads the declared collections from, beside the direct store's database. */
+async function project(root: string, collections: Record<string, unknown>): Promise<string> {
+  const app = join(root, 'app'), route = { extension: 'store', methods: ['GET', 'HEAD', 'POST'] };
+  await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections } } }, routes: Object.fromEntries(mounts.map(mount => [`${mount}/*`, route])) }));
+  return app;
+}
+const auditedReviewers = { ...reviewers, audit: true };
+
+test('urlcode-store members adds, lists and removes members beside the serving store, validating every input', async t => {
+  const store = await site(t);
+  const app = await project(store.root, config.collections);
+  const base = ['--database', store.database, '--project', app, '--collection', 'reviewers'];
+  const added = await cli('members', 'add', ...base, '--principal', 'rita');
+  assert.equal(added.code, 0, added.stderr);
+  assert.deepEqual(JSON.parse(added.stdout), { collection: 'reviewers', principal: 'rita', changed: true });
+  assert.deepEqual(JSON.parse((await cli('members', 'add', ...base, '--principal', 'rita')).stdout), { collection: 'reviewers', principal: 'rita', changed: false });
+  assert.equal((await store.call('GET', '/api/review', { who: 'rita' })).status, 200, 'the serving store admits the new member at once');
+  await cli('members', 'add', ...base, '--principal', 'apikey:k1');
+  assert.deepEqual(JSON.parse((await cli('members', 'list', ...base)).stdout), { collection: 'reviewers', members: ['rita', 'apikey:k1'] });
+  const removed = await cli('members', 'remove', ...base, '--principal', 'rita');
+  assert.deepEqual(JSON.parse(removed.stdout), { collection: 'reviewers', principal: 'rita', changed: true });
+  assert.deepEqual(JSON.parse((await cli('members', 'remove', ...base, '--principal', 'rita')).stdout).changed, false);
+  assert.equal((await store.call('GET', '/api/review', { who: 'rita' })).status, 403);
+  const refusals: [string[], RegExp][] = [
+    [['members', 'add', ...base, '--principal', 'rita@example.com'], /must be a principal id/],
+    [['members', 'add', ...base, '--principal', ''], /must be a principal id/],
+    [['members', 'add', ...base], /--principal is required/],
+    [['members', 'list', ...base, '--principal', 'rita'], /--principal applies to members add and members remove only/],
+    [['members', 'grant', ...base, '--principal', 'rita'], /Use members add, members remove or members list/],
+    [['members', ...base], /Invalid command/],
+    [['members', 'add', '--database', store.database, '--project', app, '--collection', 'requests', '--principal', 'rita'], /not a membership collection/],
+    [['members', 'add', '--database', store.database, '--project', app, '--collection', 'missing', '--principal', 'rita'], /Collection missing is not declared/],
+    [['members', 'add', '--database', store.database, '--project', 'app', '--collection', 'reviewers', '--principal', 'rita'], /--project must be an absolute path/],
+    [['members', 'add', '--project', app, '--collection', 'reviewers', '--principal', 'rita'], /--database, --project and --collection are required/],
+    [['members', 'list', '--database', `${store.database}.missing`, '--project', app, '--collection', 'reviewers'], /does not exist/],
+    [['ownerless', '--database', store.database, '--collection', 'requests', '--principal', 'rita'], /--principal applies to members/],
+  ];
+  for (const [args, message] of refusals) {
+    const failed = await cli(...args);
+    assert.equal(failed.code, 1, args.join(' ')); assert.match(failed.stderr, message, args.join(' '));
+    assert.doesNotMatch(failed.stderr, /rita@example/, 'a refused value is not echoed');
+  }
+  assert.deepEqual(await listMembers(store.database, { collections: declared, collection: 'reviewers' }), { collection: 'reviewers', members: ['apikey:k1'] });
+});
+
+test('an audited membership collection records every added and removed member, from every path', async t => {
+  const collections = { reviewers: auditedReviewers, requests };
+  const store = await site(t, { audit: heldAudit, collections });
+  const app = await project(store.root, collections);
+  const typed = collections as unknown as Record<string, CollectionSpec>;
+  await addMember(store.database, { collections: typed, collection: 'reviewers', principal: 'rita' });
+  assert.equal((await cli('members', 'add', '--database', store.database, '--project', app, '--collection', 'reviewers', '--principal', 'rex')).code, 0);
+  await addMember(store.database, { collections: typed, collection: 'reviewers', principal: 'rita' }); // already a member: no change, no event
+  await removeMember(store.database, { collections: typed, collection: 'reviewers', principal: 'nobody' }); // not a member: no event
+  const exports = store.exports;
+  const ray = exports.records('reviewers').create({ id: 'admin-1' }, { userId: 'ray' });
+  exports.transaction(tx => tx.records('reviewers').remove(null, (tx.records('reviewers').list(null).items.find(item => item.userId === 'rex')!).id as string));
+  assert.equal((await cli('members', 'remove', '--database', store.database, '--project', app, '--collection', 'reviewers', '--principal', 'rita')).code, 0);
+  await ray;
+  const events = outbox(store.database, 'reviewers');
+  assert.deepEqual(events.map(event => [event.action, event.actor, event.subject]), [
+    ['store.membership.added', 'operator', 'reviewers/rita'],
+    ['store.membership.added', 'operator', 'reviewers/rex'],
+    ['store.membership.added', 'admin-1', 'reviewers/ray'],
+    ['store.membership.removed', 'anonymous', 'reviewers/rex'],
+    ['store.membership.removed', 'operator', 'reviewers/rita'],
+  ]);
+  for (const event of events) { assert.deepEqual(event.metadata, { collection: 'reviewers' }); assert.equal(event.source, 'store'); validateAuditEvent(event); }
+  // A member is never renamed: the grant and the revocation stay separate events.
+  const rayId = exports.records('reviewers').list(null).items[0]!.id as string;
+  await assert.rejects(exports.records('reviewers').update(null, rayId, { userId: 'roy' }), (error: { status: number; fields: Record<string, string> }) => error.status === 400 && /cannot be changed/.test(error.fields.userId!));
+  assert.equal(outbox(store.database, 'reviewers').length, 5, 'a refused change records nothing');
+});
+
+test('a membership change and its audit event commit or roll back together', async t => {
+  const collections = { reviewers: auditedReviewers, requests };
+  const store = await site(t, { audit: heldAudit, collections });
+  const typed = collections as unknown as Record<string, CollectionSpec>;
+  const options = { collections: typed, collection: 'reviewers' };
+  await addMember(store.database, { ...options, principal: 'rita' });
+  // The event insert fails after the member row was written: the member is not added (nor removed) either.
+  execute(store.database, "CREATE TRIGGER fail_event BEFORE INSERT ON store_audit_outbox BEGIN SELECT RAISE(ABORT, 'injected failure'); END;");
+  await assert.rejects(addMember(store.database, { ...options, principal: 'rex' }), { status: 503, code: 'storage_unavailable' });
+  await assert.rejects(removeMember(store.database, { ...options, principal: 'rita' }), { status: 503 });
+  await assert.rejects(store.exports.records('reviewers').create(null, { userId: 'ray' }), { status: 503 });
+  assert.deepEqual((await listMembers(store.database, options)).members, ['rita']);
+  assert.equal((await store.call('GET', '/api/review', { who: 'rex' })).status, 403, 'the gate never saw an unrecorded grant');
+  assert.equal((await store.call('GET', '/api/review', { who: 'rita' })).status, 200, 'nor lost a member through an unrecorded revocation');
+  execute(store.database, 'DROP TRIGGER fail_event');
+  // A host transaction that throws after adding a member rolls back the member and its event.
+  assert.throws(() => store.exports.transaction(tx => { tx.records('reviewers').create(null, { userId: 'ray' }); throw new Error('changed my mind'); }), /changed my mind/);
+  // At the backlog cap the change is refused whole, with audit's own 503.
+  const at = Date.now();
+  await seedOutbox(store.database, 'reviewers', Array.from({ length: AUDIT_BACKLOG - 1 }, () => validateAuditEvent({ id: randomUUID(), source: 'store', action: 'store.membership.added', actor: 'operator', subject: 'reviewers/x', at, metadata: { collection: 'reviewers' } })));
+  const before = counts(store.database);
+  await assert.rejects(addMember(store.database, { ...options, principal: 'rex' }), { status: 503, code: 'audit_backlog' });
+  assert.deepEqual(counts(store.database), before, 'neither the member nor an event was written');
+  assert.deepEqual((await listMembers(store.database, options)).members, ['rita']);
+});
+
+test('reassign moves membership with the records, in the same transaction, and records it on an audited list', async t => {
+  const collections = { reviewers: auditedReviewers, requests };
+  const store = await site(t, { audit: heldAudit, collections });
+  const typed = collections as unknown as Record<string, CollectionSpec>;
+  const options = { collections: typed, collection: 'reviewers' };
+  for (const member of ['apikey:old', 'rex']) await addMember(store.database, { ...options, principal: member });
+  const mine = await store.create('apikey:old', 'laptop');
+  const events = () => outbox(store.database, 'reviewers').map(event => [event.action, event.subject]);
+  const recorded = events();
+  const dry = await reassignOwner(store.database, { from: 'apikey:old', to: 'apikey:new', collections: typed, dryRun: true });
+  assert.deepEqual(dry.memberships, [{ collection: 'reviewers', toWasMember: false }]);
+  assert.deepEqual((await listMembers(store.database, options)).members, ['apikey:old', 'rex'], 'a dry run changes nothing');
+  assert.deepEqual(events(), recorded);
+  // A failure after the membership moved (injected on the owned collection's update) rolls it back too.
+  execute(store.database, "CREATE TRIGGER fail_requests BEFORE UPDATE OF owner ON store_records WHEN NEW.collection = 'requests' BEGIN SELECT RAISE(ABORT, 'injected failure'); END;");
+  await assert.rejects(reassignOwner(store.database, { from: 'apikey:old', to: 'apikey:new', collections: typed }), /injected failure/);
+  assert.deepEqual((await listMembers(store.database, options)).members, ['apikey:old', 'rex']);
+  assert.deepEqual(events(), recorded, 'no event for a move that did not happen');
+  execute(store.database, 'DROP TRIGGER fail_requests');
+  const moved = await reassignOwner(store.database, { from: 'apikey:old', to: 'apikey:new', collections: typed });
+  assert.equal(moved.moved, 1); assert.deepEqual(moved.memberships, [{ collection: 'reviewers', toWasMember: false }]);
+  assert.deepEqual((await listMembers(store.database, options)).members, ['apikey:new', 'rex'], 'the entry keeps its place');
+  assert.equal(records(store.database, 'reviewers')[0]!.userId, 'apikey:new', 'the key field and the key column move together');
+  assert.equal((await store.call('GET', '/api/review', { who: 'apikey:old' })).status, 403);
+  assert.equal((await store.call('GET', '/api/review', { who: 'apikey:new' })).status, 200);
+  assert.equal((await store.call('GET', `/api/requests/${mine}`, { who: 'apikey:new' })).status, 200);
+  assert.deepEqual(events().slice(recorded.length), [['store.membership.removed', 'reviewers/apikey:old'], ['store.membership.added', 'reviewers/apikey:new']]);
+  // When --to already is a member, --from's entry just goes; --collection can name the membership list alone.
+  const merged = await reassignOwner(store.database, { from: 'apikey:new', to: 'rex', collections: typed, collection: 'reviewers' });
+  assert.deepEqual([merged.moved, merged.collections, merged.memberships], [0, [], [{ collection: 'reviewers', toWasMember: true }]]);
+  assert.deepEqual((await listMembers(store.database, options)).members, ['rex']);
+  assert.deepEqual(events().at(-1), ['store.membership.removed', 'reviewers/apikey:new']);
+  assert.equal((await store.call('GET', `/api/requests/${mine}`, { who: 'apikey:new' })).status, 200, '--collection reviewers left the records alone');
+  // Through the CLI, beside the serving store.
+  const app = await project(store.root, collections);
+  const cliMove = await cli('reassign', '--database', store.database, '--project', app, '--from', 'rex', '--to', 'rita');
+  assert.equal(cliMove.code, 0, cliMove.stderr);
+  assert.deepEqual((JSON.parse(cliMove.stdout) as { memberships: unknown }).memberships, [{ collection: 'reviewers', toWasMember: false }]);
+  assert.equal((await store.call('GET', '/api/review', { who: 'rita' })).status, 200);
+});
+
+test('a filter value outside the field\'s enum is a 400 on the owner mount and the readers mount', async t => {
+  const store = await site(t);
+  await store.member('rita');
+  await store.create('ann', 'laptop');
+  for (const [who, path] of [['ann', '/api/requests'], ['rita', '/api/review']] as const) {
+    assert.equal((await store.call('GET', `${path}?status=pending`, { who })).status, 200, path);
+    for (const value of ['withdrawn', 'PENDING', '']) {
+      const refused = await store.call('GET', `${path}?status=${value}`, { who });
+      assert.equal(refused.status, 400, `${path} ${value}`);
+      assert.deepEqual(refused.body!.error, { code: 'invalid_query', message: 'The query is not valid', fields: { status: 'is not one of the allowed values' } });
+    }
+  }
+  assert.equal((await store.call('GET', '/api/review?status=withdrawn', { who: 'bob' })).status, 403, 'a non-member still gets the gate first');
+});
+
+test('readers.showOwner shows each record\'s owner id on the readers mount only', async t => {
+  const shown = { ...requests, readers: { ...requests.readers, showOwner: true } };
+  const store = await site(t, { collections: { reviewers, requests: shown } });
+  await store.member('rita');
+  const ann = await store.create('ann', 'laptop');
+  await store.create('bob', 'desk');
+  const list = await store.call('GET', '/api/review?sort=title', { who: 'rita' });
+  assert.deepEqual((list.body!.items as Record<string, unknown>[]).map(item => [item.title, item._owner]), [['desk', 'bob'], ['laptop', 'ann']]);
+  const one = await store.call('GET', `/api/review/${ann}`, { who: 'rita' });
+  assert.equal(one.body!._owner, 'ann');
+  // The list keeps its per-record ETags (#872) with showOwner, and each matches the record's own ETag.
+  const etags = list.body!.etags as Record<string, string>;
+  assert.deepEqual(Object.keys(etags).sort(), (list.body!.items as { id: string }[]).map(item => item.id).sort());
+  for (const etag of Object.values(etags)) assert.match(etag, /^"[0-9a-f]{32}"$/);
+  assert.equal(etags[ann], one.header('etag'));
+  // Everywhere else the owner stays in the database: the owner's own mount, the transition's answer, StoreExports.
+  assert.equal(Object.hasOwn((await store.call('GET', `/api/requests/${ann}`, { who: 'ann' })).body!, '_owner'), false);
+  assert.ok(((await store.call('GET', '/api/requests', { who: 'ann' })).body!.items as Record<string, unknown>[]).every(item => !Object.hasOwn(item, '_owner')));
+  const approved = await store.call('POST', `/api/approvals/${ann}`, { who: 'rita' });
+  assert.equal(approved.status, 200); assert.equal(Object.hasOwn(approved.body!, '_owner'), false);
+  assert.equal(Object.hasOwn(store.exports.records('requests').get({ id: 'ann' }, ann).record, '_owner'), false);
+  // A non-member learns nothing, owners included.
+  assert.equal((await store.call('GET', '/api/review', { who: 'ann' })).status, 403);
 });

@@ -79,7 +79,8 @@ principal's records to another in one transaction, and
 [per-record ownership](../../docs/STORE.md#per-record-ownership)). A collection may declare
 `sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`
 and `?<field>=<value>` list queries (one sort field, equality filters, `id`
-tie-break, opaque cursor, undeclared names are `400`s); they apply to the whole
+tie-break, opaque cursor; undeclared names, unparseable values and values
+outside the field's `enum` are `400`s); they apply to the whole
 collection, or on an owned collection to the caller's own records. A `PATCH`
 that sets a field to `null` removes it; a required field refuses that with a
 `400` field error, and `PUT` still takes only values (see
@@ -134,13 +135,20 @@ client can send `If-Match` for the version it listed.
 Permissions are application data keyed by the principal id, not roles in auth
 (#863). A collection declared `membership: true` with a `key` holds one record
 per member, keyed by principal id. It has no mount and no HTTP API: the
-operator maintains it with `addMember`, `removeMember` and `listMembers` from
-this package, and trusted extension code through `StoreExports`. A transition
+operator maintains it with `urlcode-store members add|remove|list --database
+<absolute store.sqlite> --project <absolute app> --collection <name>
+[--principal <id>]` (or `addMember`, `removeMember` and `listMembers` from this
+package), and trusted extension code through `StoreExports`. With
+`audit: true` every added and removed member is recorded
+(`store.membership.added`/`.removed`, subject `<collection>/<principal id>`)
+in the same transaction as the change, and `urlcode-store reassign` moves a
+principal's membership with its records. A transition
 that names `members: <collection>` admits only members (`403
 membership_required` before any record is read, the same for an existing and a
 missing id). An owned collection's `readers: {mount, members}` lets members
 list (with the declared filters and sort) and read every owner's records,
-read-only, on a separate mount. Membership is read inside each request's
+read-only, on a separate mount; `showOwner: true` adds each record's owner id
+(`_owner`) to that mount's answers only. Membership is read inside each request's
 transaction, so a change applies to the next request. See
 [membership gates and cross-owner reads](../../docs/STORE.md#membership-gates-and-cross-owner-reads).
 
@@ -229,7 +237,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.filterable` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared fields a list request may filter by equality (`<field>`=`<value>`); limit, cursor and sort cannot be filterable. |
 | `extensions.store.config.collections.*.ownership` | string | no | enum: ["shared","owner"] | shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true. |
 | `extensions.store.config.collections.*.maxRecordsPerOwner` | integer | no | minimum: 1; maximum: 10000 | With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded. |
-| `extensions.store.config.collections.*.audit` | boolean | no | — | true: every write is recorded in the audit log (field names and the principal, never values). Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain. |
+| `extensions.store.config.collections.*.audit` | boolean | no | — | true: every write is recorded in the audit log (field names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member's principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain. |
 | `extensions.store.config.collections.*.transitions` | object | no | maxProperties: 16; keys: "^[a-z][a-z0-9_-]{0,63}$" | Declared conditional state changes by name: POST `<mount>/<id>/<name>` moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language. |
 | `extensions.store.config.collections.*.transitions.*.from` | object | yes | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Declared fields and the exact value each must currently hold; each value must be valid for its field. |
 | `extensions.store.config.collections.*.transitions.*.set` | object | yes | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Declared fields and the constant value the transition writes; not the collection key. |
@@ -237,10 +245,11 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.transitions.*.by` | string | no | enum: ["owner","others"] | With ownership: owner only. owner (default): only the record's owner, on the collection mount. others: any principal except the record's owner (the owner gets 403 own_record_refused), served on its own mount. |
 | `extensions.store.config.collections.*.transitions.*.mount` | string | no | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | Required with by: others, refused otherwise: the transition is served as POST `<mount>/<id>` on a route `<mount>/*` with extension: store (POST) and a principal-providing policy. |
 | `extensions.store.config.collections.*.transitions.*.members` | string | no | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request. |
-| `extensions.store.config.collections.*.membership` | boolean | no | — | true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with addMember/removeMember or trusted extension code (StoreExports). Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable, readOnly or audit. |
-| `extensions.store.config.collections.*.readers` | object | no | unknown keys rejected | With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET `<mount>` (with the collection's limit, cursor, sort and filters) and GET `<mount>/<id>`. Owners keep their own view on the collection mount. The stored owner is never shown. |
+| `extensions.store.config.collections.*.membership` | boolean | no | — | true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member's key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded. |
+| `extensions.store.config.collections.*.readers` | object | no | unknown keys rejected | With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET `<mount>` (with the collection's limit, cursor, sort and filters) and GET `<mount>/<id>`. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner. |
 | `extensions.store.config.collections.*.readers.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | A separate mount: a route `<mount>/*` with extension: store (GET, HEAD) and a principal-providing policy. |
 | `extensions.store.config.collections.*.readers.members` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A membership collection: anyone it does not list gets 403 membership_required before any record is read. |
+| `extensions.store.config.collections.*.readers.showOwner` | boolean | no | — | true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner's mount, transitions and StoreExports never do. |
 | `extensions.store.config.shortLinks` | object | no | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | Public redirect mounts by name: GET `<mount>/<key>` atomically increments a counter and answers 302 to the record's stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route `<mount>/*` with extension: store (GET, HEAD). |
 | `extensions.store.config.shortLinks.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the redirect mount, separate from the collection's CRUD mount. |
 | `extensions.store.config.shortLinks.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A declared shared collection with a key; the key value is the path segment after the mount. |
