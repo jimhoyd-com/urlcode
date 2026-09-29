@@ -42,4 +42,4 @@ Update this map in the same change as any new top-level automation entry point.
 
 - `workspaces.ts` lists every add-on (extensions in `packages/`, artifacts in `artifacts/`) from its `urlcode.json`, in dependency order, and runs an npm script across them.
 - `build-addon-manifest.ts` regenerates each add-on's `urlcode.json` from its code and core's `dist/addon-catalog.json` from the descriptors (`--check` fails on drift in either), and writes core's `dist/addons.json`.
-- `pack-addons.ts` packs core and every add-on as tarballs and writes the `addons.json` that pins each tarball by sha512.
+- `pack-addons.ts` packs core and every add-on as tarballs and writes the `addons.json` that pins each tarball by sha512. It packs with `--ignore-scripts` and never builds: run `npm run build` and `node scripts/workspaces.ts run build` first. It refuses a package whose `exports` or `bin` name a missing file, before packing anything.
