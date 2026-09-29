@@ -3,13 +3,14 @@ import { realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
-import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
+import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf, redirectable } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
 import { openStoreDatabase } from './database.ts';
 import type { StoreDatabase } from './database.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
+import { describeStore } from './openapi.ts';
 import type { StoreExports } from './records.ts';
 
 export interface StoreExtensionOptions {
@@ -32,7 +33,7 @@ const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 const FIELD = /^[a-z][A-Za-z0-9_]{0,63}$/;
 const json = (status: number, value: unknown, extra: [string, string][] = []): HandlerResult => jsonResponse(status, value, extra);
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
-  json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) } }, extra);
+  json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}), ...(error.issues ? { issues: error.issues } : {}) } }, extra);
 /** What a caller sees of a record: everything but the stored owner, which only a readers mount with `showOwner` shows. */
 const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record, OWNER_FIELD)) return record; const { [OWNER_FIELD]: _owner, ...rest } = record; return rest; };
 /**
@@ -78,8 +79,8 @@ export const storeConfigSchema = { type: 'object', additionalProperties: false, 
     type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
       mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256, description: 'URL path of the redirect mount, separate from the collection\'s CRUD mount.' },
       collection: { type: 'string', pattern: NAME.source, description: 'A declared shared collection with a key; the key value is the path segment after the mount.' },
-      destination: { type: 'string', pattern: FIELD.source, description: 'A required string field with format: http-url holding the redirect target; activation refuses it otherwise.' },
-      clicks: { type: 'string', pattern: FIELD.source, description: 'A field listed in the collection\'s increments, raised by one on each GET (even when the collection is readOnly).' },
+      destination: { type: 'string', pattern: FIELD.source, description: 'A required string property with format: uri holding the redirect target; activation refuses it otherwise, and every write to it takes only an absolute HTTP(S) URL without credentials or whitespace (422 otherwise).' },
+      clicks: { type: 'string', pattern: FIELD.source, description: 'A property listed in the collection\'s increments, raised by one on each GET (even when the collection is readOnly).' },
     },
   } },
 } };
@@ -143,13 +144,18 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
     name: 'store', version: '1', projectSha256: options.projectSha256, targets: ['node'],
     schema: storeConfigSchema,
     authoring: storeAuthoring,
+    // The OpenAPI export's description of each store mount, from the declaration alone (packages/store/src/openapi.ts).
+    describe: describeStore,
     async activate(config, context): Promise<ExtensionInstance> {
       const rel = relative(await realTarget(resolve(context.root)), await realTarget(database));
       if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('Store database must be outside the route project');
       const declared = (config as { collections: Record<string, CollectionSpec>; shortLinks?: Record<string, ShortLinkSpec> }).collections;
       const declaredLinks = (config as { shortLinks?: Record<string, ShortLinkSpec> }).shortLinks ?? {};
       const byMount = new Map<string, Collection>();
-      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor));
+      // A short link's destination property also takes only a redirectable URL, on every write path.
+      const destinations = new Map<string, string[]>();
+      for (const link of Object.values(declaredLinks)) destinations.set(link.collection, [...destinations.get(link.collection) ?? [], link.destination]);
+      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor, destinations.get(name)));
       for (const collection of collections) if (collection.spec.audit && !audit?.active) throw new Error(`collection ${collection.name} declares audit: true; install the audit extension (urlcode extensions add audit)`);
       // A membership collection has no mount: it is never served over HTTP.
       const served = collections.filter((collection): collection is Collection & { spec: { mount: string } } => collection.spec.mount !== undefined);
@@ -172,9 +178,9 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         const collection = collections.find(candidate => candidate.name === link.collection);
         if (!collection) throw new Error(`Short link ${name}: collection ${link.collection} is not declared`);
         if (!collection.spec.key) throw new Error(`Short link ${name}: collection ${link.collection} needs a declared key`);
-        const destination = collection.spec.fields[link.destination];
-        if (!destination || destination.type !== 'string' || destination.format !== 'http-url' || !destination.required) throw new Error(`Short link ${name}: destination must name a required string field with format http-url`);
-        if (!collection.spec.increments.includes(link.clicks)) throw new Error(`Short link ${name}: clicks must name a declared increment field`);
+        const destination = Object.hasOwn(collection.spec.records.properties, link.destination) ? collection.spec.records.properties[link.destination] : undefined;
+        if (!destination || destination.type !== 'string' || destination.format !== 'uri' || !collection.spec.records.required.includes(link.destination)) throw new Error(`Short link ${name}: destination must name a required string property with format: uri`);
+        if (!collection.spec.increments.includes(link.clicks)) throw new Error(`Short link ${name}: clicks must name a declared increment property`);
         if (byMount.has(link.mount) || shortByMount.has(link.mount)) throw new Error(`Short link ${name}: mount ${link.mount} conflicts with a collection or short link mount`);
         if (!context.mounts.includes(link.mount)) throw new Error(`Short link ${name}: route ${link.mount}/* with extension: store is not declared`);
         shortByMount.set(link.mount, { collection, destination: link.destination, clicks: link.clicks });
@@ -397,12 +403,11 @@ async function dispatchShortLink(short: ShortLink, request: ExtensionRequest): P
   try {
     if (!['GET', 'HEAD'].includes(method)) return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), [['allow', 'GET, HEAD']]);
     if (!rest || rest.includes('/')) throw new StoreError(404, 'not_found', 'No such record');
-    // HEAD has no side effects: resolve the destination without counting a click. A record
-    // missing its (now config-time-required) destination — possible only for data written before
-    // that requirement, since re-loading existing data does not retroactively enforce it —
-    // answers 404 without incrementing rather than a 302 to `Location: undefined`.
+    // HEAD has no side effects: resolve the destination without counting a click. A record whose destination is
+    // missing or not redirectable (stored before the short link was declared, since stored rows are judged without
+    // `required` and the redirect rule applies to writes) answers 404 without counting rather than a 302 to it.
     const target = short.collection.getByKey(rest);
-    if (typeof target[short.destination] !== 'string') throw new StoreError(404, 'not_found', 'No such record');
+    if (!redirectable(target[short.destination])) throw new StoreError(404, 'not_found', 'No such record');
     const record = method === 'HEAD' ? target : short.collection.recordClick(target.id as string, short.clicks);
     return { status: 302, headers: [['location', record[short.destination] as string], ['cache-control', 'no-store']] };
   } catch (error) {

@@ -3,7 +3,7 @@
  * It reaches the collections the project declared under the store's own configuration by name, never by reading
  * that configuration, and applies exactly the rules the HTTP API applies: per-record ownership (the caller passes
  * the request principal; an owned collection answers another owner's record as the same 404 as a missing one),
- * field validation, `maxRecords`, `maxRecordBytes`, `readOnly` and strong ETags with a 412 on a stale `ifMatch`.
+ * record schema validation, `maxRecords`, `maxRecordBytes`, `readOnly` and strong ETags with a 412 on a stale `ifMatch`.
  * Failures are `StoreError`s carrying the same status, code and field names the HTTP API returns.
  *
  * `transaction(work)` (#835) runs several of those operations, across the declared collections, as one database
@@ -11,7 +11,7 @@
  */
 import type { ExtensionPrincipal } from '@jimhoyd/urlcode/extensions';
 import { OWNER_FIELD, StoreError, etagOf, storageFailure } from './collection.ts';
-import type { Collection, FieldSpec, Ownership, Scalar, Step, StoredRecord } from './collection.ts';
+import type { Collection, Ownership, RecordSchema, Scalar, Step, StoredRecord } from './collection.ts';
 import type { StoreDatabase } from './database.ts';
 
 /** Export contract version 1. */
@@ -56,16 +56,16 @@ export interface StoreRecords {
   readonly name: string;
   readonly ownership: Ownership;
   readonly readOnly: boolean;
-  /** The declared fields (a frozen copy), so a consumer can check its own mapping at activation. */
-  readonly fields: Readonly<Record<string, Readonly<FieldSpec>>>;
+  /** The declared record schema (a deep-frozen copy), so a consumer can check its own mapping at activation. */
+  readonly schema: Readonly<RecordSchema>;
   /** Creates a record, stamping the principal as its owner on an owned collection. */
   create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>): Promise<StoreRecordResult>;
   /** One record in the principal's scope. */
   get(principal: StorePrincipal, id: string): StoreRecordResult;
   /**
-   * A partial update (the HTTP API's PATCH): only the supplied fields change, and a field set to `null` is removed. A
-   * `null` for a required (or increment) field is refused with a 400 field error. With `ifMatch`, a record changed
-   * since that ETag is refused with 412.
+   * A partial update (the HTTP API's PATCH): only the supplied properties change, and one set to `null` is removed.
+   * The result must satisfy the collection schema (a cleared required property is a 422 `invalid_record` issue), and
+   * an increment property cannot be cleared. With `ifMatch`, a record changed since that ETag is refused with 412.
    */
   update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options?: { ifMatch?: string }): Promise<StoreRecordResult>;
   /**
@@ -93,7 +93,7 @@ const matchOf = (options: { ifMatch?: string }): string | undefined => {
 };
 /** The list parameters the export accepts: an unsorted page, whose cursor is the offset into creation order. */
 function pageParams(options: { limit?: number; cursor?: string }): URLSearchParams {
-  const invalid = (field: string, message: string) => new StoreError(400, 'invalid_query', 'The query is not valid', { [field]: message });
+  const invalid = (field: string, message: string) => new StoreError(400, 'invalid_query', 'The query is not valid', { fields: { [field]: message } });
   if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit < 1)) throw invalid('limit', 'must be a positive integer');
   if (options.cursor !== undefined && typeof options.cursor !== 'string') throw invalid('cursor', 'must be a cursor this store issued');
   const params = new URLSearchParams();
@@ -161,9 +161,8 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
 }
 
 function records(collection: Collection): StoreRecords {
-  const fields = Object.freeze(Object.fromEntries(Object.entries(collection.spec.fields).map(([name, spec]) => [name, Object.freeze({ ...spec, ...(spec.enum ? { enum: Object.freeze([...spec.enum]) } : {}) })]))) as Readonly<Record<string, Readonly<FieldSpec>>>;
   return Object.freeze({
-    name: collection.name, ownership: collection.spec.ownership, readOnly: collection.spec.readOnly, fields,
+    name: collection.name, ownership: collection.spec.ownership, readOnly: collection.spec.readOnly, schema: collection.spec.records.schema,
     async create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { return result(collection.create({ ...values }, undefined, ownerOf(principal), actorOf(principal)).record!); },
     get(principal: StorePrincipal, id: string) { return result(collection.get(known(id), ownerOf(principal))); },
     async update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) {

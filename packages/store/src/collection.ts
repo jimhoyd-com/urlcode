@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
+import { bodyIssues, bodySchemaDialect, compileBodySchema } from '@jimhoyd/urlcode/body-schema';
+import type { BodySchema, BodySchemaIssue, CompiledBodySchema } from '@jimhoyd/urlcode/body-schema';
 import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
 import type { StoreDatabase } from './database.ts';
@@ -9,33 +11,45 @@ export const RESERVED_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;
 /**
  * The stored owner of a record in an owned collection (`ownership: owner`, urlcode#331): the opaque principal id the
  * store stamped on create. It is kept in the database's `owner` column only. It never appears in a response, a body
- * naming it is refused like any undeclared field, and no request can change it. The leading underscore cannot be a
- * declared field name, so it never collides with one.
+ * naming it is refused like any undeclared property, and no request can change it. The leading underscore cannot be a
+ * declared property name, so it never collides with one.
  */
 export const OWNER_FIELD = '_owner';
 /** How a collection scopes its records: `shared` (the default; every caller who reaches the mount sees every record) or `owner` (each record belongs to the principal that created it). */
 export type Ownership = 'shared' | 'owner';
-export const LIMITS = { fields: 64, records: 10_000, recordBytes: 65_536, pageSize: 200, stringLength: 65_536 } as const;
+export const LIMITS = { properties: 64, records: 10_000, recordBytes: 65_536, pageSize: 200 } as const;
 const IDEMPOTENCY_LIMITS = { keys: 1_000, keyLength: 128 } as const;
 /**
  * Undelivered audit events one collection may hold in the outbox table (audit's `auditOutboxLimits.perCollection`).
  * At the cap a write on an audited collection is refused with 503 `audit_backlog` and nothing is written.
  */
 export const AUDIT_BACKLOG = 1_000;
-/** Audit metadata stays under audit's 4096-byte bound: the field list is cut here and marked truncated. */
+/** Audit metadata stays under audit's 4096-byte bound: the property list is cut here and marked truncated. */
 const AUDIT_FIELDS_BYTES = 3_584;
 
-export type FieldType = 'string' | 'integer' | 'number' | 'boolean';
+/** The value type of one record property: a record holds scalars only. */
+export type PropertyType = 'string' | 'integer' | 'number' | 'boolean';
 export type Scalar = string | number | boolean;
+const PROPERTY_TYPES: readonly PropertyType[] = ['string', 'integer', 'number', 'boolean'];
 const TRANSITION_LIMITS = { transitions: 16, fields: 8, stamps: 4 } as const;
 const MOUNT = { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 } as const;
 const FIELD_NAME = '^[a-z][A-Za-z0-9_]{0,63}$';
 const SCALAR = { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }, { type: 'boolean' }] } as const;
-export interface FieldSpec {
-  type: FieldType; required?: boolean; default?: Scalar;
-  minLength?: number; maxLength?: number; format?: 'http-url'; enum?: (string | number)[]; minimum?: number; maximum?: number;
-  /** Only a declared transition changes it: a create takes its default, and a body naming it is refused. */
-  transitionOnly?: boolean;
+/**
+ * One record property: a JSON Schema 2020-12 schema in core's request body profile with exactly one scalar `type`,
+ * plus the two standard annotations the store acts on. `default` is stored on create when the body omits the
+ * property. `readOnly: true` means only a declared transition changes it: a create takes its default, PUT keeps its
+ * value, and a body naming it is refused.
+ */
+export interface PropertySchema { type: PropertyType; default?: Scalar; readOnly?: boolean; [keyword: string]: unknown }
+/**
+ * A collection's record schema: a JSON Schema 2020-12 object schema in core's request body profile (the same
+ * profile, validator and 422 issue shape as `request.body.<METHOD>.schema`), restricted to a flat object of scalar
+ * properties. `additionalProperties: false` is required and written out, so the schema says what the store enforces.
+ */
+export interface RecordSchema {
+  $schema?: string; $comment?: string; title?: string; description?: string;
+  type: 'object'; additionalProperties: false; properties: Record<string, PropertySchema>; required?: string[];
 }
 interface IdempotencySpec { maxKeys: number }
 /** Who may run a transition on an owned collection: the record's owner, or any principal except its owner. */
@@ -46,11 +60,11 @@ export type TransitionActor = 'owner' | 'others';
  * names, in one transaction, or refuses and writes nothing. It is a bounded state change, not an expression language.
  */
 export interface TransitionSpec {
-  /** Every named field must currently hold exactly this value, or the transition answers 409 transition_conflict. */
+  /** Every named property must currently hold exactly this value, or the transition answers 409 transition_conflict. */
   from: Record<string, Scalar>;
   /** The constant values the transition writes. */
   set: Record<string, Scalar>;
-  /** String fields the store fills: `actor` (the principal's id) or `now` (the commit time, ISO 8601). */
+  /** String properties the store fills: `actor` (the principal's id) or `now` (the commit time, ISO 8601). */
   stamp?: Record<string, 'actor' | 'now'>;
   /** Owned collections only: `owner` (default) or `others` (any principal but the record's owner; needs its own mount). */
   by?: TransitionActor;
@@ -70,17 +84,19 @@ export interface ReadersSpec {
 }
 export interface CollectionSpec {
   /** Required, except on a membership collection, which has none. */
-  mount?: string; fields: Record<string, FieldSpec>;
+  mount?: string;
+  /** The record schema (`RecordSchema`); the store-owned facts below name its properties. */
+  schema: RecordSchema;
   maxRecords?: number; maxRecordBytes?: number; pageSize?: number; readOnly?: boolean;
-  /** One required bounded string field that callers choose and the collection keeps unique. */
+  /** One required bounded string property that callers choose and the collection keeps unique. */
   key?: string;
-  /** Numeric fields callers may atomically increase by one through the collection endpoint. */
+  /** Numeric properties callers may atomically increase by one through the collection endpoint. */
   increments?: string[];
   /** Optional durable Idempotency-Key retention for mutating HTTP requests. */
   idempotency?: IdempotencySpec;
-  /** Declared fields a list request may sort by (`sort=<field>` or `sort=-<field>`). */
+  /** Declared properties a list request may sort by (`sort=<property>` or `sort=-<property>`). */
   sortable?: string[];
-  /** Declared fields a list request may filter by equality (`<field>=<value>`). */
+  /** Declared properties a list request may filter by equality (`<property>=<value>`). */
   filterable?: string[];
   /** `owner` scopes every list, read, update, delete and increment to the request principal and stamps it on create. */
   ownership?: Ownership;
@@ -91,15 +107,15 @@ export interface CollectionSpec {
   maxRecordsPerOwner?: number;
   /**
    * Record every write in the audit log (the audit extension): the event is inserted into the store database's outbox
-   * table in the same transaction as the record, and audit drains it from there. Field names only, never values. On a
-   * membership collection an added or removed member is `store.membership.added`/`removed`, naming the member.
+   * table in the same transaction as the record, and audit drains it from there. Property names only, never values.
+   * On a membership collection an added or removed member is `store.membership.added`/`removed`, naming the member.
    */
   audit?: boolean;
   /** Declared conditional state changes by name (#835). */
   transitions?: Record<string, TransitionSpec>;
   /**
-   * A membership list (#863): its `key` field holds principal ids, and a transition's or reader mount's `members` names
-   * it. It has no mount and no HTTP API; the operator maintains it (`addMember`, or `StoreExports`).
+   * A membership list (#863): its `key` property holds principal ids, and a transition's or reader mount's `members`
+   * names it. It has no mount and no HTTP API; the operator maintains it (`addMember`, or `StoreExports`).
    */
   membership?: boolean;
   /** On an owned collection: who may list and read every owner's records, and where. */
@@ -107,57 +123,76 @@ export interface CollectionSpec {
 }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
+/** What a refusal carries besides its code: query parameter names with fixed messages, or record schema issues. */
+export interface StoreErrorDetails { fields?: FieldErrors; issues?: readonly BodySchemaIssue[] }
 
-/** Thrown for caller mistakes; carries field names and fixed messages only, never a submitted value. */
+/**
+ * Thrown for caller mistakes; carries names and fixed messages only, never a submitted value. A record that breaks
+ * the collection schema is 422 `invalid_record` with `issues` in core's body-validation issue shape; a list query is
+ * 400 `invalid_query` with `fields` naming the offending parameters.
+ */
 export class StoreError extends Error {
-  readonly status: number; readonly code: string; readonly fields: FieldErrors | undefined;
-  constructor(status: number, code: string, message: string, fields?: FieldErrors) { super(message); this.status = status; this.code = code; this.fields = fields; }
+  readonly status: number; readonly code: string; readonly fields: FieldErrors | undefined; readonly issues: readonly BodySchemaIssue[] | undefined;
+  constructor(status: number, code: string, message: string, details: StoreErrorDetails = {}) { super(message); this.status = status; this.code = code; this.fields = details.fields; this.issues = details.issues; }
 }
+/** The 422 for a record that breaks the collection schema (or a store rule on a named property). */
+export const invalidRecord = (issues: readonly BodySchemaIssue[]): StoreError => new StoreError(422, 'invalid_record', 'Record does not match the collection schema', { issues });
+
+const describedKeywords = 'type, enum, const, minLength, maxLength, pattern, format, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, allOf, anyOf, oneOf, not, title, description, $comment, examples, deprecated';
+/** JSON Schema for the store-owned part of one property (`type`, `default`, `readOnly`); every other profile keyword is checked by core's profile. */
+const propertySchema = {
+  type: 'object', required: ['type'],
+  description: `One record property: a JSON Schema 2020-12 schema in the request body profile with one scalar type. Besides ${describedKeywords}, the store acts on the standard annotations default and readOnly.`,
+  properties: {
+    type: { enum: PROPERTY_TYPES, description: 'The one scalar type the property holds; records hold scalars only.' },
+    default: { oneOf: [{ type: 'string', maxLength: 65_536 }, { type: 'number' }, { type: 'boolean' }], description: 'Stored on create when the body omits the property; it must satisfy the property\'s own schema.' },
+    readOnly: { type: 'boolean', description: 'true: only a declared transition (its set or stamp) changes the property. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 422. A required readOnly property needs a default. Not the key or an increment.' },
+  },
+} as const;
 
 /** JSON Schema for one collection declaration; `normalize` enforces the cross-field rules it cannot express. */
 export const collectionSchema = {
-  type: 'object', additionalProperties: false, required: ['fields'],
+  type: 'object', additionalProperties: false, required: ['schema'],
   properties: {
     mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256, description: 'URL path of the collection\'s JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). Required, except on a membership collection, which has none.' },
-    fields: { description: 'Declared record fields by name; a body naming any other field is refused. id, createdAt and updatedAt are reserved and store-owned.', type: 'object', minProperties: 1, maxProperties: LIMITS.fields, propertyNames: { pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, additionalProperties: {
-      type: 'object', additionalProperties: false, required: ['type'],
+    schema: {
+      description: 'The record schema: a JSON Schema 2020-12 object schema in the same bounded profile as request.body.<METHOD>.schema, validated by the same validator, with a flat set of scalar properties. A body that breaks it answers 422 invalid_record with the same issue list a body-schema route answers. id, createdAt and updatedAt are reserved and store-owned.',
+      type: 'object', additionalProperties: false, required: ['type', 'properties', 'additionalProperties'],
       properties: {
-        type: { enum: ['string', 'integer', 'number', 'boolean'], description: 'Value type; integer must be a safe integer and number a finite number.' },
-        required: { type: 'boolean', description: 'true: every record must carry the field and PATCH cannot clear it; not combinable with default.' },
-        default: { oneOf: [{ type: 'string', maxLength: LIMITS.stringLength }, { type: 'number' }, { type: 'boolean' }], description: 'Value stored on create when the body omits the field; it must satisfy the field\'s own rules.' },
-        minLength: { type: 'integer', minimum: 0, maximum: LIMITS.stringLength, description: 'Fewest characters of a string value.' },
-        maxLength: { type: 'integer', minimum: 1, maximum: LIMITS.stringLength, description: 'Most characters of a string value (default 65536); a key needs at most 128, and a sortable or filterable string field a small bound or an enum.' },
-        format: { enum: ['http-url'], description: 'http-url: the string must be an absolute HTTP(S) URL without credentials or ASCII whitespace; required for a short-link destination.' },
-        enum: { type: 'array', minItems: 1, maxItems: 64, items: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }] }, description: 'The only values the field accepts; not for booleans.' },
-        minimum: { type: 'number', description: 'Smallest numeric value; numbers only.' },
-        maximum: { type: 'number', description: 'Largest numeric value; numbers only.' },
-        transitionOnly: { type: 'boolean', description: 'true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments.' },
+        $schema: { const: bodySchemaDialect, description: 'Optional; only the JSON Schema 2020-12 dialect.' },
+        $comment: { type: 'string', maxLength: 4096, description: 'A note for readers; not validated.' },
+        title: { type: 'string', maxLength: 4096, description: 'A short name for the record type.' },
+        description: { type: 'string', maxLength: 4096, description: 'What a record of this collection is.' },
+        type: { const: 'object', description: 'Always object: a record is a JSON object.' },
+        additionalProperties: { const: false, description: 'Always false, written out: a body naming a property the schema does not declare is refused.' },
+        required: { type: 'array', maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Properties every record must carry: a create or PUT without one (and without a default) answers 422, and PATCH cannot clear one.' },
+        properties: { type: 'object', minProperties: 1, maxProperties: LIMITS.properties, propertyNames: { pattern: FIELD_NAME }, additionalProperties: propertySchema, description: 'The record properties by name, each a scalar schema. A string property needs maxLength (or an enum) to be sortable or filterable.' },
       },
-    } },
+    },
     maxRecords: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'Records the collection may hold (default 1000); a create beyond it answers 409 collection_full.' },
     maxRecordBytes: { type: 'integer', minimum: 256, maximum: LIMITS.recordBytes, description: 'Largest serialized record in bytes (default 4096); larger answers 413.' },
     pageSize: { type: 'integer', minimum: 1, maximum: LIMITS.pageSize, description: 'Records per list page, and the cap on a list request\'s limit (default 50).' },
     readOnly: { type: 'boolean', description: 'true: the API serves only GET and HEAD (other methods answer 405); short-link click counting still works.' },
-    key: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$', description: 'A required string field (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner.' },
-    increments: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, description: 'Numeric fields with a numeric default that POST <mount>/<id>/increment/<field> raises by exactly one in one database transaction, within the field\'s bounds.' },
+    key: { type: 'string', pattern: FIELD_NAME, description: 'A required string property (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner.' },
+    increments: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Numeric properties with a numeric default that POST <mount>/<id>/increment/<property> raises by exactly one in one database transaction, within the property\'s schema (409 increment_limit otherwise).' },
     idempotency: { description: 'Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE, increment and transitions. A retry with a retained key and the same request (method, path, body) replays the first answer\'s status with the record as it is now; the same key on a different request answers 422 idempotency_key_reused. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the request principal, or to the network client when there is none.', type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys, description: 'Newest distinct keys the collection retains, across all callers; an evicted key is no longer protected and a retry with it runs again.' } } },
-    sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, description: 'Declared fields a list request may sort by (sort=<field> or sort=-<field>).' },
-    filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, description: 'Declared fields a list request may filter by equality (<field>=<value>); limit, cursor and sort cannot be filterable.' },
+    sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties a list request may sort by (sort=<property> or sort=-<property>).' },
+    filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties a list request may filter by equality (<property>=<value>); a value the property\'s schema refuses answers 400 invalid_query. limit, cursor and sort cannot be filterable.' },
     ownership: { enum: ['shared', 'owner'], description: 'shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true.' },
     maxRecordsPerOwner: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded.' },
-    audit: { type: 'boolean', description: 'true: every write is recorded in the audit log (field names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member\'s principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain.' },
+    audit: { type: 'boolean', description: 'true: every write is recorded in the audit log (property names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member\'s principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain.' },
     transitions: { description: 'Declared conditional state changes by name: POST <mount>/<id>/<name> moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language.', type: 'object', maxProperties: TRANSITION_LIMITS.transitions, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['from', 'set'],
       properties: {
-        from: { type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Declared fields and the exact value each must currently hold; each value must be valid for its field.' },
-        set: { type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Declared fields and the constant value the transition writes; not the collection key.' },
-        stamp: { type: 'object', maxProperties: TRANSITION_LIMITS.stamps, propertyNames: { pattern: FIELD_NAME }, additionalProperties: { enum: ['actor', 'now'] }, description: 'String fields the store fills: actor (the principal id, needs maxLength of at least 128) or now (the commit time in ISO 8601, needs maxLength of at least 24). No enum or format.' },
+        from: { type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Declared properties and the exact value each must currently hold; each value must satisfy its property\'s schema.' },
+        set: { type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Declared properties and the constant value the transition writes; each must satisfy its property\'s schema. Not the collection key.' },
+        stamp: { type: 'object', maxProperties: TRANSITION_LIMITS.stamps, propertyNames: { pattern: FIELD_NAME }, additionalProperties: { enum: ['actor', 'now'] }, description: 'String properties the store fills: actor (the principal id, needs maxLength of at least 128) or now (the commit time in ISO 8601, needs maxLength of at least 24). No enum, const, pattern, format or composition keyword on them.' },
         by: { enum: ['owner', 'others'], description: 'With ownership: owner only. owner (default): only the record\'s owner, on the collection mount. others: any principal except the record\'s owner (the owner gets 403 own_record_refused), served on its own mount.' },
         mount: { ...MOUNT, description: 'Required with by: others, refused otherwise: the transition is served as POST <mount>/<id> on a route <mount>/* with extension: store (POST) and a principal-providing policy.' },
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request.' },
       },
     } },
-    membership: { type: 'boolean', description: 'true: a membership list. Its key field holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
+    membership: { type: 'boolean', description: 'true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
     readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner.', type: 'object', additionalProperties: false, required: ['mount', 'members'], properties: {
       mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
       members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read.' },
@@ -175,29 +210,70 @@ export function etagOf(record: StoredRecord): string {
   return `"${createHash('sha256').update(`${record.id as string}:${record.updatedAt as string}`).digest('hex').slice(0, 32)}"`;
 }
 
-/** Checks one value against its declared field; returns a fixed, value-free message on failure. Also judges list filters (query.ts). */
-export function checkValue(spec: FieldSpec, value: unknown): string | undefined {
-  if (spec.type === 'boolean') { if (typeof value !== 'boolean') return 'must be a boolean'; }
-  else if (spec.type === 'string') {
-    if (typeof value !== 'string') return 'must be a string';
-    if (spec.minLength !== undefined && value.length < spec.minLength) return `must be at least ${spec.minLength} characters`;
-    if (value.length > (spec.maxLength ?? LIMITS.stringLength)) return `must be at most ${spec.maxLength ?? LIMITS.stringLength} characters`;
-  } else {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return 'must be a number';
-    if (spec.type === 'integer' && !Number.isSafeInteger(value)) return 'must be an integer';
-    if (spec.minimum !== undefined && value < spec.minimum) return `must be at least ${spec.minimum}`;
-    if (spec.maximum !== undefined && value > spec.maximum) return `must be at most ${spec.maximum}`;
+/** The root keywords a record schema may use; everything a property may use is core's body profile. */
+const ROOT_KEYWORDS = new Set(['$schema', '$comment', 'title', 'description', 'type', 'additionalProperties', 'required', 'properties']);
+/** Keywords that would let a stamped value fail its property's schema; a stamp property has none of them. */
+const CONSTRAINING = ['enum', 'const', 'pattern', 'format', 'allOf', 'anyOf', 'oneOf', 'not', 'multipleOf'];
+
+/**
+ * A record schema checked and compiled: the declared schema (deep-frozen), its properties, and two validators built
+ * by core's body-schema compiler from the declared schema without the `default`/`readOnly` annotations (which core's
+ * request profile refuses because the runtime does not act on them; the store does). `record` is the schema as
+ * declared; `partial` drops `required` and judges one property at a time (a filter value, a transition value, a
+ * default, an increment) and every stored row.
+ */
+export interface CompiledRecordSchema {
+  schema: Readonly<RecordSchema>; properties: Readonly<Record<string, PropertySchema>>; required: readonly string[];
+  defaults: Readonly<StoredRecord>; readOnly: readonly string[];
+  record: CompiledBodySchema; partial: CompiledBodySchema;
+}
+function deepFreeze<T>(value: T): T { if (value && typeof value === 'object') { for (const child of Object.values(value)) deepFreeze(child); Object.freeze(value); } return value; }
+/** Checks and compiles a collection's record schema; throws plain Errors naming the collection for the operator. */
+export function compileRecordSchema(name: string, schema: unknown): CompiledRecordSchema {
+  const where = `Collection ${name}: schema`;
+  if (!isRecord(schema)) throw new Error(`${where} must be a JSON Schema object`);
+  for (const key of Object.keys(schema)) if (!ROOT_KEYWORDS.has(key)) throw new Error(`${where} /${key.slice(0, 64)}: a record schema takes only ${[...ROOT_KEYWORDS].join(', ')} at its root`);
+  if (schema.type !== 'object') throw new Error(`${where} /type must be object`);
+  if (schema.additionalProperties !== false) throw new Error(`${where} /additionalProperties must be false, written out: the store refuses a property the schema does not declare`);
+  const properties = schema.properties;
+  if (!isRecord(properties) || Object.keys(properties).length < 1 || Object.keys(properties).length > LIMITS.properties) throw new Error(`${where} /properties must declare 1 to ${LIMITS.properties} properties`);
+  const stripped: Record<string, Record<string, unknown>> = {}, defaults: StoredRecord = {}, readOnly: string[] = [];
+  for (const [property, declared] of Object.entries(properties)) {
+    const at = `${where} /properties/${property.slice(0, 64)}`;
+    if (!new RegExp(FIELD_NAME).test(property)) throw new Error(`${at}: a property name is a letter a-z then up to 63 letters, digits or _`);
+    if (reserved(property)) throw new Error(`${at}: ${property} is reserved and store-owned`);
+    if (!isRecord(declared) || typeof declared.type !== 'string' || !(PROPERTY_TYPES as readonly string[]).includes(declared.type)) throw new Error(`${at}/type must be one of ${PROPERTY_TYPES.join(', ')}: a record holds scalars only`);
+    const { default: fallback, readOnly: fixed, ...rest } = declared;
+    if (fixed !== undefined && typeof fixed !== 'boolean') throw new Error(`${at}/readOnly must be true or false`);
+    if (fixed === true) readOnly.push(property);
+    if (fallback !== undefined) {
+      if (!['string', 'number', 'boolean'].includes(typeof fallback)) throw new Error(`${at}/default must be a string, number or boolean`);
+      defaults[property] = fallback as Scalar;
+    }
+    stripped[property] = rest;
   }
-  if (spec.format === 'http-url') {
-    try { const parsed = new URL(value as string); if (/[\u0000-\u0020\u007f]/.test(value as string) || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return 'must be an absolute HTTP(S) URL without credentials or ASCII whitespace'; }
-    catch { return 'must be an absolute HTTP(S) URL without credentials or ASCII whitespace'; }
+  const required = schema.required === undefined ? [] : schema.required;
+  if (!Array.isArray(required) || !required.every(entry => typeof entry === 'string')) throw new Error(`${where} /required must list property names`);
+  const validated: BodySchema = { ...schema, properties: stripped } as BodySchema;
+  const { required: _required, ...partialSchema } = validated;
+  const compile = (value: BodySchema): CompiledBodySchema => {
+    // Core's diagnostics name the pointer as `Body schema <pointer>`; here it is the collection's schema.
+    try { return compileBodySchema(value); } catch (error) { throw new Error(`${where} ${(error as Error).message.replace(/^Body schema /, '')}`, { cause: error }); }
+  };
+  const record = compile(validated), partial = compile(partialSchema as BodySchema);
+  for (const [property, value] of Object.entries(defaults)) {
+    const issue = bodyIssues(partial, { [property]: value }, 1)[0];
+    if (issue) throw new Error(`${where} /properties/${property}/default ${issue.message}`);
   }
-  if (spec.enum && !spec.enum.includes(value as string | number)) return 'is not one of the allowed values';
-  return undefined;
+  return { schema: deepFreeze(structuredClone(schema) as unknown as RecordSchema), properties: deepFreeze(structuredClone(properties) as Record<string, PropertySchema>), required: Object.freeze([...required as string[]]), defaults: Object.freeze(defaults), readOnly: Object.freeze(readOnly), record, partial };
+}
+/** The first issue of one property value against its schema (a filter, a transition value, an increment), or undefined. */
+export function propertyIssue(compiled: CompiledRecordSchema, property: string, value: unknown): BodySchemaIssue | undefined {
+  return bodyIssues(compiled.partial, { [property]: value }, 1)[0];
 }
 
 export interface NormalizedSpec {
-  mount?: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
+  mount?: string; records: CompiledRecordSchema; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
   membership: boolean; readers?: Required<ReadersSpec>;
@@ -205,30 +281,29 @@ export interface NormalizedSpec {
 /** A validated transition. `by` is `any` on a shared collection, whose records have no owner to compare. */
 export interface NormalizedTransition { from: Record<string, Scalar>; set: Record<string, Scalar>; stamp: Record<string, 'actor' | 'now'>; by: TransitionActor | 'any'; mount?: string; members?: string }
 
-/** Validates the declared transitions against the collection's fields and ownership; throws plain Errors for the operator. */
-function transitionsOf(name: string, spec: CollectionSpec, ownership: Ownership, key: string | undefined): Record<string, NormalizedTransition> {
+/** Validates the declared transitions against the collection's schema and ownership; throws plain Errors for the operator. */
+function transitionsOf(name: string, spec: CollectionSpec, records: CompiledRecordSchema, ownership: Ownership, key: string | undefined): Record<string, NormalizedTransition> {
   const out: Record<string, NormalizedTransition> = {};
   for (const [transition, declared] of Object.entries(spec.transitions ?? {})) {
     const where = `Collection ${name}: transition ${transition}`;
     if (transition === 'increment') throw new Error(`${where}: the name increment is reserved`);
     const values = (kind: 'from' | 'set'): Record<string, Scalar> => {
       for (const [field, value] of Object.entries(declared[kind])) {
-        const fieldSpec = hasOwn(spec.fields, field) ? spec.fields[field] : undefined;
-        if (!fieldSpec) throw new Error(`${where}: ${kind} names ${field.slice(0, 64)}, which is not a declared field`);
-        const problem = checkValue(fieldSpec, value);
-        if (problem) throw new Error(`${where}: ${kind} value for ${field} ${problem}`);
+        if (!hasOwn(records.properties, field)) throw new Error(`${where}: ${kind} names ${field.slice(0, 64)}, which is not a declared property`);
+        const issue = propertyIssue(records, field, value);
+        if (issue) throw new Error(`${where}: ${kind} value for ${field} ${issue.message}`);
         if (kind === 'set' && field === key) throw new Error(`${where}: set cannot change the collection key`);
       }
       return { ...declared[kind] };
     };
     const stamp = { ...declared.stamp ?? {} };
     for (const [field, source] of Object.entries(stamp)) {
-      const fieldSpec = hasOwn(spec.fields, field) ? spec.fields[field] : undefined;
-      if (!fieldSpec) throw new Error(`${where}: stamp names ${field.slice(0, 64)}, which is not a declared field`);
+      const property = hasOwn(records.properties, field) ? records.properties[field] : undefined;
+      if (!property) throw new Error(`${where}: stamp names ${field.slice(0, 64)}, which is not a declared property`);
       if (hasOwn(declared.set, field)) throw new Error(`${where}: ${field} is both set and stamped`);
       if (field === key) throw new Error(`${where}: stamp cannot change the collection key`);
       const needed = source === 'actor' ? 128 : 24;
-      if (fieldSpec.type !== 'string' || fieldSpec.enum || fieldSpec.format || (fieldSpec.maxLength ?? LIMITS.stringLength) < needed || (fieldSpec.minLength ?? 0) > 1) throw new Error(`${where}: stamp field ${field} must be a string with no enum or format and maxLength of at least ${needed}`);
+      if (property.type !== 'string' || CONSTRAINING.some(keyword => hasOwn(property, keyword)) || typeof property.maxLength !== 'number' || property.maxLength < needed || (typeof property.minLength === 'number' && property.minLength > 1)) throw new Error(`${where}: stamp property ${field} must be a string with maxLength of at least ${needed} and no ${CONSTRAINING.join(', ')}`);
     }
     const by = declared.by;
     if (ownership === 'shared' && by !== undefined) throw new Error(`${where}: by needs ownership: owner`);
@@ -241,28 +316,15 @@ function transitionsOf(name: string, spec: CollectionSpec, ownership: Ownership,
 }
 /** Validates a declaration beyond JSON Schema; throws plain Errors for the operator. */
 export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
-  for (const [field, f] of Object.entries(spec.fields)) {
-    if (reserved(field)) throw new Error(`Collection ${name}: field ${field} is reserved`);
-    if (f.minLength !== undefined && f.maxLength !== undefined && f.minLength > f.maxLength) throw new Error(`Collection ${name}: field ${field} minLength exceeds maxLength`);
-    if (f.minimum !== undefined && f.maximum !== undefined && f.minimum > f.maximum) throw new Error(`Collection ${name}: field ${field} minimum exceeds maximum`);
-    if ((f.type === 'boolean' || f.type === 'string') && (f.minimum !== undefined || f.maximum !== undefined)) throw new Error(`Collection ${name}: field ${field} minimum/maximum apply to numbers only`);
-    if (f.type !== 'string' && (f.minLength !== undefined || f.maxLength !== undefined)) throw new Error(`Collection ${name}: field ${field} minLength/maxLength apply to strings only`);
-    if (f.type === 'boolean' && f.enum) throw new Error(`Collection ${name}: field ${field} enum does not apply to booleans`);
-    if (f.format !== undefined && f.type !== 'string') throw new Error(`Collection ${name}: field ${field} format applies to strings only`);
-    if (f.default !== undefined) {
-      const problem = checkValue(f, f.default);
-      if (problem) throw new Error(`Collection ${name}: default for ${field} ${problem}`);
-      if (f.required) throw new Error(`Collection ${name}: field ${field} cannot be both required and defaulted`);
-    }
-    for (const option of f.enum ?? []) { const problem = checkValue({ ...f, enum: [option] }, option); if (problem) throw new Error(`Collection ${name}: enum value for ${field} ${problem}`); }
-  }
+  const records = compileRecordSchema(name, spec.schema);
+  const property = (field: string): PropertySchema | undefined => hasOwn(records.properties, field) ? records.properties[field] : undefined;
   const queryable = (key: 'sortable' | 'filterable'): string[] => {
     const names = spec[key] ?? [];
     for (const field of names) {
-      const declared = hasOwn(spec.fields, field) ? spec.fields[field] : undefined;
-      if (!declared) throw new Error(`Collection ${name}: ${key} names ${field.slice(0, 64)}, which is not a declared field`);
-      if (key === 'filterable' && ['limit', 'cursor', 'sort'].includes(field)) throw new Error(`Collection ${name}: field ${field} cannot be filterable because its name is a list parameter`);
-      if (!queryableString(declared)) throw new Error(`Collection ${name}: ${key} field ${field} is a string and needs maxLength of at most ${QUERY_LIMITS.valueLength} or an enum`);
+      const declared = property(field);
+      if (!declared) throw new Error(`Collection ${name}: ${key} names ${field.slice(0, 64)}, which is not a declared property`);
+      if (key === 'filterable' && ['limit', 'cursor', 'sort'].includes(field)) throw new Error(`Collection ${name}: property ${field} cannot be filterable because its name is a list parameter`);
+      if (!queryableString(declared)) throw new Error(`Collection ${name}: ${key} property ${field} is a string and needs maxLength of at most ${QUERY_LIMITS.valueLength} or an enum`);
     }
     return names;
   };
@@ -273,12 +335,12 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     // themselves or enumerate members. It has no mount, and nothing that only makes sense with one.
     const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly'] as const).filter(option => spec[option] !== undefined);
     if (refused.length) throw new Error(`Collection ${name}: a membership collection takes no ${refused.join(', ')}`);
-    if (key === undefined) throw new Error(`Collection ${name}: a membership collection needs a key, the field holding each member's principal id`);
+    if (key === undefined) throw new Error(`Collection ${name}: a membership collection needs a key, the property holding each member's principal id`);
   } else if (spec.mount === undefined) throw new Error(`Collection ${name}: mount is required`);
   if (key !== undefined) {
-    const field = spec.fields[key];
-    if (!field) throw new Error(`Collection ${name}: key ${key} is not a declared field`);
-    if (field.type !== 'string' || !field.required || field.default !== undefined || (field.maxLength ?? LIMITS.stringLength) > IDEMPOTENCY_LIMITS.keyLength) throw new Error(`Collection ${name}: key ${key} must be a required string with maxLength at most ${IDEMPOTENCY_LIMITS.keyLength}`);
+    const declared = property(key);
+    if (!declared) throw new Error(`Collection ${name}: key ${key} is not a declared property`);
+    if (declared.type !== 'string' || !records.required.includes(key) || hasOwn(records.defaults, key) || records.readOnly.includes(key) || typeof declared.maxLength !== 'number' || declared.maxLength > IDEMPOTENCY_LIMITS.keyLength) throw new Error(`Collection ${name}: key ${key} must be a required string property with maxLength at most ${IDEMPOTENCY_LIMITS.keyLength}, no default and not readOnly`);
   }
   const ownership = spec.ownership ?? 'shared';
   // A collection-wide unique key would tell one owner that another owner already uses a value (409 key_exists), and
@@ -291,12 +353,12 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if (perOwner > maxRecords) throw new Error(`Collection ${name}: maxRecordsPerOwner exceeds maxRecords (${maxRecords})`);
   }
   const increments = spec.increments ?? [];
-  for (const fieldName of increments) {
-    const field = spec.fields[fieldName];
-    if (!field) throw new Error(`Collection ${name}: increment field ${fieldName} is not declared`);
-    if (!['integer', 'number'].includes(field.type) || typeof field.default !== 'number') throw new Error(`Collection ${name}: increment field ${fieldName} must be numeric with a numeric default`);
+  for (const field of increments) {
+    const declared = property(field);
+    if (!declared) throw new Error(`Collection ${name}: increment property ${field} is not declared`);
+    if (!['integer', 'number'].includes(declared.type) || typeof records.defaults[field] !== 'number' || records.readOnly.includes(field)) throw new Error(`Collection ${name}: increment property ${field} must be numeric with a numeric default and not readOnly`);
   }
-  const transitions = transitionsOf(name, spec, ownership, key);
+  const transitions = transitionsOf(name, spec, records, ownership, key);
   const readers = spec.readers;
   if (readers !== undefined) {
     // Readers widen an owned collection's view to members; a shared collection's mount already shows every record.
@@ -304,13 +366,22 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if (readers.mount === spec.mount) throw new Error(`Collection ${name}: the readers mount must differ from the collection mount`);
     if (Object.values(transitions).some(transition => transition.mount === readers.mount)) throw new Error(`Collection ${name}: the readers mount must differ from every transition mount`);
   }
-  for (const [field, f] of Object.entries(spec.fields)) {
-    if (!f.transitionOnly) continue;
-    if (f.required) throw new Error(`Collection ${name}: field ${field} cannot be both required and transitionOnly`);
-    if (field === key || increments.includes(field)) throw new Error(`Collection ${name}: field ${field} is the key or an increment and cannot be transitionOnly`);
-    if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field))) throw new Error(`Collection ${name}: field ${field} is transitionOnly but no transition sets or stamps it`);
+  for (const field of records.readOnly) {
+    // A create never carries a readOnly property, so a required one is satisfiable only through its default.
+    if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
+    if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field))) throw new Error(`Collection ${name}: property ${field} is readOnly but no transition sets or stamps it`);
   }
-  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }) };
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }) };
+}
+
+/**
+ * Whether a short link may redirect to `value`: an absolute HTTP(S) URL without credentials or ASCII whitespace. The
+ * destination property's own schema (`format: uri`) admits any scheme; this is the short link's rule on top of it.
+ */
+export function redirectable(value: unknown): boolean {
+  if (typeof value !== 'string' || /[\u0000- \u007f]/.test(value)) return false;
+  try { const parsed = new URL(value); return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.username && !parsed.password; }
+  catch { return false; }
 }
 
 /**
@@ -400,7 +471,9 @@ export class Collection {
   private db: StoreDatabase | undefined;
   private readonly auditor: CollectionAuditor | undefined;
   private get owned(): boolean { return this.spec.ownership === 'owner'; }
-  constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor) { this.name = name; this.spec = normalize(name, spec); this.auditor = auditor; }
+  /** Properties a short link redirects to (store.ts): every write also requires `redirectable` values there. */
+  private readonly destinations: readonly string[];
+  constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor, destinations: readonly string[] = []) { this.name = name; this.spec = normalize(name, spec); this.auditor = auditor; this.destinations = destinations; }
 
   /**
    * Binds this view to the open database after validating every stored row against this declaration: a row that
@@ -446,7 +519,9 @@ export class Collection {
     if (row.owner !== null && (typeof row.owner !== 'string' || !principalIdPattern.test(row.owner))) throw new RowError(`Collection ${this.name}: the store holds an invalid record owner`);
     // Serving owned records from a shared collection would hand every user's records to every caller.
     if (row.owner !== null && !this.owned) throw new RowError(`Collection ${this.name}: the store holds owned records but the collection is not declared with ownership: owner`);
-    try { this.check(fields, false); } catch { throw new RowError(`Collection ${this.name}: a stored record no longer matches the declared fields`); }
+    // Judged without `required`: a record stored before a property became required is still served, and its next
+    // write must supply it.
+    if (bodyIssues(this.spec.records.partial, fields, 1).length) throw new RowError(`Collection ${this.name}: a stored record no longer matches the collection schema`);
     return { id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, ...(row.owner === null ? {} : { [OWNER_FIELD]: row.owner }), ...fields as StoredRecord };
   }
   /** A consistent read (one deferred transaction), with storage and validation failures mapped to 503. */
@@ -481,36 +556,29 @@ export class Collection {
   notifyAudit(): void { this.auditor?.notify(); }
 
   /**
-   * Validates caller input against the field schema. `full` applies defaults and required checks. With `unset` (a
-   * partial update only), a `null` value asks to remove that field: allowed for an optional field and collected into
-   * `unset`, refused for a required field and for an increment field (whose counter needs a number).
+   * The properties a create, PUT or PATCH body names. A body that is not an object gets the schema's own type issue;
+   * the store-owned names (`id`, `createdAt`, `updatedAt`) are ignored, so a client may send back a record it read;
+   * a readOnly property is refused, because only a transition changes it.
    */
-  private check(input: Record<string, unknown>, full: boolean, unset?: string[]): StoredRecord {
-    const errors: FieldErrors = {}, out: StoredRecord = {};
-    for (const key of Object.keys(input)) if (!hasOwn(this.spec.fields, key) && !reserved(key)) errors[key.slice(0, 64)] = 'is not a declared field';
-    for (const [key, spec] of Object.entries(this.spec.fields)) {
-      if (!hasOwn(input, key) || input[key] === undefined) {
-        if (!full) continue;
-        if (spec.default !== undefined) out[key] = spec.default; else if (spec.required) errors[key] = 'is required';
-        continue;
-      }
-      if (unset && input[key] === null) {
-        if (spec.required) errors[key] = 'is required and cannot be cleared';
-        else if (this.spec.increments.includes(key)) errors[key] = 'is an increment field and cannot be cleared';
-        else unset.push(key);
-        continue;
-      }
-      const problem = checkValue(spec, input[key]) ?? (this.spec.membership && key === this.spec.key && !principalIdPattern.test(input[key] as string) ? 'must be a principal id' : undefined);
-      if (problem) errors[key] = problem; else out[key] = input[key] as Scalar;
-    }
-    if (Object.keys(errors).length) throw new StoreError(400, 'invalid_record', 'Record does not match the collection fields', errors);
-    return out;
+  private bodyOf(input: unknown): Record<string, unknown> {
+    if (!isRecord(input)) throw invalidRecord(bodyIssues(this.spec.records.record, input));
+    const body = Object.fromEntries(Object.entries(input).filter(([key]) => !reserved(key)));
+    const fixed = this.spec.records.readOnly.filter(field => hasOwn(body, field));
+    if (fixed.length) throw invalidRecord(fixed.map(field => ({ pointer: `/${field}`, keyword: 'readOnly', message: 'is changed only by a transition' })));
+    return body;
   }
-  /** A body may not name a `transitionOnly` field: only a declared transition changes it. */
-  private guarded(input: Record<string, unknown>): void {
-    const errors: FieldErrors = {};
-    for (const [field, spec] of Object.entries(this.spec.fields)) if (spec.transitionOnly && hasOwn(input, field)) errors[field] = 'is changed only by a transition';
-    if (Object.keys(errors).length) throw new StoreError(400, 'invalid_record', 'Record does not match the collection fields', errors);
+  /**
+   * The properties a write leaves, validated as a whole against the collection schema (422 `invalid_record` with
+   * core's issues), then by the store's own rules on named properties: a membership key is a principal id, and a
+   * short link's destination is `redirectable`. Returned in declaration order.
+   */
+  private validated(values: Record<string, unknown>): StoredRecord {
+    const issues = bodyIssues(this.spec.records.record, values);
+    if (issues.length) throw invalidRecord(issues);
+    const key = this.spec.key;
+    if (this.spec.membership && key !== undefined && !principalIdPattern.test(values[key] as string)) throw invalidRecord([{ pointer: `/${key}`, keyword: 'membership', message: 'must be a principal id' }]);
+    for (const field of this.destinations) if (hasOwn(values, field) && !redirectable(values[field])) throw invalidRecord([{ pointer: `/${field}`, keyword: 'format', message: 'must be an absolute HTTP(S) URL without credentials or ASCII whitespace' }]);
+    return Object.fromEntries(Object.keys(this.spec.records.properties).filter(field => hasOwn(values, field)).map(field => [field, values[field] as Scalar]));
   }
   private sized(record: StoredRecord): void {
     if (Buffer.byteLength(JSON.stringify(record)) > this.spec.maxRecordBytes) throw new StoreError(413, 'record_too_large', `Record exceeds ${this.spec.maxRecordBytes} bytes`);
@@ -544,8 +612,8 @@ export class Collection {
     writeAuditEvent(db, this.name, this.auditor.validate, { action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, metadata: { collection: this.name, ...(transition === undefined ? {} : { transition }), fields: names, ...(truncated ? { truncated: true } : {}) } });
     return true;
   }
-  /** Declared fields whose value differs between two versions of a record (a removed field counts), in declaration order. */
-  private changed(before: StoredRecord | undefined, after: StoredRecord | undefined): string[] { return Object.keys(this.spec.fields).filter(field => before?.[field] !== after?.[field]); }
+  /** Declared properties whose value differs between two versions of a record (a removed one counts), in declaration order. */
+  private changed(before: StoredRecord | undefined, after: StoredRecord | undefined): string[] { return Object.keys(this.spec.records.properties).filter(field => before?.[field] !== after?.[field]); }
   /**
    * Result-aware `Idempotency-Key` handling inside the write's transaction (#835). Without a key, `work` just runs.
    * With one, the retained claim is read under the write lock, so of racing requests with one key exactly one runs
@@ -730,8 +798,9 @@ export class Collection {
     this.writable();
     return this.write(db => this.idempotent(db, retry, 201, id => this.current(db, id, scope), () => this.createIn(db, input, scope, actor)), viewer);
   }
-  /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change, and a
-   * supplied `null` removes an optional field (refused with a field error for a required or increment field).
+  /** `replace` (PUT) rebuilds every property from the body and the defaults; otherwise (PATCH) only the named properties
+   * change, and a `null` removes one. Either way the resulting record must satisfy the collection schema (a cleared
+   * required property is its `required` issue), and an increment property cannot be cleared.
    * `expectedEtag`, when given, must match the record's current ETag, read inside the same transaction as the write,
    * or the update is refused with 412 instead of silently overwriting a change the caller never saw. */
   update(id: string, input: unknown, replace: boolean, retry?: Retry, expectedEtag?: string, owner?: string, actor?: string, viewer?: Viewer): Written {
@@ -801,9 +870,7 @@ export class Collection {
   }
   createIn(db: StoreDatabase, input: unknown, scope: string | undefined, actor: string | undefined): Step {
     this.writable();
-    if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
-    this.guarded(input);
-    const clean = this.check(input, true);
+    const clean = this.validated({ ...this.spec.records.defaults, ...this.bodyOf(input) });
     if (this.spec.key && this.keyTaken(db, clean[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
     // Checked before the collection-wide ceiling, and the message is fixed: it states neither the caller's count, any
     // other owner's count nor the collection total (urlcode#731).
@@ -821,20 +888,28 @@ export class Collection {
     // Scoped before the ETag and body checks, so another owner's record answers exactly like a missing one.
     const current = this.current(db, id, scope);
     if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
-    if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
-    this.guarded(input);
-    const unset: string[] = [];
-    const clean = this.check(input, replace, replace ? undefined : unset);
-    if (!replace && Object.keys(clean).length === 0 && unset.length === 0) throw new StoreError(400, 'invalid_record', 'Body must set or clear at least one declared field');
-    // PUT rebuilds the declared fields from the body and defaults, except transitionOnly ones, which keep their value.
-    const only = (key: string) => this.spec.fields[key]?.transitionOnly === true;
-    if (replace) for (const key of Object.keys(clean)) if (only(key)) delete clean[key];
-    const kept = Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key) && key !== OWNER_FIELD && (replace ? only(key) : !unset.includes(key))));
-    // The owner is carried over from the stored record, never from the body (check() refuses an `_owner` key).
-    const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: stamp(current.updatedAt as string), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...kept, ...clean };
+    const body = this.bodyOf(input), stored = fieldsOf(current);
+    let values: Record<string, unknown>;
+    if (replace) {
+      // PUT rebuilds the properties from the body and the defaults, except readOnly ones, which keep their stored value.
+      const readOnly = this.spec.records.readOnly;
+      values = { ...Object.fromEntries(Object.entries(this.spec.records.defaults).filter(([field]) => !readOnly.includes(field))), ...body, ...Object.fromEntries(readOnly.filter(field => hasOwn(stored, field)).map(field => [field, stored[field]])) };
+    } else {
+      // PATCH changes the named properties; `null` removes one, which the schema then judges (a required one is missing).
+      if (Object.keys(body).length === 0) throw invalidRecord([{ pointer: '', keyword: 'minProperties', message: 'must set or clear at least one property' }]);
+      const cleared = Object.keys(body).filter(field => body[field] === null);
+      const counters = cleared.filter(field => this.spec.increments.includes(field));
+      if (counters.length) throw invalidRecord(counters.map(field => ({ pointer: `/${field}`, keyword: 'increments', message: 'is an increment property and cannot be cleared' })));
+      values = { ...stored, ...body };
+      // A null for an undeclared name stays, so the schema refuses the name.
+      for (const field of cleared) if (hasOwn(this.spec.records.properties, field)) delete values[field];
+    }
+    const clean = this.validated(values);
+    // The owner is carried over from the stored record, never from the body (the schema refuses an `_owner` key).
+    const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: stamp(current.updatedAt as string), ...(current[OWNER_FIELD] === undefined ? {} : { [OWNER_FIELD]: current[OWNER_FIELD] }), ...clean };
     if (this.spec.key && record[this.spec.key] !== current[this.spec.key]) {
       // A member is added and removed, never renamed, so every grant and revocation is its own event.
-      if (this.spec.membership) throw new StoreError(400, 'invalid_record', 'Record does not match the collection fields', { [this.spec.key]: 'cannot be changed; remove the member and add the new one' });
+      if (this.spec.membership) throw invalidRecord([{ pointer: `/${this.spec.key}`, keyword: 'membership', message: 'cannot be changed; remove the member and add the new one' }]);
       if (this.keyTaken(db, record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
     }
     this.sized(record);
@@ -876,9 +951,8 @@ export class Collection {
   }
   private incremented(db: StoreDatabase, id: string, field: string, owner: string | undefined): StoredRecord {
     if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');
-    const current = this.current(db, id, owner), spec = this.spec.fields[field]!;
-    const value = (current[field] as number) + 1, problem = checkValue(spec, value);
-    if (problem) throw new StoreError(409, 'increment_limit', 'The increment would violate the declared field limits', { [field]: problem });
+    const current = this.current(db, id, owner), value = (current[field] as number) + 1, issue = propertyIssue(this.spec.records, field, value);
+    if (issue) throw new StoreError(409, 'increment_limit', 'The increment would violate the property\'s schema', { issues: [issue] });
     const record: StoredRecord = { ...current, updatedAt: stamp(current.updatedAt as string), [field]: value };
     this.sized(record);
     this.replaceRow(db, record);

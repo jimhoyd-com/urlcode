@@ -14,7 +14,7 @@ import { cleanup } from './cleanup.ts';
 import { records } from './rows.ts';
 
 const origin = 'https://reload.example.test';
-const todos = { mount: '/api/todos', fields: { title: { type: 'string', required: true, minLength: 1, maxLength: 40 }, done: { type: 'boolean', default: false } }, maxRecords: 10, maxRecordBytes: 512 };
+const todos = { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 40 }, done: { type: 'boolean', default: false } } }, maxRecords: 10, maxRecordBytes: 512 };
 const json = { 'content-type': 'application/json' };
 /** Activates after the store and throws on demand: a reload that fails after the store accepted its hand-off. */
 function breaker(projectSha256: string): RuntimeExtension {
@@ -61,7 +61,7 @@ test('a dev reload shares the store: data written before is served, writes after
   await new Promise(resolve => setTimeout(resolve, 200));
   assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'idle' }) })).status, 201, 'closing the retired runtime did not close the database');
   // A changed collection declaration reloads too: the new declaration serves the same file.
-  await edit({ ...todos, fields: { ...todos.fields, note: { type: 'string', maxLength: 20 } } }, false, 'v3');
+  await edit({ ...todos, schema: { ...todos.schema, properties: { ...todos.schema.properties, note: { type: 'string', maxLength: 20 } } } }, false, 'v3');
   assert.equal(await app.reload(), true);
   assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'noted', note: 'new field' }) })).status, 201);
   assert.deepEqual(await titles(call), ['before', 'after', 'idle', 'noted']);
@@ -82,9 +82,9 @@ test('a reload that fails after the store accepted its hand-off leaves the servi
   assert.equal(await app.reload(), false);
   assert.match(JSON.parse(diagnostics.at(-1)!).message, /Extension "breaker" failed to activate/);
   // The store's own activation fails after joining (a declaration its data breaks).
-  await edit({ ...todos, fields: { ...todos.fields, title: { ...todos.fields.title, maxLength: 1 } } }, false, 'v2');
+  await edit({ ...todos, schema: { ...todos.schema, properties: { ...todos.schema.properties, title: { ...todos.schema.properties.title, maxLength: 1 } } } }, false, 'v2');
   assert.equal(await app.reload(), false);
-  assert.match(JSON.parse(diagnostics.at(-1)!).message, /Extension "store" failed to activate: Collection todos: a stored record no longer matches the declared fields/);
+  assert.match(JSON.parse(diagnostics.at(-1)!).message, /Extension "store" failed to activate: Collection todos: a stored record no longer matches the collection schema/);
   assert.equal(await (await call('/hello')).text(), 'v1', 'the last-good snapshot keeps serving');
   assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'two' }) })).status, 201, 'and the serving store still writes');
   assert.deepEqual(await titles(call), ['one', 'two']);
@@ -104,7 +104,7 @@ test('during the overlap both runtimes write through one path and see each other
   const list = async (runtime: typeof serving) => (JSON.parse(Buffer.from((await runtime.handle({ target: '/api/todos' })).body as Uint8Array).toString()) as { items: { title: string }[] }).items.map(item => item.title);
   assert.equal((await post(serving, 'a')).status, 201);
   // A tighter declaration for the replacement: the retiring runtime's writes that break it make it answer 503.
-  await edit({ ...todos, fields: { ...todos.fields, title: { ...todos.fields.title, maxLength: 5 } } });
+  await edit({ ...todos, schema: { ...todos.schema, properties: { ...todos.schema.properties, title: { ...todos.schema.properties.title, maxLength: 5 } } } });
   const next = await createRuntime(project, { origin, extensions, replacing: serving, acceptedExtensionPin: { from: projectSha256 } });
   assert.deepEqual(await list(next), ['a']);
   assert.equal((await post(next, 'b')).status, 201);

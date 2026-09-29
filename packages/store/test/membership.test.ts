@@ -20,14 +20,10 @@ import { AUDIT_BACKLOG, addMember, createStore, listMembers, reassignOwner, remo
 import { direct, race } from './direct.ts';
 import { counts, execute, outbox, records, seed, seedOutbox } from './rows.ts';
 
-const reviewers = { membership: true, key: 'userId', fields: { userId: { type: 'string', required: true, maxLength: 128 } } };
+const reviewers = { membership: true, key: 'userId', schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
 const requests = {
   mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 50 }, filterable: ['status'], sortable: ['title'],
-  fields: {
-    title: { type: 'string', required: true, maxLength: 120 },
-    status: { type: 'string', enum: ['pending', 'approved'], default: 'pending', transitionOnly: true },
-    reviewedBy: { type: 'string', maxLength: 128, transitionOnly: true },
-  },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved'], default: 'pending', readOnly: true }, reviewedBy: { type: 'string', maxLength: 128, readOnly: true } } },
   transitions: { approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { reviewedBy: 'actor' }, by: 'others', members: 'reviewers', mount: '/api/approvals' } },
   readers: { mount: '/api/review', members: 'reviewers' },
 };
@@ -136,7 +132,7 @@ test('a membership change applies to the next request, through the operator path
   assert.deepEqual(await listMembers(store.database, { collections: declared, collection: 'reviewers' }), { collection: 'reviewers', members: [] });
   // A host transaction's transition passes the same gate.
   assert.throws(() => exports.transaction(tx => tx.records('requests').transition({ id: 'bob' }, randomUUID(), 'approve')), { status: 403, code: 'membership_required' });
-  await assert.rejects(exports.records('reviewers').create(null, { userId: 'not a principal' }), { status: 400 });
+  await assert.rejects(exports.records('reviewers').create(null, { userId: 'not a principal' }), { status: 422, code: 'invalid_record' });
   await assert.rejects(addMember(store.database, { collections: declared, collection: 'requests', principal: 'rita' }), /not a membership collection/);
   await assert.rejects(addMember(store.database, { collections: declared, collection: 'reviewers', principal: ' rita' }), /principal id/);
 });
@@ -174,11 +170,11 @@ test('activation refuses a gate naming an unknown or ordinary collection, and a 
   };
   const approve = requests.transitions.approve;
   await refuses({ reviewers, requests: { ...requests, transitions: { approve: { ...approve, members: 'nobody' } } } }, /transition approve: members names nobody, which is not a declared collection/);
-  await refuses({ reviewers, notes: { mount: '/api/notes', fields: { title: { type: 'string' } } }, requests: { ...requests, readers: { mount: '/api/review', members: 'notes' } } }, /readers: members names notes, which is not a membership collection/, [...mounts, '/api/notes']);
+  await refuses({ reviewers, notes: { mount: '/api/notes', schema: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' } } } }, requests: { ...requests, readers: { mount: '/api/review', members: 'notes' } } }, /readers: members names notes, which is not a membership collection/, [...mounts, '/api/notes']);
   await refuses({ reviewers, requests: { ...requests, transitions: { approve: { ...approve, members: 'requests' } } } }, /members names requests, which is not a membership collection/);
   await refuses({ reviewers: { ...reviewers, mount: '/api/reviewers' }, requests }, /a membership collection takes no mount/);
-  await refuses({ reviewers: { membership: true, fields: reviewers.fields }, requests }, /needs a key/);
-  await refuses({ reviewers, shared: { mount: '/api/requests', fields: { title: { type: 'string' } }, readers: { mount: '/api/review', members: 'reviewers' } } }, /readers needs ownership: owner/);
+  await refuses({ reviewers: { membership: true, schema: reviewers.schema }, requests }, /needs a key/);
+  await refuses({ reviewers, shared: { mount: '/api/requests', schema: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' } } }, readers: { mount: '/api/review', members: 'reviewers' } } }, /readers needs ownership: owner/);
   await refuses({ reviewers, requests: { ...requests, mount: undefined } }, /mount is required/);
   // The readers mount needs its own route, carrying a principal.
   await refuses(config.collections, /readers: route \/api\/review\/\* with extension: store is not declared/, ['/api/requests', '/api/approvals']);
@@ -259,7 +255,7 @@ test('an audited membership collection records every added and removed member, f
   for (const event of events) { assert.deepEqual(event.metadata, { collection: 'reviewers' }); assert.equal(event.source, 'store'); validateAuditEvent(event); }
   // A member is never renamed: the grant and the revocation stay separate events.
   const rayId = exports.records('reviewers').list(null).items[0]!.id as string;
-  await assert.rejects(exports.records('reviewers').update(null, rayId, { userId: 'roy' }), (error: { status: number; fields: Record<string, string> }) => error.status === 400 && /cannot be changed/.test(error.fields.userId!));
+  await assert.rejects(exports.records('reviewers').update(null, rayId, { userId: 'roy' }), (error: { status: number; issues: { pointer: string; message: string }[] }) => error.status === 422 && error.issues[0]!.pointer === '/userId' && /cannot be changed/.test(error.issues[0]!.message));
   assert.equal(outbox(store.database, 'reviewers').length, 5, 'a refused change records nothing');
 });
 
@@ -330,7 +326,7 @@ test('reassign moves membership with the records, in the same transaction, and r
   assert.equal((await store.call('GET', '/api/review', { who: 'rita' })).status, 200);
 });
 
-test('a filter value outside the field\'s enum is a 400 on the owner mount and the readers mount', async t => {
+test('a filter value outside the property\'s enum is a 400 on the owner mount and the readers mount', async t => {
   const store = await site(t);
   await store.member('rita');
   await store.create('ann', 'laptop');
@@ -339,7 +335,7 @@ test('a filter value outside the field\'s enum is a 400 on the owner mount and t
     for (const value of ['withdrawn', 'PENDING', '']) {
       const refused = await store.call('GET', `${path}?status=${value}`, { who });
       assert.equal(refused.status, 400, `${path} ${value}`);
-      assert.deepEqual(refused.body!.error, { code: 'invalid_query', message: 'The query is not valid', fields: { status: 'is not one of the allowed values' } });
+      assert.deepEqual(refused.body!.error, { code: 'invalid_query', message: 'The query is not valid', fields: { status: 'must be one of the declared values' } });
     }
   }
   assert.equal((await store.call('GET', '/api/review?status=withdrawn', { who: 'bob' })).status, 403, 'a non-member still gets the gate first');

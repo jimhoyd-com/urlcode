@@ -15,10 +15,7 @@ const json = { 'content-type': 'application/json' };
 const catalog = {
   mount: '/api/todos', pageSize: 7, maxRecords: 200, maxRecordBytes: 512,
   sortable: ['title', 'priority', 'done', 'score'], filterable: ['kind', 'done', 'priority', 'score'],
-  fields: {
-    title: { type: 'string', required: true, maxLength: 40 }, kind: { type: 'string', enum: ['a', 'b', 'c'] },
-    priority: { type: 'integer' }, score: { type: 'number' }, done: { type: 'boolean', default: false }, secret: { type: 'string', maxLength: 40 },
-  },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, kind: { type: 'string', enum: ['a', 'b', 'c'] }, priority: { type: 'integer' }, score: { type: 'number' }, done: { type: 'boolean', default: false }, secret: { type: 'string', maxLength: 40 } } },
 };
 type Row = { id: string; title: string; kind?: string; priority?: number; score?: number; done: boolean };
 type Page = { items: Row[]; total: number; next?: string | number };
@@ -127,12 +124,12 @@ test('undeclared, duplicated and malformed names and values are 400s that name o
     const body = JSON.parse(text) as { error: { code: string; fields: Record<string, string> } };
     assert.equal(body.error.code, 'invalid_query'); assert.ok(Object.hasOwn(body.error.fields, key), `${query} names ${key}`);
     assert.ok(!text.includes('hush'), 'no stored value in the error');
-    if (query.startsWith('kind=') && !query.includes('&')) { assert.equal(body.error.fields.kind, 'is not one of the allowed values'); assert.ok(!text.includes('zzz') && text.length < 300, 'bounded, never echoed'); }
+    if (query.startsWith('kind=') && !query.includes('&')) { assert.equal(body.error.fields.kind, 'must be one of the declared values'); assert.ok(!text.includes('zzz') && text.length < 300, 'bounded, never echoed'); }
   }
 });
 
 test('a numeric enum filter accepts only a declared value, compared by number', async t => {
-  const { page, call } = await seed(t, [{ title: 'x', level: 1 }, { title: 'y', level: 2 }], { mount: '/api/todos', filterable: ['level'], fields: { title: { type: 'string', required: true, maxLength: 40 }, level: { type: 'integer', enum: [1, 2, 3] } } });
+  const { page, call } = await seed(t, [{ title: 'x', level: 1 }, { title: 'y', level: 2 }], { mount: '/api/todos', filterable: ['level'], schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, level: { type: 'integer', enum: [1, 2, 3] } } } });
   assert.equal((await page('level=2')).total, 1);
   assert.equal((await page('level=3')).total, 0, 'a declared value no record holds is an ordinary empty page');
   for (const query of ['level=4', 'level=0', 'level=x']) {
@@ -185,13 +182,13 @@ test('collections without declarations refuse every sort and filter, and bad dec
   assert.equal((await plain.call('/api/todos?sort=title')).status, 400);
   assert.equal((await plain.call('/api/todos?kind=a')).status, 400);
   assert.equal((await plain.call('/api/todos')).status, 200);
-  const fields = catalog.fields;
+  const withProperties = (properties: Record<string, unknown>) => ({ ...catalog.schema, properties: { ...catalog.schema.properties, ...properties } });
   for (const [name, bad, pattern] of [
-    ['sortable unknown', { ...catalog, sortable: ['nope'] }, /not a declared field/],
-    ['filterable reserved', { ...catalog, filterable: ['id'] }, /not a declared field/],
-    ['filterable list parameter', { ...catalog, fields: { ...fields, limit: { type: 'integer' } }, filterable: ['limit'] }, /list parameter/],
-    ['long string', { ...catalog, sortable: ['title'], fields: { ...fields, title: { type: 'string', maxLength: 5000 } } }, /maxLength of at most 256/],
-    ['unbounded string', { ...catalog, filterable: ['secret'], fields: { ...fields, secret: { type: 'string' } } }, /maxLength of at most 256/],
+    ['sortable unknown', { ...catalog, sortable: ['nope'] }, /not a declared property/],
+    ['filterable reserved', { ...catalog, filterable: ['id'] }, /not a declared property/],
+    ['filterable list parameter', { ...catalog, schema: withProperties({ limit: { type: 'integer' } }), filterable: ['limit'] }, /list parameter/],
+    ['long string', { ...catalog, sortable: ['title'], schema: withProperties({ title: { type: 'string', maxLength: 5000 } }) }, /maxLength of at most 256/],
+    ['unbounded string', { ...catalog, filterable: ['secret'], schema: withProperties({ secret: { type: 'string' } }) }, /maxLength of at most 256/],
     ['duplicate', { ...catalog, sortable: ['title', 'title'] }, /Invalid extension configuration/],
     ['too many', { ...catalog, sortable: Array.from({ length: 9 }, (_, n) => `f${n}`) }, /Invalid extension configuration/],
     ['not a list', { ...catalog, sortable: 'title' }, /Invalid extension configuration/],

@@ -17,7 +17,7 @@ import { initialize, records, seed } from './rows.ts';
 
 const skip = typeof sqlite.backup !== 'function' && 'node:sqlite backup() needs Node 22.16 or newer';
 const origin = 'https://backup.example.test', json = { 'content-type': 'application/json' };
-const todos = { mount: '/api/todos', fields: { title: { type: 'string', required: true, maxLength: 40 } } };
+const todos = { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 } } } };
 const cliPath = join(import.meta.dirname, '..', 'src', 'cli.ts');
 const runCli = (...args: string[]) => promisify(execFile)(process.execPath, ['--conditions=development', cliPath, ...args]);
 const cliFailure = (...args: string[]) => runCli(...args).then(() => null, (error: { code: number; stderr: string }) => error);

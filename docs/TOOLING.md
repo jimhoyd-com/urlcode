@@ -698,8 +698,12 @@ JSON document for the project's declared HTTP operations. MCP `get_openapi` and
 the SDK's `buildOpenApi` return the same document from the same function. Like
 `manifest`, it is derived from the compiled configuration: nothing executes,
 no binding is read, and the same project and options give the same bytes.
-`--origin` becomes the one `servers` entry; `--host-file` only adds whether
-each extension mount's provider is registered.
+`--origin` becomes the one `servers` entry. `--host-file` loads the operator's
+registrations: it says whether each extension mount's provider is registered,
+and a registration that implements `describe()` contributes its mount's paths
+(see Mounts below). That call is trusted operator code from the host file, the
+same code `validate` and `serve` load; without `--host-file` nothing an
+extension ships is run.
 
 What it describes:
 
@@ -753,13 +757,29 @@ What it describes:
   proxy's upstream answer and anything `middleware` or an extension named in
   `policies.extensions` may answer first is a `default` response with no
   schema. No schema is invented for them.
-- **Mounts.** Paths below an `extension` mount, a `static` directory and a
-  `/**` redirect are served by their provider or directory and are not
-  enumerated: they are listed under `x-urlcode.opaqueMounts` with the handler
-  and extension name. An extension's own endpoints (for example a store's
-  collection API or the admin screens) are therefore absent, including every
-  provider admin API. A disabled route is left out and listed under
-  `x-urlcode.omitted`.
+- **Mounts.** Paths below a `static` directory and a `/**` redirect are
+  served by their directory or target and are not enumerated: they are listed
+  under `x-urlcode.opaqueMounts`. So is an `extension` mount, unless the host
+  file's registration of that extension describes it. An extension describes a
+  mount through the optional `describe()` of its registration
+  ([extension contract](EXTENSIONS.md#openapi-description)): from the mount and
+  the project's declared configuration it returns OpenAPI path items and
+  prefixed Schema Objects, as JSON data. Core checks the contribution (paths at
+  or below the mount that no other route declares, `Store...`-style prefixed
+  schema names, `$ref`s only to those or to core's `Urlcode...` components, at
+  most 64 paths, 64 schemas and 256 KiB), keeps only the operations the route
+  declares, assigns every `operationId`, and adds what the runtime does on
+  every extension answer: `X-Request-Id`, `X-Content-Type-Options` and
+  `Cache-Control: no-store`, a sign-in gate's security requirement and its
+  401/403 (a status both the gate and the extension answer claims no body
+  schema, since either may answer). The mount is then listed under
+  `x-urlcode.describedMounts`, and each of its path items carries
+  `x-urlcode.handler: extension`, the extension name and the route pattern.
+  The store describes every collection, readers, transition and short-link
+  mount from each collection's record schema
+  ([store OpenAPI](STORE.md#openapi)); the other first-party extensions leave
+  their mounts opaque, so their provider and admin APIs stay absent. A disabled
+  route is left out and listed under `x-urlcode.omitted`.
 - **Authentication.** A route gated by an extension that provides the request
   principal (`providesPrincipal`: the host file's registration, else the
   installed descriptor), whether written as `auth: true` or
@@ -776,7 +796,7 @@ What it describes:
   and extension configuration.
 
 `x-urlcode` carries the facts OpenAPI has no field for: at the top, the
-runtime version, the project `revision`, `opaqueMounts` and `omitted`; on each
+runtime version, the project `revision`, `opaqueMounts`, `describedMounts` and `omitted`; on each
 path item, the handler kind, the execution mode when the route runs project
 code (`trusted` or `sandboxed`), the middleware count, the extension and policy
 names, the error format (with `errorScope` when it is `mixed`), the
@@ -792,11 +812,15 @@ undeclared method per path) to that example, and to a project with an
 `auth: true` route behind a synthetic auth extension and `function` routes. It
 checks each answer's status, media type, schema and the runtime headers against
 the document; the auth route's 401 and 403 are matched by number, not through
-`default`.
+`default`. The same checks (the harness is `test/openapi-contract.ts`) run in
+`packages/store/test/openapi.test.ts` over a served store: a shared collection
+with a key, increments, idempotency, filters and a transition, a short-link
+mount, and an owned collection with a readers mount behind a principal
+provider.
 
 Not yet described: response bodies of `function` routes (there is no response
-schema field) and extension mounts (an extension cannot describe its mount
-through the extension contract yet).
+schema field) and the mounts of extensions whose registration has no
+`describe()`.
 
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its canonical, verb-first tools, in the order

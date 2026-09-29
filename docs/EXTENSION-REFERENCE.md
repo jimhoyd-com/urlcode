@@ -32,7 +32,7 @@ Two distinctions hold throughout:
 | `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](../packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](../packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](../packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 43 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 44 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ## Capability to reference
@@ -42,7 +42,7 @@ full definition and a checked example live.
 
 | I need | Declare | Reference and example |
 |---|---|---|
-| Stored short links: create, redirect, click count | store: a collection with a `key`, a required `format: http-url` destination field and one `increments` counter, plus `shortLinks.<name>: {mount, collection, destination, clicks}` and a `/go/*` route with `extension: store` | [store field reference](../packages/store/README.md#field-reference); the complete YAML is in [bounded keyed transitions](STORE.md#bounded-keyed-transitions) |
+| Stored short links: create, redirect, click count | store: a collection with a `key`, a required `format: uri` destination property (HTTP(S) only) and one `increments` counter, plus `shortLinks.<name>: {mount, collection, destination, clicks}` and a `/go/*` route with `extension: store` | [store field reference](../packages/store/README.md#field-reference); the complete YAML is in [bounded keyed transitions](STORE.md#bounded-keyed-transitions) |
 | Accept a form submission as JSON, validated before code runs | core: a route with `request.body.POST.schema` (JSON Schema 2020-12, standard formats such as `format: email`), answered by `respond` or a trusted `function`; the runtime answers 422 first | [recipe `contact-form`](../recipes/contact-form/README.md), [body schema](HTTP.md#body-schema-and-input-patterns) |
 | Email each submission | core: a trusted `function` route that calls the mail provider's API, SDK or nodemailer directly, with its credentials in granted `secrets` | [sending mail from your own code](../recipes/contact-form/README.md#sending-mail-from-your-own-code-instead) |
 | A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](../packages/store/README.md#field-reference), [recipe `store-crud`](../recipes/store-crud/README.md) |

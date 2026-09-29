@@ -2,16 +2,22 @@
   "collections": {
     "todos": {
       "mount": "/api/todos",
-      "fields": {
-        "title": {
-          "type": "string",
-          "required": true,
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "done": {
-          "type": "boolean",
-          "default": false
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "done": {
+            "type": "boolean",
+            "default": false
+          }
         }
       },
       "sortable": [

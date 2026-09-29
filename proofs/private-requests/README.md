@@ -120,7 +120,7 @@ directory and exercises every success and failure case over HTTP:
   request is read. A reviewer approving their own request (`403
   own_record_refused`), an approval of a request that is no longer pending
   (`409 transition_conflict`; of concurrent approvals exactly one wins), and
-  any body that names the owner or `status` (`400`).
+  any body that names the owner or `status` (`422 invalid_record`).
 - Every Better Auth path outside the package's allowlist (sign-in, sign-out,
   the session endpoints, `/change-password` and `/ok`; sign-up stays off).
   Better Auth's own `disabledPaths`, set in `operator/auth.mjs`, matches

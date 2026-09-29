@@ -9,8 +9,8 @@ import { boot, legacy, notes, running } from './ownership-support.ts';
 import { execute, records, seed } from './rows.ts';
 
 // urlcode#732: moving every record one principal owns to another (a rotated API key's records to its replacement).
-const tasks = { mount: '/api/tasks', ownership: 'owner', maxRecords: 20, maxRecordsPerOwner: 3, fields: { title: { type: 'string', required: true, maxLength: 40 } } };
-const board = { mount: '/api/board', fields: { title: { type: 'string', required: true, maxLength: 40 } } };
+const tasks = { mount: '/api/tasks', ownership: 'owner', maxRecords: 20, maxRecordsPerOwner: 3, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 } } } };
+const board = { mount: '/api/board', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 } } } };
 const owned = (title: string, owner: string) => ({ ...legacy(title), _owner: owner });
 async function reassignFixture(t: TestContext) {
   const booted = await boot(t, { seed: [owned('n1', 'apikey:old'), owned('n2', 'apikey:old'), owned('n3', 'alice'), legacy('orphan')], extraCollections: { tasks, board } });

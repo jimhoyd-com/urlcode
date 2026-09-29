@@ -16,7 +16,7 @@ import { records, seed } from './rows.ts';
 // principal, `Badge-anon` is allowed without one, anything else is a 401 from the provider itself.
 const origin = 'https://owned.example.test';
 export const json = { 'content-type': 'application/json' };
-export const notes = { mount: '/api/notes', fields: { title: { type: 'string', required: true, maxLength: 40 }, votes: { type: 'integer', default: 0 } }, increments: ['votes'], idempotency: { maxKeys: 10 }, maxRecords: 50, ownership: 'owner' };
+export const notes = { mount: '/api/notes', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, votes: { type: 'integer', default: 0 } } }, increments: ['votes'], idempotency: { maxKeys: 10 }, maxRecords: 50, ownership: 'owner' };
 
 async function badge(project: string, provides = true): Promise<RuntimeExtension> {
   return {

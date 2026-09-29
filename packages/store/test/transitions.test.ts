@@ -9,12 +9,7 @@ import { counts, records } from './rows.ts';
 
 const requests = {
   mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 50 },
-  fields: {
-    title: { type: 'string', required: true, maxLength: 120 },
-    status: { type: 'string', enum: ['pending', 'approved', 'withdrawn'], default: 'pending', transitionOnly: true },
-    reviewedBy: { type: 'string', maxLength: 128, transitionOnly: true },
-    reviewedAt: { type: 'string', maxLength: 32, transitionOnly: true },
-  },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved', 'withdrawn'], default: 'pending', readOnly: true }, reviewedBy: { type: 'string', maxLength: 128, readOnly: true }, reviewedAt: { type: 'string', maxLength: 32, readOnly: true } } },
   transitions: {
     approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { reviewedBy: 'actor', reviewedAt: 'now' }, by: 'others', mount: '/api/approvals' },
     withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' } },
@@ -51,14 +46,14 @@ test('a reviewer approves another user\'s pending request; the owner cannot appr
   assert.equal(records(store.database, 'requests')[0]!.reviewedBy, 'rita', 'the first approval stands');
 });
 
-test('only a transition changes a transitionOnly field', async t => {
+test('only a transition changes a readOnly property', async t => {
   const store = await site(t);
   const created = await store.call('POST', '/api/requests', { who: 'ann', body: { title: 'x', status: 'approved' } });
-  assert.equal(created.status, 400); assert.deepEqual((created.body!.error as { fields: unknown }).fields, { status: 'is changed only by a transition' });
+  assert.equal(created.status, 422); assert.deepEqual((created.body!.error as { issues: unknown }).issues, [{ pointer: '/status', keyword: 'readOnly', message: 'is changed only by a transition' }]);
   const { id, etag } = await store.create('ann', 'x');
   for (const [method, body] of [['PATCH', { status: 'approved' }], ['PATCH', { reviewedBy: null }], ['PUT', { title: 'y', status: 'approved' }]] as const) {
     const refused = await store.call(method, `/api/requests/${id}`, { who: 'ann', body });
-    assert.equal(refused.status, 400, `${method} ${JSON.stringify(body)}`);
+    assert.equal(refused.status, 422, `${method} ${JSON.stringify(body)}`);
   }
   await store.call('POST', `/api/approvals/${id}`, { who: 'rita' });
   const put = await store.call('PUT', `/api/requests/${id}`, { who: 'ann', body: { title: 'renamed' } });
@@ -141,15 +136,15 @@ test('a failure inside the transition rolls back the record, the claim and nothi
 });
 
 test('activation refuses a transition it cannot serve safely', async t => {
-  const declare = (transitions: Record<string, unknown>, fields: Record<string, unknown> = requests.fields, extra: Record<string, unknown> = {}) => () => new Collection('requests', { ...requests, fields, transitions, ...extra } as never);
+  const declare = (transitions: Record<string, unknown>, schema: Record<string, unknown> = requests.schema, extra: Record<string, unknown> = {}) => () => new Collection('requests', { ...requests, schema, transitions, ...extra } as never);
   assert.throws(declare({ approve: { from: { status: 'pending' }, set: { status: 'approved' }, by: 'others' } }), /by: others needs its own mount/);
   assert.throws(declare({ withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' }, mount: '/api/w' } }), /mount is only for by: others/);
-  assert.throws(declare({ approve: { from: { status: 'maybe' }, set: { status: 'approved' } } }), /from value for status is not one of the allowed values/);
-  assert.throws(declare({ approve: { from: { nope: 1 }, set: { status: 'approved' } } }), /from names nope, which is not a declared field/);
+  assert.throws(declare({ approve: { from: { status: 'maybe' }, set: { status: 'approved' } } }), /from value for status must be one of the declared values/);
+  assert.throws(declare({ approve: { from: { nope: 1 }, set: { status: 'approved' } } }), /from names nope, which is not a declared property/);
   assert.throws(declare({ increment: { from: { status: 'pending' }, set: { status: 'approved' } } }), /reserved/);
-  assert.throws(declare({ approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { title: 'actor' } } }), /stamp field title must be a string .* at least 128/);
+  assert.throws(declare({ approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { title: 'actor' } } }), /stamp property title must be a string with maxLength of at least 128/);
   assert.throws(declare({ approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { status: 'now' } } }), /both set and stamped/);
-  assert.throws(declare({ withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' } } }), /reviewedBy is transitionOnly but no transition sets or stamps it/);
+  assert.throws(declare({ withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' } } }), /reviewedBy is readOnly but no transition sets or stamps it/);
   const { ownership: _ownership, ...shared } = requests;
   assert.throws(() => new Collection('requests', { ...shared, transitions: { approve: { ...requests.transitions.approve } } } as never), /by needs ownership: owner/);
   // The transition mount must be routed and guarded by a principal-providing policy.

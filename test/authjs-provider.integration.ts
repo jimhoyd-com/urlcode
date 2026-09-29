@@ -299,8 +299,8 @@ test('private-requests with Auth.js: an independently owned provider behind the 
 
   await t.test('malformed and cross-origin input is refused', async () => {
     assert.equal((await ann('/api/requests', { method: 'POST', body: '{"title":' })).status, 400);
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', _owner: users['bob@example.test'] } })).status, 400);
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', status: 'approved' } })).status, 400);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', _owner: users['bob@example.test'] } })).status, 422);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', status: 'approved' } })).status, 422);
     assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x' }, headers: { origin: 'https://attacker.example' } })).status, 403);
     // Sign-in from another origin is refused by the mount; without the CSRF cookie Auth.js refuses it too.
     assert.equal((await browser(origin)('/api/auth/callback/credentials', { method: 'POST', form: { email: 'ann@example.test', password: 'ann-local-demo-password' }, headers: { origin: 'https://attacker.example' } })).status, 403);

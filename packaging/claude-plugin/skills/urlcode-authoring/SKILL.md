@@ -247,8 +247,8 @@ mistakes that recur:
 - There is no native `link` handler or `dynamicLinks` project flag; never
   invent a `link` field. Stored short links are declared through the
   operator-installed `store` extension: `extensions.store.config.shortLinks`
-  names a collection with a bounded unique `key`, a `required` `format: http-url`
-  destination field and one `increments` counter, served on a public
+  names a collection with a bounded unique `key`, a `required` `format: uri`
+  destination property (HTTP(S) only) and one `increments` counter, served on a public
   `GET`/`HEAD` `/go/*`-style mount (`302`, `404` for a missing code) with no
   function (`docs/STORE.md`). Report a gap only beyond that: custom redirect
   status, non-HTTP(S) destinations, per-record ownership, or a target without

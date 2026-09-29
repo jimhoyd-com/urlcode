@@ -57,7 +57,7 @@ test('validate and capabilities refuse an extension on a target its installed de
   const install = (targets: string[]) => writeFile(join(installed, 'urlcode.json'), JSON.stringify({ ...descriptor, targets }));
   await install(descriptor.targets);
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1',
-    extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', fields: { title: { type: 'string', required: true, maxLength: 80 } } } } } } },
+    extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 80 } } } } } } } },
     routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST'] } } }));
   const run = (...args: string[]) => spawnSync(process.execPath, ['--conditions=development', cli, ...args], { encoding: 'utf8', timeout: 20000 });
   const extensionRow = (catalog: CapabilityCatalog, target: 'self-hosted' | 'aws' | 'vercel') => catalog.capabilities.find(row => row.capability === 'extension')!.targets[target]!;
@@ -101,7 +101,7 @@ test('explain, manifest, context and review use installed descriptor targets wit
   await install(['node']);
   await writeFile(join(app, 'hit.mjs'), 'let hits = 0;\nexport default function(request){\n  hits++;\n  return {status:200,body:String(hits)};\n}\n');
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1',
-    extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', fields: { title: { type: 'string', required: true, maxLength: 80 } } } } } } },
+    extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 80 } } } } } } } },
     routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST'] }, '/hit': { methods: ['GET'], function: { source: 'hit.mjs' } } } }));
   const run = (...args: string[]) => { const result = spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--project', app], { encoding: 'utf8', timeout: 20000 }); assert.equal(result.status, 0, result.stderr); return result.stdout; };
   type Support = { compatible: boolean; issues: { capability: string; support: string; reason: string }[] };

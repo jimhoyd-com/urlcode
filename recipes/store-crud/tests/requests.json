@@ -10,8 +10,8 @@
     {"path": "/api/todos/{{id}}", "method": "DELETE", "status": 204, "expectBody": ""},
     {"path": "/api/todos/{{id}}", "status": 404}
   ]},
-  {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"done\":true}", "status": 400},
-  {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"title\":\"x\",\"owner\":\"me\"}", "status": 400},
+  {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"done\":true}", "status": 422},
+  {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"title\":\"x\",\"owner\":\"me\"}", "status": 422},
   {"path": "/api/todos", "method": "POST", "headers": {"content-type": "text/plain"}, "body": "title=x", "status": 415},
   {"path": "/api/todos/00000000-0000-4000-8000-000000000000", "status": 404},
   {"path": "/api/todos", "method": "DELETE", "status": 405}
