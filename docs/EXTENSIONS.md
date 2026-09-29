@@ -1908,7 +1908,11 @@ then hot reloads follow it (above). The authoring MCP runners (`run_validate`,
 at its new revision without a new pin; the same rules decide, so a `--policy`
 or `PROJECT_SHA256` the operator gave `urlcode mcp` still wins
 ([#940](https://github.com/jimhoyd-com/urlcode/issues/940)). The in-process
-`run_tests` has no such mode and still needs the pin.
+`run_tests` applies the same rule itself: with neither pin it reviews the
+current revision on throwaway data and returns `localReview` with a
+`local_review` event, and `get_context`'s validate, test, audit and routes
+commands pass the flag as the npm scripts do
+([#964](https://github.com/jimhoyd-com/urlcode/issues/964)).
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and

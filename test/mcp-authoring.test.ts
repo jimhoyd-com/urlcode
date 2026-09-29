@@ -128,21 +128,22 @@ async function hostSession(root:string,messages:unknown[],options:{hostFile?:str
 test('buildContext commands repeat the operator host file and origin and name what the operator has not supplied (#778)',async t=>{
  const {root,hostFile}=await widgetProject(t);
  const withHost=await buildContext(root,{projectFlag:'.',hostFile});
- for(const command of ['validate','test','audit','routes'])assert.ok(withHost.commands![command]!.endsWith(` --host-file ${hostFile}`),command);
+ // The checks end with --local-review, as the generated npm scripts do (#964).
+ for(const command of ['validate','test','audit','routes'])assert.ok(withHost.commands![command]!.endsWith(` --host-file ${hostFile} --local-review`),command);
  assert.equal(withHost.commands!.capabilities!.includes('--host-file'),false);
  // No origin was supplied: the commands carry none and the missing flag is named, not guessed.
  assert.equal(withHost.commands!.validate!.includes('--origin'),false);
  assert.deepEqual(withHost.prerequisites?.map(item=>item.flag),['--origin']);
  const complete=await buildContext(root,{projectFlag:'.',hostFile,origin:widgetOrigin});
- assert.equal(complete.commands!.test,`urlcode test --project . --host-file ${hostFile} --origin ${widgetOrigin}`);
+ assert.equal(complete.commands!.test,`urlcode test --project . --host-file ${hostFile} --origin ${widgetOrigin} --local-review`);
  assert.equal(complete.prerequisites,undefined);
  // Without a host file the commands stay host-less and both operator flags are named.
  const bare=await buildContext(root,{projectFlag:'.'});
- assert.equal(bare.commands!.validate,'urlcode validate --local --project .');
+ assert.equal(bare.commands!.validate,'urlcode validate --local --project . --local-review');
  assert.deepEqual(bare.prerequisites?.map(item=>item.flag),['--host-file','--origin']);
  // A host path that is not a plain shell word is quoted rather than split (an already-loaded host skips the load).
  const spaced=await buildContext(root,{projectFlag:'.',hostFile:'/srv/op host/host.mjs',host:{}});
- assert.equal(spaced.commands!.validate,`urlcode validate --local --project . --host-file ${process.platform==='win32'?'"/srv/op host/host.mjs"':`'/srv/op host/host.mjs'`}`);
+ assert.equal(spaced.commands!.validate,`urlcode validate --local --project . --host-file ${process.platform==='win32'?'"/srv/op host/host.mjs"':`'/srv/op host/host.mjs'`} --local-review`);
  // A Windows path keeps its backslashes and short-name tilde bare, and is double-quoted, never single-quoted, when needed.
  assert.equal(shellWord('C:\\Users\\RUNNER~1\\Temp\\host.mjs','win32'),'C:\\Users\\RUNNER~1\\Temp\\host.mjs');
  assert.equal(shellWord('C:\\Program Files\\op\\host.mjs','win32'),'"C:\\Program Files\\op\\host.mjs"');
@@ -157,13 +158,13 @@ test('with the operator host file the runners validate and test the widget route
  assert.equal(validated.exitCode,0,JSON.stringify(validated));
  assert.equal(tested.exitCode,0,JSON.stringify(tested));assert.match(String(tested.stdout),/"failed":0/);
  assert.equal(inProcess.total,1);assert.equal(inProcess.failed,0);
- assert.equal(context.commands.test,`urlcode test --project ${shellWord(resolve(root))} --host-file ${hostFile} --origin ${widgetOrigin}`);
+ assert.equal(context.commands.test,`urlcode test --project ${shellWord(resolve(root))} --host-file ${hostFile} --origin ${widgetOrigin} --local-review`);
  assert.equal(context.prerequisites,undefined);
  // Without the host file the runners behave as before: the extension has no provider, so validation fails.
  const bare=await hostSession(root,[initialize,ready,...calls([{name:'run_validate',arguments:{}},{name:'get_context',arguments:{}}])],{origin:widgetOrigin});
  assert.notEqual(payload(bare[1]!).exitCode,0);
  const bareContext=payload(bare[2]!) as {commands:Record<string,string>;prerequisites:{flag:string}[]};
- assert.equal(bareContext.commands.validate,`urlcode validate --local --project ${shellWord(resolve(root))} --origin ${widgetOrigin}`);
+ assert.equal(bareContext.commands.validate,`urlcode validate --local --project ${shellWord(resolve(root))} --origin ${widgetOrigin} --local-review`);
  assert.deepEqual(bareContext.prerequisites.map(item=>item.flag),['--host-file']);
 });
 test('authoring verdicts use the operator host file registrations: a scaffolded route under the widget extension validates (#778)',async t=>{

@@ -6,6 +6,8 @@ import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
 import { STORE_SCHEMA_VERSION, declarationOf, liveServer } from './database.ts';
 import type { StoreDatabase } from './database.ts';
+import { listInSql, listPlan } from './listing.ts';
+import type { ListPlan } from './listing.ts';
 
 /** Reserved names the store owns on every record. */
 export const RESERVED_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;
@@ -78,6 +80,8 @@ export const READER_LIMITS = { mounts: 8 } as const;
 const MOUNT = { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 } as const;
 const FIELD_NAME = '^[a-z][A-Za-z0-9_]{0,63}$';
 const SCALAR = { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }, { type: 'boolean' }] } as const;
+/** A state (#952): readOnly properties, each with one value or a list of values it may hold. */
+const stateSchema = (description: string) => ({ type: 'object', minProperties: 1, maxProperties: TRANSITION_LIMITS.fields, propertyNames: { pattern: FIELD_NAME }, additionalProperties: { anyOf: [SCALAR, { type: 'array', minItems: 1, maxItems: TRANSITION_LIMITS.transitions, uniqueItems: true, items: SCALAR }] }, description }) as const;
 /**
  * One record property: a JSON Schema 2020-12 schema in core's request body profile with exactly one scalar `type`.
  * What the store does with a property beyond its value shape (a default, transition-only) is the collection's
@@ -194,7 +198,20 @@ export interface CollectionSpec {
   intervals?: IntervalSpec;
   /** Declared transfers by name (#902): `POST <mount>/transfers/<name>` moves an integer amount between two records. */
   transfers?: Record<string, TransferSpec>;
+  /** The states in which `PUT` and `PATCH` may change a record (#952); in any other a write body is 409 `record_locked`. */
+  editable?: StateSpec;
+  /** The states in which a record may be deleted (#952); in any other a delete is 409 `record_locked`. */
+  deletable?: StateSpec;
+  /** String properties no two records hold alike, across owners on an owned collection (#953); a duplicate is 409 `value_taken`. */
+  unique?: string[];
 }
+/**
+ * A record state (#952), in the shape of a transition's `from`: each named property (a `readOnlyProperties` one, so
+ * only a transition moves it) and the value, or one of the values, it must hold.
+ */
+export type StateSpec = Record<string, Scalar | Scalar[]>;
+/** A validated state: every named property with the values it may hold. */
+export type NormalizedState = Record<string, Scalar[]>;
 /**
  * One declared transfer (#902): `POST <mount>/transfers/<name>` with `{from, to, amount}` subtracts `amount` from the
  * `from` record's `amount` property and adds it to the `to` record's, in one transaction, so the sum over the
@@ -321,7 +338,7 @@ export const collectionSchema = {
     maxRecordBytes: { type: 'integer', minimum: 256, maximum: LIMITS.recordBytes, description: 'Largest serialized record in bytes (default 4096); larger answers 413.' },
     pageSize: { type: 'integer', minimum: 1, maximum: LIMITS.pageSize, description: 'Records per list page, and the cap on a list request\'s limit (default 50).' },
     readOnly: { type: 'boolean', description: 'true: the API serves only GET and HEAD (other methods answer 405); short-link click counting still works.' },
-    key: { type: 'string', pattern: FIELD_NAME, description: 'A required string property (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner.' },
+    key: { type: 'string', pattern: FIELD_NAME, description: 'A required string property (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner (use unique).' },
     increments: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Numeric properties with a numeric default that POST <mount>/<id>/increment/<property> raises by exactly one in one database transaction, within the property\'s schema (409 increment_limit otherwise).' },
     idempotency: { description: 'Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE, increment, transitions and transfers. A retry with a retained key and the same request (method, path, body) replays the first answer\'s status with the record as it is now; the same key on a different request answers 422 idempotency_key_reused. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the request principal, or to the network client when there is none.', type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys, description: 'Newest distinct keys the collection retains, across all callers; an evicted key is no longer protected and a retry with it runs again.' } } },
     sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties a list request may sort by (sort=<property> or sort=-<property>).' },
@@ -368,6 +385,9 @@ export const collectionSchema = {
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transfer; anyone else gets 403 membership_required before any record is read.' },
       },
     } },
+    editable: stateSchema('The states in which PUT and PATCH may change a record, in the shape of a transition\'s from: each property must hold its value, or one of its listed values, for example {status: [draft]}. In any other state a PUT or PATCH (on HTTP, StoreExports or a host transaction) answers 409 record_locked and writes nothing, decided under the write lock. Each property must be in readOnlyProperties, so only a transition moves a record in or out. Transitions, increments and transfers are not affected.'),
+    deletable: stateSchema('The states in which a record may be deleted, in the same shape as editable, for example {status: [draft, rejected]}; in any other a DELETE (or a host transaction\'s remove) answers 409 record_locked. Each property must be in readOnlyProperties.'),
+    unique: { type: 'array', minItems: 1, maxItems: 4, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'String properties (maxLength at most 128, no default, not readOnly, not the key, not set by a transition) that no two records hold alike, across every owner on an owned collection: a create or update that would duplicate one answers 409 value_taken, checked under the write lock through an index. An absent value claims nothing. The 409 tells the caller the value is in use by someone, so declare it only for a public handle, never an email or anything private.' },
   },
 } as const;
 
@@ -457,6 +477,7 @@ export interface NormalizedSpec {
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
   membership: boolean; readers: Record<string, NormalizedReaders>; create?: { members: string }; intervals?: NormalizedIntervals; transfers: Record<string, NormalizedTransfer>;
+  editable?: NormalizedState; deletable?: NormalizedState; unique?: string[];
 }
 /**
  * A validated interval constraint and its SQL, built once from the declaration. `kind` says how a bound compares
@@ -528,7 +549,7 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
   if (membership) {
     // A membership list is authorization data: served over a collection API, anyone the route admits could add
     // themselves or enumerate members. It has no mount, and nothing that only makes sense with one.
-    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly', 'transfers', 'create'] as const).filter(option => spec[option] !== undefined);
+    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly', 'transfers', 'create', 'editable', 'deletable', 'unique'] as const).filter(option => spec[option] !== undefined);
     if (refused.length) throw new Error(`Collection ${name}: a membership collection takes no ${refused.join(', ')}`);
     if (key === undefined) throw new Error(`Collection ${name}: a membership collection needs a key, the property holding each member's principal id`);
   } else if (spec.mount === undefined) throw new Error(`Collection ${name}: mount is required`);
@@ -538,9 +559,8 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (declared.type !== 'string' || !records.required.includes(key) || hasOwn(records.defaults, key) || records.readOnly.includes(key) || typeof declared.maxLength !== 'number' || declared.maxLength > IDEMPOTENCY_LIMITS.keyLength) throw new Error(`Collection ${name}: key ${key} must be a required string property with maxLength at most ${IDEMPOTENCY_LIMITS.keyLength}, no default and not readOnly`);
   }
   const ownership = spec.ownership ?? 'shared';
-  // A collection-wide unique key would tell one owner that another owner already uses a value (409 key_exists), and
-  // keys exist for public short links, which cannot serve owned records. Refused rather than scoped silently.
-  if (ownership === 'owner' && key !== undefined) throw new Error(`Collection ${name}: key is not supported with ownership: owner`);
+  // A key exists for public short links, which cannot serve owned records; a value unique across owners is `unique`.
+  if (ownership === 'owner' && key !== undefined) throw new Error(`Collection ${name}: key is not supported with ownership: owner; declare unique: [${key}] for a value no two owners may share`);
   const maxRecords = spec.maxRecords ?? 1000, perOwner = spec.maxRecordsPerOwner;
   if (perOwner !== undefined) {
     // A per-owner limit has no owner to count on a shared collection; refused rather than ignored.
@@ -576,7 +596,56 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
     if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field)) && !Object.values(transfers).some(transfer => transfer.amount === field)) throw new Error(`Collection ${name}: property ${field} is readOnly but no transition sets or stamps it and no transfer moves it`);
   }
-  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, readers, ...(spec.create?.members === undefined ? {} : { create: { members: spec.create.members } }), ...(intervals === undefined ? {} : { intervals }), transfers };
+  const editable = stateOf(name, 'editable', spec, records), deletable = stateOf(name, 'deletable', spec, records);
+  const unique = [...spec.unique ?? []];
+  for (const field of unique) {
+    const declared = property(field), where = `Collection ${name}: unique property ${String(field).slice(0, 64)}`;
+    if (!declared) throw new Error(`${where} is not declared`);
+    if (field === key) throw new Error(`${where} is the key, which is unique already`);
+    if (!COLLECTION_NAME.test(name) || declared.type !== 'string' || typeof declared.maxLength !== 'number' || declared.maxLength > IDEMPOTENCY_LIMITS.keyLength || hasOwn(records.defaults, field) || records.readOnly.includes(field)) throw new Error(`${where} must be a string property with maxLength at most ${IDEMPOTENCY_LIMITS.keyLength}, no default and not readOnly`);
+    // A transition writes a constant (or its caller's id), which a second record could never hold as well.
+    const setter = Object.keys(transitions).find(transition => hasOwn(transitions[transition]!.set, field) || hasOwn(transitions[transition]!.stamp, field));
+    if (setter !== undefined) throw new Error(`${where} is set by transition ${setter}`);
+  }
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, readers, ...(spec.create?.members === undefined ? {} : { create: { members: spec.create.members } }), ...(intervals === undefined ? {} : { intervals }), transfers, ...(editable === undefined ? {} : { editable }), ...(deletable === undefined ? {} : { deletable }), ...(unique.length ? { unique } : {}) };
+}
+
+/**
+ * Validates `editable` or `deletable` (#952): declared properties, each listed under `readOnlyProperties` (so a body
+ * can neither leave the state nor enter it; only a transition does), with values its schema accepts.
+ */
+function stateOf(name: string, option: 'editable' | 'deletable', spec: CollectionSpec, records: CompiledRecordSchema): NormalizedState | undefined {
+  const declared = spec[option];
+  if (declared === undefined) return undefined;
+  const where = `Collection ${name}: ${option}`;
+  if (spec.readOnly === true) throw new Error(`${where} needs a writable collection`);
+  const out: NormalizedState = {};
+  for (const [field, value] of Object.entries(declared)) {
+    if (!hasOwn(records.properties, field)) throw new Error(`${where} names ${field.slice(0, 64)}, which is not a declared property`);
+    if (!records.readOnly.includes(field)) throw new Error(`${where}: ${field} must be listed under readOnlyProperties, so only a transition changes the state`);
+    const values = Array.isArray(value) ? [...value] : [value];
+    for (const one of values) { const issue = propertyIssue(records, field, one); if (issue) throw new Error(`${where} value for ${field} ${issue.message}`); }
+    out[field] = values;
+  }
+  return out;
+}
+/** Whether `record` is in `state`: it holds one of the listed values of every named property (no state: always). */
+export const inState = (state: NormalizedState | undefined, record: Readonly<StoredRecord>): boolean => !state || Object.entries(state).every(([field, values]) => record[field] !== undefined && values.includes(record[field]!));
+/**
+ * Refuses a body write (`editable`) or a delete (`deletable`) of a record outside its declared states (#952): 409
+ * `record_locked`, naming no state. Every update and delete step calls it under the write lock, after `If-Match`.
+ */
+export function refuseLocked(spec: Pick<NormalizedSpec, 'editable' | 'deletable'>, option: 'editable' | 'deletable', record: Readonly<StoredRecord>): void {
+  if (!inState(spec[option], record)) throw new StoreError(409, 'record_locked', `The record cannot be ${option === 'editable' ? 'changed' : 'deleted'} in its current state`);
+}
+/**
+ * The lookup behind one `unique` property (#953): a partial expression index over the collection's values, and the
+ * query that finds another record holding a value. Both embed only a name that passed COLLECTION_NAME and FIELD_NAME.
+ */
+export function uniqueIndex(name: string, field: string): { index: string; create: string; taken: string } {
+  const filter = `collection = '${name}'`, path = `(data ->> '$.${field}')`;
+  const index = `store_unique_${createHash('sha256').update(`${path} WHERE ${filter}`).digest('hex').slice(0, 24)}`;
+  return { index, create: `CREATE INDEX IF NOT EXISTS "${index}" ON store_records(${path}) WHERE ${filter}`, taken: `SELECT 1 AS found FROM store_records WHERE ${filter} AND ${path} = ? AND id <> ? LIMIT 1` };
 }
 
 /**
@@ -921,7 +990,7 @@ export class Collection {
   open(db: StoreDatabase): void {
     const rows = db.all<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? ORDER BY seq`, this.name);
     if (rows.length > this.spec.maxRecords) throw new Error(`Collection ${this.name}: the store holds more records than maxRecords`);
-    const keys = new Set<string>(), derived: [string, string | null][] = [];
+    const keys = new Set<string>(), derived: [string, string | null][] = [], unique = this.spec.unique ?? [], held = unique.map(() => new Set<Scalar>());
     for (const row of rows) {
       let record: StoredRecord;
       try { record = this.parse(row); } catch (error) { throw new Error(error instanceof RowError ? error.message : `Collection ${this.name}: the store holds an invalid record`, { cause: error }); }
@@ -929,6 +998,11 @@ export class Collection {
       const key = this.spec.key === undefined ? null : record[this.spec.key];
       if (key !== null && (typeof key !== 'string' || keys.has(key))) throw new Error(`Collection ${this.name}: the store holds an invalid record key`);
       if (key !== null) keys.add(key);
+      unique.forEach((field, at) => {
+        const value = record[field];
+        if (value !== undefined && held[at]!.has(value)) throw new Error(`Collection ${this.name}: two records hold the same ${field}, which unique refuses; change one of them first`);
+        if (value !== undefined) held[at]!.add(value);
+      });
       derived.push([row.id, key]);
     }
     if (derived.some(([, key], index) => rows[index]!.key !== key)) db.transaction(() => {
@@ -936,6 +1010,7 @@ export class Collection {
       db.run('UPDATE store_records SET key = NULL WHERE collection = ?', this.name);
       for (const [id, key] of derived) if (key !== null) db.run('UPDATE store_records SET key = ? WHERE collection = ? AND id = ?', key, this.name, id);
     });
+    for (const field of unique) db.run(uniqueIndex(this.name, field).create);
     const intervals = this.spec.intervals;
     if (intervals) {
       // The index is derived from the declaration and built once; the check below and every write's check read through it.
@@ -943,10 +1018,27 @@ export class Collection {
       const pair = overlapping(db, intervals);
       if (pair) throw new Error(`Collection ${this.name}: records ${pair[0]} and ${pair[1]} hold overlapping intervals, which intervals refuses; move or delete one of them first`);
     }
+    // The list indexes (#951) are derived from the declaration like the interval index, built before it is served.
+    const listing = this.listing;
+    if (listing) db.transaction(() => { for (const create of listing.indexes.values()) db.run(create); });
     this.db = db;
   }
-  /** The name of the interval index this declaration reads through, if it declares `intervals` (store.ts drops stale ones). */
-  get intervalIndex(): string | undefined { return this.spec.intervals?.index; }
+  /** What sorted and filtered lists read through (listing.ts), derived from the declaration once. */
+  private get listing(): ListPlan | undefined { return (this.plan ??= [listPlan(this.name, this.spec)])[0]; }
+  private plan: [ListPlan | undefined] | undefined;
+  /**
+   * The derived indexes this declaration reads through: interval (#902), unique (#953) and list (#951). store.ts drops
+   * the ones no live declaration names.
+   */
+  get indexes(): string[] { return [...this.spec.intervals ? [this.spec.intervals.index] : [], ...(this.spec.unique ?? []).map(field => uniqueIndex(this.name, field).index), ...this.listing?.indexes.keys() ?? []]; }
+  /**
+   * The methods `<mount>/<id>` takes on `record` now, on a collection declaring `editable` or `deletable` (#952), else
+   * undefined: the `Allow` header and a list's `allow`, a hint the write checks again under its lock.
+   */
+  allowed(record: Readonly<StoredRecord>): string[] | undefined {
+    if (!this.spec.editable && !this.spec.deletable) return undefined;
+    return ['GET', 'HEAD', ...inState(this.spec.editable, record) ? ['PUT', 'PATCH'] : [], ...inState(this.spec.deletable, record) ? ['DELETE'] : []];
+  }
   /** Stops serving from the database; the registration closes it with its last activation. Idempotent. */
   close(): void { this.db = undefined; }
 
@@ -1064,6 +1156,18 @@ export class Collection {
     db.run('UPDATE store_records SET key = ?, updated_at = ?, data = ? WHERE collection = ? AND id = ?', this.keyOf(record), record.updatedAt as string, JSON.stringify(fieldsOf(record)), this.name, record.id as string);
   }
   private keyTaken(db: StoreDatabase, key: string): boolean { return db.get('SELECT 1 AS found FROM store_records WHERE collection = ? AND key = ?', this.name, key) !== undefined; }
+  /**
+   * The `unique` check (#953), under the write lock before the row is written: no other record, whoever owns it, holds
+   * a value `record` gives a unique property (one it kept from `previous` is its own already). 409 `value_taken`
+   * names the property, never the value or the record holding it.
+   */
+  private uniqueIn(db: StoreDatabase, record: StoredRecord, previous?: StoredRecord): void {
+    for (const field of this.spec.unique ?? []) {
+      const value = record[field];
+      if (value === undefined || value === previous?.[field] || !db.get(uniqueIndex(this.name, field).taken, value as string, record.id as string)) continue;
+      throw new StoreError(409, 'value_taken', 'Another record already uses this value', { issues: [{ pointer: `/${field}`, keyword: 'unique', message: 'is already used by another record' }] });
+    }
+  }
   /**
    * Inserts the outbox event for one write, inside the write's transaction: unchanged on an unaudited collection. At
    * the backlog cap the write is refused (and rolled back). The event names the changed fields, never their values; a
@@ -1227,10 +1331,11 @@ export class Collection {
   }
   /**
    * One page inside an open transaction. An unsorted, unfiltered page is a counted `LIMIT`/`OFFSET` query in creation
-   * order. A sorted or filtered one reads only the id and the named fields of every record in scope (each field as its
-   * exact JSON text, so numbers and strings compare exactly as the declared-type rules in query.ts say), orders and
-   * filters those in memory, and then reads the page's records by id: bounded by `maxRecords`, never a scan of the
-   * full record bodies.
+   * order. A sorted or filtered one is a counted keyset query through the declared list indexes (listing.ts, #951). When
+   * a row or value is one the SQL key cannot order exactly (listing.ts `anomaly`), the in-memory path answers instead:
+   * it reads only the id and the named fields of every record in scope (each field as its exact JSON text, so numbers
+   * and strings compare exactly as the declared-type rules in query.ts say), orders and filters those in memory, and
+   * then reads the page's records by id. Both answer the same page, `total` and cursors.
    */
   private listIn(db: StoreDatabase, query: ReturnType<typeof parseListQuery>, scope: string | undefined | null): Page {
     const where = this.where(scope);
@@ -1240,6 +1345,9 @@ export class Collection {
       const end = query.offset + items.length;
       return { items, total, ...(end < total ? { next: end } : {}) };
     }
+    // In SQL through the declared indexes (#951), unless a row or value is one its key cannot order exactly.
+    const listed = this.listing && listInSql(db, this.listing, query, scope, COLUMNS, row => this.parse(row));
+    if (listed) return listed;
     const fields = [...new Set([...query.filters.map(([field]) => field), ...(query.sort ? [query.sort.field] : [])])];
     const rows = db.all<Record<string, string | null>>(`SELECT id, ${fields.map((_, index) => `data -> ? AS v${index}`).join(', ')} FROM store_records WHERE ${where.sql} ORDER BY seq`, ...fields.map(field => `$.${field}`), ...where.values);
     const projected = rows.map(row => {
@@ -1417,6 +1525,7 @@ export class Collection {
     if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ?', this.name)!.n >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
     const now = stamp(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
     this.sized(record);
+    this.uniqueIn(db, record);
     this.fits(db, record, scope);
     this.insert(db, record);
     return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, {}, record) };
@@ -1428,6 +1537,7 @@ export class Collection {
     // Scoped before the ETag and body checks, so another owner's record answers exactly like a missing one.
     const current = this.current(db, id, scope);
     if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
+    refuseLocked(this.spec, 'editable', current);
     const body = this.bodyOf(input), stored = fieldsOf(current);
     let values: Record<string, unknown>;
     if (replace) {
@@ -1453,6 +1563,7 @@ export class Collection {
       if (this.keyTaken(db, record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
     }
     this.sized(record);
+    this.uniqueIn(db, record, current);
     this.fits(db, record, scope);
     this.replaceRow(db, record);
     return { record, audited: this.audited(db, replace ? 'replaced' : 'updated', id, this.changed(current, record), actor) };
@@ -1463,6 +1574,7 @@ export class Collection {
     this.writable();
     const current = this.current(db, id, scope);
     if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
+    refuseLocked(this.spec, 'deletable', current);
     refuseBalance(this.spec, current);
     db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', this.name, id);
     return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor, {}, current) };

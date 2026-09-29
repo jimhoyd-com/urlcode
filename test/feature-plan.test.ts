@@ -165,3 +165,23 @@ test('feature planning does not require an extension for one incidental word, an
  assert.match(credits.outline.find(item=>item.kind==='store transfers')!.note,/issuer: a transfer with a negative `min`/);
  assert.deepEqual(credits.applicationCode,[]);
 });
+
+// #957: an approval goal shares "own", "submit", "approve" or "reviewers" only with the store and auth surfaces, and every
+// recipe built on those extensions inherits them. Those words select the store's general recipe, never the booking or
+// credits recipe, which are offered only on their own distinctive terms.
+test('feature planning offers the booking and credits recipes only on their own terms, not on an approval goal\'s workflow words (#957)',async t=>{
+ const root=await project(t,{});
+ for(const goal of ['employees submit requests; reviewers approve or reject them; requesters see only their own','Owners submit requests; reviewers approve or reject pending requests']){
+  const plan=await planFeature(root,goal,{extensions:[extension('store'),extension('auth')]});
+  assert.deepEqual(plan.applicable.recipes.map(recipe=>recipe.name),['store-crud'],`${goal}: ${JSON.stringify(plan.applicable.recipes)}`);
+  assert.ok(!plan.outline.some(item=>item.kind==='declarative booking'||item.kind==='declarative credits'),goal);
+  assert.deepEqual(plan.extensions.required.map(item=>item.name),['auth','store'],goal);
+  assert.ok(plan.extensions.surfaces.some(item=>item.surface==='transitions'),goal);
+ }
+ for(const [goal,recipe] of [['Let users reserve a time slot','store-booking'],['schedule appointments without overlapping intervals','store-booking'],['Transfer a balance between wallets','store-credits'],['issue credits to users','store-credits']] as const){
+  const plan=await planFeature(root,goal);
+  assert.equal(plan.applicable.recipes[0]?.name,recipe,`${goal}: ${JSON.stringify(plan.applicable.recipes)}`);
+ }
+ // Tags shared across the catalog ("store", "auth", "extension") are not a tag match on their own.
+ assert.ok(!(await planFeature(root,'a store auth extension')).applicable.recipes.some(recipe=>recipe.name==='store-booking'||recipe.name==='store-credits'));
+});

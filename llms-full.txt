@@ -677,6 +677,12 @@ Two new store gaps came from behavior, not setup:
   can't be unique across owners. A second user's wallet named `bob` appears
   in the same lookup ([#953](https://github.com/jimhoyd-com/urlcode/issues/953)).
 
+Both are declarations now, with no code: `editable` and `deletable` refuse
+edits and deletes outside named states with `409 record_locked`
+([edit and delete states](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#edit-and-delete-states)), and `unique`
+keeps a handle unique across owners with `409 value_taken`
+([a directory by a unique handle](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-directory-by-a-unique-handle)).
+
 The remaining findings were tooling and docs:
 
 - The booking and credits recipes predate #929 and #930
@@ -1603,9 +1609,10 @@ project's trusted code and, when the operator gave the server `--host-file`,
 that operator-supplied host module. The runners and `get_context`'s commands
 repeat only the operator's own `--host-file` and `--origin`; a flag the operator
 did not supply is listed under `prerequisites`, never guessed. `run_validate`,
-`run_test` and `run_audit` also pass `--local-review`, so after an edit they
-check the current revision with no pin and no grant unless the operator gave
-the server a pin, which always wins
+`run_test` and `run_audit` also pass `--local-review`, the in-process
+`run_tests` applies the same rule, and `get_context`'s check commands carry the
+flag, so after an edit they check the current revision with no pin and no grant
+unless the operator gave the server a pin, which always wins
 ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 The CLI and the server read an absent `--origin` or `--policy` from
 `URLCODE_ORIGIN` or `URLCODE_POLICY`, so a site's generated npm scripts run
@@ -6647,7 +6654,11 @@ then hot reloads follow it (above). The authoring MCP runners (`run_validate`,
 at its new revision without a new pin; the same rules decide, so a `--policy`
 or `PROJECT_SHA256` the operator gave `urlcode mcp` still wins
 ([#940](https://github.com/jimhoyd-com/urlcode/issues/940)). The in-process
-`run_tests` has no such mode and still needs the pin.
+`run_tests` applies the same rule itself: with neither pin it reviews the
+current revision on throwaway data and returns `localReview` with a
+`local_review` event, and `get_context`'s validate, test, audit and routes
+commands pass the flag as the npm scripts do
+([#964](https://github.com/jimhoyd-com/urlcode/issues/964)).
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
@@ -6963,7 +6974,7 @@ Two distinctions hold throughout:
 | `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 60 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 63 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ### Capability to reference

@@ -29,6 +29,7 @@ const failure = (description: string): Json => ({ description, content: json(ref
 const header = (description: string, schema: Json, required = true): Json => ({ description, required, schema });
 const etag = header('The record\'s strong ETag; send it back in If-Match.', { type: 'string' });
 const allowTransitions = header('The comma-separated names of the declared transitions the caller may run on this record now (empty when none).', { type: 'string' });
+const allowMethods = header('The methods this record takes in its current state: editable and deletable leave out PUT, PATCH or DELETE outside their states.', { type: 'string' });
 const replayed = header('true when an Idempotency-Key replayed the first answer instead of running the request again.', { const: 'true' }, false);
 
 /** A property's schema as a query parameter takes it: a copy, since a parameter is not validated through a component. */
@@ -77,9 +78,11 @@ function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json;
     type: 'object', additionalProperties: false, minProperties: 1,
     properties: Object.fromEntries(writable.map(field => [field, records.required.includes(field) || spec.increments.includes(field) ? value(field) : { anyOf: [value(field), { type: 'null' }] }])),
   };
-  const list = (item: string): Json => ({
+  const gated = spec.editable !== undefined || spec.deletable !== undefined;
+  const list = (item: string, owners = true): Json => ({
     type: 'object', required: ['items', 'total', 'etags', 'may'], additionalProperties: false,
     properties: {
+      ...gated && owners ? { allow: { type: 'object', additionalProperties: { type: 'array', items: { type: 'string' } }, description: 'On the collection mount: each listed record\'s methods in its current state, by id (the Allow header of its own URL).' } } : {},
       items: { type: 'array', items: ref(item) },
       total: { type: 'integer', minimum: 0, description: 'Records in the caller\'s scope that match the filters.' },
       next: { type: ['string', 'integer'], description: 'The cursor for the next page; absent on the last one.' },
@@ -109,7 +112,7 @@ function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json;
       required: ['id', ...readers.showOwner ? ['_owner'] : [], ...records.required.filter(field => shown.includes(field))],
       properties: { id: stored.id, ...readers.showOwner ? owner : {}, ...Object.fromEntries(shown.map(field => [field, annotated(field, true)])) },
     };
-    schemas[own.list] = list(own.record);
+    schemas[own.list] = list(own.record, false);
   }
   return { schemas, names };
 }
@@ -133,6 +136,8 @@ const unavailable = failure('storage_unavailable, or audit_backlog on an audited
 const badRequest = failure('A malformed header, query, JSON body or Idempotency-Key.');
 const notFound = failure('No such record in the caller\'s scope (another owner\'s record answers the same).');
 
+/** An editable or deletable state as a 409 names it: `status is "draft" or "pending"`. */
+const state = (declared: NonNullable<NormalizedSpec['editable']>): string => Object.entries(declared).map(([field, values]) => `${field} is ${values.map(value => JSON.stringify(value)).join(' or ')}`).join(' and ');
 /** What an interval's declared length and step add to its 422 (#929). */
 function intervalRules(intervals: NonNullable<NormalizedSpec['intervals']>): string {
   return [
@@ -146,6 +151,7 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
   const retry = spec.idempotency ? [idempotencyKey] : [];
   const bodyBytes = spec.maxRecordBytes + 4096;
   const body = (schema: string): Json => ({ required: true, content: json(ref(schema)), 'x-urlcode': { maxBytes: bodyBytes } });
+  const gated = spec.editable !== undefined || spec.deletable !== undefined, allow = gated ? { Allow: allowMethods } : {};
   const recordAnswer = (status: string, description: string, extra: Json = {}): Json => ({ [status]: { description, headers: { ETag: etag, 'Allow-Transitions': allowTransitions, ...(spec.idempotency ? { 'Idempotency-Replayed': replayed } : {}), ...extra }, content: json(ref(names.record)) } });
   const writeErrors = (conflict: string | undefined): Json => ({
     '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'),
@@ -157,7 +163,8 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
   });
   const listed = { parameters: listParameters(spec), responses: { '200': { description: 'One page of the caller\'s records.', content: json(ref(names.list)) }, '400': failure('invalid_query: an undeclared, repeated or invalid list parameter.'), '503': unavailable } };
   const overlap = spec.intervals ? 'interval_conflict (the interval overlaps another record\'s; see error.conflict)' : '';
-  const conflicts = [spec.key ? 'key_exists' : '', 'collection_full', spec.maxRecordsPerOwner ? 'owner_quota_exceeded' : '', overlap].filter(Boolean).join(', ');
+  const taken = spec.unique ? 'value_taken (another record, of any owner, holds a unique property\'s value)' : '';
+  const conflicts = [spec.key ? 'key_exists' : '', taken, 'collection_full', spec.maxRecordsPerOwner ? 'owner_quota_exceeded' : '', overlap].filter(Boolean).join(', ');
   const paths: Record<string, Json> = {
     [mount]: {
       summary: `The ${name} collection`,
@@ -173,18 +180,18 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
       } }),
     },
   };
-  const read = { parameters: [], responses: { ...recordAnswer('200', 'The record.'), '404': notFound, '503': unavailable } };
+  const read = { parameters: [], responses: { ...recordAnswer('200', 'The record.', allow), '404': notFound, '503': unavailable } };
   const item: Json = { parameters: [idParameter], get: { summary: `Read a ${name} record`, ...read }, head: { summary: `Read a ${name} record (headers only)`, ...read } };
   if (!spec.readOnly) {
     const update = (kind: string, schema: string): Json => ({
       summary: `${kind} a ${name} record`, parameters: [ifMatch, ...retry], requestBody: body(schema),
-      responses: { ...recordAnswer('200', 'Updated.'), '404': notFound, '412': failure('precondition_failed: the record changed since that ETag.'), ...writeErrors([spec.key ? 'key_exists' : '', overlap].filter(Boolean).join(', ') || undefined) },
+      responses: { ...recordAnswer('200', 'Updated.', allow), '404': notFound, '412': failure('precondition_failed: the record changed since that ETag.'), ...writeErrors([spec.editable ? `record_locked (the record is not in an editable state: ${state(spec.editable)})` : '', spec.key ? 'key_exists' : '', taken, overlap].filter(Boolean).join(', ') || undefined) },
     });
     item.put = update('Replace', names.create);
     item.patch = update('Update', names.patch);
     item.delete = {
       summary: `Delete a ${name} record`, parameters: [ifMatch, ...retry],
-      responses: { '204': { description: 'Deleted.', headers: spec.idempotency ? { 'Idempotency-Replayed': replayed } : {} }, '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'), '404': notFound, ...(Object.keys(spec.transfers).length ? { '409': failure('balance_not_zero: the record still holds a transfer balance; transfer it out first, so the sum never changes.') } : {}), '412': failure('precondition_failed: the record changed since that ETag.'), ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable },
+      responses: { '204': { description: 'Deleted.', headers: spec.idempotency ? { 'Idempotency-Replayed': replayed } : {} }, '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'), '404': notFound, ...(Object.keys(spec.transfers).length || spec.deletable ? { '409': failure([...spec.deletable ? [`record_locked: the record is not in a deletable state (${state(spec.deletable)})`] : [], ...Object.keys(spec.transfers).length ? ['balance_not_zero: the record still holds a transfer balance; transfer it out first, so the sum never changes'] : []].join('; ') + '.') } : {}), '412': failure('precondition_failed: the record changed since that ETag.'), ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable },
     };
   }
   paths[`${mount}/{id}`] = item;

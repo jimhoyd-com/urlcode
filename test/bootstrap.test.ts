@@ -133,7 +133,8 @@ test('a bare project directory is its own site root with no host file',async t=>
  const project=await directory(t);await writeFile(join(project,'urlcode.yaml'),'version: "1"\nroutes: {}\n');
  const result=await buildBootstrap(project);
  assert.equal(result.site!.layout,'project');assert.equal(result.site!.project,'.');assert.equal(result.site!.entry,'urlcode.yaml');assert.equal(result.site!.hostFile,null);
- assert.equal(result.commands!.validate,'urlcode validate --local --project .');
+ assert.equal(result.commands!.validate,'urlcode validate --local --project . --local-review');assert.equal(result.commands!.test,'urlcode test --project . --local-review');
+ assert.equal(result.commands!.start!.includes('--local-review'),false);
  assert.deepEqual(result.paths!.outsideProject,[]);
 });
 

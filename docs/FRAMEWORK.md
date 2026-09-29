@@ -625,6 +625,12 @@ Two new store gaps came from behavior, not setup:
   can't be unique across owners. A second user's wallet named `bob` appears
   in the same lookup ([#953](https://github.com/jimhoyd-com/urlcode/issues/953)).
 
+Both are declarations now, with no code: `editable` and `deletable` refuse
+edits and deletes outside named states with `409 record_locked`
+([edit and delete states](STORE.md#edit-and-delete-states)), and `unique`
+keeps a handle unique across owners with `409 value_taken`
+([a directory by a unique handle](STORE.md#a-directory-by-a-unique-handle)).
+
 The remaining findings were tooling and docs:
 
 - The booking and credits recipes predate #929 and #930
