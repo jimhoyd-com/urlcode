@@ -86,7 +86,8 @@ entry in one response.
 JSON Schema 2020-12 profile `request.body.<METHOD>.schema` accepts (local `$defs`/`$ref`,
 type lists, `anyOf`/`oneOf`/`allOf`/`not`, `properties`, `required`,
 `additionalProperties`, `items`, scalar `enum`/`const`, string/number/array
-bounds, a bounded `pattern` and `format: uuid`; see
+bounds, a bounded `pattern` and the standard string formats such as `uuid`,
+`date-time` and `email`; see
 [HTTP](../../docs/HTTP.md#body-schema-and-input-patterns)), compiled once at
 activation, and must declare `type: object` — an
 MCP tool call's `arguments`, and its structured result, are always objects. A

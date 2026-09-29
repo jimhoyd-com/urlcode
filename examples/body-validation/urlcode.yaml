@@ -45,7 +45,7 @@ routes:
           schema:
             $schema: https://json-schema.org/draft/2020-12/schema
             $defs:
-              email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^@\\s]+@[^@\\s]+$"}
+              email: {type: string, format: email}
             type: object
             required: [name, email, phone]
             additionalProperties: false
@@ -53,6 +53,7 @@ routes:
               name: {type: string, minLength: 1, maxLength: 100}
               email: {$ref: "#/$defs/email"}
               phone: {type: [string, "null"], maxLength: 32}
+              callAt: {type: string, format: date-time}
               channel:
                 anyOf:
                   - {const: email}

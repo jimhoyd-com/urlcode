@@ -64,7 +64,7 @@ test('get_schema and get_capability state the whole request.body.<METHOD>.schema
  for(const keyword of bodySchemaProfile.keywords){assert.match(described,word(keyword),keyword);assert.match(constraints,word(keyword),keyword);}
  for(const type of bodySchemaProfile.types)assert.ok(described.includes(type)&&constraints.includes(type),type);
  assert.ok(described.includes(bodySchemaProfile.dialect)&&constraints.includes(bodySchemaProfile.dialect),'the one dialect is named');
- assert.match(described,new RegExp('maxLength of at most '+bodySchemaProfile.patternMaxLength));assert.match(described,/format \(uuid only\)/);
+ assert.match(described,new RegExp('maxLength of at most '+bodySchemaProfile.patternMaxLength));assert.match(described,new RegExp('format \\('+bodySchemaProfile.formats.slice(0,-1).join(', ')+' or '+bodySchemaProfile.formats.at(-1)+';'));
  assert.match(constraints,new RegExp('at most '+bodySchemaProfile.patternMaxLength));
  for(const text of [described,constraints])assert.ok(text.includes(String(bodySchemaProfile.limits.length))&&text.includes(String(bodySchemaProfile.limits.items)),'string and item caps are stated (#713)');
  for(const text of [described,constraints])for(const limit of [bodySchemaProfile.limits.depth,bodySchemaProfile.limits.nodes,bodySchemaProfile.limits.expandedNodes,bodySchemaProfile.limits.refs,bodySchemaProfile.limits.properties,bodySchemaProfile.limits.uniqueItems])assert.ok(text.includes(String(limit)),String(limit));

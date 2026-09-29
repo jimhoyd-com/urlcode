@@ -212,7 +212,7 @@ string constant.
 | `properties`, `additionalProperties`, `required`, `propertyNames`, `minProperties`, `maxProperties` | At most 64 properties per object; `additionalProperties` is a boolean or a schema |
 | `patternProperties` | 1 to 16 patterns, each admitted like `pattern` below, and only beside `propertyNames` with a `maxLength` of at most 128 |
 | `items`, `prefixItems`, `minItems`, `maxItems`, `uniqueItems` | Counts up to 10,000; `uniqueItems: true` only beside `maxItems` of at most 64 |
-| `minLength`, `maxLength`, `pattern`, `format` | Lengths up to 1,048,576; `pattern` only beside `maxLength` of at most 128; `format` only `uuid` |
+| `minLength`, `maxLength`, `pattern`, `format` | Lengths up to 1,048,576; `pattern` only beside `maxLength` of at most 128; `format` one of the standard string formats below |
 | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` | Finite numbers; `multipleOf` greater than 0 |
 
 Everything else is refused, including `$id`, `$anchor`, `$dynamicRef`,
@@ -221,8 +221,37 @@ Everything else is refused, including `$id`, `$anchor`, `$dynamicRef`,
 the `content*` keywords, `readOnly`/`writeOnly`, draft-07 spellings
 (`definitions`, `dependencies`), OpenAPI's `nullable` (write a type list with
 `"null"`) and `default` (the runtime never fills in a request body). A `format`
-other than `uuid`, such as `email`, is refused rather than skipped: the runtime
-ships no format library.
+outside the list below, such as `idn-email` or `uri-reference`, is refused
+rather than skipped, naming the supported ones.
+
+**String formats.** `format` checks a string (any other type passes, as in JSON Schema) against one
+of these, and a mismatch is a 422 issue with `keyword: format` and the format in
+`expected`. Each format has its own length cap: a longer value fails the format
+without being scanned, so unlike `pattern` a `format` needs no `maxLength`
+beside it.
+
+| `format` | Accepts | Cap |
+|---|---|---|
+| `uuid` | RFC 9562 hyphenated form, versions 1 to 8, RFC variant, any case | 36 |
+| `date` | RFC 3339 `full-date`, `2024-02-29`: a real calendar day, leap years included | 10 |
+| `time` | RFC 3339 `full-time`, `08:30:06.25Z` or `08:30:06-08:00`: the offset is required, fractions up to 9 digits, `T`/`Z` in either case. A leap second (`:60`) only at 23:59 UTC; the date is not checked against the leap-second table | 24 |
+| `date-time` | RFC 3339 `date-time`: a `date`, `T` and a `time` as above | 35 |
+| `email` | RFC 5321 mailbox: a dot-atom or quoted local part of at most 64, `@`, then a `hostname` without the trailing dot or an address literal (`[192.0.2.1]`, `[IPv6:::1]`). ASCII only: no internationalized mailbox (`idn-email`) | 254 |
+| `uri` | RFC 3986 URI with a scheme (a fragment allowed); each part checked against its own characters and every `%` followed by two hex digits; an `[IPv6]` or `[vX.…]` host literal; a port of up to 5 digits. ASCII only: a relative reference or an IRI is refused | 2,048 |
+| `hostname` | RFC 1123 names: labels of 1 to 63 letters, digits and `-` (not first or last), 253 in all, an optional trailing dot. An `xn--` A-label is accepted without decoding its Punycode; any other label with `--` in positions 3 and 4 is refused, and a U-label (`bücher`) is refused | 253 |
+| `ipv4` | Dotted quad, each part 0 to 255 without a leading zero | 15 |
+| `ipv6` | RFC 4291 text forms: eight groups of 1 to 4 hex digits, one `::`, an optional dotted IPv4 tail; no zone id (`%eth0`) | 45 |
+
+These are URLCode's own checks rather than a format library such as
+`ajv-formats`. That library (3.0.1, MIT, about 57 KB unpacked) would add a
+dependency. Its documented standalone setup reaches the formats through a
+`require`, which the Cloudflare build refuses. Its `email` and `uri` regexes
+repeat groups on unbounded input, which the pattern guard refuses in an
+author's `pattern`. URLCode's checks are one short module. Each one refuses a value over its cap before any regex runs. Every regex
+they use passes the same guard as an author `pattern`, and the rest is a linear
+scan. The server registers them with Ajv. The Cloudflare build inlines the same
+functions into `body-validators.js`, so the Worker runs identical code with no
+runtime code generation and no import.
 
 A schema is limited to 8 levels, 256 schema nodes, 32 `$ref` uses and 1,024
 nodes once every `$ref` is expanded, so a chain of small definitions used many
@@ -236,7 +265,7 @@ accepts `{"phone": null}` and refuses `{}`.
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   $defs:
-    email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^@\\s]+@[^@\\s]+$"}
+    email: {type: string, format: email}
   type: object
   required: [name, email, phone]
   additionalProperties: false
