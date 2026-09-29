@@ -103,7 +103,9 @@ In enforce mode only `exceeded` is logged.
 ## What it does not do
 
 - No shared state across processes or instances. Two `urlcode serve`
-  processes behind one balancer each enforce the full budget. A host plugin
+  processes behind one balancer each enforce the full budget, including
+  processes on one host that share a store database
+  ([several serving processes](../CAPACITY.md#several-serving-processes-on-one-host)). A host plugin
   (`onRequest` returning a refusal, backed by whatever store you run) is the
   place for a cluster-wide budget; see the plugin contract in
   [docs/PLUGINS.md](../PLUGINS.md).

@@ -310,12 +310,17 @@ export const budgets: Record<string, Budget> = {
     // definition pinned to this repository's current version (README, SECURITY, the shipped docs, examples and
     // recipes, with their llms-full.txt copies): measured on Node 26 at 1013978 packed / 4010632 unpacked bytes,
     // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    // With #930 hermetic test runs, seeds, expectJson and resolved captures (READINESS/EXTENSIONS/CI docs and their
-    // llms-full.txt copies) on top of #937's main: measured on Node 26 at 1021513 packed / 4038619 unpacked bytes,
-    // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 1002 * 1024,
-    unpacked: 3948 * 1024,
-    entries: 521,
+    // With #927's test:multiprocess script in package.json on top: 1014165 packed / 4011284 unpacked bytes on Node 26,
+    // inside these budgets with about 2.8 KiB of headroom on each once Node 24's ~800 extra packed bytes are counted.
+    // #932 --local-review and the store-booking/store-credits recipes on top of #937 and #946: measured on Node 26 at 1023556 packed / 4051874 unpacked bytes, 525 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    // #930 hermetic runs, seeds and expectJson on top of #942: measured on Node 26 at 1031252 packed / 4079311 unpacked bytes, 525 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    // #930 hermetic runs, seeds and expectJson on top of #942: measured on Node 26 at 1031389 packed / 4079558 unpacked bytes, 526 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 1011 * 1024,
+    unpacked: 3987 * 1024,
+    entries: 530,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
@@ -331,8 +336,9 @@ export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode-auth': {
     // Rebuilt on Better Auth (#841, #843): the adapter, definition and CLI with their declarations and docs.
     // First measured at 13593/42819/14 packed bytes, unpacked bytes and files.
-    // #930 hermetic host (fresh database, throwaway secret, migrate at activation) and the users seed with its README
-    // section: 19155 packed / 60229 unpacked bytes, 14 entries (Node 26); ~800 bytes for Node 24 plus ~3 KiB headroom.
+    // With #927's README note that auth alone detects no second host: 17700 packed / 54758 unpacked bytes, 14 files on
+    // Node 26, 732 packed bytes under the old 18 KiB (CI's Node 24 packs larger); ~3 KiB headroom on each.
+    // #930 hermetic runs and seeds on top of #946: 19307 packed / 60677 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     packed: 23 * 1024,
     unpacked: 63 * 1024,
     entries: 20,

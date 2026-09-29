@@ -158,7 +158,10 @@ the write lock waits up to 2 seconds (blocking that process's event loop
 meanwhile) before failing, and Better Auth's transactions (sign-up, account
 creation) take the write lock when they begin, so one that reads and then
 writes cannot fail on a commit another process made in between. Network
-filesystems and several hosts are unsupported. Better Auth's base URL is the
+filesystems and several hosts are unsupported. auth checks neither: it keeps
+no lease and does not read the filesystem type, so without the store nothing
+refuses a second host or a network filesystem; the store's lease and its
+`statfs` check, which covers the store database's directory, are what detect them ([several serving processes][store-several-processes]). Better Auth's base URL is the
 operator's `--origin` and its base path is the mount.
 
 ## Not included
@@ -210,4 +213,5 @@ Fast checks: `urlcode validate --project app`, `urlcode validate --local --proje
 <!-- urlcode-current-version:start -->
 [readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
+[store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host
 <!-- urlcode-current-version:end -->

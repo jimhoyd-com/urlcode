@@ -1,0 +1,36 @@
+id: store-credits
+description: Credit wallets for signed-in users, funded by a members-only issuer transfer (a negative min plus members) and spent with a no-overdraft transfer, so the total never changes, with no handler code.
+tags: [credits, credit, wallet, wallets, balance, balances, transfer, transfers, pay, payment, payments, points, ledger, issuer, issue, mint, members, membership, store, auth, extension, "409"]
+complexity: advanced
+capabilities: [enabled, extension, methods, policies.extensions]
+targets: {self-hosted: conditional, cloudflare: refused, aws: refused, vercel: refused, static: refused}
+routes: 1
+services:
+  - name: store extension
+    description: The store (`urlcode extensions add store`) keeps the wallets and the issuers list in its SQLite database outside the project and runs every transfer in one transaction.
+  - name: auth extension
+    description: "A principal-providing auth extension behind `auth: true` (`urlcode extensions add auth` in a real site); the README shows the stand-in bearer principal the bundled fixtures sign in with."
+grants:
+  - kind: extension
+    description: The host registers the project revision it is pinned to. `--local-review` pins validate, test and audit to the current revision for one local run; serving needs the reviewed revision (--policy or PROJECT_SHA256).
+  - kind: origin
+    description: The canonical origin passed as --origin when serving; a local review uses http://localhost. Cross-origin writes are refused.
+inputs:
+  - name: issuers
+    file: urlcode.yaml
+    description: Who may issue credits is data, not YAML. The operator adds a principal id with `urlcode-store members add` before issuing; test and audit runs seed the issuer `treasurer` from tests/seed.json into their throwaway database.
+  - name: supply
+    file: urlcode.yaml
+    description: The issuer floor (`min` on issue) bounds the credit outstanding; the wallet limits and the idempotency window.
+files: [urlcode.yaml, tests/requests.json, tests/seed.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project . --host-file /operator/host.mjs --local-review
+    - urlcode test --project . --host-file /operator/host.mjs --local-review
+    - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --local-review
+behavior:
+  - POST /api/wallets opens a wallet at balance 0; a body that names the balance answers 422, so nobody mints by writing it
+  - POST /api/wallets/transfers/issue from an issuers member's own wallet funds another wallet; the issuer's wallet goes negative by the credit outstanding, and a non-member answers 403 membership_required
+  - POST /api/wallets/transfers/pay moves whole credits from the caller's own wallet to anyone's; an overdraft answers 409 insufficient_balance and a fraction 422
+  - a wallet holding credits cannot be deleted (409 balance_not_zero); paying it back to 0 first lets it go, and the sum over all wallets stays 0

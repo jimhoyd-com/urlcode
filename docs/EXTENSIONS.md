@@ -1835,6 +1835,54 @@ the edited project and pin its revision before `serve` runs it. `--policy`
 grants are not followed; see
 [local development](LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
 
+#### The local review loop
+
+A pin names one revision, so every edit changes it. Checking an edit should
+not need a new approval, but serving it must. `--local-review` separates the
+two ([#932](https://github.com/jimhoyd-com/urlcode/issues/932)). The
+generated `npm run validate`, `npm test`, `npm run routes` and
+`npm run audit` scripts pass it; `npm run dev` and `npm start` do not.
+
+```sh
+npm run validate   # urlcode validate --local --project app --host-file host.mjs --local-review
+npm test           # urlcode test --project app --host-file host.mjs --local-review
+npm run audit      # urlcode audit --expect-routes N --project app --host-file host.mjs --local-review
+```
+
+With the flag and no operator pin (no `--policy`, `URLCODE_POLICY` or
+`PROJECT_SHA256`), the CLI computes the project's current revision and pins
+the host to it for that one run. `--origin` defaults to `http://localhost`. It
+prints one `{"event":"local_review","revision":"…","origin":"…"}` line on
+stderr, so the output shows the run was not a reviewed one. Edit, run the
+three scripts, and repeat. When the change is ready, review it, pin the
+revision (`urlcode permissions --project app`), then serve.
+
+The boundary holds for these reasons:
+
+- **Serving refuses it.** Only `validate`, `test`, `routes` and `audit` accept
+  the flag. `serve`, `dev`, `benchmark` and every other command refuse it
+  (`code` `local-review-unsupported`), so a served runtime is always pinned by
+  the operator.
+- **Nothing is persisted.** The derived pin exists only in the process for
+  that run. It writes no policy, sets no environment variable and changes no
+  file, so the next `serve` still refuses until the operator pins a revision.
+- **An operator pin wins.** When `--policy`, `URLCODE_POLICY` or
+  `PROJECT_SHA256` is given, the flag does nothing: that pin and its policy
+  apply exactly as without it. A stale pin still refuses.
+- **No grant.** A local review reads no policy, so it holds no env, secret or
+  egress grant. A binding or egress destination that needs one is refused,
+  exactly as without a policy. (The test harness's own `URLCODE_DATA_DIR`
+  grant is the same as without the flag.)
+- **No new code.** The host activates the extensions the operator's
+  `host.mjs` already composes, the same ones `PROJECT_SHA256=<current
+  revision>` would activate. The project's trusted functions run with full
+  Node access either way.
+
+`urlcode dev` keeps its narrower rule: its first start needs the reviewed pin,
+then hot reloads follow it (above). The MCP runners (`run_validate`,
+`run_test`, `run_audit`) do not pass the flag; they forward only what the
+operator gave `urlcode mcp` ([#940](https://github.com/jimhoyd-com/urlcode/issues/940)).
+
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
 `composeHost` from `@jimhoyd/urlcode/host`. The runtime contract, the

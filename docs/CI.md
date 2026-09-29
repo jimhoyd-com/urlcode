@@ -145,6 +145,17 @@ and the same application with Auth.js as an independent provider package
 which installs `@auth/core` from the registry the same way. A change under
 `proofs/` or to any of these tests is high-impact and selects this job.
 
+`multiprocess` runs the multi-process harness (`npm run test:multiprocess`,
+[#927](https://github.com/jimhoyd-com/urlcode/issues/927)) on Linux/Node 24 in
+every full-lane run, extension-only changes included, and `verify-complete`
+accepts its skip only in the docs lane. It builds core and every add-on, then
+starts three `urlcode serve` processes from this checkout on one site whose
+`host.mjs` composes audit, auth and store over one data directory. What it
+asserts is listed under
+[what the multi-process harness proves](STORE.md#what-the-multi-process-harness-proves). It
+bounds its own load and takes about a minute, so it is neither a soak test nor
+a throughput measurement.
+
 Packaging tests use `npm pack --ignore-scripts` against the already-built core.
 The source `prepare` entry also checks npm's `ignore-scripts` setting because
 npm 10 can still invoke that lifecycle during packing. This keeps one test's

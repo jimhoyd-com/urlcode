@@ -48,7 +48,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
         ...result.keptFiles.map(file => `Kept existing ${file}.`),
         ...Object.entries(result.env).map(([key, text]) => `Environment: ${key}: ${text}`),
         ...result.notes.map(note => `Next: ${note}`),
-        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Review the project, then pin the host to exactly this value: the projectSha256 of the reviewed policy passed with --policy, or PROJECT_SHA256 where the host runs. The npm scripts read the origin and policy from URLCODE_ORIGIN and URLCODE_POLICY.`] : []),
+        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Review the project, then pin the host to exactly this value: the projectSha256 of the reviewed policy passed with --policy, or PROJECT_SHA256 where the host runs. npm run validate, test, routes and audit review every edit locally without a pin (--local-review); npm run dev and npm start read the origin and policy from URLCODE_ORIGIN and URLCODE_POLICY.`] : []),
       ].join('\n') + '\n');
       return undefined;
     }

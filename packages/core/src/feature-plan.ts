@@ -46,18 +46,26 @@ async function authoringContracts(project:string,registrations:readonly RuntimeE
  for(const entry of catalog?.addons??[])if(entry.kind==='extension'&&entry.authoring&&!contracts.has(entry.name))contracts.set(entry.name,{source:'catalog',authoring:entry.authoring});
  return contracts;
 }
-/** The surfaces whose goals the goal terms name, in contract order, extensions by name. */
-function matchedSurfaces(goalTerms:readonly string[],contracts:Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>):(PlannedSurface&{description:string;path?:string|undefined})[] {
- const found:(PlannedSurface&{description:string;path?:string|undefined})[]=[];
+type MatchedSurface=PlannedSurface&{description:string;path?:string|undefined};
+/**
+ * The surfaces whose goals the goal terms name, in contract order, extensions by name. A surface named by two or more
+ * goal terms is `strong`: one word alone ("notify the team", "send an email") is incidental and never makes an
+ * extension required by itself (#932). A single-word surface is still listed when something stronger requires its
+ * extension (a recipe, a goal noun or another surface).
+ */
+function matchedSurfaces(goalTerms:readonly string[],contracts:Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>):(MatchedSurface&{strong:boolean})[] {
+ const found:(MatchedSurface&{strong:boolean})[]=[];
  for(const name of [...contracts.keys()].sort()){
   const {source,authoring}=contracts.get(name)!;
   for(const surface of authoring.surfaces){
    const matched=(surface.goals??[]).filter(goal=>goalTerms.includes(goal));
-   if(matched.length)found.push({extension:name,surface:surface.name,kind:surface.kind,source,matched,description:surface.description,path:surface.path});
+   if(matched.length)found.push({extension:name,surface:surface.name,kind:surface.kind,source,matched,description:surface.description,path:surface.path,strong:matched.length>=surfaceStrength});
   }
  }
- return found.slice(0,plannedSurfaceLimit);
+ return found;
 }
+/** The fewest distinct goal terms one surface must share before it alone requires its extension (#932). */
+const surfaceStrength=2;
 const stop=new Set(['a','an','and','the','with','for','to','of','in','on','that','my','i','want','need','from']);
 function terms(goal:string):string[] {
  // A hyphenated word also counts as its parts, so "hmac-signed" reaches both hmac and signed.
@@ -79,6 +87,8 @@ const recipeTerms:Record<string,readonly string[]>={
  'contact-form':['contact','form','message','submission','email'],
  'authenticated-json-api':['auth','authenticated','account','accounts','sign','signed','signin','login','logout','session','sessions','password','private','protected'],
  'store-crud':['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions',...listQueryTerms],
+ 'store-booking':['book','booking','bookings','schedule','scheduling','reservation','reservations','reserve','appointment','appointments','slot','slots','calendar','availability','overlap','overlapping','interval','intervals'],
+ 'store-credits':['credit','credits','wallet','wallets','balance','balances','transfer','transfers','ledger','points','issuer','issuers','mint','payment','payments'],
 };
 const extensionReason:Record<string,string>={
  auth:'Authentication is an operator-installed extension; its registration and revision pin, not project YAML, select the executable package and grants.',
@@ -90,6 +100,8 @@ const outline:Record<string,{kind:string;note:string}>={
  'contact-form':{kind:'contact endpoint',note:'The bundled recipe serves a static page that posts JSON to one POST route: request.body.POST.schema validates the fields (format: email), respond answers 202 and a revision-pinned signal notifies a hook; no function. Add policies.throttle before publishing; to email the message, a trusted function calls the mail provider directly (recipe README).'},
  'authenticated-json-api':{kind:'protected endpoint',note:'The bundled recipe protects a function route with auth: true; Better Auth (the auth extension) owns sign-in and sessions, and the function reads context.capabilities.auth.identity.userId.'},
  'store-crud':{kind:'durable collection',note:'The bundled recipe declares a collection and an extension mount; CRUD behavior belongs to the registered store extension, not a generated handler.'},
+ 'store-booking':{kind:'declarative booking',note:'The bundled recipe declares an owned bookings collection behind auth: true: intervals {start, end, within: [room], when: {status: booked}} answers 409 interval_conflict for an overlapping booking across owners, a cancel transition frees the slot, and status is readOnly; no handler.'},
+ 'store-credits':{kind:'declarative credits',note:'The bundled recipe declares owned wallets behind auth: true with a balance that defaults to 0, is in readOnlyProperties and is never set by a transition. pay moves whole credits and never overdraws; funding comes from the issuer pattern: an issue transfer with a negative min (the credit outstanding) and members: <membership collection>, so only a listed issuer mints and the sum stays 0. The operator adds issuers with urlcode-store members add; no handler.'},
 };
 const listQueryOutline={kind:'declarative list query',note:'Declare the query instead of parsing it. A store collection lists the properties a GET may filter by equality in filterable (?status=pending) and sort by in sortable (?sort=<property>, ?sort=-<property> descending; one sort property, id breaks ties); a list answers pages bounded by pageSize and continued with ?limit= and the opaque ?cursor=, and a value the property schema refuses answers 400 invalid_query. A string property needs maxLength or an enum to be filterable or sortable. ownership: owner behind auth: true scopes every list to the signed-in principal. A route that lists something the store does not hold declares its query parameters (parameters: [{name: status, in: query, schema: {type: string, enum: [...]}}]) so the runtime answers 400 before anything runs. get_schema routes.*.parameters and the store README list the exact fields.'};
 type Recipe=Awaited<ReturnType<typeof listRecipes>>[number];
@@ -112,9 +124,11 @@ function selectedRecipes(goalTerms:string[], recipes:Recipe[], surfaceTerms:Read
  const viaExtensions=mapped.length?mapped:recipes.filter(recipe=>extensionTerms(recipe,surfaceTerms).length>0);
  // The tag fallback needs several shared terms: a single generic word ("status", "list") never selects a recipe.
  const candidates=viaExtensions.length?viaExtensions:recipes.filter(recipe=>new Set(recipe.tags.map(tag=>tag.toLowerCase()).filter(tag=>goalTerms.includes(tag))).size>=tagFallbackMinimum);
- // Declarative first (docs/PROJECT-DIRECTION.md): a recipe that runs no project code outranks one that does, then more matched terms win.
- return candidates.map((recipe,index)=>({recipe,index,code:runsProjectCode(recipe),matched:new Set([...matchedTerms(goalTerms,recipe),...extensionTerms(recipe,surfaceTerms)]).size}))
-  .sort((a,b)=>Number(a.code)-Number(b.code)||b.matched-a.matched||a.index-b.index).map(item=>item.recipe).slice(0,4);
+ // Declarative first (docs/PROJECT-DIRECTION.md): a recipe that runs no project code outranks one that does, then more
+ // of the goal's words in the recipe's own terms, then the recipe needing fewer services (a goal that names none of a
+ // specialised recipe's words gets the general one: approvals get store-crud, not store-booking), then more words overall.
+ return candidates.map((recipe,index)=>({recipe,index,code:runsProjectCode(recipe),own:matchedTerms(goalTerms,recipe).length,services:(recipe.services??[]).length,matched:new Set([...matchedTerms(goalTerms,recipe),...extensionTerms(recipe,surfaceTerms)]).size}))
+  .sort((a,b)=>Number(a.code)-Number(b.code)||b.own-a.own||a.services-b.services||b.matched-a.matched||a.index-b.index).map(item=>item.recipe).slice(0,4);
 }
 
 /**
@@ -132,9 +146,10 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  let addonCatalog:AddonCatalog|undefined;
  try {addonCatalog=await readAddonCatalog();} catch {/* a core without its catalog (an unbuilt checkout) plans from registrations and installed descriptors */}
  // Extension authoring contracts name their own surfaces' goal words (#913); core keeps no per-extension vocabulary for them.
- const surfaces=matchedSurfaces(recipeGoalTerms,await authoringContracts(project,options.extensions??[],addonCatalog));
+ const candidates=matchedSurfaces(recipeGoalTerms,await authoringContracts(project,options.extensions??[],addonCatalog));
+ // Only a strong surface requires its extension or steers recipe selection (#932).
  const surfaceTerms=new Map<string,string[]>();
- for(const surface of surfaces)surfaceTerms.set(surface.extension,[...new Set([...(surfaceTerms.get(surface.extension)??[]),...surface.matched])]);
+ for(const surface of candidates)if(surface.strong)surfaceTerms.set(surface.extension,[...new Set([...(surfaceTerms.get(surface.extension)??[]),...surface.matched])]);
  const context=await buildContext(project,{target,projectFlag:'.',origin:options.origin}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes(),surfaceTerms);
  const listQuery=recipeGoalTerms.some(term=>listQueryTerms.includes(term));
  const capabilities=[...new Set([...recipes.flatMap(recipe=>recipe.capabilities??[]),...(listQuery?['parameters']:[])].filter((name):name is CapabilityName=>typeof name==='string'))].sort();
@@ -150,6 +165,8 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  if(listQuery&&goalTerms.some(term=>['owner','owners','owned','ownership'].includes(term)))wanted.add('auth');
  if(goalTerms.some(term=>['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'].includes(term))||listQuery)wanted.add('store');
  for(const extension of surfaceTerms.keys())wanted.add(extension);
+ // A surface is listed when its extension is required: every strong one, and a single-word one beside them.
+ const surfaces=candidates.filter(surface=>wanted.has(surface.extension)).slice(0,plannedSurfaceLimit).map(({strong:_strong,...surface})=>surface);
  const declaredTargets=addonCatalog?declaredExtensionTargets(addonCatalog):new Map<string,string[]>();
  let artifacts:Awaited<ReturnType<typeof describeInstalledArtifacts>>['artifacts']=[];
  try {artifacts=(await describeInstalledArtifacts(project)).artifacts;} catch {/* no site is an ordinary absence, never a reason to read elsewhere */}

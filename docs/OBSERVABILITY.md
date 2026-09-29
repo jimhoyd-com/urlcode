@@ -34,6 +34,7 @@ named.
 | `stream_refused` | `requestId` string, `route` string or `null`, `reason` (`undeclared`, `invalid`, `capacity`) | A streamed result was answered 502 because its route does not declare streaming (or the result was malformed), or 503 because `--max-streams` were open. |
 | `reload` | `status` `ok`/`rejected`; `version` string and `routes` integer on `ok` | `app.reload()` or the development watcher swapped, or refused to swap, the snapshot. |
 | `watch` | `status` `failed` | The development watcher could not fingerprint the project. |
+| `local_review` | `revision` string, `origin` string, `note` string | CLI `validate`, `test`, `routes` and `audit` with `--local-review` and no operator pin, once on stderr before the run: the host was pinned to the current revision `revision` for this run only, with no policy grants ([the local review loop](EXTENSIONS.md#the-local-review-loop)). `serve` and `dev` refuse the flag. |
 | `extension_pin_followed` | `extensions` string array, `from` string, `to` string | `urlcode dev` only, once per reload: the edited project (revision `to`) activated extensions whose registration is still pinned to `from`, the revision dev started from ([the revision pin](EXTENSIONS.md#the-revision-pin)). Emitted after the reload fully activated, never for a rejected one and never by `serve`. |
 | `function_worker` | `status` `started`/`restarting`, `slot` integer; `attempt` and `delayMs` integers on `restarting` | A function worker became ready or is scheduled for replacement. |
 | `signal` | `outcome` (`accepted`, `delivered`, `failed`, `dropped`, or `captured` when `urlcode test`, `audit` or `dev --signal-sink` records instead of delivering), positive `count` | Best-effort webhook totals; no destination, request data or secrets. |
@@ -166,7 +167,12 @@ Policy counters are derived from the `throttle`, `agents` and `cache` events
 as they pass through the sink, so the policies themselves have no metrics
 code. Runtime facts that never become events (admission, shedding, slot
 health) are recorded by the server directly. Counters are per process;
-aggregation across replicas is the scraper's job.
+aggregation across replicas is the scraper's job. That includes several
+`urlcode serve` processes on one host behind a proxy: scrape each process's
+own port, because a scrape through the proxy reaches whichever process it
+picks. Their `throttle` and `cache` counters describe that process's own
+budgets and cache
+([several serving processes](CAPACITY.md#several-serving-processes-on-one-host)).
 
 ## Prometheus exposition
 

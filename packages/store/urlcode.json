@@ -620,7 +620,7 @@
       {
         "kind": "configuration",
         "name": "transfers",
-        "description": "`transfers.<name>: {amount, min?, members?}` on a collection: `POST <mount>/transfers/<name>` with `{from, to, amount}` moves a positive whole amount from one record's integer `amount` property to another's in one transaction, so the sum never changes; a debit below `min` (default 0) answers `409 insufficient_balance` and writes nothing. On an owned collection the caller debits only its own record and may credit anyone's. Integers only (a currency in minor units); `If-Match` on `from`, `Idempotency-Key` and audit apply.",
+        "description": "`transfers.<name>: {amount, min?, members?}` on a collection: `POST <mount>/transfers/<name>` with `{from, to, amount}` moves a positive whole amount from one record's integer `amount` property to another's in one transaction, so the sum never changes; a debit below `min` (default 0) answers `409 insufficient_balance` and writes nothing. On an owned collection the caller debits only its own record and may credit anyone's. Integers only (a currency in minor units); `If-Match` on `from`, `Idempotency-Key` and audit apply. The amount defaults to 0, is in `readOnlyProperties` and no transition sets it; value comes in through an issuer: a transfer with a negative `min` (the supply outstanding) and `members: <membership collection>`.",
         "path": "urlcode.yaml",
         "goals": [
           "transfer",
@@ -644,7 +644,10 @@
           "budget",
           "budgets",
           "allowance",
-          "quota"
+          "quota",
+          "issuer",
+          "issuers",
+          "mint"
         ]
       },
       {
