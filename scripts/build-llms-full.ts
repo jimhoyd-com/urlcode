@@ -21,6 +21,29 @@ export function absolutizeLinks(markdown: string,relPath: string,base: string): 
     return `](${base}${joined}${anchor===undefined?'':`#${anchor}`})`;
   });
 }
+// Links every bare `docs/X.md` mention of a page the package does not ship to `base` (#948). The source pages name
+// sibling pages in prose or in a code span of just the path, which reads fine in a checkout; in the packed copy the
+// path is not there, so it becomes a link to this release's copy. Links, reference labels, longer code spans, fenced
+// code and pages in `shipped` are left alone; the package audit reports any mention that is still unshipped.
+export function pinDocsMentions(markdown: string,base: string,shipped: ReadonlySet<string>): string {
+  let fence: string|null=null;
+  const pin=(page: string): string|null=>shipped.has(page.replace(/#.*$/,''))?null:`[${page}](${base}${page})`;
+  return markdown.split('\n').map(line=>{
+    const open=/^\s*(`{3,}|~{3,})/.exec(line);
+    if(open){const marker=open[1]!;if(fence===null)fence=marker;else if(marker[0]===fence[0] && marker.length>=fence.length)fence=null;return line;}
+    if(fence!==null)return line;
+    return line.replace(/(`+)([^`]*?)\1|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]|(?<![\w/.\-[])docs\/[\w./-]+?\.md(?:#[\w-]+)?\b/g,(whole,ticks: string|undefined,code: string|undefined)=>{
+      if(ticks!==undefined)return /^docs\/[\w./-]+?\.md(?:#[\w-]+)?$/.test(code!.trim())?pin(code!.trim()) ?? whole:whole;
+      if(whole.startsWith('['))return whole;
+      return pin(whole) ?? whole;
+    });
+  }).join('\n');
+}
+// The docs pages the package ships: the `docs/` entries of package.json `files`.
+async function shippedDocs(root: string): Promise<Set<string>> {
+  const files=(JSON.parse(await readFile(resolve(root,'package.json'),'utf8')) as {files?: string[]}).files ?? [];
+  return new Set(files.filter(file=>/^docs\/.+\.md$/.test(file)));
+}
 // Demotes every ATX heading outside fenced code blocks by one level so each
 // document nests under its level-1 section heading.
 export function demoteHeadings(markdown: string): string {
@@ -39,6 +62,7 @@ async function readOptional(root: string,relPath: string): Promise<string|null> 
 }
 export async function buildLlmsFull(root: string): Promise<string> {
   const blob=githubBlob((JSON.parse(await readFile(resolve(root,'package.json'),'utf8')) as {version: string}).version);
+  const shipped=await shippedDocs(root);
   const index=await readOptional(root,'llms.txt');
   if(index===null)throw new Error('llms.txt is missing');
   // The llms.txt header is everything before its first section heading.
@@ -49,7 +73,7 @@ export async function buildLlmsFull(root: string): Promise<string> {
     const fallback=path.replace(/^docs\//,'').replace(/\.md$/,'');
     if(source===null){sections.push({title:fallback,body:`_Not present in this revision: \`${path}\`._`,path,present:false});continue;}
     const title=/^# (.+)$/m.exec(source)?.[1]?.trim() ?? fallback;
-    const body=demoteHeadings(absolutizeLinks(source.replace(/^# .+\n+/,''),path,blob)).trim();
+    const body=demoteHeadings(pinDocsMentions(absolutizeLinks(source.replace(/^# .+\n+/,''),path,blob),blob,shipped)).trim();
     sections.push({title,body,path,present:true});
   }
   const toc=sections.map((s,i)=>`${i+1}. [${s.title}](#${slug(s.title)})${s.present?'':' (missing)'}`).join('\n');
