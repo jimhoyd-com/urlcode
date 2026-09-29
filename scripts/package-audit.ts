@@ -284,9 +284,11 @@ export const budgets: Record<string, Budget> = {
     // and their llms-full.txt copies. Measured on Node 26: 945207 packed bytes (5175 over 918 KiB), 3740438 unpacked
     // bytes (30486 over 3623 KiB) and 505 entries (1 over 504). Packed raised to 927 KiB, unpacked to 3656 KiB and
     // entries to 510, keeping about 4 KiB, 3.3 KiB and 5 entries of headroom.
-    packed: 927 * 1024,
+    // Re-measured on main after #900 and #901 merged together (each measured alone): Node 26 954042 packed /
+    // 3768213 unpacked bytes, 507 entries; CI (Node 24) packed 954811. About 3 KiB of headroom on each.
+    packed: 935 * 1024,
     // Re-measured after merging main (#896-#899): 3747895 unpacked bytes.
-    unpacked: 3664 * 1024,
+    unpacked: 3690 * 1024,
     entries: 510,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
