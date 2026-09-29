@@ -42,7 +42,7 @@ test('the body schema profile refuses what it does not support at load time, nam
   const bad: [unknown, RegExp][] = [
     [{ type: 'object', oneOf: [] }, /\/oneOf: must list 1 to 16 schemas/], [{ type: 'object', if: {} }, /\/if: keyword "if" is not in the supported JSON Schema 2020-12 profile/],
     [{ type: 'money' }, /\/type: must be one of/], [{ type: ['string', 'string'] }, /distinct/],
-    [{ type: 'string', format: 'email' }, /supported: uuid/], [{ type: 'string', pattern: '^a$' }, /requires maxLength/],
+    [{ type: 'string', format: 'idn-email' }, /supported: uuid, date/], [{ type: 'string', pattern: '^a$' }, /requires maxLength/],
     [{ type: 'string', pattern: '^a$', maxLength: 5000 }, /at most 128/], [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, /\/pattern: Pattern cannot repeat a group/],
     [{ type: 'array', maxItems: -1 }, /\/maxItems: must be an integer/], [{ type: 'string', enum: [] }, /1 to 64/], [{ type: 'string', enum: [{}] }, /scalar/],
     [{ type: 'object', properties: { a: { default: 1 } } }, /\/properties\/a\/default: .*does not fill in request body defaults/],

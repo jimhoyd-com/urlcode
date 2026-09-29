@@ -1,6 +1,7 @@
 import { ConfigError } from './errors.ts';
 import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
 import { isRecord, own } from './object-guards.ts';
+import { bodySchemaFormatMaxLength } from './body-formats.ts';
 
 // The request body schema profile: which JSON Schema 2020-12 documents a route may declare as
 // `request.body.<METHOD>.schema`, and how a validator's failures become the bounded 422 answer. This module
@@ -18,7 +19,7 @@ export interface BodySchema {
   properties?: Record<string, BodySchema | boolean>;
   required?: string[];
 }
-/** The one format the runtime checks without an extra dependency; every other `format` is refused at load. */
+/** The `uuid` format (also the only parameter format); the other body formats are body-formats.ts. */
 export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /**
  * The largest request body any route admits: `request.body.<METHOD>.maxBytes` is at most this and defaults to it, on every host
@@ -54,6 +55,7 @@ const appliesTo: Record<string, readonly BodySchemaType[]> = {
   items: ['array'], prefixItems: ['array'], minItems: ['array'], maxItems: ['array'], uniqueItems: ['array'],
   properties: ['object'], patternProperties: ['object'], additionalProperties: ['object'], propertyNames: ['object'], required: ['object'], minProperties: ['object'], maxProperties: ['object'],
 };
+const formats = Object.keys(bodySchemaFormatMaxLength);
 const limits = {
   depth: 8, nodes: 256, expandedNodes: 1024, refs: 32, defs: 32, properties: 64, patternProperties: 16, branches: 16, enums: 64, required: 64,
   length: maxRequestBodyBytes, items: 10000, uniqueItems: 64, text: 4096, examples: 16,
@@ -63,7 +65,7 @@ const limits = {
  * description (#587). A keyword outside `keywords`, a `format` outside `formats` or a schema over a limit fails at load.
  */
 export const bodySchemaProfile = {
-  dialect: bodySchemaDialect, keywords: Object.keys(keywordKinds), types: [...types], formats: ['uuid'], patternMaxLength: maxPatternInputLength, limits: { ...limits },
+  dialect: bodySchemaDialect, keywords: Object.keys(keywordKinds), types: [...types], formats, formatMaxLength: { ...bodySchemaFormatMaxLength }, patternMaxLength: maxPatternInputLength, limits: { ...limits },
 } as const;
 
 const pointerCap = 256;
@@ -201,7 +203,8 @@ export function assertBodySchema(schema: unknown): asserts schema is BodySchema 
         // Admitted patterns are cheap only on bounded input; maxLength is checked before pattern at request time.
         if (!(typeof node.maxLength === 'number' && node.maxLength <= maxPatternInputLength)) fail(at, `pattern requires maxLength of at most ${maxPatternInputLength} on the same schema`);
         return;
-      case 'format': if (value !== 'uuid') fail(at, 'unsupported format (supported: uuid)'); return;
+      // A format bounds its own input (`formatMaxLength`), so unlike `pattern` it needs no maxLength beside it.
+      case 'format': if (typeof value !== 'string' || !formats.includes(value)) fail(at, `unsupported format (supported: ${formats.join(', ')})`); return;
       case 'number': if (typeof value !== 'number' || !Number.isFinite(value)) fail(at, 'must be a finite number'); return;
       case 'positive': if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) fail(at, 'must be a finite number greater than 0'); return;
     }
@@ -331,7 +334,7 @@ function describe(error: BodyValidationError): Omit<BodySchemaIssue, 'pointer'> 
     case 'minLength': return { keyword: 'minLength', message: `must be at least ${limit} characters`, expected: limit! };
     case 'maxLength': return { keyword: 'maxLength', message: `must be at most ${limit} characters`, expected: limit! };
     case 'pattern': return { keyword: 'pattern', message: 'does not match the declared pattern' };
-    case 'format': return { keyword: 'format', message: `must be a ${String(p.format)}`, expected: String(p.format) };
+    case 'format': { const format = String(p.format); return { keyword: 'format', message: `must be ${/^(?:email|ip)/.test(format) ? 'an' : 'a'} ${format}`, expected: format }; }
     case 'minimum': return { keyword: 'minimum', message: `must be at least ${limit}`, expected: limit! };
     case 'maximum': return { keyword: 'maximum', message: `must be at most ${limit}`, expected: limit! };
     case 'exclusiveMinimum': return { keyword: 'exclusiveMinimum', message: `must be greater than ${limit}`, expected: limit! };

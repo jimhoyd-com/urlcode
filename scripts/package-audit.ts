@@ -231,8 +231,13 @@ export const budgets: Record<string, Budget> = {
     // coherence refusals and pointer-based Ajv refusal diagnostics
     // (body-validation.ts) with the HTTP/RUNTIME-IMPLEMENTATION sections and
     // their llms-full.txt copies. Measured on Node 26: 887922 packed / 3543842 unpacked bytes, 489 entries.
-    packed: 870 * 1024,
-    unpacked: 3470 * 1024,
+    // Raised to 875/3490 KiB for #861 item 6: the standard body schema string
+    // formats (body-formats.ts in dist) with the HTTP.md format table, the
+    // RIM-BODY-SCHEMA-001 card, the schema description and their llms-full.txt
+    // and YAML-REFERENCE.md copies. Measured on Node 26: 893513 packed /
+    // 3561513 unpacked bytes, 491 entries.
+    packed: 875 * 1024,
+    unpacked: 3490 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
