@@ -65,7 +65,7 @@ test('the OpenAPI document resolves its same-document and relative-file refs; ev
 });
 
 test('the descriptor lists documents only by a relative package path and a closed set of media types', () => {
-  const descriptor = (documents: unknown): unknown => ({ kind: 'artifact', name: 'docs', description: 'd', requires: [], documents });
+  const descriptor = (documents: unknown): unknown => ({ kind: 'artifact', name: 'docs', description: 'd', contract: 1, requires: [], documents });
   assert.deepEqual(parseDescriptor(descriptor([{ path: 'api/openapi.json', mediaType: 'application/vnd.oai.openapi+json' }]), 'd').documents, [{ path: 'api/openapi.json', mediaType: 'application/vnd.oai.openapi+json' }]);
   for (const [documents, pattern] of [
     [[{ path: '../outside.json', mediaType: 'application/json' }], /relative package path/],
@@ -78,7 +78,7 @@ test('the descriptor lists documents only by a relative package path and a close
     [[{ path: 'a.json', mediaType: 'application/json', title: 'x' }], /relative package path/],
     [Array.from({ length: 33 }, (_, index) => ({ path: `d${index}.json`, mediaType: 'application/json' })), /at most 32/],
   ] as const) assert.throws(() => parseDescriptor(descriptor(documents), 'd'), pattern);
-  assert.throws(() => parseDescriptor({ kind: 'extension', name: 'x', description: 'd', requires: [], schema: {}, documents: [] }, 'x'), /lists no documents/);
+  assert.throws(() => parseDescriptor({ kind: 'extension', name: 'x', description: 'd', contract: 1, requires: [], schema: {}, documents: [] }, 'x'), /lists no documents/);
 });
 
 test('reference cycles are reported once and not expanded, within a file and across files', async t => {
@@ -166,7 +166,7 @@ test('references and listed documents never leave the package: `..`, absolute pa
   assert.deepEqual(referencedFiles, []);
   // And a package holding a symlink is not an inert artifact at all, so it is never installed or inspected.
   await writeFile(join(dir, 'package.json'), JSON.stringify({ name: '@example/x', version: '1.0.0' }));
-  await writeFile(join(dir, 'urlcode.json'), JSON.stringify({ kind: 'artifact', name: 'x', description: 'x', requires: [] }));
+  await writeFile(join(dir, 'urlcode.json'), JSON.stringify({ kind: 'artifact', name: 'x', description: 'x', contract: 1, requires: [] }));
   await assert.rejects(assertInertArtifact(dir, 'x'), /contains listed\.json, which is not declarative data/);
 });
 
@@ -325,7 +325,7 @@ test('a duplicate provider is reported once, in the list of its own kind (#857)'
     const directory = join(site, 'node_modules', ...packageName.split('/'));
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'package.json'), JSON.stringify({ name: packageName, version: '1.0.0' }));
-    await writeFile(join(directory, 'urlcode.json'), JSON.stringify({ description: 'd', requires: [], ...descriptor }));
+    await writeFile(join(directory, 'urlcode.json'), JSON.stringify({ description: 'd', contract: 1, requires: [], ...descriptor }));
   };
   await provide('@example/docs-a', { kind: 'artifact', name: 'docs' });
   await provide('@example/docs-b', { kind: 'artifact', name: 'docs' });

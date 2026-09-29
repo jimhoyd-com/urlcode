@@ -1,0 +1,1 @@
+{ "kind": "extension", "name": "beyond", "description": "Independent fixture extension built for a later URLCode extension contract", "contract": 2, "requires": [], "targets": ["node"], "schema": { "type": "object" } }

@@ -54,6 +54,7 @@ export default defineExtension<AuthHostOptions>({
   targets: ['node'],
   providesPrincipal: true,
   description: 'Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id',
+  contract: 1,
   requires: [],
   schema: authConfigSchema,
   policySchema: authPolicySchema,
