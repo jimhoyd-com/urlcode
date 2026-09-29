@@ -536,9 +536,11 @@ unmeasured.
 Nine gaps were found. The main five:
 
 - A 12-hour booking was accepted. Fixed-length slots can't be declared, and
-  hour alignment needed a `pattern`.
+  hour alignment needed a `pattern`. Since fixed
+  ([#929](https://github.com/jimhoyd-com/urlcode/issues/929)):
+  `intervals.length` and `step` answer `422`.
 - A non-member could create a booking. Creates can't be limited to a
-  membership list.
+  membership list. Since fixed (#929): `create: {members}` answers `403`.
 - `DELETE` of a wallet holding credits succeeded, which breaks the
   sum-never-changes guarantee. Since fixed
   ([#928](https://github.com/jimhoyd-com/urlcode/issues/928)): it answers

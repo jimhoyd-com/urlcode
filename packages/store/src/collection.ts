@@ -34,6 +34,16 @@ export type Scalar = string | number | boolean;
 const PROPERTY_TYPES: readonly PropertyType[] = ['string', 'integer', 'number', 'boolean'];
 const TRANSITION_LIMITS = { transitions: 16, fields: 8, stamps: 4 } as const;
 const INTERVAL_LIMITS = { within: 4, when: 8 } as const;
+/** A `length` or `step` for date-time bounds: an ISO 8601 duration in whole days, hours, minutes and seconds. */
+const DURATION = '^P(?:([0-9]{1,5})D)?(?:T(?:([0-9]{1,6})H)?(?:([0-9]{1,8})M)?(?:([0-9]{1,10})S)?)?$';
+/** The size of a `DURATION` in milliseconds (a UTC day is always 86,400 seconds), or undefined for an empty or zero one. */
+function durationMs(text: string): number | undefined {
+  const match = new RegExp(DURATION).exec(text);
+  if (!match || text.endsWith('T')) return undefined;
+  const [days, hours, minutes, seconds] = match.slice(1).map(part => Number(part ?? 0)) as [number, number, number, number];
+  const ms = (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000;
+  return ms > 0 && Number.isSafeInteger(ms) ? ms : undefined;
+}
 const TRANSFER_LIMITS = { transfers: 8 } as const;
 const RECORD_ID = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 /**
@@ -108,10 +118,22 @@ export interface TransitionSpec {
  * records, read-only, on a separate mount guarded by a principal-providing policy.
  */
 export interface ReadersSpec {
-  mount: string; members: string;
+  mount: string;
+  /** A membership collection: only principals it lists may read. Required unless `properties` narrows what is shown. */
+  members?: string;
   /** Include each record's owner (its opaque principal id) as `_owner` in this mount's answers, and nowhere else. */
   showOwner?: boolean;
+  /**
+   * A projection (#929): the declared properties this mount shows. Each record is answered as `id` and these only (no
+   * timestamps, no other property), sort and filters take only these, and without `members` every principal the
+   * mount's route admits may read them: a directory of record ids by name, with balances kept private.
+   */
+  properties?: string[];
 }
+/** A validated readers declaration. */
+export interface NormalizedReaders { mount: string; members?: string; showOwner: boolean; properties?: string[] }
+/** Who may create a record (#929): with `members`, only principals that membership collection lists. */
+export interface CreateSpec { members?: string }
 export interface CollectionSpec {
   /** Required, except on a membership collection, which has none. */
   mount?: string;
@@ -161,6 +183,8 @@ export interface CollectionSpec {
   membership?: boolean;
   /** On an owned collection: who may list and read every owner's records, and where. */
   readers?: ReadersSpec;
+  /** Who may create a record: `{members}` admits only a membership collection's principals (403 before anything is written). */
+  create?: CreateSpec;
   /** A non-overlap constraint (#902): no two records in one scope hold overlapping half-open `[start, end)` intervals. */
   intervals?: IntervalSpec;
   /** Declared transfers by name (#902): `POST <mount>/transfers/<name>` moves an integer amount between two records. */
@@ -202,7 +226,19 @@ export interface IntervalSpec {
   scope?: IntervalScope;
   /** Only records holding exactly these values take part (for example `{status: booked}`, so a cancelled one frees its slot). */
   when?: Record<string, Scalar>;
+  /**
+   * The exact length every interval has (#929): an ISO 8601 duration such as `PT1H` for date-time bounds, a positive
+   * integer for integer bounds. `end - start` must equal it, or the write is 422.
+   */
+  length?: string | number;
+  /**
+   * The grid both bounds sit on (#929): each must be a whole multiple of `step` counted from the epoch (date-times) or
+   * zero (integers), so `PT1H` means on the hour, UTC. With `length`, `length` must be a multiple of `step`.
+   */
+  step?: string | number;
 }
+/** A declared `length` or `step`: what the declaration wrote, and its size in the bounds' units (milliseconds for a date-time). */
+export interface IntervalDuration { declared: string | number; units: number }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
 /**
@@ -289,11 +325,15 @@ export const collectionSchema = {
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request.' },
       },
     } },
-    membership: { type: 'boolean', description: 'true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, transfers, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
-    readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner.', type: 'object', additionalProperties: false, required: ['mount', 'members'], properties: {
+    membership: { type: 'boolean', description: 'true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, transfers, readers, create, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
+    readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner. With properties, the mount shows only id and those properties, and members becomes optional: a directory every signed-in principal may search without seeing the rest of any record.', type: 'object', additionalProperties: false, required: ['mount'], properties: {
       mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
-      members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read.' },
+      members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read. Required unless properties is given; without it every principal the route admits may read the listed properties.' },
       showOwner: { type: 'boolean', description: 'true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner\'s mount, transitions and StoreExports never do.' },
+      properties: { type: 'array', minItems: 1, maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'A projection: the declared properties this mount shows. Each record is answered as id and these properties only (no createdAt, updatedAt or other property); sort and filters take only these; its ETag is of what it shows, so it changes only when a listed property does (it is not the record\'s own ETag, which If-Match takes); may lists only transitions whose from names only these. Use it for a directory (a wallet\'s name, never its balance).' },
+    } },
+    create: { description: 'Who may create a record. members: only principals a membership collection lists may POST <mount> (and create through StoreExports or a host transaction); anyone else gets 401 principal_required without a principal, or 403 membership_required inside the write transaction before the Idempotency-Key or anything else is read or written.', type: 'object', additionalProperties: false, required: ['members'], properties: {
+      members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may create.' },
     } },
     intervals: { description: 'A non-overlap constraint for scheduling: among the records it applies to, no two in the same scope (and with equal within values) may hold overlapping half-open [start, end) intervals, so an interval ending where another starts is allowed. Checked inside the write transaction of every create, PUT, PATCH and transition against an index, never a scan of the collection; an overlap answers 409 interval_conflict and nothing is written, so a move that would overlap keeps the record where it was. Activation refuses stored records that already overlap. Not on a membership collection.', type: 'object', additionalProperties: false, required: ['start', 'end'], properties: {
       start: { type: 'string', pattern: FIELD_NAME, description: 'A required property holding the start: a string with format: date-time, whose values must be UTC (ending in Z) with at most millisecond precision and compare as instants, or an integer or number.' },
@@ -301,6 +341,8 @@ export const collectionSchema = {
       within: { type: 'array', maxItems: INTERVAL_LIMITS.within, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Required properties that partition the constraint (a room, a resource): two intervals conflict only when every one of these is equal.' },
       scope: { enum: ['collection', 'owner'], description: 'collection (default): every record blocks every other, across owners on an owned collection (another owner\'s conflicting record is never named). owner: with ownership: owner only, each owner\'s records are constrained among themselves.' },
       when: { type: 'object', minProperties: 1, maxProperties: INTERVAL_LIMITS.when, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property\'s schema. Without it every record takes part.' },
+      length: { oneOf: [{ type: 'string', pattern: DURATION, maxLength: 40 }, { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }], description: 'The exact length of every interval: an ISO 8601 duration in whole days, hours, minutes and seconds (PT1H, PT30M, P1D) for date-time bounds, a positive integer for integer bounds. A record whose end is not exactly start plus length answers 422 invalid_record. Applies to every record, whatever when says.' },
+      step: { oneOf: [{ type: 'string', pattern: DURATION, maxLength: 40 }, { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }], description: 'The grid the bounds sit on: start and end must each be a whole multiple of step, counted from 1970-01-01T00:00:00Z for date-times (PT1H: on the hour, UTC; PT15M: on the quarter hour) or from 0 for integers, or the write answers 422 invalid_record. Without length it makes every interval a whole number of steps; with length, length must be a multiple of step.' },
     } },
     transfers: { description: 'Declared transfers by name: POST <mount>/transfers/<name> with the JSON body {from, to, amount} (two distinct record ids and a positive whole number) subtracts amount from the from record\'s amount property and adds it to the to record\'s in one transaction, so the sum over the collection never changes (a record is created at 0 and deleted only at 0, else 409 balance_not_zero); a debit that would leave from below min answers 409 insufficient_balance and nothing is written. On an owned collection the caller may debit only its own record and may credit any owned record (a transfer between owners); on a shared collection anyone who reaches the mount may move between any two records, so gate it with members or the route. Honours If-Match (on from) and Idempotency-Key; audited as store.record.transferred on both records. Not on a membership collection.', type: 'object', maxProperties: TRANSFER_LIMITS.transfers, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['amount'],
@@ -398,7 +440,7 @@ export interface NormalizedSpec {
   mount?: string; records: CompiledRecordSchema; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
-  membership: boolean; readers?: Required<ReadersSpec>; intervals?: NormalizedIntervals; transfers: Record<string, NormalizedTransfer>;
+  membership: boolean; readers?: NormalizedReaders; create?: { members: string }; intervals?: NormalizedIntervals; transfers: Record<string, NormalizedTransfer>;
 }
 /**
  * A validated interval constraint and its SQL, built once from the declaration. `kind` says how a bound compares
@@ -409,6 +451,7 @@ export interface NormalizedSpec {
  */
 export interface NormalizedIntervals {
   start: string; end: string; within: string[]; scope: IntervalScope; when: Record<string, Scalar>; kind: 'date-time' | 'number';
+  length?: IntervalDuration; step?: IntervalDuration;
   index: string; create: string; latest: string; scan: string;
 }
 /** A validated transition. `by` is `any` on a shared collection, whose records have no owner to compare. */
@@ -469,7 +512,7 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
   if (membership) {
     // A membership list is authorization data: served over a collection API, anyone the route admits could add
     // themselves or enumerate members. It has no mount, and nothing that only makes sense with one.
-    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly', 'transfers'] as const).filter(option => spec[option] !== undefined);
+    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly', 'transfers', 'create'] as const).filter(option => spec[option] !== undefined);
     if (refused.length) throw new Error(`Collection ${name}: a membership collection takes no ${refused.join(', ')}`);
     if (key === undefined) throw new Error(`Collection ${name}: a membership collection needs a key, the property holding each member's principal id`);
   } else if (spec.mount === undefined) throw new Error(`Collection ${name}: mount is required`);
@@ -501,7 +544,11 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (ownership !== 'owner') throw new Error(`Collection ${name}: readers needs ownership: owner`);
     if (readers.mount === spec.mount) throw new Error(`Collection ${name}: the readers mount must differ from the collection mount`);
     if (Object.values(transitions).some(transition => transition.mount === readers.mount)) throw new Error(`Collection ${name}: the readers mount must differ from every transition mount`);
+    // Without a gate every signed-in principal reads the mount, so what it shows must be listed, never the whole record.
+    if (readers.members === undefined && readers.properties === undefined) throw new Error(`Collection ${name}: readers needs members, or properties listing what every signed-in principal may see`);
+    for (const field of readers.properties ?? []) if (!property(field)) throw new Error(`Collection ${name}: readers.properties names ${String(field).slice(0, 64)}, which is not a declared property`);
   }
+  if (spec.create !== undefined && spec.readOnly === true) throw new Error(`Collection ${name}: create needs a writable collection; a readOnly one takes no create`);
   const intervals = spec.intervals === undefined ? undefined : intervalsOf(name, spec.intervals, records, ownership, membership, increments);
   const transfers = transfersOf(name, spec, records, increments, intervals, transitions);
   for (const field of records.readOnly) {
@@ -509,7 +556,7 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
     if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field)) && !Object.values(transfers).some(transfer => transfer.amount === field)) throw new Error(`Collection ${name}: property ${field} is readOnly but no transition sets or stamps it and no transfer moves it`);
   }
-  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }), ...(intervals === undefined ? {} : { intervals }), transfers };
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, ...(readers.members === undefined ? {} : { members: readers.members }), showOwner: readers.showOwner === true, ...(readers.properties === undefined ? {} : { properties: [...readers.properties] }) } }), ...(spec.create?.members === undefined ? {} : { create: { members: spec.create.members } }), ...(intervals === undefined ? {} : { intervals }), transfers };
 }
 
 /**
@@ -571,6 +618,21 @@ function intervalsOf(name: string, declared: IntervalSpec, records: CompiledReco
     if (field === start || field === end) throw new Error(`${where}: within cannot name start or end`);
     if (!records.required.includes(field)) throw new Error(`${where}: within property ${field} must be required`);
   }
+  // A length or step is exact arithmetic on the bounds, so they are whole milliseconds (a date-time) or integers.
+  const duration = (option: 'length' | 'step'): IntervalDuration | undefined => {
+    const value = declared[option];
+    if (value === undefined) return undefined;
+    if (kind === 'date-time') {
+      const units = typeof value === 'string' ? durationMs(value) : undefined;
+      if (units === undefined) throw new Error(`${where}: ${option} must be an ISO 8601 duration of whole days, hours, minutes and seconds longer than zero (PT1H, PT30M, P1D) for date-time bounds`);
+      return { declared: value, units };
+    }
+    if (records.properties[start]!.type !== 'integer' || records.properties[end]!.type !== 'integer') throw new Error(`${where}: ${option} needs integer bounds (or date-times); a number bound has no exact multiple`);
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new Error(`${where}: ${option} must be a positive integer for integer bounds`);
+    return { declared: value, units: value };
+  };
+  const length = duration('length'), step = duration('step');
+  if (length && step && length.units % step.units !== 0) throw new Error(`${where}: length must be a whole multiple of step, or no interval could have both`);
   const scope = declared.scope ?? 'collection';
   if (scope === 'owner' && ownership !== 'owner') throw new Error(`${where}: scope: owner needs ownership: owner`);
   const when: Record<string, Scalar> = {};
@@ -590,7 +652,7 @@ function intervalsOf(name: string, declared: IntervalSpec, records: CompiledReco
   const columns = [...scope === 'owner' ? ['owner'] : [], ...within.map(path), instant(start)];
   const index = `store_intervals_${createHash('sha256').update(`${columns.join(', ')} WHERE ${filter}`).digest('hex').slice(0, 24)}`;
   return {
-    start, end, within, scope, when, kind, index,
+    start, end, within, scope, when, kind, ...(length === undefined ? {} : { length }), ...(step === undefined ? {} : { step }), index,
     create: `CREATE INDEX IF NOT EXISTS "${index}" ON store_records(${columns.join(', ')}) WHERE ${filter}`,
     latest: `SELECT id, owner, ${instant(end)} AS until FROM store_records WHERE ${filter}${scope === 'owner' ? ' AND owner = ?' : ''}${within.map(field => ` AND ${path(field)} = ?`).join('')} AND ${instant(start)} < ? AND id <> ? ORDER BY ${instant(start)} DESC LIMIT 1`,
     scan: `SELECT id, owner, ${[...within.map((field, at) => `${path(field)} AS w${at}`), `${instant(start)} AS since`, `${instant(end)} AS until`].join(', ')} FROM store_records WHERE ${filter} ORDER BY ${columns.join(', ')}`,
@@ -615,6 +677,11 @@ function intervalIssues(intervals: NormalizedIntervals, values: Readonly<Record<
   if (start === undefined && values[intervals.start] !== undefined) issues.push({ pointer: `/${intervals.start}`, keyword: 'intervals', message: utc });
   if (end === undefined && values[intervals.end] !== undefined) issues.push({ pointer: `/${intervals.end}`, keyword: 'intervals', message: utc });
   if (start !== undefined && end !== undefined && end <= start) issues.push({ pointer: `/${intervals.end}`, keyword: 'intervals', message: `must be after ${intervals.start}` });
+  if (issues.length || start === undefined || end === undefined) return issues;
+  // The declared length and grid (#929). The messages name the declaration, never the submitted value.
+  const { length, step } = intervals, grid = step && `must be a whole multiple of ${step.declared}${intervals.kind === 'date-time' ? ' from 1970-01-01T00:00:00Z' : ''}`;
+  if (step && grid) for (const [field, value] of [[intervals.start, start], [intervals.end, end]] as const) if (value % step.units !== 0) issues.push({ pointer: `/${field}`, keyword: 'intervals', message: grid });
+  if (length && end - start !== length.units) issues.push({ pointer: `/${intervals.end}`, keyword: 'intervals', message: `must be exactly ${length.declared} after ${intervals.start}` });
   return issues;
 }
 /** A property value as SQLite compares it through `->>`: a boolean is 1 or 0. */
@@ -815,7 +882,7 @@ export class Collection {
     for (const row of rows) {
       let record: StoredRecord;
       try { record = this.parse(row); } catch (error) { throw new Error(error instanceof RowError ? error.message : `Collection ${this.name}: the store holds an invalid record`, { cause: error }); }
-      if (this.spec.intervals && intervalIssues(this.spec.intervals, record).length) throw new Error(`Collection ${this.name}: record ${row.id} holds an interval that intervals refuses (an end not after its start, or a date-time that is not UTC with at most millisecond precision)`);
+      if (this.spec.intervals && intervalIssues(this.spec.intervals, record).length) throw new Error(`Collection ${this.name}: record ${row.id} holds an interval that intervals refuses (an end not after its start, a date-time that is not UTC with at most millisecond precision, or a length or step it does not keep)`);
       const key = this.spec.key === undefined ? null : record[this.spec.key];
       if (key !== null && (typeof key !== 'string' || keys.has(key))) throw new Error(`Collection ${this.name}: the store holds an invalid record key`);
       if (key !== null) keys.add(key);
@@ -1043,8 +1110,8 @@ export class Collection {
    * this collection is read, so a non-member gets the same answer for an existing id and a missing one, and a
    * membership change committed before the transaction began applies to it.
    */
-  private admit(db: StoreDatabase, members: string | undefined, principal: string): void {
-    if (members !== undefined && !isMember(db, members, principal)) throw new StoreError(403, 'membership_required', 'You are not allowed to do this');
+  private admit(db: StoreDatabase, members: string | undefined, principal: string | undefined): void {
+    if (members !== undefined && (principal === undefined || !isMember(db, members, principal))) throw new StoreError(403, 'membership_required', 'You are not allowed to do this');
   }
   /**
    * `may` (#873): for each record, the names of the transitions `principal` may run on it right now, by the rules
@@ -1054,13 +1121,14 @@ export class Collection {
    * by the page and says nothing about anyone else's. Without a principal only an ungated transition on a shared
    * collection can be offered, which the declaration already says. A read-only collection runs none.
    */
-  private mayIn(db: StoreDatabase, records: readonly StoredRecord[], principal: string | undefined): Record<string, string[]> {
+  private mayIn(db: StoreDatabase, records: readonly StoredRecord[], principal: string | undefined, shown?: readonly string[]): Record<string, string[]> {
     const caller = typeof principal === 'string' && principalIdPattern.test(principal) ? principal : undefined, gates = new Map<string, boolean>();
     const admitted = (members: string): boolean => {
       if (!gates.has(members)) gates.set(members, isMember(db, members, caller!));
       return gates.get(members)!;
     };
-    const declared = this.spec.readOnly ? [] : Object.entries(this.spec.transitions);
+    // On a projected readers mount (`shown`), a transition whose `from` names a hidden property would disclose its value.
+    const declared = this.spec.readOnly ? [] : Object.entries(this.spec.transitions).filter(([, transition]) => shown === undefined || Object.keys(transition.from).every(field => shown.includes(field)));
     // The gate is asked last and remembered, so a page no gated transition applies to looks nothing up.
     return Object.fromEntries(records.map(record => [record.id as string, declared.filter(([, transition]) =>
       // Who: anyone for an ungated shared transition; otherwise a principal, which `by` then compares with the owner.
@@ -1069,19 +1137,26 @@ export class Collection {
       && (transition.members === undefined || admitted(transition.members))).map(([name]) => name)]));
   }
   /**
-   * The readers mount (#863), for a member of `readers.members`: one page of every owner's records (`total`, sort,
-   * filters and cursor over all of them; a record with no owner is nobody's and is left out). The principal (401)
-   * and the membership gate (403) come first, in the same read transaction, before the query is parsed or any
+   * The readers mount (#863), for a member of `readers.members` (or, on a projection without `members`, any principal):
+   * one page of every owner's records (`total`, sort, filters and cursor over all of them; a record with no owner is
+   * nobody's and is left out). The principal (401) and the membership gate (403) come first, in the same read transaction, before the query is parsed or any
    * record is read. Read-only.
    */
   listAcross(params: URLSearchParams, principal: string | undefined): Page {
-    return this.across(principal, db => this.viewed(db, this.listIn(db, parseListQuery(this.spec, params), null), { principal }));
+    // A projection (#929) sorts and filters by the properties it shows only: an order or a match on a hidden one
+    // would disclose it (a sort by balance ranks every wallet).
+    const shown = this.spec.readers?.properties, spec = shown === undefined ? this.spec : { ...this.spec, sortable: this.spec.sortable.filter(field => shown.includes(field)), filterable: this.spec.filterable.filter(field => shown.includes(field)) };
+    return this.across(principal, db => {
+      const page = this.listIn(db, parseListQuery(spec, params), null);
+      return { ...page, may: this.mayIn(db, page.items, principal, shown) };
+    });
   }
   /** One owned record and its `may` for a member of `readers.members` (the gate as `listAcross`); a missing or malformed id is 404. */
   getAcross(id: string, principal: string | undefined): Shown {
     return this.across(principal, db => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) throw new StoreError(404, 'not_found', 'No such record');
-      return this.shown(db, this.anyOwned(db, id), principal);
+      const record = this.anyOwned(db, id);
+      return { record, may: this.mayIn(db, [record], principal, this.spec.readers?.properties)[record.id as string]! };
     });
   }
   private across<T>(principal: string | undefined, work: (db: StoreDatabase) => T): T {
@@ -1153,11 +1228,23 @@ export class Collection {
     });
   }
 
-  /** Every write takes `actor`: the request principal's id, or `anonymous`. On an audited collection it is the event's actor. */
-  create(input: unknown, retry?: Retry, owner?: string, actor?: string, viewer?: Viewer): Written {
-    const scope = this.scope(owner);
+  /**
+   * Every write takes `actor`: the request principal's id, or `anonymous`. On an audited collection it is the event's
+   * actor. `principal` is the caller: on an owned collection the new record's owner, and with `create.members` the
+   * principal the membership gate checks (401 without one, before anything is read; 403 inside the write transaction
+   * before the retained `Idempotency-Key`, so a removed member's retry is refused rather than replayed).
+   */
+  create(input: unknown, retry?: Retry, principal?: string, actor?: string, viewer?: Viewer): Written {
+    const scope = this.scope(principal), creator = this.creator(principal);
     this.writable();
-    return this.write(db => this.idempotent(db, retry, 201, id => this.current(db, id, scope), () => this.createIn(db, input, scope, actor)), viewer);
+    return this.write(db => {
+      this.admit(db, this.spec.create?.members, creator);
+      return this.idempotent(db, retry, 201, id => this.current(db, id, scope), () => this.createIn(db, input, principal, actor));
+    }, viewer);
+  }
+  /** Who creates: the principal a `create.members` gate checks (401 without one), or undefined when create is ungated. */
+  private creator(principal: string | undefined): string | undefined {
+    return this.spec.create === undefined ? undefined : this.principal(principal);
   }
   /** `replace` (PUT) rebuilds every property from the body and the defaults; otherwise (PATCH) only the named properties
    * change, and a `null` removes one. Either way the resulting record must satisfy the collection schema (a cleared
@@ -1271,8 +1358,14 @@ export class Collection {
     const scope = this.scope(owner);
     return this.listIn(db, parseListQuery(this.spec, params), scope);
   }
-  createIn(db: StoreDatabase, input: unknown, scope: string | undefined, actor: string | undefined): Step {
+  /**
+   * The create step for `principal`: the owner on an owned collection, and the caller a `create.members` gate checks
+   * (401 without one, 403 for a non-member) before the body or any record is read.
+   */
+  createIn(db: StoreDatabase, input: unknown, principal: string | undefined, actor: string | undefined): Step {
     this.writable();
+    const scope = this.scope(principal);
+    this.admit(db, this.spec.create?.members, this.creator(principal));
     const clean = this.validated({ ...this.spec.records.defaults, ...this.bodyOf(input) });
     if (this.spec.key && this.keyTaken(db, clean[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
     // Checked before the collection-wide ceiling, and the message is fixed: it states neither the caller's count, any
@@ -1285,8 +1378,8 @@ export class Collection {
     this.insert(db, record);
     return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, {}, record) };
   }
-  /** Creates in the owner's scope inside an open transaction (a host transaction's `create`). */
-  createFor(db: StoreDatabase, input: unknown, owner: string | undefined, actor: string | undefined): Step { return this.createIn(db, input, this.scope(owner), actor); }
+  /** Creates for `principal` inside an open transaction (a host transaction's `create`). */
+  createFor(db: StoreDatabase, input: unknown, principal: string | undefined, actor: string | undefined): Step { return this.createIn(db, input, principal, actor); }
   updateIn(db: StoreDatabase, id: string, input: unknown, replace: boolean, expectedEtag: string | undefined, scope: string | undefined, actor: string | undefined): Step {
     this.writable();
     // Scoped before the ETag and body checks, so another owner's record answers exactly like a missing one.

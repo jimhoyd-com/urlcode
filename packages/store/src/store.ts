@@ -57,13 +57,23 @@ const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record
  * now, by id; #873), and `etags`, each listed record's current ETag by id, so a client (a frontend's transition
  * buttons) can offer only what will be accepted and send `If-Match` for the version it listed, without a read per record.
  */
-const listView = (page: Page, project: (record: StoredRecord) => StoredRecord = view) => ({ ...page, items: page.items.map(project), etags: Object.fromEntries(page.items.map(record => [record.id as string, etagOf(record)])) });
+const listView = (page: Page, project: (record: StoredRecord) => StoredRecord = view, tag: (record: StoredRecord) => string = etagOf) => ({ ...page, items: page.items.map(project), etags: Object.fromEntries(page.items.map(record => [record.id as string, tag(record)])) });
 /**
  * One record's own headers: its `ETag`, and `Allow-Transitions`, the comma-separated names of the transitions the
  * caller may run on it now (empty when none), the single-record form of a list's `may`.
  */
-const recordHeaders = (record: StoredRecord, may: string[] | undefined): [string, string][] => [['etag', etagOf(record)], ...(may === undefined ? [] : [['allow-transitions', may.join(', ')] as [string, string]])];
-const shownAnswer = (shown: Shown, project: (record: StoredRecord) => StoredRecord = view): HandlerResult => json(200, project(shown.record), recordHeaders(shown.record, shown.may));
+const recordHeaders = (record: StoredRecord, may: string[] | undefined, tag: (record: StoredRecord) => string = etagOf): [string, string][] => [['etag', tag(record)], ...(may === undefined ? [] : [['allow-transitions', may.join(', ')] as [string, string]])];
+const shownAnswer = (shown: Shown, project: (record: StoredRecord) => StoredRecord = view, tag: (record: StoredRecord) => string = etagOf): HandlerResult => json(200, project(shown.record), recordHeaders(shown.record, shown.may, tag));
+/**
+ * What a projected readers mount (#929) shows of a record: its `id`, the listed properties it holds and, with
+ * `showOwner`, `_owner`; never `createdAt`, `updatedAt` or another property. Its ETag is of exactly that, so it changes
+ * only when something shown changes: the record's own ETag moves on every write (a transfer included) and would tell
+ * every reader when a hidden balance moved.
+ */
+function projection(properties: readonly string[], showOwner: boolean): { project: (record: StoredRecord) => StoredRecord; tag: (record: StoredRecord) => string } {
+  const project = (record: StoredRecord): StoredRecord => Object.fromEntries([['id', record.id!], ...(showOwner && record[OWNER_FIELD] !== undefined ? [[OWNER_FIELD, record[OWNER_FIELD]]] : []), ...properties.filter(field => Object.hasOwn(record, field)).map(field => [field, record[field]!])]) as StoredRecord;
+  return { project, tag: record => `"${hash(`projection\u0000${canonical(project(record))}`).slice(0, 32)}"` };
+}
 
 /** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created path compares correctly. */
 async function realTarget(path: string): Promise<string> {
@@ -226,7 +236,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       for (const collection of collections) {
         for (const [name, transition] of Object.entries(collection.spec.transitions)) if (transition.members !== undefined) membership(`Collection ${collection.name}: transition ${name}`, transition.members);
         for (const [name, transfer] of Object.entries(collection.spec.transfers)) if (transfer.members !== undefined) membership(`Collection ${collection.name}: transfer ${name}`, transfer.members);
-        if (collection.spec.readers) membership(`Collection ${collection.name}: readers`, collection.spec.readers.members);
+        if (collection.spec.readers?.members !== undefined) membership(`Collection ${collection.name}: readers`, collection.spec.readers.members);
+        if (collection.spec.create) membership(`Collection ${collection.name}: create`, collection.spec.create.members);
       }
       const shortByMount = new Map<string, ShortLink>();
       for (const [name, link] of Object.entries(declaredLinks)) {
@@ -447,7 +458,7 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
       if (method === 'GET' || method === 'HEAD') return json(200, listView(collection.list(request.query, owner, viewer)));
       if (method === 'POST') {
         const key = retryKey(request, collection), body = bodyOf(request, collection);
-        return written(collection.create(body, retryOf(request, key, body), owner, actor, viewer), request.mount);
+        return written(collection.create(body, retryOf(request, key, body), principal, actor, viewer), request.mount);
       }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
     }
@@ -493,9 +504,10 @@ async function dispatchReaders(collection: Collection, request: ExtensionRequest
     if (method !== 'GET' && method !== 'HEAD') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), [['allow', 'GET, HEAD']]);
     const principal = request.principal?.id;
     // With showOwner, and only here, a member sees each record's owner: the opaque principal id, nothing more.
-    const shown = (record: StoredRecord): StoredRecord => collection.spec.readers?.showOwner ? record : view(record);
-    if (rest === '') return json(200, listView(collection.listAcross(request.query, principal), shown));
-    return shownAnswer(collection.getAcross(rest, principal), shown);
+    const readers = collection.spec.readers;
+    const { project, tag } = readers?.properties ? projection(readers.properties, readers.showOwner) : { project: (record: StoredRecord): StoredRecord => readers?.showOwner ? record : view(record), tag: etagOf };
+    if (rest === '') return json(200, listView(collection.listAcross(request.query, principal), project, tag));
+    return shownAnswer(collection.getAcross(rest, principal), project, tag);
   } catch (error) {
     if (error instanceof StoreError) return failure(error);
     return failure(new StoreError(500, 'internal_error', 'The store failed to handle this request'));
