@@ -107,9 +107,61 @@ function detectGlobalState(source: string): Match | undefined {
   const name = decl[1]!, mutated = new RegExp(`\\b${name}\\s*(?:\\+\\+|--|\\+=|-=|\\.push\\s*\\(|\\.set\\s*\\(|\\.add\\s*\\(|\\.delete\\s*\\(|\\[[^\\]]*\\]\\s*=)`);
   return mutated.test(source.slice(decl.index + decl[0].length)) ? locate(source, decl.index) : undefined;
 }
-function detectEgress(source: string): Match | undefined {
-  const call = /\bfetch\s*\(|\bhttps?\.request\s*\(|\bhttps?\.get\s*\(/.exec(source);
-  return call ? locate(source, call.index) : undefined;
+// Outbound calls (#889 item 7). A global `fetch(...)` (bare, or through globalThis/window/self/global) and
+// http(s).request/get always count. A member `x.fetch(...)` is often an in-process framework app (Hono's
+// `app.fetch(request)`, itty-router's `router.fetch`), so it is exempt only when `x` is bound in the module to an
+// import or to `new`/a call of an imported name. A member call whose first argument is a URL (a string or template
+// literal, or `new URL(`) is a client call and always counts. Any other member `.fetch(` is still reported, with
+// `uncertain` so the note says it may be in-process.
+// A method or function *named* fetch (`fetch(request) {`, `function fetch(`) is a definition, not a call.
+const globalReceivers = new Set(['globalThis', 'window', 'self', 'global']);
+function maskComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\/|(^|[^:\\])\/\/[^\n]*/g, (match, lead: string | undefined) =>
+    (lead ?? '') + match.slice((lead ?? '').length).replace(/[^\n]/g, ' '));
+}
+function closingParen(code: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < code.length; i++) {
+    if (code[i] === '(') depth++;
+    else if (code[i] === ')' && --depth === 0) return i;
+  }
+  return -1;
+}
+function importedNames(code: string): Set<string> {
+  const names = new Set<string>();
+  for (const [, clause] of code.matchAll(/\bimport\s+([^'"`;]+?)\s+from\s*['"]/g)) {
+    for (const part of clause!.replace(/[{}]/g, ',').split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop()!.replace(/^\*\s*/, '').trim();
+      if (identifier.test(name)) names.add(name);
+    }
+  }
+  return names;
+}
+/** Whether `name` is an in-process app: an import, or `new X(...)`/`X(...)` (optionally awaited or chained) of an imported X. */
+function inProcessApp(code: string, name: string, imported: Set<string>): boolean {
+  if (imported.has(name)) return true;
+  const declared = new RegExp(`\\b(?:const|let|var)\\s+${escapeName(name)}\\s*=\\s*(?:await\\s+)?(?:new\\s+)?([A-Za-z_$][\\w$]*)\\s*\\(`).exec(code);
+  return declared !== null && imported.has(declared[1]!);
+}
+function detectEgress(source: string): (Match & { uncertain: boolean }) | undefined {
+  const code = maskComments(source), imported = importedNames(code);
+  let uncertain: number | undefined;
+  for (const call of code.matchAll(/\bfetch\s*\(|\bhttps?\.(?:request|get)\s*\(/g)) {
+    if (!call[0].startsWith('fetch')) return {...locate(source, call.index), uncertain: false};
+    const before = code.slice(0, call.index);
+    const open = call.index + call[0].length - 1, close = closingParen(code, open);
+    const after = close < 0 ? '' : code.slice(close + 1);
+    if (/\bfunction\s*\*?\s*$/.test(before) || (/^\s*\{/.test(after) && !/\.\s*$/.test(before))) continue;
+    const member = /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*\.\s*$/.exec(before);
+    if (!member) return {...locate(source, call.index), uncertain: false};
+    const chain = member[1]!.split('.').map(part => part.trim());
+    if (globalReceivers.has(chain[0]!) && chain.length === 1) return {...locate(source, call.index), uncertain: false};
+    const firstArgument = code.slice(open + 1).trimStart();
+    if (/^(?:['"`]|new\s+URL\s*\()/.test(firstArgument)) return {...locate(source, call.index), uncertain: false};
+    if (chain.length === 1 && inProcessApp(code, chain[0]!, imported)) continue;
+    uncertain ??= call.index;
+  }
+  return uncertain === undefined ? undefined : {...locate(source, uncertain), uncertain: true};
 }
 const rateLimitHints = [/\b(?:count|counts|hits|attempts|requests)\w*\s*(?:\+\+|\+=\s*1)/i, /Date\.now\s*\(\)/, /\bwindow\b/i, /\bquota\b/i, /retry-after/i, /too many requests/i];
 function detectRateLimit(source: string): Match | undefined {
@@ -244,8 +296,8 @@ export async function reviewProject(project: string, options: InspectOptions = {
     const egress = detectEgress(source);
     if (egress) push(egress, {
       category: 'manual-review', signal: 'outbound-network-call', routes: routesList, confidence: 'low',
-      reason: 'Direct outbound call (fetch/http(s).request/get) from app code.', capability: 'proxy',
-      note: 'proxy/signals centralizes egress but equivalence isn\'t verifiable; review by hand.',
+      reason: egress.uncertain ? 'A .fetch(...) member call whose receiver the review could not identify as an in-process app.' : 'Direct outbound call (fetch/http(s).request/get) from app code.', capability: 'proxy',
+      note: (egress.uncertain ? 'It may be an in-process framework app rather than egress; if it is, ignore this. ' : '') + 'proxy/signals centralizes egress but equivalence isn\'t verifiable; review by hand.',
     });
 
     const rateLimit = detectRateLimit(source);
