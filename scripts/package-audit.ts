@@ -321,10 +321,12 @@ export const budgets: Record<string, Budget> = {
     // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #941 host lease helper on top of #947: 1039588 packed / 4103610 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1020 * 1024,
+    // #954/#955/#958/#959 trial-3 CLI friction on top of #941: 1042709 packed / 4114003 unpacked bytes, 531 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 1023 * 1024,
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #941 host lease helper on top of #947: 1039588 packed / 4103610 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 4011 * 1024,
+    // #954/#955/#958/#959 trial-3 CLI friction on top of #941: 1042709 packed / 4114003 unpacked bytes, 531 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 4022 * 1024,
     entries: 534,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

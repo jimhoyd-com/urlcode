@@ -12,12 +12,18 @@ export const policyCommands = ['dev','serve','validate','test','routes','audit',
 // and cannot activate, so reading them never needs approval while serving always does (#910).
 export const inspectionHostCommands = ['explain','context','plan-feature','review','report','studio','extensions','mcp','openapi'] as const;
 // Commands that replay requests: they activate the extensions on a fresh, empty temporary data directory, never the site's live data
-// (RIM-EXT-HERMETIC-001). `dev`, `serve`, `validate` and `routes` use the site's data: validate checks what serve will use.
+// (RIM-EXT-HERMETIC-001). `dev`, `serve`, `validate` and `routes` use the site's data, so a pinned validate checks what
+// serve will use; a local review (`--local-review` with no pin) of validate or routes is hermetic too (#954).
 export const hermeticHostCommands = ['test','audit','benchmark'] as const;
 // Non-serving commands that accept `--local-review` (#932): with no operator pin (no --policy, URLCODE_POLICY or
 // PROJECT_SHA256) the host is pinned to the project's current revision for that one run, no policy is read, so no grant
-// exists, and the origin defaults to loopback. serve and dev never accept it: serving always needs the reviewed pin.
+// exists, the origin defaults to loopback, and the extensions activate on a fresh temporary data directory as in a
+// hermetic run, never the site's data (#954). With an operator pin the flag changes nothing. serve and dev never accept
+// it: serving always needs the reviewed pin.
 export const localReviewCommands = ['validate','test','routes','audit'] as const;
+// Read-only commands that need no pin at all accept `--local-review` too, and ignore it (#958), so the flag the
+// generated check scripts pass works on every check.
+export const pinFreeReviewCommands = ['explain','context','plan-feature','review','report','openapi'] as const;
 /** The origin a local review uses when none is given: loopback, never a public site. */
 export const localReviewOrigin = 'http://localhost';
 // Commands that activate the project locally and so accept the operator's `--alias-origin`.

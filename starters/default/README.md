@@ -43,8 +43,11 @@ Once a site has an extension, the host is pinned to a reviewed project
 revision, and every edit changes the revision. `npm run validate`, `npm test`,
 `npm run routes` and `npm run audit` pass `--local-review`. With no reviewed
 pin, each run is pinned to the current revision for that run only, on
-`http://localhost`, and reads no policy, so it grants no binding. Edit and
-rerun them without re-pinning.
+`http://localhost` and throwaway data, and reads no policy, so it grants no
+binding and needs nothing set up in `data/`. Edit and rerun them without
+re-pinning. The audit's expected route count lives in one file,
+`app/tests/audit.json`; `extensions add` and `remove` move it, and you change
+it deliberately when you add or remove routes yourself.
 
 Serving needs your approval. `npm run dev` and `npm start` need the public
 origin and the operator's reviewed policy: the output of
@@ -57,8 +60,10 @@ URLCODE_ORIGIN=https://your.site URLCODE_POLICY=operator/policy.json npm start
 ```
 
 Without them the command refuses and prints the complete command to run.
-With them, the check scripts use that policy and pin as given. Nothing writes
-or updates the policy for you; re-review it after a project change.
+With them, the check scripts use that policy and pin as given, and
+`npm run validate` checks the `data/` that serving uses (for auth, run
+`npx urlcode-auth migrate` first). Nothing writes or updates the policy for
+you; re-review it after a project change.
 
 The frontend is your own code calling those JSON routes with `fetch`; URLCode
 ships no component kit. The

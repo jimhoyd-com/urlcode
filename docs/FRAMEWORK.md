@@ -308,7 +308,8 @@ seed accounts and memberships from `app/tests/seed.json`
 [the revision pin](EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval before serving. The site's check scripts
 (`npm run validate`, `npm test`, `npm run audit`) pass `--local-review` and
-review each edit locally without one
+review each edit locally without one, on throwaway data, so no migration is
+needed before them either
 ([the local review loop](EXTENSIONS.md#the-local-review-loop)).
 
 ## Rules an agent must follow

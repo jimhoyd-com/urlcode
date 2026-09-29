@@ -25,7 +25,7 @@ test('the bare agent-ready starter initializes without application routes or fix
     // One site layout: the route project in app/, the operator host and the runtime pin beside it.
     assert.match(await readFile(join(target,'host.mjs'),'utf8'),/composeHost/);
     const pkg = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
-    assert.deepEqual(pkg.scripts,projectScripts(0));
+    assert.deepEqual(pkg.scripts,projectScripts());
     await assert.rejects(readFile(join(target,'urlcode.yaml')),/ENOENT/);
     assert.ok((await readFile(join(target,'.gitignore'),'utf8')).includes('.env.*'));
     // The CI template is a dotfile directory: init must copy it as-is.
@@ -33,7 +33,9 @@ test('the bare agent-ready starter initializes without application routes or fix
     // The generated AGENTS.md names the exact checks and the starter's real route count.
     const routes = Object.keys((await loadDocument(app)).routes).length;
     const guide = await readFile(join(target,'AGENTS.md'),'utf8');
-    for (const command of ['urlcode validate --local','urlcode test',`urlcode audit --expect-routes ${routes}`,'urlcode context --project DIR','capabilities NAME','recipes list']) assert.ok(guide.includes(command),`AGENTS.md lacks ${command}`);
+    assert.equal(routes,0);
+    assert.deepEqual(JSON.parse(await readFile(join(app,'tests','audit.json'),'utf8')),{ expectRoutes:routes },'the one committed route count (#955)');
+    for (const command of ['urlcode validate --local','urlcode test','urlcode audit --project app --host-file host.mjs --local-review','urlcode context --project DIR','capabilities NAME','recipes list']) assert.ok(guide.includes(command),`AGENTS.md lacks ${command}`);
     assert.ok(guide.includes(skillPath),'AGENTS.md does not point at the packaged skill');
     assert.ok(guide.split('\n').length <= 80,'AGENTS.md must stay under 80 lines');
     for (const tool of ['get_context','get_capability','get_schema','search_recipes','explain','get_manifest','get_extension_artifacts','get_extension_artifact','--allow-authoring']) assert.ok(guide.includes(tool),`AGENTS.md lacks ${tool}`);
@@ -128,7 +130,7 @@ test('init works in place after npm init and npm install, keeping every package.
   const merged = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
   assert.equal(merged.name,'mine'); assert.equal(merged.version,'2.3.4'); assert.equal(merged.license,'MIT');
   // An existing script is never overwritten; the missing ones that run the local install are added (#588).
-  const scripts = projectScripts(0);
+  const scripts = projectScripts();
   assert.equal(merged.scripts.test,'echo hi'); assert.equal(merged.scripts.start,scripts.start); assert.equal(merged.scripts.validate,scripts.validate);
   assert.equal(merged.scripts.audit,scripts.audit);
   assert.equal(merged.dependencies['@jimhoyd/urlcode'],'0.5.0','an installed pin is kept, never rewritten');
@@ -152,7 +154,7 @@ test('init stamps the running release into the schema pin, CI action and package
   const readme = await readFile(join(target,'README.md'),'utf8');
   assert.ok(!readme.includes('gitignore.template') && !readme.includes('installed separately'),'README describes the generated project, not the packaging source');
   const pkg = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
-  assert.deepEqual(pkg.scripts,projectScripts(0));
+  assert.deepEqual(pkg.scripts,projectScripts());
   assert.equal(pkg.dependencies['@jimhoyd/urlcode'],version);
   // The committed starter already carries the current release, so a clone matches what init writes.
   const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
@@ -170,7 +172,7 @@ test('init replaces only the npm init placeholder test script in an existing pin
   const text = await readFile(join(target,'package.json'),'utf8');
   assert.ok(text.startsWith('{\n    "name"'),'the existing indentation is kept');
   const merged = JSON.parse(text);
-  assert.equal(merged.scripts.test,projectScripts(0).test); assert.equal(merged.scripts.dev,'vite');
+  assert.equal(merged.scripts.test,projectScripts().test); assert.equal(merged.scripts.dev,'vite');
   assert.equal(merged.devDependencies['@jimhoyd/urlcode'],'0.5.9'); assert.equal(merged.dependencies?.['@jimhoyd/urlcode'],undefined,'a devDependency pin is not duplicated');
 });
 test('init in place writes the pinned package.json when only node_modules exists', async t => {
@@ -179,7 +181,7 @@ test('init in place writes the pinned package.json when only node_modules exists
   assert.equal(spawnSync(process.execPath,[cli,'init',bare],{ encoding:'utf8',timeout:20000 }).status,0);
   const version = (JSON.parse(await readFile(fileURLToPath(new URL('../package.json',import.meta.url)),'utf8')) as { version:string }).version;
   const pkg = JSON.parse(await readFile(join(bare,'package.json'),'utf8'));
-  assert.equal(pkg.name,'bare'); assert.equal(pkg.dependencies['@jimhoyd/urlcode'],version); assert.deepEqual(pkg.scripts,projectScripts(0));
+  assert.equal(pkg.name,'bare'); assert.equal(pkg.dependencies['@jimhoyd/urlcode'],version); assert.deepEqual(pkg.scripts,projectScripts());
   assert.equal(JSON.parse(await readFile(join(bare,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'npx');
 });
 test('init in place refuses user files and preserves existing package metadata', async t => {
@@ -194,7 +196,7 @@ test('init in place refuses user files and preserves existing package metadata',
   const merged = JSON.parse(await readFile(join(existingManifest,'package.json'),'utf8'));
   // Every existing key and script is kept; only the missing runtime pin and scripts are added.
   assert.equal(merged.name,'c'); assert.equal(merged.scripts.start,'node server.js','an existing script is never overwritten');
-  assert.equal(merged.scripts.validate,projectScripts(0).validate); assert.ok(merged.dependencies['@jimhoyd/urlcode']);
+  assert.equal(merged.scripts.validate,projectScripts().validate); assert.ok(merged.dependencies['@jimhoyd/urlcode']);
   const manifest = join(root,'manifest'); await mkdir(manifest); await writeFile(join(manifest,'package.json'),'{}');
   const removed = run(manifest,'--manifest'); assert.equal(removed.status,1); assert.match(removed.stdout+removed.stderr,/Unknown option --manifest/);
   assert.equal(await readFile(join(manifest,'package.json'),'utf8'),'{}','a refused init changes nothing');
@@ -270,7 +272,7 @@ test('doctor reports the node runtime facts', async () => {
 test('urlcode test is quiet by default and logs every request only with --verbose', async t => {
   const root = await project(t,{});
   const target = join(await initProject(join(root,'site')),'app');
-  await mkdir(join(target,'tests'));
+  await mkdir(join(target,'tests'),{ recursive:true });
   await writeFile(join(target,'tests','requests.json'),'[{"path":"/missing","status":404}]\n');
   const run = (...args: string[]) => spawnSync(process.execPath,[cli,'test','--project',target,...args],{ encoding:'utf8',timeout:20000 });
   const quiet = run(), loud = run('--verbose');

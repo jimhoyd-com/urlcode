@@ -626,6 +626,8 @@ test('--local-review pins a non-serving run to the current revision, never serve
   await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
 const data=${JSON.stringify(data)};
 const demo={definition:{name:'demo',contract:1,targets:data.targets,schema:data.schema,host(context){
+  // Stands in for an extension whose serving data is not set up yet (auth's unmigrated tables, #954).
+  if(process.env.DEMO_SITE_DATA_UNSET&&!context.hermetic)throw new Error('demo: the site data is not set up; run demo migrate');
   return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned'};}};}}};
 }},options:{}};
 export default await composeHost(import.meta.url,[demo]);
@@ -649,12 +651,27 @@ export default await composeHost(import.meta.url,[demo]);
     // Without the flag nothing changed: the run still needs the reviewed pin.
     assert.equal(lines(run(['validate','--local']).stderr).at(-1)?.code,'revision-pin-required');
   });
-  for(const args of [['serve','--port','0'],['dev','--port','0'],['benchmark'],['explain']])await t.test(`${args[0]} refuses --local-review`,()=>{
+  for(const [args,message] of [[['serve','--port','0'],/^serve does not take --local-review: serving always needs the reviewed revision pin/],[['dev','--port','0'],/^dev does not take --local-review: serving always needs the reviewed revision pin/],[['benchmark'],/^benchmark does not take --local-review; it is for the checks validate\/test\/routes\/audit and the pin-free read-only commands explain\/.*openapi$/]] as const)await t.test(`${args[0]} refuses --local-review, naming itself`,()=>{
     const out=run([...args,'--local-review']);assert.equal(out.status,1,out.stdout+out.stderr);
     const error=lines(out.stderr).at(-1)!;
     assert.equal(error.code,'local-review-unsupported',out.stderr);
-    assert.match(error.message!,/serve and dev always need the reviewed revision pin/);
+    assert.match(error.message!,message);
     assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  });
+  // #958: a read-only command that needs no pin takes the flag the check scripts pass, and ignores it.
+  for(const args of [['openapi','--check'],['explain','/demo/x'],['review']])await t.test(`${args[0]} needs no pin and ignores --local-review`,()=>{
+    const out=run([...args,'--local-review']);assert.equal(out.status,0,out.stdout+out.stderr);
+    assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  });
+  // #954: a local review activates on throwaway data, as test and audit do; the reviewed pin checks the data serve uses.
+  await t.test('a local review never needs the site data set up; the pinned validate still checks it',async()=>{
+    for(const args of [['validate','--local'],['routes']]){
+      const out=run([...args,'--local-review'],{DEMO_SITE_DATA_UNSET:'1'});assert.equal(out.status,0,out.stdout+out.stderr);
+    }
+    const pinned=run(['validate','--local','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:await inspectExtensionRevision(root)});
+    assert.equal(pinned.status,1);assert.match(lines(pinned.stderr).at(-1)!.message!,/the site data is not set up; run demo migrate/,pinned.stderr);
+    const flagged=run(['validate','--local','--local-review','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:await inspectExtensionRevision(root)});
+    assert.equal(flagged.status,1,'with an operator pin the flag changes nothing');
   });
   await t.test('an operator pin wins: a stale --policy or PROJECT_SHA256 still refuses',()=>{
     const policy=run(['validate','--local','--local-review','--origin',origin],{URLCODE_POLICY:stale});assert.equal(policy.status,1);

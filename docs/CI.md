@@ -236,8 +236,13 @@ jobs:
           persist-credentials: false
       - uses: jimhoyd-com/urlcode/action@vX.Y.Z # the runtime release tag; init writes its own version here
         with:
-          expect-routes: 2
+          compliance: baseline
 ```
+
+The audit compares the route count against the one the project commits in
+`app/tests/audit.json` (`{"expectRoutes": N}`), as the site's `npm run audit`
+does, so the workflow carries no count of its own
+([readiness](READINESS.md#inventory-and-count-reconciliation)).
 
 The action lives at `action/action.yml` in the runtime repository, so the
 reference is `jimhoyd-com/urlcode/action@<ref>`. Pin `<ref>` the way you pin
@@ -253,7 +258,7 @@ runtime version in `package.json` when you upgrade.
 | Add-ons | `urlcode extensions list --strict` and `urlcode artifacts list --strict` | An add-on does not match the runtime's pin, is installed as a nested copy, has drifted between `package.json`, `app/urlcode.yaml` and `host.mjs` (an extension installed only as a library, neither declared nor imported, is not drift), an installed file differs from `addon-files.lock.json`, or an artifact is not inert |
 | Validate | `urlcode validate --project app` (static: declared extensions are checked against their installed schemas) | The YAML, includes, functions, bindings or extension configuration do not load |
 | Test | `urlcode test --project app` (plus `--host-file`) | A `tests/requests.json` fixture fails, or `tests/seed.json` does not match an extension |
-| Audit | `urlcode audit --project app --expect-routes N --compliance <profile>` (plus `--host-file`) | Count mismatch, failed generated check, uncovered active route/method, or a `high` compliance finding without `compliance-warn` |
+| Audit | `urlcode audit --project app --compliance <profile>` (plus `--host-file`, and `--expect-routes N` when that input is set; otherwise the count in `app/tests/audit.json`) | Count mismatch, failed generated check, uncovered active route/method, or a `high` compliance finding without `compliance-warn` |
 | Route diff | `urlcode routes --compare base.json --format markdown` | Never; it reports |
 
 Every command is the CLI documented in [readiness](READINESS.md),
@@ -284,7 +289,7 @@ A site that declares no extensions runs all three either way.
 | `site` | `.` | Directory holding the site's `package.json`, `package-lock.json` and `host.mjs`, relative to the workspace; the route project is always `<site>/app` |
 | `host-file` | empty | Operator host relative to the site (usually `host.mjs`); test and audit activate its extensions on throwaway data seeded from `app/tests/seed.json`. Empty skips test and audit when the project declares extensions |
 | `node-version` | `26` | Passed to `actions/setup-node` |
-| `expect-routes` | empty | `audit --expect-routes N`; empty skips the count check |
+| `expect-routes` | empty | `audit --expect-routes N`, overriding the count committed in `app/tests/audit.json`; empty uses that file, and skips the check when there is none |
 | `allow-empty-project` | `false` | Permit only the initial `no-active-routes` audit result; remove after adding the first active route |
 | `compliance` | `baseline` | `baseline`, `strict`, `privacy` or `none` |
 | `compliance-rules` | empty | Absolute path to an operator rules module outside the project |
@@ -352,12 +357,12 @@ npx urlcode extensions list --strict
 npx urlcode artifacts list --strict
 npx urlcode validate --project app --host-file host.mjs
 npx urlcode test --project app --host-file host.mjs   # quiet: failing cases and a summary; add --verbose for every request log
-npx urlcode audit --project app --host-file host.mjs --expect-routes 2 --compliance baseline
+npx urlcode audit --project app --host-file host.mjs --compliance baseline   # expects app/tests/audit.json's count
 git stash && npx urlcode routes --project app > /tmp/base.json && git stash pop
 npx urlcode routes --project app --compare /tmp/base.json --format markdown
 ```
 
-Or `make validate`, `make test` and `make audit ARGS='--expect-routes 2'`
+Or `make validate`, `make test` and `make audit`
 from the starter Makefile. The runtime repository exercises the action on
 full-lane pull requests (`.github/workflows/ci.yml`, job `action`) against a
 site built from the packed runtime and add-ons (`scripts/pack-addons.ts --site
