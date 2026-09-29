@@ -163,6 +163,41 @@ test('review flags a direct outbound network call for manual review, not as core
   assert.doesNotMatch(found!.note.toLowerCase(),/idempoten/);
 });
 
+test('review tells an in-process framework app.fetch(request) from a real outbound call (#889)',async t=>{
+  const egress=async (source: string)=>{
+    const root=await project(t,{'/x':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':source});
+    return (await reviewProject(root)).observations.find(item=>item.signal==='outbound-network-call');
+  };
+  // In-process: the receiver is constructed from, called from or imported as a module binding, with a Request argument.
+  for(const source of [
+    "import { Hono } from 'hono';\nconst app = new Hono().basePath('/x');\n// app.fetch(request) is in-process\nexport default request => app.fetch(request);\n",
+    "import { Router } from 'itty-router';\nconst router = Router();\nexport default request => router.fetch(request);\n",
+    "import app from './app.mjs';\nexport default async request => app.fetch(new Request(request.url, request));\n",
+    "export default { async fetch(request) { return new Response('ok'); } };\n",
+  ]) assert.equal(await egress(source),undefined,source);
+  // Outbound, certain: the global fetch in any spelling, and http(s), even beside an in-process app.
+  for(const source of [
+    "export default async () => fetch('https://example.com/hook');\n",
+    "export default async () => globalThis.fetch('https://example.com/hook');\n",
+    "import https from 'node:https';\nexport default () => { https.get('https://example.com'); return new Response('ok'); };\n",
+    "import { Hono } from 'hono';\nconst app = new Hono();\nexport default async request => { await fetch('https://example.com/audit'); return app.fetch(request); };\n",
+    "import { Hono } from 'hono';\nconst app = new Hono();\nexport default async () => app.fetch('https://example.com/x');\n",
+  ]){
+    const found=await egress(source);
+    assert.ok(found,source);
+    assert.doesNotMatch(found!.note,/in-process/,source);
+  }
+  // Unknown receivers stay reported, with the conservative note.
+  for(const source of [
+    "export default async (request, context) => context.env.API.fetch(request);\n",
+    "const client = makeClient();\nexport default async request => client.fetch(request);\n",
+  ]){
+    const found=await egress(source);
+    assert.ok(found,source);
+    assert.match(found!.note,/may be an in-process framework app/,source);
+  }
+});
+
 test('review does not advise splitting one path into per-method routes: branching on request.method is the specified shape (#842)',async t=>{
   for(const [methods,source] of [[['GET','POST'],methodDispatchSource],[['POST'],singleMethodCheckSource]] as const){
     const root=await project(t,{'/items':{methods:[...methods],function:{source:'f.mjs'}}},{'f.mjs':source});

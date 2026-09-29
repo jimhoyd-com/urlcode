@@ -10,14 +10,16 @@
  * On a collection declared `audit: true` (#866) each added or removed member also inserts its
  * `store.membership.added`/`removed` event into the outbox in the same transaction, validated by audit's own pure
  * validator, with the actor `operator` or the operator's `--actor`. The serving process's audit drain picks it up on its
- * next poll.
+ * next poll. The report then carries `undeliveredEvents`, `lastAuditDrain` and, when events wait and no drain has kept
+ * up recently, a `warning` (database.ts `auditDelivery`).
  */
 import { isAbsolute } from 'node:path';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
 import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { Collection, StoreError } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec } from './collection.ts';
-import { openStoreDatabase } from './database.ts';
+import { auditDelivery, openStoreDatabase } from './database.ts';
+import type { AuditDelivery } from './database.ts';
 
 /** The actor of a change made through the operator path when the operator names none (`--actor`). */
 export const OPERATOR_ACTOR = 'operator';
@@ -52,7 +54,8 @@ export interface MemberOptions extends MembershipOptions {
   /** The member's principal id, exactly as the principal provider sets it (for auth, the Better Auth user id). */
   principal: string;
 }
-export interface MemberReport { collection: string; principal: string; changed: boolean }
+/** On an `audit: true` collection it also carries the outbox delivery status (`AuditDelivery`). */
+export type MemberReport = { collection: string; principal: string; changed: boolean } & Partial<AuditDelivery>;
 
 async function membershipCollection(options: MembershipOptions): Promise<Collection> {
   if (!options?.collections || typeof options.collections !== 'object') throw new Error('The project declares no store collections');
@@ -68,7 +71,12 @@ async function withCollection<T>(database: string, options: MembershipOptions, c
   if (typeof database !== 'string' || !isAbsolute(database)) throw new Error('Store database must be an absolute path');
   const collection = await membershipCollection(options);
   const db = await openStoreDatabase(database, { create });
-  try { collection.open(db); return work(collection); } finally { collection.close(); db.close(); }
+  try {
+    collection.open(db);
+    const result = work(collection);
+    // A command that changed an audited membership reports whether its events are being delivered (#875).
+    return collection.spec.audit && result && typeof result === 'object' && 'changed' in result ? { ...result, ...auditDelivery(db, [collection.name], Date.now()) } as T : result;
+  } finally { collection.close(); db.close(); }
 }
 const principalOf = (principal: string): string => {
   if (typeof principal !== 'string' || !principalIdPattern.test(principal)) throw new Error('The member must be a principal id: 1 to 128 ASCII letters, digits, ".", "_", ":" or "-", starting with a letter or digit');

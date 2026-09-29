@@ -135,14 +135,17 @@ same security headers the self-hosted server gives them.
 Two differences are real and deliberate:
 
 - **Duplicate request headers.** The platform joins repeated headers into one
-  value before the Worker runs, so per-header counts do not exist. The
-  self-hosted server rejects a duplicated scalar header parameter with 400. Here
-  that check cannot fire: the parameter sees the joined value (`a, b`) and is
-  validated against its schema like any other. A constrained schema still
-  rejects it; an unconstrained `type: string` accepts it where the self-hosted
-  server would not. Constrain header parameters you care about. The duplicate
-  `Content-Type` check on a declared request body is unavailable for the same
-  reason; a joined value fails the media-type check instead.
+  value (`a, b`) before the Worker runs, so the original lines are gone. The
+  Worker applies the same conservative rule as a self-hosted host embedded
+  without header lines ([`headerLines: 'unavailable'`](OPERATIONS.md#hosting-urlcode-inside-another-framework)):
+  a value containing a comma counts as two lines. A repeated scalar header
+  parameter is therefore refused with 400 `Duplicate scalar parameter`, and a
+  repeated `Content-Type` on a declared request body with 400
+  `Duplicate Content-Type`, exactly as the self-hosted server refuses them. The
+  cost: a single header line whose value legitimately contains a comma is
+  refused by those same checks here, where the self-hosted server, which counts
+  lines, accepts it. Do not declare a header parameter whose values can contain
+  a comma on this target.
 - **The request target.** The self-hosted server inspects the request line
   verbatim. The Worker only ever sees a parsed `Request`, so the target is
   reconstructed from `URL`, and a malformed target the self-hosted server would

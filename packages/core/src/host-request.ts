@@ -8,7 +8,9 @@ import type { RequestTrace, Runtime } from './runtime.ts';
 // (embed.ts) turn what their transport gives them into one runtime request here, so neither can read headers,
 // bodies or the client address differently from the other (RIM-EMBED-001).
 
-export type HeaderCounts = Record<string, number>;
+import type { HeaderCounts } from './header-counts.ts';
+export type { HeaderCounts } from './header-counts.ts';
+export { joinedHeaderCounts } from './header-counts.ts';
 
 /** Headers and per-name occurrence counts from Node-style raw header lines (name, value, name, value, ...). */
 export function readHeaderLines(rawHeaders: readonly string[]): { headers: Headers; headerCounts: HeaderCounts } {
@@ -20,17 +22,6 @@ export function readHeaderLines(rawHeaders: readonly string[]): { headers: Heade
   return { headers, headerCounts };
 }
 
-/**
- * Occurrence counts for headers a host has already joined (a fetch `Headers` combines repeats with ", "), when the
- * original lines are gone. A joined value containing a comma may have been two lines, so it counts as two: every
- * check that refuses a repeated header then refuses it, rather than reading a lost repeat as one. A single line
- * whose value legitimately contains a comma is refused by those checks too; that is the price of not knowing.
- */
-export function joinedHeaderCounts(headers: Headers): HeaderCounts {
-  const counts: HeaderCounts = Object.create(null) as HeaderCounts;
-  for (const [key, value] of headers) if (key !== 'set-cookie') counts[key] = value.includes(',') ? 2 : 1;
-  return counts;
-}
 
 // A server must accept absolute-form targets (RFC 9112 §3.2.2). The scheme and authority are removed textually,
 // never re-encoded, so the path keeps the exact bytes the runtime's encoding checks inspect.
