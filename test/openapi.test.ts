@@ -87,7 +87,7 @@ test('handler-defined answers, mounts, auth and operator configuration are state
   assert.equal(op('/me').responses['401']!.content,undefined);
   assert.match(String((op('/me').responses['401'] as Json).description),/refused by the auth extension/);
   // A session that cannot be verified (the provider's storage is unavailable) is a 503 with Retry-After, never a false 401.
-  assert.match(String((op('/me').responses['503'] as Json).description),/could not reach its own storage.*never answered as a 401/);
+  assert.match(String((op('/me').responses['503'] as Json).description),/cannot verify the session.*not reported as a 401.*extension-defined/);
   assert.ok(((op('/me').responses['503'] as Json).headers as Json)['Retry-After']);
   const scheme=document.components.securitySchemes?.['urlcodeSession.auth'] as Json;
   assert.equal(scheme.type,'apiKey');assert.equal(scheme.in,'cookie');assert.equal(scheme.name,'session');
