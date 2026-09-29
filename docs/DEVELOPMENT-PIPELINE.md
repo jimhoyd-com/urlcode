@@ -62,6 +62,15 @@ its reviewed policy is added. Increase a budget only with a reviewed explanation
 of the new installed requirement; do not use budget headroom instead of updating
 the allowlist.
 
+`scripts/pack-addons.ts`, which packs core and every add-on into tarballs for
+the integration tests, the CI action job and `npm run release:pack`, packs with
+`--ignore-scripts` like every other pack here: it packs the `dist/` a checkout
+already has and never builds. Build first, with `npm run build` for core and
+`node scripts/workspaces.ts run build` for the add-ons. It refuses, before
+packing anything, a package whose `exports` or `bin` name a file that is not
+there, and names each missing file and the build that makes it (#960). It does
+not detect a stale build: `dist/` older than its source still packs.
+
 ## Current-version references in documentation
 
 When reader-facing Markdown must name the current core version, wrap the

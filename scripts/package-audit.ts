@@ -325,8 +325,10 @@ export const budgets: Record<string, Budget> = {
     // packed / 4113484 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #948 pinned docs links in schema descriptions, example and starter YAML comments and llms-full.txt prose on top of
     // #902 item 6: 1043430 packed / 4117481 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1023 * 1024,
-    unpacked: 4024 * 1024,
+    packed: 1024 * 1024,
+    // #960 on top of #965: 1043428 packed / 4114713 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #948 on top of #960: 1043801 packed / 4118710 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 4026 * 1024,
     entries: 534,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -346,9 +348,9 @@ export const budgets: Record<string, Budget> = {
     // With #927's README note that auth alone detects no second host: 17700 packed / 54758 unpacked bytes, 14 files on
     // Node 26, 732 packed bytes under the old 18 KiB (CI's Node 24 packs larger); ~3 KiB headroom on each.
     // #930 hermetic runs and seeds on top of #946: 19307 packed / 60677 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    // #948 on top of #965: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #960 pack-addons refusal on top of #949 and #967: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     packed: 24 * 1024,
-    // #948 on top of #965: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #960 pack-addons refusal on top of #949 and #967: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     unpacked: 65 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
