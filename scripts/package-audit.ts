@@ -306,8 +306,10 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #902 declared transfers (STORE.md and llms-full.txt): measured on Node 26 at 1008512 packed / 3974160
     // unpacked bytes, 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 989 * 1024,
-    unpacked: 3885 * 1024,
+    // With #927's test:multiprocess script in package.json on top of #939's main: measured on Node 26 at 1009961 packed /
+    // 3978164 unpacked bytes, 517 entries, which left 76 unpacked bytes (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 990 * 1024,
+    unpacked: 3888 * 1024,
     entries: 521,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -324,8 +326,10 @@ export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode-auth': {
     // Rebuilt on Better Auth (#841, #843): the adapter, definition and CLI with their declarations and docs.
     // First measured at 13593/42819/14 packed bytes, unpacked bytes and files.
-    packed: 18 * 1024,
-    unpacked: 56 * 1024,
+    // With #927's README note that auth alone detects no second host: 17700 packed / 54758 unpacked bytes, 14 files on
+    // Node 26, 732 packed bytes under the old 18 KiB (CI's Node 24 packs larger); ~3 KiB headroom on each.
+    packed: 21 * 1024,
+    unpacked: 57 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
