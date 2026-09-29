@@ -132,7 +132,7 @@ test('request fixtures are checked against schemas/requests.schema.json', async 
   const routes = { '/api/status': { respond: { json: { ok: true } } } };
   const bad = async (fixtures: unknown, pattern: RegExp) => assert.rejects(readFixtures(await project(t, routes, { 'tests/requests.json': JSON.stringify(fixtures) })), pattern);
   await bad([{ path: '/api/status', status: 200, json: { ok: false } }], /^Error: tests\/requests\.json fixture 1: unknown key "json"; send a JSON request body as body/);
-  await bad([{ path: '/api/status', status: 200, expectJson: { ok: false } }], /unknown key "expectJson"; assert a JSON response with expectBody/);
+  await bad([{ path: '/api/status', status: 200, expectBodyJson: { ok: false } }], /unknown key "expectBodyJson"; assert JSON values with expectJson/);
   await bad([{ path: '/api/status', status: 200, expectBdy: 'x' }], /unknown key "expectBdy"; did you mean "expectBody"\?/);
   await bad([{ path: '/api/status', status: 200 }, { steps: [{ path: '/api/status', status: 200, bogus: 1 }] }], /fixture 2, step 1: unknown key "bogus"/);
   await bad([{ path: '/api/status' }], /fixture 1: Test must declare an HTTP status/);
@@ -170,12 +170,12 @@ test('a failing case prints expected and actual per assertion, and zero cases fa
   assert.ok(warnings.some(event => event.event === 'warning' && event.code === 'no-test-cases'));
 });
 
-test('a steps failure never prints a captured value', async t => {
+test('a steps failure never prints a secret captured value', async t => {
   const root = await project(t, {
     '/token': { respond: { json: { token: 'tok_SECRET_123' } } },
     '/echo': { respond: { text: 'saw tok_SECRET_123 here' } },
   }, { 'tests/requests.json': JSON.stringify([{ steps: [
-    { path: '/token', status: 200, capture: { token: { json: 'token' } } },
+    { path: '/token', status: 200, capture: { token: { json: 'token', secret: true } } },
     { path: '/echo', status: 200, expectBody: 'saw {{token}} there' },
   ] }]) });
   const events: Record<string, unknown>[] = [];

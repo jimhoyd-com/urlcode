@@ -108,8 +108,10 @@ config path to read next; no match means no match in those sources, not an unsup
 Draft `tests/requests.json` from `urlcode fixtures suggest --json` (MCP `suggest_fixtures`): it reads urlcode.yaml and its
 includes, covers only routes the YAML alone determines and lists function, middleware, proxy, extension, pattern and
 binding routes as `gaps` to test by hand. An `auth: true` route is covered by a `steps` fixture that signs in through
-the provider's own endpoint, with `"origin": "{{origin}}"` on unsafe requests; a passing case counts only with
-`expectBody` or `expectHeaders`, a covered GET implies HEAD, `expectSignals` asserts the signals a request emits
+the provider's own endpoint, with `"origin": "{{origin}}"` on unsafe requests, and its accounts and memberships are
+declared in `tests/seed.json` (each test and audit run starts from a fresh database holding exactly that seed); `expectJson`
+asserts chosen values of a JSON body by JSON Pointer; a passing case counts only with
+`expectBody`, `expectJson` or `expectHeaders`, a covered GET implies HEAD, `expectSignals` asserts the signals a request emits
 (`urlcode test` and `audit` record them and deliver none; `urlcode dev --signal-sink stdout` prints them), and `audit`'s `coverageNotes` names what is missing
 ([authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]). `urlcode diff BEFORE --json` (a YAML file, or a directory to compare includes
 too; MCP `summarize_yaml_change`) names the routes, code seams and operator grants a change adds;

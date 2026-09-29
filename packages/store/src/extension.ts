@@ -7,7 +7,10 @@ import { storeAuthoring } from './authoring.ts';
 
 /** Operator choices for the store in host.mjs. Every field is optional. */
 export interface StoreHostOptions {
-  /** Absolute path of the store's SQLite database. Defaults to `STORE_DATABASE`, then `data/store.sqlite` beside host.mjs; it must be outside `app/`. */
+  /**
+   * Absolute path of the store's SQLite database. Defaults to `STORE_DATABASE`, then `data/store.sqlite` beside host.mjs;
+   * it must be outside `app/`. A hermetic run ignores both and uses a fresh database (RIM-EXT-HERMETIC-001).
+   */
   database?: string;
   /**
    * How much each commit waits for the disk: `full` (default, SQLite `synchronous=FULL`, a committed write survives
@@ -85,10 +88,12 @@ export default defineExtension<StoreHostOptions>({
   scaffold,
   example,
   host(context, options) {
-    const database = options.database ?? process.env.STORE_DATABASE ?? join(context.site, 'data', 'store.sqlite');
+    // A hermetic run (test, audit, benchmark) uses a fresh database in the run's data directory, never the site's, and
+    // accepts the project's test seed (memberships).
+    const database = context.hermetic ? join(context.data, 'store.sqlite') : options.database ?? process.env.STORE_DATABASE ?? join(context.data, 'store.sqlite');
     // `exports` is the StoreExports records API (version 1) an extension that requires store reads with ctx.get('store').
     // With audit installed the store attaches as its `store` producer here; the host's close detaches it.
     const durability = (options.durability ?? process.env.STORE_DURABILITY) as StoreHostOptions['durability'];
-    return createStore({ database, durability, projectSha256: context.projectSha256, audit: context.get<AuditExports | undefined>('audit') });
+    return createStore({ database, durability, projectSha256: context.projectSha256, audit: context.get<AuditExports | undefined>('audit'), hermetic: context.hermetic });
   },
 });

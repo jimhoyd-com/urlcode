@@ -435,6 +435,12 @@ still has no roles, and `auth` gains none.
   echoed. For an auth user, `npx urlcode-auth find-user --email <email>` in the
   site prints that id (`{"event":"user-found","id",…}`), including for a user
   who signed themselves up.
+- **In tests** the members come from the project's `tests/seed.json`, written
+  as `members add` writes them before the first fixture of every `urlcode test`
+  and `audit` run, on that run's own fresh database:
+  `{"store": {"members": {"reviewers": ["alice"]}}}` (principal ids by
+  membership collection; a collection that is not `membership: true` is
+  refused). See [test data and seeds](READINESS.md#test-data-and-seeds).
 - **Membership changes are evidence** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
   A membership collection may declare `audit: true`. Then every added member
   is recorded as `store.membership.added` and every removed one as
@@ -1625,7 +1631,9 @@ operator says made the change, not proof of it. Commands that change nothing
 
 - One SQLite database per site, through Node's built-in `node:sqlite`:
   `store({database})` in `host.mjs`, else `STORE_DATABASE`, else
-  `data/store.sqlite` beside `host.mjs`. It must be outside the project
+  `data/store.sqlite` beside `host.mjs`. `urlcode test`, `audit` and
+  `benchmark` ignore all three and use a fresh database of their own per run
+  ([test data and seeds](READINESS.md#test-data-and-seeds)). It must be outside the project
   (checked after symlink resolution). Its directory is created `0700` and the
   file `0600`; a symlinked, hard-linked or group- or other-readable file is
   refused. The store requires a SQLite with the fixes audit requires
