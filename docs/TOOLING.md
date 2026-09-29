@@ -861,8 +861,11 @@ What it describes:
   405, the exact `Allow` value (the declared methods in declared order), and a
   `components.responses` entry (`UrlcodeMethodNotAllowedText`, `...Json` or
   `...Mixed`) with the body in the path's error format. A gate that runs before
-  the method check (an enforced throttle or agents policy, an extension's
-  authorization, an operator plugin) may answer first.
+  the method check (an enforced throttle or agents policy, and an operator
+  plugin on a path no extension policy protects) may answer first. An
+  extension's `authorize()` and `middleware()` never run for an undeclared
+  method, so an `auth: true` path answers this 405, not a 401 or 403
+  ([method admission](EXTENSIONS.md#protecting-a-route-the-auth-short-form)).
 - **Error format per path.** A route's own `errors.format` wins; otherwise each
   [`site.errors`](HTTP.md#error-format) entry is compared with the route
   pattern segment by segment, since the runtime checks the concrete request

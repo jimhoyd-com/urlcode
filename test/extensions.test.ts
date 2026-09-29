@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {project,request,byReplyId} from './helpers.ts';
 import {loadDocument} from '../packages/core/src/config.ts';
 import {createRuntime} from '../packages/core/src/runtime.ts';
+import {assertExtensionMountsDisjoint} from '../packages/core/src/router.ts';
 import {startServer} from '../packages/core/src/server.ts';
 import {createLambdaHandler} from '../packages/core/src/aws.ts';
 import {buildCloudflare} from '../packages/core/src/build-cloudflare.ts';
@@ -92,6 +93,58 @@ test('extension mount ownership rejects shadowing, dynamic collisions and nested
     {'/demo/*':mount,'/{id}':{parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}],respond:{text:'shadow'}}},
     {'/demo/*':mount,'/demo/nested/*':{...mount,methods:[...mount.methods]}},
   ]){const root=await project(t,routes,{},{extensions:declarations});await assert.rejects(createRuntime(root,{origin,extensions:[await registration(root)]}),/overlaps/);}
+});
+test('an extension mount overlap names both routes, before a stale pin can hide it, and a pure check finds it (#912)',async t=>{
+  const shadowed=await project(t,{'/demo/*':mount,'/demo/login':{respond:{text:'shadow'}}},{},{extensions:declarations});
+  const expected={message:'Extension mount /demo/* overlaps route /demo/login: extension "demo" answers /demo and every path below it, so move /demo/login outside it',details:{code:'extension-mount-overlap',route:'/demo/*',pointer:'/routes/~1demo~1*'}};
+  await assert.rejects(createRuntime(shadowed,{origin,extensions:[await registration(shadowed)]}),expected);
+  await assert.rejects(createRuntime(shadowed,{origin,extensions:[{...await registration(shadowed),projectSha256:'0'.repeat(64)}]}),expected);
+  const nested=await project(t,{'/demo/*':mount,'/demo/nested/*':{...mount,methods:[...mount.methods]}},{},{extensions:declarations});
+  await assert.rejects(createRuntime(nested,{origin,extensions:[await registration(nested)]}),{message:/^Extension mount \/demo\/\* overlaps route \/demo\/nested\/\*: extension "demo" answers \/demo /});
+  const routes=(value:Record<string,object>)=>value as Parameters<typeof assertExtensionMountsDisjoint>[0];
+  assert.throws(()=>assertExtensionMountsDisjoint(routes({'/api/*':{extension:'demo'},'/api/auth/*':{extension:'auth'}})),{message:/^Extension mount \/api\/\* overlaps route \/api\/auth\/\*/});
+  assert.throws(()=>assertExtensionMountsDisjoint(routes({'/api/auth/*':{extension:'auth'},'/{section}/{page}':{respond:{text:'x'}}})),{message:/overlaps route \/\{section\}\/\{page\}/});
+  assert.throws(()=>assertExtensionMountsDisjoint(routes({'/api/auth/*':{extension:'auth'},'/api/auth/x/**':{redirect:{url:'/y/{**}'}}})),{message:/overlaps route \/api\/auth\/x\/\*\*/});
+  // A shorter route and a non-extension mount strictly enclosing the extension's are allowed: mounts select the longest prefix.
+  assertExtensionMountsDisjoint(routes({'/*':{static:{directory:'public'}},'/api/*':{static:{directory:'api'}},'/api/**':{redirect:{url:'/x/{**}'}},'/api':{respond:{text:'a'}},'/{page}':{respond:{text:'p'}},'/api/auth/*':{extension:'auth'},'/api/requests/*':{extension:'store'}}));
+});
+test('validate without a host file refuses an extension mount overlap, naming both routes, and admits a root static site (#912)',async t=>{
+  const site=await mkdtemp(join(tmpdir(),'urlcode-mount-overlap-'));t.after(()=>rm(site,{recursive:true,force:true}));
+  const app=join(site,'app'),installed=join(site,'node_modules','@jimhoyd','urlcode-store');
+  await mkdir(join(app,'public'),{recursive:true});await mkdir(installed,{recursive:true});await writeFile(join(app,'public','index.html'),'home');
+  await writeFile(join(installed,'urlcode.json'),await readFile(new URL('../packages/store/urlcode.json',import.meta.url),'utf8'));
+  const write=(routes:object)=>writeFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{store:{version:'1',config:{collections:{todos:{mount:'/api/todos',schema:{type:'object',additionalProperties:false,required:['title'],properties:{title:{type:'string',maxLength:80}}}}}}}},routes:{'/api/todos/*':{extension:'store',methods:['GET','HEAD','POST']},...routes}}));
+  const validate=()=>spawnSync(process.execPath,['--conditions=development',fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url)),'validate','--local','--project',app],{encoding:'utf8',timeout:20000});
+  await write({'/api/todos/export':{respond:{text:'shadow'}}});
+  const refused=validate();assert.equal(refused.status,1,refused.stdout);
+  const error=JSON.parse(refused.stderr.trim().split('\n').at(-1)!) as {message:string;code:string;route:string};
+  assert.equal(error.message,'Extension mount /api/todos/* overlaps route /api/todos/export: extension "store" answers /api/todos and every path below it, so move /api/todos/export outside it');
+  assert.equal(error.code,'extension-mount-overlap');assert.equal(error.route,'/api/todos/*');
+  await write({'/*':{static:{directory:'public',index:'index.html'}}});
+  const valid=validate();assert.equal(valid.status,0,valid.stderr);assert.equal((JSON.parse(valid.stdout) as {static:boolean}).static,true);
+});
+test('a root static site coexists with extension mounts below it; the longest mount prefix wins (#912)',async t=>{
+  const root=await project(t,{'/*':{static:{directory:'public',index:'index.html'}},'/demo/*':mount},{'public/index.html':'home','public/app.js':'app','public/demo.html':'sibling'},{extensions:declarations});
+  const app=await startServer({project:root,origin,port:0,extensions:[await registration(root)],log:()=>{}});t.after(()=>app.close());
+  assert.equal((await request(app,'/')).body,'home');assert.equal((await request(app,'/app.js')).body,'app');assert.equal((await request(app,'/demo.html')).body,'sibling');
+  for(const path of ['/demo','/demo/','/demo/login'])assert.equal(JSON.parse((await request(app,path)).body).mount,'/demo',path);
+  assert.equal((await request(app,'/demo/missing.html')).status,200,'the extension answers its namespace; the static site never falls through into it');
+  assert.equal((await request(app,'/missing.html')).status,404);
+});
+test('an undeclared method is 405 with Allow before an extension authorize(), on a mount and on a core route alike (#915)',async t=>{
+  const protectedMount={...mount,methods:['GET','HEAD'],policies:{extensions:{demo:{role:'member'}}}};
+  const root=await project(t,{'/demo/*':protectedMount,'/private':{methods:['POST'],respond:{text:'private'},policies:{extensions:{demo:{role:'member'}}}},'/api/private':{methods:['GET'],errors:{format:'json'},respond:{text:'private'},policies:{extensions:{demo:{role:'member'}}}}},{},{extensions:declarations});
+  let authorizations=0;const base=await registration(root);
+  const app=await startServer({project:root,origin,port:0,extensions:[{...base,activate(config,context){const instance=base.activate(config,context) as Awaited<ReturnType<RuntimeExtension['activate']>>;return {...instance,authorize(policy,req){authorizations++;return instance.authorize!(policy,req);}};}}],log:()=>{}});t.after(()=>app.close());
+  for(const [path,method,allow] of [['/demo','POST','GET, HEAD'],['/demo/x','DELETE','GET, HEAD'],['/private','GET','POST'],['/api/private','DELETE','GET']] as const){
+    const refused=await request(app,path,{method});assert.equal(refused.status,405,`${method} ${path}`);assert.equal(refused.headers.allow,allow,`${method} ${path}`);
+  }
+  assert.equal(authorizations,0,'authorize() never runs for an undeclared method');
+  const json=await request(app,'/api/private',{method:'DELETE'});assert.match(String(json.headers['content-type']),/json/);assert.equal(JSON.parse(json.body).error.code,"METHOD_NOT_ALLOWED");
+  // A declared method still meets the gate, and passes it with a session.
+  assert.equal((await request(app,'/demo/x')).status,401);assert.equal((await request(app,'/private',{method:'POST'})).status,401);assert.equal(authorizations,2);
+  assert.equal((await request(app,'/demo/x',{headers:{cookie:'session=yes'}})).status,200);
+  assert.equal((await request(app,'/private',{method:'POST',headers:{cookie:'session=yes'}})).body,'private');
 });
 test('authorization inherits per extension, rejects cache sharing and precedes trusted plugin answers',async t=>{
   const root=await project(t,{'/demo/*':mount,'/private':{respond:{text:'private'},policies:{profile:'member'}}},{},{extensions:declarations,profiles:{member:{extensions:{demo:{role:'member'}}}}});

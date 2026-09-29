@@ -11,7 +11,7 @@ import type { ProjectPlan } from './readiness.ts';
 import { bodyPolicy, checkRequest, decorateResponse } from './http-policy.ts';
 import { compileAssets, assetResponse } from './assets.ts';
 import { loadDocument, loadBindings } from './config.ts';
-import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.ts';
+import { assertExtensionMountsDisjoint, compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.ts';
 import { FunctionPool } from './functions.ts';
 import type { FunctionContext } from './functions.ts';
 import { TrustedFunctions } from './trusted-functions.ts';
@@ -141,6 +141,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     const kept = new Set(only);
     for (const pattern of Object.keys(loaded.routes)) if (!kept.has(pattern)) delete loaded.routes[pattern];
   }
+  // A structural fact about the project, so it is reported before any operator-context failure (a stale pin) can hide it.
+  assertExtensionMountsDisjoint(loaded.routes);
   assertTargetCompatibility(analyzeProjectCapabilities(loaded, options.target || 'node', options.extensions));
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
@@ -363,7 +365,10 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // The request's opaque principal (RIM-EXT-PRINCIPAL-001): null until a principal-providing extension's
         // authorize() on this route sets it and allows the request; never read from the client request.
         const principalSlot=installPrincipalSlot(extensionRequest);
-        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;const hook=entry.instance.authorize;if(typeof hook!=='function')continue;const result=await principalSlot.authorize(name,entry.providesPrincipal,()=>hook.call(entry.instance,entry.policies.get(route.pattern)!,extensionRequest));if(result)return result;}return undefined;};
+        // Method admission precedes every extension gate (#915): an undeclared method is 405 with Allow, never a
+        // 401/403 from authorize(), on an extension mount and on a core route an extension policy protects alike.
+        // Host request policies (throttle, agents) that run before this point still count and answer it.
+        const authorize=async():Promise<HandlerResult|undefined>=>{if(!route.methods.includes(method))return methodNotAllowed(route.methods,format);for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;const hook=entry.instance.authorize;if(typeof hook!=='function')continue;const result=await principalSlot.authorize(name,entry.providesPrincipal,()=>hook.call(entry.instance,entry.policies.get(route.pattern)!,extensionRequest));if(result)return result;}return undefined;};
         if (policy || plugins.length || protectedRoute) {
           policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
           trace.client = policyReq.client;
