@@ -321,8 +321,9 @@ export const budgets: Record<string, Budget> = {
     // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     packed: 1014 * 1024,
-    // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 3997 * 1024,
+    // #940 MCP runners pass --local-review on top: 1034337 packed / 4092005 unpacked bytes, 528 entries (Node 26); packed
+    // keeps ~3 KiB over Node 24's +800 bytes, unpacked raised for ~3 KiB headroom.
+    unpacked: 4000 * 1024,
     entries: 529,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

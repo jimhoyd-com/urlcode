@@ -1879,9 +1879,12 @@ The boundary holds for these reasons:
   Node access either way.
 
 `urlcode dev` keeps its narrower rule: its first start needs the reviewed pin,
-then hot reloads follow it (above). The MCP runners (`run_validate`,
-`run_test`, `run_audit`) do not pass the flag; they forward only what the
-operator gave `urlcode mcp` ([#940](https://github.com/jimhoyd-com/urlcode/issues/940)).
+then hot reloads follow it (above). The authoring MCP runners (`run_validate`,
+`run_test`, `run_audit`) always pass the flag, so an agent's edit is checked
+at its new revision without a new pin; the same rules decide, so a `--policy`
+or `PROJECT_SHA256` the operator gave `urlcode mcp` still wins
+([#940](https://github.com/jimhoyd-com/urlcode/issues/940)). The in-process
+`run_tests` has no such mode and still needs the pin.
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
