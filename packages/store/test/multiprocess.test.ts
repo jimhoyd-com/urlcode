@@ -23,7 +23,7 @@ import { answer, origin, pin, requestFor } from './direct.ts';
 import { counts, execute, initialize, outbox, records } from './rows.ts';
 
 const schema = { type: 'object', additionalProperties: false, required: ['title', 'balance'], properties: { title: { type: 'string', minLength: 1, maxLength: 40 }, status: { type: 'string', enum: ['open', 'done'] }, balance: { type: 'integer' } } };
-const todos = { mount: '/api/todos', schema, defaults: { status: 'open', balance: 10 }, readOnlyProperties: ['balance'], transitions: { finish: { from: { status: 'open' }, set: { status: 'done' } } }, transfers: { move: { amount: 'balance' } } };
+const todos = { mount: '/api/todos', schema, defaults: { status: 'open', balance: 0 }, readOnlyProperties: ['balance'], transitions: { finish: { from: { status: 'open' }, set: { status: 'done' } } }, transfers: { move: { amount: 'balance' } } };
 const v1 = { collections: { todos } };
 /** The same collection with a tighter title: an older process would keep writing titles it forbids. */
 const v2 = { collections: { todos: { ...todos, schema: { ...schema, properties: { ...schema.properties, title: { ...schema.properties.title, maxLength: 5 } } } } } };
