@@ -71,6 +71,13 @@ Every collection lives in one SQLite database (`node:sqlite`, so Node only):
 `store({ database })`, else `STORE_DATABASE`, else `data/store.sqlite` beside
 `host.mjs`; it must be outside `app/`.
 
+Host options, all optional:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `database` | `STORE_DATABASE`, else `data/store.sqlite` beside `host.mjs` | Absolute path of the SQLite database, outside `app/`. |
+| `durability` | `STORE_DURABILITY`, else `'full'` | `'full'` (SQLite `synchronous=FULL`: a committed write survives power loss) or `'normal'` (`synchronous=NORMAL`: faster commits; the last ones before a power loss or OS crash can be lost, and the activation logs a warning). Anything else refuses to start. The `urlcode-store` operator commands always commit with `full`. See [durability](../../docs/STORE.md#durability). |
+
 The example is API only: a frontend calls the JSON mount with `fetch`, as
 [the reference proof's client](../../proofs/private-requests/client) does.
 

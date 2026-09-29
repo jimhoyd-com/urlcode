@@ -75,8 +75,8 @@ async function inspectionHost(project:string,options:{hostFile?:string|undefined
 export function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined;policy?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
  const needs:Prerequisite[]=[];
  if(extensions&&options.hostFile===undefined)needs.push({flag:'--host-file',reason:'The project declares extensions; only the operator\'s host file outside the project registers them.'});
- if(extensions&&options.origin===undefined)needs.push({flag:'--origin',reason:'Extensions activate only with the canonical https origin the operator serves this project on.'});
- if(bindings&&options.policy===undefined)needs.push({flag:'--policy',reason:'Routes request env or secret bindings; only the operator\'s policy pinned to this project revision grants them.'});
+ if(extensions&&options.origin===undefined)needs.push({flag:'--origin',reason:'Extensions activate only with the canonical https origin the operator serves this project on; pass it, or set URLCODE_ORIGIN for every command and npm script.'});
+ if(bindings&&options.policy===undefined)needs.push({flag:'--policy',reason:'Routes request env or secret bindings; only the operator\'s policy pinned to this project revision grants them. Pass it, or set URLCODE_POLICY for every command and npm script.'});
  return needs;
 }
 /** Characters divided by four, rounded up: an estimate, not a tokenizer. */
@@ -139,6 +139,10 @@ export async function cliInvocation(project:string):Promise<string> {
  * PATH inside scripts, so they stay bare. `urlcode init` writes them into the package.json it creates (and adds any
  * missing ones to an existing package.json that pins the runtime); `context --task redirects` proposes the same
  * `start`. `serve` reads PORT itself and listens on loopback unless `--host` says otherwise.
+ *
+ * The scripts carry no origin or policy: npm runs them under sh on POSIX and cmd on Windows, so no variable syntax is
+ * portable, and neither value is the runtime's to invent. The CLI itself reads URLCODE_ORIGIN and URLCODE_POLICY when
+ * the flags are absent (#834), and a refusal for either prints the complete command with placeholders.
  */
 /** The npm scripts of a site: `app/` is the route project and `host.mjs` the explicitly named operator host. */
 export function projectScripts(routes:number):Record<string,string> {

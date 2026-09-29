@@ -44,6 +44,20 @@ const MIGRATIONS: readonly string[] = [
   `CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER NOT NULL);`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
+/**
+ * How much a commit waits for the disk (#859), an operator choice per site and never project YAML. `full` (the default,
+ * SQLite `synchronous=FULL`) fsyncs the write-ahead log on every commit, so a committed write survives power loss.
+ * `normal` (`synchronous=NORMAL`) fsyncs only at checkpoints: a commit still survives a process crash and the database
+ * never corrupts, but the last commits before a power loss or OS crash can be lost. OFF and EXTRA are refused.
+ */
+export type StoreDurability = 'full' | 'normal';
+export const STORE_DURABILITIES: readonly StoreDurability[] = ['full', 'normal'];
+/** The durability named by `value`, or a thrown error naming the accepted values. `undefined` is the default, `full`. */
+export function storeDurability(value: unknown): StoreDurability {
+  if (value === undefined) return 'full';
+  if (typeof value === 'string' && (STORE_DURABILITIES as readonly string[]).includes(value)) return value as StoreDurability;
+  throw new Error(`Store durability must be one of ${STORE_DURABILITIES.join(', ')}; got ${typeof value === 'string' ? JSON.stringify(value) : typeof value}`);
+}
 /** How long one statement waits for a lock another process holds before failing (it blocks this process meanwhile). */
 export const BUSY_TIMEOUT_MS = 2000;
 
@@ -114,17 +128,20 @@ function versionOf(db: DatabaseSync): number {
 }
 
 /**
- * Opens (creating when absent, unless `create` is false) the store database and brings its schema forward. Each missing step runs in its own
+ * Opens (creating when absent, unless `create` is false) the store database and brings its schema forward. `durability`
+ * sets the connection's `synchronous` level (default `full`); the operator commands never pass it, so they always commit
+ * with FULL whatever the serving process uses. Each missing step runs in its own
  * BEGIN IMMEDIATE transaction together with the new `user_version`, so a crash mid-upgrade leaves the previous version.
  * Opening an up-to-date database changes nothing.
  */
-export async function openStoreDatabase(path: string, options: { create?: boolean } = {}): Promise<StoreDatabase> {
+export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability } = {}): Promise<StoreDatabase> {
+  const synchronous = storeDurability(options.durability).toUpperCase();
   if (!patched(process.versions.sqlite || '')) throw new Error(`The store requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
   const db = new DatabaseSync(await privateFile(path, options.create !== false), { allowExtension: false });
   try {
     db.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}; PRAGMA trusted_schema=OFF;`);
     let version = versionOf(db);
-    db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
+    db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=${synchronous};`);
     while (version < STORE_SCHEMA_VERSION) {
       db.exec('BEGIN IMMEDIATE');
       try {

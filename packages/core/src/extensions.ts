@@ -744,7 +744,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     provided.set(registration.name,registration);
   }
   const declarations=document.extensions??{};
-  if(Object.keys(declarations).length){let origin:URL;try{origin=new URL(context.origin);}catch{throw new ConfigError('Extensions require an explicit operator origin; pass --origin https://your.site (the public origin the site is served from)');}assert(['http:','https:'].includes(origin.protocol)&&!origin.username&&!origin.password&&origin.origin===context.origin,'Extensions require an explicit canonical HTTP(S) operator origin');}
+  if(Object.keys(declarations).length){let origin:URL;try{origin=new URL(context.origin);}catch{throw new ConfigError('Extensions require an explicit operator origin; pass --origin https://your.site (the public origin the site is served from) or set URLCODE_ORIGIN',{code:'origin-required'});}assert(['http:','https:'].includes(origin.protocol)&&!origin.username&&!origin.password&&origin.origin===context.origin,'Extensions require an explicit canonical HTTP(S) operator origin');}
   for(const route of Object.values(routes)){
     if(route.extension)assert(Object.hasOwn(declarations,route.extension),'Extension route has no declaration');
     for(const name of Object.keys(effectiveExtensionPolicies(document,route)))assert(Object.hasOwn(declarations,name),'Extension policy has no declaration');

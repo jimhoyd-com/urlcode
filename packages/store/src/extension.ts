@@ -9,6 +9,13 @@ import { storeAuthoring } from './authoring.ts';
 export interface StoreHostOptions {
   /** Absolute path of the store's SQLite database. Defaults to `STORE_DATABASE`, then `data/store.sqlite` beside host.mjs; it must be outside `app/`. */
   database?: string;
+  /**
+   * How much each commit waits for the disk: `full` (default, SQLite `synchronous=FULL`, a committed write survives
+   * power loss) or `normal` (`synchronous=NORMAL`: faster commits, but the last ones before a power loss or OS crash can
+   * be lost; a process crash loses nothing). Defaults to `STORE_DURABILITY`, then `full`; anything else is refused. The
+   * `urlcode-store` operator commands always commit with `full`. See docs/STORE.md, durability.
+   */
+  durability?: 'full' | 'normal';
 }
 
 const publicWrite = 'store:public-write';
@@ -21,7 +28,7 @@ function scaffold(): ScaffoldResult {
   return {
     config: { collections: {} },
     routes: {},
-    env: { STORE_DATABASE: 'Optional absolute path of the store\'s SQLite database (default data/store.sqlite beside host.mjs); must be outside app/.' },
+    env: { STORE_DATABASE: 'Optional absolute path of the store\'s SQLite database (default data/store.sqlite beside host.mjs); must be outside app/.', STORE_DURABILITY: 'Optional commit durability: full (default; survives power loss) or normal (faster; the last commits can be lost on power loss). See docs/STORE.md, durability.' },
     notes: [
       'store is installed with no collections: declare one under extensions.store.config.collections and mount it with a route <mount>/* using extension: store (add auth: true to protect writes). See docs/STORE.md.',
       'For a working demo, add the store to a fresh site with --example: a todos collection on /api/todos.',
@@ -80,6 +87,7 @@ export default defineExtension<StoreHostOptions>({
     const database = options.database ?? process.env.STORE_DATABASE ?? join(context.site, 'data', 'store.sqlite');
     // `exports` is the StoreExports records API (version 1) an extension that requires store reads with ctx.get('store').
     // With audit installed the store attaches as its `store` producer here; the host's close detaches it.
-    return createStore({ database, projectSha256: context.projectSha256, audit: context.get<AuditExports | undefined>('audit') });
+    const durability = (options.durability ?? process.env.STORE_DURABILITY) as StoreHostOptions['durability'];
+    return createStore({ database, durability, projectSha256: context.projectSha256, audit: context.get<AuditExports | undefined>('audit') });
   },
 });

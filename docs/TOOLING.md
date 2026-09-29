@@ -92,6 +92,50 @@ The tooling API consolidates authoring operations without starting a runtime:
   the [local agent bootstrap](#local-agent-bootstrap) and `renderBootstrap` its
   YAML rendering.
 
+## Operator context for commands and npm scripts
+
+A site with extensions activates only with two values the operator supplies:
+the canonical origin it is served from and the reviewed project revision,
+normally through the reviewed policy file. Every command reads them from its
+flags, and when a flag is absent from the environment (#834):
+
+| Flag | Environment fallback | Commands |
+|---|---|---|
+| `--origin URL` | `URLCODE_ORIGIN` | every command that takes `--origin` |
+| `--policy FILE` | `URLCODE_POLICY` | the commands that take `--policy` |
+
+An explicit flag always wins and an empty variable counts as unset. A relative
+`URLCODE_POLICY` resolves against the working directory, which for an npm
+script is the site root. The npm scripts `urlcode init` writes (`dev`, `start`,
+`validate`, `test`, `routes`, `audit`) carry `--project app --host-file host.mjs`
+and nothing else: npm runs them under `sh` on POSIX and `cmd` on Windows, so no
+variable syntax in a script is portable, and neither value is the runtime's to
+choose. The CLI reads the variables itself, so after the operator has reviewed
+the project and saved the output of `urlcode permissions --project app` (say as
+`operator/policy.json`), the unchanged scripts run with:
+
+```sh
+URLCODE_ORIGIN=https://your.site URLCODE_POLICY=operator/policy.json npm run validate
+```
+
+When either value is missing, the refusal prints one complete command: the
+actual invocation with an explicit placeholder appended for each missing value,
+also in the error's `command` field. For a fresh `init --with auth` site:
+
+```text
+... Run: npx --no --package @jimhoyd/urlcode urlcode validate --local --project app --host-file host.mjs --origin <https://your.site> --policy <operator/policy.json> where ...
+```
+
+The origin placeholder appears for commands that activate extensions (`dev`,
+`serve`, `validate`, `test`, `routes`, `audit`, `benchmark`, `mcp`), the
+policy placeholder when neither `--policy` nor a well-formed `PROJECT_SHA256`
+pins the revision. The error codes are `origin-required` and
+`revision-pin-required`. Nothing creates, finds or repins a policy: approval
+stays the operator's explicit step, and a project edit still invalidates the
+reviewed revision. The authoring MCP server takes the same fallbacks at start
+and forwards the resolved values to its `run_validate`, `run_test` and
+`run_audit` children as flags.
+
 ## Project context
 
 `urlcode context [--project DIR] [--target T] [--host-file F] [--origin URL]
@@ -275,6 +319,16 @@ adds an application-code boundary naming a `secrets` binding and `node:crypto`
 in a trusted function, and never reads "signed" there as signing a user in.
 `search_recipes` applies the same tie-break: at an equal score, no-code
 recipes are listed first.
+
+List vocabulary (list, filter, sort, order, paginate, query, cursor, limit)
+plans a declaration, not a handler: the `store-crud` recipe, the store
+extension, the `parameters` capability and a `declarative list query` outline
+naming the collection's `filterable` and `sortable` properties, `limit` and
+`cursor` paging, and route query `parameters` for a list the store does not
+hold. With owner vocabulary the plan also requires `auth`, since per-owner
+records sit behind a principal-providing policy. When no planner term matches,
+a recipe is offered from its tags only if at least two goal terms are among
+them, so a single generic word ("status") never selects one.
 
 The goal is a 1–512 character string reduced to at most sixteen normalized
 terms; the returned JSON is capped at 32 KiB (an estimated token count is
