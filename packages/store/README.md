@@ -130,8 +130,12 @@ offered (see [transitions on a screen](../../docs/STORE.md#transitions-on-a-scre
 Transitions are not an expression language: interval constraints and
 multi-record transfers use a host transaction. See
 [conditional transitions and result-aware retries](../../docs/STORE.md#conditional-transitions-and-result-aware-retries).
-A list carries each listed record's `ETag` in `etags`, keyed by id, so a
-client can send `If-Match` for the version it listed.
+A list carries each listed record's `ETag` in `etags` and the transitions the
+caller may run on it now in `may`, both keyed by id (one record's answer has
+them as the `ETag` and `Allow-Transitions` headers), so a client sends
+`If-Match` for the version it listed and offers only what the store would
+accept. `may` reads only the caller's own membership, once per gate; see
+[what the caller may run](../../docs/STORE.md#what-the-caller-may-run).
 
 ## Membership gates
 

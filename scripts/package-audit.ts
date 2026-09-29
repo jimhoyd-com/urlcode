@@ -318,7 +318,9 @@ export const budgets: Record<string, Budget> = {
     // (dist/collection.js, dist/membership.js, dist/ownership.js with declarations), readers.showOwner and enum
     // filter refusal, the schema again in urlcode.json and the README field reference, and the SECURITY/CHANGELOG
     // contract measure 83457 packed and 334230 unpacked bytes (32 entries).
-    packed: 86 * 1024,
+    // With #873 item 2 (may) and #875 (operator audit, bounded filters) both merged,
+    // measured on Node 26: 89093 packed / 354706 unpacked bytes, 32 entries.
+    packed: 90 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -343,7 +345,7 @@ export const budgets: Record<string, Budget> = {
     // #822 generated field reference in the README (measured 220290 unpacked).
     // #835 transitions and retries, #863 membership gates: see the packed note above.
     // #866 membership follow-ups: see the packed note above.
-    unpacked: 340 * 1024,
+    unpacked: 350 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

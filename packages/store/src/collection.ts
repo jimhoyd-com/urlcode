@@ -341,7 +341,14 @@ export interface Retry { key: string; fingerprint: string }
  * A write's answer: its success status, the record (absent after a delete) and whether it replays a retained
  * `Idempotency-Key`. A replay carries the first answer's status and the record as it is now.
  */
-export interface Written { status: number; record: StoredRecord | undefined; replayed: boolean }
+export interface Written { status: number; record: StoredRecord | undefined; replayed: boolean; may?: string[] }
+/**
+ * Who a response is computed for (#873): with a viewer, a list page, a read and a write's answer carry `may`, the
+ * transitions that viewer may run on each record right now. Trusted callers (StoreExports, the operator CLI) pass none.
+ */
+export interface Viewer { principal: string | undefined }
+/** One list page; `may` is present when the page was read for a `Viewer`. */
+export interface Page { items: StoredRecord[]; total: number; next?: string | number; may?: Record<string, string[]> }
 /** What one write step inside a transaction produced: the record it left and whether it inserted an audit event. */
 export interface Step { record: StoredRecord | undefined; audited: boolean }
 /**
@@ -355,6 +362,11 @@ export function storageFailure(error: unknown, rethrowOthers: boolean): never {
   if (rethrowOthers && !(error instanceof Error && 'code' in error && error.code === 'ERR_SQLITE_ERROR')) throw error;
   throw new StoreError(503, 'storage_unavailable', 'The store could not save this change');
 }
+
+/** A record read for a viewer, with the transitions it may run on it (`Viewer`). */
+export interface Shown { record: StoredRecord; may: string[] }
+/** Whether `principal` is listed in the membership collection `members`: one lookup on its unique key index. */
+const isMember = (db: StoreDatabase, members: string, principal: string): boolean => db.get('SELECT 1 AS found FROM store_records WHERE collection = ? AND key = ?', members, principal) !== undefined;
 
 /** One `store_records` row. */
 interface RecordRow { id: string; owner: string | null; key: string | null; created_at: string; updated_at: string; data: string }
@@ -451,10 +463,17 @@ export class Collection {
    * only after the commit. A StoreError from `work` rolls back and is rethrown; anything else (a full disk, a lock
    * another process held past the busy timeout) rolls back and is a 503 with no detail.
    */
-  private write(work: (db: StoreDatabase) => { result: Written; audited: boolean }): Written {
+  private write(work: (db: StoreDatabase) => { result: Written; audited: boolean }, viewer?: Viewer): Written {
     const db = this.database();
     let outcome: { result: Written; audited: boolean };
-    try { outcome = db.transaction(() => work(db)); } catch (error) { return storageFailure(error, false); }
+    try {
+      outcome = db.transaction(() => {
+        const done = work(db), record = done.result.record;
+        // Computed after the write, in its transaction: what the viewer may run on the record as it now stands.
+        if (viewer && record) done.result.may = this.mayIn(db, [record], viewer.principal)[record.id as string]!;
+        return done;
+      });
+    } catch (error) { return storageFailure(error, false); }
     if (outcome.audited) this.notifyAudit();
     return outcome.result;
   }
@@ -596,7 +615,29 @@ export class Collection {
    * membership change committed before the transaction began applies to it.
    */
   private admit(db: StoreDatabase, members: string | undefined, principal: string): void {
-    if (members !== undefined && db.get('SELECT 1 AS found FROM store_records WHERE collection = ? AND key = ?', members, principal) === undefined) throw new StoreError(403, 'membership_required', 'You are not allowed to do this');
+    if (members !== undefined && !isMember(db, members, principal)) throw new StoreError(403, 'membership_required', 'You are not allowed to do this');
+  }
+  /**
+   * `may` (#873): for each record, the names of the transitions `principal` may run on it right now, by the rules
+   * `transition` applies, read in the caller's transaction: the record holds every `from` value; `by: owner` needs the
+   * caller to own it and `by: others` needs it to be someone else's; a `members` gate needs the caller listed. Only
+   * the caller's own membership is looked up, once per distinct gate and never per record, so the answer is bounded
+   * by the page and says nothing about anyone else's. Without a principal only an ungated transition on a shared
+   * collection can be offered, which the declaration already says. A read-only collection runs none.
+   */
+  private mayIn(db: StoreDatabase, records: readonly StoredRecord[], principal: string | undefined): Record<string, string[]> {
+    const caller = typeof principal === 'string' && principalIdPattern.test(principal) ? principal : undefined, gates = new Map<string, boolean>();
+    const admitted = (members: string): boolean => {
+      if (!gates.has(members)) gates.set(members, isMember(db, members, caller!));
+      return gates.get(members)!;
+    };
+    const declared = this.spec.readOnly ? [] : Object.entries(this.spec.transitions);
+    // The gate is asked last and remembered, so a page no gated transition applies to looks nothing up.
+    return Object.fromEntries(records.map(record => [record.id as string, declared.filter(([, transition]) =>
+      // Who: anyone for an ungated shared transition; otherwise a principal, which `by` then compares with the owner.
+      (transition.by === 'any' && transition.members === undefined || caller !== undefined && (transition.by === 'any' || (transition.by === 'owner' ? record[OWNER_FIELD] === caller : record[OWNER_FIELD] !== undefined && record[OWNER_FIELD] !== caller)))
+      && Object.entries(transition.from).every(([field, value]) => record[field] === value)
+      && (transition.members === undefined || admitted(transition.members))).map(([name]) => name)]));
   }
   /**
    * The readers mount (#863), for a member of `readers.members`: one page of every owner's records (`total`, sort,
@@ -604,14 +645,14 @@ export class Collection {
    * and the membership gate (403) come first, in the same read transaction, before the query is parsed or any
    * record is read. Read-only.
    */
-  listAcross(params: URLSearchParams, principal: string | undefined): { items: StoredRecord[]; total: number; next?: string | number } {
-    return this.across(principal, db => this.listIn(db, parseListQuery(this.spec, params), null));
+  listAcross(params: URLSearchParams, principal: string | undefined): Page {
+    return this.across(principal, db => this.viewed(db, this.listIn(db, parseListQuery(this.spec, params), null), { principal }));
   }
-  /** One owned record for a member of `readers.members` (the gate as `listAcross`); a missing or malformed id is 404. */
-  getAcross(id: string, principal: string | undefined): StoredRecord {
+  /** One owned record and its `may` for a member of `readers.members` (the gate as `listAcross`); a missing or malformed id is 404. */
+  getAcross(id: string, principal: string | undefined): Shown {
     return this.across(principal, db => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) throw new StoreError(404, 'not_found', 'No such record');
-      return this.anyOwned(db, id);
+      return this.shown(db, this.anyOwned(db, id), principal);
     });
   }
   private across<T>(principal: string | undefined, work: (db: StoreDatabase) => T): T {
@@ -626,9 +667,16 @@ export class Collection {
    * over the caller's own records only. Throws a 400 StoreError for an undeclared sort or filter name, a malformed
    * value or a cursor that does not belong to the sort.
    */
-  list(params: URLSearchParams, owner?: string): { items: StoredRecord[]; total: number; next?: string | number } {
+  list(params: URLSearchParams, owner?: string, viewer?: Viewer): Page {
     const scope = this.scope(owner), query = parseListQuery(this.spec, params);
-    return this.read(db => this.listIn(db, query, scope));
+    return this.read(db => this.viewed(db, this.listIn(db, query, scope), viewer));
+  }
+  /** A page with `may` for its records when it was read for a viewer, in the same transaction. */
+  private viewed(db: StoreDatabase, page: Page, viewer: Viewer | undefined): Page {
+    return viewer ? { ...page, may: this.mayIn(db, page.items, viewer.principal) } : page;
+  }
+  private shown(db: StoreDatabase, record: StoredRecord, principal: string | undefined): Shown {
+    return { record, may: this.mayIn(db, [record], principal)[record.id as string]! };
   }
   /**
    * One page inside an open transaction. An unsorted, unfiltered page is a counted `LIMIT`/`OFFSET` query in creation
@@ -637,7 +685,7 @@ export class Collection {
    * filters those in memory, and then reads the page's records by id: bounded by `maxRecords`, never a scan of the
    * full record bodies.
    */
-  private listIn(db: StoreDatabase, query: ReturnType<typeof parseListQuery>, scope: string | undefined | null): { items: StoredRecord[]; total: number; next?: string | number } {
+  private listIn(db: StoreDatabase, query: ReturnType<typeof parseListQuery>, scope: string | undefined | null): Page {
     const where = this.where(scope);
     if (!query.sort && !query.filters.length) {
       const total = db.get<{ n: number }>(`SELECT count(*) AS n FROM store_records WHERE ${where.sql}`, ...where.values)!.n;
@@ -662,6 +710,11 @@ export class Collection {
     const scope = this.scope(owner);
     return this.read(db => this.current(db, id, scope));
   }
+  /** `get` for an HTTP viewer: the record and the transitions `principal` may run on it, read in one transaction. */
+  show(id: string, owner: string | undefined, principal: string | undefined): Shown {
+    const scope = this.scope(owner);
+    return this.read(db => this.shown(db, this.current(db, id, scope), principal));
+  }
   getByKey(key: string): StoredRecord {
     return this.read(db => {
       const row = db.get<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? AND key = ?`, this.name, key);
@@ -672,19 +725,19 @@ export class Collection {
   }
 
   /** Every write takes `actor`: the request principal's id, or `anonymous`. On an audited collection it is the event's actor. */
-  create(input: unknown, retry?: Retry, owner?: string, actor?: string): Written {
+  create(input: unknown, retry?: Retry, owner?: string, actor?: string, viewer?: Viewer): Written {
     const scope = this.scope(owner);
     this.writable();
-    return this.write(db => this.idempotent(db, retry, 201, id => this.current(db, id, scope), () => this.createIn(db, input, scope, actor)));
+    return this.write(db => this.idempotent(db, retry, 201, id => this.current(db, id, scope), () => this.createIn(db, input, scope, actor)), viewer);
   }
   /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change, and a
    * supplied `null` removes an optional field (refused with a field error for a required or increment field).
    * `expectedEtag`, when given, must match the record's current ETag, read inside the same transaction as the write,
    * or the update is refused with 412 instead of silently overwriting a change the caller never saw. */
-  update(id: string, input: unknown, replace: boolean, retry?: Retry, expectedEtag?: string, owner?: string, actor?: string): Written {
+  update(id: string, input: unknown, replace: boolean, retry?: Retry, expectedEtag?: string, owner?: string, actor?: string, viewer?: Viewer): Written {
     const scope = this.scope(owner);
     this.writable();
-    return this.write(db => this.idempotent(db, retry, 200, found => this.current(db, found, scope), () => this.updateIn(db, id, input, replace, expectedEtag, scope, actor)));
+    return this.write(db => this.idempotent(db, retry, 200, found => this.current(db, found, scope), () => this.updateIn(db, id, input, replace, expectedEtag, scope, actor)), viewer);
   }
   remove(id: string, retry?: Retry, expectedEtag?: string, owner?: string, actor?: string): Written {
     const scope = this.scope(owner);
@@ -692,13 +745,13 @@ export class Collection {
     return this.write(db => this.idempotent(db, retry, 204, found => this.current(db, found, scope), () => this.removeIn(db, id, expectedEtag, scope, actor)));
   }
   /** Public increment API (`POST .../increment/<field>`): refused on a `readOnly` collection like every other write. */
-  increment(id: string, field: string, retry?: Retry, owner?: string, actor?: string): Written {
+  increment(id: string, field: string, retry?: Retry, owner?: string, actor?: string, viewer?: Viewer): Written {
     const scope = this.scope(owner);
     this.writable();
     return this.write(db => this.idempotent(db, retry, 200, found => this.current(db, found, scope), () => {
       const record = this.incremented(db, id, field, scope);
       return { record, audited: this.audited(db, 'incremented', id, [field], actor) };
-    }));
+    }), viewer);
   }
   /**
    * Runs the declared transition `name` on record `id` for `principal` (#835). An unknown name is a 404. Checked in
@@ -708,7 +761,7 @@ export class Collection {
    * `transition_conflict`). Only then are the `set` values, the `stamp` values and `updatedAt` written with the claim
    * and the audit event. Any refusal writes nothing.
    */
-  transition(id: string, name: string, retry?: Retry, expectedEtag?: string, principal?: string, actor?: string): Written {
+  transition(id: string, name: string, retry?: Retry, expectedEtag?: string, principal?: string, actor?: string, viewer?: Viewer): Written {
     const transition = hasOwn(this.spec.transitions, name) ? this.spec.transitions[name]! : undefined;
     if (!transition) throw new StoreError(404, 'not_found', 'No such transition');
     // `principal` is checked before anything is read: owner scoping, the caller an others transition compares, or a member.
@@ -718,7 +771,7 @@ export class Collection {
     return this.write(db => {
       if (caller !== undefined) this.admit(db, transition.members, caller);
       return this.idempotent(db, retry, 200, found => this.transitionTarget(db, found, transition, caller), () => this.transitionIn(db, id, name, expectedEtag, caller, actor));
-    });
+    }, viewer);
   }
   /** Who runs a transition: any caller on an ungated shared one, otherwise a principal (401 without one). */
   private caller(transition: NormalizedTransition, principal: string | undefined): string | undefined {
@@ -742,7 +795,7 @@ export class Collection {
   /** The record `id` in the owner's scope, inside an open transaction (a host transaction's `get`). */
   getIn(db: StoreDatabase, id: string, owner: string | undefined): StoredRecord { return this.current(db, id, this.scope(owner)); }
   /** One page inside an open transaction (a host transaction's `list`). */
-  listPageIn(db: StoreDatabase, params: URLSearchParams, owner: string | undefined): { items: StoredRecord[]; total: number; next?: string | number } {
+  listPageIn(db: StoreDatabase, params: URLSearchParams, owner: string | undefined): Page {
     const scope = this.scope(owner);
     return this.listIn(db, parseListQuery(this.spec, params), scope);
   }
