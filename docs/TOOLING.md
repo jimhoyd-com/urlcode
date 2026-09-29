@@ -169,7 +169,7 @@ not pinned (`revisionMatch: false` in `explain`, `revisionPinned: false` and a
 note in `extensions`), and every activation refuses it with
 `revision-pin-required` before anything else is checked, so it can never serve.
 `serve`, `dev`, `validate` (with or without `--local`), `test`, `routes`,
-`audit`, `benchmark` and the MCP `run_tests` runner still need the reviewed pin.
+`audit` and `benchmark` still need the reviewed pin.
 With a pin, the inspection commands compose pinned registrations exactly as
 before. `validate`, `test`, `routes` and `audit` also accept `--local-review`,
 which the generated npm scripts pass: with no operator pin, it pins that one
@@ -179,7 +179,9 @@ run to the current revision, reads no policy, defaults the origin to
 ignore the flag; `serve`, `dev` and every other command refuse it, naming
 themselves
 ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). The
-authoring MCP runners `run_validate`, `run_test` and `run_audit` pass it too.
+authoring MCP runners `run_validate`, `run_test` and `run_audit` pass it too,
+the in-process `run_tests` applies the same rule, and `get_context`'s check
+commands carry it.
 
 ## Project context
 
@@ -220,7 +222,10 @@ always appear in this order:
   invocations. The four
   that activate the project (`validate`, `test`, `audit`, `routes`) repeat the
   operator's own `--host-file` and `--origin` when they were given, so the
-  suggested command checks the same host-registered extensions (#778). Every
+  suggested command checks the same host-registered extensions (#778), and end
+  with `--local-review`, as the generated npm scripts do: after an edit they
+  check the current revision without a new pin, and an operator pin still wins
+  ([#964](https://github.com/jimhoyd-com/urlcode/issues/964)). Every
   path in them is shell-quoted for the local shell (single quotes on POSIX,
   double quotes on Windows) when it is not a plain word, so a project directory
   with spaces or an apostrophe stays one argument. They carry no directory
@@ -1397,7 +1402,14 @@ What it can do, all inside the selected project root (resolved with realpath):
 - `run_tests` runs `tests/requests.json` in the server process the way
   `urlcode test` does, against a disposable local server instance and a scratch
   data directory it removes afterward, and returns `total`, `failed` and the
-  per-case `events`. It **executes the project's code**: ordinary trusted
+  per-case `events`. With neither the server's `--policy` nor
+  `PROJECT_SHA256` it is a local review, the rule the runners' `--local-review`
+  applies: it pins that one run to the project's current revision, reads no
+  policy (no grant) and defaults the origin to `http://localhost`, and the
+  result adds `localReview` (`revision`, `origin`) and a `local_review` event,
+  so an edited extension site is tested without a new pin; an operator pin
+  always wins and a stale one still refuses
+  ([#964](https://github.com/jimhoyd-com/urlcode/issues/964)). It **executes the project's code**: ordinary trusted
   `function`/`middleware` modules and registered extensions run with full Node
   access and may write or delete files, spawn processes or reach the network.
   The scratch data directory is not confinement. Routes that declare

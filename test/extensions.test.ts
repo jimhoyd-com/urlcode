@@ -681,27 +681,40 @@ export default await composeHost(import.meta.url,[demo]);
     for(const out of [policy,pinned])assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
   });
   // #940: the authoring MCP runners pass --local-review too, so an agent's edit is checked without a new pin; the same
-  // CLI rule decides, so a pin the operator gave the server still wins.
-  await t.test('the MCP runners review an edit locally and an operator pin still wins (#940)',async()=>{
-    const mcp=(env:Record<string,string>={})=>{
+  // CLI rule decides, so a pin the operator gave the server still wins. #964: the in-process run_tests follows it too.
+  await t.test('the MCP runners and run_tests review an edit locally and an operator pin still wins (#940, #964)',async()=>{
+    type InProcess={total:number;failed:number;localReview?:{revision:string;origin:string};events:{event:string;revision?:string;origin?:string}[]};
+    const mcp=(env:Record<string,string>={},args:string[]=[])=>{
       const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},
-        ...['run_validate','run_test','run_audit'].map((name,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params:{name,arguments:{}}}))];
-      const out=spawnSync(process.execPath,[cli,'mcp','--allow-authoring','--project',root,'--host-file',host],{encoding:'utf8',timeout:120000,input:messages.map(message=>JSON.stringify(message)).join('\n')+'\n',env:{...base,...env}});
-      const replies=out.stdout.trim().split('\n').map(line=>JSON.parse(line) as {id?:number;result?:{content:{text:string}[]}});
-      return [2,3,4].map(id=>{const reply=replies.find(message=>message.id===id);assert.ok(reply?.result,out.stdout+out.stderr);return JSON.parse(reply.result.content[0]!.text) as {command:string;exitCode:number;stdout:string;stderr:string};});
+        ...['run_validate','run_test','run_audit','run_tests'].map((name,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params:{name,arguments:{}}}))];
+      const out=spawnSync(process.execPath,[cli,'mcp','--allow-authoring','--project',root,'--host-file',host,...args],{encoding:'utf8',timeout:120000,input:messages.map(message=>JSON.stringify(message)).join('\n')+'\n',env:{...base,...env}});
+      const replies=out.stdout.trim().split('\n').map(line=>JSON.parse(line) as {id?:number;result?:{isError?:boolean;content:{text:string}[]}});
+      const reply=(id:number)=>{const found=replies.find(message=>message.id===id);assert.ok(found?.result,out.stdout+out.stderr);return found.result;};
+      return {runners:[2,3,4].map(id=>JSON.parse(reply(id).content[0]!.text) as {command:string;exitCode:number;stdout:string;stderr:string}),inProcess:reply(5)};
     };
     await writeFile(join(root,'urlcode.yaml'),(await readFile(join(root,'urlcode.yaml'),'utf8')).replace(/label: \w+/,'label: agent'));
     const revision=await inspectExtensionRevision(root);
-    for(const result of mcp()){
+    const reviewed=mcp();
+    for(const result of reviewed.runners){
       assert.equal(result.exitCode,0,result.command+result.stdout+result.stderr);
       const notice=lines(result.stderr).find(line=>line.event==='local_review');
       assert.deepEqual({revision:notice?.revision,origin:notice?.origin},{revision,origin:'http://localhost'},result.stderr);
     }
-    for(const result of mcp({PROJECT_SHA256:'b'.repeat(64),URLCODE_ORIGIN:origin})){
+    assert.equal(reviewed.inProcess.isError,undefined,reviewed.inProcess.content[0]!.text);
+    const tests=JSON.parse(reviewed.inProcess.content[0]!.text) as InProcess;
+    assert.deepEqual({total:tests.total,failed:tests.failed,localReview:tests.localReview},{total:1,failed:0,localReview:{revision,origin:'http://localhost'}});
+    const notice=tests.events.find(event=>event.event==='local_review');
+    assert.deepEqual({revision:notice?.revision,origin:notice?.origin},{revision,origin:'http://localhost'});
+    const pinned=mcp({PROJECT_SHA256:'b'.repeat(64),URLCODE_ORIGIN:origin});
+    for(const result of pinned.runners){
       assert.notEqual(result.exitCode,0,result.command+result.stdout);
       assert.match(result.stderr,/Extension revision pin mismatch: demo/,result.command);
       assert.equal(lines(result.stderr).some(line=>line.event==='local_review'),false,result.stderr);
     }
+    assert.equal(pinned.inProcess.isError,true);assert.match(pinned.inProcess.content[0]!.text,/Extension revision pin mismatch: demo/);
+    // A stale --policy given to the server wins the same way: run_tests refuses and reports no local review.
+    const policy=mcp({URLCODE_ORIGIN:origin},['--policy',stale]);
+    assert.equal(policy.inProcess.isError,true);assert.match(policy.inProcess.content[0]!.text,/Extension revision pin mismatch: demo/);
   });
   await t.test('a local review holds no grant: egress a policy has not approved is still denied',async()=>{
     const upstream=await project(t,{'/demo/*':mount,'/up':{proxy:{url:'https://upstream.example.test/'}}},{},{extensions:declarations});
