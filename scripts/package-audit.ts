@@ -321,10 +321,12 @@ export const budgets: Record<string, Budget> = {
     // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #941 host lease helper on top of #947: 1039588 packed / 4103610 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1020 * 1024,
+    // #960 pack-addons refusal on top of #949 and #967: 1041567 packed / 4109534 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 1021 * 1024,
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #941 host lease helper on top of #947: 1039588 packed / 4103610 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 4011 * 1024,
+    // #960 pack-addons refusal on top of #949 and #967: 1041567 packed / 4109534 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 4017 * 1024,
     entries: 534,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -344,8 +346,10 @@ export const budgets: Record<string, Budget> = {
     // With #927's README note that auth alone detects no second host: 17700 packed / 54758 unpacked bytes, 14 files on
     // Node 26, 732 packed bytes under the old 18 KiB (CI's Node 24 packs larger); ~3 KiB headroom on each.
     // #930 hermetic runs and seeds on top of #946: 19307 packed / 60677 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 23 * 1024,
-    unpacked: 63 * 1024,
+    // #960 pack-addons refusal on top of #949 and #967: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 24 * 1024,
+    // #960 pack-addons refusal on top of #949 and #967: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 65 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
