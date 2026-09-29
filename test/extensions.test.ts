@@ -491,7 +491,14 @@ export default await composeHost(import.meta.url,[demo]);
   });
   await t.test('no policy and no PROJECT_SHA256 still refuses; PROJECT_SHA256 alone still works',()=>{
     const out=run('validate',{});assert.equal(out.status,1);
-    assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+    const error=lastError(out.stderr) as {message:string;code?:string;command?:string};
+    assert.match(error.message,/^The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy/);
+    // One complete command: the actual invocation plus a placeholder for the one missing value (#834).
+    assert.equal(error.code,"revision-pin-required",out.stderr);
+    assert.ok(error.command?.endsWith(` validate --project ${root} --origin ${origin} --host-file ${host} --policy <operator/policy.json>`),out.stderr);
+    assert.ok(error.message.includes(`Run: ${error.command} where <operator/policy.json>`),error.message);
+    // URLCODE_POLICY stands in for an absent --policy.
+    const fromEnv=run('validate',{URLCODE_POLICY:policy});assert.equal(fromEnv.status,0,fromEnv.stderr);
     assert.equal(run('validate',{PROJECT_SHA256:revision}).status,0);
   });
   await t.test('a policy for another revision refuses',()=>{
@@ -501,7 +508,7 @@ export default await composeHost(import.meta.url,[demo]);
   });
   await t.test('commands without --policy support do not derive a pin',()=>{
     const out=spawnSync(process.execPath,[cli,'extensions','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
-    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy/);
   });
   // The inspection commands take the reviewed policy too (#834).
   await t.test('explain derives the pin from a verified --policy',()=>{
@@ -512,7 +519,7 @@ export default await composeHost(import.meta.url,[demo]);
     const pinned=await project(t,{'/demo/*':mount},{},{extensions:declarations,projectSha256:revision} as Parameters<typeof project>[3]);
     const out=spawnSync(process.execPath,[cli,'validate','--project',pinned,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
     // The host is composed before the YAML is read, and nothing in the project is consulted for the pin.
-    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^Pass the reviewed operator policy with --policy, or set PROJECT_SHA256/);
+    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy/);
   });
   // The slot is set only while the host file is imported.
   const {loadOperatorHost,operatorRevisionKey}=await import('../packages/core/src/operator-host.ts');

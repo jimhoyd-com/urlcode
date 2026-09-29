@@ -51,7 +51,7 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   // A site with no extensions has nothing to pin.
   if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
   const projectSha256 = hostRevisionPin();
-  if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError('Pass the reviewed operator policy with --policy, or set PROJECT_SHA256 to the reviewed project revision (urlcode extensions add prints it; urlcode explain shows it)');
+  if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError('The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy (or URLCODE_POLICY), or set PROJECT_SHA256 to the reviewed revision (urlcode extensions add prints it; urlcode explain shows it)', { code: 'revision-pin-required' });
   const definitions = entries.map(entry => entry.definition);
   // An installed `uses` extension orders like a requirement; an absent one is no edge at all.
   const present = new Set(definitions.map(definition => definition.name));

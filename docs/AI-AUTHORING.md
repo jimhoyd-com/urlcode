@@ -38,7 +38,9 @@ be `urlcode plan-feature "goal" --project DIR --json` (MCP `plan_feature`). It
 matches only the current compiled project, capability catalog, bundled recipes,
 installed inert artifacts and registrations already available to the session. Read
 its operator prerequisites and explicit gaps as constraints, not as permission
-to select packages, storage, keys or grants in project YAML.
+to select packages, storage, keys or grants in project YAML. A list, filter,
+sort or paging goal plans the store's `filterable`/`sortable` properties and
+route query `parameters`, not a handler that parses the query string.
 
 The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
 [llms.txt](../llms.txt) index and the generated [llms-full.txt](../llms-full.txt)
@@ -654,6 +656,12 @@ project's trusted code and, when the operator gave the server `--host-file`,
 that operator-supplied host module. The runners and `get_context`'s commands
 repeat only the operator's own `--host-file` and `--origin`; a flag the operator
 did not supply is listed under `prerequisites`, never guessed.
+The CLI and the server read an absent `--origin` or `--policy` from
+`URLCODE_ORIGIN` or `URLCODE_POLICY`, so a site's generated npm scripts run
+unchanged with operator context in the environment, and a refusal for a missing
+origin or revision prints one complete command with placeholders for exactly
+what is missing ([operator context](TOOLING.md#operator-context-for-commands-and-npm-scripts)).
+Supplying context never creates or repins a policy.
 `urlcode init` writes `.mcp.json`, the project-scoped file Claude Code reads to
 register the read-only server. Codex does not read it: register the same pinned
 command in `~/.codex/config.toml` or a trusted project `.codex/config.toml`
