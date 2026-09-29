@@ -65,6 +65,7 @@ or bypass target limits or operator grants ([design principle](https://github.co
 | Security headers | `policies.security` ([security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/security.md)) |
 | Cache headers / cache strategy | `cacheControl` / `policies.cache` ([assets](https://github.com/jimhoyd-com/urlcode/blob/main/docs/yaml/assets.md), [cache](https://github.com/jimhoyd-com/urlcode/blob/main/docs/policies/cache.md)) |
 | Body size, content type, JSON check, per method | `request.body.<METHOD>` ([HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md)) |
+| One JSON Schema for a route body and an MCP tool, or a standalone schema file with local `$ref`s | top-level `schemas:` (inline, or `{file: schemas/x.json}` read offline, remote refs refused), named as `request.body.POST.schema: x` and mcp `inputSchema: x`; the OpenAPI export emits it once as a component ([named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas)) |
 | Restrict HTTP methods | `methods` (default GET/HEAD; 405 with `Allow`) |
 | Rate limiting, bot/AI-crawler blocking, compression | `policies.throttle`, `policies.agents`, `policies.compression` ([policies](https://github.com/jimhoyd-com/urlcode/blob/main/docs/POLICIES.md)) |
 | Fixed JSON/text/headers | `respond` and `response.headers` |

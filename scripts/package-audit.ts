@@ -290,9 +290,11 @@ export const budgets: Record<string, Budget> = {
     // 958684 packed / 3783392 unpacked bytes, 507 entries; about 3 KiB of headroom on each.
     // With #844's extension contract on top of main after #905, measured on Node 26: 962375 packed / 3796521
     // unpacked bytes, 507 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
-    packed: 944 * 1024,
-    unpacked: 3711 * 1024,
-    entries: 510,
+    // With #845 named project schemas on top of #906's main, measured on Node 26: 975469 packed / 3839342
+    // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
+    packed: 957 * 1024,
+    unpacked: 3753 * 1024,
+    entries: 515,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

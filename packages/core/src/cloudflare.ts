@@ -87,6 +87,7 @@ export function rehydrate(artifact: Artifact, validators: Validators = {}, bodyV
       const name = route.bodyValidators?.[method];
       const validate = name ? bodyValidators[name] : undefined;
       if (!validate) throw new Error(`Artifact is missing the request.body.${method}.schema validator for ${route.pattern}; rebuild`);
+      if (typeof policy.schema === 'string') throw new Error(`Artifact holds an unresolved request.body.${method}.schema for ${route.pattern}; rebuild`);
       (bodySchemas ??= dict())[method] = { validate, names: declaredBodyNames(policy.schema) };
     }
     const { bodyValidators: _bodyValidators, ...served } = route;

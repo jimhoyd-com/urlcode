@@ -1,4 +1,8 @@
 version: "1"
+# Named schemas: declared once, named by any route (and by an mcp tool's inputSchema). lead is an
+# independently authored file whose relative $refs are read offline and bundled at load.
+schemas:
+  lead: {file: schemas/lead.json}
 routes:
   /todos:
     methods: [POST]
@@ -79,4 +83,21 @@ routes:
             properties:
               title: {type: string, minLength: 1, maxLength: 200}
     respond:
+      json: {ok: true}
+  # Two routes naming one schema: the same validator, the same 422, one OpenAPI component.
+  /leads:
+    methods: [POST]
+    request:
+      body:
+        POST: {format: json, contentTypes: [application/json], required: true, maxBytes: 4096, schema: lead}
+    respond:
+      status: 201
+      json: {ok: true}
+  /referrals:
+    methods: [POST]
+    request:
+      body:
+        POST: {format: json, contentTypes: [application/json], required: true, maxBytes: 4096, schema: lead}
+    respond:
+      status: 201
       json: {ok: true}

@@ -1,0 +1,10 @@
+# How to reach someone. lead.json references this whole file and its $defs/source entry.
+type: object
+required: [email]
+additionalProperties: false
+properties:
+  email: {type: string, format: email}
+  phone: {type: [string, "null"], maxLength: 32}
+$defs:
+  source:
+    enum: [web, event, referral]
