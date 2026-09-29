@@ -9,6 +9,7 @@ import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { compileHttp } from './http-policy.ts';
 import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
 import { compileBodySchema, uuidFormat } from './body-schema.ts';
+import { bodySchemaFormatChecks, bodySchemaFormatMaxLength } from './body-formats.ts';
 import Ajv from 'ajv/dist/2020.js';
 import { assert, revisionPinHint, routeError } from './errors.ts';
 import { functionFile } from './config.ts';
@@ -70,7 +71,9 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
   const exact = new Map<string, CompiledRoute>(), dynamic: CompiledRoute[] = [], mounts: CompiledRoute[] = [], modules = new Map<string, true>();
   // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
   const ajv = new Ajv.default({ strict: false, allErrors: false }), validators = new Map<string, Validator>();
+  // Parameters take the same standard formats, with the same checks and caps, as a request body schema (body-formats.ts).
   ajv.addFormat('uuid', uuidFormat);
+  for (const [name, check] of Object.entries(bodySchemaFormatChecks().formats)) ajv.addFormat(name, check);
   for (const [pattern, config] of Object.entries(loaded.routes)) {
     if (++processed % 64 === 0) await yieldTurn();
     assert(performance.now()<deadline, 'Route compilation deadline exceeded');
@@ -155,7 +158,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
         assert(!['minLength','maxLength'].some(k => own(schema,k)) || schema.type === 'string', 'String bounds require string type');
         assert(!['minimum','maximum'].some(k => own(schema,k)) || ['integer','number'].includes(schema.type), 'Numeric bounds require numeric type');
         assert(!['pattern','format'].some(k => own(schema,k)) || schema.type === 'string', 'pattern and format require string type');
-        assert(!own(schema,'format') || schema.format === 'uuid', 'Unsupported parameter format (supported: uuid)');
+        assert(!own(schema,'format') || (typeof schema.format === 'string' && Object.hasOwn(bodySchemaFormatMaxLength, schema.format)), `Unsupported parameter format (supported: ${Object.keys(bodySchemaFormatMaxLength).join(', ')})`);
         if (own(schema,'pattern')) {
           assert(typeof schema.pattern === 'string', 'pattern must be a string'); assertSafePattern(schema.pattern);
           assert(typeof schema.maxLength === 'number' && schema.maxLength <= maxPatternInputLength, `pattern requires maxLength of at most ${maxPatternInputLength}`);

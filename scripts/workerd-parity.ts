@@ -87,6 +87,11 @@ const cases: Record<string, { path: string; method?: string; headers?: Record<st
   'per-method POST valid': post('/requests', { title: 'Ship it' }, 'application/json'),
   'per-method POST, no body': { path: '/requests', method: 'POST', headers: json },
   'per-method POST invalid': post('/requests', { title: '', extra: secret }, 'application/json'),
+  // Parameter formats (#881): validators.js inlines the same checks body-validators.js does.
+  'query format date-time valid': { path: `/when?at=${encodeURIComponent('2024-02-29T08:30:06+01:00')}` },
+  'query format date-time fails': { path: '/when?at=2023-02-29T08:30:06Z' },
+  'path format ipv6 valid': { path: `/hosts/${encodeURIComponent('2001:db8::1')}` },
+  'path format ipv6 fails': { path: `/hosts/${encodeURIComponent('2001:db8:::1')}` },
 };
 // Sent over a raw socket, each with the status both sides must answer. /requests lists [GET, POST], so HEAD is not
 // implied there (405); /nobody takes the default GET and HEAD, each with `maxBytes: 0`.
@@ -103,8 +108,8 @@ volatile.add('content-encoding');
 
 try {
   if (!npm) skip('run through npm run test:workerd');
-  // The example plus two routes that exercise the 128-character `pattern` cap in a body and a query parameter, and one
-  // that refuses a body on its default GET and HEAD.
+  // The example plus two routes that exercise the 128-character `pattern` cap in a body and a query parameter, a query
+  // and a path parameter with a standard format, and one that refuses a body on its default GET and HEAD.
   const extra = `  /pat:
     methods: [POST]
     request:
@@ -121,6 +126,14 @@ try {
   /q:
     parameters:
       - {name: v, in: query, required: true, schema: {type: string, pattern: "^[a-z]*[a-z]*[a-z]*!$", maxLength: 128}}
+    respond: {json: {ok: true}}
+  /when:
+    parameters:
+      - {name: at, in: query, required: true, schema: {type: string, format: date-time}}
+    respond: {json: {ok: true}}
+  /hosts/{ip}:
+    parameters:
+      - {name: ip, in: path, required: true, schema: {type: string, format: ipv6}}
     respond: {json: {ok: true}}
   /nobody:
     request:

@@ -582,9 +582,17 @@
                     "maxLength": 128
                   },
                   "format": {
-                    "description": "Named string format the input must match; only uuid is supported.",
+                    "description": "Named string format the input must match, with the same checks and length caps as a request body schema: uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6 (docs/HTTP.md). Each bounds its own length, so no maxLength is needed.",
                     "enum": [
-                      "uuid"
+                      "uuid",
+                      "date",
+                      "time",
+                      "date-time",
+                      "email",
+                      "uri",
+                      "hostname",
+                      "ipv4",
+                      "ipv6"
                     ]
                   },
                   "items": {

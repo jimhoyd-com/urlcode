@@ -726,6 +726,29 @@ What it describes:
   [error format](HTTP.md#error-format) (`text/plain`, the
   `UrlcodeErrorEnvelope`, or the `UrlcodeBodyValidationError` JSON). An
   enforced `throttle` or `agents` policy adds its refusal status.
+- **Headers the runtime always sets.** Every response names
+  `X-Request-Id` and `X-Content-Type-Options: nosniff`, which the runtime adds
+  to whatever answers, handler-defined ones included, and a handler cannot
+  replace. The runtime's own errors (400, 404, 413, 415, 422) also name
+  `Cache-Control: no-store`, which they always carry. Elsewhere
+  `Cache-Control` is not stated: a handler, a declared header or a cache policy
+  may set it. Each is a reusable entry under `components.headers`.
+- **The 405 for an undeclared method.** A method a route does not declare has no
+  operation, so the path item's `x-urlcode.methodNotAllowed` states it: status
+  405, the exact `Allow` value (the declared methods in declared order), and a
+  `components.responses` entry (`UrlcodeMethodNotAllowedText`, `...Json` or
+  `...Mixed`) with the body in the path's error format. A gate that runs before
+  the method check (an enforced throttle or agents policy, an extension's
+  authorization, an operator plugin) may answer first.
+- **Error format per path.** A route's own `errors.format` wins; otherwise each
+  [`site.errors`](HTTP.md#error-format) entry is compared with the route
+  pattern segment by segment, since the runtime checks the concrete request
+  path. When an entry covers every path the pattern matches (`/api/*` over
+  `/api/{id}`), the path is `json`. When it covers only some (an exact
+  `/users/42`, or `/v2/*` over `/{version}/items`), the path is `mixed`:
+  `x-urlcode.errorScope` lists those entries, and each runtime error declares
+  both `text/plain` and the JSON envelope (a body-schema 422 is either JSON
+  shape), since which one a request gets depends on the concrete path.
 - **What it does not know, stated as such.** A `function` handler's answer, a
   proxy's upstream answer and anything `middleware` or an extension named in
   `policies.extensions` may answer first is a `default` response with no
@@ -738,8 +761,10 @@ What it describes:
   provider admin API. A disabled route is left out and listed under
   `x-urlcode.omitted`.
 - **Authentication.** An `auth: true` route (`policies.extensions.auth`) gets a
-  `security` requirement on a generic cookie scheme, `urlcodeSession`, and 401
-  and 403 responses whose bodies are extension-defined. The cookie's real name
+  `security` requirement on a generic cookie scheme, `urlcodeSession`, a 401 on
+  every method, and a 403 only on POST, PUT, PATCH and DELETE, the methods the
+  auth extension refuses from another origin. Their bodies are
+  extension-defined. The cookie's real name
   is the operator's auth configuration and is not published; the scheme's
   `name` is the placeholder `session` and says so.
 - **Never included.** Binding names and values (`env`, `secrets`), proxy and
@@ -750,21 +775,24 @@ What it describes:
 runtime version, the project `revision`, `opaqueMounts` and `omitted`; on each
 path item, the handler kind, the execution mode when the route runs project
 code (`trusted` or `sandboxed`), the middleware count, the extension and policy
-names, the error format and per-target support.
+names, the error format (with `errorScope` when it is `mixed`), the
+`methodNotAllowed` answer and per-target support.
 
 The export is checked by `test/openapi.test.ts`: the output validates against
 the official OpenAPI 3.1 schema (vendored in `test/fixtures/openapi`) with
 every Schema Object valid against the JSON Schema 2020-12 meta-schema; a
 client generated from it by [`@hey-api/openapi-ts`](https://heyapi.dev/)
 typechecks and calls `examples/body-validation`; and a contract run sends
-requests derived from the document (valid ones, then each declared refusal) to
-that example and checks each answer's status, media type and schema against
-the document.
+requests derived from the document (valid ones, each declared refusal, then an
+undeclared method per path) to that example, and to a project with an
+`auth: true` route behind a synthetic auth extension and `function` routes. It
+checks each answer's status, media type, schema and the runtime headers against
+the document; the auth route's 401 and 403 are matched by number, not through
+`default`.
 
 Not yet described: response bodies of `function` routes (there is no response
-schema field), extension contributions (an extension cannot describe its mount
-through the extension contract yet), header-level details the runtime always
-adds (`X-Request-Id`, `Cache-Control`), and the 405 for an undeclared method.
+schema field) and extension contributions (an extension cannot describe its
+mount through the extension contract yet).
 
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its canonical, verb-first tools, in the order

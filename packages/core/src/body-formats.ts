@@ -1,4 +1,4 @@
-// The standard string formats a request body schema may name besides `uuid` (#861). They are URLCode's own small
+// The standard string formats a request body schema or a parameter schema may name besides `uuid` (#861, #881). They are URLCode's own small
 // checks rather than a format library: each one refuses a value longer than its cap before any regex runs, every
 // regex it uses passes the same admission guard as an author's `pattern` (pattern-guard.ts), and the rest is a
 // linear scan. The Cloudflare build cannot import this module into its generated validators, so
