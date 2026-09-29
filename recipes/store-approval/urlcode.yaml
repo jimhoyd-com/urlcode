@@ -1,0 +1,75 @@
+version: "1"
+extensions:
+  # Who is signed in: the operator-installed auth extension provides the principal `auth: true` needs.
+  auth:
+    version: "1"
+    config: {}
+  store:
+    version: "1"
+    config:
+      collections:
+        # Who may review: principal ids, maintained by the operator (`urlcode-store members add`); no mount.
+        reviewers:
+          membership: true
+          key: userId
+          schema:
+            type: object
+            additionalProperties: false
+            required: [userId]
+            properties:
+              userId: {type: string, maxLength: 128}
+        requests:
+          mount: /api/requests
+          # Each signed-in user creates, lists, changes and deletes only their own requests.
+          ownership: owner
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title, amount, status]
+            properties:
+              title: {type: string, minLength: 1, maxLength: 120}
+              amount: {type: integer, minimum: 1, maximum: 100000}
+              status: {type: string, enum: [draft, pending, approved, rejected]}
+              reviewedBy: {type: string, maxLength: 128}
+              reviewedAt: {type: string, maxLength: 32}
+          defaults: {status: draft}
+          # Only a transition changes the state and the review stamp.
+          readOnlyProperties: [status, reviewedBy, reviewedAt]
+          # A body changes a request only while it is a draft; only a draft or a rejected one is deleted (409 record_locked).
+          editable: {status: draft}
+          deletable: {status: [draft, rejected]}
+          filterable: [status]
+          sortable: [amount]
+          transitions:
+            # The owner's: POST /api/requests/<id>/submit and /withdraw.
+            submit: {from: {status: draft}, set: {status: pending}}
+            withdraw: {from: {status: pending}, set: {status: draft}}
+            # A reviewer's, never on their own request: POST /api/approve/<id> and /api/reject/<id>.
+            approve: {from: {status: pending}, set: {status: approved}, stamp: {reviewedBy: actor, reviewedAt: now}, by: others, mount: /api/approve, members: reviewers}
+            reject: {from: {status: pending}, set: {status: rejected}, stamp: {reviewedBy: actor, reviewedAt: now}, by: others, mount: /api/reject, members: reviewers}
+          readers:
+            # Reviewers read every owner's requests; GET /api/review?status=pending is the queue, _owner the requester.
+            queue: {mount: /api/review, members: reviewers, showOwner: true}
+          maxRecords: 10000
+          maxRecordsPerOwner: 100
+routes:
+  /api/requests/*:
+    description: Signed-in users draft, submit and withdraw their own requests; an approved request is locked.
+    extension: store
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true
+  /api/approve/*:
+    description: POST /api/approve/<id> approves another user's pending request; reviewers only.
+    extension: store
+    methods: [POST]
+    auth: true
+  /api/reject/*:
+    description: POST /api/reject/<id> rejects another user's pending request; reviewers only.
+    extension: store
+    methods: [POST]
+    auth: true
+  /api/review/*:
+    description: Every owner's requests, read-only, for reviewers; GET /api/review?status=pending is the review queue.
+    extension: store
+    methods: [GET, HEAD]
+    auth: true

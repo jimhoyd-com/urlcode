@@ -669,8 +669,10 @@ what to use.
   `Cache-Control: no-store`, `401` without a principal, `403` for a
   cross-origin write, another owner's record as `404`, the `409`s
   (`interval_conflict`, `insufficient_balance`, `balance_not_zero`,
-  `owner_quota_exceeded`), the `422`s and `If-Match`. The credits version also
-  has the issuer's membership gate and `Idempotency-Key` retries.
+  `owner_quota_exceeded`), the `422`s and `If-Match`. The booking version
+  also has the one-hour length and the staff-only create; the credits version
+  the issuer's membership gate, `Idempotency-Key` retries and the handle
+  directory.
 - `packages/store/test/plumbing.test.ts` runs each recipe's own
   `tests/requests.json` and `tests/seed.json` against its counterexample
   through the CLI, twice, and the audit reports it ready. The recipe fixtures send no `Idempotency-Key`, so
@@ -683,25 +685,34 @@ what to use.
 - Both sides run on the same `host.mjs`. The counterexample adds two lines to
   register its extension, counted as code.
 
-Counted when the counterexamples were added:
+Counted after the recipes gained slot lengths, a staff-only create and a
+handle directory
+([#956](https://github.com/jimhoyd-com/urlcode/issues/956)):
 
 | Contract | Declared: YAML / code | Host transaction: YAML / code | Code removed | Physical lines, declared / host |
 |---|---:|---:|---:|---:|
-| Scheduling (`store-booking`) | 38 / 0 | 39 / 137 | 137 | 43 / 201 |
-| Credits (`store-credits`) | 42 / 0 | 43 / 170 | 170 | 50 / 246 |
+| Scheduling (`store-booking`) | 50 / 0 | 49 / 139 | 139 | 58 / 217 |
+| Credits (`store-credits`) | 51 / 0 | 50 / 186 | 186 | 62 / 272 |
 
-The declarations remove 137 and 170 lines of trusted code, and the YAML stays
-the same size. The counterexamples drop the 5 `intervals` lines and the 4
-`transfers` and `readOnlyProperties` lines, along with `ownership`,
+When the counterexamples were added, before #956, the counts were 38 / 0
+against 39 / 137 for scheduling and 42 / 0 against 43 / 170 for credits.
+
+The declarations remove 139 and 186 lines of trusted code, and the YAML stays
+the same size. The counterexamples drop the 7 `intervals` lines, and the
+`transfers`, `readers` and `readOnlyProperties` lines, along with `ownership`,
 `maxRecordsPerOwner` and `idempotency`, which move into the code. They add an
-`owner` property, the extension's declaration and a disabled store route.
+`owner` property, the extension's declaration and a disabled store route. The
+staff list with `create: {members: staff}` and the `unique` handle stay
+declared in both versions: they are not the plumbing measured here, so the
+booking counterexample creates as the caller and the credits one lets the
+store refuse a taken handle.
 
 Most of the removed code is not the rule itself:
 
 - **Scheduling.** The overlap check is 12 lines, plus 8 to page through every
   booking.
 - **Credits.** The transfers are 33 lines (the floors, the body check and the
-  transfer), and retries 9.
+  transfer), retries 9, and the directory's projection and lookup 16.
 - **Both.** The rest is what the store already serves for a declared
   collection: routing, bodies, the error shape, the owner, the quota and the
   extension registration (33 lines in the booking version).

@@ -57,9 +57,11 @@ accept the flag and ignore it
 ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). One goal word
 alone ("notify the team") does not require an extension: a surface needs two
 of its goal words, or its extension a matching recipe or noun. Scheduling
-goals find the `store-booking` recipe and credit goals `store-credits`, whose
+goals find the `store-booking` recipe, credit goals `store-credits`, whose
 plan names the issuer pattern (a transfer with a negative `min` and
-`members`).
+`members`), and approval goals `store-approval` (`by: others` approve and
+reject for a reviewers list, a reviewer queue, and `editable`/`deletable` so an
+approved request is locked).
 
 The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
 [llms.txt](../llms.txt) index and the generated [llms-full.txt](../llms-full.txt)
