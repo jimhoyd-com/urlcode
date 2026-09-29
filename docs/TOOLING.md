@@ -755,7 +755,7 @@ rather than editing it.
 
 ### OpenAPI export
 
-`urlcode openapi [--project DIR] [--origin URL] [--out FILE] [--host-file F] [--policy F]`
+`urlcode openapi [--check [FILE]] [--project DIR] [--origin URL] [--out FILE] [--host-file F] [--policy F]`
 prints (or, with `--out`, writes) an [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.1.html)
 JSON document for the project's declared HTTP operations. MCP `get_openapi` and
 the SDK's `buildOpenApi` return the same document from the same function. Like
@@ -866,9 +866,27 @@ code (`trusted` or `sandboxed`), the middleware count, the extension and policy
 names, the error format (with `errorScope` when it is `mixed`), the
 `methodNotAllowed` answer and per-target support.
 
-The export is checked by `test/openapi.test.ts`: the output validates against
-the official OpenAPI 3.1 schema (vendored in `test/fixtures/openapi`) with
-every Schema Object valid against the JSON Schema 2020-12 meta-schema; a
+`urlcode openapi --check [file.json]` validates the project's export (with the
+same `--project`, `--origin` and `--host-file`; `--out` still writes it), or a
+JSON document on disk, and prints a report instead of the document. It checks
+the document against the official OpenAPI 3.1 schema that ships with core
+(`data/openapi`, the dated iteration named in the report's `schema`), every
+Schema Object against the JSON Schema 2020-12 meta-schema, and every local
+`$ref` against the document. An invalid document exits `1` and lists at most 50
+problems, each located by a JSON pointer or its operation, never with a value
+from the document. Formats (`uri`, `email`) are not checked, and neither is
+whether an answer matches its schema: the contract run below does that in this
+repository. With `--json` the report is one
+`{event: "openapi-check", source, valid, schema, problems, operations, schemaObjects}`
+line.
+
+```sh
+npx urlcode openapi --check --project app --host-file host.mjs
+npx urlcode openapi --check openapi.json --json
+```
+
+The export is checked by `test/openapi.test.ts`: the output passes the same
+checks as `--check`; a
 client generated from it by [`@hey-api/openapi-ts`](https://heyapi.dev/)
 typechecks and calls `examples/body-validation`; and a contract run sends
 requests derived from the document (valid ones, each declared refusal, then an

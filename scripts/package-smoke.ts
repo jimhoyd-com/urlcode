@@ -39,7 +39,7 @@ try {
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   assert.ok(pack.files.some(f => f.path === 'starters/default/.github/workflows/urlcode.yml'),'The starter CI template must ship with the package');
-  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','.claude/skills/urlcode-authoring/SKILL.md','.claude/skills/urlcode-authoring/hosted-plan.mjs','.claude/skills/urlcode-operations/SKILL.md','starters/default/AGENTS.md']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
+  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','data/openapi/oas-3.1-schema-2025-09-15.json','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','.claude/skills/urlcode-authoring/SKILL.md','.claude/skills/urlcode-authoring/hosted-plan.mjs','.claude/skills/urlcode-operations/SKILL.md','starters/default/AGENTS.md']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
   // No MCP client configuration ships (#825): an agent sandbox refuses to unpack one, and init renders .mcp.json itself
   // (checked below against the installed CLI's init output).
   assert.ok(!pack.files.some(f => /(?:^|\/)\.mcp\.json$/.test(f.path)), 'The package must not ship a .mcp.json');
