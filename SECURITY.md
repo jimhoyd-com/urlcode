@@ -89,7 +89,8 @@ The directories hold seeded test accounts (hashed passwords) and fixture data.
 They are mode 0700, named `urlcode-hermetic-<pid>-*` and `urlcode-data-<pid>-*`,
 removed on close, SIGINT, SIGTERM and an unhandled rejection, and swept by a
 later run once their process is gone and they are an hour old (#977). A
-SIGKILL leaves them until that sweep. See
+SIGKILL leaves them until that sweep, as does any stop signal on Windows, where
+the sweep also cannot check owner or mode. See
 [test data and seeds][docs/READINESS.md#test-data-and-seeds].
 
 Add-on packages are trusted by pin, not by review. A released add-on is pinned

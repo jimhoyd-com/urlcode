@@ -964,7 +964,8 @@ not have made the promise:
 
 The run's directory is `urlcode-hermetic-<pid>-XXXXXX` under the OS temporary
 directory. It is removed on close, on SIGINT or SIGTERM, and on an unhandled
-rejection, and a later run sweeps one a killed process left behind
+rejection (on Windows a stop signal skips the handlers), and a later run sweeps
+one a killed process left behind
 ([test data and seeds](READINESS.md#test-data-and-seeds)).
 
 ### Site origins and same-origin checks

@@ -21,6 +21,14 @@ const declarations = { extensions: { legacy: { version: '1', config: {} } } };
 const routes = { '/demo/*': { extension: 'legacy', methods: ['GET'] } };
 const schema = { type: 'object', additionalProperties: false };
 
+/**
+ * The child's environment with its temporary directory redirected to `scratch`: TMPDIR on POSIX, TEMP and TMP on
+ * Windows (which also needs its system variables to start Node), and never the parent's revision pin.
+ */
+function childEnv(scratch: string): NodeJS.ProcessEnv {
+  const { PROJECT_SHA256: _pin, URLCODE_POLICY: _policy, URLCODE_ORIGIN: _origin, ...inherited } = process.env;
+  return { ...inherited, TMPDIR: scratch, TEMP: scratch, TMP: scratch };
+}
 async function temp(t: TestContext, prefix: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -108,8 +116,10 @@ test('a stale run directory is swept only when it is ours, old, unlinked and its
   await symlink(outside, join(root, 'urlcode-hermetic-4000005-abcDEF'));
   for (const name of [dirs.dead, dirs.alive, dirs.open, dirs.foreign, dirs.mine]) await utimes(join(root, name), old, old);
   const removed = await sweepStaleRunDirectories({ root, now, exists: pid => pid === 4000002 });
-  assert.deepEqual(removed, [join(root, dirs.dead)]);
-  assert.deepEqual((await readdir(root)).sort(), [dirs.alive, dirs.open, dirs.foreign, dirs.mine, 'urlcode-hermetic-4000005-abcDEF', dirs.young].sort());
+  // Windows has no uid or POSIX mode to check, so there the 0755 directory is swept like any other stale one.
+  const windows = process.platform === 'win32';
+  assert.deepEqual(removed.sort(), (windows ? [dirs.dead, dirs.open] : [dirs.dead]).map(name => join(root, name)).sort());
+  assert.deepEqual((await readdir(root)).sort(), [dirs.alive, ...(windows ? [] : [dirs.open]), dirs.foreign, dirs.mine, 'urlcode-hermetic-4000005-abcDEF', dirs.young].sort());
   assert.equal(await exists(join(outside, 'keep.txt')), true);
 });
 
@@ -122,12 +132,15 @@ test('createRunDirectory names the directory for this process and removeRunDirec
 });
 
 test('an interrupted or crashing urlcode test removes its run directories (#977)', { timeout: 60000 }, async t => {
+  // On Windows, child.kill('SIGINT' | 'SIGTERM') terminates the process without running its handlers, so there is
+  // nothing to clean up in-process; the next run's sweep covers it. The unhandled-rejection path runs everywhere.
+  const noSignals = process.platform === 'win32' ? 'Windows ends the process on kill() without running signal handlers; the sweep covers it' : false;
   const cases: [string, NodeJS.Signals | undefined, number, string][] = [
     ['SIGINT', 'SIGINT', 130, 'export default async () => { await new Promise(resolve => setTimeout(resolve, 60000)); return new Response(\'late\'); };'],
     ['SIGTERM', 'SIGTERM', 143, 'export default async () => { await new Promise(resolve => setTimeout(resolve, 60000)); return new Response(\'late\'); };'],
     ['an unhandled rejection', undefined, 1, 'export default () => { Promise.reject(new Error(\'synthetic unhandled\')); return new Promise(() => {}); };'],
   ];
-  for (const [label, signal, code, source] of cases) await t.test(label, async t => {
+  for (const [label, signal, code, source] of cases) await t.test(label, { skip: signal ? noSignals : false }, async t => {
     const scratch = await temp(t, 'urlcode-hardening-tmp-');
     const app = await project(t, { ...routes, '/slow': { function: 'slow.mjs' } }, { 'slow.mjs': source, 'tests/requests.json': JSON.stringify([{ path: '/slow', status: 200 }]) }, declarations);
     const site = await temp(t, 'urlcode-hardening-site-');
@@ -143,7 +156,7 @@ const legacy = defineExtension({ name: 'legacy', description: 'A contract-2 exte
 export default await composeHost(import.meta.url, [legacy()]);
 `);
     const cli = join(import.meta.dirname, '..', 'packages', 'core', 'src', 'cli.ts');
-    const child = spawn(process.execPath, [cli, 'test', '--project', app, '--host-file', join(site, 'host.mjs'), '--local-review'], { env: { PATH: process.env.PATH ?? '', TMPDIR: scratch }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [cli, 'test', '--project', app, '--host-file', join(site, 'host.mjs'), '--local-review'], { env: childEnv(scratch), stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
     const exit = new Promise<number | null>(resolve => child.once('close', resolve));

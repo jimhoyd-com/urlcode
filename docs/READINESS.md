@@ -459,7 +459,10 @@ server's runners send SIGTERM and wait 5 seconds before SIGKILL. A process
 killed outright cannot clean up, so the next run removes a directory another
 run left behind once it is at least an hour old, its process no longer exists,
 and `lstat` shows a real directory owned by you with mode 0700. It never
-follows a symbolic link.
+follows a symbolic link. On Windows, a stop signal ends the process without
+running its handlers, so the directories wait for that sweep, and the sweep
+has no owner or mode to check there: it relies on the name, the age and the
+process id.
 
 What fixtures cannot create over HTTP is declared in `tests/seed.json` beside
 `tests/requests.json`: an object keyed by extension name, handed to that
