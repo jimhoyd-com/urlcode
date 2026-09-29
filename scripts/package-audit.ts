@@ -321,12 +321,14 @@ export const budgets: Record<string, Budget> = {
     // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #941 host lease helper on top of #947: 1039588 packed / 4103610 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    // #940 MCP runners pass --local-review on top of #941: 1041915 packed / 4111247 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1022 * 1024,
+    // #902 item 6's plumbing measurement (FRAMEWORK.md and STORE.md, copied into llms-full.txt) on top of #941: 1043053
+    // packed / 4113484 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #940 MCP runners pass --local-review on top of #965: 1043771 packed / 4116426 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 1024 * 1024,
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #941 host lease helper on top of #947: 1039588 packed / 4103610 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    // #940 MCP runners pass --local-review on top of #941: 1041915 packed / 4111247 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 4018 * 1024,
+    // #940 MCP runners pass --local-review on top of #965: 1043771 packed / 4116426 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 4023 * 1024,
     entries: 534,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -346,8 +348,10 @@ export const budgets: Record<string, Budget> = {
     // With #927's README note that auth alone detects no second host: 17700 packed / 54758 unpacked bytes, 14 files on
     // Node 26, 732 packed bytes under the old 18 KiB (CI's Node 24 packs larger); ~3 KiB headroom on each.
     // #930 hermetic runs and seeds on top of #946: 19307 packed / 60677 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 23 * 1024,
-    unpacked: 63 * 1024,
+    // #940 on top of #965: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 24 * 1024,
+    // #940 on top of #965: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 65 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
