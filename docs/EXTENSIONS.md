@@ -673,7 +673,7 @@ parsing, JSON responses or origin checks; use these:
 
 | Helper | What it does |
 |---|---|
-| `readBody(request, {maxBytes, maxDepth?})` | Reads a JSON body and returns the parsed value. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), any media type but `application/json` (415), invalid UTF-8 (400), and nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
+| `readBody(request, {maxBytes, maxDepth?})` | Reads a JSON body and returns the parsed value. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), any media type but `application/json` (415), invalid UTF-8 (400), and nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`, then a string or key holding an unpaired UTF-16 surrogate escape such as `"\ud800"` (400 `invalid_unicode`), which UTF-8 and so SQLite cannot carry. |
 | `jsonResponse(status, value, headers?)` | A JSON answer with `no-store`, `nosniff`, a deny-all CSP and a `strict-origin` referrer policy; a header you pass replaces the default of the same name. |
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |

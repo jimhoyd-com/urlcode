@@ -73,6 +73,24 @@ test('the built Worker answers the same JSON 422 body as the server, whatever th
   }
 });
 
+test('a format: json route refuses a string or key with an unpaired surrogate escape with 400, on the server and the built Worker (#988)', async t => {
+  const root = await project(t, { '/todos': routes['/todos'] });
+  const out = await mkdtemp(join(tmpdir(), 'urlcode-cf-')); t.after(() => rm(out, { recursive: true, force: true }));
+  await buildCloudflare(root, { out });
+  const artifact = ((await import(pathToFileURL(join(out, 'artifact.js')).href)) as { default: Artifact }).default;
+  const validators = (await import(pathToFileURL(join(out, 'validators.js')).href)) as Validators; const bodyValidators = (await import(pathToFileURL(join(out, 'body-validators.js')).href)) as BodyValidators;
+  const worker = createFetchHandler(artifact, validators, bodyValidators);
+  const app = await startServer({ project: root, port: 0, log: () => {} }); t.after(() => app.close());
+  const headers = { 'content-type': 'application/json' };
+  for (const body of ['{"title":"\\ud800","kind":"a"}', '{"title":"x","kind":"a","\\udc00":1}']) {
+    const local = await request(app, '/todos', { method: 'POST', headers, body });
+    const remote = await worker(new Request('https://example.com/todos', { method: 'POST', headers, body }));
+    assert.equal(local.status, 400, body); assert.equal(remote.status, 400, body);
+    assert.match(local.body, /unpaired surrogate/); assert.match(await remote.text(), /unpaired surrogate/);
+  }
+  assert.equal((await request(app, '/todos', { method: 'POST', headers, body: '{"title":"\\ud83d\\ude00","kind":"a"}' })).status, 201, 'a surrogate pair escape is ordinary text');
+});
+
 test('the JSON 422 body is bounded, RFC 6901 escaped and omits nothing silently', () => {
   const issues = Array.from({ length: 40 }, (_, i) => ({ pointer: `/field${i}_${'n'.repeat(400)}`, keyword: 'required', message: 'is missing a required property' }));
   const text = bodySchemaJson(issues);

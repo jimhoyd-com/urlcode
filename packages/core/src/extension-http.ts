@@ -2,16 +2,17 @@
 // reader, one JSON response with the extension security headers, and one same-origin admission rule. Pure functions
 // over `ExtensionRequest` fields, written with web-standard APIs only (TextDecoder, URL) so every target can run
 // them; they keep no state and know no extension.
-import { maxRequestBodyBytes } from './body-validation.ts';
+import { holdsIllFormedString, maxRequestBodyBytes } from './body-validation.ts';
 import { isSiteOrigin } from './site-origins.ts';
 import type { ExtensionRequest } from './extensions.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 
 export type ExtensionHttpErrorCode = 'body_too_large'|'unsupported_media_type'|'invalid_encoding'|'invalid_json'
-  |'duplicate_key'|'too_deep'|'duplicate_header';
+  |'duplicate_key'|'too_deep'|'duplicate_header'|'invalid_unicode';
 const messages:Readonly<Record<ExtensionHttpErrorCode,string>>={
   body_too_large:'Request body too large',unsupported_media_type:'Unsupported request content type',invalid_encoding:'Invalid request encoding',
   invalid_json:'Invalid JSON body',duplicate_key:'Duplicate JSON key',too_deep:'JSON body nested too deeply',duplicate_header:'Duplicate request header',
+  invalid_unicode:'JSON body holds an unpaired surrogate escape (\\uD800-\\uDFFF)',
 };
 /** A refused request. The message is fixed per code and never echoes request data, so it is safe to show the client. */
 export class ExtensionHttpError extends Error {
@@ -60,7 +61,8 @@ function checkJsonShape(text:string,maxDepth:number):void {
  * Reads the request body as JSON and returns the parsed value. Checks, in order: one `Content-Type` header (400
  * `duplicate_header`), `maxBytes` (413 `body_too_large`), `application/json` (415 `unsupported_media_type`;
  * lower-cased, parameters ignored), fatal UTF-8 (400 `invalid_encoding`), then the depth and duplicate-key pre-pass
- * (400 `too_deep`/`duplicate_key`) before `JSON.parse` (400 `invalid_json`).
+ * (400 `too_deep`/`duplicate_key`) before `JSON.parse` (400 `invalid_json`), then a string or key holding an unpaired
+ * surrogate (400 `invalid_unicode`, #988).
  */
 export function readBody(request:BodySource,options:ReadBodyOptions):unknown {
   const {maxBytes,maxDepth=32}=options;
@@ -75,6 +77,7 @@ export function readBody(request:BodySource,options:ReadBodyOptions):unknown {
   checkJsonShape(text,maxDepth);
   let value:unknown;
   try{value=JSON.parse(text);}catch{return refuse('invalid_json');}
+  if(holdsIllFormedString(value))refuse('invalid_unicode');
   return value;
 }
 

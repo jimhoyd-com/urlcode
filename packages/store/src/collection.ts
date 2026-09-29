@@ -385,7 +385,7 @@ export const collectionSchema = {
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transfer; anyone else gets 403 membership_required before any record is read.' },
       },
     } },
-    editable: stateSchema('The states in which PUT and PATCH may change a record, in the shape of a transition\'s from: each property must hold its value, or one of its listed values, for example {status: [draft]}. In any other state a PUT or PATCH (on HTTP, StoreExports or a host transaction) answers 409 record_locked and writes nothing, decided under the write lock. Each property must be in readOnlyProperties, so only a transition moves a record in or out. Transitions, increments and transfers are not affected.'),
+    editable: stateSchema('The states in which PUT and PATCH may change a record, in the shape of a transition\'s from: each property must hold its value, or one of its listed values, for example {status: [draft]}. In any other state a PUT or PATCH (on HTTP, StoreExports or a host transaction) and POST <mount>/<id>/increment/<property> answer 409 record_locked and write nothing, decided under the write lock. Each property must be in readOnlyProperties, so only a transition moves a record in or out. Transitions, transfers and the click count of a short link are not affected.'),
     deletable: stateSchema('The states in which a record may be deleted, in the same shape as editable, for example {status: [draft, rejected]}; in any other a DELETE (or a host transaction\'s remove) answers 409 record_locked. Each property must be in readOnlyProperties.'),
     unique: { type: 'array', minItems: 1, maxItems: 4, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'String properties (maxLength at most 128, no default, not readOnly, not the key, not set by a transition) that no two records hold alike, across every owner on an owned collection: a create or update that would duplicate one answers 409 value_taken, checked under the write lock through an index. An absent value claims nothing. The 409 tells the caller the value is in use by someone, so declare it only for a public handle, never an email or anything private.' },
   },
@@ -459,7 +459,7 @@ export function compileRecordSchema(name: string, declared: unknown, layer: Reco
     const at = `Collection ${name}: defaults.${property.slice(0, 64)}`;
     if (!hasOwn(properties, property)) throw new Error(`${at}: ${property.slice(0, 64)} is not a declared property`);
     if (!['string', 'number', 'boolean'].includes(typeof value)) throw new Error(`${at} must be a string, number or boolean`);
-    const issue = bodyIssues(partial, { [property]: value }, 1)[0];
+    const issue = unicodeIssue(property, value) ?? bodyIssues(partial, { [property]: value }, 1)[0];
     if (issue) throw new Error(`${at} ${issue.message}`);
     defaults[property] = value as Scalar;
   }
@@ -467,9 +467,18 @@ export function compileRecordSchema(name: string, declared: unknown, layer: Reco
   for (const property of readOnly) if (!hasOwn(properties, property)) throw new Error(`Collection ${name}: readOnlyProperties names ${property.slice(0, 64)}, which is not a declared property`);
   return { schema: deepFreeze(structuredClone(schema) as unknown as RecordSchema), ...(schemaName === undefined ? {} : { schemaName }), properties: deepFreeze(structuredClone(properties) as Record<string, PropertySchema>), required: Object.freeze([...required as string[]]), defaults: Object.freeze(defaults), readOnly: Object.freeze(readOnly), record, partial };
 }
+/**
+ * A string holding an unpaired UTF-16 surrogate (#988). The store keeps only well-formed text: SQLite's `->>` and a
+ * bound parameter would carry such a string as different bytes, so `unique`, `intervals.within`, `key` and the SQL
+ * list order could not compare it. Core refuses one in every JSON body; this covers `StoreExports`, host
+ * transactions, declarations and rows already stored.
+ */
+function unicodeIssue(property: string, value: unknown): BodySchemaIssue | undefined {
+  return typeof value === 'string' && !value.isWellFormed() ? { pointer: `/${property}`, keyword: 'unicode', message: 'must be well-formed Unicode (it holds an unpaired surrogate)' } : undefined;
+}
 /** The first issue of one property value against its schema (a filter, a transition value, an increment), or undefined. */
 export function propertyIssue(compiled: CompiledRecordSchema, property: string, value: unknown): BodySchemaIssue | undefined {
-  return bodyIssues(compiled.partial, { [property]: value }, 1)[0];
+  return unicodeIssue(property, value) ?? bodyIssues(compiled.partial, { [property]: value }, 1)[0];
 }
 
 export interface NormalizedSpec {
@@ -1077,6 +1086,9 @@ export class Collection {
     // Judged without `required`: a record stored before a property became required is still served, and its next
     // write must supply it.
     if (bodyIssues(this.spec.records.partial, fields, 1).length) throw new RowError(`Collection ${this.name}: a stored record no longer matches the collection schema`);
+    // Written before #988 refused them at write time; `unique`, `intervals` and `key` could not compare it.
+    const illFormed = Object.keys(fields).find(field => unicodeIssue(field, fields[field]));
+    if (illFormed !== undefined) throw new RowError(`Collection ${this.name}: record ${row.id} holds ${illFormed.slice(0, 64)} as a string with an unpaired UTF-16 surrogate (a \\uD800-\\uDFFF escape), which the store no longer accepts because unique, intervals and key cannot compare it; change or delete that record in the database first`);
     return { id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, ...(row.owner === null ? {} : { [OWNER_FIELD]: row.owner }), ...fields as StoredRecord };
   }
   /** A consistent read (one deferred transaction), with storage and validation failures mapped to 503. */
@@ -1130,7 +1142,8 @@ export class Collection {
    */
   private validated(values: Record<string, unknown>): StoredRecord {
     // The interval rules judge a record the schema accepts, so a bound is already of its declared type.
-    const issues = [...bodyIssues(this.spec.records.record, values)];
+    const unicode = Object.keys(this.spec.records.properties).map(field => unicodeIssue(field, values[field])).filter(issue => issue !== undefined);
+    const issues = unicode.length ? unicode : [...bodyIssues(this.spec.records.record, values)];
     if (!issues.length && this.spec.intervals) issues.push(...intervalIssues(this.spec.intervals, values));
     if (issues.length) throw invalidRecord(issues);
     const key = this.spec.key;
@@ -1441,7 +1454,7 @@ export class Collection {
     const scope = this.scope(owner);
     this.writable();
     return this.write(db => this.idempotent(db, retry, 200, found => this.current(db, found, scope), () => {
-      const record = this.incremented(db, id, field, scope);
+      const record = this.incremented(db, id, field, scope, true);
       return { record, audited: this.audited(db, 'incremented', id, [field], actor) };
     }), viewer);
   }
@@ -1519,7 +1532,7 @@ export class Collection {
     // credentials or a budget, and audit's retention is shared with every producer's events, which a flood of clicks
     // would prune. Short links need a key, which an owned collection refuses; this stays unreachable for owned records.
     if (this.owned) throw new StoreError(404, 'not_found', 'No such record');
-    return this.write(db => ({ result: { status: 200, record: this.incremented(db, id, field, undefined), replayed: false }, audited: false })).record!;
+    return this.write(db => ({ result: { status: 200, record: this.incremented(db, id, field, undefined, false), replayed: false }, audited: false })).record!;
   }
 
   // The write steps. Each runs inside a transaction its caller opened (`write` above, or a host transaction in
@@ -1671,9 +1684,15 @@ export class Collection {
     this.audited(db, 'transferred', credit.id as string, [field], actor, { transfer: name, side: 'to', counterpart: debit.id as string });
     return { record: debit, to: credit, audited };
   }
-  private incremented(db: StoreDatabase, id: string, field: string, owner: string | undefined): StoredRecord {
+  /**
+   * Raises `field` by one. `locked`: the public increment, which `editable` gates like a PATCH (#989), so a record
+   * outside its editable states keeps every value its reviewer saw; a short link's click count is not gated.
+   */
+  private incremented(db: StoreDatabase, id: string, field: string, owner: string | undefined, locked: boolean): StoredRecord {
     if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');
-    const current = this.current(db, id, owner), value = (current[field] as number) + 1, issue = propertyIssue(this.spec.records, field, value);
+    const current = this.current(db, id, owner);
+    if (locked) refuseLocked(this.spec, 'editable', current);
+    const value = (current[field] as number) + 1, issue = propertyIssue(this.spec.records, field, value);
     if (issue) throw new StoreError(409, 'increment_limit', 'The increment would violate the property\'s schema', { issues: [issue] });
     const record: StoredRecord = { ...current, updatedAt: stamp(current.updatedAt as string), [field]: value };
     this.sized(record);
