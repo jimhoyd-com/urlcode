@@ -822,8 +822,10 @@ The #835 counterexamples, and what serves each:
 [#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
 of this contract: disk-full evidence for multi-process serving (the
 [harness](#what-the-multi-process-harness-proves) covers a `SIGKILL`, not a
-full disk), sorted lists in SQL, and measuring the plumbing and edit effort the
-scheduling and credit counterexamples save.
+full disk). Sorted lists in SQL are
+[#951](https://github.com/jimhoyd-com/urlcode/issues/951). The plumbing the
+declared intervals and transfers save is
+[measured in the framework guide](FRAMEWORK.md#plumbing-removed-by-intervals-and-transfers).
 
 
 ## Non-overlapping intervals
@@ -2135,7 +2137,7 @@ operations as one database transaction: see
 SQL ordering for sorted lists is not
 built (a [declared transfer](#declared-transfers) moves value between two
 records; holds still need a host transaction)
-([#902](https://github.com/jimhoyd-com/urlcode/issues/902); the
+([#951](https://github.com/jimhoyd-com/urlcode/issues/951); the
 [transition design](#what-is-not-covered) lists what each needs), nor are roles
 beyond a [membership collection](#membership-gates-and-cross-owner-reads). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search. Owned collections
