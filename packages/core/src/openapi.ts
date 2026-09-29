@@ -126,7 +126,7 @@ const envelope={$ref:'#/components/schemas/UrlcodeErrorEnvelope'},plain={type:'s
 /** The runtime's own 405 in each error format, referenced from a path item's x-urlcode.methodNotAllowed. */
 function methodNotAllowedResponse(format:RouteErrorFormat):Json {
   return {
-    description:`The runtime's answer to a method the path does not declare, after any gate that runs first (an enforced throttle or agents policy, an extension's authorize, an operator plugin).${format==='mixed'?mixedNote:''}`,
+    description:`The runtime's answer to a method the path does not declare, after any gate that runs first (an enforced throttle or agents policy; an operator plugin on a path no extension policy protects). An extension's authorize and middleware never run for an undeclared method, so this 405 precedes their 401 or 403.${format==='mixed'?mixedNote:''}`,
     headers:{Allow:headerRef('UrlcodeAllow'),...alwaysHeaders},
     content:{...(format!=='json'?{'text/plain':{schema:plain}}:{}),...(format!=='text'?{'application/json':{schema:envelope}}:{})},
   };

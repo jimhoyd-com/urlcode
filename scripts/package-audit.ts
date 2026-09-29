@@ -288,8 +288,13 @@ export const budgets: Record<string, Budget> = {
     // 3768213 unpacked bytes, 507 entries; CI (Node 24) packed 954811. About 3 KiB of headroom on each.
     // With #834's context fallbacks and plan_feature list vocabulary on top of #903's main, measured on Node 26:
     // 958684 packed / 3783392 unpacked bytes, 507 entries; about 3 KiB of headroom on each.
-    packed: 939 * 1024,
-    unpacked: 3698 * 1024,
+    // Raised for #912 and #915: assertExtensionMountsDisjoint (router, runtime, static validate), method admission
+    // before extension authorize(), the ROUTING mount-ownership and site-root frontend sections, the EXTENSIONS/
+    // TOOLING/SPECIFICATION/ASSETS/auth README notes and llms.txt rows with their llms-full.txt copies. Measured on
+    // Node 26: 962356 packed bytes (820 over 939 KiB), 3794770 unpacked bytes (8018 over 3698 KiB), 507 entries.
+    // Packed raised to 943 KiB and unpacked to 3709 KiB, keeping about 3.2 KiB of headroom on each.
+    packed: 943 * 1024,
+    unpacked: 3709 * 1024,
     entries: 510,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

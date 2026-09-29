@@ -180,7 +180,10 @@ bounded requests and, when named in a route's policies, gates the request via
 `authorize`, wraps the rest of the pipeline via `middleware`, or both (see
 [Wrapping a route](#wrapping-a-route-extension-middleware) above). Missing
 registrations, stale grants, invalid configuration and unsupported targets fail
-activation. Multiple mounts cannot overlap other declared routes.
+activation. An extension mount owns its path and every path below it; the
+[mount ownership rule](ROUTING.md#extension-mounts-own-their-namespace) says
+which other routes may sit beside or above it, and `urlcode validate` checks it
+with or without a host file.
 
 An invalid `config` block fails with the first violation of the registration's
 schema, located by JSON pointer and named by the failed check, the same form
@@ -214,7 +217,15 @@ names the unknown key `role`, reported by the auth extension's policy schema,
 rather than saying `auth` must be `true`.
 
 For extension-protected routes, agents/throttle run before authorization and
-cache access happens only after authorization. This part is unconditional:
+cache access happens only after authorization. Method admission sits between
+them: a method the route does not declare is answered `405` with `Allow`, in
+the route's [error format](HTTP.md#error-format), and neither `authorize()` nor
+`middleware()` runs for it. That holds on an `extension:` mount and on a core
+route an extension policy protects alike, so `auth: true` never turns an
+undeclared method into a `401` or `403`. It reveals only which methods the route
+declares, which an unprotected route's `405` and the
+[OpenAPI export](TOOLING.md#openapi-export) already publish; the throttle and agents policies
+still count and can refuse these requests first. This part is unconditional:
 naming any extension in `policies.extensions` always runs its `authorize()`
 (when it implements one) before the route's own handler, whatever this
 section says next.
@@ -291,8 +302,8 @@ additive at the `policies.extensions` layer and never touches the native
 `middleware:` array, its schema, or its dispatch, all of which are unchanged.
 
 `authorize` and `middleware` compose on the same route, from the same or
-different extensions, without special-casing: `authorize` always runs first
-(unchanged), and any declared `middleware()` wraps everything after that
+different extensions, without special-casing: once the method is admitted,
+`authorize` always runs first, and any declared `middleware()` wraps everything after that
 point, including the rest of the authorize-gated pipeline. A route naming an
 extension via `policies.extensions` only requires that extension to
 implement `authorize`, `middleware`, or both — never both unconditionally.

@@ -11,11 +11,11 @@ import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
 import { compileBodySchema, uuidFormat } from './body-schema.ts';
 import { bodySchemaFormatChecks, bodySchemaFormatMaxLength } from './body-formats.ts';
 import Ajv from 'ajv/dist/2020.js';
-import { assert, revisionPinHint, routeError } from './errors.ts';
+import { assert, ConfigError, revisionPinHint, routeError } from './errors.ts';
 import { functionFile } from './config.ts';
 import { parameterName } from './match.ts';
 import type { CompiledParameter, ParameterSchema, Scalar, ValueRef } from './match.ts';
-import type { CompiledRedirect, CompiledRoute, CompiledRouteTable, LoadedDocument, RedirectConfig } from './types.ts';
+import type { CompiledRedirect, CompiledRoute, CompiledRouteTable, LoadedDocument, RedirectConfig, RouteConfig } from './types.ts';
 // Re-exported so existing importers keep one entry point for routing.
 export { parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './match.ts';
 
@@ -64,6 +64,25 @@ function compiledRedirect(redirect: RedirectConfig): CompiledRedirect {
   if (redirect.query?.pass !== false) return redirect as CompiledRedirect; // pass is string[] | undefined here; TypeScript cannot narrow through the optional query
   const { pass: _pass, ...query } = redirect.query;
   return { ...redirect, query };
+}
+/**
+ * An extension owns its mount path and every path below it (RIM-ROUTE-MOUNT-001). Refused: an exact or parameterized
+ * route that can match there (those win over mounts), any mount inside it and an extension mount enclosing it.
+ * Allowed: a shorter route, and a non-extension mount strictly enclosing it (a root `/*` static site, a `/**`
+ * redirect), since mounts already select the longest matching prefix. A pure check over route keys, so static
+ * validation runs it without activating anything; the error names both routes.
+ */
+export function assertExtensionMountsDisjoint(routes: Record<string, RouteConfig>): void {
+  const entries = Object.entries(routes).map(([pattern, config]) => {
+    const parts = pattern.split('/').slice(1), mount = (Boolean(config.static || config.extension) && pattern.endsWith('/*')) || (Boolean(config.redirect) && pattern.endsWith('/**'));
+    return { pattern, config, mount, extension: mount && Boolean(config.extension), base: mount ? parts.slice(0, -1) : parts };
+  });
+  for (const owner of entries.filter(entry => entry.extension)) for (const other of entries) {
+    if (other === owner || !owner.base.slice(0, Math.min(owner.base.length, other.base.length)).every((part, index) => part === other.base[index] || parameterName(other.base[index]!))) continue;
+    const enclosing = other.base.length < owner.base.length;
+    if (enclosing && !other.extension) continue;
+    throw new ConfigError(`Extension mount ${owner.pattern} overlaps route ${other.pattern}: ${enclosing ? `${other.pattern} is itself an extension mount and owns every path below it; mount the extensions side by side` : `extension "${owner.config.extension}" answers /${owner.base.join('/')} and every path below it, so move ${other.pattern} outside it`}`, { code: 'extension-mount-overlap', route: owner.pattern, pointer: `/routes/${owner.pattern.replace(/~/g, '~0').replace(/\//g, '~1')}` });
+  }
 }
 export async function compileRoutes(loaded: LoadedDocument, bindings: Record<string, string | undefined>, permissions: BindingPermissions = {}, projectSha256?: string, extensions?: readonly Pick<RuntimeExtension,'name'|'cacheSensitive'|'capabilities'>[]): Promise<CompiledRouteTable> {
   const deadline=performance.now()+10000;
@@ -270,7 +289,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     if (!byLength.has(route.parts.length)) byLength.set(route.parts.length, []);
     byLength.get(route.parts.length)!.push(route);
   }
-  for(const mount of mounts.filter(route=>route.extension)){const base=mount.parts.slice(0,-1);for(const candidate of [...exact.values(),...dynamic,...mounts]){if(candidate===mount)continue;const parts=candidate.parts;const shared=Math.min(base.length,parts.length-(candidate.prefix?1:0));const compatible=base.slice(0,shared).every((part,index)=>part===parts[index]||parameterName(parts[index]!));assert(!compatible||(!candidate.prefix&&parts.length<base.length),'Extension mount overlaps another route');}}
+  assertExtensionMountsDisjoint(loaded.routes);
   assert(new Set(mounts.map(mount => mount.prefix)).size === mounts.length, 'A /** wildcard redirect cannot share its prefix with a static or extension mount');
   mounts.sort((a,b) => b.prefix!.length - a.prefix!.length);
   assert(performance.now()<deadline, 'Route compilation deadline exceeded');
