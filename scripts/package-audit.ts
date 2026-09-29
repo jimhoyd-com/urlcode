@@ -320,11 +320,12 @@ export const budgets: Record<string, Budget> = {
     // #938 installed strings (llms.txt pinned reference definitions, llms-full.txt on the release tag, dist/release.js)
     // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
     // #930 on top of #950: 1033581 packed / 4089059 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    // #948 pinned docs links in schema descriptions, example and starter YAML comments and llms-full.txt prose on top:
-    // 1033938 packed / 4093060 unpacked bytes, 528 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1014 * 1024,
-    unpacked: 4001 * 1024,
-    entries: 529,
+    // #941 host lease helper on top of #947: 1039588 packed / 4103610 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #948 pinned docs links in schema descriptions, example and starter YAML comments and llms-full.txt prose on top of #941:
+    // 1041558 packed / 4112302 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 1021 * 1024,
+    unpacked: 4019 * 1024,
+    entries: 534,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
