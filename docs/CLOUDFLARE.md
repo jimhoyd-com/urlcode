@@ -158,7 +158,7 @@ Cloudflare account or credentials involved. The Cloudflare build of
 [`examples/body-validation/`](../examples/body-validation/) (plus two routes
 with a `pattern` at the 128-character cap, one in a body and one in a query
 parameter, and one that refuses a body on its default GET and HEAD) was run
-next to the self-hosted server, and 30 requests were sent to both: a valid body; an invalid body and a missing required property with
+next to the self-hosted server, and 33 requests were sent to both: a valid body; an invalid body and a missing required property with
 `Accept: application/json`; the same invalid body with `Accept: text/plain`, no
 `Accept`, `*/*` and `application/json;q=0` (all 422 JSON); malformed JSON (400);
 an oversize body (413); a wrong content type (415); a valid and an invalid
@@ -167,7 +167,10 @@ an oversize body (413); a wrong content type (415); a valid and an invalid
 query parameter, plus 129 characters; and five requests to the JSON Schema
 2020-12 route (`$schema`, a local `$defs` reference, a `[string, "null"]` type
 and `anyOf`): a valid body with `null`, an absent required property, a failing
-`$ref` target, a wrong type and a failing `anyOf`; and four requests to the
+`$ref` target (`format: email`), a wrong type and a failing `anyOf`; three
+requests to its [standard string formats](HTTP.md#body-schema-and-input-patterns):
+a valid `date-time` with a leap second, an impossible date and an `email` far
+over its length cap; and four requests to the
 GET+POST route with [per-method body rules](HTTP.md#per-method-body-rules): a
 GET with no body, a valid POST, a POST with no body (400) and an invalid POST
 (422); and, over a raw socket because `fetch` cannot send them, five requests

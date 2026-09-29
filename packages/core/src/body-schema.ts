@@ -1,5 +1,6 @@
 import Ajv from 'ajv/dist/2020.js';
 import { ConfigError } from './errors.ts';
+import { bodySchemaFormatChecks } from './body-formats.ts';
 import { assertBodySchema, bodyIssues, bodySchemaAjvOptions, bodySchemaLine, bodySchemaRefusal, declaredBodyNames, uuidFormat } from './body-validation.ts';
 import type { BodySchema, BodySchemaIssue, BodyValidator, CompiledBodySchema } from './body-validation.ts';
 
@@ -25,6 +26,7 @@ export function compileBodySchema(schema: unknown): CompiledBodySchema {
     // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
     ajv = new Ajv.default({ ...bodySchemaAjvOptions });
     ajv.addFormat('uuid', uuidFormat);
+    for (const [name, check] of Object.entries(bodySchemaFormatChecks().formats)) ajv.addFormat(name, check);
   }
   let validate: BodyValidator;
   try { validate = ajv.compile(schema) as BodyValidator; }

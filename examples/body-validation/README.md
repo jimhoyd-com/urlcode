@@ -7,7 +7,8 @@ route needs no hand-written validation code.
   Schema 2020-12 document in URLCode's bounded profile, compiled once at load. A body that breaks it answers **422**;
   malformed JSON is still 400 and a wrong media type 415.
 - `/contacts` uses `$schema`, a local `#/$defs` reference, a nullable
-  `type: [string, "null"]` and `anyOf`. A required `phone` must be present:
+  `type: [string, "null"]`, `anyOf` and the standard `format: email` and
+  `format: date-time`. A required `phone` must be present:
   `null` is accepted, an absent `phone` is not.
 - `/requests` serves GET and POST on one path with different body rules.
   `GET: {maxBytes: 0}` refuses a GET body with 413, while POST requires a JSON
