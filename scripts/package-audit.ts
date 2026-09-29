@@ -397,7 +397,8 @@ export const budgets: Record<string, Budget> = {
     // With #913 authoring goals and #916 README responses together: 386402 unpacked bytes (Node 26).
     // #908 named record schemas: see the packed note above.
     // #902 intervals and host transaction retries, and declared transfers: see the packed note above.
-    unpacked: 475 * 1024,
+    // #928 transfer balances kept on delete (refuseBalance, activation rules, docs): 487562 unpacked bytes (Node 26), +3 KiB headroom.
+    unpacked: 480 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,
