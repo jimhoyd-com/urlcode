@@ -121,7 +121,7 @@ See [functions, inputs and methods](yaml/functions.md) and [bindings, split file
 | `routes.*.parameters[].schema.minimum` | number | no | — | Smallest number an integer or number input accepts. |
 | `routes.*.parameters[].schema.maximum` | number | no | — | Largest number an integer or number input accepts. |
 | `routes.*.parameters[].schema.pattern` | string | no | minLength: 1; maxLength: 128 | Regular expression a string input must match, from a bounded subset that also needs maxLength (docs/HTTP.md). |
-| `routes.*.parameters[].schema.format` | string | no | enum: ["uuid"] | Named string format the input must match; only uuid is supported. |
+| `routes.*.parameters[].schema.format` | string | no | enum: ["uuid","date","time","date-time","email","uri","hostname","ipv4","ipv6"] | Named string format the input must match, with the same checks and length caps as a request body schema: uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6 (docs/HTTP.md). Each bounds its own length, so no maxLength is needed. |
 | `routes.*.parameters[].schema.items` | object | no | unknown keys rejected | Element type of a query array input. |
 | `routes.*.parameters[].schema.items.type` | string | yes | enum: ["string","integer","number","boolean"] | Scalar type each repeated query value is converted to. |
 | `routes.*.parameters[].schema.maxItems` | integer | no | minimum: 0; maximum: 100 | Most repeated values a query array input accepts. |

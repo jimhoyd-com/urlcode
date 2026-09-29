@@ -268,10 +268,17 @@ export const budgets: Record<string, Budget> = {
     // Measured on Node 26 after rebasing onto #875/#887/#890: 929130 packed bytes (5482 over 902 KiB) and 3686818
     // unpacked bytes (16802 over 3584 KiB), 499 entries. Packed raised to 911 KiB, unpacked to 3604 KiB and entries
     // to 504, each keeping about 3.7 KiB (or 5 entries) of headroom for the ~2 KiB cross-Node gzip variance above.
+    // Unpacked raised from 3604 to 3614 KiB for #881 items 3-6 and 9 (OpenAPI runtime headers, the 405 and
+    // site.errors scope matching in dist/openapi.js; parameter formats in router/build-cloudflare; the TOOLING/
+    // HTTP/RUNTIME-IMPLEMENTATION sections and schema description with their llms-full.txt and YAML-REFERENCE.md
+    // copies). Measured on Node 26 after rebasing onto #889: 3696414 unpacked bytes, 5918 over the old budget;
+    // packed measures 931851 bytes, 1013 under 911 KiB, so it is unchanged.
     // With #888 (principal provider), #889 (embedding adapter) and #883 slice 1 merged, measured on Node 26:
-    // 933787 packed / 3704490 unpacked bytes, 499 entries; about 3 KiB of headroom on each.
-    packed: 915 * 1024,
-    unpacked: 3621 * 1024,
+    // Earlier: 933787 packed / 3704490 unpacked bytes, 499 entries; about 3 KiB of headroom on each.
+    // With #888 and #881 both merged, measured on Node 26: 936548 packed / 3706583 unpacked bytes, 501 entries;
+    // about 3 KiB of headroom on each.
+    packed: 918 * 1024,
+    unpacked: 3623 * 1024,
     entries: 504,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

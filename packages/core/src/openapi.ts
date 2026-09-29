@@ -8,7 +8,7 @@ import {principalProvidersOf} from './addon-manifest.ts';
 import {bodyPolicy,bodylessMethods} from './http-policy.ts';
 import type {RequestBodyPolicy} from './http-policy.ts';
 import {bodySchemaDialect} from './body-validation.ts';
-import {errorCodes,errorScope,resolveErrorFormat} from './http-response.ts';
+import {errorCodes} from './http-response.ts';
 import type {ErrorFormat} from './http-response.ts';
 import {runningCoreVersion} from './version.ts';
 import type {CompiledRoute,PolicyChain} from './types.ts';
@@ -23,7 +23,8 @@ export const openApiVersion='3.1.1';
 type Json=Record<string,unknown>;
 export interface OpenApiDocument {
   openapi:typeof openApiVersion; jsonSchemaDialect:string; info:{title:string;version:string;description:string};
-  servers?:{url:string}[]; paths:Record<string,Json>; components:{schemas:Record<string,unknown>;securitySchemes?:Record<string,Json>};
+  servers?:{url:string}[]; paths:Record<string,Json>;
+  components:{schemas:Record<string,unknown>;responses?:Record<string,Json>;headers:Record<string,Json>;securitySchemes?:Record<string,Json>};
   'x-urlcode':OpenApiFacts;
 }
 /** Facts about the project that OpenAPI has no field for, under one namespaced extension. */
@@ -73,10 +74,64 @@ const components={
 /** The security scheme for routes a principal-providing extension gates, one per provider: `urlcodeSession.<name>`. */
 const sessionScheme=(provider:string):string=>`urlcodeSession.${provider}`;
 const extensionList=(names:readonly string[]):string=>names.length===1?`the ${names[0]} extension`:`the ${names.slice(0,-1).join(', ')} and ${names.at(-1)} extensions`;
+/** The methods the auth extension refuses from another origin (packages/auth: unsafe methods); every method may get its 401. */
+const unsafeMethods=['POST','PUT','PATCH','DELETE'];
+const headerRef=(name:string):Json=>({$ref:`#/components/headers/${name}`});
+/**
+ * Headers the runtime itself sets (http-response.ts: prepareResponse, prepareStream, errorResponse). X-Request-Id and
+ * X-Content-Type-Options are on every response and a handler cannot replace them; Cache-Control is fixed only on an
+ * error the runtime writes, since elsewhere a handler, declared header or cache policy may set its own.
+ */
+const headerComponents={
+  UrlcodeRequestId:{description:'Set by the runtime on every response: a fresh UUID, or the inbound X-Request-Id when the operator trusts one (docs/OPERATIONS.md). A handler cannot set or replace it.',required:true,schema:{type:'string'}},
+  UrlcodeNosniff:{description:'Set by the runtime on every response; a handler cannot set or replace it.',required:true,schema:{const:'nosniff'}},
+  UrlcodeNoStore:{description:'Fixed on an error the runtime writes itself; neither a declared header nor a policy changes it.',required:true,schema:{const:'no-store'}},
+  UrlcodeAllow:{description:'The methods the route declares, in declared order and comma-separated: the path item\'s x-urlcode.methodNotAllowed.allow.',required:true,schema:{type:'string'}},
+} as const;
+const alwaysHeaders={'X-Request-Id':headerRef('UrlcodeRequestId'),'X-Content-Type-Options':headerRef('UrlcodeNosniff')};
+const errorHeaders={'Cache-Control':headerRef('UrlcodeNoStore')};
+/**
+ * The format of a route's runtime-written errors: its own `errors.format`, else `site.errors`. `mixed` is a templated
+ * route some but not all of whose concrete paths a scope entry covers (an exact `/users/42` beside `/users/{id}`), so
+ * the answer is JSON on those paths and text on the rest; `scope` names the entries.
+ */
+type RouteErrorFormat=ErrorFormat|'mixed';
+/** Which of a route's concrete paths one `site.errors` entry covers (http-response.ts: errorScope), segment by segment. */
+function coverage(entry:string,parts:readonly string[]):'all'|'some'|'none' {
+  const prefix=entry.endsWith('/*'),want=(prefix?entry.slice(0,-2):entry).split('/').slice(1);
+  if(prefix?parts.length<want.length:parts.length!==want.length)return 'none';
+  let every=true;
+  for(const [index,segment] of want.entries()){
+    const part=parts[index]!;
+    // A path parameter takes every segment value, so only one of its values is this entry's.
+    if(part.startsWith('{')&&part.endsWith('}'))every=false;
+    else if(part!==segment)return 'none';
+  }
+  return every?'all':'some';
+}
+function routeErrorFormat(route:CompiledRoute,entries:readonly string[]):{format:RouteErrorFormat;scope:string[]} {
+  if(route.errors?.format)return {format:route.errors.format,scope:[]};
+  const covered=entries.map(entry=>[entry,coverage(entry,route.parts)] as const);
+  if(covered.some(([,how])=>how==='all'))return {format:'json',scope:[]};
+  const some=covered.filter(([,how])=>how==='some').map(([entry])=>entry);
+  return some.length?{format:'mixed',scope:some}:{format:'text',scope:[]};
+}
+const mixedNote=' JSON on the concrete paths the `site.errors` entries in x-urlcode.errorScope cover, plain text on the rest.';
+const envelope={$ref:'#/components/schemas/UrlcodeErrorEnvelope'},plain={type:'string'};
+/** The runtime's own 405 in each error format, referenced from a path item's x-urlcode.methodNotAllowed. */
+function methodNotAllowedResponse(format:RouteErrorFormat):Json {
+  return {
+    description:`The runtime's answer to a method the path does not declare, after any gate that runs first (an enforced throttle or agents policy, an extension's authorize, an operator plugin).${format==='mixed'?mixedNote:''}`,
+    headers:{Allow:headerRef('UrlcodeAllow'),...alwaysHeaders},
+    content:{...(format!=='json'?{'text/plain':{schema:plain}}:{}),...(format!=='text'?{'application/json':{schema:envelope}}:{})},
+  };
+}
+const methodNotAllowedName=(format:RouteErrorFormat):string=>`UrlcodeMethodNotAllowed${pascal(format)}`;
 
 /** A runtime-written error answer in the route's error format. */
-function runtimeError(format:ErrorFormat,description:string):Json {
-  return {description,content:format==='json'?{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeErrorEnvelope'}}}:{'text/plain':{schema:{type:'string'}}}};
+function runtimeError(format:RouteErrorFormat,description:string):Json {
+  return {description:format==='mixed'?description+mixedNote:description,headers:{...errorHeaders},
+    content:{...(format!=='json'?{'text/plain':{schema:plain}}:{}),...(format!=='text'?{'application/json':{schema:envelope}}:{})}};
 }
 /** Rewrites each local `#/$defs/<name>` reference in a body schema to the component the definition was hoisted to. Annotation and value keywords are copied as they are. */
 function relocate(schema:unknown,defsBase:string):unknown {
@@ -136,7 +191,7 @@ function assetResponses(route:CompiledRoute):Record<string,Json> {
 }
 /** The responses URLCode itself knows for one method of a route. */
 /** `signIn` are the gates that provide the request principal (`providesPrincipal`): a sign-in gate, whatever it is named. */
-function responses(route:CompiledRoute,method:string,format:ErrorFormat,chain:PolicyChain|undefined,gates:string[],signIn:string[],body:RequestBodyPolicy|undefined):Record<string,Json> {
+function responses(route:CompiledRoute,method:string,format:RouteErrorFormat,chain:PolicyChain|undefined,gates:string[],signIn:string[],body:RequestBodyPolicy|undefined):Record<string,Json> {
   const out:Record<string,Json>={};
   const kind=route.redirect?'redirect':route.respond?'respond':route.conditional?'conditional':route.page||route.download?'asset':route.proxy?'proxy':'handler';
   if(kind==='redirect'||kind==='respond'){const {status,response}=reply(route);out[String(status)]=response;}
@@ -164,27 +219,31 @@ function responses(route:CompiledRoute,method:string,format:ErrorFormat,chain:Po
   if(body){
     out['413']=runtimeError(format,'The request body exceeds the route\'s maxBytes.');
     if(admits)out['415']=runtimeError(format,'Unsupported media type or content encoding.');
-    if(body.schema)out['422']=format==='json'
-      ?{description:'The body failed the declared schema.',content:{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeErrorEnvelope'}}}}
-      :{description:'The body failed the declared schema.',content:{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeBodyValidationError'}}}};
+    // Always JSON: the envelope in the json format, the bounded issue list in the text format.
+    const issues={$ref:'#/components/schemas/UrlcodeBodyValidationError'};
+    if(body.schema)out['422']={description:format==='mixed'?'The body failed the declared schema.'+mixedNote:'The body failed the declared schema.',headers:{...errorHeaders},
+      content:{'application/json':{schema:format==='json'?envelope:format==='text'?issues:{anyOf:[envelope,issues]}}}};
   }
   if(signIn.length){
     out['401']={description:`No verified session: refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
-    out['403']={description:`Refused by ${extensionList(signIn)} before the handler runs (for example a cross-origin unsafe request). The body is extension-defined.`};
+    if(unsafeMethods.includes(method))out['403']={description:`A request from another origin, refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
   }
   const throttle=chain?.describe.throttle,agents=chain?.describe.agents;
   if(throttle?.mode==='enforce'&&throttle.status!==undefined)out[String(throttle.status)]={description:'Refused by the throttle policy.',headers:{'Retry-After':{schema:{type:'integer'}}},content:{'text/plain':{schema:{type:'string'}}}};
   if(agents?.mode==='enforce'&&agents.status!==undefined)out[String(agents.status)]??={description:'Refused by the agents policy.',content:{'text/plain':{schema:{type:'string'}}}};
   const unknown=[...(route.middleware.length?['middleware']:[]),...gates.filter(name=>!signIn.includes(name)).map(name=>`the ${name} extension`)];
   if(unknown.length&&!out.default)out.default={description:`May be answered by ${unknown.join(' or ')} before the handler; not described by URLCode.`};
-  if(method==='HEAD')for(const [key,value] of Object.entries(out)){const {content:_content,...rest}=value;out[key]=rest;}
+  for(const [key,value] of Object.entries(out)){
+    const {content,headers,...rest}=value;
+    out[key]={...rest,headers:{...(headers as Json|undefined),...alwaysHeaders},...(content&&method!=='HEAD'?{content}:{})};
+  }
   return Object.fromEntries(Object.entries(out).sort(([a],[b])=>compare(a,b)));
 }
 
 /** Build the OpenAPI 3.1 document for a project's declared HTTP operations. Deterministic for a given project and options. */
 export async function buildOpenApi(project:string,options:InspectOptions={}):Promise<OpenApiDocument> {
   const {loaded,routes,chains,projectSha256}=await prepare(project,options);
-  const scope=errorScope(loaded.document.site?.errors?.paths),taken=new Set<string>();
+  const scopeEntries=loaded.document.site?.errors?.paths??[],taken=new Set<string>(),refusals:Record<string,Json>={};
   const paths:Record<string,Json>={},schemas:Record<string,unknown>={},facts:OpenApiFacts={urlcode:await runningCoreVersion(),revision:projectSha256,opaqueMounts:[],omitted:[],
     note:'Generated from the compiled configuration. Handler-defined responses have no schema; paths below opaque mounts are served by their provider and not enumerated. Binding names and values, egress targets, module paths and operator policy are never included.'};
   // Sign-in gates follow the contract, not a name: the declared registrations that provide a principal when a host
@@ -200,7 +259,7 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
     }
     const chain=chains.get(route.pattern),explanation=explainCompiledRoute(loaded,route,chain,{extensions:options.extensions,projectSha256,now:0});
     const gates=Object.keys(effectiveExtensionPolicies(loaded.document,route)).sort(compare),signIn=gates.filter(name=>providers.includes(name));
-    const format=resolveErrorFormat(route.errors?.format,scope,route.pattern);
+    const {format,scope}=routeErrorFormat(route,scopeEntries);
     const item:Json={};
     if(route.description)item.description=route.description;
     if(route.parameters.length)item.parameters=route.parameters.map(parameter=>({name:parameter.name,in:parameter.in,...(parameter.required||parameter.in==='path'?{required:true}:{}),schema:structuredClone(parameter.schema)}));
@@ -226,8 +285,11 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
       ...(route.generated?{generated:route.generated}:{}),
       ...(route.expires?{expires:route.expires}:{}),
       errors:format,
+      ...(scope.length?{errorScope:scope}:{}),
+      ...(route.methods.length<methodOrder.length?{methodNotAllowed:{status:405,allow:route.methods.join(', '),response:`#/components/responses/${methodNotAllowedName(format)}`}}:{}),
       targets:Object.fromEntries(Object.entries(explanation.targets).map(([target,support])=>[target,support.compatible])),
     };
+    if(route.methods.length<methodOrder.length)refusals[methodNotAllowedName(format)]??=methodNotAllowedResponse(format);
     paths[route.pattern]=item;
   }
   const document:OpenApiDocument={
@@ -237,6 +299,8 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
     paths,
     components:{
       schemas:{...structuredClone(components) as Record<string,unknown>,...Object.fromEntries(Object.entries(schemas).sort(([a],[b])=>compare(a,b)))},
+      ...(Object.keys(refusals).length?{responses:Object.fromEntries(Object.entries(refusals).sort(([a],[b])=>compare(a,b)))}:{}),
+      headers:structuredClone(headerComponents) as Record<string,Json>,
       ...(secured.size?{securitySchemes:Object.fromEntries([...secured].sort(compare).map(name=>[sessionScheme(name),{type:'apiKey',in:'cookie',name:'session',
         description:`A session credential the ${name} extension issues at sign-in and verifies before the handler runs; it provides the request principal. Its real cookie name is the operator's ${name} configuration and is not published here: \`session\` is a placeholder.`,
         'x-urlcode':{extension:name,cookieName:'operator-defined'}}]))}:{}),

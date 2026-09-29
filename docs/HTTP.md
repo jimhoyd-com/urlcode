@@ -331,8 +331,12 @@ type lists or combinators) and listed up to 8 issues, three of them for
 undeclared properties. A client that relied on several issues in one answer
 now receives the first.
 
-Parameter schemas (path, query, header) also accept `format: uuid` and `pattern`
-on string inputs, rejecting a mismatch with 400. `pattern` runs on every request
+Parameter schemas (path, query, header) also accept `format` and `pattern` on
+string inputs, rejecting a mismatch with 400. `format` takes the same
+[string formats](#body-schema-and-input-patterns) as a body schema (`uuid`,
+`date`, `time`, `date-time`, `email`, `uri`, `hostname`, `ipv4`, `ipv6`), run
+by the same checks with the same length caps on every host, the Cloudflare
+Worker included; any other format fails at load. `pattern` runs on every request
 in the host process, so it is restricted: 1 to 128 characters, `maxLength` of at
 most 128 on the same schema, no group repeated by `*`, `+` or `{n,}`, no
 lookaround, no backreference and at most three unbounded quantifiers. Every
@@ -457,9 +461,13 @@ error, so it refuses `errors: {format: json}` and `site.errors` before building
 
 `urlcode openapi` (MCP `get_openapi`) describes these rules as an OpenAPI 3.1
 document: each method's body policy is that operation's `requestBody`, and the
-400, 413, 415 and 422 answers above appear in the route's error format. A
-function's own answer is stated as handler-defined, with no schema. See
-[OpenAPI export](TOOLING.md#openapi-export).
+400, 413, 415 and 422 answers above appear in the route's error format, with
+`Cache-Control: no-store`. Every response names `X-Request-Id` and
+`X-Content-Type-Options`, and each path states its 405 and `Allow` value for
+an undeclared method. A `site.errors` entry that covers only some concrete
+paths of a templated route (an exact `/users/42` beside `/users/{id}`) makes
+that path's format `mixed`. A function's own answer is stated as
+handler-defined, with no schema. See [OpenAPI export](TOOLING.md#openapi-export).
 
 ## Still outside this contract
 

@@ -143,7 +143,7 @@ test('parameter format uuid and bounded pattern are enforced on path, query and 
 test('unsafe or unbounded parameter patterns and unknown formats fail activation', async t => {
   const bad: Record<string, unknown>[] = [
     { type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, { type: 'string', pattern: '^a$' }, { type: 'string', pattern: '^a$', maxLength: 999 },
-    { type: 'string', format: 'email' }, { type: 'integer', format: 'uuid' }, { type: 'integer', pattern: '^1$', maxLength: 3 },
+    { type: 'string', format: 'idn-email' }, { type: 'integer', format: 'email' }, { type: 'integer', pattern: '^1$', maxLength: 3 },
   ];
   for (const schema of bad) {
     await assert.rejects(startServer({ project: await project(t, { '/x': { parameters: [{ ...param('q', 'string', 'query'), schema }], respond: { json: {} } } }), port: 0, log: () => {} }), /./, JSON.stringify(schema));

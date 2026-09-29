@@ -303,7 +303,7 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   middleware: { kind: 'middleware', summary: 'Modules run before the handler; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['middleware'],
     constraints: ['At most 16 entries, each with a project-relative `source` and optional `export`', 'Self-hosted only', 'Same trusted-by-default / `sandbox: true` opt-in as `function`, applied uniformly to the whole route'], grants: [] },
   parameters: { kind: 'request', summary: 'Validated path, query and header inputs.', schema: ['parameters'],
-    constraints: ['Names match ^[A-Za-z_][A-Za-z0-9_-]*$ and `in` is path, query or header', 'Schema types: string, integer, number, boolean, array; length bounds up to 8192'], grants: [] },
+    constraints: ['Names match ^[A-Za-z_][A-Za-z0-9_-]*$ and `in` is path, query or header', 'Schema types: string, integer, number, boolean, array; length bounds up to 8192', `String \`format\` only ${bodySchemaProfile.formats.join(', ')}: the same checks and caps as a request body schema (${Object.entries(bodySchemaProfile.formatMaxLength).map(([name, cap]) => `${name} ${cap}`).join(', ')}); a mismatch answers 400`], grants: [] },
   methods: { kind: 'routing', summary: 'Allowed HTTP methods; defaults to GET and HEAD.', schema: ['methods'],
     constraints: ['Unique subset of GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS with at least one entry'], grants: [] },
   enabled: { kind: 'routing', summary: 'Route on/off switch; disabled routes are still validated.', schema: ['enabled'], constraints: ['Boolean; defaults to true'], grants: [] },
