@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { bump, check } from '../scripts/release-bump.ts';
+import { buildLlmsFull } from '../scripts/build-llms-full.ts';
 
 const core = '@jimhoyd/urlcode';
 const json = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
@@ -26,8 +27,8 @@ async function fixture(version = '1.0.0'): Promise<string> {
     'artifacts/site/package.json': json({ name: '@jimhoyd/urlcode-site', version }),
     'examples/cloudflare/package.json': json({ name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: version }, devDependencies: { wrangler: '^4' } }),
     'examples/aws/package.json': json({ name: 'aws-example', private: true, dependencies: { other: '^1.0.0' } }),
-    'packages/core/src/cli.ts': `const VERSION = '${version}';\n`,
-    'packages/core/src/mcp.ts': `const server = new Server({name:'urlcode',version:'${version}'},{capabilities:{tools:{}}});\n`,
+    'packages/core/src/release.ts': `export const CORE_VERSION = '${version}';\n`,
+    'llms.txt': `<!-- urlcode-current-version:start -->\n# URLCode ${version}\n<!-- urlcode-current-version:end -->\n\n## Start\n`,
     'starters/default/app/urlcode.yaml': `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v${version}/schemas/urlcode.schema.json\nroutes: []\n`,
     'starters/default/.github/workflows/urlcode.yml': `steps:\n  - uses: jimhoyd-com/urlcode/action@v${version}\n`,
     'packaging/claude-plugin/.claude-plugin/plugin.json': json({ name: 'urlcode', version }),
@@ -49,6 +50,7 @@ async function fixture(version = '1.0.0'): Promise<string> {
     await mkdir(dirname(join(root, path)), { recursive: true });
     await writeFile(join(root, path), text);
   }
+  await writeFile(join(root, 'llms-full.txt'), await buildLlmsFull(root));
   execFileSync('git', ['init', '-q'], { cwd: root });
   execFileSync('git', ['add', '-A'], { cwd: root });
   return root;
@@ -79,8 +81,12 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert.deepEqual(await readJson(root, 'examples/cloudflare/package.json'), { name: 'cloudflare-example', private: true, type: 'module', dependencies: { [core]: '1.1.0-alpha.1' }, devDependencies: { wrangler: '^4' } });
   assert(changed.includes('examples/cloudflare/package.json'));
   assert(!changed.includes('examples/aws/package.json'));
-  assert.equal(await read(root, 'packages/core/src/cli.ts'), "const VERSION = '1.1.0-alpha.1';\n");
-  assert.match(await read(root, 'packages/core/src/mcp.ts'), /version:'1\.1\.0-alpha\.1'/);
+  assert.equal(await read(root, 'packages/core/src/release.ts'), "export const CORE_VERSION = '1.1.0-alpha.1';\n");
+  // The generated llms-full.txt is rebuilt, so its source links name the new tag (#938).
+  const full = await read(root, 'llms-full.txt');
+  assert(changed.includes('llms-full.txt'));
+  assert.match(full, /Source: https:\/\/github\.com\/jimhoyd-com\/urlcode\/blob\/v1\.1\.0-alpha\.1\/docs\//);
+  assert.doesNotMatch(full, /1\.0\.0/);
   assert.match(await read(root, 'starters/default/app/urlcode.yaml'), /urlcode\/v1\.1\.0-alpha\.1\/schemas\/urlcode\.schema\.json/);
   assert.match(await read(root, 'starters/default/.github/workflows/urlcode.yml'), /action@v1\.1\.0-alpha\.1\n/);
   assert.equal((await readJson(root, 'packaging/claude-plugin/.claude-plugin/plugin.json')).version, '1.1.0-alpha.1');
@@ -110,8 +116,8 @@ test('bump refuses a malformed version, the current version and an older one wit
 }));
 
 test('bump refuses to start from a checkout whose declarations already disagree', () => withFixture(async root => {
-  await edit(root, 'packages/core/src/cli.ts', () => "const VERSION = '0.9.0';\n");
-  await assert.rejects(bump('1.1.0', root), /cli\.ts must declare 1\.0\.0 exactly once/);
+  await edit(root, 'packages/core/src/release.ts', () => "export const CORE_VERSION = '0.9.0';\n");
+  await assert.rejects(bump('1.1.0', root), /release\.ts must declare 1\.0\.0 exactly once/);
   assert.equal((await readJson(root, 'package.json')).version, '1.0.0');
 }));
 
@@ -122,7 +128,8 @@ const drifts: [string, (root: string) => Promise<void>, RegExp][] = [
   ['a required sibling peer', root => edit(root, 'packages/auth/package.json', text => text.replace('"@jimhoyd/urlcode-audit": {\n      "optional": true\n    },', '')), /sibling peer @jimhoyd\/urlcode-audit must be optional/],
   ['a stale example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "0.3.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode 0\.3\.0/],
   ['a ranged example dependency', root => edit(root, 'examples/cloudflare/package.json', text => text.replace(`"${core}": "1.0.0"`, `"${core}": "^1.0.0"`)), /examples\/cloudflare\/package\.json depends on @jimhoyd\/urlcode \^1\.0\.0; an example pins core's version 1\.0\.0 exactly/],
-  ['a runtime literal', root => edit(root, 'packages/core/src/mcp.ts', text => text.replace('1.0.0', '0.9.0')), /mcp\.ts must declare 1\.0\.0 exactly once/],
+  ['a runtime literal', root => edit(root, 'packages/core/src/release.ts', text => text.replace('1.0.0', '0.9.0')), /release\.ts must declare 1\.0\.0 exactly once/],
+  ['a stale llms-full.txt', root => edit(root, 'llms-full.txt', text => text.replaceAll('blob/v1.0.0/', 'blob/main/')), /llms-full\.txt is not built for 1\.0\.0/],
   ['a duplicated runtime literal', root => edit(root, 'starters/default/.github/workflows/urlcode.yml', text => text + text.slice('steps:\n'.length)), /urlcode\.yml must declare 1\.0\.0 exactly once/],
   ['the plugin manifest', root => edit(root, '.claude-plugin/marketplace.json', text => text.replace('1.0.0', '0.9.0')), /marketplace\.json is not 1\.0\.0/],
   ['a current version outside its markers', root => edit(root, 'docs/GUIDE.md', () => 'Install 1.0.0.\n'), /GUIDE\.md: 1\.0\.0 appears outside a current-version block/],

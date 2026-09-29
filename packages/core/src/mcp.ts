@@ -27,6 +27,7 @@ import {isRecord as object} from './object-guards.ts';
 import {describeInstalledAgentTooling,describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 import {inspectInstalledArtifact} from './artifact-inspect.ts';
 import {stageSiteSourceAssets} from './source-stage.ts';
+import {CORE_VERSION} from './release.ts';
 // The largest message the transport buffers and the largest tool result the server returns.
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
@@ -186,7 +187,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  };
  // The official SDK owns the protocol: framing, lifecycle and version negotiation, ping and JSON-RPC errors (#846).
  // URLCode owns the tool list, the argument checks, the calls and the 1 MiB result bound.
- const server=new Server({name:'urlcode',version:'0.6.5'},{capabilities:{tools:{}}});
+ const server=new Server({name:'urlcode',version:CORE_VERSION},{capabilities:{tools:{}}});
  const inFlight=new Set<Promise<unknown>>();
  const tracked=<T>(work:Promise<T>):Promise<T>=>{inFlight.add(work);void work.finally(()=>inFlight.delete(work)).catch(()=>undefined);return work;};
  server.setRequestHandler('tools/list',()=>tracked(Promise.resolve({tools})));

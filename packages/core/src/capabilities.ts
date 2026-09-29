@@ -1,6 +1,7 @@
 import { hasExtensionPolicy, effectiveExtensionPolicies } from './extensions.ts';
 import type { RuntimeExtension } from './extensions.ts';
 import { ConfigError } from './errors.ts';
+import { docsUrl } from './release.ts';
 import { bodySchemaProfile } from './body-validation.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocument, PolicyName, PolicyModule, PolicySupport, ProjectDocument, RouteConfig, TargetName } from './types.ts';
@@ -52,7 +53,7 @@ const policyNames = Object.keys(registry) as PolicyName[];
 // scales past one instance — a fact this analysis cannot see. That is a qualified truth, not a refusal (`client`
 // and `client-route` are refused outright, above, because no qualification makes those honest), so it is reported
 // as `delegated` rather than `native`: enforced, but with a provider-topology caveat the label alone cannot carry.
-const THROTTLE_INSTANCE_REASON = 'Counters are per runtime instance (packages/core/src/policies/throttle.ts): partition: route is enforced by native code, but its effective quota is quota × instance count once the target scales past one instance; client and client-route partitions are refused outright. See docs/POLICIES.md#portability-and-the-per-target-table.';
+const THROTTLE_INSTANCE_REASON = 'Counters are per runtime instance. `partition: route` is enforced by native code, but its effective quota is quota × instance count once the target scales past one instance; client and client-route partitions are refused outright. See ' + docsUrl('POLICIES.md#portability-and-the-per-target-table') + '.';
 
 // static hosting (S3 + CloudFront) has no server at all, so no capability
 // needing request-time evaluation can be represented; only capabilities a
@@ -256,7 +257,7 @@ export function formatCapabilities(catalog: CapabilityCatalog): string {
     '', 'Provider deployments: unverified. native/compiled describe local implementation tests.',
     'conditional requires configuration analysis; delegated relies on the provider (unverified).',
     ...(catalog.extensions ? [`extension rows use the declared targets of this project's extensions: ${catalog.extensions.join(', ')}.`] : []),
-    'See docs/CAPABILITIES.md for transport limits and programmatic project analysis.', ''].join('\n');
+    'See ' + docsUrl('CAPABILITIES.md') + ' for transport limits and programmatic project analysis.', ''].join('\n');
 }
 
 export type CapabilityKind = 'handler' | 'policy' | 'routing' | 'request' | 'binding' | 'egress' | 'middleware' | 'project';
@@ -299,7 +300,7 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   download: { kind: 'handler', summary: 'Serve a project file as an attachment.', schema: ['download'],
     constraints: ['`file` required, project-relative, 1 to 1024 characters; `filename` at most 255 characters', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
   function: { kind: 'handler', summary: 'Project function producing the reply; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['function'],
-    constraints: ['`source` at most 1024 characters, project-relative; `export` defaults to the default export', '`args` are literals, `{from: path|query|header}` inputs or `{env}` references', 'Self-hosted only', 'Trusted by default (`sandbox` false or absent): runs in-process with full Node network/filesystem access, like any other project code', 'Route-level `sandbox: true` runs the whole `function`/`middleware` chain isolated instead: worker threads, the WASM engine, no network or filesystem in the guest (docs/FUNCTION-SECURITY.md)'], grants: [] },
+    constraints: ['`source` at most 1024 characters, project-relative; `export` defaults to the default export', '`args` are literals, `{from: path|query|header}` inputs or `{env}` references', 'Self-hosted only', 'Trusted by default (`sandbox` false or absent): runs in-process with full Node network/filesystem access, like any other project code', 'Route-level `sandbox: true` runs the whole `function`/`middleware` chain isolated instead: worker threads, the WASM engine, no network or filesystem in the guest (' + docsUrl('FUNCTION-SECURITY.md') + ')'], grants: [] },
   middleware: { kind: 'middleware', summary: 'Modules run before the handler; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['middleware'],
     constraints: ['At most 16 entries, each with a project-relative `source` and optional `export`', 'Self-hosted only', 'Same trusted-by-default / `sandbox: true` opt-in as `function`, applied uniformly to the whole route'], grants: [] },
   parameters: { kind: 'request', summary: 'Validated path, query and header inputs.', schema: ['parameters'],
