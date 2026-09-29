@@ -136,16 +136,16 @@ test('github: refuses an existing asset with different bytes and an existing rel
 });
 
 test('urls: every pinned add-on must download with exactly the pinned bytes', async () => {
-  const ui = Buffer.from('ui tarball'), site = Buffer.from('site tarball');
+  const auth = Buffer.from('auth tarball'), site = Buffer.from('site tarball');
   const pins = { format: 1, version: '1.2.0', addons: {
-    ui: { url: 'https://example.test/ui.tgz', integrity: sha512(ui) },
+    auth: { url: 'https://example.test/auth.tgz', integrity: sha512(auth) },
     site: { url: 'https://example.test/site.tgz', integrity: sha512(site) },
   } };
   await using('1.2.0', { 'addons.json': JSON.stringify(pins) }, async ({ publish }) => {
-    const bodies: Record<string, Buffer> = { 'https://example.test/ui.tgz': ui, 'https://example.test/site.tgz': site };
+    const bodies: Record<string, Buffer> = { 'https://example.test/auth.tgz': auth, 'https://example.test/site.tgz': site };
     const runner = fake({ fetch: async url => bodies[url]! });
-    assert.deepEqual(await publish.urls(runner), ['ui', 'site']);
-    assert.deepEqual(runner.calls.map(call => call.args[0]), ['https://example.test/ui.tgz', 'https://example.test/site.tgz']);
+    assert.deepEqual(await publish.urls(runner), ['auth', 'site']);
+    assert.deepEqual(runner.calls.map(call => call.args[0]), ['https://example.test/auth.tgz', 'https://example.test/site.tgz']);
     bodies['https://example.test/site.tgz'] = Buffer.from('something else');
     await assert.rejects(publish.urls(fake({ fetch: async url => bodies[url]! })), /site: https:\/\/example\.test\/site\.tgz does not match core's pin/);
   });
@@ -154,7 +154,7 @@ test('urls: every pinned add-on must download with exactly the pinned bytes', as
 test('npm: publishes the core tarball on the version channel with no install scripts', async () => {
   for (const [version, tag] of [['1.2.0', 'latest'], ['1.3.0-alpha.1', 'alpha']] as const) {
     const tarball = `jimhoyd-urlcode-${version}.tgz`;
-    await using(version, { [tarball]: 'core bytes', 'jimhoyd-urlcode-ui-1.2.0.tgz': 'ui' }, async ({ publish, release: out }) => {
+    await using(version, { [tarball]: 'core bytes', 'jimhoyd-urlcode-auth-1.2.0.tgz': 'auth' }, async ({ publish, release: out }) => {
       const runner = fake({ npm: args => args[0] === 'view' ? missing() : '' });
       assert.equal(await publish.publish(runner), 'published');
       const args = runner.calls.at(-1)!.args;

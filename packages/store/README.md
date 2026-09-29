@@ -9,7 +9,7 @@ code.
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,store --example
+npx urlcode init my-site --with auth,store --example
 # or, in an existing site:
 npx urlcode extensions add store --example
 ```
@@ -41,14 +41,8 @@ Every collection lives in one SQLite database (`node:sqlite`, so Node only):
 `store({ database })`, else `STORE_DATABASE`, else `data/store.sqlite` beside
 `host.mjs`; it must be outside `app/`.
 
-When `ui` is installed too, the example also declares a `/todos` list-and-form
-screen under `extensions.store.config.screens` and its `/todos/*` route with
-`extension: ui` (signed-in only when `auth` is installed). The store owns that
-screen: it declares it next to the collection, and hands ui a generic
-description of it through its definition's optional `contributes.ui.screens`,
-so ui never reads the store's configuration. `ui` is an optional peer, not a
-requirement: without it `screens` is simply not served. See
-[a screen for the collection](../../docs/STORE.md#a-screen-for-the-collection).
+The example is API only: a frontend calls the JSON mount with `fetch`, as
+[the reference proof's client](../../proofs/private-requests/client) does.
 
 When `auth` is installed the example puts `auth: true` on the API mount (a
 signed-in session, and same-origin provenance for writes) and declares the
@@ -123,10 +117,7 @@ moves one record from the exact `from` values to the constant `set` values
 `If-Match` and `Idempotency-Key`, or answers `409 transition_conflict` and
 writes nothing. On an owned collection `by: others` lets any principal except
 the owner run it, on a separate mount whose route policy decides who may; a
-`transitionOnly` field can only change through a transition. A screen shows
-such a field read-only and offers the transitions as buttons; `readers: true`
-binds a screen to the readers mount, where the `by: others` transitions are
-offered (see [transitions on a screen](../../docs/STORE.md#transitions-on-a-screen)).
+`transitionOnly` field can only change through a transition.
 Transitions are not an expression language: interval constraints and
 multi-record transfers use a host transaction. See
 [conditional transitions and result-aware retries](../../docs/STORE.md#conditional-transitions-and-result-aware-retries).
@@ -213,7 +204,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 
 **Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
 
-**Peers.** uses `audit` when installed (optional: the features that need one refuse to activate without it); contributes to `ui` (read only when that extension is installed).
+**Peers.** uses `audit` when installed (optional: the features that need one refuse to activate without it).
 
 ### Configuration: `extensions.store.config`
 
@@ -231,7 +222,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.fields.*.enum` | array | no | minItems: 1; maxItems: 64; items: string / number (one of: string (maxLength: 256); number) | The only values the field accepts; not for booleans. |
 | `extensions.store.config.collections.*.fields.*.minimum` | number | no | — | Smallest numeric value; numbers only. |
 | `extensions.store.config.collections.*.fields.*.maximum` | number | no | — | Largest numeric value; numbers only. |
-| `extensions.store.config.collections.*.fields.*.transitionOnly` | boolean | no | — | true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments. A screen shows it read-only. |
+| `extensions.store.config.collections.*.fields.*.transitionOnly` | boolean | no | — | true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments. |
 | `extensions.store.config.collections.*.maxRecords` | integer | no | minimum: 1; maximum: 10000 | Records the collection may hold (default 1000); a create beyond it answers 409 collection_full. |
 | `extensions.store.config.collections.*.maxRecordBytes` | integer | no | minimum: 256; maximum: 65536 | Largest serialized record in bytes (default 4096); larger answers 413. |
 | `extensions.store.config.collections.*.pageSize` | integer | no | minimum: 1; maximum: 200 | Records per list page, and the cap on a list request's limit (default 50). |
@@ -262,13 +253,6 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.shortLinks.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A declared shared collection with a key; the key value is the path segment after the mount. |
 | `extensions.store.config.shortLinks.*.destination` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A required string field with format: http-url holding the redirect target; activation refuses it otherwise. |
 | `extensions.store.config.shortLinks.*.clicks` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A field listed in the collection's increments, raised by one on each GET (even when the collection is readOnly). |
-| `extensions.store.config.screens` | object | no | maxProperties: 16; keys: "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$" | List-and-form screens by exact page path, each for one declared collection. The store hands them to ui through contributes.ui; each needs a route `<path>/*` with extension: ui (GET, HEAD). Ignored when ui is not installed. |
-| `extensions.store.config.screens.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A collection declared under collections; activation fails otherwise. |
-| `extensions.store.config.screens.*.title` | string | no | minLength: 1; maxLength: 80 | Page title. Default: the collection name in sentence case. |
-| `extensions.store.config.screens.*.readers` | boolean | no | — | true: the screen lists the collection's readers mount (every owner's records, read-only) and offers its by: others transitions; the collection must declare readers. Default false: the collection mount, with create, edit, delete and the transitions its owner runs. |
-| `extensions.store.config.screens.*.columns` | array | no | minItems: 1; maxItems: 64 | Fields shown in the list, in order: a field name, or {field, label} to set the heading. Default: every declared field. Unless the collection is readOnly, every required field without a default must be listed, or ui refuses the screen. |
-| `extensions.store.config.screens.*.columns[].field` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A declared field of the collection. |
-| `extensions.store.config.screens.*.columns[].label` | string | no | minLength: 1; maxLength: 80 | Column heading. Default: the field name. |
 
 ### Authoring surfaces and limits
 
@@ -278,7 +262,6 @@ Declare collections under extensions.store.config.collections and mount each on 
 - **membership** (configuration, `urlcode.yaml`): Permissions as data keyed by the principal id, never roles in auth: a `membership: true` collection with a `key` lists principal ids and has no mount (the operator maintains it with `addMember`/`removeMember`); a transition's `members: <collection>` admits only its members, and an owned collection's `readers: {mount, members}` lets members list and read every owner's records read-only on a separate mount.
 - **shortLinks** (configuration, `urlcode.yaml`): Optional public GET redirect mounts that look up a collection key, use a declared HTTP(S) destination field, and atomically increment a declared counter.
 - **mount** (extension, `urlcode.yaml`): Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Readers routes use GET, HEAD and a `by: others` transition route uses POST. Add `auth: true` to any private mount; an `ownership: owner` collection requires it (or another principal-providing policy).
-- **screens** (configuration, `urlcode.yaml`): Optional list-and-form screens (`/todos: {collection: todos, title?, columns?, readers?}`) for declared collections, with transitionOnly fields read-only and declared transitions as buttons. The store hands them to the ui extension through contributes.ui; each needs a route `<path>/*` with `extension: ui`, methods GET and HEAD. Ignored when ui is not installed.
 
 Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
 <!-- extension-reference:end -->

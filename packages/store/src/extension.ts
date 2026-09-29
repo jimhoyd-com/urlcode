@@ -4,7 +4,6 @@ import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extension
 import type { AuditExports } from '@jimhoyd/urlcode-audit';
 import { createStore, storeConfigSchema } from './store.ts';
 import { storeAuthoring } from './authoring.ts';
-import { contributedScreens } from './screens.ts';
 
 /** Operator choices for the store in host.mjs. Every field is optional. */
 export interface StoreHostOptions {
@@ -13,8 +12,6 @@ export interface StoreHostOptions {
 }
 
 const publicWrite = 'store:public-write';
-/** Path of the example list and form screen, added when ui is installed. */
-const todosScreen = '/todos';
 
 /**
  * The capability: an empty `collections` block and nothing mounted. The store adds no endpoint until the project
@@ -27,7 +24,7 @@ function scaffold(): ScaffoldResult {
     env: { STORE_DATABASE: 'Optional absolute path of the store\'s SQLite database (default data/store.sqlite beside host.mjs); must be outside app/.' },
     notes: [
       'store is installed with no collections: declare one under extensions.store.config.collections and mount it with a route <mount>/* using extension: store (add auth: true to protect writes). See docs/STORE.md.',
-      'For a working demo, add the store to a fresh site with --example: a todos collection on /api/todos (and a /todos screen when ui is installed).',
+      'For a working demo, add the store to a fresh site with --example: a todos collection on /api/todos.',
     ],
   };
 }
@@ -37,12 +34,11 @@ function scaffold(): ScaffoldResult {
  * present) the mount carries `auth: true` and the collection is per-user (`ownership: owner`, #331): each
  * signed-in user sees and changes only their own todos. auth admits writes with Better Auth's session cookie and
  * same-origin provenance. Without auth it stays a
- * shared collection and needs `--ack store:public-write`. When ui is installed too, the store also declares its
- * `/todos` screen and the `extension: ui` route that serves it: the screen integration belongs to the store, not to
- * ui. When audit is installed, every write to the collection is recorded in the audit log (`audit: true`).
+ * shared collection and needs `--ack store:public-write`. When audit is installed, every write to the collection is
+ * recorded in the audit log (`audit: true`). The example is API only: a frontend calls the JSON mount.
  */
 function example(request: ScaffoldRequest): ScaffoldResult {
-  const withAuth = request.installed.includes('auth'), withUi = request.installed.includes('ui'), withAudit = request.installed.includes('audit');
+  const withAuth = request.installed.includes('auth'), withAudit = request.installed.includes('audit');
   if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('the store example serves POST, PUT, PATCH and DELETE on /api/todos, and no installed extension protects them, so anyone could write. Add auth first (urlcode extensions add auth), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
   return {
     config: { collections: { todos: {
@@ -51,19 +47,15 @@ function example(request: ScaffoldRequest): ScaffoldResult {
       maxRecords: 1000, maxRecordBytes: 4096,
       ...(withAuth ? { ownership: 'owner' } : {}),
       ...(withAudit ? { audit: true } : {}),
-    } }, ...(withUi ? { screens: { [todosScreen]: { collection: 'todos', title: 'Todos' } } } : {}) },
+    } } },
     routes: {
       '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...(withAuth ? { auth: true } : {}) },
-      // The store's screen is served by ui's kit; the store contributes its description (contributes.ui.screens). It
-      // is GET and HEAD only.
-      ...(withUi ? { [`${todosScreen}/*`]: { extension: 'ui', methods: ['GET', 'HEAD'], ...(withAuth ? { auth: true } : {}) } } : {}),
     },
     ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
     notes: [
       withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount: writes are admitted with the session cookie and same-origin provenance), and each user sees and changes only their own todos (ownership: owner).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
       'Records live in the SQLite database data/store.sqlite, outside app/; back up data/ like any operator data (docs/STORE.md, backups). Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
       ...(withAudit ? ['Every create, change and delete on the todos collection is recorded in the audit log (audit: true): field names and the signed-in user, never values. When the audit log falls 1000 events behind, writes answer 503 until it catches up.'] : []),
-      ...(withUi ? [`Open ${todosScreen}: a list and form for the todos collection, declared in extensions.store.config.screens and rendered by ui.${withAuth ? ' It shows each signed-in user only their own todos.' : ' Everyone who can reach it sees and edits every todo.'}`] : []),
     ],
   };
 }
@@ -77,9 +69,6 @@ export default defineExtension<StoreHostOptions>({
   // to activate when audit is not installed. Without such a collection the store never touches audit.
   uses: ['audit'],
   schema: storeConfigSchema,
-  // Optional: ui serves the screens the project declares under extensions.store.config.screens. The store does not
-  // require ui; without it the contribution is simply never read.
-  contributes: { ui: { screens: contributedScreens } },
   authoring: storeAuthoring,
   agent: {description: 'Local, revision-pinned references for agents configuring the store extension.', references: [{name: 'store extension guide', description: 'Configuration and data-model guidance for the store extension; ends with the generated field reference for every configuration key.', path: 'README.md'}]},
   scaffold,

@@ -153,9 +153,8 @@ fixture appears under `redundantWaivers`; it never blocks `ready`. Example:
 
 ### Extension asset mounts
 
-An extension mount that serves only content-hashed files, such as `ui`'s
-`/assets/ui/*`, has no path a fixture can know ahead of time: the names change
-whenever the files do. The extension, not the project, declares such a mount.
+An extension mount that serves only content-hashed files has no path a
+fixture can know ahead of time: the names change whenever the files do. The extension, not the project, declares such a mount.
 Its registration declares an [`immutableAssets`
 prefix](EXTENSIONS.md#extension-asset-mounts) and its activated instance names
 the mount in `assetMounts`, which states that the mount serves those files
@@ -178,9 +177,9 @@ passing, asserting check covered. A fixture that names a real hashed file still
 covers its pair the ordinary way, and the pair then leaves the list.
 
 The contract covers only `GET` and `HEAD` on a declared asset mount. Every other
-method on it, every other mount of the same extension (`ui`'s screen mounts,
-for example) and every ordinary route keeps the rules above. The probe checks
-the missing-file answer; it does not check the kit's own files, their hashes or
+method on it, every other mount of the same extension and every ordinary
+route keeps the rules above. The probe checks the missing-file answer; it does
+not check the extension's own files, their hashes or
 their cache headers, which the extension's tests own.
 `verify-deployment` does not send the probe.
 

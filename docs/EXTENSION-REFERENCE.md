@@ -32,8 +32,7 @@ Two distinctions hold throughout:
 | `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](../packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](../packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](../packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 50 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
-| `ui` | Shared presentation kit: theme, copy, templates and the data screens other extensions contribute, for every extension page. | — | config 64, hook input/output 3 | [@jimhoyd/urlcode-ui](../packages/ui/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 43 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ## Capability to reference
@@ -52,7 +51,7 @@ full definition and a checked example live.
 | Sign-in and protected routes | auth: mount Better Auth at `/api/auth/*` with `extension: auth`; `auth: true` on a protected route; the function reads `context.capabilities.auth.identity.userId` | [auth extension guide](../packages/auth/README.md), [private-requests proof](../proofs/private-requests/README.md) |
 | Submission rate limits | core: `policies.throttle` on the route; sign-in is throttled by Better Auth's own limiter, keyed by the admitted client address | [policies](POLICIES.md), [auth security model](../packages/auth/SECURITY.md) |
 | An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](../packages/audit/README.md#field-reference) |
-| Brand, colours, copy and templates | ui: `theme`, `languages`, `copy`, `templates`, `stylesheet`, `hooks` | [ui field reference](../packages/ui/README.md#field-reference) |
+| A frontend over the store's JSON mounts | your own code: `fetch` to the mounts, reading a list's `etags` and `may`; styling and components are the app's (for shadcn, the official tooling plus `urlcode artifacts stage`) | [the private-requests client](../proofs/private-requests/client/main.js), [what the caller may run](STORE.md#what-the-caller-may-run) |
 | MCP tools, resources and prompts | mcp: `servers.<name>` with `tools`, each backed by a trusted handler module | [mcp field reference](../packages/mcp/README.md#field-reference) |
 
 A plain per-route request budget is core's `policies.throttle`, not an

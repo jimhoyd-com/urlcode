@@ -145,19 +145,6 @@ test('--from forks an existing package\'s file shape (exact sibling peers become
   }
 });
 
-test('--from a package that does carry an optional doc (ui has CONTRACT.md) reproduces it as a placeholder', async t => {
-  const out = await outputDir(t);
-  const name = `scaff-fork-ui-${randomUUID().slice(0, 8)}`;
-  const result = run([name, '--from', 'ui', '--packages-dir', out]);
-  assert.equal(result.status, 0, result.stderr);
-
-  const placeholder = await readFile(join(out, name, 'CONTRACT.md'), 'utf8');
-  assert.match(placeholder, /packages\/ui/);
-  assert.match(placeholder, /TODO/);
-  const uiContract = await readFile(join(packagesDir, 'ui', 'CONTRACT.md'), 'utf8');
-  assert.notEqual(placeholder, uiContract, 'the placeholder must not be a copy of the source package\'s actual contract');
-});
-
 test('rejects an invalid name, a reserved name, an existing package, an unknown --from source, a bad --packages-dir and a multi-line description', async t => {
   const invalid = run(['Not_Valid']);
   assert.notEqual(invalid.status, 0);

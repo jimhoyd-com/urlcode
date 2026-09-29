@@ -34,7 +34,7 @@ urlcode validate --local --project ./orders-hook
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
-| `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | `store` extension (`urlcode extensions add store`), `--host-file`, `--origin`; or initialize with `urlcode init DIR --with ui,auth,store --example` |
+| `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | `store` extension (`urlcode extensions add store`), `--host-file`, `--origin`; or initialize with `urlcode init DIR --with auth,store --example` |
 | `spa-shell` | advanced | Single-page app: native page, assets and JSON API, plus an operator plugin that answers client routes at any depth with `index.html` (no native SPA fallback, [#809](https://github.com/jimhoyd-com/urlcode/issues/809)) | operator plugin in `--host-file`, self-hosted runtime |
 
 Each recipe contains a README, `tests/requests.json` and editable files.

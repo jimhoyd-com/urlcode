@@ -47,13 +47,13 @@ interface HelpEntry { name: string; group: string; text: string }
 const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
 const helpEntries: HelpEntry[] = [
   { name:'init', group:'Start', text:
-`  urlcode init <directory> [--adopt] [--no-mcp] [--with ui,auth,store [--example]] [--ack extension:id]
+`  urlcode init <directory> [--adopt] [--no-mcp] [--with auth,store [--example]] [--ack extension:id]
     # Writes one site: app/ (the route project: urlcode.yaml), host.mjs (the operator host), package.json (exact runtime pin and npm scripts), AGENTS.md, .mcp.json (unless --no-mcp), a Makefile and CI. Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json keeps every key and gains only a missing runtime pin and missing scripts
     # --adopt: create the site around user files already there (for example a frontend/ or dist/ directory): only new files are written, nothing existing is changed or followed, and the entries left alone are listed. Refused, with nothing written, when an existing path collides with what init writes (app/, package.json, host.mjs, .gitignore, README.md, ...; with --with also node_modules and package-lock.json), inside an existing project or at an app/ directory
     # --no-mcp: write no MCP client configuration (.mcp.json, the only client config init writes); the site is complete and runnable, an existing .mcp.json or .claude/ is left untouched, and the output reports mcpRegistration: skipped. Use it where a sandbox forbids writing agent configuration
     # --with: then runs \`urlcode extensions add\` for those extensions (npm install of the add-on tarballs this runtime pins); a refusal undoes the whole init
-    # --example: with --with, also writes each extension's example (a Todo collection and screen); without it only the capabilities are installed
+    # --example: with --with, also writes each extension's example (the store's /api/todos JSON collection); without it only the capabilities are installed
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command
 ` },
   { name:'dev', group:'Start', text:

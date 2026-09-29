@@ -196,15 +196,13 @@ historical, not valid YAML guidance.
   Never write login, cookie, password or session checks in a function; report
   what auth cannot express (it has no account pages, email flows,
   two-factor or API keys).
-- When a React frontend has `components.json`, follow the installed official
-  shadcn/ui skill for component discovery, composition, accessibility and
-  semantic Tailwind styling. Start with `shadcn info --json`, then use its
-  `shadcn docs`/`search` flow or configured MCP registry before generating a
-  component. Do not put React components in URLCode's server template renderer
-  merely because it uses shadcn-compatible tokens.
+- The frontend is the application's own: it calls JSON routes and store
+  mounts with `fetch`, as `proofs/private-requests/client` does. For shadcn/ui
+  components use the official shadcn tooling or skill, and bring an item into
+  the app's source with `urlcode artifacts stage`. URLCode ships no component
+  kit or server template renderer.
 - Run the extension's published `fastChecks` while iterating, then the full
-  project checks before handoff. Theme and copy changes should not rebuild the
-  framework packages. Full workspace/package checks may take several minutes;
+  project checks before handoff. Full workspace/package checks may take several minutes;
   give them enough time to finish instead of repeatedly rebuilding.
 - Write exact response fixtures for success and failure, covering every active
   method, middleware behavior, HEAD, and any range or cache semantics.

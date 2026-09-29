@@ -37,7 +37,6 @@ const recipeTerms:Record<string,readonly string[]>={
  'store-crud':['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'],
 };
 const extensionReason:Record<string,string>={
- ui:'Presentation is an operator-installed extension; its registered authoring surfaces govern project-owned UI customization.',
  auth:'Authentication is an operator-installed extension; its registration and revision pin, not project YAML, select the executable package and grants.',
  store:'Durable state is an operator-installed extension; its data directory and revision pin remain operator-owned.',
 };
@@ -84,10 +83,9 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  const registrations=new Map((options.extensions??[]).map(extension=>[extension.name,extension]));
  const wanted=new Set<string>();
  for(const recipe of recipes) for(const service of recipe.services??[]) {
-  const match=/\b(ui|auth|store) extension\b/i.exec(service.name); if(match)wanted.add(match[1]!.toLowerCase());
+  const match=/\b(auth|store) extension\b/i.exec(service.name); if(match)wanted.add(match[1]!.toLowerCase());
  }
  // These nouns request composition, not a project-controlled package choice.
- if(goalTerms.some(term=>['form','contact','screen','page','ui'].includes(term)))wanted.add('ui');
  if(recipeGoalTerms.some(term=>['auth','authenticated','account','sign','signed','private','protected'].includes(term)))wanted.add('auth');
  if(goalTerms.some(term=>['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'].includes(term)))wanted.add('store');
  let declaredTargets=new Map<string,string[]>();

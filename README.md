@@ -121,7 +121,7 @@ All of it lives in [`docs/`](docs/README.md) in this repository. See
 
 ## The framework
 
-Core plus five extensions, one site shape. A project climbs from redirects to a
+Core plus four extensions, one site shape. A project climbs from redirects to a
 full application by adding YAML; the operator wires trusted extensions in one
 host file outside the project. The full map, the composition contract and the
 rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
@@ -129,7 +129,6 @@ rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | Component | Adds | Distribution |
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
-| [ui](packages/ui) extension | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | add-on on core's GitHub Release |
 | [audit](packages/audit) extension | The durable audit log audited store collections record their writes in, through a transactional outbox | add-on on core's GitHub Release |
 | [auth](packages/auth) extension | Accounts and sessions from [Better Auth](https://better-auth.com/) on one mount; `auth: true` routes receive the signed-in user id | add-on on core's GitHub Release |
 | [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API, with optional audited writes | add-on on core's GitHub Release |
@@ -205,7 +204,7 @@ for the vocabulary these two paragraphs use.
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the `0.6.5` core release. The ui, audit, auth, store
+This checkout prepares the `0.6.5` core release. The audit, auth, store
 and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or

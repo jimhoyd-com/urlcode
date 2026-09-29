@@ -6,9 +6,6 @@
   "uses": [
     "audit"
   ],
-  "contributes": [
-    "ui"
-  ],
   "targets": [
     "node"
   ],
@@ -126,7 +123,7 @@
                   },
                   "transitionOnly": {
                     "type": "boolean",
-                    "description": "true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments. A screen shows it read-only."
+                    "description": "true: only a declared transition (its set or stamp) changes the field. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 400. Not combinable with required, key or increments."
                   }
                 }
               }
@@ -391,73 +388,6 @@
             }
           }
         }
-      },
-      "screens": {
-        "description": "List-and-form screens by exact page path, each for one declared collection. The store hands them to ui through contributes.ui; each needs a route <path>/* with extension: ui (GET, HEAD). Ignored when ui is not installed.",
-        "type": "object",
-        "maxProperties": 16,
-        "propertyNames": {
-          "pattern": "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$",
-          "maxLength": 256
-        },
-        "additionalProperties": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "collection"
-          ],
-          "properties": {
-            "collection": {
-              "type": "string",
-              "pattern": "^[a-z][a-z0-9_-]{0,63}$",
-              "description": "A collection declared under collections; activation fails otherwise."
-            },
-            "title": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80,
-              "description": "Page title. Default: the collection name in sentence case."
-            },
-            "readers": {
-              "type": "boolean",
-              "description": "true: the screen lists the collection's readers mount (every owner's records, read-only) and offers its by: others transitions; the collection must declare readers. Default false: the collection mount, with create, edit, delete and the transitions its owner runs."
-            },
-            "columns": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 64,
-              "description": "Fields shown in the list, in order: a field name, or {field, label} to set the heading. Default: every declared field. Unless the collection is readOnly, every required field without a default must be listed, or ui refuses the screen.",
-              "items": {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                  },
-                  {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "field"
-                    ],
-                    "properties": {
-                      "field": {
-                        "type": "string",
-                        "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
-                        "description": "A declared field of the collection."
-                      },
-                      "label": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80,
-                        "description": "Column heading. Default: the field name."
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
       }
     }
   },
@@ -486,12 +416,6 @@
         "kind": "extension",
         "name": "mount",
         "description": "Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Readers routes use GET, HEAD and a `by: others` transition route uses POST. Add `auth: true` to any private mount; an `ownership: owner` collection requires it (or another principal-providing policy).",
-        "path": "urlcode.yaml"
-      },
-      {
-        "kind": "configuration",
-        "name": "screens",
-        "description": "Optional list-and-form screens (`/todos: {collection: todos, title?, columns?, readers?}`) for declared collections, with transitionOnly fields read-only and declared transitions as buttons. The store hands them to the ui extension through contributes.ui; each needs a route `<path>/*` with `extension: ui`, methods GET and HEAD. Ignored when ui is not installed.",
         "path": "urlcode.yaml"
       }
     ],

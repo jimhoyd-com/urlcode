@@ -31,7 +31,7 @@ test('scaffold declares no server or route (a tool needs a handler under app/) a
   assert.deepEqual(result.routes, {});
   assert.equal(result.acknowledged, undefined);
   assert.match(result.notes!.join(' '), /app\/mcp-tools\/get-time\.mjs/);
-  assert.deepEqual(await mcp.definition.scaffold!({ ...request, installed: ['auth', 'mcp', 'ui'] }), result, 'other installed extensions do not change the result');
+  assert.deepEqual(await mcp.definition.scaffold!({ ...request, installed: ['auth', 'audit', 'mcp'] }), result, 'other installed extensions do not change the result');
   validateDocument({ version: '1', extensions: { mcp: { version: '1', config: result.config } }, routes: result.routes });
 });
 

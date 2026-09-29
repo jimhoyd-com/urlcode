@@ -100,19 +100,13 @@ jobs:
       # typecheck resolves the package's own `@jimhoyd/urlcode/*` self-imports
       # through the `types` in its exports map, which point into dist/. No
       # workspace build step precedes lint/typecheck/check:code: none of them
-      # read packages/ui's generated stylesheets or any other workspace output
-      # (packages/ui/src/styles.generated.ts and src/kit-styles.generated.ts
-      # are ESLint-ignored and outside this job's own tsconfig `include`;
-      # workspace typecheck/build runs in `workspace-verify` instead).
+      # read workspace output (workspace typecheck/build runs in
+      # `workspace-verify` instead).
       - run: npm run build
       - run: npm run lint
       - run: npm run typecheck
       # Phase one of JS type-checking (allowJs/checkJs): build/release tooling
       # only (tsconfig.checkjs.json), not the 61 recipe/example .mjs files.
-      # packages/ui/scripts resolves workspace types through their built dist/
-      # exports maps (the same self-import resolution `npm run typecheck` above
-      # relies on for `@jimhoyd/urlcode/*`), so the script itself builds ui and
-      # audit first — see `typecheck:tooling` in package.json.
       - run: npm run typecheck:tooling
       # `npm run check` stays complete for local use, but in CI the seven
       # documentation checks it contains already ran in the always-run `docs`
@@ -264,9 +258,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # `store` imports `ui` and `audit`. The matrix carries each package's
-      # transitive dependencies in build order (empty for `ui`, `audit`,
-      # `auth` and `mcp`, which have none) so this job's own
+      # `store` imports `audit`. The matrix carries each package's
+      # transitive dependencies in build order (empty for `audit`, `auth`
+      # and `mcp`, which have none) so this job's own
       # typecheck/build can resolve them, the way the removed serial script
       # did by ordering.
       - if: matrix.deps != ''
@@ -314,13 +308,6 @@ jobs:
       - run: npm run test:ecosystem
       # The same application with Auth.js, an independent provider package, in place of Better Auth (#841).
       - run: npm run test:proof:authjs
-      # Real-browser check of the CRUD screen (#332), on the Chrome that the
-      # Linux runner image already carries: no new action or download. One leg
-      # only; it is a step in this job, not a new required check.
-      - if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
-        env:
-          URLCODE_REQUIRE_BROWSER: '1'
-        run: npm run test:browser --workspace @jimhoyd/urlcode-ui
   audit:
     needs: plan
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
@@ -362,7 +349,7 @@ jobs:
       # Every add-on descriptor matches its code, and dist/addon-catalog.json matches the descriptors (#721).
       - run: node scripts/build-addon-manifest.ts --check
       # Sites built from the packed runtime and add-ons, pinned by sha512 exactly as a release pins them.
-      - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed" --site "$RUNNER_TEMP/site" --with ui,store --example --ack store:public-write
+      - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed" --site "$RUNNER_TEMP/site" --with store --example --ack store:public-write
       - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed-host" --site "$RUNNER_TEMP/host-site" --with mcp
       - name: Run the action on a site whose extensions are checked statically
         uses: ./action

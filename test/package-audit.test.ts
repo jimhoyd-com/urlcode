@@ -16,7 +16,7 @@ test('packFileProblems refuses node_modules, a copy of core, and anything but da
   const { packFileProblems } = await import('../scripts/package-audit.ts');
   assert.deepEqual(packFileProblems('extension', ['package.json', 'urlcode.json', 'dist/extension.js', 'README.md']), []);
   assert.deepEqual(packFileProblems('core', ['dist/cli.js', 'starters/default/package.json']), []);
-  const leaks = packFileProblems('extension', ['dist/index.js', 'node_modules/ajv/package.json', 'vendor/@jimhoyd/urlcode/dist/index.js', 'dist/@jimhoyd/urlcode-ui/index.js']);
+  const leaks = packFileProblems('extension', ['dist/index.js', 'node_modules/ajv/package.json', 'vendor/@jimhoyd/urlcode/dist/index.js', 'dist/@jimhoyd/urlcode-audit/index.js']);
   assert.equal(leaks.length, 3);
   assert.match(leaks[0]!, /node_modules\/ must never ship/);
   assert.match(leaks[1]!, /copy of @jimhoyd\/urlcode/);

@@ -12,8 +12,8 @@ import {
 } from '../scripts/ci-plan.ts';
 
 test('docs lane is narrow and fails closed', () => {
-  for (const path of ['docs/CI.md', 'AGENTS.md', 'llms-full.txt', 'packages/ui/CONTRIBUTING.md']) assert(docsOnly([path]), path);
-  for (const path of ['packages/core/src/runtime.ts', 'package-lock.json', 'docs/fixture.json', 'starters/default/AGENTS.md', '.github/workflows/ci.yml', 'packages/ui/README.md', 'unknown.md']) assert(!docsOnly(['docs/CI.md', path]), path);
+  for (const path of ['docs/CI.md', 'AGENTS.md', 'llms-full.txt', 'packages/auth/CONTRIBUTING.md']) assert(docsOnly([path]), path);
+  for (const path of ['packages/core/src/runtime.ts', 'package-lock.json', 'docs/fixture.json', 'starters/default/AGENTS.md', '.github/workflows/ci.yml', 'packages/store/README.md', 'unknown.md']) assert(!docsOnly(['docs/CI.md', path]), path);
   assert(!docsOnly([]));
   assert(!docsOnly(['docs/old.md', 'packages/core/src/renamed.ts']));
 });
@@ -81,7 +81,7 @@ test('required gate rejects missing, failed, canceled and unplanned jobs', () =>
 test('routine matrix is Linux Node 24; exact coverage is the full supported matrix', () => {
   for (const event of ['pull_request', 'push']) assert.deepEqual(testMatrix(event, null).include, [{ os: 'ubuntu-latest', node: '24' }]);
   for (const event of ['schedule', 'workflow_dispatch', 'merge_group', 'unknown']) assert.equal(testMatrix(event, null).include.length, 9);
-  for (const path of ['packages/ui/src/styles.ts', 'packages/auth/test/auth.test.ts', 'packages/audit/src/audit.ts', 'packages/store/README.md', 'packages/mcp/package.json']) {
+  for (const path of ['packages/auth/test/auth.test.ts', 'packages/audit/src/audit.ts', 'packages/store/README.md', 'packages/mcp/package.json']) {
     assert(!packageSmokeRelevant([path])); assert(!actionRelevant([path])); assert(!containerRelevant([path])); assert(!coreChecksRelevant([path]));
   }
   for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['action/action.yml']]) {
@@ -106,16 +106,15 @@ test('a release run is planned as exact-commit coverage whatever event triggered
 
 test('workspace selection includes reverse dependencies and reserves integration for release dispatch', () => {
   assert.deepEqual(workspacePackages(['packages/auth/src/auth.ts']), ['auth']);
-  assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'store']);
-  assert.deepEqual(workspacePackages(['packages/store/src/screens.ts']), ['store']);
+  assert.deepEqual(workspacePackages(['packages/store/src/query.ts']), ['store']);
   assert.deepEqual(workspacePackages(['packages/mcp/src/mcp.ts']), ['mcp']);
   assert.deepEqual(workspacePackages(['packages/audit/src/audit.ts']), ['audit', 'store']);
-  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'audit', 'auth', 'store', 'mcp']);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['audit', 'auth', 'store', 'mcp']);
   // Two packages on the Linux leg and the same two on the Windows pull request leg (#824).
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 4);
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/store/README.md']).include[0]!.deps, 'ui audit');
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/audit/src/audit.ts']).include.length, 4);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/store/README.md']).include[0]!.deps, 'audit');
   assert.equal(workspacePackageMatrix('pull_request', ['packages/auth/README.md']).include[0]!.deps, '');
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/store/src/screens.ts']).include.find(entry => entry.package === 'store')!.deps, 'ui audit');
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/store/src/query.ts']).include.find(entry => entry.package === 'store')!.deps, 'audit');
   for (const event of ['pull_request', 'push', 'schedule']) assert.deepEqual(workspaceIntegrationMatrix(event, ['packages/core/src/runtime.ts']).include, []);
   for (const event of ['push', 'schedule', 'merge_group']) assert.deepEqual(workspaceIntegrationMatrix(event, null).include, []);
   assert.deepEqual(workspaceIntegrationMatrix('workflow_dispatch', ['docs/CI.md']).include, [
@@ -144,7 +143,7 @@ const HIGH_IMPACT_PATHS = {
   integration: ['test/addons.integration.ts', 'scripts/test-addons.ts', 'packages/auth/test/cleanup.ts', 'packages/store/test/cleanup.ts', 'test/private-requests.integration.ts', 'proofs/private-requests/app/urlcode.yaml', 'test/authjs-provider.integration.ts', 'proofs/authjs-provider/extension.js', 'test/ecosystem.integration.ts', 'proofs/ecosystem/hono/server.mjs'],
   shared: ['.github/workflows/ci.yml', '.github/dependabot.yml', 'tsconfig.json', 'eslint.config.js', '.node-version', '.gitattributes', 'install.sh', 'Makefile'],
 };
-const ORDINARY = ['packages/core/src/runtime.ts', 'packages/core/src/server.ts', 'test/runtime.test.ts', 'examples/hello/urlcode.yaml', 'packages/auth/src/auth.ts', 'packages/ui/src/kit.ts', 'schemas/urlcode.schema.json', 'packages/auth/README.md', 'scripts/ci-build-fidelity.ts'];
+const ORDINARY = ['packages/core/src/runtime.ts', 'packages/core/src/server.ts', 'test/runtime.test.ts', 'examples/hello/urlcode.yaml', 'packages/auth/src/auth.ts', 'packages/audit/src/audit.ts', 'schemas/urlcode.schema.json', 'packages/auth/README.md', 'scripts/ci-build-fidelity.ts'];
 
 test('each high-impact area adds a Windows test leg and the packed integration to a pull request', () => {
   for (const [area, paths] of Object.entries(HIGH_IMPACT_PATHS)) {
@@ -186,32 +185,32 @@ test('a pull request runs the changed extensions and their dependents on Windows
   const recipe = ['packages/store/test/store.test.ts'];
   assert.deepEqual(windowsWorkspacePackages('pull_request', recipe), ['store']);
   const store = workspacePackageMatrix('pull_request', recipe).include.find(entry => entry.os === 'windows-latest' && entry.package === 'store')!;
-  assert.deepEqual(store, { os: 'windows-latest', node: '24', package: 'store', deps: 'ui audit' });
+  assert.deepEqual(store, { os: 'windows-latest', node: '24', package: 'store', deps: 'audit' });
   // Selection comes from the extension paths alone: core or shared paths in the same diff widen Linux, not Windows.
   const mixed = ['packages/core/src/runtime.ts', 'package-lock.json', 'packages/mcp/src/mcp.ts'];
-  assert.equal(workspacePackageMatrix('pull_request', mixed).include.filter(({ os }) => os === 'ubuntu-latest').length, 5);
+  assert.equal(workspacePackageMatrix('pull_request', mixed).include.filter(({ os }) => os === 'ubuntu-latest').length, 4);
   assert.deepEqual(windowsWorkspacePackages('pull_request', mixed), ['mcp']);
-  assert.deepEqual(windowsWorkspacePackages('pull_request', ['packages/mcp/src/mcp.ts', 'packages/ui/src/kit.ts']), ['ui', 'store', 'mcp']);
+  assert.deepEqual(windowsWorkspacePackages('pull_request', ['packages/mcp/src/mcp.ts', 'packages/audit/src/audit.ts']), ['audit', 'store', 'mcp']);
   // Core-only, non-package and prose-only package paths add no Windows suites.
-  for (const paths of [['packages/core/src/runtime.ts'], ['test/runtime.test.ts'], ['scripts/workspaces.ts'], ['packages/ui/CONTRIBUTING.md', 'packages/core/src/cli.ts']]) {
+  for (const paths of [['packages/core/src/runtime.ts'], ['test/runtime.test.ts'], ['scripts/workspaces.ts'], ['packages/auth/CONTRIBUTING.md', 'packages/core/src/cli.ts']]) {
     assert.deepEqual(windowsWorkspacePackages('pull_request', paths), [], paths.join());
     assert(workspacePackageMatrix('pull_request', paths).include.every(({ os }) => os === 'ubuntu-latest'), paths.join());
   }
   // A package's shipped README is not admitted prose, so it counts as that extension's code.
   assert.deepEqual(windowsWorkspacePackages('pull_request', ['packages/auth/README.md']), ['auth']);
   // An empty or unclassifiable pull request diff fails closed to every extension.
-  for (const paths of [null, []]) assert.equal(windowsWorkspacePackages('pull_request', paths).length, 5);
+  for (const paths of [null, []]) assert.equal(windowsWorkspacePackages('pull_request', paths).length, 4);
   // Only pull requests: main pushes stay Linux-only, and exact-commit coverage already runs every OS x Node.
   for (const event of ['push', 'schedule', 'workflow_dispatch', 'merge_group']) {
     assert.deepEqual(windowsWorkspacePackages(event, recipe), [], event);
     assert.deepEqual(windowsWorkspacePackages(event, null), [], event);
   }
   assert(workspacePackageMatrix('push', recipe).include.every(({ os }) => os === 'ubuntu-latest'));
-  assert.equal(workspacePackageMatrix('workflow_dispatch', null).include.filter(({ os }) => os === 'windows-latest').length, 3 * 5);
+  assert.equal(workspacePackageMatrix('workflow_dispatch', null).include.filter(({ os }) => os === 'windows-latest').length, 3 * 4);
 });
 
 test('docs-only and ordinary source pull requests keep the compact lane', () => {
-  for (const paths of [['docs/CI.md'], ['README.md', 'docs/INSTALL.md', 'llms.txt', 'packages/ui/CONTRIBUTING.md'], ORDINARY, ...ORDINARY.map(path => [path])]) {
+  for (const paths of [['docs/CI.md'], ['README.md', 'docs/INSTALL.md', 'llms.txt', 'packages/auth/CONTRIBUTING.md'], ORDINARY, ...ORDINARY.map(path => [path])]) {
     assert(!highImpact(paths), paths.join());
     assert.deepEqual(platformLegs('pull_request', paths), []);
     assert.deepEqual(workspaceIntegrationMatrix('pull_request', paths).include, []);
@@ -221,7 +220,7 @@ test('docs-only and ordinary source pull requests keep the compact lane', () => 
     assert(windows.every(({ os, node }) => os === 'windows-latest' && node === '24'), paths.join());
     assert.deepEqual(windows.map(entry => entry.package), windowsWorkspacePackages('pull_request', paths), paths.join());
   }
-  assert.deepEqual(windowsWorkspacePackages('pull_request', ORDINARY), ['ui', 'auth', 'store']);
+  assert.deepEqual(windowsWorkspacePackages('pull_request', ORDINARY), ['audit', 'auth', 'store']);
 });
 
 test('unknown and shared pull request inputs fail closed to the broader selection', () => {
@@ -244,7 +243,7 @@ test('main pushes and exact-commit coverage are unchanged by high-impact selecti
   for (const event of ['schedule', 'workflow_dispatch', 'merge_group']) {
     assert.deepEqual(platformLegs(event, null), []);
     assert.equal(shardMatrix(event, null).include.length, 9 * SHARDS);
-    assert.equal(workspacePackageMatrix(event, null).include.length, 9 * 5);
+    assert.equal(workspacePackageMatrix(event, null).include.length, 9 * 4);
   }
   assert.equal(workspaceIntegrationMatrix('workflow_dispatch', null).include.length, 3);
   assert.deepEqual(workspaceIntegrationMatrix('merge_group', null).include, []);

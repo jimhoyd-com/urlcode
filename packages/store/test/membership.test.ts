@@ -16,7 +16,7 @@ import { promisify } from 'node:util';
 import { validateAuditEvent } from '@jimhoyd/urlcode-audit';
 import type { AuditExports } from '@jimhoyd/urlcode-audit';
 import type { CollectionSpec } from '../src/index.ts';
-import { AUDIT_BACKLOG, addMember, createStore, listMembers, reassignOwner, removeMember, storeScreens } from '../src/index.ts';
+import { AUDIT_BACKLOG, addMember, createStore, listMembers, reassignOwner, removeMember } from '../src/index.ts';
 import { direct, race } from './direct.ts';
 import { counts, execute, outbox, records, seed, seedOutbox } from './rows.ts';
 
@@ -184,7 +184,6 @@ test('activation refuses a gate naming an unknown or ordinary collection, and a 
   await refuses(config.collections, /readers: route \/api\/review\/\* with extension: store is not declared/, ['/api/requests', '/api/approvals']);
   const store = createStore({ database: join(nowhere, 'store.sqlite'), projectSha256: 'a'.repeat(64) });
   await assert.rejects(async () => store.registration.activate(config, { origin: 'https://x.example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts, principalMounts: ['/api/requests', '/api/approvals'], root: join(nowhere, 'app') }), /readers: route \/api\/review\/\* needs a principal-providing policy/);
-  assert.throws(() => storeScreens({ collections: config.collections, screens: { '/reviewers': { collection: 'reviewers' } } }), /membership collection, which has no mount/);
 });
 
 const cliPath = join(import.meta.dirname, '..', 'src', 'cli.ts');

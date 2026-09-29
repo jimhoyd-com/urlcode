@@ -6,14 +6,14 @@ import {artifactSite,project,redirect} from './helpers.ts';
 import {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from '../packages/core/src/feature-plan.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 
-function extension(name:'ui'|'auth'|'store',targets:RuntimeExtension['targets']=['node']):RuntimeExtension {
+function extension(name:'auth'|'store',targets:RuntimeExtension['targets']=['node']):RuntimeExtension {
  return {name,version:'1',projectSha256:'0'.repeat(64),targets,schema:{type:'object'},activate(){throw new Error('planning must not activate an extension');}};
 }
 
 test('feature planning is a bounded read-only projection of current contracts',async t=>{
- const root=await project(t,{'/old':redirect()},{'f.mjs':'throw new Error("guest code must not run")'},{extensions:{ui:{version:'1',config:{}},auth:{version:'1',config:{}},store:{version:'1',config:{}}}});
- const plan=await planFeature(root,'authenticated contact form with persisted submissions',{extensions:[extension('ui'),extension('auth'),extension('store')]});
- assert.deepEqual(plan.extensions.required.map(item=>item.name),['auth','store','ui']);
+ const root=await project(t,{'/old':redirect()},{'f.mjs':'throw new Error("guest code must not run")'},{extensions:{auth:{version:'1',config:{}},store:{version:'1',config:{}}}});
+ const plan=await planFeature(root,'authenticated contact form with persisted submissions',{extensions:[extension('auth'),extension('store')]});
+ assert.deepEqual(plan.extensions.required.map(item=>item.name),['auth','store']);
  assert.ok(plan.extensions.required.every(item=>item.registered));
  assert.ok(plan.applicable.recipes.some(recipe=>recipe.name==='contact-form'));
  assert.ok(plan.applicable.recipes.some(recipe=>recipe.name==='authenticated-json-api'));

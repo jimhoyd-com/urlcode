@@ -26,7 +26,7 @@ from the site directory:
 
 ```sh
 npx urlcode extensions available
-npx urlcode extensions add ui auth store --example   # --example adds working demos, such as a per-user /api/todos collection
+npx urlcode extensions add auth store --example   # --example adds working demos, such as a per-user /api/todos collection
 npx urlcode extensions remove store
 npx urlcode upgrade --check
 ```
@@ -34,7 +34,7 @@ npx urlcode upgrade --check
 `extensions add` installs only the capability (for example auth's Better Auth
 mount at `/api/auth/*`, with no route of yours protected yet), plus every
 extension it requires; auth requires no other extension. `--example` also writes each added
-extension's demo, such as store's `/api/todos` collection and `/todos` screen (per-user when auth
+extension's demo, such as store's `/api/todos` JSON collection (per-user when auth
 is installed).
 
 Start with the local MCP `get_context` tool (or `npx urlcode context --project
