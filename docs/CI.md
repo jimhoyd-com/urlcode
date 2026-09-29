@@ -154,7 +154,10 @@ starts three `urlcode serve` processes from this checkout on one site whose
 asserts is listed under
 [what the multi-process harness proves](STORE.md#what-the-multi-process-harness-proves). It
 bounds its own load and takes about a minute, so it is neither a soak test nor
-a throughput measurement.
+a throughput measurement. The same job then mounts a 16 MiB `tmpfs` with
+`sudo` and runs the disk-full harness (`npm run test:disk-full`, with
+`URLCODE_DISK_FULL_DIR` naming the mount), which fills it to `ENOSPC` under a
+`urlcode serve` process ([what it proves](STORE.md#what-the-disk-full-tests-prove)).
 
 Packaging tests use `npm pack --ignore-scripts` against the already-built core.
 The source `prepare` entry also checks npm's `ignore-scripts` setting because

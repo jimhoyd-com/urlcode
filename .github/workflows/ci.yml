@@ -335,6 +335,13 @@ jobs:
       # Every add-on, in dependency order: the site's host.mjs imports audit, auth and store from their dist/.
       - run: node scripts/workspaces.ts run build
       - run: npm run test:multiprocess
+      # A really full filesystem (#902): `urlcode serve` with its data directory
+      # on a 16 MiB tmpfs that the harness fills to ENOSPC, then frees. The
+      # harness refuses a filesystem larger than 64 MiB.
+      - run: sudo mkdir -p /mnt/urlcode-disk-full && sudo mount -t tmpfs -o size=16m,mode=1777 tmpfs /mnt/urlcode-disk-full
+      - run: npm run test:disk-full
+        env:
+          URLCODE_DISK_FULL_DIR: /mnt/urlcode-disk-full
   audit:
     needs: plan
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'

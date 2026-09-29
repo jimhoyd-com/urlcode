@@ -125,6 +125,7 @@ Each bound refuses rather than growing without limit:
 | Store writes | one SQLite transaction at a time per database, each fsynced (`synchronous=FULL`, unless the operator chose [`durability: 'normal'`](STORE.md#durability)) before it answers; statements are synchronous, so each commit blocks the event loop for its fsync | a write blocked by another process's lock for 2 s answers `503 storage_unavailable` |
 | Store sorted or filtered lists | read the `id` and the named fields of every record in scope (at most `maxRecords`), then the page | bounded by `maxRecords` and `pageSize` (at most 200) |
 | Audit outboxes | 1,000 undelivered events per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
+| Disk space for `store.sqlite`, `auth.sqlite` and `audit.sqlite` | the free space of the data directory's filesystem; no quota of its own | a store write answers `503 storage_unavailable`, a sign-in `503 auth_unavailable`, audit delivery waits in the outbox; nothing partial is written, and writes resume once space frees ([disk-full tests](STORE.md#what-the-disk-full-tests-prove)) |
 
 The store's database path and commit durability are operator choices in `host.mjs`; the store and
 audit bounds are reviewed YAML. See the

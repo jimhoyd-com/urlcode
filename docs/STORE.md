@@ -774,7 +774,9 @@ writes with one `If-Match`, exactly one commits; the others answer `412`.
 another process held past the 2 second busy timeout, an injected trigger)
 rolls back the record, the claim and the audit event together and answers
 `503 storage_unavailable` with no detail. The tests inject the failure after
-the record write, as a SQLite trigger on the claim and on a second record.
+the record write, as a SQLite trigger on the claim and on a second record, and
+fill the database and the filesystem
+([the disk-full tests](#what-the-disk-full-tests-prove)).
 
 **Retention and migration.** A collection keeps its newest `maxKeys` claims (at
 most 1000), evicted by count and never by time: an evicted key's retry runs
@@ -820,12 +822,13 @@ The #835 counterexamples, and what serves each:
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
 [#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
-of this contract: disk-full evidence for multi-process serving (the
-[harness](#what-the-multi-process-harness-proves) covers a `SIGKILL`, not a
-full disk). Sorted lists in SQL are
-[#951](https://github.com/jimhoyd-com/urlcode/issues/951). The plumbing the
+of this contract: sorted lists in SQL are
+[#951](https://github.com/jimhoyd-com/urlcode/issues/951), and the plumbing the
 declared intervals and transfers save is
 [measured in the framework guide](FRAMEWORK.md#plumbing-removed-by-intervals-and-transfers).
+A `SIGKILL` and a full disk have their evidence
+([the harness](#what-the-multi-process-harness-proves),
+[the disk-full tests](#what-the-disk-full-tests-prove)).
 
 
 ## Non-overlapping intervals
@@ -1924,12 +1927,66 @@ behind `auth: true`. The harness asserts:
   `auth.sqlite` and `audit.sqlite`, the sum and non-overlap invariants hold,
   and the exactly-once count above still matches.
 
-It does not prove throughput, behaviour under a full disk or a power loss,
-long-running WAL growth, or anything about several hosts. Its load lasts
+It does not prove throughput, a power loss, long-running WAL growth, or
+anything about several hosts; a full disk is covered by the tests
+[below](#what-the-disk-full-tests-prove). Its load lasts
 seconds, so it is not a soak test, and it runs on CI's disk rather than a
 production one. The declaration fence and the host lease are proved
 separately in
 [`packages/store/test/multiprocess.test.ts`](../packages/store/test/multiprocess.test.ts).
+
+#### What the disk-full tests prove
+
+A full disk makes a SQLite write fail with `SQLITE_FULL`. Two tests check
+what the store, auth and audit extensions then answer, what they leave behind
+and how they recover ([#902](https://github.com/jimhoyd-com/urlcode/issues/902)).
+Every write in them is a documented refusal or a whole commit:
+
+| Database full | What a caller sees | Written |
+|---|---|---|
+| `store.sqlite` | an HTTP write, a transfer or a host transaction answers `503 storage_unavailable` (`The store could not save this change`); reads answer `200` | nothing of the refused write: no record, no `Idempotency-Key` claim, no audit event in the outbox, no host transaction result |
+| `audit.sqlite` | `AuditExports.record()` rejects with `503 audit_unavailable`; store writes on an audited collection still commit | none of a refused batch; the store's events wait in its outbox while the drain retries with backoff; once 1,000 wait, the collection's writes answer `503 audit_backlog` (that cap is tested in `packages/store/test/audit.test.ts`, not on a full disk) |
+| `auth.sqlite` | a sign-in answers `503 {"error":"auth_unavailable"}` with `Retry-After: 1` and no `Set-Cookie`; a signed-in route still answers `200`, because verifying a session only reads | no session |
+
+Once space frees up, the service recovers without a restart: an
+`Idempotency-Key` whose write was refused runs for the first time (not a
+replay), the host transaction runs, sign-in works again, and the drain
+delivers every waiting event. Afterwards `PRAGMA integrity_check` is `ok` on
+all three files, and `audit.sqlite` holds exactly one event per committed
+change, each id once.
+
+- **Deterministic, on every OS:**
+  [`test/disk-full.test.ts`](../test/disk-full.test.ts), part of `npm test`,
+  serves one site composing audit, auth and store in one process. It fills
+  each database in turn: it caps every connection to that file at the file's
+  current size (`PRAGMA max_page_count`, a per-connection setting, so the test
+  reaches each extension's own connection) and fills the remaining free pages
+  with a filler table. Creates, transfers and sign-ins run until the first
+  refusal of each. The rows, claims and balances are then checked against the
+  answers.
+- **A really full filesystem:**
+  [`test/disk-full.integration.ts`](../test/disk-full.integration.ts)
+  (`npm run test:disk-full`) starts `urlcode serve` from the built CLI, with
+  the site and its data directory on a filesystem of at most 64 MiB. It fills
+  that filesystem to `ENOSPC` with a filler file, then runs creates, transfers
+  and sign-ins until each is refused. It checks that the server keeps running
+  and reads still answer, then removes the filler, retries the refused keys,
+  stops the server and checks the files. CI runs it on Linux in the
+  `multiprocess` job, on a 16 MiB `tmpfs` ([CI](CI.md#checking-this-repository));
+  it has also passed on macOS on a 16 MiB HFS+ disk image.
+
+Before these tests, a sign-in whose session could not be stored answered
+Better Auth's bare `500` (a full disk) or core's `500` (a lock held past the
+busy timeout); the auth mount now answers `503 auth_unavailable`.
+
+They do not prove behaviour with several processes on a full disk, a
+**restart** while the disk is full (opening or migrating a database on a full
+disk is untested), a filesystem with reserved blocks or quotas (ext4, XFS), a
+power loss, or a disk that fills during a WAL checkpoint under sustained load.
+`max_page_count` caps the database file, not its `-wal` or `-shm`; only the
+filesystem test fills those. Neither test is a soak test. A heartbeat that
+cannot write is skipped, so a disk full for longer than a host lease's 20
+seconds lets that lease expire until space frees.
 
 ### Durability
 

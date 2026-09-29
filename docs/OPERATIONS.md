@@ -475,6 +475,21 @@ back up any app-owned persistent state separately. YAML routes require no databa
 
 ## Capacity and incident planning
 
+**A full disk.** The store, auth and audit extensions keep their SQLite files
+in the site's `data/` directory. When that filesystem fills, a write that
+needs space is refused and writes nothing: a store write answers
+`503 storage_unavailable`, a sign-in `503 auth_unavailable` with no session,
+and an audit delivery waits in the store's outbox. Reads, and routes behind
+an existing session, keep answering. The process keeps running and needs no
+restart: free space (or grow the volume), and writes, sign-ins and audit
+delivery resume; a client's retry with the same `Idempotency-Key` then runs
+for the first time. Check the three files afterwards with
+`PRAGMA integrity_check` (`urlcode-store backup` also refuses a copy of
+`store.sqlite` that does not pass it). Watch free space on the data volume and alert well before it
+runs out, because the tests do not cover restarting on a full disk. What is
+proved, and what is not, is in
+[the disk-full tests](STORE.md#what-the-disk-full-tests-prove).
+
 See [capacity and concurrency](CAPACITY.md) for hard limits, worker occupancy,
 no-queue rejection, memory/reload budgets and theoretical sizing. See
 [DDoS and recovery](RESILIENCE.md) for ingress responsibilities, incident response,

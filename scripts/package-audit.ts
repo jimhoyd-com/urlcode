@@ -352,9 +352,9 @@ export const budgets: Record<string, Budget> = {
     // Node 26, 732 packed bytes under the old 18 KiB (CI's Node 24 packs larger); ~3 KiB headroom on each.
     // #930 hermetic runs and seeds on top of #946: 19307 packed / 60677 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #960 pack-addons refusal on top of #949 and #967: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #902 disk-full: the mount's 503 for a Better Auth 500 or throw, README and SECURITY, on top of #960: 20285 packed / 63870 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     packed: 24 * 1024,
-    // #960 pack-addons refusal on top of #949 and #967: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 65 * 1024,
+    unpacked: 66 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
