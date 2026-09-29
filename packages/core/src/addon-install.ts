@@ -17,6 +17,7 @@ import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, in
 import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './extensions.ts';
 import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
+import { generatedPaths } from './site.ts';
 import { isCode, isRecord } from './object-guards.ts';
 import { addonNamePattern, addonPackage, contractProblem, declaredExtensionTargets, installedProviders, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, readInstalledDescriptor, withRequirements } from './addon-manifest.ts';
 import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin, ArtifactDocument, ExtensionTarget, InstalledProvider } from './addon-manifest.ts';
@@ -359,6 +360,36 @@ async function writeExclusive(target: string, content: string | Uint8Array, mode
 }
 
 export interface Snapshot { restore(): Promise<void>; created: string[] }
+/** The files whose generated audit route count `extensions add|remove` keeps in step with the routes it writes (#910). */
+function expectedRouteFiles(site: Site): [string, RegExp][] {
+  return [
+    [site.packageFile, /("audit"\s*:\s*"urlcode audit --expect-routes )(\d+)/],
+    [join(site.site, '.github', 'workflows', 'urlcode.yml'), /(^\s*expect-routes: )(\d+)/m],
+    [join(site.site, 'AGENTS.md'), /(^npm run audit\s+# urlcode audit --expect-routes )(\d+)/m],
+  ];
+}
+/** Configured routes as the audit counts them: declared routes plus each active `site.*` convention no route shadows. */
+async function configuredRouteCount(project: string): Promise<number> {
+  const loaded = await loadDocument(project), site: Record<string, unknown> = { ...loaded.document.site };
+  const conventions = Object.entries(generatedPaths).filter(([key, path]) => site[key] !== undefined && site[key] !== null && site[key] !== false && !Object.hasOwn(loaded.routes, path));
+  return Object.keys(loaded.routes).length + conventions.length;
+}
+/**
+ * Moves each generated `--expect-routes` count by the routes this command added or removed, so the site's own audit
+ * keeps passing without hand edits. A count the operator rewrote into another form is left alone; the files changed
+ * are named in the result.
+ */
+async function syncExpectedRoutes(site: Site, delta: number): Promise<string | undefined> {
+  if (!delta) return undefined;
+  const changed: string[] = [];
+  for (const [file, pattern] of expectedRouteFiles(site)) {
+    let text: string;
+    try { text = await readFile(file, 'utf8'); } catch (error) { if (isCode(error, 'ENOENT')) continue; throw error; }
+    const next = text.replace(pattern, (_match, lead: string, count: string) => `${lead}${Math.max(0, Number(count) + delta)}`);
+    if (next !== text) { await writeFile(file, next); changed.push(relative(site.site, file)); }
+  }
+  return changed.length ? `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in ${changed.join(', ')}${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}` : undefined;
+}
 export async function snapshot(paths: readonly string[]): Promise<Snapshot> {
   const saved = new Map<string, string | undefined>();
   for (const path of paths) { try { saved.set(path, await readFile(path, 'utf8')); } catch (error) { if (!isCode(error, 'ENOENT')) throw error; saved.set(path, undefined); } }
@@ -501,7 +532,8 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     return result;
   }
   const yamlFile = join(site.project, 'urlcode.yaml');
-  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, filesLockPath]);
+  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, filesLockPath, ...expectedRouteFiles(site).slice(1).map(([file]) => file)]);
+  const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
   const tree = await dependencyTree(site.site);
   // What each independent package provided before npm ran, so a re-added one is recognised as an upgrade (#857).
   const previous = new Map([...(await installedProviders(site.site, manifest)).providers.values()].filter(provider => !provider.catalog).map(provider => [provider.package, provider]));
@@ -675,6 +707,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     for (const [name, dependency] of [...independent, ...upgrades, ...unchanged]) files.packages[dependency] = await recordPackage(site.site, dependency, recordLock[`node_modules/${dependency}`], { name, kind, spec: specOf.get(dependency) ?? null });
     await writeFilesLock(site.site, files);
     result.added = [...toAdd, ...independent.keys()];
+    if (kind === 'extension') { const moved = await syncExpectedRoutes(site, await configuredRouteCount(site.project) - routesBefore); if (moved) result.notes.push(moved); }
     return result;
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
   finally { for (const secret of secrets) secret.fill(0); }
@@ -721,7 +754,8 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   // An add-on that only uses this one keeps working without it, except the features that need it.
   const notes = others.filter(other => edges(other).uses.includes(name)).map(other => other.name).sort().map(other => `${other} uses ${name}; features of ${other} that need ${name} will refuse to activate`);
   const yamlFile = join(site.project, 'urlcode.yaml'), routesFile = join(site.project, 'routes', `${name}.yaml`);
-  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile, join(site.site, ADDON_FILES_LOCK)]);
+  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile, join(site.site, ADDON_FILES_LOCK), ...expectedRouteFiles(site).slice(1).map(([file]) => file)]);
+  const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
   const tree = await dependencyTree(site.site);
   const kept: string[] = [];
   let installing = false;
@@ -755,6 +789,7 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
     const files = await readFilesLock(site.site);
     delete files.packages[packageName];
     await writeFilesLock(site.site, files);
+    if (kind === 'extension') { const moved = await syncExpectedRoutes(site, await configuredRouteCount(site.project) - routesBefore); if (moved) notes.push(moved); }
     return { removed: name, kept, projectSha256: kind === 'extension' ? await inspectExtensionRevision(site.project) : undefined, notes };
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
 }

@@ -108,7 +108,7 @@ An explicit flag always wins and an empty variable counts as unset. A relative
 `URLCODE_POLICY` resolves against the working directory, which for an npm
 script is the site root. The npm scripts `urlcode init` writes (`dev`, `start`,
 `validate`, `test`, `routes`, `audit`) carry `--project app --host-file host.mjs`
-and nothing else: npm runs them under `sh` on POSIX and `cmd` on Windows, so no
+and nothing else beyond the audit's `--expect-routes N`: npm runs them under `sh` on POSIX and `cmd` on Windows, so no
 variable syntax in a script is portable, and neither value is the runtime's to
 choose. The CLI reads the variables itself, so after the operator has reviewed
 the project and saved the output of `urlcode permissions --project app` (say as
@@ -132,9 +132,33 @@ policy placeholder when neither `--policy` nor a well-formed `PROJECT_SHA256`
 pins the revision. The error codes are `origin-required` and
 `revision-pin-required`. Nothing creates, finds or repins a policy: approval
 stays the operator's explicit step, and a project edit still invalidates the
-reviewed revision. The authoring MCP server takes the same fallbacks at start
+reviewed revision. `urlcode permissions --project app` prints the revision as
+`projectSha256`; the pin refusal names that command. The authoring MCP server takes the same fallbacks at start
 and forwards the resolved values to its `run_validate`, `run_test` and
 `run_audit` children as flags.
+
+`urlcode extensions add` and `remove` keep the generated route counts in step:
+they move the `--expect-routes N` of the `audit` script, the `expect-routes:` of
+the generated GitHub workflow and the audit line of `AGENTS.md` by the number of
+routes the command added or removed (including an `--example` route), and name
+the files they changed. A count the operator rewrote into another form is left
+alone. New routes still need request fixtures in `app/tests/requests.json`.
+
+### Inspection without a revision pin
+
+Reading the operator host's registrations never needs the pin (#910). The
+read-only commands `explain`, `plan-feature`, `context`, `review`, `report`,
+`studio`, `openapi`, `extensions` (without a subcommand) and the `mcp` server
+load `--host-file` in inspection mode: with neither `--policy` nor
+`PROJECT_SHA256`, `composeHost` composes every registration with an unpinned
+inspection revision instead of refusing. Such a registration is reported as
+not pinned (`revisionMatch: false` in `explain`, `revisionPinned: false` and a
+note in `extensions`), and every activation refuses it with
+`revision-pin-required` before anything else is checked, so it can never serve.
+`serve`, `dev`, `validate` (with or without `--local`), `test`, `routes`,
+`audit`, `benchmark` and the MCP `run_tests` runner still need the reviewed pin.
+With a pin, the inspection commands compose pinned registrations exactly as
+before.
 
 ## Project context
 
@@ -305,6 +329,7 @@ or start the server with it, when the project declares `site.sitemap`, as for
 is which already-supported contract applies. It returns a bounded structured
 plan: matching local recipes and capability decisions for the current revision,
 operator-owned extension prerequisites and their registration/target status,
+the extension authoring surfaces the goal names,
 installed inert artifact status, a deliberately small route/config outline where a
 recipe defines one, application-code boundaries, explicit gaps, and the next
 bounded calls. It never returns generated application code.
@@ -330,11 +355,32 @@ records sit behind a principal-providing policy. When no planner term matches,
 a recipe is offered from its tags only if at least two goal terms are among
 them, so a single generic word ("status") never selects one.
 
+Extension surfaces come from the extensions' own authoring contracts, not from
+vocabulary kept in core (#913). Each surface of an extension's `authoring`
+contract may list `goals`, the lowercase words it answers; the planner lists
+every surface whose goals share a word with the goal under
+`extensions.surfaces` (`extension`, `surface`, `kind`, `matched` and `source`),
+adds an `outline` entry with the surface's description and path, and requires
+that extension. The contract is read from the loaded host's registration first,
+then from the descriptor installed in the site around the project, then from
+this core's release catalog (`source` is `registered`, `installed` or
+`catalog`), so an extension is planned before it is installed. The store
+publishes `collections`, `ownership` (their own records), `transitions`
+(submit, approve, reject, pending; `by: others` for a review step),
+`membership` and `readers` (reviewers); auth publishes `route protection`
+(signed-in, users, private, owners, reviewers) and its mount. A goal such as
+"owners submit requests; reviewers approve or reject pending requests"
+therefore plans auth, store ownership, transitions, membership and readers.
+When no recipe matches its own terms, the recipes built on a named extension
+(its `services` name `<extension> extension`) are offered, ranked by the
+surface words they answer.
+
 The goal is a 1–512 character string reduced to at most sixteen normalized
 terms; the returned JSON is capped at 32 KiB (an estimated token count is
 included). It only uses the compiled project, packaged capability/recipe data,
-the artifacts installed in the site and registrations that the operator
-already supplied to the CLI/MCP session. It does not open a host file itself,
+the artifacts and add-on descriptors installed in the site, the release
+catalog, and registrations that the operator already supplied to the CLI/MCP
+session. It does not open a host file itself,
 read binding values, execute guest or extension code, fetch a service, or make
 a project change. An installed schema artifact remains inert and a registered
 extension remains an operator decision: neither lets YAML select a package,

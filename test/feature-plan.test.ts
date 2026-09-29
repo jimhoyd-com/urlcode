@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {artifactSite,project,redirect} from './helpers.ts';
 import {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from '../packages/core/src/feature-plan.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
+import {isAuthoringGoals} from '../packages/core/src/addon-manifest.ts';
 
 function extension(name:'auth'|'store',targets:RuntimeExtension['targets']=['node']):RuntimeExtension {
  return {name,version:'1',projectSha256:'0'.repeat(64),targets,schema:{type:'object'},activate(){throw new Error('planning must not activate an extension');}};
@@ -101,4 +102,41 @@ test('feature planning maps list, filter, sort and paging goals to store filtera
  // The tag fallback needs more than one shared word: "status" alone is not a health goal, a real health goal still is.
  assert.deepEqual((await planFeature(root,'show the service status')).applicable.recipes,[]);
  assert.equal((await planFeature(root,'health status page')).applicable.recipes[0]?.name,'health-page');
+});
+
+// #913: planning reads the authoring surfaces extensions publish, from the catalog before anything is installed.
+test('feature planning names the store ownership and auth surfaces for a signed-in user\'s own records (#913)',async t=>{
+ const root=await project(t,{});
+ const plan=await planFeature(root,'Let signed-in users create, list, edit and delete their own private notes via a JSON API');
+ assert.deepEqual(plan.extensions.required.map(item=>item.name),['auth','store']);
+ const surfaces=plan.extensions.surfaces.map(item=>`${item.extension}/${item.surface}`);
+ for(const surface of ['auth/route protection','store/collections','store/ownership'])assert.ok(surfaces.includes(surface),surface);
+ assert.ok(plan.extensions.surfaces.every(item=>item.source==='catalog'&&item.matched.length>0));
+ assert.ok(plan.extensions.surfaces.find(item=>item.surface==='ownership')!.matched.includes('own'));
+ assert.equal(plan.applicable.recipes[0]?.name,'store-crud');
+ assert.match(plan.outline.find(item=>item.kind==='store ownership')!.note,/ownership: owner/);
+ assert.deepEqual(plan.applicationCode,[]);
+});
+
+test('feature planning maps an approval goal to store transitions, membership and readers behind auth (#913)',async t=>{
+ const root=await project(t,{});
+ const plan=await planFeature(root,'Owners submit requests; reviewers approve or reject pending requests',{extensions:[extension('store'),extension('auth')]});
+ assert.deepEqual(plan.extensions.required.map(item=>item.name),['auth','store']);
+ const surfaces=plan.extensions.surfaces.map(item=>`${item.extension}/${item.surface}`);
+ for(const surface of ['auth/route protection','store/ownership','store/transitions','store/membership','store/readers'])assert.ok(surfaces.includes(surface),surface);
+ assert.ok(plan.extensions.surfaces.find(item=>item.surface==='transitions')!.matched.includes('approve'));
+ assert.match(plan.outline.find(item=>item.kind==='store transitions')!.note,/by: others/);
+ assert.match(plan.outline.find(item=>item.kind==='store readers')!.note,/readers: \{mount, members/);
+ assert.equal(plan.applicable.recipes[0]?.name,'store-crud');
+ assert.ok(!plan.applicable.recipes.some(recipe=>recipe.name==='contact-form'),'one generic word is not a contact form');
+});
+
+test('a registered extension\'s own authoring goals take precedence over the catalog, and malformed goals are refused (#913)',async t=>{
+ const root=await project(t,{});
+ const store:RuntimeExtension={...extension('store'),authoring:{description:'Custom store.',surfaces:[{kind:'configuration',name:'ledger',description:'A ledger surface.',goals:['ledger']}]}};
+ const plan=await planFeature(root,'keep a ledger of payments',{extensions:[store]});
+ assert.deepEqual(plan.extensions.surfaces,[{extension:'store',surface:'ledger',kind:'configuration',source:'registered',matched:['ledger']}]);
+ assert.ok(plan.extensions.required.some(item=>item.name==='store'&&item.registered));
+ assert.equal(isAuthoringGoals(['approve','per-user']),true);
+ for(const bad of [['Approve'],['two words'],['x'.repeat(33)],['a','a'],Array.from({length:33},(_,index)=>`g${index}`),'approve'])assert.equal(isAuthoringGoals(bad),false,JSON.stringify(bad));
 });

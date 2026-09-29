@@ -32,7 +32,7 @@ import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
-import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
+import { commandOptions as options, aliasOriginCommands, hostFileCommands, inspectionHostCommands, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
 import { cliInvocation, shellWord } from './context.ts';
@@ -241,7 +241,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'plan-feature', group:'Agent tooling', text:
 `  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--origin https://links.example] [--policy /absolute/policy.json] [--json]
-    # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
+    # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts, extension authoring surfaces and registrations already loaded from the operator host; --host-file needs no revision pin here
 ` },
   { name:'fixtures', group:'Agent tooling', text:
 `  urlcode fixtures suggest [--project directory] [--json]
@@ -374,7 +374,7 @@ try {
         // A verified --policy pins the host to its reviewed revision, so no PROJECT_SHA256 bridge is needed (#723).
         // Only the revision reaches the host; the grants stay with core.
         if (values.policy !== undefined && (policyCommands as readonly string[]).includes(command)) verifiedPolicy = await loadOperatorPolicy(values.policy, values.project);
-        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 });
+        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256, inspection: (inspectionHostCommands as readonly string[]).includes(command) && !(command === 'extensions' && arg !== undefined) });
         if (verifiedPolicy && operatorHost.extensions?.length) {
           const actual = (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256;
           if (verifiedPolicy.projectSha256 !== actual) throw new ConfigError(`The extension host is pinned by --policy${revisionPinHint(verifiedPolicy.projectSha256, actual)}`, { code: 'revision-pin-mismatch' });
