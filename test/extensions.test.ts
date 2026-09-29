@@ -506,9 +506,28 @@ export default await composeHost(import.meta.url,[demo]);
     const error=lastError(out.stderr);assert.equal(error.code,'revision-pin-mismatch');
     assert.match(error.message,new RegExp(`^The extension host is pinned by --policy: the policy is pinned to project revision ${'c'.repeat(64)}, but the project is now revision ${revision}`));
   });
-  await t.test('commands without --policy support do not derive a pin',()=>{
+  await t.test('commands without --policy support do not derive a pin: extensions inspects unpinned (#910)',()=>{
     const out=spawnSync(process.execPath,[cli,'extensions','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
-    assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy/);
+    assert.equal(out.status,0,out.stderr);
+    assert.match(out.stdout,/Registered: demo \(contract 1; targets [^)]*; declared; revision NOT pinned\)/);
+    assert.match(out.stdout,/unpinned inspection\): serve, dev, validate and test refuse until the reviewed revision is pinned/);
+  });
+  // #910: reading registrations never needs the pin; activating or serving always does.
+  for(const args of [['explain'],['explain','/demo/x'],['plan-feature','store records for signed-in users'],['context'],['review'],['openapi'],['report','--json']])await t.test(`${args.join(' ')} inspects the host without a pin`,()=>{
+    const out=spawnSync(process.execPath,[cli,...args,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
+    assert.equal(out.status,0,out.stderr);
+  });
+  await t.test('an unpinned inspection reports the registration as not matching the revision',()=>{
+    const out=spawnSync(process.execPath,[cli,'explain','/demo/x','--project',root,'--host-file',host,'--json'],{encoding:'utf8',timeout:20000,env:base});
+    assert.equal(out.status,0,out.stderr);
+    assert.match(out.stdout,/"revisionMatch":false/);
+  });
+  for(const args of [['serve','--port','0'],['dev','--port','0'],['validate','--local'],['validate'],['test'],['routes'],['audit']])await t.test(`${args.join(' ')} still refuses without a pin, naming a command that prints it`,()=>{
+    const out=spawnSync(process.execPath,[cli,...args,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:30000,env:base});
+    assert.equal(out.status,1,out.stdout+out.stderr);
+    const error=lastError(out.stderr);
+    assert.equal(error.code,'revision-pin-required',out.stderr);
+    assert.ok(error.message.includes('`urlcode permissions --project app` prints it as projectSha256'),error.message);
   });
   // The inspection commands take the reviewed policy too (#834).
   await t.test('explain derives the pin from a verified --policy',()=>{
@@ -522,10 +541,26 @@ export default await composeHost(import.meta.url,[demo]);
     assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy/);
   });
   // The slot is set only while the host file is imported.
-  const {loadOperatorHost,operatorRevisionKey}=await import('../packages/core/src/operator-host.ts');
+  const {loadOperatorHost,operatorRevisionKey,inspectionHostKey,unpinnedInspectionRevision}=await import('../packages/core/src/operator-host.ts');
   const loaded=await loadOperatorHost(host,root,{revision});
   assert.equal(loaded.extensions?.[0]?.projectSha256,revision);assert.equal((globalThis as Record<symbol,unknown>)[operatorRevisionKey],undefined);
   await loaded.close?.();
+  // An inspection load without a pin composes the unpinned revision, and no activation accepts it (#910).
+  const {PROJECT_SHA256:saved}=process.env;delete process.env.PROJECT_SHA256;
+  // A module is imported once per process, so each load below reads its own copy of the host file.
+  const copy=async(name:string)=>{const file=join(dir,name);await writeFile(file,await readFile(host,'utf8'));return file;};
+  try {
+    const inspected=await loadOperatorHost(await copy('inspect.mjs'),root,{inspection:true});
+    assert.equal(inspected.extensions?.[0]?.projectSha256,unpinnedInspectionRevision);assert.equal((globalThis as Record<symbol,unknown>)[inspectionHostKey],undefined);
+    await assert.rejects(createRuntime(root,{extensions:inspected.extensions,origin}),(error:ConfigError)=>error.details.code==='revision-pin-required'&&/composed for read-only inspection without a revision pin and cannot activate/.test(error.message));
+    await inspected.close?.();
+    // With a pin an inspection load is pinned as before.
+    const pinned=await loadOperatorHost(await copy('pinned.mjs'),root,{revision,inspection:true});
+    assert.equal(pinned.extensions?.[0]?.projectSha256,revision);
+    await pinned.close?.();
+    // Without the inspection flag the host still refuses to compose.
+    await assert.rejects(loadOperatorHost(await copy('serving.mjs'),root),/The extension host needs the reviewed project revision/);
+  } finally {if(saved!==undefined)process.env.PROJECT_SHA256=saved;}
 });
 
 /** A demo registry written as a host file outside the project, matching the in-process registration above. */

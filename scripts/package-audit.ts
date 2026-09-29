@@ -288,8 +288,13 @@ export const budgets: Record<string, Budget> = {
     // 3768213 unpacked bytes, 507 entries; CI (Node 24) packed 954811. About 3 KiB of headroom on each.
     // With #834's context fallbacks and plan_feature list vocabulary on top of #903's main, measured on Node 26:
     // 958684 packed / 3783392 unpacked bytes, 507 entries; about 3 KiB of headroom on each.
-    packed: 939 * 1024,
-    unpacked: 3698 * 1024,
+    // Raised for #910 and #913: unpinned inspection in operator-host/host/extensions, the expect-routes sync in
+    // addon-install, authoring-surface planning in feature-plan, the release catalog's authoring contracts, and the
+    // TOOLING/AI-AUTHORING/EXTENSIONS/RUNTIME-IMPLEMENTATION sections with their llms-full.txt copies. Measured on
+    // Node 26: 969304 packed bytes (7768 over 939 KiB) and 3821266 unpacked bytes (34514 over 3698 KiB), 507
+    // entries. Packed raised to 950 KiB and unpacked to 3735 KiB, keeping about 3.4 KiB of headroom on each.
+    packed: 950 * 1024,
+    unpacked: 3735 * 1024,
     entries: 510,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -339,7 +344,10 @@ export const budgets: Record<string, Budget> = {
     // Raised to 96 KiB packed and 372 KiB unpacked for #861/#881: the JSON Schema 2020-12 record schema (its config
     // schema again in urlcode.json and the README field reference) and the OpenAPI description (dist/openapi.js and
     // its declarations), merged with #897's audit drain status, measure 95170 packed and 371009 unpacked bytes (Node 26).
-    packed: 96 * 1024,
+    // Raised to 100 KiB packed and 376 KiB unpacked for #913: the authoring contract split into ownership,
+    // transitions, membership and readers surfaces with planner goals (dist/authoring.js, urlcode.json and the README
+    // surface list), on top of #904's durability setting, measure 98901 packed and 381898 unpacked bytes (Node 26).
+    packed: 100 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -365,7 +373,7 @@ export const budgets: Record<string, Budget> = {
     // #835 transitions and retries, #863 membership gates: see the packed note above.
     // #866 membership follow-ups: see the packed note above.
     // #861/#881 record schema and OpenAPI description: see the packed note above.
-    unpacked: 372 * 1024,
+    unpacked: 376 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

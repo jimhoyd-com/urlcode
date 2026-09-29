@@ -606,7 +606,12 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
    [runtime implementation](RUNTIME-IMPLEMENTATION.md)).
 3. Publishes an `authoring` contract listing its supported project-owned
    configuration and hook surfaces, plus focused `fastChecks`. Keep descriptions concrete enough that an agent
-   can choose a supported surface instead of copying package behavior.
+   can choose a supported surface instead of copying package behavior. A surface
+   may list `goals`: at most 32 lowercase words (a word or hyphenated word) that
+   `plan-feature` matches against a feature goal to name that surface, so the
+   extension, not core, owns its planning vocabulary
+   ([feature planning](TOOLING.md#feature-planning)). The release catalog
+   carries each extension's contract, so a goal plans it before it is installed.
 4. Activates all configuration, files, services and hooks before serving a
    request. Invalid or stale configuration fails activation. Throw an `Error`
    whose message names the offending setting: `validate`, `test`, `dev` and
@@ -1219,7 +1224,8 @@ extension's `targets`, for an
 artifact that lists them its [`documents`](#artifact-documents) (each `path`
 and `mediaType` only, never contents, at most 32) and, when the descriptor
 declares one, its `agent` block (a description and references whose `path` is
-relative to that add-on's package):
+relative to that add-on's package) and an extension's `authoring` contract,
+which `plan-feature` matches a goal against before the extension is installed:
 
 ```json
 {
@@ -1651,7 +1657,16 @@ revision or registers a schema that differs from the definition.
 - Otherwise `composeHost` reads `PROJECT_SHA256`, as before.
 - Both present and different refuses (`code` `revision-pin-mismatch`), and so
   does a policy whose revision is not the project's current one once the host
-  registers an extension. Neither present refuses, naming both options.
+  registers an extension. Neither present refuses, naming both options and
+  `urlcode permissions --project app`, which prints the revision.
+- A read-only inspection command (`explain`, `plan-feature`, `context`,
+  `review`, `report`, `studio`, `openapi`, `extensions`, `mcp`) with neither
+  composes its registrations with an unpinned inspection revision instead
+  (#910). They are reported as not pinned, and every activation refuses them
+  (`revision-pin-required`), so an unpinned host can be read but never serve
+  ([inspection without a revision pin](TOOLING.md#inspection-without-a-revision-pin)).
+  The loader signals inspection through a second process-global slot,
+  `Symbol.for('urlcode.host.inspection')`, set only while it imports the host file.
 
 A `host()` hook reads the pin as `context.projectSha256` and registers it
 unchanged, so the generated `host.mjs` needs no edit and existing host files

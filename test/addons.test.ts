@@ -71,6 +71,8 @@ async function registry(t: TestContext, dir: string, extra: Record<string, Recor
   return root;
 }
 
+/** The note `extensions add|remove` prints after moving a fresh site's generated audit counts (#910). */
+const moved = (delta: number): string => `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in package.json, ${join('.github', 'workflows', 'urlcode.yml')}, AGENTS.md${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}`;
 async function site(t: TestContext): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-site-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -143,7 +145,7 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   assert.deepEqual(added.added, ['alpha', 'beta'], 'requirements are added first');
   assert.match(added.projectSha256 ?? '', /^[a-f0-9]{64}$/);
   assert.deepEqual(added.env, { ALPHA_MODE: 'Optional mode for the fixture' });
-  assert.deepEqual(added.notes, ['installed: alpha,beta']);
+  assert.deepEqual(added.notes, ['installed: alpha,beta', moved(2)]);
   const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
   assert.equal(pkg.dependencies['@jimhoyd/urlcode-alpha'], `file:${join(fixtures, 'alpha')}`);
   const loaded = await loadDocument(join(dir, 'app'));
@@ -172,7 +174,7 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   const using = parseAddonManifest({ ...structuredClone(m), addons: { ...structuredClone(m.addons), alpha: { ...m.addons.alpha!, uses: ['beta'] } } }, 'uses manifest');
   const removed = await removeAddon(dir, 'extension', 'beta', { manifest: using });
   assert.deepEqual(removed.kept, []);
-  assert.deepEqual(removed.notes, ['alpha uses beta; features of alpha that need beta will refuse to activate']);
+  assert.deepEqual(removed.notes, ['alpha uses beta; features of alpha that need beta will refuse to activate', moved(-1)]);
   await assert.rejects(stat(join(dir, 'app', 'routes', 'beta.yaml')), /ENOENT/);
   const afterBeta = await loadDocument(join(dir, 'app'));
   assert.deepEqual(Object.keys(afterBeta.document.extensions ?? {}), ['alpha']);
@@ -184,7 +186,7 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   await writeFile(join(dir, 'app', 'urlcode.yaml'), (await readFile(join(dir, 'app', 'urlcode.yaml'), 'utf8')).replace('routes:\n  /mine:\n    extension: alpha\n    methods: [GET]', 'routes: {}'));
   const removedAlpha = await removeAddon(dir, 'extension', 'alpha', { manifest: m });
   assert.deepEqual(removedAlpha.kept, ['data/alpha.key'], 'operator files and data are never deleted');
-  assert.deepEqual(removedAlpha.notes, []);
+  assert.deepEqual(removedAlpha.notes, [moved(-1)]);
   assert.equal(await readFile(join(dir, 'host.mjs'), 'utf8'), renderInitialHost());
   const readded = await addAddons(dir, 'extension', ['alpha'], { manifest: m });
   assert.deepEqual(readded.keptFiles, ['data/alpha.key'], 're-adding keeps the existing key');
@@ -249,7 +251,7 @@ test('extensions add installs the capability only; --example adds the example on
   const loadedBlank = await loadDocument(join(blank, 'app'));
   assert.deepEqual(Object.keys(loadedBlank.routes), ['/alpha/*'], 'a blank install adds no sample endpoint');
   assert.deepEqual(loadedBlank.document.extensions?.alpha?.config, { greeting: 'hello' });
-  assert.deepEqual(plain.notes, ['installed: alpha']);
+  assert.deepEqual(plain.notes, ['installed: alpha', moved(1)]);
   await assert.rejects(addAddons(blank, 'extension', ['alpha'], { manifest: m, example: true }), /--example has no effect: alpha is already installed/);
 
   const demo = await site(t);
@@ -258,7 +260,7 @@ test('extensions add installs the capability only; --example adds the example on
   const loaded = await loadDocument(join(demo, 'app'));
   assert.deepEqual(Object.keys(loaded.routes).sort(), ['/alpha-demo', '/alpha/*']);
   assert.deepEqual(loaded.document.extensions?.alpha?.config, { greeting: 'hello from the example' }, 'example config merges over the capability');
-  assert.deepEqual(withExample.notes, ['installed: alpha', 'example: open /alpha-demo']);
+  assert.deepEqual(withExample.notes, ['installed: alpha', 'example: open /alpha-demo', moved(2)]);
   assert.deepEqual(withExample.env, { ALPHA_MODE: 'Optional mode for the fixture' });
 
   // An extension with no example refuses --example rather than silently doing nothing, and rolls back.
@@ -315,6 +317,31 @@ test('extensions add and remove edit only the extensions and includes nodes of u
   assert.equal(await readFile(demoYaml, 'utf8'), withAlpha, 'remove deletes exactly what add inserted');
   await removeAddon(demo, 'extension', 'alpha', { manifest: m });
   assert.equal(await readFile(demoYaml, 'utf8'), handWritten, 'removing every extension restores the hand-written file');
+});
+
+test('extensions add and remove keep the generated --expect-routes counts in step with the routes they write (#910)', async t => {
+  const m = manifest(), dir = await site(t);
+  const counts = async (): Promise<string[]> => {
+    const script = (JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts.audit!;
+    const workflow = await readFile(join(dir, '.github', 'workflows', 'urlcode.yml'), 'utf8'), guide = await readFile(join(dir, 'AGENTS.md'), 'utf8');
+    return [/--expect-routes (\d+)/.exec(script)![1]!, /expect-routes: (\d+)/.exec(workflow)![1]!, /npm run audit\s+# urlcode audit --expect-routes (\d+)/.exec(guide)![1]!];
+  };
+  assert.deepEqual(await counts(), ['0', '0', '0']);
+  await addAddons(dir, 'extension', ['alpha'], { manifest: m, example: true });
+  assert.deepEqual(await counts(), ['2', '2', '2'], 'the capability mount and the example route');
+  // A site.* convention the add does not touch is not counted again.
+  const yaml = join(dir, 'app', 'urlcode.yaml');
+  await writeFile(yaml, `${await readFile(yaml, 'utf8')}site:\n  robots: {}\n`);
+  await addAddons(dir, 'extension', ['beta'], { manifest: m, acknowledgements: ['beta:risky'] });
+  assert.deepEqual(await counts(), ['3', '3', '3']);
+  // A count the operator rewrote into another form is left alone; the others still move.
+  const pkgFile = join(dir, 'package.json'), pkg = JSON.parse(await readFile(pkgFile, 'utf8')) as { scripts: Record<string, string> };
+  pkg.scripts.audit = 'urlcode audit --project app --host-file host.mjs';
+  await writeFile(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
+  const removed = await removeAddon(dir, 'extension', 'beta', { manifest: m });
+  assert.deepEqual(removed.notes, [`The audit's expected route count moved by -1 in ${join('.github', 'workflows', 'urlcode.yml')}, AGENTS.md`]);
+  assert.equal((JSON.parse(await readFile(pkgFile, 'utf8')) as { scripts: Record<string, string> }).scripts.audit, 'urlcode audit --project app --host-file host.mjs');
+  assert.match(await readFile(join(dir, '.github', 'workflows', 'urlcode.yml'), 'utf8'), /expect-routes: 2 /);
 });
 
 test('the minimal YAML edits handle block and flow collections and keep CRLF', () => {

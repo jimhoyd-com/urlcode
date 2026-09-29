@@ -2,7 +2,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, assert, extensionError } from './errors.ts';
 import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
-import { hostRevisionPin, type OperatorHost } from './operator-host.ts';
+import { hostRevisionPin, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
 /**
@@ -34,7 +34,8 @@ interface ComposeOptions { plugins?: RuntimeOptions['plugins'] }
  *   export default await composeHost(import.meta.url, [audit(), auth(), store()]);
  *
  * It reads the reviewed project revision once (the verified `--policy` revision when a CLI command was given both
- * `--policy` and `--host-file`, otherwise `PROJECT_SHA256`; both present and different refuses), passes it to every
+ * `--policy` and `--host-file`, otherwise `PROJECT_SHA256`; both present and different refuses; with neither, a
+ * read-only inspection load gets the unpinned inspection revision, which no activation accepts), passes it to every
  * `host()` as `context.projectSha256`, orders the extensions by `requires` and installed `uses`, activates each `host()` once
  * (dependants receive the shared instance through `get`), and returns
  * the `{extensions, plugins, close}` object `--host-file` loads, with `extensions` in that order (the runtime activates
@@ -47,7 +48,7 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   // A site with no extensions has nothing to pin.
   if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
   const projectSha256 = hostRevisionPin();
-  if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError('The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy (or URLCODE_POLICY), or set PROJECT_SHA256 to the reviewed revision (urlcode extensions add prints it; urlcode explain shows it)', { code: 'revision-pin-required' });
+  if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError(`The extension host needs the reviewed project revision: ${revisionPinGuidance}`, { code: 'revision-pin-required' });
   const definitions = entries.map(entry => entry.definition);
   // An installed `uses` extension orders like a requirement; an absent one is no edge at all.
   const present = new Set(definitions.map(definition => definition.name));

@@ -40,7 +40,15 @@ installed inert artifacts and registrations already available to the session. Re
 its operator prerequisites and explicit gaps as constraints, not as permission
 to select packages, storage, keys or grants in project YAML. A list, filter,
 sort or paging goal plans the store's `filterable`/`sortable` properties and
-route query `parameters`, not a handler that parses the query string.
+route query `parameters`, not a handler that parses the query string. It also
+matches the goal against the authoring surfaces installed and catalog
+extensions publish (`extensions.surfaces`): "their own notes" names store
+`ownership` behind auth, and an approval goal names store `transitions`
+(`by: others`), `membership` and `readers`. With `--host-file` it needs no
+revision pin: `explain`, `plan-feature`, `context` and `review` read the
+registrations without activating them, while `validate`, `test`, `dev` and
+`serve` still need the reviewed pin
+([inspection without a revision pin](TOOLING.md#inspection-without-a-revision-pin)).
 
 The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
 [llms.txt](../llms.txt) index and the generated [llms-full.txt](../llms-full.txt)

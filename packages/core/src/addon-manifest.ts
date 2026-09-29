@@ -204,6 +204,8 @@ export interface AddonCatalogEntry {
   /** An artifact's standard documents (#857): path and media type only, never contents, at most `MAX_ARTIFACT_DOCUMENTS`. */
   documents?: ArtifactDocument[];
   agent?: AddonAgentTooling;
+  /** An extension's authoring contract from its descriptor (#913): what `plan-feature` matches a goal against before anything is installed. */
+  authoring?: ExtensionAuthoringContract;
 }
 export interface AddonCatalog { format: 1; scope: 'release'; version: string; addons: AddonCatalogEntry[] }
 /** One add-on's signed descriptor and the package that carries it. */
@@ -216,7 +218,17 @@ const entryOf = (descriptor: AddonDescriptor, pkg: string, version: string): Add
   ...(descriptor.providesPrincipal ? { providesPrincipal: true as const } : {}),
   ...(descriptor.documents?.length ? { documents: descriptor.documents.map(({ path, mediaType }) => ({ path, mediaType })) } : {}),
   ...(descriptor.agent ? { agent: { description: descriptor.agent.description, references: descriptor.agent.references.map(({ name, description, path }) => ({ name, description, path })) } } : {}),
+  ...(descriptor.kind === 'extension' && descriptor.authoring ? { authoring: structuredClone(descriptor.authoring) as ExtensionAuthoringContract } : {}),
 });
+/** An authoring surface's planner goal words: at most 32 distinct lowercase words, each at most 32 characters. */
+export function isAuthoringGoals(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.length <= 32 && new Set(value).size === value.length && value.every(goal => typeof goal === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/.test(goal));
+}
+/** The planner-facing shape of an authoring contract read from a descriptor or catalog; anything else is left out. */
+function assertAuthoring(authoring: unknown, source: string): asserts authoring is ExtensionAuthoringContract {
+  assert(isRecord(authoring) && typeof authoring.description === 'string' && Array.isArray(authoring.surfaces) && authoring.surfaces.length <= 64
+    && authoring.surfaces.every(surface => isRecord(surface) && typeof surface.name === 'string' && typeof surface.kind === 'string' && typeof surface.description === 'string' && (surface.goals === undefined || isAuthoringGoals(surface.goals))), `${source}: authoring contract is malformed`);
+}
 function checkCatalog(catalog: AddonCatalog, source: string): AddonCatalog {
   const names = catalog.addons.map(entry => entry.name);
   assert(new Set(names).size === names.length, `${source}: an add-on is listed twice`);
@@ -241,7 +253,7 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
   assert(isRecord(raw) && raw.format === 1 && raw.scope === 'release' && typeof raw.version === 'string' && Array.isArray(raw.addons), `${source} is not an add-on catalog`);
   const addons = raw.addons.map((value: unknown) => {
     assert(isRecord(value) && typeof value.name === 'string' && addonNamePattern.test(value.name), `${source}: invalid add-on entry`);
-    const { name, kind, package: pkg, version, description, requires, uses, targets, providesPrincipal, documents, agent } = value;
+    const { name, kind, package: pkg, version, description, requires, uses, targets, providesPrincipal, documents, agent, authoring } = value;
     assert((kind === 'extension' || kind === 'artifact') && pkg === addonPackage(name) && typeof version === 'string' && typeof description === 'string'
       && Array.isArray(requires) && requires.every(item => typeof item === 'string' && addonNamePattern.test(item)), `${source}: ${name} is malformed`);
     assert(uses === undefined || Array.isArray(uses) && uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== name && !requires.includes(item)), `${source}: ${name} has malformed uses`);
@@ -249,7 +261,8 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
     if (documents !== undefined) { assert(kind === 'artifact', `${source}: ${name} is an extension, which lists no documents`); assertDocuments(documents, `${source}: ${name}`); }
     assert(kind === 'extension' ? isExtensionTargets(targets) : targets === undefined, `${source}: ${name} has malformed targets`);
     assert(providesPrincipal === undefined || providesPrincipal === true && kind === 'extension', `${source}: ${name} has a malformed providesPrincipal`);
-    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(kind === 'extension' ? { targets: targets as ExtensionTarget[] } : {}), ...(providesPrincipal === true ? { providesPrincipal: true as const } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}) }, pkg, version);
+    if (authoring !== undefined) { assert(kind === 'extension', `${source}: ${name} is an artifact, which has no authoring contract`); assertAuthoring(authoring, `${source}: ${name}`); }
+    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(kind === 'extension' ? { targets: targets as ExtensionTarget[] } : {}), ...(providesPrincipal === true ? { providesPrincipal: true as const } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}), ...(authoring ? { authoring } : {}) }, pkg, version);
   });
   return checkCatalog({ format: 1, scope: 'release', version: raw.version, addons }, source);
 }

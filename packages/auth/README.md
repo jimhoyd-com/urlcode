@@ -141,10 +141,10 @@ Whole-policy rules: unknown keys rejected.
 
 ### Authoring surfaces and limits
 
-Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions (roles, ownership) are application data keyed by that id.
+Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions are data keyed by that id, never roles in auth: per-user records and membership lists are store declarations (ownership: owner, membership).
 
 - **mount** (extension, `urlcode.yaml#routes`): Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404.
-- **route protection** (configuration, `urlcode.yaml#routes`): `auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header.
+- **route protection** (configuration, `urlcode.yaml#routes`): `auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.
 
 Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --origin <origin>`.
 <!-- extension-reference:end -->
