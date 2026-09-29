@@ -18,13 +18,13 @@ import { counts, execute, outbox, records } from './rows.ts';
 
 const accounts = {
   mount: '/api/accounts', audit: true, maxRecords: 100,
-  fields: { name: { type: 'string', required: true, maxLength: 20 }, available: { type: 'integer', default: 0, minimum: 0 }, held: { type: 'integer', default: 0, minimum: 0 } },
+  schema: { type: 'object', additionalProperties: false, required: ['name'], properties: { name: { type: 'string', maxLength: 20 }, available: { type: 'integer', default: 0, minimum: 0 }, held: { type: 'integer', default: 0, minimum: 0 } } },
 };
 const bookings = {
   mount: '/api/bookings', ownership: 'owner', maxRecords: 1000, pageSize: 200,
-  fields: { calendar: { type: 'string', required: true, maxLength: 40 }, start: { type: 'integer', required: true, minimum: 0 }, end: { type: 'integer', required: true, minimum: 1 } },
+  schema: { type: 'object', additionalProperties: false, required: ['calendar', 'start', 'end'], properties: { calendar: { type: 'string', maxLength: 40 }, start: { type: 'integer', minimum: 0 }, end: { type: 'integer', minimum: 1 } } },
 };
-const tickets = { mount: '/api/tickets', audit: true, fields: { title: { type: 'string', required: true, maxLength: 40 }, open: { type: 'boolean', default: true } }, transitions: { close: { from: { open: true }, set: { open: false } } } };
+const tickets = { mount: '/api/tickets', audit: true, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, open: { type: 'boolean', default: true } } }, transitions: { close: { from: { open: true }, set: { open: false } } } };
 const config = { collections: { accounts, bookings, tickets } };
 const mounts = ['/api/accounts', '/api/bookings', '/api/tickets'];
 
@@ -79,7 +79,7 @@ test('credits: concurrent transfers, holds and settlements conserve the total, a
       else if (index % 3 === 1) { ops.hold(from, amount); if (index % 2) ops.settle(from, to, amount); else ops.cancel(from, amount); }
       else ops.transfer(to, from, amount);
     } catch (error) {
-      assert.ok(error instanceof StoreError && error.status === 400, String(error));
+      assert.ok(error instanceof StoreError && error.status === 422 && error.code === 'invalid_record', String(error));
       refused++;
     }
     assert.equal(total(store.database), 400, `after operation ${index}`);

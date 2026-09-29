@@ -10,12 +10,12 @@ import { StoreDatabase } from '../src/database.ts';
 import { direct } from './direct.ts';
 import { cleanup } from './cleanup.ts';
 
-const member = { membership: true, key: 'userId', fields: { userId: { type: 'string', required: true, maxLength: 128 } } };
+const member = { membership: true, key: 'userId', schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
 const collections = {
   reviewers: member, leads: member,
   requests: {
     mount: '/api/requests', ownership: 'owner', pageSize: 50,
-    fields: { title: { type: 'string', required: true, maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved', 'withdrawn', 'escalated'], default: 'pending', transitionOnly: true } },
+    schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved', 'withdrawn', 'escalated'], default: 'pending', readOnly: true } } },
     transitions: {
       withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' } },
       approve: { from: { status: 'pending' }, set: { status: 'approved' }, by: 'others', members: 'reviewers', mount: '/api/approvals' },
@@ -24,7 +24,7 @@ const collections = {
     readers: { mount: '/api/review', members: 'reviewers' },
   },
   notes: {
-    mount: '/api/notes', fields: { text: { type: 'string', required: true, maxLength: 64 }, state: { type: 'string', enum: ['draft', 'published', 'pinned'], default: 'draft', transitionOnly: true } },
+    mount: '/api/notes', schema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', maxLength: 64 }, state: { type: 'string', enum: ['draft', 'published', 'pinned'], default: 'draft', readOnly: true } } },
     transitions: { publish: { from: { state: 'draft' }, set: { state: 'published' } }, pin: { from: { state: 'published' }, set: { state: 'pinned' }, members: 'leads' } },
   },
 };

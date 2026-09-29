@@ -151,7 +151,7 @@ test('every extension installs once, composes, serves, and removes in dependency
     await writeFile(yaml, text.replace('maxLength: 200', 'maxLength: 20'));
     assert.equal(await server.reload(), true, 'the generated stateful site reloads');
     const tooLong = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'a title longer than twenty characters' }) });
-    assert.equal(tooLong.status, 400, await tooLong.text());
+    assert.equal(tooLong.status, 422, await tooLong.text());
     const kept = await (await send('/api/todos', { headers: { accept: 'application/json' } })).json() as { items: { title: string }[] };
     assert.deepEqual(kept.items.map(item => item.title), ['first']);
     const later = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'after reload' }) });

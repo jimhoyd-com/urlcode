@@ -325,7 +325,10 @@ export const budgets: Record<string, Budget> = {
     // contract measure 83457 packed and 334230 unpacked bytes (32 entries).
     // With #873 item 2 (may) and #875 (operator audit, bounded filters) both merged,
     // measured on Node 26: 89093 packed / 354706 unpacked bytes, 32 entries.
-    packed: 90 * 1024,
+    // Raised to 96 KiB packed and 372 KiB unpacked for #861/#881: the JSON Schema 2020-12 record schema (its config
+    // schema again in urlcode.json and the README field reference) and the OpenAPI description (dist/openapi.js and
+    // its declarations), merged with #897's audit drain status, measure 95170 packed and 371009 unpacked bytes (Node 26).
+    packed: 96 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -350,7 +353,8 @@ export const budgets: Record<string, Budget> = {
     // #822 generated field reference in the README (measured 220290 unpacked).
     // #835 transitions and retries, #863 membership gates: see the packed note above.
     // #866 membership follow-ups: see the packed note above.
-    unpacked: 350 * 1024,
+    // #861/#881 record schema and OpenAPI description: see the packed note above.
+    unpacked: 372 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

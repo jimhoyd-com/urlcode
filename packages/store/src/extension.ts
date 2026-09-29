@@ -43,7 +43,10 @@ function example(request: ScaffoldRequest): ScaffoldResult {
   return {
     config: { collections: { todos: {
       mount: '/api/todos',
-      fields: { title: { type: 'string', required: true, minLength: 1, maxLength: 200 }, done: { type: 'boolean', default: false } },
+      schema: {
+        type: 'object', additionalProperties: false, required: ['title'],
+        properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, done: { type: 'boolean', default: false } },
+      },
       maxRecords: 1000, maxRecordBytes: 4096,
       ...(withAuth ? { ownership: 'owner' } : {}),
       ...(withAudit ? { audit: true } : {}),

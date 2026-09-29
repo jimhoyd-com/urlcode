@@ -455,8 +455,40 @@ export interface RuntimeExtension {
    * refuses that one call, for example an anonymous request a capability requires a principal for).
    */
   capabilities?:readonly string[];
+  /**
+   * Optional OpenAPI 3.1 description of one of this extension's mounts (RIM-OPENAPI-001), called by the OpenAPI export
+   * (`urlcode openapi --host-file`, `buildOpenApi(project,{extensions})`) with the project's declared configuration and
+   * never at serve time. It is pure: no database, network or filesystem. The answer is data only (see
+   * `ExtensionOpenApi`); core checks it, keeps only the operations the route declares, assigns operation ids and adds
+   * what the runtime itself does on the mount (its always-set headers, `Cache-Control: no-store`, a principal
+   * provider's 401/403 and security requirement). `undefined` leaves the mount opaque. What it throws fails the export,
+   * named as this extension's `describe` failure.
+   */
+  describe?(request:ExtensionDescribeRequest):ExtensionOpenApi|undefined;
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
+/** What the OpenAPI export asks an extension's `describe()` about: one mount and the declared configuration. */
+export interface ExtensionDescribeRequest {
+  /** The mount path (the route pattern without its trailing `/*`). */
+  readonly mount:string;
+  /** The route's declared methods, uppercase; operations for any other method are dropped. */
+  readonly methods:readonly string[];
+  /** `extensions.<name>.config` as the project declares it (not yet validated against the registration's schema). */
+  readonly config:Readonly<Record<string,unknown>>;
+}
+/**
+ * An extension's OpenAPI 3.1 contribution for one mount: JSON data only. `paths` are OpenAPI path items keyed by the
+ * mount itself or a path below it (`{name}` templating), at most `extensionOpenApiLimits.paths`, holding only the
+ * `summary`, `description`, `parameters` and operation keys. `schemas` are Schema Objects added to
+ * `components.schemas`, named with the extension's name in PascalCase as prefix (`store` → `Store...`), at most
+ * `extensionOpenApiLimits.schemas`. Every `$ref` must name one of those or a core `Urlcode...` component. The whole
+ * contribution serializes to at most `extensionOpenApiLimits.bytes`.
+ */
+export interface ExtensionOpenApi {
+  paths:Record<string,Record<string,unknown>>;
+  schemas?:Record<string,unknown>;
+}
+export const extensionOpenApiLimits=Object.freeze({paths:64,schemas:64,bytes:262144});
 /**
  * What core hands an extension definition's `scaffold` (and `example`) when `urlcode extensions add <name>` (or
  * `init --with`) adds it to a site. Neither writes anything: each returns the configuration, routes and operator
@@ -674,6 +706,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(registration.version==='1'&&typeof registration.activate==='function','Invalid extension version or activation hook');
     assert(registration.providesPrincipal===undefined||typeof registration.providesPrincipal==='boolean','Invalid extension providesPrincipal');
     assert(registration.streams===undefined||typeof registration.streams==='boolean','Invalid extension streams');
+    assert(registration.describe===undefined||typeof registration.describe==='function','Invalid extension describe hook');
     assert(registration.capabilities===undefined||(Array.isArray(registration.capabilities)&&registration.capabilities.length<=32&&registration.capabilities.every(name=>typeof name==='string'&&namePattern.test(name))&&new Set(registration.capabilities).size===registration.capabilities.length),'Invalid extension capabilities');
     assert(Array.isArray(registration.targets)&&registration.targets.every(target=>['node','aws','vercel'].includes(target)),'Extension targets must be node, aws or vercel');
     assert(typeof registration.projectSha256==='string'&&/^[a-f0-9]{64}$/.test(registration.projectSha256),'Extension requires an explicit operator revision pin');

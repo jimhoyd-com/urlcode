@@ -6,9 +6,14 @@ extensions:
       collections:
         todos:
           mount: /api/todos
-          fields:
-            title: {type: string, required: true, minLength: 1, maxLength: 200}
-            done: {type: boolean, default: false}
+          # The record schema is a JSON Schema 2020-12 object schema, validated like a request body schema.
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string, minLength: 1, maxLength: 200}
+              done: {type: boolean, default: false}
           maxRecords: 1000
           maxRecordBytes: 4096
 routes:

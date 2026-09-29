@@ -31,17 +31,16 @@ const CONFIG_PATH = '`extensions.store.config.shortLinks`';
 
 const entrySchema = storeConfigSchema.properties.shortLinks.additionalProperties;
 const ENTRY_FIELDS = Object.keys(entrySchema.properties).sort();
-const fieldSchema = collectionSchema.properties.fields.additionalProperties;
-/** Every key a short-link passage may write inline: the entry, the collection it names, and that collection's fields. */
-const KEYS = new Set([...ENTRY_FIELDS, ...Object.keys(collectionSchema.properties), ...Object.keys(fieldSchema.properties)]);
+const recordSchema = collectionSchema.properties.schema;
+/**
+ * Every key a short-link passage may write inline: the entry, the collection it names, its record schema's root and
+ * the JSON Schema keywords a destination property uses.
+ */
+const KEYS = new Set([...ENTRY_FIELDS, ...Object.keys(collectionSchema.properties), ...Object.keys(recordSchema.properties), ...Object.keys(recordSchema.properties.properties.additionalProperties.properties), 'format', 'maxLength']);
 
-type Config = { collections: Record<string, { mount: string; key?: string; increments?: string[]; fields: Record<string, Record<string, unknown>> }>; shortLinks: Record<string, Record<string, string>> };
+type Config = { collections: Record<string, { mount: string; key?: string; increments?: string[]; schema: { type: string; additionalProperties: boolean; required: string[]; properties: Record<string, Record<string, unknown>> } }>; shortLinks: Record<string, Record<string, string>> };
 const minimal = (): Config => ({
-  collections: { links: { mount: '/api/links', key: 'code', increments: ['clicks'], fields: {
-    code: { type: 'string', required: true, maxLength: 32 },
-    destination: { type: 'string', required: true, format: 'http-url' },
-    clicks: { type: 'integer', default: 0, minimum: 0 },
-  } } },
+  collections: { links: { mount: '/api/links', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri' }, clicks: { type: 'integer', default: 0, minimum: 0 } } } } },
   shortLinks: { public: { mount: '/go', collection: 'links', destination: 'destination', clicks: 'clicks' } },
 });
 const MOUNTS = ['/api/links', '/go'];
@@ -52,9 +51,9 @@ const MOUNTS = ['/api/links', '/go'];
  */
 const PIECES: { piece: string; prose: RegExp; breaks: (config: Config) => string[] | void; refusal: RegExp }[] = [
   { piece: 'a unique collection key', prose: /\bkey\b/i, breaks: c => { delete c.collections.links!.key; }, refusal: /needs a declared key/ },
-  { piece: 'a required destination field', prose: /destination/i, breaks: c => { delete c.collections.links!.fields.destination!.required; }, refusal: /required string field with format http-url/ },
-  { piece: 'an HTTP(S) (format: http-url) destination', prose: /HTTP\(S\)|http-url/i, breaks: c => { delete c.collections.links!.fields.destination!.format; }, refusal: /required string field with format http-url/ },
-  { piece: 'a declared increments counter', prose: /\bincrements\b|\bcounter\b/i, breaks: c => { c.collections.links!.increments = []; }, refusal: /declared increment field/ },
+  { piece: 'a required destination property', prose: /destination/i, breaks: c => { c.collections.links!.schema.required = ['code']; }, refusal: /required string property with format: uri/ },
+  { piece: 'an HTTP(S) (format: uri) destination', prose: /HTTP\(S\)/i, breaks: c => { delete c.collections.links!.schema.properties.destination!.format; }, refusal: /required string property with format: uri/ },
+  { piece: 'a declared increments counter', prose: /\bincrements\b|\bcounter\b/i, breaks: c => { c.collections.links!.increments = []; }, refusal: /declared increment property/ },
   { piece: 'a store route on the redirect mount', prose: /\bmount\b/i, breaks: () => ['/api/links'], refusal: /route \/go\/\* with extension: store is not declared/ },
 ];
 
@@ -100,7 +99,6 @@ test('the store contract: schema, authoring surfaces and activation agree on wha
   assert.deepEqual(ENTRY_FIELDS, ['clicks', 'collection', 'destination', 'mount']);
   assert.equal(entrySchema.additionalProperties, false, 'a shortLinks entry closes its key set');
   assert.ok(storeAuthoring.surfaces.some(surface => surface.kind === 'configuration' && surface.name === 'shortLinks'), 'the authoring contract advertises shortLinks');
-  assert.ok(fieldSchema.properties.format.enum.includes('http-url'));
   await activate(t, minimal()); // the minimal config the pieces below break is itself accepted
   for (const { piece, breaks, refusal } of PIECES) {
     const config = minimal();

@@ -23,14 +23,9 @@ import { counts, execute, lastDrain, outbox, records, seedOutbox } from './rows.
 const origin = 'https://store-audit.example.test', pin = 'a'.repeat(64);
 const notes = {
   mount: '/api/notes', key: 'code', increments: ['clicks'], idempotency: { maxKeys: 10 }, audit: true,
-  fields: {
-    code: { type: 'string', required: true, maxLength: 32 },
-    destination: { type: 'string', required: true, format: 'http-url', maxLength: 256 },
-    title: { type: 'string', maxLength: 100 },
-    clicks: { type: 'integer', default: 0, minimum: 0 },
-  },
+  schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 256 }, title: { type: 'string', maxLength: 100 }, clicks: { type: 'integer', default: 0, minimum: 0 } } },
 };
-const plain = { mount: '/api/plain', fields: { title: { type: 'string', required: true, maxLength: 100 } } };
+const plain = { mount: '/api/plain', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 100 } } } };
 
 async function tempRoot(t: TestContext): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'store-audit-'));

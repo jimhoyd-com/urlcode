@@ -16,8 +16,8 @@ import { records } from './rows.ts';
 // extension that requires store would, alongside a synthetic principal provider ("badge"), so the seam is proven
 // without auth.
 const origin = 'https://records.example.test';
-const notes = { mount: '/api/notes', ownership: 'owner', maxRecords: 3, pageSize: 2, fields: { title: { type: 'string', required: true, maxLength: 20 }, pinned: { type: 'boolean', default: false }, rank: { type: 'integer', minimum: 1 } } };
-const board = { mount: '/api/board', maxRecords: 5, fields: { title: { type: 'string', required: true, maxLength: 20 } } };
+const notes = { mount: '/api/notes', ownership: 'owner', maxRecords: 3, pageSize: 2, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 20 }, pinned: { type: 'boolean', default: false }, rank: { type: 'integer', minimum: 1 } } } };
+const board = { mount: '/api/board', maxRecords: 5, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 20 } } } };
 
 function badge(projectSha256: string): RuntimeExtension {
   return {
@@ -94,8 +94,8 @@ test('the export applies ownership, validation, limits and If-Match exactly as t
   const { store, close } = await boot(t);
   const notesApi = store.records('notes'), boardApi = store.records('board');
   assert.equal(notesApi.ownership, 'owner'); assert.equal(boardApi.ownership, 'shared'); assert.equal(notesApi.readOnly, false);
-  assert.deepEqual(Object.keys(notesApi.fields), ['title', 'pinned', 'rank']);
-  assert.throws(() => { (notesApi.fields.title as { maxLength?: number }).maxLength = 1; }, TypeError, 'the declared fields are a frozen copy');
+  assert.deepEqual(Object.keys(notesApi.schema.properties), ['title', 'pinned', 'rank']);
+  assert.throws(() => { (notesApi.schema.properties.title as { maxLength?: number }).maxLength = 1; }, TypeError, 'the declared schema is a frozen copy');
   assert.throws(() => store.records('missing'), /store declares no collection missing/);
   const alice = { id: 'alice', provider: 'badge' }, bob = { id: 'bob', provider: 'badge' };
   await assert.rejects(notesApi.create(null, { title: 'x' }), (error: StoreError) => error.status === 401 && error.code === 'principal_required');
@@ -103,15 +103,15 @@ test('the export applies ownership, validation, limits and If-Match exactly as t
   assert.equal(Object.hasOwn(first.record, '_owner'), false);
   assert.throws(() => notesApi.get(bob, first.record.id as string), (error: StoreError) => error.status === 404);
   assert.throws(() => notesApi.get(alice, 'not-a-uuid'), (error: StoreError) => error.status === 404);
-  await assert.rejects(notesApi.create(alice, { title: 'x'.repeat(21) }), (error: StoreError) => error.status === 400 && error.fields?.title === 'must be at most 20 characters');
-  await assert.rejects(notesApi.create(alice, { title: 'x', _owner: 'bob' } as never), (error: StoreError) => error.status === 400 && error.fields?._owner === 'is not a declared field');
+  await assert.rejects(notesApi.create(alice, { title: 'x'.repeat(21) }), (error: StoreError) => error.status === 422 && error.code === 'invalid_record' && error.issues?.[0]?.pointer === '/title' && error.issues[0].message === 'must be at most 20 characters');
+  await assert.rejects(notesApi.create(alice, { title: 'x', _owner: 'bob' } as never), (error: StoreError) => error.status === 422 && error.issues?.[0]?.keyword === 'additionalProperties' && error.issues[0].property === '_owner');
   // A partial update keeps the other fields and the owner, and moves the ETag.
   const updated = await notesApi.update(alice, first.record.id as string, { pinned: true }, { ifMatch: first.etag });
   assert.equal(updated.record.title, 'first'); assert.equal(updated.record.pinned, true); assert.notEqual(updated.etag, first.etag);
   await assert.rejects(notesApi.update(alice, first.record.id as string, { pinned: false }, { ifMatch: first.etag }), (error: StoreError) => error.status === 412 && error.code === 'precondition_failed');
   await assert.rejects(notesApi.update(bob, first.record.id as string, { pinned: false }, { ifMatch: updated.etag }), (error: StoreError) => error.status === 404, 'scoped before the ETag');
   await assert.rejects(notesApi.update(alice, first.record.id as string, { pinned: false }, { ifMatch: 'W/"x"' }), (error: StoreError) => error.status === 400);
-  await assert.rejects(notesApi.update(alice, first.record.id as string, {}), (error: StoreError) => error.status === 400);
+  await assert.rejects(notesApi.update(alice, first.record.id as string, {}), (error: StoreError) => error.status === 422 && error.issues?.[0]?.keyword === 'minProperties');
   // maxRecords holds for the export too.
   await notesApi.create(bob, { title: 'b' }); await notesApi.create(bob, { title: 'c' });
   await assert.rejects(notesApi.create(alice, { title: 'd' }), (error: StoreError) => error.status === 409 && error.code === 'collection_full');
@@ -132,8 +132,8 @@ test('update with null removes an optional field and refuses a required one; ETa
   const cleared = await notesApi.update(alice, id, { rank: null }, { ifMatch: first.etag });
   assert.equal(Object.hasOwn(cleared.record, 'rank'), false); assert.equal(cleared.record.title, 'first'); assert.notEqual(cleared.etag, first.etag);
   await assert.rejects(notesApi.update(alice, id, { rank: null }, { ifMatch: first.etag }), (error: StoreError) => error.status === 412, 'a stale ETag refuses a clear too');
-  await assert.rejects(notesApi.update(alice, id, { title: null }), (error: StoreError) => error.status === 400 && error.code === 'invalid_record' && error.fields?.title === 'is required and cannot be cleared');
-  await assert.rejects(notesApi.update(alice, id, { rank: 0 }), (error: StoreError) => error.status === 400 && error.fields?.rank === 'must be at least 1', 'a set value is still validated');
+  await assert.rejects(notesApi.update(alice, id, { title: null }), (error: StoreError) => error.status === 422 && error.code === 'invalid_record' && error.issues?.[0]?.keyword === 'required' && error.issues[0].property === 'title');
+  await assert.rejects(notesApi.update(alice, id, { rank: 0 }), (error: StoreError) => error.status === 422 && error.issues?.[0]?.pointer === '/rank' && error.issues[0].message === 'must be at least 1', 'a set value is still validated');
   assert.equal(notesApi.get(alice, id).record.title, 'first');
 });
 

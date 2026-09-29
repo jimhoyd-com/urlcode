@@ -1,5 +1,5 @@
-import { StoreError, checkValue } from './collection.ts';
-import type { FieldSpec, NormalizedSpec, Scalar, StoredRecord } from './collection.ts';
+import { StoreError, propertyIssue } from './collection.ts';
+import type { NormalizedSpec, PropertySchema, Scalar, StoredRecord } from './collection.ts';
 
 /** Bounds on what a list request may ask for. A value the caller can make larger than this never reaches a comparison. */
 export const QUERY_LIMITS = { declared: 8, filters: 3, parameters: 16, valueLength: 256, cursorLength: 4096, numberLength: 32 } as const;
@@ -24,22 +24,28 @@ const own = (object: object, key: string): boolean => Object.hasOwn(object, key)
 
 /** Names a caller-supplied key only when it is a plain identifier; anything else is described, never echoed. */
 const named = (key: string): string => (SAFE_NAME.test(key) ? key : '(unsupported name)');
-const bad = (fields: Record<string, string>): StoreError => new StoreError(400, 'invalid_query', 'The query is not valid', fields);
+const bad = (fields: Record<string, string>): StoreError => new StoreError(400, 'invalid_query', 'The query is not valid', { fields });
 
-/** True when a string field is short enough (or enumerated) to be compared, filtered and carried in a cursor. */
-export function queryableString(spec: FieldSpec): boolean {
+/**
+ * True when a property is short enough to be compared, filtered and carried in a cursor: any non-string, or a string
+ * whose own schema bounds it (`maxLength`, an `enum` or a `const`) to the query value length.
+ */
+export function queryableString(spec: PropertySchema): boolean {
   if (spec.type !== 'string') return true;
-  return spec.enum !== undefined ? spec.enum.every(option => String(option).length <= QUERY_LIMITS.valueLength) : (spec.maxLength ?? Infinity) <= QUERY_LIMITS.valueLength;
+  const short = (value: unknown): boolean => typeof value === 'string' && value.length <= QUERY_LIMITS.valueLength;
+  if (Object.hasOwn(spec, 'const')) return short(spec.const);
+  if (Array.isArray(spec.enum)) return spec.enum.every(short);
+  return typeof spec.maxLength === 'number' && spec.maxLength <= QUERY_LIMITS.valueLength;
 }
 
-function filterValue(spec: FieldSpec, raw: string): Scalar | undefined {
+function filterValue(spec: PropertySchema, raw: string): Scalar | undefined {
   if (spec.type === 'string') return raw.length <= QUERY_LIMITS.valueLength ? raw : undefined;
   if (spec.type === 'boolean') return raw === 'true' ? true : raw === 'false' ? false : undefined;
   if (spec.type === 'integer') { if (!INTEGER.test(raw)) return undefined; const n = Number(raw); return Number.isSafeInteger(n) ? n : undefined; }
   if (raw.length > QUERY_LIMITS.numberLength || !NUMBER.test(raw)) return undefined;
   const n = Number(raw); return Number.isFinite(n) ? n : undefined;
 }
-const sameType = (spec: FieldSpec, value: unknown): value is Scalar =>
+const sameType = (spec: PropertySchema, value: unknown): value is Scalar =>
   spec.type === 'string' ? typeof value === 'string' && value.length <= QUERY_LIMITS.valueLength : spec.type === 'boolean' ? typeof value === 'boolean' : typeof value === 'number' && Number.isFinite(value) && (spec.type !== 'integer' || Number.isSafeInteger(value));
 
 function encodeCursor(sort: SortKey, record: StoredRecord): string {
@@ -56,7 +62,7 @@ function decodeCursor(spec: NormalizedSpec, sort: SortKey, text: string): { valu
   if (!Array.isArray(parsed) || parsed.length !== 4) throw invalid;
   const [field, descending, value, id] = parsed as unknown[];
   if (field !== sort.field || descending !== sort.descending || typeof id !== 'string' || !UUID.test(id)) throw invalid;
-  if (value !== null && !sameType(spec.fields[sort.field]!, value)) throw invalid;
+  if (value !== null && !sameType(spec.records.properties[sort.field]!, value)) throw invalid;
   return { value: value as Scalar | null, id };
 }
 
@@ -72,13 +78,13 @@ export function parseListQuery(spec: NormalizedSpec, params: URLSearchParams): L
   const filters: [string, Scalar][] = [];
   for (const key of keys) {
     if (key === 'limit' || key === 'cursor' || key === 'sort') continue;
-    const field = own(spec.fields, key) && spec.filterable.includes(key) ? spec.fields[key] : undefined;
-    if (!field) { errors[named(key)] = 'is not a filterable field'; continue; }
+    const field = own(spec.records.properties, key) && spec.filterable.includes(key) ? spec.records.properties[key] : undefined;
+    if (!field) { errors[named(key)] = 'is not a filterable property'; continue; }
     const value = filterValue(field, params.get(key)!);
-    // A value the field can never hold (outside its enum, #866; its minimum/maximum, length limits or format, #875) is
-    // refused rather than answered with an empty page. The write path's own check judges it, and its message names the
-    // declared bound, never the value.
-    const invalid = value === undefined ? `must be a valid ${field.type}` : checkValue(field, value);
+    // A value the property can never hold (outside its enum, #866; its minimum/maximum, length limits, pattern or
+    // format, #875) is refused rather than answered with an empty page. The property's own schema judges it, through
+    // the same validator a write uses, and the message names the declared bound, never the value.
+    const invalid = value === undefined ? `must be a valid ${field.type}` : propertyIssue(spec.records, key, value)?.message;
     if (invalid !== undefined) errors[key] = invalid;
     else filters.push([key, value!]);
   }
@@ -87,7 +93,7 @@ export function parseListQuery(spec: NormalizedSpec, params: URLSearchParams): L
   const rawSort = params.get('sort');
   if (rawSort !== null) {
     const descending = rawSort.startsWith('-'), field = descending ? rawSort.slice(1) : rawSort;
-    if (!own(spec.fields, field) || !spec.sortable.includes(field)) errors[named(field)] = 'is not a sortable field'; else sort = { field, descending };
+    if (!own(spec.records.properties, field) || !spec.sortable.includes(field)) errors[named(field)] = 'is not a sortable property'; else sort = { field, descending };
   }
   const number = (name: string, fallback: number, max: number): number => {
     const raw = params.get(name);

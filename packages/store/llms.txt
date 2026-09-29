@@ -31,12 +31,12 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - Conditional state changes: `transitions.<name>: {from, set, stamp?, by?, mount?}` on a collection
   serves `POST <mount>/<id>/<name>` (one record, exact `from` values, constant `set` values, `actor`/`now`
   stamps, `If-Match`, `Idempotency-Key`; `409 transition_conflict` otherwise). `by: others` on an owned
-  collection lets any principal but the owner act, on its own guarded mount; `transitionOnly: true` fields
+  collection lets any principal but the owner act, on its own guarded mount; properties declared `readOnly: true`
   change only through a transition. `idempotency: {maxKeys}` replays a retried key (same request: first
   status, current record; different request: `422 idempotency_key_reused`). Interval constraints and
   multi-record transfers are not declarative: a host extension uses `StoreExports.transaction(work)`.
 - Stored short links: `extensions.store.config.shortLinks.<name>: {mount, collection, destination, clicks}`
-  over a collection with a `key`, a required `format: http-url` destination field and one
+  over a collection with a `key`, a required `format: uri` destination property (HTTP(S) only) and one
   `increments` counter, plus a route `<mount>/*: {extension: store, methods: [GET, HEAD]}`; no
   function. See the README's "Short links" example.
 - `urlcode-store reassign --database <file> --project <app> --from <id>

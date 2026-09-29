@@ -11,16 +11,25 @@ extensions:
         reviewers:
           membership: true
           key: userId
-          fields:
-            userId: {type: string, required: true, maxLength: 128}
+          schema:
+            type: object
+            additionalProperties: false
+            required: [userId]
+            properties:
+              userId: {type: string, maxLength: 128}
         requests:
           mount: /api/requests
           ownership: owner
-          fields:
-            title: {type: string, required: true, minLength: 1, maxLength: 120}
-            details: {type: string, maxLength: 2000, default: ""}
-            status: {type: string, enum: [pending, approved], default: pending, transitionOnly: true}
-            reviewedAt: {type: string, maxLength: 32, transitionOnly: true}
+          # A JSON Schema 2020-12 record schema; readOnly properties change only through a transition.
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string, minLength: 1, maxLength: 120}
+              details: {type: string, maxLength: 2000, default: ""}
+              status: {type: string, enum: [pending, approved], default: pending, readOnly: true}
+              reviewedAt: {type: string, maxLength: 32, readOnly: true}
           filterable: [status]
           transitions:
             # The one business transition: a reviewer moves another user's pending request to approved.

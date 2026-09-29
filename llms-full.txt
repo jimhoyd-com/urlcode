@@ -228,9 +228,13 @@ extensions:
           ownership: owner
           maxRecords: 1000
           maxRecordBytes: 4096
-          fields:
-            title: { type: string, required: true, minLength: 1, maxLength: 200 }
-            done: { type: boolean, default: false }
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: { type: string, minLength: 1, maxLength: 200 }
+              done: { type: boolean, default: false }
 routes:
   /api/auth/*:  { extension: auth, methods: [GET, POST] }
   /api/todos/*:
@@ -1009,7 +1013,12 @@ store auth` (or `urlcode init DIR --with auth,store`) installs the
 extension with an empty `collections` block and wires `host.mjs`; declare the
 collection and its mount yourself, or add `--example` for the `todos`
 collection and its API mount with `auth: true`, which makes the collection
-per-user (`ownership: owner`). The example is API only; the frontend is the
+per-user (`ownership: owner`). A collection's records are described by its
+`schema`, a JSON Schema 2020-12 object schema in the same profile as
+`request.body.<METHOD>.schema` (flat scalar properties,
+`additionalProperties: false`; `default` and `readOnly` are the store's two
+annotations), never a field list of the store's own ([record
+schema](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#record-schema)). The example is API only; the frontend is the
 application's own code. The store example
 without `auth` refuses until the operator re-runs with `--ack
 store:public-write`, and its collection stays shared. Report anything beyond
@@ -1299,9 +1308,10 @@ removed, and the retired `urlcode-dynamic-link` extension package is not a
 supported path. Never invent a `link` field. Stored short links are declared
 through the operator-installed `store` extension's
 `extensions.store.config.shortLinks` (at most 32 entries, Node target only):
-each entry names a collection with a unique `key` (one required string field,
-at most 128 characters), a `required` `format: http-url` destination field and
-one declared `increments` counter, and a public `GET`/`HEAD` redirect mount
+each entry names a collection with a unique `key` (one required string
+property, at most 128 characters), a `required` `format: uri` destination
+property (the store takes only HTTP(S) URLs there) and one declared
+`increments` counter, and a public `GET`/`HEAD` redirect mount
 routed to the store with no function. A hit answers `302` to the stored
 destination (only `GET` counts a click) and a missing code answers `404`. The
 store refuses short links on a collection scoped to its owners. Report a gap
@@ -4674,6 +4684,10 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 9. Answers a long-lived or progressive response by declaring `streams: true`
    and returning a [streamed response](#streamed-responses), never by holding a
    buffered answer open or polling.
+10. Describes the endpoints of its mount for `urlcode openapi` with an optional,
+   pure [`describe()`](#openapi-description), and validates any JSON a project
+   declares for it with core's [body-schema profile](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns)
+   (`@jimhoyd/urlcode/body-schema`) rather than a vocabulary of its own.
 
 #### Request helpers
 
@@ -4689,6 +4703,59 @@ parsing, JSON responses or origin checks; use these:
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
 | `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
+
+#### OpenAPI description
+
+A registration may implement `describe(request)` so the
+[OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#openapi-export) lists its mount's endpoints instead
+of an opaque mount (`RIM-OPENAPI-001` in
+[runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)). The export calls it only
+when the operator's host file is loaded (`urlcode openapi --host-file`, or
+`buildOpenApi(project, {extensions})`), once per mount of the extension, with
+`{mount, methods, config}`: the mount path, the route's declared methods and
+`extensions.<name>.config` as the project declares it. It is never called while
+serving and must be pure: no database, network, filesystem or clock.
+
+It returns `undefined` to leave the mount opaque, or an `ExtensionOpenApi`,
+JSON data only:
+
+```ts
+import type { ExtensionOpenApi, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+
+const registration: RuntimeExtension = {
+  // ...name, schema, activate...
+  describe({ mount }): ExtensionOpenApi {
+    const note = { type: 'object', properties: { title: { type: 'string' } } };
+    const list = { get: { responses: { '200': { description: 'The notes.', content: { 'application/json': { schema: { $ref: '#/components/schemas/NotesNote' } } } } } } };
+    return { schemas: { NotesNote: note }, paths: Object.fromEntries([[mount, list]]) };
+  },
+};
+```
+
+Core checks the contribution and fails the export, naming the extension, when
+it is outside this contract:
+
+| Rule | Limit |
+|---|---|
+| Keys | `paths` and optional `schemas` only; JSON data (functions and `undefined` are dropped by serialization) of at most 256 KiB |
+| Paths | at most 64, each the mount itself or a path below it (`{name}` templating), not described by another route; a path item holds only `summary`, `description`, `parameters` and operations, and each operation has `responses` |
+| Schemas | at most 64 Schema Objects, each named with the extension's name in PascalCase as prefix (`store` → `StoreError`); two mounts of one extension may contribute the same schema only identically |
+| References | every `$ref` is `#/components/schemas/<name>` naming one of its schemas or a core `Urlcode...` component (for example `UrlcodeBodyValidationIssue`); nothing is fetched |
+
+Core then completes it: it drops each operation whose method the route does not
+declare (the runtime answers that method itself), assigns every `operationId`,
+adds `X-Request-Id`, `X-Content-Type-Options` and `Cache-Control: no-store` to
+every response (the runtime adds them to every extension answer), adds a
+sign-in gate's security requirement and its `401`/`403` (and an enforced
+throttle's refusal), and marks the path item `x-urlcode.handler: extension`.
+When the gate and the extension both declare a status, either may answer, so
+the response keeps both descriptions and claims no body schema. A throw from
+`describe()` fails the export as `Extension "<name>" could not describe its
+mount for OpenAPI: <message>`.
+
+The store describes each collection from its record schema
+([store OpenAPI](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#openapi)); the other first-party extensions leave
+their mounts opaque.
 
 #### Streamed responses
 
@@ -5878,7 +5945,7 @@ Two distinctions hold throughout:
 | `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](https://github.com/jimhoyd-com/urlcode/blob/main/packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 43 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 44 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ### Capability to reference
@@ -5888,7 +5955,7 @@ full definition and a checked example live.
 
 | I need | Declare | Reference and example |
 |---|---|---|
-| Stored short links: create, redirect, click count | store: a collection with a `key`, a required `format: http-url` destination field and one `increments` counter, plus `shortLinks.<name>: {mount, collection, destination, clicks}` and a `/go/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference); the complete YAML is in [bounded keyed transitions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#bounded-keyed-transitions) |
+| Stored short links: create, redirect, click count | store: a collection with a `key`, a required `format: uri` destination property (HTTP(S) only) and one `increments` counter, plus `shortLinks.<name>: {mount, collection, destination, clicks}` and a `/go/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference); the complete YAML is in [bounded keyed transitions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#bounded-keyed-transitions) |
 | Accept a form submission as JSON, validated before code runs | core: a route with `request.body.POST.schema` (JSON Schema 2020-12, standard formats such as `format: email`), answered by `respond` or a trusted `function`; the runtime answers 422 first | [recipe `contact-form`](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md), [body schema](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#body-schema-and-input-patterns) |
 | Email each submission | core: a trusted `function` route that calls the mail provider's API, SDK or nodemailer directly, with its credentials in granted `secrets` | [sending mail from your own code](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/contact-form/README.md#sending-mail-from-your-own-code-instead) |
 | A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/main/packages/store/README.md#field-reference), [recipe `store-crud`](https://github.com/jimhoyd-com/urlcode/blob/main/recipes/store-crud/README.md) |

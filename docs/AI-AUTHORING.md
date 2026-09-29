@@ -411,7 +411,12 @@ store auth` (or `urlcode init DIR --with auth,store`) installs the
 extension with an empty `collections` block and wires `host.mjs`; declare the
 collection and its mount yourself, or add `--example` for the `todos`
 collection and its API mount with `auth: true`, which makes the collection
-per-user (`ownership: owner`). The example is API only; the frontend is the
+per-user (`ownership: owner`). A collection's records are described by its
+`schema`, a JSON Schema 2020-12 object schema in the same profile as
+`request.body.<METHOD>.schema` (flat scalar properties,
+`additionalProperties: false`; `default` and `readOnly` are the store's two
+annotations), never a field list of the store's own ([record
+schema](STORE.md#record-schema)). The example is API only; the frontend is the
 application's own code. The store example
 without `auth` refuses until the operator re-runs with `--ack
 store:public-write`, and its collection stays shared. Report anything beyond
@@ -701,9 +706,10 @@ removed, and the retired `urlcode-dynamic-link` extension package is not a
 supported path. Never invent a `link` field. Stored short links are declared
 through the operator-installed `store` extension's
 `extensions.store.config.shortLinks` (at most 32 entries, Node target only):
-each entry names a collection with a unique `key` (one required string field,
-at most 128 characters), a `required` `format: http-url` destination field and
-one declared `increments` counter, and a public `GET`/`HEAD` redirect mount
+each entry names a collection with a unique `key` (one required string
+property, at most 128 characters), a `required` `format: uri` destination
+property (the store takes only HTTP(S) URLs there) and one declared
+`increments` counter, and a public `GET`/`HEAD` redirect mount
 routed to the store with no function. A hit answers `302` to the stored
 destination (only `GET` counts a click) and a missing code answers `404`. The
 store refuses short links on a collection scoped to its owners. Report a gap

@@ -3,7 +3,10 @@ import mime from 'mime-types';
 import {prepare} from './tooling.ts';
 import type {InspectOptions} from './tooling.ts';
 import {explainCompiledRoute} from './explain.ts';
-import {effectiveExtensionPolicies} from './extensions.ts';
+import {effectiveExtensionPolicies,extensionOpenApiLimits} from './extensions.ts';
+import type {RuntimeExtension} from './extensions.ts';
+import {ConfigError,extensionError} from './errors.ts';
+import {isRecord} from './object-guards.ts';
 import {principalProvidersOf} from './addon-manifest.ts';
 import {bodyPolicy,bodylessMethods} from './http-policy.ts';
 import type {RequestBodyPolicy} from './http-policy.ts';
@@ -32,6 +35,8 @@ export interface OpenApiFacts {
   urlcode:string; revision:string;
   /** Paths below an extension, static or wildcard-redirect mount: the provider serves them and URLCode does not enumerate them. */
   opaqueMounts:{path:string;handler:string;extension?:string;registered?:boolean}[];
+  /** Extension mounts whose paths the loaded registration's `describe()` contributed (RIM-OPENAPI-001). */
+  describedMounts:{path:string;extension:string}[];
   /** Declared routes left out of `paths`, with the reason. */
   omitted:{path:string;reason:string}[];
   note:string;
@@ -85,7 +90,7 @@ const headerRef=(name:string):Json=>({$ref:`#/components/headers/${name}`});
 const headerComponents={
   UrlcodeRequestId:{description:'Set by the runtime on every response: a fresh UUID, or the inbound X-Request-Id when the operator trusts one (docs/OPERATIONS.md). A handler cannot set or replace it.',required:true,schema:{type:'string'}},
   UrlcodeNosniff:{description:'Set by the runtime on every response; a handler cannot set or replace it.',required:true,schema:{const:'nosniff'}},
-  UrlcodeNoStore:{description:'Fixed on an error the runtime writes itself; neither a declared header nor a policy changes it.',required:true,schema:{const:'no-store'}},
+  UrlcodeNoStore:{description:'Fixed on an error the runtime writes itself and on every answer from an extension mount; neither a declared header nor a policy changes it.',required:true,schema:{const:'no-store'}},
   UrlcodeAllow:{description:'The methods the route declares, in declared order and comma-separated: the path item\'s x-urlcode.methodNotAllowed.allow.',required:true,schema:{type:'string'}},
 } as const;
 const alwaysHeaders={'X-Request-Id':headerRef('UrlcodeRequestId'),'X-Content-Type-Options':headerRef('UrlcodeNosniff')};
@@ -224,13 +229,7 @@ function responses(route:CompiledRoute,method:string,format:RouteErrorFormat,cha
     if(body.schema)out['422']={description:format==='mixed'?'The body failed the declared schema.'+mixedNote:'The body failed the declared schema.',headers:{...errorHeaders},
       content:{'application/json':{schema:format==='json'?envelope:format==='text'?issues:{anyOf:[envelope,issues]}}}};
   }
-  if(signIn.length){
-    out['401']={description:`No verified session: refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
-    if(unsafeMethods.includes(method))out['403']={description:`A request from another origin, refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
-  }
-  const throttle=chain?.describe.throttle,agents=chain?.describe.agents;
-  if(throttle?.mode==='enforce'&&throttle.status!==undefined)out[String(throttle.status)]={description:'Refused by the throttle policy.',headers:{'Retry-After':{schema:{type:'integer'}}},content:{'text/plain':{schema:{type:'string'}}}};
-  if(agents?.mode==='enforce'&&agents.status!==undefined)out[String(agents.status)]??={description:'Refused by the agents policy.',content:{'text/plain':{schema:{type:'string'}}}};
+  for(const [status,response] of Object.entries(gateResponses(method,chain,signIn)))out[status]??=response;
   const unknown=[...(route.middleware.length?['middleware']:[]),...gates.filter(name=>!signIn.includes(name)).map(name=>`the ${name} extension`)];
   if(unknown.length&&!out.default)out.default={description:`May be answered by ${unknown.join(' or ')} before the handler; not described by URLCode.`};
   for(const [key,value] of Object.entries(out)){
@@ -240,18 +239,121 @@ function responses(route:CompiledRoute,method:string,format:RouteErrorFormat,cha
   return Object.fromEntries(Object.entries(out).sort(([a],[b])=>compare(a,b)));
 }
 
+/** The answers a sign-in gate or an enforced throttle/agents policy gives before the handler (or extension) runs. */
+function gateResponses(method:string,chain:PolicyChain|undefined,signIn:string[]):Record<string,Json> {
+  const out:Record<string,Json>={};
+  if(signIn.length){
+    out['401']={description:`No verified session: refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
+    if(unsafeMethods.includes(method))out['403']={description:`A request from another origin, refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
+  }
+  const throttle=chain?.describe.throttle,agents=chain?.describe.agents;
+  if(throttle?.mode==='enforce'&&throttle.status!==undefined)out[String(throttle.status)]={description:'Refused by the throttle policy.',headers:{'Retry-After':{schema:{type:'integer'}}},content:{'text/plain':{schema:{type:'string'}}}};
+  if(agents?.mode==='enforce'&&agents.status!==undefined)out[String(agents.status)]??={description:'Refused by the agents policy.',content:{'text/plain':{schema:{type:'string'}}}};
+  return out;
+}
+
+const operationKeys=['get','put','post','delete','options','head','patch'];
+const pathItemKeys=new Set(['summary','description','parameters',...operationKeys]);
+const segment='(?:[A-Za-z0-9._~-]+|\\{[A-Za-z_][A-Za-z0-9_]{0,63}\\})';
+const templatedPath=new RegExp(`^(?:/${segment})+$`);
+/**
+ * One extension mount described by its registration's `describe()` (RIM-OPENAPI-001), checked against the
+ * contribution contract (`ExtensionOpenApi`): JSON data within `extensionOpenApiLimits`, paths at or below the mount
+ * that no other route declares, prefixed schema names and `$ref`s only to those or to core's components. Core keeps
+ * the operations the route declares, names them, and adds what the runtime does on every extension answer (its
+ * always-set headers and `Cache-Control: no-store`) and what a gate or policy on the route answers first; an
+ * extension's own answer for the same status wins. `undefined` when the extension leaves the mount opaque.
+ */
+function describedMount(route:CompiledRoute,registration:RuntimeExtension,config:Record<string,unknown>,context:{signIn:string[];gates:string[];chain:PolicyChain|undefined;taken:Set<string>;paths:Record<string,Json>;schemas:Record<string,unknown>}):Record<string,Json>|undefined {
+  const name=registration.name,mount=route.pattern.endsWith('/*')?route.pattern.slice(0,-2):route.pattern;
+  const fail=(problem:string):never=>{throw new ConfigError(`Extension ${JSON.stringify(name)} described mount ${mount} outside the OpenAPI contribution contract: ${problem}`,{extension:name,code:'extension-registration'});};
+  let raw:unknown;
+  try{raw=registration.describe!({mount,methods:[...route.methods],config:structuredClone(config)});}
+  catch(error){throw extensionError(error,name,'describe');}
+  if(raw===undefined)return undefined;
+  let text:string|undefined;
+  try{text=JSON.stringify(raw);}catch{fail('it is not JSON data');}
+  if(text===undefined||Buffer.byteLength(text)>extensionOpenApiLimits.bytes)fail(`it must be JSON data of at most ${extensionOpenApiLimits.bytes} bytes`);
+  const described=JSON.parse(text!) as unknown;
+  if(!isRecord(described)||!isRecord(described.paths)||Object.keys(described).some(key=>key!=='paths'&&key!=='schemas'))fail('it must be an object of paths and optional schemas');
+  const {paths,schemas={}}=described as {paths:Record<string,unknown>;schemas?:unknown};
+  if(!isRecord(schemas))fail('schemas must be an object');
+  if(Object.keys(paths).length>extensionOpenApiLimits.paths||Object.keys(schemas as object).length>extensionOpenApiLimits.schemas)fail(`at most ${extensionOpenApiLimits.paths} paths and ${extensionOpenApiLimits.schemas} schemas`);
+  const prefix=pascal(name),own=new Set(Object.keys(schemas as object));
+  for(const [schemaName,schema] of Object.entries(schemas as Record<string,unknown>)){
+    if(!new RegExp(`^${prefix}[A-Za-z0-9_]{0,63}$`).test(schemaName))fail(`schema ${schemaName.slice(0,64)} must be named ${prefix}<Name>`);
+    if(Object.hasOwn(context.schemas,schemaName)&&JSON.stringify(context.schemas[schemaName])!==JSON.stringify(schema))fail(`schema ${schemaName} differs from the one another mount contributed`);
+  }
+  // Every reference resolves inside the document: this contribution's schemas or core's own components.
+  const refs=(value:unknown):void=>{
+    if(Array.isArray(value)){value.forEach(refs);return;}
+    if(!isRecord(value))return;
+    for(const [key,child] of Object.entries(value)){
+      if(key==='$ref'){
+        const target=typeof child==='string'?/^#\/components\/schemas\/([A-Za-z0-9_]+)$/.exec(child)?.[1]:undefined;
+        if(target===undefined||!(own.has(target)||Object.hasOwn(components,target)))fail('every $ref must name one of its schemas or a core Urlcode component');
+      }else refs(child);
+    }
+  };
+  refs(described);
+  const out:Record<string,Json>={},declared=route.methods.map(method=>method.toLowerCase());
+  for(const [path,item] of Object.entries(paths)){
+    if(!templatedPath.test(path)||path.length>512||!(path===mount||path.startsWith(`${mount}/`)))fail(`path ${path.slice(0,64)} must be the mount or a path below it`);
+    if(Object.hasOwn(context.paths,path)||Object.hasOwn(out,path))fail(`path ${path} is already described`);
+    if(!isRecord(item)||Object.keys(item).some(key=>!pathItemKeys.has(key)))fail(`path ${path} must be a path item of ${[...pathItemKeys].join(', ')}`);
+    const pathItem:Json={};
+    for(const [key,value] of Object.entries(item as Json)){
+      if(!operationKeys.includes(key)){pathItem[key]=value;continue;}
+      // The runtime answers a method the route does not declare itself, before the extension runs.
+      if(!declared.includes(key))continue;
+      if(!isRecord(value)||!isRecord(value.responses)||!Object.keys(value.responses).length)fail(`${key} ${path} needs responses`);
+      const {operationId:_id,responses,security:_security,...rest}=value as Json;
+      const method=key.toUpperCase(),answers:Record<string,Json>=gateResponses(method,context.chain,context.signIn);
+      for(const [status,response] of Object.entries(responses as Record<string,unknown>)){
+        if(!isRecord(response))fail(`${key} ${path} response ${status.slice(0,8)} must be an object`);
+        const gate=answers[status];
+        // A status both the gate and the extension answer carries either body, so neither schema is claimed.
+        if(gate){const {content:_content,...other}=response as Json;answers[status]={...other,description:`${String(other.description??'')} Or: ${String(gate.description)}`.trim()};}
+        else answers[status]=response as Json;
+      }
+      for(const [status,response] of Object.entries(answers)){
+        const {content,headers,...other}=response;
+        answers[status]={...other,headers:{...(headers as Json|undefined),...alwaysHeaders,...errorHeaders},...(content&&key!=='head'?{content}:{})};
+      }
+      pathItem[key]={operationId:operationName(method,path,context.taken),...rest,responses:Object.fromEntries(Object.entries(answers).sort(([a],[b])=>compare(a,b))),
+        ...(context.signIn.length?{security:[Object.fromEntries(context.signIn.map(provider=>[sessionScheme(provider),[]]))]}:{})};
+    }
+    if(!Object.keys(pathItem).some(key=>operationKeys.includes(key)))continue;
+    pathItem['x-urlcode']={handler:'extension',extension:name,route:route.pattern,...(context.gates.length?{extensions:context.gates}:{})};
+    out[path]=pathItem;
+  }
+  for(const [schemaName,schema] of Object.entries(schemas as Record<string,unknown>))context.schemas[schemaName]=schema;
+  return out;
+}
+
 /** Build the OpenAPI 3.1 document for a project's declared HTTP operations. Deterministic for a given project and options. */
 export async function buildOpenApi(project:string,options:InspectOptions={}):Promise<OpenApiDocument> {
   const {loaded,routes,chains,projectSha256}=await prepare(project,options);
   const scopeEntries=loaded.document.site?.errors?.paths??[],taken=new Set<string>(),refusals:Record<string,Json>={};
-  const paths:Record<string,Json>={},schemas:Record<string,unknown>={},facts:OpenApiFacts={urlcode:await runningCoreVersion(),revision:projectSha256,opaqueMounts:[],omitted:[],
-    note:'Generated from the compiled configuration. Handler-defined responses have no schema; paths below opaque mounts are served by their provider and not enumerated. Binding names and values, egress targets, module paths and operator policy are never included.'};
+  const paths:Record<string,Json>={},schemas:Record<string,unknown>={},facts:OpenApiFacts={urlcode:await runningCoreVersion(),revision:projectSha256,opaqueMounts:[],describedMounts:[],omitted:[],
+    note:'Generated from the compiled configuration. Handler-defined responses have no schema; paths below opaque mounts are served by their provider and not enumerated, and paths below described mounts are what the loaded extension describes. Binding names and values, egress targets, module paths and operator policy are never included.'};
   // Sign-in gates follow the contract, not a name: the declared registrations that provide a principal when a host
   // file is loaded, else the installed descriptors (RIM-EXT-PRINCIPAL-001).
   const providers=await principalProvidersOf(dirname(loaded.root),Object.keys(loaded.document.extensions??{}),options.extensions),secured=new Set<string>();
   for(const route of [...routes].sort((a,b)=>compare(a.pattern,b.pattern))){
     if(route.enabled===false){facts.omitted.push({path:route.pattern,reason:'disabled'});continue;}
     if(route.prefix!==undefined){
+      const registration=route.extension?options.extensions?.find(entry=>entry.name===route.extension):undefined;
+      if(registration?.describe){
+        const gates=Object.keys(effectiveExtensionPolicies(loaded.document,route)).sort(compare),signIn=gates.filter(name=>providers.includes(name));
+        const described=describedMount(route,registration,(loaded.document.extensions?.[registration.name]?.config??{}) as Record<string,unknown>,{signIn,gates,chain:chains.get(route.pattern),taken,paths,schemas});
+        if(described){
+          Object.assign(paths,described);
+          if(Object.keys(described).length)for(const name of signIn)secured.add(name);
+          facts.describedMounts.push({path:route.pattern,extension:registration.name});
+          continue;
+        }
+      }
       const handler=route.extension?'extension':route.static?'static':'redirect';
       const registered=route.extension&&options.extensions?options.extensions.some(entry=>entry.name===route.extension):undefined;
       facts.opaqueMounts.push({path:route.pattern,handler,...(route.extension?{extension:route.extension}:{}),...(registered===undefined?{}:{registered})});

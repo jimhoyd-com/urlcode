@@ -176,9 +176,13 @@ extensions:
           ownership: owner
           maxRecords: 1000
           maxRecordBytes: 4096
-          fields:
-            title: { type: string, required: true, minLength: 1, maxLength: 200 }
-            done: { type: boolean, default: false }
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: { type: string, minLength: 1, maxLength: 200 }
+              done: { type: boolean, default: false }
 routes:
   /api/auth/*:  { extension: auth, methods: [GET, POST] }
   /api/todos/*:

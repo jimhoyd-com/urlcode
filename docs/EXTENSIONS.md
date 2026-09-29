@@ -632,6 +632,10 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 9. Answers a long-lived or progressive response by declaring `streams: true`
    and returning a [streamed response](#streamed-responses), never by holding a
    buffered answer open or polling.
+10. Describes the endpoints of its mount for `urlcode openapi` with an optional,
+   pure [`describe()`](#openapi-description), and validates any JSON a project
+   declares for it with core's [body-schema profile](HTTP.md#body-schema-and-input-patterns)
+   (`@jimhoyd/urlcode/body-schema`) rather than a vocabulary of its own.
 
 ### Request helpers
 
@@ -647,6 +651,59 @@ parsing, JSON responses or origin checks; use these:
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
 | `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
+
+### OpenAPI description
+
+A registration may implement `describe(request)` so the
+[OpenAPI export](TOOLING.md#openapi-export) lists its mount's endpoints instead
+of an opaque mount (`RIM-OPENAPI-001` in
+[runtime implementation](RUNTIME-IMPLEMENTATION.md)). The export calls it only
+when the operator's host file is loaded (`urlcode openapi --host-file`, or
+`buildOpenApi(project, {extensions})`), once per mount of the extension, with
+`{mount, methods, config}`: the mount path, the route's declared methods and
+`extensions.<name>.config` as the project declares it. It is never called while
+serving and must be pure: no database, network, filesystem or clock.
+
+It returns `undefined` to leave the mount opaque, or an `ExtensionOpenApi`,
+JSON data only:
+
+```ts
+import type { ExtensionOpenApi, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+
+const registration: RuntimeExtension = {
+  // ...name, schema, activate...
+  describe({ mount }): ExtensionOpenApi {
+    const note = { type: 'object', properties: { title: { type: 'string' } } };
+    const list = { get: { responses: { '200': { description: 'The notes.', content: { 'application/json': { schema: { $ref: '#/components/schemas/NotesNote' } } } } } } };
+    return { schemas: { NotesNote: note }, paths: Object.fromEntries([[mount, list]]) };
+  },
+};
+```
+
+Core checks the contribution and fails the export, naming the extension, when
+it is outside this contract:
+
+| Rule | Limit |
+|---|---|
+| Keys | `paths` and optional `schemas` only; JSON data (functions and `undefined` are dropped by serialization) of at most 256 KiB |
+| Paths | at most 64, each the mount itself or a path below it (`{name}` templating), not described by another route; a path item holds only `summary`, `description`, `parameters` and operations, and each operation has `responses` |
+| Schemas | at most 64 Schema Objects, each named with the extension's name in PascalCase as prefix (`store` → `StoreError`); two mounts of one extension may contribute the same schema only identically |
+| References | every `$ref` is `#/components/schemas/<name>` naming one of its schemas or a core `Urlcode...` component (for example `UrlcodeBodyValidationIssue`); nothing is fetched |
+
+Core then completes it: it drops each operation whose method the route does not
+declare (the runtime answers that method itself), assigns every `operationId`,
+adds `X-Request-Id`, `X-Content-Type-Options` and `Cache-Control: no-store` to
+every response (the runtime adds them to every extension answer), adds a
+sign-in gate's security requirement and its `401`/`403` (and an enforced
+throttle's refusal), and marks the path item `x-urlcode.handler: extension`.
+When the gate and the extension both declare a status, either may answer, so
+the response keeps both descriptions and claims no body schema. A throw from
+`describe()` fails the export as `Extension "<name>" could not describe its
+mount for OpenAPI: <message>`.
+
+The store describes each collection from its record schema
+([store OpenAPI](STORE.md#openapi)); the other first-party extensions leave
+their mounts opaque.
 
 ### Streamed responses
 

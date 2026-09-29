@@ -228,11 +228,11 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
 
   await t.test('malformed and out-of-contract input is refused by the store', async () => {
     assert.equal((await ann('/api/requests', { method: 'POST', body: '{"title":' })).status, 400);
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: '' } })).status, 400);
-    // No body can name the owner or the review state: an undeclared field and a transitionOnly one are refused.
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', owner: users['bob@example.test'] } })).status, 400);
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', _owner: users['bob@example.test'] } })).status, 400);
-    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', status: 'approved' } })).status, 400);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: '' } })).status, 422);
+    // No body can name the owner or the review state: an undeclared property and a readOnly one are refused.
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', owner: users['bob@example.test'] } })).status, 422);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', _owner: users['bob@example.test'] } })).status, 422);
+    assert.equal((await ann('/api/requests', { method: 'POST', body: { title: 'x', status: 'approved' } })).status, 422);
     assert.equal((await ann('/api/requests', { method: 'POST', body: 'title=x', headers: { 'content-type': 'application/x-www-form-urlencoded' } })).status, 415);
     assert.equal((await ann('/api/requests', { method: 'POST' })).status, 415);
     assert.equal((await ann('/api/requests/not-a-uuid')).status, 404);

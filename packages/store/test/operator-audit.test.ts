@@ -15,15 +15,10 @@ import { AUDIT_BACKLOG, addMember, assignOwnerless, deleteOwnerless, reassignOwn
 import { direct } from './direct.ts';
 import { counts, execute, outbox, records, seed, seedOutbox } from './rows.ts';
 
-const reviewers = { membership: true, key: 'userId', audit: true, fields: { userId: { type: 'string', required: true, maxLength: 128 } } };
+const reviewers = { membership: true, key: 'userId', audit: true, schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
 const requests = {
   mount: '/api/requests', ownership: 'owner', audit: true, filterable: ['status', 'priority', 'score', 'code', 'site'],
-  fields: {
-    title: { type: 'string', required: true, maxLength: 120 },
-    status: { type: 'string', enum: ['pending', 'approved'], default: 'pending' },
-    priority: { type: 'integer', minimum: 1, maximum: 5 }, score: { type: 'number', minimum: -1.5, maximum: 1.5 },
-    code: { type: 'string', minLength: 2, maxLength: 4 }, site: { type: 'string', maxLength: 200, format: 'http-url' },
-  },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved'], default: 'pending' }, priority: { type: 'integer', minimum: 1, maximum: 5 }, score: { type: 'number', minimum: -1.5, maximum: 1.5 }, code: { type: 'string', minLength: 2, maxLength: 4 }, site: { type: 'string', maxLength: 200, format: 'uri' } } },
   readers: { mount: '/api/review', members: 'reviewers' },
 };
 const collections = { reviewers, requests };
@@ -189,14 +184,14 @@ test('a writing operator command reports its undelivered audit events and warns 
   assert.equal(plain.undeliveredEvents, undefined);
 });
 
-test('a filter value outside the field\'s bounds, lengths or format is a 400 on the owner mount and the readers mount', async t => {
+test('a filter value outside the property\'s bounds, lengths or format is a 400 on the owner mount and the readers mount', async t => {
   const store = await site(t);
   await addMember(store.database, { collections: typed, collection: 'reviewers', principal: 'rita' });
   await store.create('ann', 'laptop', { priority: 5, score: -1.5, code: 'ab', site: 'https://example.test/a' });
   const refused: [string, string, string][] = [
     ['priority=0', 'priority', 'must be at least 1'], ['priority=6', 'priority', 'must be at most 5'], ['score=1.6', 'score', 'must be at most 1.5'], ['score=-2', 'score', 'must be at least -1.5'],
     ['code=a', 'code', 'must be at least 2 characters'], ['code=abcde', 'code', 'must be at most 4 characters'], ['code=', 'code', 'must be at least 2 characters'],
-    ['site=not-a-url-SECRETVALUE', 'site', 'must be an absolute HTTP(S) URL without credentials or ASCII whitespace'], ['site=https%3A%2F%2Fu%3Ap%40example.test%2F', 'site', 'must be an absolute HTTP(S) URL without credentials or ASCII whitespace'],
+    ['site=not-a-url-SECRETVALUE', 'site', 'must be a uri'], ['site=https%3A%2F%2Fexample.test%2Fa%20b', 'site', 'must be a uri'],
   ];
   for (const [who, path] of [['ann', '/api/requests'], ['rita', '/api/review']] as const) {
     for (const query of ['priority=5', 'priority=1', 'score=-1.5', 'code=ab', 'code=abcd', `site=${encodeURIComponent('https://example.test/a')}`]) {

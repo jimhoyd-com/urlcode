@@ -198,7 +198,7 @@ const helpEntries: HelpEntry[] = [
   { name:'openapi', group:'Agent tooling', text:
 `  urlcode openapi [--project directory] [--origin https://links.example] [--out openapi.json] [--host-file ...] [--policy /absolute/policy.json]
     # OpenAPI 3.1 JSON for the declared HTTP operations: paths, methods, parameters, per-method request bodies (the 2020-12 schema) and only the responses URLCode itself writes
-    # handler-defined answers have no schema; extension, static and /** mounts are listed under x-urlcode.opaqueMounts, never enumerated; no binding, secret, cookie name or operator policy is included
+    # handler-defined answers have no schema; static and /** mounts, and extension mounts no --host-file registration describes, are listed under x-urlcode.opaqueMounts; no binding, secret, cookie name or operator policy is included
 ` },
   { name:'docs', group:'Agent tooling', text:
 `  urlcode docs search <text> [--project DIR] [--json]  # same as MCP search_docs: at most three bounded excerpts from the core agent docs and the site's installed, pin-verified add-on guides and urlcode.json schemas, with what was and was not searched; instead of grepping llms-full.txt

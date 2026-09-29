@@ -65,12 +65,12 @@ test('another principal cannot list, read, replace, patch, increment or delete a
 test('a client can neither set nor change the owner', async t => {
   const { create, as, stored } = await running(t);
   const forged = await as('mallory')('/api/notes', { method: 'POST', headers: json, body: JSON.stringify({ title: 'x', _owner: 'alice' }) });
-  assert.equal(forged.status, 400);
-  assert.deepEqual(((await forged.json()) as { error: { fields: Record<string, string> } }).error.fields, { _owner: 'is not a declared field' });
+  assert.equal(forged.status, 422);
+  assert.deepEqual(((await forged.json()) as { error: { issues: unknown[] } }).error.issues, [{ pointer: '', keyword: 'additionalProperties', message: 'has a property the schema does not declare', property: '_owner' }]);
   const note = await create('alice', 'mine');
   for (const method of ['PUT', 'PATCH']) {
     const moved = await as('alice')(`/api/notes/${note.id}`, { method, headers: json, body: JSON.stringify({ title: 'moved', _owner: 'bob' }) });
-    assert.equal(moved.status, 400, method);
+    assert.equal(moved.status, 422, method);
   }
   // A full round trip of what the owner read (no owner in it) keeps the stamped owner.
   const read = await (await as('alice')(`/api/notes/${note.id}`)).json() as Record<string, unknown>;
@@ -99,7 +99,7 @@ test('activation refuses an owned collection on a mount without a principal-prov
   await assert.rejects(unguarded.start(), /ownership: owner needs route \/api\/notes\/\* guarded by a principal-providing policy/);
   const notProviding = await boot(t, { provides: false });
   await assert.rejects(notProviding.start(), /ownership: owner needs route/);
-  const keyed = await boot(t, { collection: { ...notes, key: 'title', fields: { ...notes.fields, title: { type: 'string', required: true, maxLength: 40 } } } });
+  const keyed = await boot(t, { collection: { ...notes, key: 'title', schema: { ...notes.schema, required: ['title'], properties: { ...notes.schema.properties, title: { type: 'string', maxLength: 40 } } } } });
   await assert.rejects(keyed.start(), /key is not supported with ownership: owner/);
 });
 

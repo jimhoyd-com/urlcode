@@ -42,12 +42,20 @@ extensions:
       collections:
         todos:
           mount: /api/todos
-          fields:
-            title: {type: string, required: true, minLength: 1, maxLength: 200}
-            done: {type: boolean, default: false}
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string, minLength: 1, maxLength: 200}
+              done: {type: boolean, default: false}
           maxRecords: 1000
           maxRecordBytes: 4096
 ```
+
+`schema` is the collection's [record schema](#record-schema): a JSON Schema
+2020-12 object schema, validated by the same validator as a route's request
+body schema.
 
 ```yaml
 # app/routes/store.yaml
@@ -102,8 +110,8 @@ A hand-authored public mount, as in the YAML above, stays supported.
 | `GET /api/todos?sort=-priority&kind=a&cursor=` | the same shape, sorted and filtered as [declared](#sorting-and-filtering); `total` counts the matches and `cursor` is the opaque `next` of a sorted page |
 | `POST /api/todos` | `201` and the record, `Location: /api/todos/<id>` |
 | `GET /api/todos/<id>` | `200` record with `ETag` and `Allow-Transitions` ([`may`](#what-the-caller-may-run) for that record), or `404` |
-| `PUT /api/todos/<id>` | replaces every declared field (omitted fields take their default), `200` |
-| `PATCH /api/todos/<id>` | updates the supplied fields and removes those set to `null` ([clearing a field](#clearing-a-field)), `200` |
+| `PUT /api/todos/<id>` | replaces every property (omitted ones take their default; `readOnly` ones keep their value), `200` |
+| `PATCH /api/todos/<id>` | updates the named properties and removes those set to `null` ([clearing a property](#clearing-a-property)), `200` |
 | `DELETE /api/todos/<id>` | `204` |
 | `POST /api/todos/<id>/<transition>` | runs a [declared transition](#conditional-transitions-and-result-aware-retries), `200` |
 
@@ -115,14 +123,19 @@ no principal is `401`. Writes need `Content-Type:
 application/json` (`415` otherwise); an `Origin` header on a write that is
 neither `--origin` nor an operator
 [alias origin](EXTENSIONS.md#site-origins-and-same-origin-checks) is refused
-(`403`). Errors are `{error: {code, message, fields?}}` where
-`fields` maps field names to fixed messages; submitted values are never echoed.
-Status codes: `400` invalid record or JSON, `403` `own_record_refused` (a
+(`403`). Errors are `{error: {code, message, issues?, fields?}}`; submitted
+values are never echoed. A record that breaks the [record schema](#record-schema)
+is `422 invalid_record` with `issues`, the same bounded issue list (pointer,
+keyword, message, `expected`, `property`) a route's body schema answers
+([body schema](HTTP.md#body-schema-and-input-patterns)); like it, the validator
+stops at the first failure. A list query is `400 invalid_query` with `fields`
+mapping each offending parameter to a fixed message.
+Status codes: `400` malformed JSON, header or query, `403` `own_record_refused` (a
 `by: others` transition on the caller's own record), `404`, `405` with
 `Allow`, `409` `collection_full` (or `owner_quota_exceeded` on an
 [owned collection with a per-owner limit](#per-owner-record-limit), or
 `transition_conflict`), `412` stale `If-Match`, `413` body or record too
-large, `415`, `422` `idempotency_key_reused`, `503`
+large, `415`, `422` `invalid_record` or `idempotency_key_reused`, `503`
 `storage_unavailable` when the database write failed or another process held its
 lock past the busy timeout (nothing is written), `500` for anything unexpected
 (no cause in the body).
@@ -145,10 +158,14 @@ extensions:
           key: code
           increments: [clicks]
           idempotency: {maxKeys: 1000}
-          fields:
-            code: {type: string, required: true, minLength: 1, maxLength: 32}
-            destination: {type: string, required: true, format: http-url, maxLength: 2048}
-            clicks: {type: integer, default: 0, minimum: 0}
+          schema:
+            type: object
+            additionalProperties: false
+            required: [code, destination]
+            properties:
+              code: {type: string, minLength: 1, maxLength: 32}
+              destination: {type: string, format: uri}
+              clicks: {type: integer, default: 0, minimum: 0}
       shortLinks:
         public:
           mount: /go
@@ -160,15 +177,16 @@ routes:
   /go/*: {extension: store, methods: [GET, HEAD]}
 ```
 
-- `key` names one required string field, capped at 128 characters. A create
+- `key` names one required string property whose schema caps it at 128
+  characters (`maxLength`), with no default and not `readOnly`. A create
   atomically claims that caller-supplied value; a duplicate is `409 key_exists`.
   Updating a key is allowed only when the replacement is unused. Keys remain
   collection-local; they are not routing or authorization principals.
-- `increments` lists numeric fields with numeric defaults. `POST
-  /api/links/<uuid>/increment/clicks` increases exactly one declared field by
-  one in one database transaction. It refuses undeclared counters and an
-  increment that would violate the field's declared finite/integer/minimum or
-  maximum limits. There is no caller-provided delta, conditional expression or
+- `increments` lists numeric properties with numeric defaults. `POST
+  /api/links/<uuid>/increment/clicks` increases exactly one declared property
+  by one in one database transaction. It refuses undeclared counters, and an
+  increment the property's schema refuses (its `maximum`, `multipleOf` and so
+  on) is `409 increment_limit` with the schema issue. There is no caller-provided delta, conditional expression or
   multi-record operation.
 - `idempotency: {maxKeys: N}` enables an optional `Idempotency-Key` header on
   a collection's `POST`, `PUT`, `PATCH`, `DELETE`, increment and
@@ -187,14 +205,16 @@ routes:
   client when the request has none. The full contract is in
   [result-aware retries](#result-aware-retries).
 
-`format: http-url` applies only to string fields and accepts an absolute
-HTTP(S) URL without credentials or ASCII whitespace/control characters. A `shortLinks` entry combines a collection's
-unique key, one such **required** destination field (declaring it without
-`required: true` refuses activation), and one declared counter. `GET
+A `shortLinks` entry combines a collection's unique key, one **required**
+string destination property with `format: uri` (anything else refuses
+activation), and one declared counter. `format: uri` admits any scheme, so the
+short link adds its own rule to every write of the destination, from every
+path: an absolute HTTP(S) URL without credentials or ASCII whitespace/control
+characters, `422 invalid_record` otherwise. `GET
 /go/<code>` atomically increments the counter and answers `302 Location:` with
 the stored destination; a missing key is `404`, and so is a record whose
-destination is unset (only reachable from data written before the field
-became required). `HEAD /go/<code>` resolves and answers the same `302`
+destination is unset or not such a URL (only reachable from data written before
+the short link was declared). `HEAD /go/<code>` resolves and answers the same `302`
 without counting a click — only `GET` does. Its public redirect mount is
 separate from the private CRUD mount, so protect either mount according to the
 application's own access model. No function is required for the create,
@@ -204,10 +224,10 @@ that flag closes the public create/update/delete/increment surface on the
 CRUD mount, not the redirect's own bookkeeping, so a link collection can be
 `readOnly` for callers while still counting its own clicks ([#552]).
 
-## Clearing a field
+## Clearing a property
 
-`PATCH` changes only the fields its body names. A field set to `null` is
-removed from the record, so an optional field can be emptied after it was
+`PATCH` changes only the properties its body names. A property set to `null`
+is removed from the record, so an optional one can be emptied after it was
 saved (#738):
 
 ```http
@@ -217,18 +237,21 @@ Content-Type: application/json
 {"priority": null, "done": true}
 ```
 
-- Only an optional field can be cleared. `null` for a `required` field is
-  `400 invalid_record` with the field error `is required and cannot be
-  cleared`, and for an `increments` field `is an increment field and cannot be
-  cleared`; nothing is written.
-- A field with a `default` is optional, so it can be cleared too: the record
-  then has no value for it. The default applies again only on a later `PUT`.
-- A body that only clears fields is a change, even when they were already
-  absent: `updatedAt` and the `ETag` move.
-- `If-Match`, ownership scoping and validation of the other fields apply
-  exactly as to any `PATCH`.
+- The record left after the patch must satisfy the schema, so clearing a
+  `required` property is `422 invalid_record` with the `required` issue
+  (`is missing required property <name>`). `null` for an `increments`
+  property is `422` with `is an increment property and cannot be cleared`, and
+  `null` for an undeclared name is the `additionalProperties` issue. Nothing is
+  written.
+- A property with a `default` that is not `required` can be cleared too: the
+  record then has no value for it. The default applies again only on a later
+  `PUT`.
+- A body that only clears properties is a change, even when they were already
+  absent: `updatedAt` and the `ETag` move. An empty body is `422` (`must set or
+  clear at least one property`).
+- `If-Match`, ownership scoping and the schema apply exactly as to any `PATCH`.
 - `PUT` is unchanged: it replaces the record from values only, and `null` is
-  refused as the field's wrong type.
+  refused as the property's wrong type.
 
 ## Conditional writes
 
@@ -265,7 +288,7 @@ idempotency protocol.
 smallest store-owned contract behind a reviewed conditional mutation with an
 expected revision and result-aware retries. It has three parts, each bounded:
 
-1. **Declared transitions**: a named change of one record from exact field
+1. **Declared transitions**: a named change of one record from exact property
    values to constant ones, served by the store with no project code, and
    optionally gated by a [membership collection](#membership-gates-and-cross-owner-reads).
 2. **Result-aware retries**: a retried `Idempotency-Key` answers what the first
@@ -282,17 +305,25 @@ collections:
   reviewers:                       # who may review: principal ids, maintained by the operator
     membership: true
     key: userId
-    fields:
-      userId: {type: string, required: true, maxLength: 128}
+    schema:
+      type: object
+      additionalProperties: false
+      required: [userId]
+      properties:
+        userId: {type: string, maxLength: 128}
   requests:
     mount: /api/requests
     ownership: owner
     idempotency: {maxKeys: 1000}
-    fields:
-      title: {type: string, required: true, maxLength: 120}
-      status: {type: string, enum: [pending, approved, withdrawn], default: pending, transitionOnly: true}
-      reviewedBy: {type: string, maxLength: 128, transitionOnly: true}
-      reviewedAt: {type: string, maxLength: 32, transitionOnly: true}
+    schema:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: {type: string, maxLength: 120}
+        status: {type: string, enum: [pending, approved, withdrawn], default: pending, readOnly: true}
+        reviewedBy: {type: string, maxLength: 128, readOnly: true}
+        reviewedAt: {type: string, maxLength: 32, readOnly: true}
     transitions:
       approve:                     # POST /api/approvals/<id>
         from: {status: pending}
@@ -313,20 +344,21 @@ routes:
 
 ### Declared transitions
 
-- `from` names 1 to 8 declared fields and the exact value each must hold now;
-  `set` names 1 to 8 fields and the constant each gets; `stamp` names up to 4
-  string fields the store fills with `actor` (the principal's id, or
-  `anonymous`) or `now` (the commit time, equal to the new `updatedAt`).
-  Activation checks every value against its field, refuses `set` or `stamp` on
-  the collection `key`, a field both set and stamped, a stamp field that could
-  not hold its value (a string with no enum or format, `maxLength` at least 128
-  for `actor` and 24 for `now`), and the name `increment`.
+- `from` names 1 to 8 declared properties and the exact value each must hold
+  now; `set` names 1 to 8 properties and the constant each gets; `stamp` names
+  up to 4 string properties the store fills with `actor` (the principal's id,
+  or `anonymous`) or `now` (the commit time, equal to the new `updatedAt`).
+  Activation checks every value against its property's schema, refuses `set`
+  or `stamp` on the collection `key`, a property both set and stamped, a stamp
+  property that could not hold its value (a string with `maxLength` at least
+  128 for `actor` and 24 for `now`, and no `enum`, `const`, `pattern`,
+  `format`, `multipleOf` or composition keyword), and the name `increment`.
 - `POST <mount>/<id>/<name>` takes no body (`400 body_not_allowed`), an
   optional `If-Match` and an optional `Idempotency-Key`, and answers `200` with
   the record and its new `ETag`. It is a write: the same-origin rule,
   `readOnly`, `maxRecordBytes` and `audit: true` apply exactly as to `PATCH`.
   An audited transition is recorded as `store.record.transitioned` with the
-  transition's name and the changed field names.
+  transition's name and the changed property names.
 - On an owned collection `by` chooses who may run it. `owner` (the default) is
   the record's owner, on the collection mount, scoped like every other write.
   `others` is any principal **except** the owner: the transition is served only
@@ -338,13 +370,15 @@ routes:
   shared collection `by` is refused, since records have no owner to compare,
   and anyone who can reach the mount may run the transition unless it names
   `members`.
-- A field declared `transitionOnly: true` changes only through a transition's
-  `set` or `stamp`: a create stores its default (or leaves it unset), `PUT`
-  keeps its current value, and any body naming it is `400` with the field error
-  `is changed only by a transition`. Without it, the owner in the example could
-  `PATCH` `status: approved` and skip the review. Activation refuses it with
-  `required`, on the key or an increment field, and when no transition sets or
-  stamps it.
+- A property the schema declares `readOnly: true` (the standard JSON Schema
+  annotation: the value is managed by the store) changes only through a
+  transition's `set` or `stamp`: a create stores its default (or leaves it
+  unset), `PUT` keeps its current value, and any body naming it is
+  `422 invalid_record` with the issue `is changed only by a transition`
+  (keyword `readOnly`). Without it, the owner in the example could `PATCH`
+  `status: approved` and skip the review. Activation refuses it on the key or
+  an increment property, when it is `required` without a `default`, and when no
+  transition sets or stamps it.
 
 ### Membership gates and cross-owner reads
 
@@ -354,15 +388,16 @@ itself ([#863](https://github.com/jimhoyd-com/urlcode/issues/863)). The store
 still has no roles, and `auth` gains none.
 
 - **A membership collection** declares `membership: true` and a `key`: one
-  record per member, whose key field holds the member's principal id (a value
-  that is not a principal id is `400 must be a principal id`). It reuses the
+  record per member, whose key property holds the member's principal id (a
+  value that is not a principal id is `422 invalid_record`, `must be a
+  principal id`). It reuses the
   unique-key machinery instead of a new table, so membership is one indexed
   lookup inside the request's own transaction. It has **no mount and no HTTP
   API**: a membership list served on a collection mount would let anyone the
   route admits add themselves or enumerate members. Activation therefore
   refuses it with `mount`, and with `ownership`, `transitions`, `readers`,
   `increments`, `idempotency`, `sortable`, `filterable` or `readOnly`. A member is added and removed, never renamed: an
-  update that changes the key field is `400`.
+  update that changes the key property is `422 invalid_record`.
 - **Maintaining it** reuses the operator paths the store already has, not a new
   admin surface. The operator runs `urlcode-store members` (below), or calls
   `addMember`, `removeMember` and `listMembers` from `@jimhoyd/urlcode-store`.
@@ -439,7 +474,7 @@ still has no roles, and `auth` gains none.
   gets the `403` before anything is read. It is off by default: a member who
   can list every owner's records already sees their content, and `showOwner`
   adds a stable cross-record link to one account. To show something a reviewer
-  can act on (a display name, a team), keep it in an ordinary declared field
+  can act on (a display name, a team), keep it in an ordinary declared property
   that the owner writes; see [the store's security notes](../packages/store/SECURITY.md).
 - **Changes apply immediately.** Membership is read inside each gated
   request's transaction, so an addition or removal committed before a request
@@ -523,7 +558,7 @@ store would accept:
   the mutation and every other replays it, in one process and across
   connections to the same file.
 - Only committed successes are retained. A refused request (`400`, `404`,
-  `409`, `412`) or a failed one (`503`) claims nothing, so its retry is
+  `409`, `412`, `422`) or a failed one (`503`) claims nothing, so its retry is
   evaluated again against the current state.
 
 ### Host transactions
@@ -531,8 +566,8 @@ store would accept:
 `ctx.get('store').transaction(work)` runs `work(tx)` inside one `BEGIN
 IMMEDIATE` transaction and returns its result. `tx.records(name)` offers
 `create`, `get`, `update`, `remove`, `transition` and `list` with exactly the
-records export's rules (ownership scope by the principal passed, field
-validation, quotas, `ifMatch`, `transitionOnly`, audit), synchronously. Every
+records export's rules (ownership scope by the principal passed, the record
+schema, quotas, `ifMatch`, `readOnly` properties, audit), synchronously. Every
 write and its audit events commit together or not at all.
 
 ```js
@@ -550,7 +585,7 @@ store.transaction(tx => {
   handle kept across an `await` cannot write outside the transaction.
   Transactions do not nest, and the ordinary records export cannot be used
   inside one.
-- A `StoreError` thrown inside (a `412`, a `409`, a field error) or the caller's
+- A `StoreError` thrown inside (a `412`, a `409`, a `422` schema issue) or the caller's
   own error rolls everything back and is rethrown unchanged; a SQLite failure
   becomes `503 storage_unavailable`.
 - It is trusted host code: reachable only from an operator-installed extension
@@ -574,7 +609,7 @@ membership check (`403 membership_required`); the retained key (`422` or a
 replay); the record in the caller's scope (`404`, so another owner's record is
 a missing one); for `by: others` the owner check (`403 own_record_refused`);
 `If-Match` (`412`); the transition's `from` values
-(`409 transition_conflict`); field validation (`400`); quotas (`409`); then
+(`409 transition_conflict`); the record schema (`422 invalid_record`); quotas (`409`); then
 the write, the claim and the audit event.
 
 **Conflict and no-mutation behavior.** Every refusal is thrown inside the
@@ -624,21 +659,90 @@ The #835 counterexamples, and what serves each:
 
 | Contract | Served by | Not built |
 |---|---|---|
-| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `transitionOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
+| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `readOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
 | Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a host transaction (list, check overlap, create or `update` with `ifMatch`) | a declarative non-overlap constraint; an interval index (the check reads the caller's records, at most `maxRecords`) |
 | Simulated credits: hold, commit, cancel across records, conserving the total | a host transaction (`minimum: 0` refuses an overdraft and rolls the whole transfer back) | a declarative transfer; `Idempotency-Key` on host transactions |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
 
-## Field schema
+## Record schema
 
-Fields are typed `string`, `integer`, `number` or `boolean`, each optionally
-`required`, with a `default` (not both), and per type: `minLength`/`maxLength`
-(strings, hard cap 65,536), `minimum`/`maximum` (numbers), `enum`. The store owns
-this schema and does not depend on request-body validation in core ([#254]).
-Unknown fields are rejected. `id`, `createdAt` and `updatedAt` are reserved.
+A collection's `schema` is a JSON Schema 2020-12 object schema in the same
+bounded profile as a route's [`request.body.<METHOD>.schema`](HTTP.md#body-schema-and-input-patterns)
+([#861](https://github.com/jimhoyd-com/urlcode/issues/861)). The store hands it
+to core's own compiler (`@jimhoyd/urlcode/body-schema`): the same keyword
+allowlist, formats, regex admission and limits, the same Ajv options, and the
+same bounded issue list in a refusal. There is no second, store-private value
+checker.
 
-Limits per collection: up to 64 fields, `maxRecords` up to 10,000 (default
+```yaml
+# snippet: partial -- one collection's schema
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema   # optional
+  title: Ticket
+  type: object
+  additionalProperties: false
+  required: [code, priority]
+  properties:
+    code: {type: string, pattern: "^[A-Z]{2}-[0-9]+$", maxLength: 12}
+    due: {type: string, format: date}
+    priority: {type: integer, minimum: 1, maximum: 3, default: 2}
+    channel: {type: string, anyOf: [{const: web}, {const: mail}]}
+    state: {type: string, enum: [open, closed], default: open, readOnly: true}
+```
+
+What the store adds to the profile, and why:
+
+- **A flat record.** The root is `type: object` with `properties` (1 to 64),
+  optional `required`, optional `$schema`, `title`, `description` and
+  `$comment`, and `additionalProperties: false` written out, so the schema
+  says what the store enforces: a body naming an undeclared property is
+  refused. Each property has exactly one scalar `type` (`string`, `integer`,
+  `number` or `boolean`); any other profile keyword may sit beside it
+  (`minLength`, `pattern` with `maxLength`, `format`, `enum`, `const`,
+  `minimum`, `exclusiveMaximum`, `multipleOf`, `anyOf` and so on). Records
+  stay scalars because sorting, equality filters, transitions, keys and
+  counters compare scalar values. `id`, `createdAt` and `updatedAt` are
+  reserved and store-owned; a body may carry them (a record read back) and
+  they are ignored.
+- **Two standard annotations it acts on.** `default` is stored on create when
+  the body omits the property (and on `PUT`), and must satisfy the property's
+  own schema. `readOnly: true` means only a declared
+  [transition](#declared-transitions) changes the property. Core's request
+  profile refuses both keywords, because the runtime does not act on them for
+  a request body; the store removes them before compiling and acts on them
+  itself. Anywhere else than directly on a property they are refused as in
+  the request profile.
+- **Store-owned facts stay beside the schema** and name its properties:
+  `key`, `increments`, `sortable`, `filterable`, `transitions`, `ownership`,
+  `readers`, `membership`, and the short link's destination. They are
+  behavior over records (uniqueness, atomic counters, scoping, state
+  changes), not value constraints, so they are not JSON Schema keywords.
+
+A write is judged as the record it would leave: a create is the defaults plus
+the body, a `PUT` the defaults, the body and the stored `readOnly` values, a
+`PATCH` the stored record with the named properties set or removed. The
+first failure is `422 invalid_record` with `issues` in the body-schema shape;
+the store's own rules on a named property (a `readOnly` property in a body, an
+increment cleared, a membership key that is not a principal id, a short-link
+destination that is not an HTTP(S) URL) are issues in the same shape. Stored
+rows are judged without `required` when they are read and at activation, so
+adding a required property does not stop a collection that already holds
+records without it; such a record's next write must supply it. A row that
+breaks any other rule refuses activation (and a request that meets one answers
+`503`).
+
+*Why a declared schema rather than a derived one.* The alternative was to keep
+the store's own `fields:` vocabulary and derive an equivalent profile schema
+from it. Declaring the schema adds no mechanism (the store calls core's
+compiler either way) and removes one: there is no private vocabulary to learn,
+document and translate, every profile keyword is available to a record without
+the store naming it, and the schema a reader writes is the one `urlcode
+openapi` publishes and a generated client uses. What it costs is a little
+verbosity (`type: object` and `additionalProperties: false` are written out)
+and the store's layer of annotations described above.
+
+Limits per collection: up to 64 properties, `maxRecords` up to 10,000 (default
 1,000), on an owned collection `maxRecordsPerOwner` up to `maxRecords`
 ([per-owner record limit](#per-owner-record-limit)), `maxRecordBytes` up to 65,536 (default 4,096), `pageSize` up to 200
 (default 50), at most 32 collections per project, `readOnly: true` to refuse
@@ -648,23 +752,25 @@ the one exception, described above. The request body is refused above
 
 ## Sorting and filtering
 
-A collection opts in per field with two lists in its declaration:
+A collection opts in per property with two lists in its declaration:
 
 ```yaml
-sortable: [title, priority]      # sort=<field> or sort=-<field> (descending)
-filterable: [kind, done]         # <field>=<value>, equality only
+# snippet: partial -- two keys of one collection
+sortable: [title, priority]      # sort=<property> or sort=-<property> (descending)
+filterable: [kind, done]         # <property>=<value>, equality only
 ```
 
-- Every name must be a declared field (not `id`, `createdAt` or `updatedAt`),
-  at most 8 per list, no repeats. A `string` field must have `maxLength` of at
-  most 256 or an `enum`, so a value stays small enough to compare and to carry
-  in a cursor. A field named `limit`, `cursor` or `sort` cannot be filterable.
-  A bad declaration refuses activation.
-- One sort field per request. Records order by that field, then by `id`, so the
+- Every name must be a declared property (not `id`, `createdAt` or
+  `updatedAt`), at most 8 per list, no repeats. A `string` property's schema
+  must bound it to 256 characters (`maxLength` of at most 256, an `enum` or a
+  `const`), so a value stays small enough to compare and to carry in a cursor.
+  A property named `limit`, `cursor` or `sort` cannot be filterable. A bad
+  declaration refuses activation.
+- One sort property per request. Records order by it, then by `id`, so the
   order is total and stable. `-` reverses the whole order, ties included.
   Numbers compare numerically, booleans `false` before `true`, strings by UTF-16
-  code unit (not by locale). A record with no value for the field (an optional
-  field never set) comes after every record that has one when ascending, and
+  code unit (not by locale). A record with no value for the property (an
+  optional one never set) comes after every record that has one when ascending, and
   first when descending.
 - Filters are exact equality on the declared type: `done=true`, `priority=3`
   (integers and numbers are parsed strictly, so `3.0` matches 3 and `0x10`
@@ -673,19 +779,20 @@ filterable: [kind, done]         # <field>=<value>, equality only
   `sort`; `total` is the number of matches.
 - Anything else is `400 invalid_query` with `fields` naming the key: an
   undeclared sort or filter name, a repeated key, a value that does not parse
-  as the field's type, a value the field can never hold, an unrelated
-  parameter such as `q`, more than 16 parameters. A value the field can never
-  hold is one a write would refuse: outside its `enum` (`is not one of the
-  allowed values`), below its `minimum` or above its `maximum` (`must be at
-  least 1`), shorter than its `minLength` or longer than its `maxLength`
-  (`must be at most 4 characters`), or not matching its `format`. It is refused
-  rather than answered with an empty page, on an owner's mount and a readers
-  mount alike, with the same fixed message a write gets. Names that are
+  as the property's type, a value the property can never hold, an unrelated
+  parameter such as `q`, more than 16 parameters. A value the property can
+  never hold is one its schema refuses, judged by the same validator a write
+  uses: outside its `enum` (`must be one of the declared values`), below its
+  `minimum` or above its `maximum` (`must be at least 1`), shorter than its
+  `minLength` or longer than its `maxLength` (`must be at most 4
+  characters`), not matching its `pattern` or `format`. It is refused rather
+  than answered with an empty page, on an owner's mount and a readers mount
+  alike, with the message of the schema issue a write gets. Names that are
   not plain identifiers are reported as `(unsupported name)`, and values are
   never echoed. Unknown query parameters are therefore refused rather than
   ignored on every collection, declared or not. There are no ranges,
   operators, text search, OR, nested paths or arbitrary expressions.
-- A sorted page returns an opaque `next` cursor holding the sort field and
+- A sorted page returns an opaque `next` cursor holding the sort property and
   direction and the position (value and `id`) of the page's last record. The
   next page is "the records after that position", so records inserted, deleted
   or edited between requests never make a page repeat a record or skip one that
@@ -694,7 +801,7 @@ filterable: [kind, done]         # <field>=<value>, equality only
   order, filtered or not; there a delete between pages can shift later records
   up by one.
 - An unsorted, unfiltered page is one counted `LIMIT`/`OFFSET` query. A sorted
-  or filtered page reads the `id` and only the named fields of every record in
+  or filtered page reads the `id` and only the named properties of every record in
   scope (bounded by `maxRecords`, at most 10,000), orders and filters those in
   memory by the rules above, and then reads the page's records. On a shared
   collection sorting and filtering apply to every record; on an
@@ -718,8 +825,12 @@ extensions:
         notes:
           mount: /api/notes
           ownership: owner          # shared (the default) | owner
-          fields:
-            title: {type: string, required: true, maxLength: 200}
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string, maxLength: 200}
 routes:
   /api/notes/*:
     extension: store
@@ -737,7 +848,7 @@ On an owned collection:
 
 - `POST` stamps the caller's principal on the new record. The owner is stored in
   the database's `owner` column and never appears in a response; a body naming
-  `_owner` is `400` like any undeclared field, and `PUT`/`PATCH` keep the stored
+  `_owner` is `422 invalid_record` like any undeclared property, and `PUT`/`PATCH` keep the stored
   owner. There is no transfer through the API; the operator can
   [move records](#moving-records-to-another-principal).
 - `GET` lists only the caller's records: `total`, `limit`, `cursor`, sorting and
@@ -781,8 +892,12 @@ notes:
   ownership: owner
   maxRecords: 5000           # the whole collection (default 1,000)
   maxRecordsPerOwner: 100    # each principal
-  fields:
-    title: {type: string, required: true, maxLength: 200}
+  schema:
+    type: object
+    additionalProperties: false
+    required: [title]
+    properties:
+      title: {type: string, maxLength: 200}
 ```
 
 - A `POST` by a principal that already holds `maxRecordsPerOwner` records
@@ -872,7 +987,7 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   with no owner (see below), are left alone.
 - **Membership moves too** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
   In every [membership collection](#membership-gates-and-cross-owner-reads)
-  that lists `--from`, its entry becomes `--to`'s (the key field and its
+  that lists `--from`, its entry becomes `--to`'s (the key property and its
   index together, in its original place), or is removed when `--to` already
   is a member. On an audited membership collection this is recorded as
   `--from` removed and, unless it already was a member, `--to` added. It
@@ -931,8 +1046,12 @@ extensions:
           mount: /api/todos
           ownership: owner
           audit: true
-          fields:
-            title: {type: string, required: true, maxLength: 200}
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string, maxLength: 200}
 ```
 
 | Write | Action |
@@ -945,7 +1064,7 @@ extensions:
 
 Each event's subject is `<collection>/<id>` and its actor the request
 principal's id, or `anonymous` when the guarding policy set none. Its
-metadata is `{collection, fields}`: the names of the declared fields the write
+metadata is `{collection, fields}`: the names of the declared properties the write
 stored or changed, never their values, cut with `truncated: true` when the list
 would exceed audit's metadata bound.
 
@@ -1029,7 +1148,7 @@ operator says made the change, not proof of it. Commands that change nothing
   declares `targets: ['node']`, so the aws and vercel targets refuse it before
   serving.
 - Every collection lives as rows of three shared tables, keyed by the
-  collection name: `store_records` (one row per record; the declared fields are
+  collection name: `store_records` (one row per record; the declared properties are
   one JSON object, beside the `id`, timestamps, owner and unique key columns),
   `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
   the request fingerprint, the status and the record id, never record values) and
@@ -1172,8 +1291,10 @@ What such a client reads from the HTTP contract:
   [transitions the caller may run now](#what-the-caller-may-run), so the page
   offers only those. They are a hint, not a grant; the transition still checks
   everything in its own transaction.
-- **`transitionOnly` fields** never go in a create or update body (`400`); only
-  a [declared transition](#declared-transitions) changes them.
+- **`readOnly` properties** never go in a create or update body (`422`); only
+  a [declared transition](#declared-transitions) changes them. A client
+  generated from [`urlcode openapi`](#openapi) leaves them out of its request
+  types.
 - **Owner and readers mounts.** An owner lists the collection mount; a member
   lists the [readers mount](#membership-gates-and-cross-owner-reads) and runs
   the `by: others` transitions on their own mounts.
@@ -1184,6 +1305,40 @@ each caller to their own records. For shadcn/ui components, use the official
 shadcn tooling and bring an item into the app's source with
 [`urlcode artifacts stage`](EXTENSIONS.md#staging-source-assets).
 
+## OpenAPI
+
+With the operator's host file, `urlcode openapi --host-file host.mjs` (and
+`buildOpenApi(project, {extensions})`) describes every store mount as real
+paths instead of an opaque mount ([OpenAPI export](TOOLING.md#openapi-export)):
+the store's registration implements the extension contract's
+[`describe()`](EXTENSIONS.md#openapi-description), which builds the paths from
+the project's declaration alone, without opening the database.
+
+| Mount | Paths |
+|---|---|
+| Collection | `GET`/`HEAD <mount>` (the list: `limit`, `cursor`, `sort` as an enum of the sortable properties, each filter with its property's schema), `POST <mount>`; `GET`/`HEAD`/`PUT`/`PATCH`/`DELETE <mount>/{id}`; `POST <mount>/{id}/increment/{field}`; `POST <mount>/{id}/<transition>` per transition on the mount |
+| Readers | `GET`/`HEAD <mount>` and `<mount>/{id}` |
+| `by: others` transition | `POST <mount>/{id}` |
+| Short link | `GET`/`HEAD <mount>/{key}`, a `302` with `Location` |
+
+The schemas come from the record schema: `Store<Collection>Record` is it with
+`id`, `createdAt` and `updatedAt` added (`readOnly` and `default` stay as
+declared), `Store<Collection>Create` (for `POST` and `PUT`) leaves out the
+`readOnly` properties and requires only what has no default,
+`Store<Collection>Patch` lets an optional property be `null`, and the list,
+reader (with `_owner` under `showOwner`) and `StoreError` shapes are named the
+same way. Each operation lists the headers it takes (`If-Match`, and
+`Idempotency-Key` where the collection enables it) and answers (`ETag`,
+`Allow-Transitions`, `Location`, `Idempotency-Replayed`), its `requestBody`
+bound (`x-urlcode.maxBytes`: `maxRecordBytes` plus 4 KiB), and its refusals,
+the `422` naming core's `UrlcodeBodyValidationIssue`. Only the methods the
+route declares are kept, and core adds the runtime's headers and a sign-in
+gate's `401`/`403` and security requirement. `packages/store/test/openapi.test.ts`
+validates the output against the official OpenAPI 3.1 schema and runs the
+[contract run](TOOLING.md#openapi-export) against a served store. Without the
+host file the mounts stay opaque: core never loads extension code to describe
+a project.
+
 ## Using a collection from another extension
 
 An extension that `requires: [store]` reaches declared collections through the
@@ -1191,14 +1346,14 @@ store's typed export, `ctx.get('store')` in its definition's `host()`
 (`StoreExports`, contract version 1, #529), never by reading
 `extensions.store.config`. Once the store is active (declare it first under
 `extensions`), `records('<collection>')` returns the collection's `ownership`,
-`readOnly` and declared `fields`, and four calls that take the request
+`readOnly` and declared record `schema` (a deep-frozen copy), and four calls that take the request
 principal (`request.principal`):
 
 - `create(principal, values)` stamps the principal as owner on an owned
   collection;
 - `get(principal, id)` returns a record in the principal's scope;
 - `update(principal, id, patch, {ifMatch})` is a partial update (PATCH): a
-  field set to `null` is [cleared](#clearing-a-field);
+  property set to `null` is [cleared](#clearing-a-property);
 - `list(principal, {limit, cursor})` returns one page of the principal's scope
   in creation order, `{items, total, next?, previous?}`: `limit` is capped at
   the collection's `pageSize`, and `next` and `previous` are the cursors of
@@ -1216,8 +1371,8 @@ it: `create(null, {userId})` adds a member.
 `create`, `get`, `update` and `transition` return `{record, etag}` (a record
 never includes its owner) and
 applies exactly the JSON API's rules: another owner's record and a missing id
-are the same `404`, no principal on an owned collection is `401`, field
-errors are `400` with field names, `maxRecords` is `409 collection_full`, and
+are the same `404`, no principal on an owned collection is `401`, a record
+that breaks the schema is `422 invalid_record` with `issues`, `maxRecords` is `409 collection_full`, and
 a stale `ifMatch` is `412`. Failures are `StoreError`s with the same status and
 code as the HTTP answer. The export performs no request admission of its own:
 the consumer handles CSRF and origins for the requests it serves.
