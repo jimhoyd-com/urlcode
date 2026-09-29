@@ -257,9 +257,14 @@ export const budgets: Record<string, Budget> = {
     // Unpacked raised from 3576 to 3584 KiB for #875 (descriptor targets in explain/manifest/context/review, the
     // manifest's per-target `refused` count, and the STORE/TOOLING/CAPABILITIES operator-audit sections): measured
     // on Node 26 at 3664264 unpacked bytes, 2440 over the old budget.
-    packed: 902 * 1024,
-    unpacked: 3584 * 1024,
-    entries: 500,
+    // #889's embedded fetch handler: dist/embed.js and dist/host-request.js with their declarations, the
+    // OPERATIONS "Hosting URLCode inside another framework" section, RIM-EMBED-001 and their llms-full.txt copies.
+    // Measured on Node 26 after rebasing onto #875/#887/#890: 929130 packed bytes (5482 over 902 KiB) and 3686818
+    // unpacked bytes (16802 over 3584 KiB), 499 entries. Packed raised to 911 KiB, unpacked to 3604 KiB and entries
+    // to 504, each keeping about 3.7 KiB (or 5 entries) of headroom for the ~2 KiB cross-Node gzip variance above.
+    packed: 911 * 1024,
+    unpacked: 3604 * 1024,
+    entries: 504,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

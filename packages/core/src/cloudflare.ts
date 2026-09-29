@@ -4,8 +4,8 @@ import { bodyPolicy, checkRequest, decorateResponse } from './http-policy.ts';
 import type { RequestBodyPolicies } from './http-policy.ts';
 import { declaredBodyNames } from './body-validation.ts';
 import type { BodyValidator, CompiledBodySchema } from './body-validation.ts';
-import { prepareResponse, errorResponse, errorScope, resolveErrorFormat, methodNotAllowed } from './http-response.ts';
-import type { ErrorFormat, HandlerResult, HeaderPair, ResponseBody } from './http-response.ts';
+import { fetchResponse, prepareResponse, errorResponse, errorScope, resolveErrorFormat, methodNotAllowed } from './http-response.ts';
+import type { ErrorFormat, HandlerResult, HeaderPair } from './http-response.ts';
 import { HttpError } from './errors.ts';
 // Only the two policies a Worker can carry. Both modules must stay free of
 // Node imports; the build refuses every other policy with the route named.
@@ -166,13 +166,13 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators, 
       for (const [module, state] of route.policy?.request || []) {
         if (!policyReq) break;
         const denied = await module.onRequest?.(state, policyReq);
-        if (denied) return respond(prepareResponse(await finish(denied, module), { requestId, method }), requestId, method);
+        if (denied) return fetchResponse(prepareResponse(await finish(denied, module), { requestId, method }), method);
       }
       if (!route.methods.includes(method)) {
         // The same response policy as every other host: 405 skips the route's
         // configured response headers but still gets length, nosniff and id,
         // and passes through the response-phase policies like the Node runtime.
-        return respond(prepareResponse(await finish(methodNotAllowed(route.methods, format)), { requestId, method }), requestId, method);
+        return fetchResponse(prepareResponse(await finish(methodNotAllowed(route.methods, format)), { requestId, method }), method);
       }
       const policy = bodyPolicy(route, method);
       const body = policy ? await readCappedBody(request, policy.maxBytes ?? 1048576) : new Uint8Array(0);
@@ -185,7 +185,7 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators, 
       if (redirecting(route)) native = { status: route.redirect.status || 302, headers:[['location',redirectLocation(route, context, parsed.query)]], body: new Uint8Array(0) };
       else if (route.reply) native = { ...route.reply, ...(fallback ? { status: 404 } : {}) };
       else throw new HttpError(502, 'Invalid function response');
-      return respond(prepareResponse(await finish(decorateResponse(route, native)), { requestId, method }), requestId, method);
+      return fetchResponse(prepareResponse(await finish(decorateResponse(route, native)), { requestId, method }), method);
     } catch (error) {
       if (!(error instanceof HttpError)) console.error(error);
       // The matched route's security state when there is one, else the
@@ -193,18 +193,7 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators, 
       const state = matched ? (matched.policy?.security ?? null) : compiled.errorPolicy;
       const headers = state ? security.onResponse(state, { origin }, { status: 200, headers: [] }).headers : [];
       const prepared = errorResponse(error, { requestId, method, headers, format });
-      return respond({ ...prepared, cookies: [], body: prepared.body === undefined ? undefined : encoder.encode(prepared.body) }, requestId, method);
+      return fetchResponse(prepared, method);
     }
   };
-}
-
-function respond(prepared: { status: number; headers: HeaderPair[]; cookies?: string[]; body: ResponseBody }, requestId: string, method: string): Response {
-  const headers = new Headers();
-  for (const [key,value] of prepared.headers) headers.append(key, value);
-  for (const cookie of prepared.cookies ?? []) headers.append('set-cookie', cookie);
-  if (!headers.has('x-request-id')) headers.set('x-request-id', requestId);
-  const empty = method === 'HEAD' || [204,205,304].includes(prepared.status);
-  // Bytes here always sit on a plain ArrayBuffer (the encoder or the platform made them); lib.dom's BodyInit only excludes shared memory.
-  const body = prepared.body ?? new Uint8Array(0);
-  return new Response(empty ? null : typeof body === 'string' ? body : body as Uint8Array<ArrayBuffer>, { status: prepared.status, headers });
 }

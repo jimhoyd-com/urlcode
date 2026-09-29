@@ -3,7 +3,7 @@
 //   1. direct library use: a trusted function route imports zod through its own API with no URLCode adapter,
 //      descriptor, catalog entry or wrapper; the same import on a `sandbox: true` route is refused before serving;
 //      explain/review label the route as trusted code whose execution is not evaluated;
-//   2. a second host: URLCode embedded in a Hono application (createRuntime + an operator bridge) answering the same
+//   2. a second host: URLCode embedded in a Hono application (createRuntime + createEmbeddedHandler) answering the same
 //      requests as URLCode's own server, with every difference that is a hosting gap asserted explicitly.
 // It needs the npm registry for the three libraries; run after `npm run build` (npm run test:ecosystem).
 import test from 'node:test';
@@ -156,7 +156,7 @@ test('ecosystem: direct npm library use and URLCode hosted inside Hono', { timeo
   const native = await launch('urlcode serve', site, [cli, 'serve', ...hosted, '--origin', `http://localhost:${nativePort}`, '--port', String(nativePort), '--trusted-proxies', '127.0.0.1/32'], reviewed,
     port => fetch(`http://127.0.0.1:${port}/_urlcode/ready`).then(response => response.ok, () => false), nativePort);
   closers.push(() => stop(native));
-  const hono = await launch('hono', site, [join('hono', 'server.mjs'), '--origin', `http://localhost:${honoPort}`, '--port', String(honoPort)], reviewed,
+  const hono = await launch('hono', site, [join('hono', 'server.mjs'), '--origin', `http://localhost:${honoPort}`, '--port', String(honoPort), '--trusted-proxies', '127.0.0.1/32'], reviewed,
     async (_port, output) => output.includes('"listening"'), honoPort);
   closers.push(() => stop(hono));
 
@@ -239,42 +239,46 @@ test('ecosystem: direct npm library use and URLCode hosted inside Hono', { timeo
       assert.equal((await probe({ origin: 'https://attacker.example' })).sameOrigin, false, served.name);
       assert.equal((await probe({ 'sec-fetch-site': 'cross-site', origin: served.origin })).sameOrigin, false, served.name);
       assert.equal((await probe({})).sameOrigin, false, served.name);
-      // Repeated Origin lines refuse: the Hono bridge hands URLCode Node's raw header lines, so the count survives.
+      // Repeated Origin lines refuse: the Hono host hands the embedded handler Node's raw header lines, so the count survives.
       const repeated = await raw(served.port, '/app/probe/x', [['host', `localhost:${served.port}`], ['origin', served.origin], ['origin', served.origin]]);
       assert.equal((JSON.parse(repeated.body) as { sameOrigin: boolean }).sameOrigin, false, served.name);
     }
   });
 
-  await t.test('client address: the socket peer in both; forwarded headers only where URLCode owns the server', async () => {
+  await t.test('client address: the socket peer in both; X-Forwarded-For from a trusted proxy in both', async () => {
     const client = async (served: Served, headers: Record<string, string> = {}) => ((await (await call(served, '/app/probe/x', { headers })).json()) as { client: string }).client;
     assert.equal(await client(native), '127.0.0.1');
     assert.equal(await client(hono), '127.0.0.1');
-    // `urlcode serve --trusted-proxies 127.0.0.1/32` resolves X-Forwarded-For from a trusted peer.
-    assert.equal(await client(native, { 'x-forwarded-for': '203.0.113.9' }), '203.0.113.9');
-    // The embedded runtime receives whatever address the host passes; this bridge passes the peer and has no
-    // trusted-proxy list, because core does not export its resolver (gap).
-    assert.equal(await client(hono, { 'x-forwarded-for': '203.0.113.9' }), '127.0.0.1');
+    // `urlcode serve --trusted-proxies 127.0.0.1/32` and the embedded handler's trustedProxies resolve
+    // X-Forwarded-For from a trusted peer with the same code.
+    for (const served of [native, hono]) assert.equal(await client(served, { 'x-forwarded-for': '203.0.113.9' }), '203.0.113.9', served.name);
+    // Two X-Forwarded-For lines are ambiguous: the peer stays the client in both.
+    for (const served of [native, hono]) {
+      const repeated = await raw(served.port, '/app/probe/x', [['host', `localhost:${served.port}`], ['x-forwarded-for', '203.0.113.9'], ['x-forwarded-for', '192.0.2.1']]);
+      assert.equal((JSON.parse(repeated.body) as { client: string }).client, '127.0.0.1', served.name);
+    }
   });
 
-  await t.test('features that belong to URLCode\'s own server are absent when Hono owns it', async () => {
+  await t.test('probes and the request log stay with URLCode\'s own server; Host admission and the base path carry over', async () => {
     // Health and readiness probes are startServer routes, not project routes.
     assert.equal((await call(native, '/_urlcode/health')).status, 200);
     assert.equal((await call(hono, '/_urlcode/health')).status, 404);
     assert.equal((await call(hono, '/healthz')).status, 200);
-    // The loopback DNS-rebinding defence (421 for a foreign Host) is startServer's; Hono serves the request.
-    assert.equal((await raw(native.port, '/app/api/who/ada', [['host', 'evil.example']])).status, 421);
-    assert.equal((await raw(hono.port, '/app/api/who/ada', [['host', 'evil.example']])).status, 200);
+    // The loopback DNS-rebinding defence (421 for a foreign Host) applies in both: the Hono host passes loopbackHost.
+    // Hono's own routes are Hono's to guard.
+    for (const served of [native, hono]) assert.equal((await raw(served.port, '/app/api/who/ada', [['host', 'evil.example']])).status, 421, served.name);
+    assert.equal((await raw(hono.port, '/', [['host', 'evil.example']])).status, 200);
     // The per-request event log is written by startServer, not by the runtime: the embedding host logs its own way.
     assert.match(native.output(), /"event":"request"/);
     assert.doesNotMatch(hono.output(), /"event":"request"/);
     // Hono keeps its own routes beside URLCode's.
     assert.equal(await (await call(hono, '/')).text(), 'Hono owns this page');
-    // URLCode has no base-path setting: under Hono's prefix-stripping mount() it sees /app/..., so the absolute
-    // redirect it generates drops the /mounted prefix, and a function's URL omits it.
+    // Under Hono's prefix-stripping mount() URLCode sees /app/...; basePath: '/mounted' keeps the prefix in the
+    // redirect it generates and in a function's URL.
     const mounted = await call(hono, '/mounted/app/go');
-    assert.deepEqual([mounted.status, mounted.headers.get('location')], [302, '/app/api/who/ada']);
+    assert.deepEqual([mounted.status, mounted.headers.get('location')], [302, '/mounted/app/api/who/ada']);
     const seen = await (await call(hono, '/mounted/app/api/echo')).json() as { url: string };
-    assert.equal(seen.url, `${hono.origin}/app/api/echo`);
+    assert.equal(seen.url, `${hono.origin}/mounted/app/api/echo`);
   });
 
   await t.test('lifecycle: an embedded project that cannot activate never listens', async () => {

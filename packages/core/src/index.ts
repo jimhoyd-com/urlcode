@@ -2,6 +2,8 @@ export { createRuntime } from './runtime.ts';
 export type { Runtime, RuntimeOptions, RuntimeRequest, RequestTrace, HostPlugin, Observer, TestPlan } from './runtime.ts';
 export { startServer } from './server.ts';
 export type { Server, ServerOptions } from './server.ts';
+export { createEmbeddedHandler } from './embed.ts';
+export type { EmbeddedHandler, EmbeddedHandlerOptions, EmbeddedRequestInfo } from './embed.ts';
 export { loadDocument, validateDocument, parseYaml } from './config.ts';
 export { events as observabilityEvents, validateObservers, createObserverSink, createMetrics, renderPrometheus } from './observability.ts';
 

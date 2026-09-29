@@ -16,7 +16,8 @@ import { functionFailure } from './trusted-functions.ts';
 import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
 import { StreamHost } from './http-stream.ts';
-import { compileTrustedProxies, loopbackHostCheck, resolveClient } from './client-address.ts';
+import { compileTrustedProxies, loopbackHostCheck } from './client-address.ts';
+import { handleHostRequest, hostErrorOptions, originForm, readHeaderLines } from './host-request.ts';
 
 export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin' | 'replacing'> {
   /** `urlcode dev` only: on a reload, accept an extension registration still pinned to the revision this server
@@ -141,15 +142,6 @@ export function contentLengthEnforcementIsSafe(version = process.version): boole
   return !(major === 22 && minor < 15);
 }
 const enforceContentLength = contentLengthEnforcementIsSafe();
-// A server must accept absolute-form targets (RFC 9112 §3.2.2). The scheme
-// and authority are removed textually, never re-encoded, so the path keeps
-// the exact bytes the runtime's encoding checks inspect.
-function originForm(target: string): string {
-  const match = /^https?:\/\/[^/?#]*(.*)$/i.exec(target);
-  const rest = match?.[1];
-  if (rest === undefined) return target;
-  return rest === '' || rest.startsWith('?') ? '/' + rest : rest;
-}
 /** Starts the server. `port: 0` picks a free port, so this is also the in-process helper for tests:
  * `startServer({ project, port: 0, local: true, isolateData: true })`. */
 export async function startServer(options: ServerOptions = {}): Promise<Server> {
@@ -277,15 +269,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         let released = false;
         release = () => { if (!released) { released = true; inFlight--; counters.inFlight('requests', -1); } };
         res.once('finish', release); res.once('close', release);
-        const headers = new Headers(), headerCounts: Record<string, number> = Object.create(null) as Record<string, number>;
-        for (let i = 0; i < req.rawHeaders.length; i += 2) {
-          const key = (req.rawHeaders[i] ?? '').toLowerCase();
-          headers.append(key, req.rawHeaders[i + 1] ?? ''); headerCounts[key] = (headerCounts[key] || 0) + 1;
-        }
-        const target = originForm(url);
-        const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(target, method) ?? maxBodyBytes));
-        result = await current.handle({ target, method, headers, headerCounts, body, trace, requestId, signal: controller.signal,
-          origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') ?? undefined : undefined, proxies) });
+        result = await handleHostRequest(current, { target: originForm(url), method, ...readHeaderLines(req.rawHeaders), peer: req.socket.remoteAddress,
+          readBody: limit => readBody(req, limit), requestId, signal: controller.signal, trace, origin: publicOrigin() }, { maxBodyBytes, trustedProxies: proxies });
       }
       if (result.stream !== undefined) {
         // From here the response counts against the stream limit, not the short-request admission.
@@ -306,7 +291,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
       } else status = writeResponse(res, result, { requestId, method, enforceContentLength });
     } catch (error) {
       // Operational probes keep the text answer; every project path gets the format its route or site scope declares.
-      status = writeError(res, error, { requestId, method, enforceContentLength, headers: current.errorHeaders(error, publicOrigin()), format: trace.probe ? 'text' : current.errorFormat(error, originForm(url)) });
+      status = writeError(res, error, { requestId, method, enforceContentLength, ...hostErrorOptions(current, error, { origin: publicOrigin(), target: url, probe: trace.probe }) });
       if (debugErrors) {
         const failure = functionFailure(error);
         if (failure) diagnose({ event:'function_error', requestId, status, route: trace.route ?? null,

@@ -26,6 +26,7 @@ import { createObserverSink } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink } from './observability.ts';
 import { applySite, siteErrorPaths } from './site.ts';
 import { siteOrigins } from './site-origins.ts';
+import { joinedHeaderCounts, mountLocation, normalizeBasePath } from './host-request.ts';
 import { cancelStream, isResponseStream, errorScope, resolveErrorFormat, methodNotAllowed, errorEnvelope, jsonErrorType } from './http-response.ts';
 import type { ErrorFormat, HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
 import type { CompiledRoute, CompiledRouteTable, LoadedDocument, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
@@ -87,7 +88,12 @@ function withDataDirGrant(loaded: LoadedDocument, projectSha256: string, given: 
 export interface RequestTrace { route?: string; probe?: boolean; client?: string | null }
 export interface RuntimeRequest {
   target: string; method?: string | undefined; headers?: Headers | undefined; body?: Uint8Array | undefined;
+  /** How many lines each header arrived on. When absent (a host that only has joined headers), a value containing a
+   * comma counts as two, so every refusal of a repeated header still fires (host-request.ts `joinedHeaderCounts`). */
   headerCounts?: Record<string, number> | undefined; trace?: RequestTrace | undefined; origin?: string | undefined; client?: string | undefined;
+  /** The prefix a host mounts the site under and strips before `target` (`/app`): a function's `request.url` keeps
+   * it, and a path-absolute `Location` in the answer gets it (RIM-EMBED-001). */
+  basePath?: string | undefined;
   /** The id the host answers this request with (`X-Request-Id`); generated when a caller supplies none. Reaches extension requests, hook contexts and function contexts. */
   requestId?: string | undefined;
   /** Aborted by the host when the client disconnects or a streamed response ends early; handed to extensions
@@ -302,7 +308,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       const local = new AbortController();
       const signal = request.signal ? AbortSignal.any([request.signal, local.signal]) : local.signal;
       const state: DispatchState = { produced: [], abort: reason => { if (!local.signal.aborted) local.abort(reason); } };
-      const result = await dispatch({ ...request, requestId, signal }, state);
+      const basePath = normalizeBasePath(request.basePath);
+      const headerCounts = request.headerCounts ?? joinedHeaderCounts(request.headers ?? new Headers());
+      const result = mountLocation(await dispatch({ ...request, headerCounts, basePath, requestId, signal }, state), basePath);
       return result.stream === undefined ? result : admitStream(result, state, requestId);
     },
     async close() {
@@ -321,7 +329,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   };
   extensionRegistries.set(runtime, extensionRegistry);
   return runtime;
-  async function dispatch({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client, requestId = crypto.randomUUID(), signal = new AbortController().signal }: RuntimeRequest, state: DispatchState): Promise<HandlerResult> {
+  async function dispatch({ target, method = 'GET', headers = new Headers(), body, headerCounts, basePath = '', trace = {}, origin = 'http://localhost', client, requestId = crypto.randomUUID(), signal = new AbortController().signal }: RuntimeRequest, state: DispatchState): Promise<HandlerResult> {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
       assert(typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128, 'Request id must be a non-empty string of at most 128 characters');
       active++;
@@ -336,7 +344,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           // site.notFound: answer an unmatched GET/HEAD with the configured page and status 404. A path whose errors
           // are JSON keeps the JSON 404: an API client asked, not a browser.
           if (notFoundPage && format === 'text' && (method === 'GET' || method === 'HEAD')) {
-            const page = await dispatch({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, requestId, signal, ...(client ? { client } : {}) }, { produced: [], abort: state.abort });
+            const page = await dispatch({ target: '/404.html', method, headers, headerCounts, basePath, trace: {}, origin, requestId, signal, ...(client ? { client } : {}) }, { produced: [], abort: state.abort });
             return { ...page, status: 404 };
           }
           throw new HttpError(404, 'Not found');
@@ -440,7 +448,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           // Same credential-free projection a guest function receives: an
           // extension-declared credential header in requestHeaders must not
           // reach the upstream any more than it reaches a function's code.
-          try {const result=await executeProxy(proxyClient,route.compiledProxy,{method,url:origin+target,params:path,headers:Object.fromEntries(guestHeaders),...(body?{body}:{})});native={status:result.status,headers:Object.entries(result.headers),body:result.body};}
+          try {const result=await executeProxy(proxyClient,route.compiledProxy,{method,url:origin+basePath+target,params:path,headers:Object.fromEntries(guestHeaders),...(body?{body}:{})});native={status:result.status,headers:Object.entries(result.headers),body:result.body};}
           catch(error){throw new HttpError(error instanceof EgressError&&error.code==='timeout'?504:error instanceof EgressError&&['busy','closed','aborted'].includes(error.code)?503:502,'Proxy upstream unavailable');}
         }
         else if (route.conditionalRoutes) {
@@ -469,7 +477,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // `sandbox: true`; every other route runs trusted, in-process
         // (docs/FUNCTION-SECURITY.md).
         const executor = route.sandbox ? pool : trusted;
-        const executed = await executor.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native);
+        const executed = await executor.execute(route, { url: origin + basePath + target, method, headers: [...guestHeaders], body }, context, native);
         if (isResponseStream(executed.stream)) state.produced.push(executed.stream);
         return await finishResponse(executed);
         };
