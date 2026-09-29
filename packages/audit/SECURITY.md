@@ -15,8 +15,9 @@ be atomic across two SQLite files in WAL mode. Given a producer that follows the
 contract in the [README](README.md#being-a-producer):
 
 1. **Atomic capture.** A producer change commits if and only if its audit
-   events are committed in the same storage transaction (store: the same atomic
-   file replace).
+   events are committed in the same storage transaction (store: the write's one
+   `BEGIN IMMEDIATE` SQLite transaction inserts them into its
+   `store_audit_outbox` table).
 2. **Durable delivery, stored once.** Every captured event reaches
    `audit.sqlite` at least once. Ingest is `INSERT OR IGNORE` keyed on the
    producer-assigned event `id`, so it is stored exactly once. A crash at any

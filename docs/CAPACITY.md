@@ -125,7 +125,7 @@ Each bound refuses rather than growing without limit:
 | Audit log | keeps the newest `extensions.audit.config.retention` events (default 100,000; 1,000 to 10,000,000) | older events are pruned |
 | Store records | `maxRecords` per collection (default 1,000, at most 10,000), `maxRecordBytes` each (default 4,096, at most 65,536), at most 32 collections, all in one SQLite database | a create answers `409 collection_full`, an oversized record `413` |
 | Store writes | one SQLite transaction at a time per database, each fsynced (`synchronous=FULL`, unless the operator chose [`durability: 'normal'`](STORE.md#durability)) before it answers; statements are synchronous, so each commit blocks the event loop for its fsync | a write blocked by another process's lock for 2 s answers `503 storage_unavailable` |
-| Store sorted or filtered lists | read the `id` and the named fields of every record in scope (at most `maxRecords`), then the page | bounded by `maxRecords` and `pageSize` (at most 200) |
+| Store sorted or filtered lists | one counted keyset query through an index per `sortable` or `filterable` property; only while the collection holds a row that index cannot order is the page ordered in memory from every record in scope ([how](STORE.md#sorting-and-filtering)) | bounded by `maxRecords` and `pageSize` (at most 200) |
 | Audit outboxes | 1,000 undelivered events per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
 | Disk space for `store.sqlite`, `auth.sqlite` and `audit.sqlite` | the free space of the data directory's filesystem; no quota of its own | a store write answers `503 storage_unavailable`, a sign-in `503 auth_unavailable`, audit delivery waits in the outbox; nothing partial is written, and writes resume once space frees ([disk-full tests](STORE.md#what-the-disk-full-tests-prove)) |
 
@@ -387,11 +387,12 @@ per process: scrape each process's port, not the proxy. When the store finds a
 live peer at activation it logs one `extension_warning` saying so. The store,
 auth and audit each refuse to activate while a live peer serves their database
 from another host. A start that finds a row another host left behind waits up
-to 20 seconds to see whether it is live, so allow for that in a restart budget
+to the [lease's time to live](STORE.md#several-serving-processes-on-one-host)
+to see whether it is live, so allow for that in a restart budget
 after an unclean shutdown or a reboot. A budget
 that must hold across the processes belongs at the proxy or in a
 [plugin](PLUGINS.md). Better Auth's sign-in limit is the one shared counter,
-because it counts in `auth.sqlite`.
+because by default it counts in `auth.sqlite`.
 
 More processes add capacity for reads and for request work that does not
 write. They do not add store write throughput. SQLite admits one writer at a
