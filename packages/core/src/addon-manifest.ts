@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { ConfigError, assert } from './errors.ts';
 import { isCode, isRecord } from './object-guards.ts';
-import type { ExtensionAuthoringContract, ExtensionHookContract } from './extensions.ts';
+import type { ExtensionAuthoringContract, ExtensionHookContract, RuntimeExtension } from './extensions.ts';
 
 /**
  * Add-on-owned, inert pointers for agents. The add-on remains the source of
@@ -74,6 +76,12 @@ export interface AddonDescriptor {
    * project that uses the extension on such a target before any host file is loaded. Absent for an artifact.
    */
   targets?: ExtensionTarget[];
+  /**
+   * The extension's `authorize()` sets the request principal (`ExtensionDefinition.providesPrincipal`,
+   * RIM-EXT-PRINCIPAL-001). Written only when true. The route `auth:` short form expands to the one declared extension
+   * whose descriptor says so, and OpenAPI and review treat a route it gates as signed-in. Absent for an artifact.
+   */
+  providesPrincipal?: true;
   schema?: object;
   policySchema?: object;
   hooks?: ExtensionHookContract[];
@@ -175,11 +183,12 @@ export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   if (raw.agent !== undefined) assertAgentTooling(raw.agent, source);
   if (raw.kind === 'artifact') {
     assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.contributes === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension contract`);
-    assert(raw.targets === undefined, `${source}: an artifact descriptor declares no targets`);
+    assert(raw.targets === undefined && raw.providesPrincipal === undefined, `${source}: an artifact descriptor declares no targets and provides no principal`);
     if (raw.documents !== undefined) assertDocuments(raw.documents, source);
   } else {
     assert(isRecord(raw.schema) && raw.documents === undefined, `${source}: an extension descriptor needs its configuration schema and lists no documents`);
     assert(isExtensionTargets(raw.targets), `${source}: an extension descriptor needs targets, a non-empty list of ${extensionTargetNames.join(', ')} in that order`);
+    assert(raw.providesPrincipal === undefined || raw.providesPrincipal === true, `${source}: providesPrincipal is written only as true`);
   }
   return (Array.isArray(raw.uses) ? { ...raw, uses: [...raw.uses as string[]].sort() } : raw) as unknown as AddonDescriptor;
 }
@@ -196,6 +205,8 @@ export interface AddonCatalogEntry {
   name: string; kind: AddonKind; package: string; version: string; description: string; requires: string[]; uses?: string[];
   /** An extension's declared deployment targets (#859), in `extensionTargetNames` order; absent for an artifact. */
   targets?: ExtensionTarget[];
+  /** The extension sets the request principal (its descriptor's `providesPrincipal`); absent otherwise. */
+  providesPrincipal?: true;
   /** An artifact's standard documents (#857): path and media type only, never contents, at most `MAX_ARTIFACT_DOCUMENTS`. */
   documents?: ArtifactDocument[];
   agent?: AddonAgentTooling;
@@ -208,6 +219,7 @@ const entryOf = (descriptor: AddonDescriptor, pkg: string, version: string): Add
   name: descriptor.name, kind: descriptor.kind, package: pkg, version, description: descriptor.description, requires: [...descriptor.requires],
   ...(descriptor.uses?.length ? { uses: [...descriptor.uses] } : {}),
   ...(descriptor.targets ? { targets: [...descriptor.targets] } : {}),
+  ...(descriptor.providesPrincipal ? { providesPrincipal: true as const } : {}),
   ...(descriptor.documents?.length ? { documents: descriptor.documents.map(({ path, mediaType }) => ({ path, mediaType })) } : {}),
   ...(descriptor.agent ? { agent: { description: descriptor.agent.description, references: descriptor.agent.references.map(({ name, description, path }) => ({ name, description, path })) } } : {}),
 });
@@ -235,14 +247,15 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
   assert(isRecord(raw) && raw.format === 1 && raw.scope === 'release' && typeof raw.version === 'string' && Array.isArray(raw.addons), `${source} is not an add-on catalog`);
   const addons = raw.addons.map((value: unknown) => {
     assert(isRecord(value) && typeof value.name === 'string' && addonNamePattern.test(value.name), `${source}: invalid add-on entry`);
-    const { name, kind, package: pkg, version, description, requires, uses, targets, documents, agent } = value;
+    const { name, kind, package: pkg, version, description, requires, uses, targets, providesPrincipal, documents, agent } = value;
     assert((kind === 'extension' || kind === 'artifact') && pkg === addonPackage(name) && typeof version === 'string' && typeof description === 'string'
       && Array.isArray(requires) && requires.every(item => typeof item === 'string' && addonNamePattern.test(item)), `${source}: ${name} is malformed`);
     assert(uses === undefined || Array.isArray(uses) && uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== name && !requires.includes(item)), `${source}: ${name} has malformed uses`);
     if (agent !== undefined) assertAgentTooling(agent, `${source}: ${name}`);
     if (documents !== undefined) { assert(kind === 'artifact', `${source}: ${name} is an extension, which lists no documents`); assertDocuments(documents, `${source}: ${name}`); }
     assert(kind === 'extension' ? isExtensionTargets(targets) : targets === undefined, `${source}: ${name} has malformed targets`);
-    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(kind === 'extension' ? { targets: targets as ExtensionTarget[] } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}) }, pkg, version);
+    assert(providesPrincipal === undefined || providesPrincipal === true && kind === 'extension', `${source}: ${name} has a malformed providesPrincipal`);
+    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(kind === 'extension' ? { targets: targets as ExtensionTarget[] } : {}), ...(providesPrincipal === true ? { providesPrincipal: true as const } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}) }, pkg, version);
   });
   return checkCatalog({ format: 1, scope: 'release', version: raw.version, addons }, source);
 }
@@ -251,17 +264,112 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
  * The release-wide add-on catalog of the running core: `dist/addon-catalog.json` beside `dist/addons.json`, or `file`
  * when given. Reads one JSON file; never imports, installs, fetches or activates an add-on.
  */
+const catalogCandidates = (): URL[] => [new URL('./addon-catalog.json', import.meta.url), new URL('../../../dist/addon-catalog.json', import.meta.url)];
+const noCatalog = (): ConfigError => new ConfigError('This core has no add-on catalog (dist/addon-catalog.json). A released core always has one; in a source checkout run `npm run build` first');
 export async function readAddonCatalog(file?: string | URL): Promise<AddonCatalog> {
-  const candidates = file !== undefined ? [file] : [new URL('./addon-catalog.json', import.meta.url), new URL('../../../dist/addon-catalog.json', import.meta.url)];
+  const candidates = file !== undefined ? [file] : catalogCandidates();
   for (const candidate of candidates) {
     let text: string;
     try { text = await readFile(candidate, 'utf8'); } catch (error) { if (isCode(error, 'ENOENT')) continue; throw error; }
     return parseAddonCatalog(JSON.parse(text), String(candidate));
   }
-  throw new ConfigError('This core has no add-on catalog (dist/addon-catalog.json). A released core always has one; in a source checkout run `npm run build` first');
+  throw noCatalog();
 }
 
 /** Each extension's declared targets from a catalog, keyed by name: what the capability preflight reads without a host file. */
 export function declaredExtensionTargets(catalog: AddonCatalog): Map<string, ExtensionTarget[]> {
   return new Map(catalog.addons.filter(entry => entry.targets).map(entry => [entry.name, [...entry.targets!]]));
+}
+
+const readJson = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, 'utf8')) as T;
+/**
+ * One installed add-on package, found by the `urlcode.json` descriptor at its package root rather than by its name
+ * (#844): `catalog` is true for a package core's own manifest pins; any other package is independent, installed by the
+ * operator and checked against npm's own lock integrity.
+ */
+export interface InstalledProvider { name: string; package: string; descriptor: AddonDescriptor; catalog: boolean }
+/**
+ * A problem with one installed descriptor, attributed to the kind of add-on list that reports it (#857): a duplicate
+ * provider to the kind of the package that was set aside, an unreadable descriptor to the kind it claims (extension
+ * when it claims none), so `extensions list` and `artifacts list` never both report the same problem.
+ */
+export interface ProviderProblem { kind: AddonKind; message: string }
+/** Every direct dependency of the site that carries an add-on descriptor, by logical name. Reads data only; imports nothing. */
+export async function installedProviders(site: string, manifest?: AddonManifest): Promise<{ providers: Map<string, InstalledProvider>; problems: ProviderProblem[] }> {
+  const providers = new Map<string, InstalledProvider>(), problems: ProviderProblem[] = [];
+  let pkg: { dependencies?: Record<string, string> };
+  try { pkg = await readJson<{ dependencies?: Record<string, string> }>(join(site, 'package.json')); } catch (error) { if (isCode(error, 'ENOENT')) return { providers, problems }; throw error; }
+  for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) {
+    const path = join(site, 'node_modules', dependency, 'urlcode.json');
+    let raw: unknown, descriptor: AddonDescriptor;
+    try { raw = await readJson(path); descriptor = parseDescriptor(raw, path); }
+    catch (error) {
+      if (isCode(error, 'ENOENT') || isCode(error, 'ENOTDIR')) continue;
+      problems.push({ kind: isRecord(raw) && raw.kind === 'artifact' ? 'artifact' : 'extension', message: error instanceof Error ? error.message : String(error) });
+      continue;
+    }
+    const other = providers.get(descriptor.name);
+    if (other) { problems.push({ kind: descriptor.kind, message: `${dependency} and ${other.package} both provide ${other.descriptor.kind === descriptor.kind ? `the ${descriptor.kind}` : `an ${other.descriptor.kind} and an ${descriptor.kind} named`} ${descriptor.name}; keep one` }); continue; }
+    providers.set(descriptor.name, { name: descriptor.name, package: dependency, descriptor, catalog: manifest?.addons[descriptor.name]?.package === dependency });
+  }
+  return { providers, problems };
+}
+/** The descriptor of the package providing `name`: a site dependency that carries it, else the first-party install location. */
+export async function readInstalledDescriptor(site: string, name: string): Promise<AddonDescriptor | undefined> {
+  const provided = (await installedProviders(site)).providers.get(name);
+  if (provided) return provided.descriptor;
+  const path = join(site, 'node_modules', addonPackage(name), 'urlcode.json');
+  try { return parseDescriptor(await readJson(path), path); } catch (error) { if (isCode(error, 'ENOENT')) return undefined; throw error; }
+}
+
+/**
+ * The extensions among `names` (the project's declared ones) that provide the request principal, sorted, read from
+ * static descriptors only (RIM-EXT-PRINCIPAL-001): each name's installed `urlcode.json` in the enclosing `site` (a
+ * site dependency carrying it, else the first-party install location), else this core's release catalog. What the
+ * route `auth:` short form expands to, and what OpenAPI and review treat as a sign-in gate without a host file.
+ * Reads data only; imports and activates nothing.
+ */
+export async function declaredPrincipalProviders(site: string, names: readonly string[]): Promise<string[]> {
+  if (!names.length) return [];
+  const { providers } = await installedProviders(site);
+  let catalog: AddonCatalog | undefined | null;
+  const found: string[] = [];
+  for (const name of names) {
+    let descriptor: AddonDescriptor | AddonCatalogEntry | undefined = providers.get(name)?.descriptor;
+    if (!descriptor) {
+      const path = join(site, 'node_modules', addonPackage(name), 'urlcode.json');
+      try { descriptor = parseDescriptor(await readJson(path), path); } catch (error) { if (!isCode(error, 'ENOENT') && !isCode(error, 'ENOTDIR')) throw error; }
+    }
+    if (!descriptor) {
+      if (catalog === undefined) catalog = await readAddonCatalog().catch(() => null);
+      descriptor = catalog?.addons.find(entry => entry.name === name);
+    }
+    if (descriptor?.kind === 'extension' && descriptor.providesPrincipal === true) found.push(name);
+  }
+  return found.sort();
+}
+let releaseProviders: ReadonlySet<string> | undefined;
+/**
+ * The extensions this core's release catalog lists as principal providers: what text mode (YAML with no project
+ * directory, so no installed descriptors) resolves the `auth:` short form against. Read once, synchronously.
+ */
+export function releasePrincipalProviders(): ReadonlySet<string> {
+  if (releaseProviders) return releaseProviders;
+  for (const candidate of catalogCandidates()) {
+    let text: string;
+    try { text = readFileSync(candidate, 'utf8'); } catch (error) { if (isCode(error, 'ENOENT')) continue; throw error; }
+    releaseProviders = new Set(parseAddonCatalog(JSON.parse(text), String(candidate)).addons.filter(entry => entry.providesPrincipal === true).map(entry => entry.name));
+    return releaseProviders;
+  }
+  throw noCatalog();
+}
+/**
+ * The declared extensions that provide the request principal, sorted: for a declared extension the host file
+ * registers (`registrations`), its registration's `providesPrincipal`; for any other, its static descriptor
+ * (`declaredPrincipalProviders`).
+ */
+export async function principalProvidersOf(site: string, declared: readonly string[], registrations: readonly Pick<RuntimeExtension, 'name' | 'providesPrincipal'>[] = []): Promise<string[]> {
+  const registered = new Map(registrations.map(registration => [registration.name, registration.providesPrincipal === true]));
+  const unregistered = declared.filter(name => !registered.has(name));
+  return [...declared.filter(name => registered.get(name) === true), ...await declaredPrincipalProviders(site, unregistered)].sort();
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtemp,rm,writeFile as writeHostFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,writeFile as writeHostFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -112,6 +112,27 @@ test('review reports manual cookie/session construction as extension-alternative
   assert.match(found!.note,/human decision/);
 });
 
+test('the session hint names the declared principal provider, not the extension name auth (#888)',async t=>{
+  const site=await mkdtemp(join(tmpdir(),'urlcode-review-principal-'));t.after(()=>rm(site,{recursive:true,force:true}));
+  const app=join(site,'app');await mkdir(join(app,'functions'),{recursive:true});
+  const directory=join(site,'node_modules','@example','urlcode-authjs');await mkdir(directory,{recursive:true});
+  await writeHostFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name:'authjs',description:'Auth.js stand-in',requires:[],targets:['node'],providesPrincipal:true,schema:{type:'object'}}));
+  await writeHostFile(join(site,'package.json'),JSON.stringify({private:true,dependencies:{'@example/urlcode-authjs':'1.0.0'}}));
+  await writeHostFile(join(app,'functions','f.mjs'),cookieSource);
+  await writeHostFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{authjs:{version:'1',config:{}}},routes:{'/login':{methods:['POST'],function:{source:'functions/f.mjs'}}}}));
+  const found=(await reviewProject(app)).observations.find(item=>item.signal==='manual-cookie-session');
+  assert.ok(found);
+  assert.equal(found!.category,'extension-alternative');
+  assert.equal(found!.extension,'authjs');
+  assert.match(found!.note,/^authjs provides the request principal .*policies\.extensions\.authjs/);
+  assert.doesNotMatch(found!.note,/Better Auth|capabilities\.auth\./);
+  // A declared extension that provides no principal is no session alternative.
+  const plain=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{store:{version:'1',config:{}}}});
+  const unrelated=(await reviewProject(plain)).observations.find(item=>item.signal==='manual-cookie-session');
+  assert.equal(unrelated!.category,'manual-review');assert.equal(unrelated!.extension,undefined);
+  assert.match(unrelated!.note,/No declared extension provides a principal/);
+});
+
 test('review reports in-process global mutable state as a gap and names the restart/multi-instance limitation, never claiming core support for durable counters',async t=>{
   const root=await project(t,{'/hit':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':counterSource});
   const review=await reviewProject(root);
@@ -204,7 +225,7 @@ test('review does not flag a single hand-set security header as manual-security-
 test('review upgrades a declared extension to "registered and revision-pinned" only when the caller supplies a matching, revision-pinned registration',async t=>{
   const root=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{auth:{version:'1',config:{}}}});
   const projectSha256=await inspectExtensionRevision(root);
-  const registration={name:'auth',version:'1' as const,projectSha256,targets:['node' as const],schema:{},activate(){throw new Error('review must not activate an extension');}};
+  const registration={name:'auth',version:'1' as const,projectSha256,targets:['node' as const],schema:{},providesPrincipal:true,activate(){throw new Error('review must not activate an extension');}};
   const review=await reviewProject(root,{extensions:[registration]});
   const found=review.observations.find(item=>item.signal==='manual-cookie-session');
   assert.ok(found);
@@ -216,7 +237,7 @@ test('review upgrades a declared extension to "registered and revision-pinned" o
 
 test('review reports "registered but not revision-pinned" rather than claiming a stale registration is current',async t=>{
   const root=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{auth:{version:'1',config:{}}}});
-  const registration={name:'auth',version:'1' as const,projectSha256:'0'.repeat(64),targets:['node' as const],schema:{},activate(){throw new Error('review must not activate an extension');}};
+  const registration={name:'auth',version:'1' as const,projectSha256:'0'.repeat(64),targets:['node' as const],schema:{},providesPrincipal:true,activate(){throw new Error('review must not activate an extension');}};
   const review=await reviewProject(root,{extensions:[registration]});
   const found=review.observations.find(item=>item.signal==='manual-cookie-session');
   assert.ok(found);
@@ -250,7 +271,7 @@ test('the review CLI accepts --host-file to sharpen extension-alternative regist
   const projectSha256=await inspectExtensionRevision(root);
   const dir=await mkdtemp(join(tmpdir(),'urlcode-review-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const file=join(dir,'host.mjs');
-  await writeHostFile(file,`export default {extensions:[{name:'auth',version:'1',projectSha256:${JSON.stringify(projectSha256)},targets:['node'],schema:{},activate(){throw new Error('review must not activate an extension');}}]};`);
+  await writeHostFile(file,`export default {extensions:[{name:'auth',version:'1',projectSha256:${JSON.stringify(projectSha256)},targets:['node'],schema:{},providesPrincipal:true,activate(){throw new Error('review must not activate an extension');}}]};`);
   const run=(...args:string[])=>spawnSync(process.execPath,[cli,'review','--project',root,'--json',...args],{encoding:'utf8',timeout:20000});
   const withoutHost=run();assert.equal(withoutHost.status,0);
   const bare=JSON.parse(withoutHost.stdout) as {observations:{signal:string;note:string}[]};

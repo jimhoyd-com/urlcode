@@ -78,7 +78,7 @@ test('spa-shell never turns a denial into the shell: a protected catch-all is au
   assert.ok(yaml.trimEnd().endsWith('cacheControl: no-cache'),'the catch-all is the last route');
   await writeFile(join(out,'urlcode.yaml'),(await readFile(join(out,'urlcode.yaml'),'utf8'))+'    auth: true\n');
   const auth: RuntimeExtension={
-    name:'auth',version:'1',projectSha256:await inspectExtensionRevision(out),targets:['node'],
+    name:'auth',version:'1',projectSha256:await inspectExtensionRevision(out),targets:['node'],providesPrincipal:true,
     schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},
     activate(){return {
       handle(){return {status:404,headers:[],body:'no auth mount declared'};},

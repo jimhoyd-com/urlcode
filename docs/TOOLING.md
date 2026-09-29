@@ -760,13 +760,17 @@ What it describes:
   collection API or the admin screens) are therefore absent, including every
   provider admin API. A disabled route is left out and listed under
   `x-urlcode.omitted`.
-- **Authentication.** An `auth: true` route (`policies.extensions.auth`) gets a
-  `security` requirement on a generic cookie scheme, `urlcodeSession`, a 401 on
-  every method, and a 403 only on POST, PUT, PATCH and DELETE, the methods the
-  auth extension refuses from another origin. Their bodies are
-  extension-defined. The cookie's real name
-  is the operator's auth configuration and is not published; the scheme's
-  `name` is the placeholder `session` and says so.
+- **Authentication.** A route gated by an extension that provides the request
+  principal (`providesPrincipal`: the host file's registration, else the
+  installed descriptor), whether written as `auth: true` or
+  `policies.extensions.<name>`, gets a `security` requirement on a generic
+  cookie scheme per provider, `urlcodeSession.<name>`, a 401 on every method,
+  and a 403 only on POST, PUT, PATCH and DELETE, the methods a provider refuses
+  from another origin. Their bodies are extension-defined. The provider is never
+  inferred from the name `auth`. The cookie's real name is the operator's
+  configuration and is not published; the scheme's `name` is the placeholder
+  `session` and says so. Other gating extensions stay a handler-less `default`
+  note.
 - **Never included.** Binding names and values (`env`, `secrets`), proxy and
   signal targets, redirect targets, module paths, operator policy and grants,
   and extension configuration.

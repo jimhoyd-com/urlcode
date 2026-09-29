@@ -8,6 +8,7 @@ import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
 import type { ErrorDetails } from './errors.ts';
 import { reservedResponseHeaders } from './http-policy.ts';
+import { declaredPrincipalProviders } from './addon-manifest.ts';
 import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteAuthShortForm, RouteConfig, SharedBlock, SourceLocation } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message and details. */
@@ -213,7 +214,7 @@ export function extensionConfigError(name: string, errors: ErrorObject[] | null 
 /**
  * The first violation of an extension's route policy schema, described like `extensionConfigError` and located
  * under `/routes/<route>/policies/extensions/<name>`, or under `/routes/<route>/<written>` when the author wrote the
- * policy through a route short form (`auth` for `auth:`, which core expands to `policies.extensions.auth`). The
+ * policy through a route short form (`auth` for `auth:`, which core expands to `policies.extensions.<provider>`). The
  * policy checked is the route's effective one (project and profile layers merged with the route's own), so the
  * failing key may be written in one of those layers. Without `errors` the extension declares no policy schema and
  * accepts none.
@@ -442,26 +443,34 @@ export async function loadDocument(project: string, {timeoutMs=10000, sources=fa
   } finally { try { if (!exited) await worker?.terminate(); } finally { activeLoads--; } }
 }
 /**
- * Expands the route-level `auth` short form into the canonical `policies.extensions.auth` requirement so every
- * downstream consumer (compiler, routes, audit, explain, revision hash) sees one form. `auth: true` is `{}`, and
- * `auth: {required: false}` documents intent and emits nothing. Core owns only this mapping: the requirement's keys
- * belong to the auth extension, whose `policySchema` validates them (`prepareExtensions`). Refuses routes that use
- * both forms or lack an `extensions.auth` declaration. Returns where each expansion came from, so a policy error
- * can name the `auth` key the author wrote.
+ * Expands the route-level `auth` short form into the canonical `policies.extensions.<provider>` requirement so every
+ * downstream consumer (compiler, routes, audit, explain, revision hash) sees one form (RIM-CFG-002). The
+ * provider is not a name: it is the one declared extension that provides the request principal
+ * (`providesPrincipal`), passed in as `principalProviders` (the declared extensions whose static descriptor says so;
+ * see `declaredPrincipalProviders`). None, or more than one, is refused: the author then names the extension with
+ * `policies.extensions.<name>`. `auth: true` is `{}`, and `auth: {required: false}` documents intent and emits
+ * nothing. Core owns only this mapping: the requirement's keys belong to the provider, whose `policySchema`
+ * validates them (`prepareExtensions`). Refuses a route that also names the provider under `policies.extensions`.
+ * Returns where each expansion came from and which extension it named, so a policy error can name the `auth` key
+ * the author wrote and a host can check its registrations agree.
  */
-export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>, routes: Record<string, RouteConfig>): Record<string, RouteAuthShortForm> {
+export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>, routes: Record<string, RouteConfig>, principalProviders: Iterable<string>): Record<string, RouteAuthShortForm> {
   const origins: Record<string, RouteAuthShortForm> = Object.create(null) as Record<string, RouteAuthShortForm>;
+  const declared = document.extensions ?? {};
+  const providers = [...new Set(principalProviders)].filter(name => Object.hasOwn(declared, name)).sort();
   for (const [pattern, route] of Object.entries(routes)) {
     if (route.auth === undefined) continue;
-    assert(document.extensions?.auth !== undefined, `Route ${pattern} declares auth but the project declares no extensions.auth`);
+    assert(providers.length > 0, `Route ${pattern} declares auth, but no declared extension provides a principal; declare one under extensions (its urlcode.json declares providesPrincipal), or name the extension with policies.extensions.<name>`);
+    assert(providers.length === 1, `Route ${pattern} declares auth, but ${providers.join(' and ')} each provide a principal; name one with policies.extensions.<name> instead of auth`);
+    const provider = providers[0]!;
     const extensions = route.policies?.extensions;
     assert(extensions !== false, `Route ${pattern} declares auth alongside policies.extensions: false`);
-    assert(!(extensions && Object.hasOwn(extensions, 'auth')), `Route ${pattern} declares both auth and policies.extensions.auth; use one form`);
+    assert(!(extensions && Object.hasOwn(extensions, provider)), `Route ${pattern} declares both auth and policies.extensions.${provider}; use one form`);
     const { required = true, ...requirement } = route.auth === true ? {} : route.auth;
     delete route.auth;
-    origins[pattern] = { required, requirement: structuredClone(requirement) };
+    origins[pattern] = { extension: provider, required, requirement: structuredClone(requirement) };
     if (!required) continue;
-    route.policies = { ...route.policies, extensions: { ...extensions, auth: requirement } };
+    route.policies = { ...route.policies, extensions: { ...extensions, [provider]: requirement } };
   }
   return origins;
 }
@@ -517,7 +526,11 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
     }
   }
   if(Object.keys(extensions).length)document.extensions=extensions;
-  const routeAuth = normalizeRouteAuth(document, routes);
+  // The short form's target is read from static descriptors only when a route uses it. It lands in the normalized
+  // routes, so it is part of `version` and of the revision operators pin (policy.ts): a package change that moves
+  // the target changes the revision, and every pinned registration and grant refuses it until re-reviewed.
+  const shortForm = Object.values(routes).some(route => route.auth !== undefined);
+  const routeAuth = normalizeRouteAuth(document, routes, shortForm ? await declaredPrincipalProviders(dirname(root), Object.keys(extensions)) : []);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
   return { root, document, routes, files, locations, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), ...(sources ? { sources: { routes: routeFiles, extensions: extensionFiles } } : {}), version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
 }

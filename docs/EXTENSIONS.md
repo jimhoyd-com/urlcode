@@ -68,9 +68,9 @@ routes:
 
 ## Protecting a route: the `auth` short form
 
-When the project declares `extensions.auth`, a route may say `auth` instead of
-spelling out `policies.extensions.auth`. This is the preferred way to protect a
-route:
+When the project declares an extension that provides the request principal, a
+route may say `auth` instead of spelling out `policies.extensions.<name>` for
+it. This is the preferred way to protect a route:
 
 ```yaml
 routes:
@@ -82,22 +82,46 @@ routes:
     auth: {required: false}       # documents intent; emits no requirement
 ```
 
-The compiler expands the short form before anything else reads the project:
-`auth: true` becomes `policies.extensions.auth: {}` and an object becomes the
-same object minus `required`. The long form stays the canonical representation,
-so `routes`, `audit` and `explain` show the expansion and the extension revision
-hash covers it.
+The short form names a role, not an extension. It expands to the one declared
+extension whose installed `urlcode.json` declares `providesPrincipal: true`
+(see [request principal](#request-principal)), whatever that extension is
+called: with the first-party `auth` package that is `auth`, and with an
+independent sign-in package named, say, `authjs` it is `authjs`. The descriptor
+is read from the site's dependencies, else the first-party install location,
+else this core's release catalog; no host file is loaded. When no declared
+extension provides a principal, or more than one does, `auth:` is refused and
+the route names its extension with `policies.extensions.<name>` instead.
 
-Core owns only that mapping and `required`. Every other key belongs to the auth
-extension: the core schema accepts `true` or any object here, and the installed
-extension's own `policySchema` decides which keys and values are valid. The
-first-party `auth` policy is closed and empty, so `auth: true` is its only
-meaningful form (`urlcode extensions --json` prints the authoritative shape).
-A new auth policy key would ship with the auth package, not with core. Loading
-fails, naming the route, when `auth` is neither `true` nor an object, when
-`required` is not a boolean, when `auth` appears without an `extensions.auth`
-declaration, next to `policies.extensions.auth`, or next to
-`policies.extensions: false`.
+The compiler expands the short form before anything else reads the project:
+`auth: true` becomes `policies.extensions.<provider>: {}` and an object becomes
+the same object minus `required`. The long form stays the canonical
+representation, so `routes`, `audit`, `explain` and the manifest show the
+expansion with the provider's name.
+
+The expansion stays reviewable because it is part of the reviewed revision.
+The expanded long form is what the project revision (`projectSha256`, which
+host registrations and binding grants pin) hashes, so a project whose short
+form expands to `authjs` has the same revision as one that writes
+`policies.extensions.authjs: {}` by hand. If a package change moves the target
+(a reinstall makes a different declared extension the provider), the revision
+changes and every pinned registration and grant refuses it until the operator
+re-reviews it; the target never changes silently. With a host file, startup
+also checks that the registrations agree: the one declared registration that
+declares `providesPrincipal` must be the extension the descriptor named, or
+activation is refused.
+
+Core owns only that mapping and `required`. Every other key belongs to the
+provider: the core schema accepts `true` or any object here, and the provider's
+own `policySchema` decides which keys and values are valid. The first-party
+`auth` policy is closed and empty, so `auth: true` is its only meaningful form
+(`urlcode extensions --json` prints the authoritative shape). A new policy key
+would ship with the provider package, not with core. Loading fails, naming the
+route, when `auth` is neither `true` nor an object, when `required` is not a
+boolean, when no declared extension (or more than one) provides a principal,
+next to `policies.extensions.<provider>`, or next to
+`policies.extensions: false`. Tools that read supplied YAML text with no
+project directory (`suggestFixtures`, `summarizeYamlChange`) have no installed
+descriptors and resolve the short form against the release catalog only.
 
 A route protected this way answers `401 {"error":"authentication_required"}`
 without a session Better Auth verifies from the request's cookie, and
@@ -114,7 +138,7 @@ The auth policy schema is applied at validate time as well as at startup:
 (or the host file's registration with `--host-file`), `validateProject` against
 the registrations passed as `extensions`, else the installed descriptor, and
 `createRuntime` against the registration it activates. A failure is located at
-the `auth` key the author wrote, not at the `policies.extensions.auth` it
+the `auth` key the author wrote, not at the `policies.extensions.<provider>` it
 expands to:
 
 ```text
@@ -346,6 +370,14 @@ for.
   `middleware()` or `handle()`, after `authorize()` returned, or twice in one
   call. A registration that declares `providesPrincipal` and guards a route
   without an `authorize()` hook refuses activation.
+- **Declared once, read statically.** A package declares it in its
+  `defineExtension` definition (`providesPrincipal: true`); `host()` must
+  register the same value, and the build writes it into the package's
+  `urlcode.json` and the release catalog. The
+  [`auth` short form](#protecting-a-route-the-auth-short-form), the OpenAPI
+  security scheme and `urlcode review`'s session hint follow this declaration,
+  never the extension name `auth`, so an independent provider works with all
+  three.
 - **One per request.** When one extension has set a principal, a second
   extension on the same route that tries to set one is refused: the request
   fails with a server error rather than letting either identity win silently.
@@ -460,14 +492,14 @@ unchanged, with no core edit. What differs is provider-specific and stays
 visible: the client's sign-in calls, operator-owned password checking, the
 mount's declared `throttle` in place of a provider limiter, and no server-side
 revocation (Auth.js's Credentials sign-in forces JWT sessions, so a copied
-token outlives sign-out until it expires). Two things key on the first-party
-**name** rather than on `providesPrincipal`: the
-[`auth` short form](#protecting-a-route-the-auth-short-form) expands only to
-`policies.extensions.auth`, and an independent package cannot name itself
-`auth`, so a second provider is named in the long form
-(`policies: {extensions: {authjs: {}}}`) and its handlers read
-`context.capabilities.<its name>.identity`. `urlcode openapi` likewise
-describes the `401`/`403` answers and the session scheme only for `auth`.
+token outlives sign-out until it expires). Its protected routes say
+`auth: true` like the Better Auth proof's: the
+[`auth` short form](#protecting-a-route-the-auth-short-form) follows
+`providesPrincipal`, not the name, so it expands to
+`policies.extensions.authjs`, and `urlcode openapi` and `urlcode review` treat
+`authjs` as the sign-in gate. Capability names stay provider-specific: its
+handlers read `context.capabilities.authjs.identity`. An independent package
+still cannot name itself `auth`, a reserved first-party catalog name.
 
 ### Request context: route env and request id
 

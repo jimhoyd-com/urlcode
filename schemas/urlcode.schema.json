@@ -1095,7 +1095,7 @@
           "pattern": "^[a-z][a-z0-9-]{0,63}$"
         },
         "auth": {
-          "description": "Short form for a route protected by the declared auth extension: true, or an object that expands to policies.extensions.auth with the same keys minus required; required: false emits no policy. Core owns only this mapping; the object's other keys belong to the auth extension, whose policy schema validates them (reported at this route's auth key). Refused without an extensions.auth declaration or alongside policies.extensions.auth.",
+          "description": "Short form for a route protected by the declared extension that provides the request principal (the one whose urlcode.json declares providesPrincipal, whatever its name): true, or an object that expands to policies.extensions.<provider> with the same keys minus required; required: false emits no policy. Core owns only this mapping; the object's other keys belong to that extension, whose policy schema validates them (reported at this route's auth key). Refused when no declared extension, or more than one, provides a principal (name it with policies.extensions.<name>), or alongside policies.extensions.<provider>.",
           "oneOf": [
             {
               "const": true
@@ -1167,7 +1167,7 @@
     },
     "routeAuth": {
       "type": "object",
-      "description": "The auth extension's route requirement, plus required. Only required is defined here: the other keys are the auth extension's own policy vocabulary, validated by its policySchema (urlcode extensions --json) at validate time and at startup.",
+      "description": "The principal provider's route requirement, plus required. Only required is defined here: the other keys are that extension's own policy vocabulary, validated by its policySchema (urlcode extensions --json) at validate time and at startup.",
       "properties": {
         "required": {
           "type": "boolean",

@@ -72,17 +72,19 @@ export type EgressHeaders = Record<string,string|{secret:string}>;
 interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
 interface SignalConfig { url:string; headers?:EgressHeaders }
 /**
- * Route-level `auth` short form: `true`, or an object that expands to `policies.extensions.auth`. Core owns only
- * the mapping and `required` (`false` emits no policy); every other key belongs to the auth extension, whose
- * `policySchema` validates it. Core deliberately does not know that vocabulary.
+ * Route-level `auth` short form: `true`, or an object that expands to `policies.extensions.<provider>`, the one
+ * declared extension that provides the request principal (RIM-CFG-002). Core owns only the mapping and
+ * `required` (`false` emits no policy); every other key belongs to that extension, whose `policySchema` validates
+ * it. Core deliberately does not know that vocabulary.
  */
 type RouteAuthConfig = { required?: boolean } & Record<string, unknown>;
 /**
  * Where a route's `auth:` short form came from, recorded by `normalizeRouteAuth` so the extension's policy errors
- * can point at `auth` rather than the canonical `policies.extensions.auth` the author never wrote. `requirement`
- * is the value as written minus `required`; with `required: false` it emits no policy but is still validated.
+ * can point at `auth` rather than the canonical `policies.extensions.<extension>` the author never wrote.
+ * `extension` is the principal provider it expanded to; `requirement` is the value as written minus `required`;
+ * with `required: false` it emits no policy but is still validated.
  */
-export interface RouteAuthShortForm { required: boolean; requirement: Record<string, unknown> }
+export interface RouteAuthShortForm { extension: string; required: boolean; requirement: Record<string, unknown> }
 export interface RouteConfig {
   extension?:string; auth?: true | RouteAuthConfig;
   /** Route-level `cache` short form: the same object accepted by `policies.cache`, expanded to it before anything else reads the project. */
@@ -139,7 +141,7 @@ export interface SourceLocation { file: string; line?: number | undefined; colum
 /** What config.ts returns: the entry document, the merged route table and the files it came from. */
 export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string;
   /** Where each page/download/static reference and site file convention was written, keyed by its RFC 6901 pointer (for diagnostics). */
-  locations?: Record<string, SourceLocation>; /** Routes whose `policies.extensions.auth` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm>;
+  locations?: Record<string, SourceLocation>; /** Routes whose `policies.extensions.<provider>` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm>;
   /** Only when loaded with `sources`: the file (`urlcode.yaml` or the include path as written) each route and extension declaration came from. */
   sources?: { routes: Record<string, string>; extensions: Record<string, string> } }
 
