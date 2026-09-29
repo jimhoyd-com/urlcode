@@ -83,9 +83,7 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   for (const relative of ['README.md', 'SECURITY.md', 'CHANGELOG.md', 'AGENTS.md', 'llms.txt', 'NOTICE', 'LICENSE', 'tsconfig.json', 'tsconfig.build.json']) {
     assert.ok((await stat(join(dir, relative))).isFile(), `${relative} was not created`);
   }
-  for (const optional of ['ACCEPTANCE.md', 'CONTRACT.md', 'IMPLEMENTATION-STATUS.md', 'THREAT-MODEL.md', '.gitignore']) {
-    await assert.rejects(stat(join(dir, optional)), `${optional} should not exist on a blank scaffold`);
-  }
+  await assert.rejects(stat(join(dir, '.gitignore')), '.gitignore should not exist on a blank scaffold');
 
   const sources = { index: 'src/index.ts', runtime: `src/${name}.ts`, definition: 'src/extension.ts', test: `test/${name}.test.ts` };
   const text: Record<string, string> = {};
@@ -116,7 +114,7 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   assert.match(own.stdout, /ℹ fail 0\n/, own.stdout);
 });
 
-test('--from forks an existing package\'s file shape (exact sibling peers become requires, optional docs) without copying its source', async t => {
+test('--from forks an existing package\'s file shape (exact sibling peers become requires) without copying its source', async t => {
   const out = await outputDir(t);
   const name = `scaff-fork-${randomUUID().slice(0, 8)}`;
   const result = run([name, '--from', 'store', '--packages-dir', out]);
@@ -140,9 +138,6 @@ test('--from forks an existing package\'s file shape (exact sibling peers become
   const extensionSource = await readFile(join(dir, 'src', `${name}.ts`), 'utf8');
   assert.ok(!extensionSource.includes('maxRecords'), 'forked source should not carry the store\'s collection logic');
   assert.ok(!extensionSource.includes('DatabaseSync'));
-  for (const optional of ['ACCEPTANCE.md', 'CONTRACT.md', 'IMPLEMENTATION-STATUS.md', 'THREAT-MODEL.md']) {
-    await assert.rejects(stat(join(dir, optional)));
-  }
 });
 
 test('rejects an invalid name, a reserved name, an existing package, an unknown --from source, a bad --packages-dir and a multi-line description', async t => {

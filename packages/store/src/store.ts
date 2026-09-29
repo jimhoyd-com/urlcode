@@ -256,7 +256,7 @@ const bodyMessages: Readonly<Record<string, string>> = { unsupported_media_type:
  * StoreError with core's status and code, except that an oversized body keeps store's `record_too_large`.
  */
 function bodyOf(request: ExtensionRequest, collection: Collection): unknown {
-  try { const body = readBody(request, { accept: ['json'], maxBytes: collection.spec.maxRecordBytes + 4096 }); return body.kind === 'json' ? body.value : undefined; }
+  try { return readBody(request, { maxBytes: collection.spec.maxRecordBytes + 4096 }); }
   catch (error) {
     if (!(error instanceof ExtensionHttpError)) throw error;
     if (error.status === 413) throw new StoreError(413, 'record_too_large', 'Request body is too large');

@@ -1,5 +1,5 @@
 import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders, installPrincipalSlot } from './extensions.ts';
-import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext, InvocationContext } from './extensions.ts';
+import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, InvocationContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
 import { executeProxy } from './proxy.ts';
@@ -208,16 +208,6 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // A `policies.extensions` route is confidential unless every named
   // extension explicitly declares `cacheSensitive: false` (src/extensions.ts).
   const confidentialRoutes=new Set(routes.filter(route=>route.extension||isSensitiveExtensionPolicy(route.extensionPolicyNames??[],options.extensions)).map(route=>route.pattern));
-  // Only an extension's own mount can serve its declared immutable assets.
-  const assetPrefixes=new Map(routes.filter(route=>route.extension).map(route=>[route.pattern,extensionRegistry.entries.get(route.extension!)!.assetPrefixes]));
-  const assetContext=(method:string,path:string,pattern:string):ExtensionAssetContext|undefined=>{const prefixes=assetPrefixes.get(pattern);return prefixes?.length?{method,path,prefixes}:undefined;};
-  // Mounts an extension instance declared as serving only its immutable assets: audit probes them, requests never read this.
-  const extensionAssets=new Map(routes.flatMap(route=>{
-    if(!route.extension)return [];
-    const mount=route.pattern.endsWith('/*')?route.pattern.slice(0,-2):route.pattern;
-    const found=extensionRegistry.entries.get(route.extension)?.assetMounts.find(entry=>entry.mount===mount);
-    return found?[[route.pattern,{extension:route.extension,prefix:found.prefix}] as const]:[];
-  }));
   let active = 0, streamsOpen = 0, closing = false, finish: (() => void) | undefined;
   const settle = (): void => { if (!active && !streamsOpen && closing) finish?.(); };
   // An admitted stream keeps this runtime (its extensions and function modules) open until the stream ends, so a
@@ -261,21 +251,21 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // its status is not cacheable). A plugin short-circuit ran before any
   // policy, so it skips every request-phase policy's response hook.
   async function finishPolicies(policy: PolicyChain | null | undefined, request: PolicyRequest, result: HandlerResult, producer?: PolicyModule | 'plugin'): Promise<HandlerResult> {
-    const confidential=confidentialRoutes.has(request.route),asset=assetContext(request.method,request.path,request.route);
-    let out = confidential?extensionResponse(result,asset):result;
+    const confidential=confidentialRoutes.has(request.route);
+    let out = confidential?extensionResponse(result):result;
     for (const [module, state] of policy?.response || []) {
       if(confidential&&module.name==='compression')continue;
       if (producer === 'plugin' ? module.onRequest : module === producer) continue;
       out = await module.onResponse?.(state, request, out) ?? out;
     }
     out=await pluginsResponse(plugins, request, out);
-    return confidential?extensionResponse(out,asset):out;
+    return confidential?extensionResponse(out):out;
   }
   function policyInventory(): Record<string, PolicyInventory> {
     return Object.fromEntries(routes.flatMap(route => route.policy && Object.keys(route.policy.describe).length ? [[route.pattern, route.policy.describe] as const] : []));
   }
   const workers = () => ({ healthy: pool.slots.filter(slot => slot?.ready).length, slots: pool.size });
-  const testPlan = (): TestPlan => ({...projectPlan(compiled,extensionAssets),policies:policyInventory()});
+  const testPlan = (): TestPlan => ({...projectPlan(compiled),policies:policyInventory()});
   try{await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });}
   catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
   // Reported only once the edited revision fully activated, so a rejected reload never claims a followed pin.
@@ -443,7 +433,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;
-        if(route.extension){const answer=await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest);if(answer&&isResponseStream(answer.stream))state.produced.push(answer.stream);native=extensionResponse(answer,assetContext(method,parsed.path,route.pattern));}
+        if(route.extension){const answer=await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest);if(answer&&isResponseStream(answer.stream))state.produced.push(answer.stream);native=extensionResponse(answer);}
         else if(route.compiledProxy){
           // Same credential-free projection a guest function receives: an
           // extension-declared credential header in requestHeaders must not

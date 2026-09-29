@@ -21,8 +21,6 @@ test('the definition names the store, requires nothing and shares the runtime sc
   // audit is optional: only a collection that declares `audit: true` needs it.
   assert.deepEqual(store.definition.uses, ['audit']);
   assert.equal(store.definition.schema, storeConfigSchema);
-  // The store contributes nothing to another extension: its frontend is the app's, over the JSON mounts.
-  assert.equal(store.definition.contributes, undefined);
 });
 
 test('a blank install declares no collection, no route and needs no acknowledgement (#711)', async () => {

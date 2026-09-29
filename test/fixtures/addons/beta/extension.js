@@ -8,7 +8,7 @@ const definition = {
   },
   host(ctx) {
     const alpha = ctx.get('alpha');
-    globalThis.betaSaw = { alpha, contributions: ctx.contributions('beta') };
+    globalThis.betaSaw = { alpha };
     return { registration: { name: 'beta', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema, policySchema: definition.policySchema,
       activate: () => ({ handle: () => ({ status: 404 }), authorize: () => undefined }) } };
   },

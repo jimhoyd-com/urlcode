@@ -199,7 +199,7 @@ function jsonExcerpt(candidate: Candidate, query: Query): { excerpt: string; sec
   if (descriptor && candidate.addon !== undefined && query.tokens.some(token => token.toLowerCase() === candidate.addon)) {
     // The query names this add-on: its contract summary, not the first key that happens to contain the name.
     const schema = isRecord(descriptor.schema) && isRecord(descriptor.schema.properties) ? Object.keys(descriptor.schema.properties) : [];
-    const summary = { description: descriptor.description, requires: descriptor.requires, ...(descriptor.uses ? { uses: descriptor.uses } : {}), ...(descriptor.contributes ? { contributes: descriptor.contributes } : {}), ...(candidate.kind === 'extension' ? { configProperties: schema } : {}) };
+    const summary = { description: descriptor.description, requires: descriptor.requires, ...(descriptor.uses ? { uses: descriptor.uses } : {}), ...(candidate.kind === 'extension' ? { configProperties: schema } : {}) };
     return { excerpt: JSON.stringify(summary, null, 1).slice(0, maxExcerpt), section: candidate.kind === 'extension' ? '/schema' : '/', ...(candidate.kind === 'extension' ? { configPath: `extensions.${candidate.addon}.config` } : {}) };
   }
   const hit = jsonHit(candidate.json, query);
