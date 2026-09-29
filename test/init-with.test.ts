@@ -36,6 +36,6 @@ test('init --with names a failed add-on import, the core/catalog skew behind it 
   assert.match(error.message, /^Could not import @jimhoyd\/urlcode-alpha\/extension: SyntaxError: .*exportThisCoreLacks/);
   assert.match(error.message, new RegExp(`Version skew: .* built for core ${coreVersion.replaceAll('.', '\\.')}, but this site installed @jimhoyd/urlcode ${coreVersion.replaceAll('.', '\\.')} from the npm registry`));
   assert.match(error.message, /npm install --save-exact --ignore-scripts/);
-  assert.match(error.message, /init --with removed everything it created; .*`urlcode init .*site`, then `urlcode extensions add alpha`/);
+  assert.match(error.message, /init --with removed everything it created; .*`urlcode init .*site'?`, then `urlcode extensions add alpha`/);
   assert.deepEqual(await readdir(root).then(names => names.sort()), ['alpha', 'registry'], 'the refused init left nothing behind');
 });
