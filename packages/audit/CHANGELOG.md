@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+In a hermetic run (`urlcode test`, `audit`, `benchmark`; `HostContext.hermetic`, #930) the audit log is a fresh database in the run's data directory, whatever `database` names.
+
 Opening the audit database refuses a directory on a network filesystem by its Linux `statfs` type (NFS, SMB, SMB2, CIFS, FUSE, 9P, Ceph, AFS), the list the store refuses (#927); the check is skipped on macOS and Windows. `openAuditStore` takes an optional filesystem probe, a test seam.
 
 The definition declares its deployment targets (node), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.

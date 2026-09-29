@@ -1,7 +1,7 @@
 // #902 item 6: the plumbing the declared `intervals` and `transfers` remove. test/plumbing/ holds the host-transaction
 // counterexamples of the store-booking and store-credits recipes: the same API served by trusted operator extensions
 // through StoreExports.transaction. This proves they are equivalent where the fixtures can tell (each runs the recipe's
-// own tests/requests.json through the CLI, twice, exactly as recipes.test.ts runs the recipe), so the line counts
+// own tests/requests.json and seed through the CLI, twice, exactly as recipes.test.ts runs the recipe), so the line counts
 // scripts/measure-plumbing.ts takes of both compare like with like. Not recipes: the declarations are what to use.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,9 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { addRecipe, loadDocument } from '@jimhoyd/urlcode';
-import { addMember } from '../src/index.ts';
-import type { CollectionSpec } from '../src/index.ts';
+import { addRecipe } from '@jimhoyd/urlcode';
 import { cleanup } from './cleanup.ts';
 import { records } from './rows.ts';
 
@@ -59,12 +57,7 @@ async function site(t: Parameters<typeof cleanup>[0], kind: Kind, version: 'decl
   await writeFile(join(root, 'host.mjs'), hostFile(database, version === 'host' ? plumbing(kind, extensions[kind]) : undefined));
   const { PROJECT_SHA256: _pin, URLCODE_ORIGIN: _origin, URLCODE_POLICY: _policy, ...env } = process.env;
   const run = (...args: string[]) => spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--project', project, '--host-file', join(root, 'host.mjs'), '--local-review'], { cwd: root, encoding: 'utf8', timeout: 120000, env });
-  if (kind === 'credits') {
-    // Who may issue is data: the operator adds the issuer the fixtures sign in as before they run.
-    const { document } = await loadDocument(project);
-    const collections = (document.extensions!.store!.config as { collections: Record<string, CollectionSpec> }).collections;
-    assert.equal((await addMember(database, { collections, collection: 'issuers', principal: 'treasurer' })).changed, true);
-  }
+  // The credits recipe's tests/seed.json seeds its issuer into each run's throwaway database, for both versions.
   return { project, database, run };
 }
 type Site = Awaited<ReturnType<typeof site>>;
@@ -86,7 +79,7 @@ function commands({ run }: Site, routes: number) {
 test('the booking counterexample passes the store-booking recipe fixtures through a host transaction', async t => {
   const host = await site(t, 'booking', 'host');
   commands(host, 2);
-  assert.deepEqual(records(host.database, 'bookings'), [], 'the fixtures deleted every booking they made');
+  assert.deepEqual(records(host.database, 'bookings'), [], 'test and audit wrote nothing to the configured database');
 });
 
 test('the credits counterexample passes the store-credits recipe fixtures, and both versions replay a retried transfer', async t => {
@@ -95,10 +88,10 @@ test('the credits counterexample passes the store-credits recipe fixtures, and b
     const current = await site(t, 'credits', version);
     if (version === 'host') commands(current, 2);
     // Idempotency is part of the contract the recipe declares, and its fixtures send no Idempotency-Key: run the
-    // same retry cases against both versions, once, since a kept key belongs to the database it was sent to.
+    // same retry cases against both versions.
     const fixtures = join(current.project, 'tests', 'requests.json');
     await writeFile(fixtures, JSON.stringify(retries));
     passes(current.run, `${version} retries`);
-    assert.deepEqual(records(current.database, 'wallets'), [], `${version}: every wallet was paid back to 0 and deleted`);
+    if (version === 'host') assert.deepEqual(records(current.database, 'wallets'), [], 'test and audit wrote nothing to the configured database');
   }
 });

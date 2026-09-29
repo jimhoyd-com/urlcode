@@ -251,8 +251,8 @@ runtime version in `package.json` when you upgrade.
 |---|---|---|
 | Install | `npm ci --ignore-scripts` in the site | `package-lock.json` is missing, dependencies do not install, or the site does not depend on `@jimhoyd/urlcode` |
 | Add-ons | `urlcode extensions list --strict` and `urlcode artifacts list --strict` | An add-on does not match the runtime's pin, is installed as a nested copy, has drifted between `package.json`, `app/urlcode.yaml` and `host.mjs` (an extension installed only as a library, neither declared nor imported, is not drift), an installed file differs from `addon-files.lock.json`, or an artifact is not inert |
-| Validate | `urlcode validate --project app` (plus `--host-file` when set) | The YAML, includes, functions, bindings or extension configuration do not load |
-| Test | `urlcode test --project app` (plus `--host-file`) | A `tests/requests.json` fixture fails |
+| Validate | `urlcode validate --project app` (static: declared extensions are checked against their installed schemas) | The YAML, includes, functions, bindings or extension configuration do not load |
+| Test | `urlcode test --project app` (plus `--host-file`) | A `tests/requests.json` fixture fails, or `tests/seed.json` does not match an extension |
 | Audit | `urlcode audit --project app --expect-routes N --compliance <profile>` (plus `--host-file`) | Count mismatch, failed generated check, uncovered active route/method, or a `high` compliance finding without `compliance-warn` |
 | Route diff | `urlcode routes --compare base.json --format markdown` | Never; it reports |
 
@@ -263,23 +263,26 @@ audit when set. Steps run with `bash`, so the action works on the Linux, macOS
 and Windows runners.
 
 The runtime and every add-on come from the site's `package-lock.json`; no
-install script ever runs. Without a `host-file` input, a project that declares
-extensions is validated statically, each extension's configuration and route
-policies checked against its installed `urlcode.json` schemas with no extension
-code running, and `test` and `audit` are skipped with a notice. With
-`host-file: host.mjs`, validate, test and audit activate the installed
-extensions through the host; the action computes `PROJECT_SHA256` from the
-checked-out project for that run only (it passes no `--policy`, so the pin
-comes from that variable), and the workflow must provide any
-secrets the host reads (for example through `env`). A site that declares no
-extensions runs all three either way.
+install script ever runs. A project that declares extensions is always
+validated statically, each extension's configuration and route policies checked
+against its installed `urlcode.json` schemas with no extension code running.
+Without a `host-file` input, `test` and `audit` are then skipped with a notice.
+With `host-file: host.mjs`, test and audit activate the installed extensions
+through the host, each run on a fresh, empty data directory seeded from
+`app/tests/seed.json` ([test data and seeds](READINESS.md#test-data-and-seeds)):
+the workflow provisions no account, membership, Better Auth migration or
+`data/auth.secret`, and nothing persists between runs. The action computes
+`PROJECT_SHA256` from the checked-out project for that run only (it passes no
+`--policy`, so the pin comes from that variable); a third-party extension that
+reads its own environment still needs it provided (for example through `env`).
+A site that declares no extensions runs all three either way.
 
 ## Inputs
 
 | Input | Default | Meaning |
 |---|---|---|
 | `site` | `.` | Directory holding the site's `package.json`, `package-lock.json` and `host.mjs`, relative to the workspace; the route project is always `<site>/app` |
-| `host-file` | empty | Operator host relative to the site (usually `host.mjs`); empty checks declared extensions statically and skips test and audit when the project declares extensions |
+| `host-file` | empty | Operator host relative to the site (usually `host.mjs`); test and audit activate its extensions on throwaway data seeded from `app/tests/seed.json`. Empty skips test and audit when the project declares extensions |
 | `node-version` | `26` | Passed to `actions/setup-node` |
 | `expect-routes` | empty | `audit --expect-routes N`; empty skips the count check |
 | `allow-empty-project` | `false` | Permit only the initial `no-active-routes` audit result; remove after adding the first active route |

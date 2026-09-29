@@ -1,0 +1,10 @@
+{
+  "auth": {
+    "users": [
+      { "id": "ann", "name": "Ann Owner", "email": "ann@example.test", "password": "ann-local-demo-password" },
+      { "id": "bob", "name": "Bob Owner", "email": "bob@example.test", "password": "bob-local-demo-password" },
+      { "id": "rita", "name": "Rita Reviewer", "email": "rita@example.test", "password": "rita-local-demo-password" }
+    ]
+  },
+  "store": { "members": { "reviewers": ["rita"] } }
+}

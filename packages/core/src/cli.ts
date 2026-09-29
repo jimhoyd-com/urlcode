@@ -33,7 +33,7 @@ import { access, readFile, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
-import { commandOptions as options, aliasOriginCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, localReviewOrigin, policyCommands } from './cli-command-metadata.ts';
+import { commandOptions as options, aliasOriginCommands, hermeticHostCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, localReviewOrigin, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
 import { cliInvocation, shellWord } from './context.ts';
@@ -405,7 +405,7 @@ try {
         // A verified --policy pins the host to its reviewed revision, so no PROJECT_SHA256 bridge is needed (#723).
         // Only the revision reaches the host; the grants stay with core.
         if (values.policy !== undefined && (policyCommands as readonly string[]).includes(command)) verifiedPolicy = await loadOperatorPolicy(values.policy, values.project);
-        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 ?? localReview?.revision, inspection: (inspectionHostCommands as readonly string[]).includes(command) && !(command === 'extensions' && arg !== undefined) });
+        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 ?? localReview?.revision, inspection: (inspectionHostCommands as readonly string[]).includes(command) && !(command === 'extensions' && arg !== undefined), hermetic: (hermeticHostCommands as readonly string[]).includes(command) });
         if (verifiedPolicy && operatorHost.extensions?.length) {
           const actual = (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256;
           if (verifiedPolicy.projectSha256 !== actual) throw new ConfigError(`The extension host is pinned by --policy${revisionPinHint(verifiedPolicy.projectSha256, actual)}`, { code: 'revision-pin-mismatch' });

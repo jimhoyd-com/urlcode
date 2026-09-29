@@ -339,7 +339,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
       // The replacement is built and activated while `current` keeps serving; extensions that hold an exclusive
       // resource take a shared reference through their hand-off (RIM-EXT-HANDOFF-001), so closing `old` below
       // releases only its own references, and a failed build leaves `current` serving with everything it holds.
-      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions, ...(acceptedExtensionPin ? { acceptedExtensionPin } : {}), replacing: current });
+      // A reload never seeds again: the seed is for the first activation of a test run only (RIM-EXT-HERMETIC-001).
+      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions, seed: undefined, ...(acceptedExtensionPin ? { acceptedExtensionPin } : {}), replacing: current });
       if (shuttingDown) { await next.close(); return false; }
       const old = current; current = next;
       const cleanup = old.close(); retired.add(cleanup); void cleanup.finally(() => retired.delete(cleanup));

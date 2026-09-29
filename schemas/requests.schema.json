@@ -40,7 +40,14 @@
     },
     "expectBody": {
       "type": "string",
-      "description": "Expected response body, compared exactly as UTF-8 text. For JSON, write the exact serialized text."
+      "description": "Expected response body, compared exactly as UTF-8 text. To assert some values of a JSON body, use expectJson."
+    },
+    "expectJson": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 16,
+      "description": "JSON Pointers (RFC 6901) into the JSON response body and the value each must equal, such as {\"/balance\": 100, \"/items/0/done\": false}; objects compare regardless of key order, arrays in order, and anything the map does not name (generated ids, timestamps) is not checked. \"\" is the whole body. A string may use {{name}} references; inside steps, a string that is exactly one reference to a number or boolean a json capture kept stands for that number or boolean.",
+      "propertyNames": { "pattern": "^(/([^~/]|~[01]){0,64}){0,8}$" }
     },
     "expectSignals": {
       "type": "array",
@@ -73,6 +80,7 @@
         "status": { "$ref": "#/$defs/status" },
         "expectHeaders": { "$ref": "#/$defs/expectHeaders" },
         "expectBody": { "$ref": "#/$defs/expectBody" },
+        "expectJson": { "$ref": "#/$defs/expectJson" },
         "expectSignals": { "$ref": "#/$defs/expectSignals" }
       },
       "additionalProperties": false
@@ -80,16 +88,17 @@
     "capture": {
       "type": "object",
       "maxProperties": 16,
-      "description": "Values kept from this step's response for later steps' {{name}} references: {\"json\": \"items.0.id\"}, {\"header\": \"location\"} (one single-valued header, never set-cookie) or {\"cookie\": \"session\"} (the value the fixture's cookie jar holds for that cookie after this response).",
+      "description": "Values kept from this step's response for later steps' {{name}} references: {\"json\": \"items.0.id\"}, {\"header\": \"location\"} (one single-valued header, never set-cookie) or {\"cookie\": \"session\"} (the value the fixture's cookie jar holds for that cookie after this response). `urlcode test` failure output shows json and header values where they were substituted; add \"secret\": true to a json or header capture that holds a credential (a token) to keep it out, as a cookie value always is.",
       "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,31}$" },
       "additionalProperties": {
         "type": "object",
         "minProperties": 1,
-        "maxProperties": 1,
+        "maxProperties": 2,
         "properties": {
           "json": { "type": "string", "maxLength": 256 },
           "header": { "type": "string", "maxLength": 64 },
-          "cookie": { "type": "string", "maxLength": 128 }
+          "cookie": { "type": "string", "maxLength": 128 },
+          "secret": { "const": true, "description": "Never show this json or header value in failure output; it is printed as {{name}}." }
         },
         "additionalProperties": false
       }
@@ -105,6 +114,7 @@
         "status": { "$ref": "#/$defs/status" },
         "expectHeaders": { "$ref": "#/$defs/expectHeaders" },
         "expectBody": { "$ref": "#/$defs/expectBody" },
+        "expectJson": { "$ref": "#/$defs/expectJson" },
         "expectSignals": { "$ref": "#/$defs/expectSignals" },
         "capture": { "$ref": "#/$defs/capture" }
       },

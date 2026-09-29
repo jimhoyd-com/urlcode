@@ -295,7 +295,11 @@ its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is
 documented under [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 For auth, `npx urlcode-auth migrate` then creates Better Auth's tables and
-`npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id). `extensions add` prints the project revision the host must be pinned to
+`npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id).
+Neither is needed for tests: `urlcode test`, `audit` and `benchmark` compose the
+host on a fresh data directory every run (`HostContext.data` and `hermetic`) and
+seed accounts and memberships from `app/tests/seed.json`
+([test data and seeds](READINESS.md#test-data-and-seeds)). `extensions add` prints the project revision the host must be pinned to
 (the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
 [the revision pin](EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval before serving. The site's check scripts
@@ -572,8 +576,8 @@ what to use.
   `owner_quota_exceeded`), the `422`s and `If-Match`. The credits version also
   has the issuer's membership gate and `Idempotency-Key` retries.
 - `packages/store/test/plumbing.test.ts` runs each recipe's own
-  `tests/requests.json` against its counterexample through the CLI, twice, and
-  the audit reports it ready. The recipe fixtures send no `Idempotency-Key`, so
+  `tests/requests.json` and `tests/seed.json` against its counterexample
+  through the CLI, twice, and the audit reports it ready. The recipe fixtures send no `Idempotency-Key`, so
   a ten-request retry fixture (`credits-retries.json`) runs against both the
   recipe and the counterexample.
 - `npm run measure:plumbing` (`scripts/docs/measure-plumbing.ts`) counts, per

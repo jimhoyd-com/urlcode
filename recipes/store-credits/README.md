@@ -28,8 +28,9 @@ site, `urlcode extensions add auth store` installs both and registers them in
 `host.mjs`, outside the project. The database file stays outside the project,
 and one server process serves it.
 
-Who may issue is data, not YAML. Add the issuer's principal id before issuing;
-the fixtures sign in as `treasurer`:
+Who may issue is data, not YAML. `urlcode test` and `audit` run on a throwaway
+database and seed the issuer the fixtures sign in as, `treasurer`, from
+`tests/seed.json`. A served site adds the issuer's principal id before issuing:
 
 ```sh
 npx urlcode-store members add --database /operator/data/store.sqlite --project /absolute/site/app \
