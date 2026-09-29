@@ -1475,6 +1475,15 @@ As soon as either file names it, the other must agree.
 
 `urlcode init <directory> --with auth,store [--example] [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.
+A failed npm run reports npm's own last lines, and a pin or integrity mismatch
+names the add-on (`Refusing <name>: …`). When an installed extension's entry
+cannot be imported, the error has code `addon-load`, quotes the import failure
+and says whether the add-on catalog and the site's core come from different
+builds: the usual cause is `URLCODE_ADDONS` pointing at add-on tarballs packed
+from a newer checkout while the new site pins the registry release of the same
+core version. Point the site's `@jimhoyd/urlcode` dependency at the core tarball
+packed beside those add-ons, or unset `URLCODE_ADDONS`, then run
+`urlcode init <directory>` and `urlcode extensions add <names>` separately.
 
 `urlcode upgrade` moves core and every installed add-on to one version
 together: the latest stable release (npm's `latest` dist-tag, which only a

@@ -654,7 +654,9 @@ for the generated route, capability and requirement summary, instead of
 inferring either from the YAML. `urlcode openapi` (MCP `get_openapi`) gives a
 client-facing OpenAPI 3.1 description of the same operations; a function's
 answer is handler-defined there, so do not add a response schema to it by hand
-([OpenAPI export](TOOLING.md#openapi-export)). MCP roots are selected by
+([OpenAPI export](TOOLING.md#openapi-export)). `urlcode openapi --check` validates
+that export (or an OpenAPI file) against the official OpenAPI 3.1 schema shipped
+with core and exits `1` when it is invalid; use it instead of a third-party validator. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe and scaffold tools, and runner
 tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the

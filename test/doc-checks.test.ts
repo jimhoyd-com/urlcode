@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { githubSlug, headingText, markdownAnchors } from '../scripts/check-local-links.ts';
+import { githubSlug, headingText, markdownAnchors, pinnedRepositoryPath, shippedLinkProblem } from '../scripts/check-local-links.ts';
 import { asProject, checkBlock, yamlBlocks } from '../scripts/check-doc-yaml.ts';
 
 const script = (name: string): string => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
@@ -41,6 +41,18 @@ test('the local-link check passes on this checkout, fragments included (#781)', 
   const result = run('check-local-links.ts');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\d+ fragment\(s\)/);
+});
+
+test('a shipped package README links pinned, never outside the package or at main (#916)', () => {
+  const repo = 'https://github.com/jimhoyd-com/urlcode/';
+  assert.match(shippedLinkProblem('packages/store/README.md', '../../docs/STORE.md#openapi') ?? '', /outside packages\/store\/.*installed copy/);
+  assert.match(shippedLinkProblem('packages/store/README.md', `${repo}blob/main/docs/STORE.md`) ?? '', /main branch/);
+  assert.equal(shippedLinkProblem('packages/store/README.md', `${repo}blob/v1.2.3/docs/STORE.md#openapi`), undefined);
+  assert.equal(shippedLinkProblem('packages/store/README.md', 'SECURITY.md'), undefined);
+  assert.equal(shippedLinkProblem('packages/store/README.md', '#field-reference'), undefined);
+  assert.equal(pinnedRepositoryPath(`${repo}blob/v1.2.3/docs/STORE.md#openapi`, '1.2.3'), 'docs/STORE.md#openapi');
+  assert.equal(pinnedRepositoryPath(`${repo}tree/v1.2.3/proofs/private-requests/client`, '1.2.3'), 'proofs/private-requests/client');
+  assert.equal(pinnedRepositoryPath(`${repo}blob/v1.2.2/docs/STORE.md`, '1.2.3'), undefined, 'another version is not checked against this checkout');
 });
 
 test('yamlBlocks returns only yaml/yml fences with their first content line (#780)', () => {

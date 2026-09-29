@@ -12,7 +12,7 @@ import { parseInertYaml } from './inert-yaml.ts';
 import { ADDON_FILES_LOCK, checkPackageFiles, newestVersion, onlineProblem, readFilesLock, recordPackage, registrySpecName, verifyPackageOnline, writeFilesLock } from './package-files.ts';
 import type { AddonFilesLock, FileCheck, OnlineCheck } from './package-files.ts';
 import type { LoadedDocument } from './types.ts';
-import { ConfigError, assert } from './errors.ts';
+import { ConfigError, asConfigError, assert, boundedLine } from './errors.ts';
 import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, inspectExtensionRevision } from './extensions.ts';
 import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './extensions.ts';
 import { orderByRequires } from './host.ts';
@@ -280,11 +280,37 @@ export async function assertInertArtifacts(site: string, lock: Record<string, Lo
   }
 }
 
-async function loadDefinition(site: string, name: string, pkg = addonPackage(name)): Promise<ExtensionDefinition<unknown>> {
+/**
+ * Why importing an installed extension failed (#911), with the step that failed and what to do next. An import that
+ * fails for a missing core export almost always means the add-on was built with a different core than the site
+ * installs: the catalog pins the add-on tarballs, but the site pins core by version, so a development catalog
+ * (`URLCODE_ADDONS`, file: pins) beside a registry core of the same version still mixes two builds.
+ */
+export async function addonLoadError(site: string, pkg: string, error: unknown, manifest: AddonManifest | undefined): Promise<ConfigError> {
+  const reason = boundedLine(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) || 'the module threw a non-Error value';
+  const lock = await lockPackages(site).catch(() => ({} as Record<string, LockEntry>));
+  const core = lock['node_modules/@jimhoyd/urlcode'];
+  const coreVersion = core?.version ?? (await readJson<{ version?: unknown }>(join(site, 'node_modules', '@jimhoyd', 'urlcode', 'package.json')).then(value => typeof value.version === 'string' ? value.version : undefined).catch(() => undefined));
+  const fromRegistry = typeof core?.resolved === 'string' && /^https?:/.test(core.resolved);
+  const catalog = process.env.URLCODE_ADDONS ? `URLCODE_ADDONS=${process.env.URLCODE_ADDONS}` : 'this core\'s addons.json';
+  let next: string;
+  if (manifest && Object.values(manifest.addons).some(pin => pin.url.startsWith('file:')) && (fromRegistry || coreVersion === undefined)) {
+    next = `Version skew: the add-on catalog (${catalog}) points at local add-on tarballs (file: pins) built for core ${manifest.version}, but this site installed @jimhoyd/urlcode ${coreVersion ?? '(not installed)'}${fromRegistry ? ' from the npm registry' : ''}, a different build that may lack exports the add-on imports. Point the site's core at the build the catalog came from (for example \`npm install --save-exact --ignore-scripts <path to the jimhoyd-urlcode-${manifest.version}.tgz packed beside it>\` in ${site}), or unset URLCODE_ADDONS to use the add-ons released with the installed core, then run the command again`;
+  } else if (manifest && coreVersion !== undefined && coreVersion !== manifest.version) {
+    next = `Version skew: this site installs @jimhoyd/urlcode ${coreVersion}, but the add-on catalog (${catalog}) is core ${manifest.version}'s. Run the site's own CLI (\`npx urlcode\` in ${site}), or install the matching core (\`npm install --save-exact --ignore-scripts @jimhoyd/urlcode@${manifest.version}\`), then run the command again`;
+  } else {
+    next = `The add-on and the site's @jimhoyd/urlcode ${coreVersion ?? '(not installed)'} may come from different builds, or the add-on is broken. Reinstall core and the add-on from one release (\`npm ci --ignore-scripts\` in ${site}), then run the command again`;
+  }
+  return new ConfigError(`Could not import ${pkg}/extension: ${reason}. ${next}`, { code: 'addon-load' }, { cause: error });
+}
+
+async function loadDefinition(site: string, name: string, pkg = addonPackage(name), manifest?: AddonManifest): Promise<ExtensionDefinition<unknown>> {
   let path: string;
   try { path = createRequire(join(site, 'package.json')).resolve(`${pkg}/extension`); }
   catch { throw new ConfigError(`${pkg} is installed but has no ./extension entry`); }
-  const module = await import(pathToFileURL(path).href) as { default?: DefinedExtension<unknown> };
+  let module: { default?: DefinedExtension<unknown> };
+  try { module = await import(pathToFileURL(path).href) as { default?: DefinedExtension<unknown> }; }
+  catch (error) { throw asConfigError(error) ?? await addonLoadError(site, pkg, error, manifest); }
   const definition = module.default?.definition;
   assert(definition && definition.name === name, `${pkg}/extension must default-export defineExtension({name: '${name}', …})`);
   const incompatible = contractProblem(definition.contract, `${pkg}/extension`);
@@ -540,7 +566,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
           const problems = declaredExtensionProblems(loaded, name, providers.get(name)!.descriptor);
           if (problems.length) throw new ConfigError(`Refusing ${dependency}: the new version does not accept the project's declaration: ${problems.join('; ')}. Change the project first, or keep the installed version`);
           // Like a first add, this imports the new entry (trusted operator code); only after its static checks pass.
-          await loadDefinition(site.site, name, dependency);
+          await loadDefinition(site.site, name, dependency, manifest);
         }
       }
     }
@@ -568,7 +594,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       const { providers } = await installedProviders(site.site, manifest);
       const installed = [...providers.values()].filter(provider => provider.descriptor.kind === 'extension').map(provider => provider.name).sort();
       const definitions = new Map<string, ExtensionDefinition<unknown>>();
-      for (const name of newExtensions) definitions.set(name, await loadDefinition(site.site, name, packageOf(name)));
+      for (const name of newExtensions) definitions.set(name, await loadDefinition(site.site, name, packageOf(name), manifest));
       // Within the new set, an extension follows the ones it requires and the ones it uses.
       const ordered = orderByRequires(newExtensions.map(name => ({ name, requires: [...(definitions.get(name)!.requires ?? []), ...(definitions.get(name)!.uses ?? [])].filter(requirement => newExtensions.includes(requirement)) })), (item, requirement) => `${item.name} requires ${requirement}`);
       const loaded = await loadDocument(site.project);

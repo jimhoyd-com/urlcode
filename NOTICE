@@ -18,3 +18,13 @@ scripts/sync-agent-lists.js refreshes them.
     Copyright (c) 2017 Martin Monperrus
     Licensed under the MIT License; see data/agents/LICENSES/crawler-user-agents.txt
     Only revisions dated after 2016-11-07 are used, when the project moved to MIT.
+
+This product bundles the official JSON Schema for OpenAPI 3.1 documents
+(data/openapi/oas-3.1-schema-2025-09-15.json), copied unchanged from
+https://spec.openapis.org/oas/3.1/schema/2025-09-15. `urlcode openapi --check`
+validates documents against it.
+
+  OpenAPI Specification
+    https://github.com/OAI/OpenAPI-Specification
+    Copyright the OpenAPI Initiative (a Linux Foundation project) and contributors
+    Licensed under the Apache License, Version 2.0 (see LICENSE)

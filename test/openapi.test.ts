@@ -322,3 +322,34 @@ test('urlcode openapi prints or writes the document, and MCP get_openapi returns
   assert.equal(replies[1]!.result.tools!.find(item=>item.name==='get_openapi')?.annotations.readOnlyHint,true);
   assert.deepEqual(JSON.parse(replies[2]!.result.content![0]!.text),JSON.parse(expected));
 });
+
+test('urlcode openapi --check validates the export or a file against the shipped OpenAPI 3.1 schema and exits 1 when invalid (#917)',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-openapi-check-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const run=(args:string[])=>spawnSync(process.execPath,['--conditions=development',cli,'openapi','--check',...args,'--json'],{encoding:'utf8',timeout:60000});
+  const exported=run(['--project',example,'--out',join(dir,'openapi.json')]);
+  assert.equal(exported.status,0,exported.stderr);
+  const report=JSON.parse(exported.stdout) as {event:string;source:string;valid:boolean;schema:string;problems:unknown[];operations:number;schemaObjects:number};
+  assert.equal(report.event,'openapi-check');assert.equal(report.source,'export');assert.equal(report.valid,true);assert.deepEqual(report.problems,[]);
+  assert.equal(report.schema,'https://spec.openapis.org/oas/3.1/schema/2025-09-15');
+  assert.ok(report.operations>0&&report.schemaObjects>0);
+  // --out still writes the document it checked, and the written file checks the same.
+  const file=run([join(dir,'openapi.json')]);
+  assert.equal(file.status,0,file.stderr);assert.equal((JSON.parse(file.stdout) as {valid:boolean}).valid,true);
+  // A broken document: a wrong version string, a Schema Object that is not a schema and a $ref to nothing.
+  const document=JSON.parse(await readFile(join(dir,'openapi.json'),'utf8')) as Json&{components:{schemas:Json}};
+  document.openapi='3.0.3';
+  document.components.schemas.Broken={type:'not-a-type'};
+  document.components.schemas.Dangling={$ref:'#/components/schemas/Missing'};
+  await writeFile(join(dir,'broken.json'),JSON.stringify(document));
+  const broken=run([join(dir,'broken.json')]);
+  assert.equal(broken.status,1);
+  const problems=(JSON.parse(broken.stdout) as {valid:boolean;problems:{where:string;message:string}[]}).problems;
+  assert.ok(problems.some(problem=>problem.where==='/openapi'&&/pattern/.test(problem.message)),JSON.stringify(problems));
+  assert.ok(problems.some(problem=>problem.where.startsWith('components.schemas.Broken')&&/JSON Schema 2020-12/.test(problem.message)),JSON.stringify(problems));
+  assert.ok(problems.some(problem=>problem.where==='/components/schemas/Dangling'&&/Missing names nothing/.test(problem.message)),JSON.stringify(problems));
+  await writeFile(join(dir,'not.json'),'{');
+  const notJson=run([join(dir,'not.json')]);
+  assert.equal(notJson.status,1);assert.match(notJson.stderr,/is not JSON/);
+  const elsewhere=spawnSync(process.execPath,['--conditions=development',cli,'routes','--check','--project',example],{encoding:'utf8',timeout:60000});
+  assert.match(elsewhere.stderr,/--check is only supported by upgrade and openapi/);
+});

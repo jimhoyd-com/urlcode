@@ -2,7 +2,7 @@ import { addAddons } from './addon-install.ts';
 import type { AddResult } from './addon-install.ts';
 import type { AddonManifest } from './addon-manifest.ts';
 import { initSite } from './authoring.ts';
-import { assert } from './errors.ts';
+import { ConfigError, assert } from './errors.ts';
 
 const namePattern = /^[a-z][a-z0-9-]{0,63}$/;
 export function parseWithNames(value: string): string[] {
@@ -25,5 +25,10 @@ export async function initSiteWith(destination: string, names: readonly string[]
   try {
     const result = await addAddons(site, 'extension', names, { acknowledgements, example, manifest, retry: acks => ['urlcode init', quote(destination), '--with', names.join(','), ...(example ? ['--example'] : []), ...(adopt ? ['--adopt'] : []), ...(mcp === false ? ['--no-mcp'] : []), ...acks.flatMap(ack => ['--ack', ack])].join(' '), ...(adopt ? { preserve: leftAlone } : {}) });
     return { site, leftAlone, ...result };
-  } catch (error) { await undo(); throw error; }
+  } catch (error) {
+    await undo();
+    // The import of an installed add-on failed (#911): name the undone init and the two-step path that keeps the site.
+    if (error instanceof ConfigError && error.details.code === 'addon-load') throw new ConfigError(`${error.message}. init --with removed everything it created; to keep the site while you fix this, run \`urlcode init ${quote(destination)}\`, then \`urlcode extensions add ${names.join(' ')}\` in it`, error.details, { cause: error });
+    throw error;
+  }
 }

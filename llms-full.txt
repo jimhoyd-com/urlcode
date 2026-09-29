@@ -346,7 +346,7 @@ its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is
 documented under [add-ons](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 For auth, `npx urlcode-auth migrate` then creates Better Auth's tables and
-`npx urlcode-auth create-user` creates an account from JSON on stdin. `extensions add` prints the project revision the host must be pinned to
+`npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id). `extensions add` prints the project revision the host must be pinned to
 (the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
 [the revision pin](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval.
@@ -1313,7 +1313,9 @@ for the generated route, capability and requirement summary, instead of
 inferring either from the YAML. `urlcode openapi` (MCP `get_openapi`) gives a
 client-facing OpenAPI 3.1 description of the same operations; a function's
 answer is handler-defined there, so do not add a response schema to it by hand
-([OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#openapi-export)). MCP roots are selected by
+([OpenAPI export](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#openapi-export)). `urlcode openapi --check` validates
+that export (or an OpenAPI file) against the official OpenAPI 3.1 schema shipped
+with core and exits `1` when it is invalid; use it instead of a third-party validator. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe and scaffold tools, and runner
 tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
@@ -3364,6 +3366,25 @@ The code set is closed and keyed by status:
 
 Any other status the runtime might write gets `ERROR`; the runtime generates
 none today. The envelope has no configurable fields.
+
+**One parser for runtime and store errors.** The store extension writes its own
+refusals as `{"error":{"code","message","issues"?,"fields"?}}`
+([store HTTP contract](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#http-contract)), the same nesting as this
+envelope, and `issues` is the same issue list. With `format: json` on the API
+paths, a client reads `error.code`, `error.message` and `error.issues` from
+both. The code vocabularies differ: the runtime's are the status-keyed
+upper-case codes above (`UNPROCESSABLE_CONTENT`), the store's are its own
+lower-case reasons (`invalid_record`, `collection_full`), so branch on the HTTP
+status or on `code` per source. Without `format: json`, a body-schema 422 is
+the text-mode body above, `{"error":"body_validation_failed","message","issues"}`,
+where `error` is a string, not an object:
+
+```yaml
+site:
+  errors:
+    format: json
+    paths: [/api/*]   # the body-schema routes and the store mounts both under /api
+```
 
 Which format applies:
 
@@ -5790,6 +5811,15 @@ As soon as either file names it, the other must agree.
 
 `urlcode init <directory> --with auth,store [--example] [--ack extension:id]` is `init`
 followed by `extensions add` for those names; a refusal undoes the whole init.
+A failed npm run reports npm's own last lines, and a pin or integrity mismatch
+names the add-on (`Refusing <name>: …`). When an installed extension's entry
+cannot be imported, the error has code `addon-load`, quotes the import failure
+and says whether the add-on catalog and the site's core come from different
+builds: the usual cause is `URLCODE_ADDONS` pointing at add-on tarballs packed
+from a newer checkout while the new site pins the registry release of the same
+core version. Point the site's `@jimhoyd/urlcode` dependency at the core tarball
+packed beside those add-ons, or unset `URLCODE_ADDONS`, then run
+`urlcode init <directory>` and `urlcode extensions add <names>` separately.
 
 `urlcode upgrade` moves core and every installed add-on to one version
 together: the latest stable release (npm's `latest` dist-tag, which only a

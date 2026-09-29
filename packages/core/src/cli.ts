@@ -208,6 +208,8 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'openapi', group:'Agent tooling', text:
 `  urlcode openapi [--project directory] [--origin https://links.example] [--out openapi.json] [--host-file ...] [--policy /absolute/policy.json]
+  urlcode openapi --check [file.json] [--project directory] [--host-file ...] [--json]
+    # --check validates the export (or a JSON document on disk) against the official OpenAPI 3.1 schema shipped with core, each Schema Object against JSON Schema 2020-12, and local $refs; exits 1 and lists the problems when invalid
     # OpenAPI 3.1 JSON for the declared HTTP operations: paths, methods, parameters, per-method request bodies (the 2020-12 schema) and only the responses URLCode itself writes
     # handler-defined answers have no schema; static and /** mounts, and extension mounts no --host-file registration describes, are listed under x-urlcode.opaqueMounts; no binding, secret, cookie name or operator policy is included
 ` },
@@ -393,10 +395,11 @@ try {
     if (values.online && !(['extensions', 'artifacts'].includes(command) && arg === 'verify')) throw new ConfigError('--online is only supported by extensions verify and artifacts verify');
     if ((values.materialize || values.into !== undefined || values['allow-app']) && !(command === 'artifacts' && arg === 'stage')) throw new ConfigError('--materialize, --into and --allow-app are only supported by artifacts stage');
     if (values.site !== undefined && !['extensions', 'artifacts', 'upgrade'].includes(command)) throw new ConfigError('--site is only supported by extensions, artifacts and upgrade');
-    if ((values.to !== undefined || values.check) && command !== 'upgrade') throw new ConfigError('--to and --check are only supported by upgrade');
+    if (values.to !== undefined && command !== 'upgrade') throw new ConfigError('--to is only supported by upgrade');
+    if (values.check && !['upgrade', 'openapi'].includes(command)) throw new ConfigError('--check is only supported by upgrade and openapi');
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','bootstrap','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','bootstrap','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && !(command === 'openapi' && values.check) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
       if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list|verify|outdated|inspect|stage');
@@ -416,9 +419,21 @@ try {
     }else if(command==='openapi'){
       // Read from the compiled configuration like manifest; nothing executes and no binding is read (docs/TOOLING.md#openapi-export).
       const {buildOpenApi,renderOpenApi}=await import('./openapi.ts');
+      if(values.check){
+        // --check [file] (#917): the project's export, or a document on disk, against the official OpenAPI 3.1 schema core ships.
+        if(arg!==undefined&&values.out!==undefined)throw new ConfigError('--out writes the project\'s export; it cannot be combined with checking a file');
+        const {checkOpenApiDocument,renderOpenApiCheck}=await import('./openapi-check.ts');
+        let document:unknown,source:string;
+        if(arg===undefined){const built=await buildOpenApi(values.project,{...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});document=built;source='The export';if(values.out!==undefined)await writeFile(values.out,renderOpenApi(built));}
+        else{source=arg;try{document=JSON.parse(await readFile(arg,'utf8')) as unknown;}catch(error){if(error instanceof SyntaxError)throw new ConfigError(`${arg} is not JSON: ${error.message}`);throw error;}}
+        const result=checkOpenApiDocument(document);
+        print(human?renderOpenApiCheck(result,source):{event:'openapi-check',source:arg??'export',...result});
+        if(!result.valid)process.exitCode=1;
+      }else{
       const text=renderOpenApi(await buildOpenApi(values.project,{...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})}));
       if(values.out===undefined)print(text);
       else{await writeFile(values.out,text);print(human?`Wrote OpenAPI 3.1 to ${values.out}\n`:{event:'written',file:values.out,bytes:Buffer.byteLength(text)});}
+      }
     }else if(command==='capabilities'){
       if(arg!==undefined){ if(values.target!==undefined)throw new ConfigError('--target applies to the full catalog, not one entry'); const entry=getCapability(arg); print(values.json ? entry : formatCapability(entry)); }
       else {

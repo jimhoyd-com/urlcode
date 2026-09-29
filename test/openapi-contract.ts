@@ -2,9 +2,9 @@
 // (packages/store/test/openapi.test.ts): validity against the official OpenAPI 3.1 schema, and a contract run that
 // derives requests from the document and checks each answer against the operation that declares it.
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
 import Ajv2020 from 'ajv/dist/2020.js';
 import type {OpenApiDocument} from '../packages/core/src/openapi.ts';
+import {checkOpenApiDocument} from '../packages/core/src/openapi-check.ts';
 import {request} from './helpers.ts';
 import type {Addressed,Response} from './helpers.ts';
 
@@ -16,40 +16,14 @@ export const always={'X-Request-Id':{$ref:'#/components/headers/UrlcodeRequestId
 export const noStore={'Cache-Control':{$ref:'#/components/headers/UrlcodeNoStore'}};
 export const operations=(document:OpenApiDocument):[string,string,Operation][]=>Object.entries(document.paths).flatMap(([path,item])=>methods.filter(method=>item[method]).map(method=>[path,method,item[method] as Operation] as [string,string,Operation]));
 
-// The official OpenAPI 3.1 schema (test/fixtures/openapi/README.md). Its Schema Objects are `$dynamicRef: "#meta"`,
-// whose only `$dynamicAnchor: meta` in this document is `$defs/schema`; Ajv resolves that dynamic reference against
-// the wrong scope, so it is replaced by the equivalent static `$ref` before compiling.
-const officialSchema=JSON.parse((await readFile(new URL('./fixtures/openapi/oas-3.1-schema-2025-09-15.json',import.meta.url),'utf8')).replaceAll('"$dynamicRef": "#meta"','"$ref": "#/$defs/schema"')) as Json;
-const oas=new Ajv2020.default({strict:false,allErrors:true,validateFormats:false}).compile(officialSchema);
-/** Every Schema Object in the document, with where it is. */
-function schemaObjects(document:OpenApiDocument):[string,Json][] {
-  const found:[string,Json][]=Object.entries(document.components.schemas).map(([name,schema])=>[`components.schemas.${name}`,schema as Json]);
-  for(const [path,item] of Object.entries(document.paths)){
-    for(const parameter of (item.parameters??[]) as {name:string;schema:Json}[])found.push([`${path} parameter ${parameter.name}`,parameter.schema]);
-    for(const [,method,operation] of operations(document).filter(([candidate])=>candidate===path)){
-      for(const [type,media] of Object.entries(operation.requestBody?.content??{}))if(media.schema)found.push([`${method} ${path} request ${type}`,media.schema]);
-      for(const [status,response] of Object.entries(operation.responses)){
-        for(const [type,media] of Object.entries(response.content??{}))if(media.schema)found.push([`${method} ${path} ${status} ${type}`,media.schema]);
-        for(const [name,header] of Object.entries(response.headers??{}))if(!(header as Json).$ref)found.push([`${method} ${path} ${status} header ${name}`,(header as {schema:Json}).schema]);
-      }
-    }
-  }
-  for(const [name,header] of Object.entries(document.components.headers))found.push([`components.headers.${name}`,header.schema as Json]);
-  for(const [name,response] of Object.entries(document.components.responses??{}))for(const [type,media] of Object.entries((response.content??{}) as Record<string,{schema?:Json}>))if(media.schema)found.push([`components.responses.${name} ${type}`,media.schema]);
-  return found;
-}
-/** Every header reference in the document points at a declared component. */
-function assertHeaderRefs(document:OpenApiDocument):void {
-  const text=JSON.stringify(document);
-  for(const [,name] of text.matchAll(/"#\/components\/headers\/([A-Za-z]+)"/g))assert.ok(Object.hasOwn(document.components.headers,name!),String(name));
-  for(const [,name] of text.matchAll(/"#\/components\/responses\/([A-Za-z]+)"/g))assert.ok(Object.hasOwn(document.components.responses??{},name!),String(name));
-}
-/** Valid against the official OpenAPI 3.1 schema, and every Schema Object valid against the JSON Schema 2020-12 meta-schema. */
+/**
+ * Valid against the official OpenAPI 3.1 schema core ships (data/openapi), every Schema Object valid against the JSON
+ * Schema 2020-12 meta-schema and every local `$ref` resolving: the checks `urlcode openapi --check` runs (#917).
+ */
 export function assertValidOpenApi(document:OpenApiDocument):void {
-  assert.equal(oas(document),true,JSON.stringify(oas.errors,null,1));
-  assertHeaderRefs(document);
-  const meta=new Ajv2020.default({strict:false});
-  for(const [where,schema] of schemaObjects(document))assert.equal(meta.validateSchema(schema),true,`${where}: ${JSON.stringify(meta.errors)}`);
+  const result=checkOpenApiDocument(document);
+  assert.equal(result.valid,true,JSON.stringify(result.problems,null,1));
+  assert.ok(result.schemaObjects>0,'the document has Schema Objects to check');
 }
 
 /** A value the schema accepts, for the contract run: the first enum/const/branch, the smallest string that fits. */

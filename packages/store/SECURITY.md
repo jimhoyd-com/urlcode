@@ -22,4 +22,4 @@ The records export (`StoreExports`, #529), which an extension that requires the 
 
 A collection with `audit: true` inserts an audit event into the store database's outbox table in the same transaction as each change, so a change and its event persist together or not at all, and refuses writes (503) rather than acting unaudited when 1000 events wait undelivered. Events carry field names, never values. Delivery into audit's own database is a separate step, idempotent on the event id; there is no transaction across the two databases. The store database therefore also holds undelivered audit events until audit drains them; back it up accordingly, before the audit database.
 
-This package follows the [core URLCode security policy](../../SECURITY.md) for reporting. Never post real data or credentials in public issues.
+This package follows the [core URLCode security policy](https://github.com/jimhoyd-com/urlcode/security/policy) for reporting. Never post real data or credentials in public issues.
