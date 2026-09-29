@@ -50,6 +50,8 @@ session Better Auth verifies from the request's own cookie. Without one the
 route answers `401 {"error":"authentication_required"}`. A `POST`, `PUT`,
 `PATCH` or `DELETE` must also come from the site's own origin (`Origin`,
 `Sec-Fetch-Site` or `Referer`), or it answers `403 {"error":"cross_origin_refused"}`.
+Both checks apply only to a method the route declares: core answers any other
+method `405` with `Allow` before this extension runs.
 
 The route's function never receives the cookie or an `Authorization` header.
 It receives the verified user id through the request-bound capability:

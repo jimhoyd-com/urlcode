@@ -294,11 +294,13 @@ export const budgets: Record<string, Budget> = {
     // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
     // With #914 authenticated fixtures on top of #907's main, measured on Node 26: 978735 packed / 3850391
     // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
-    // With the #911/#916/#917 trial fixes (openapi --check ships the OAS 3.1 schema in data/) on top of #918's main,
-    // measured on Node 26: 987655 packed / 3903679 unpacked bytes, 515 entries (Node 24 ~800 bytes larger); ~3 KiB headroom.
-    packed: 969 * 1024,
-    unpacked: 3816 * 1024,
-    entries: 520,
+    // With #912/#915 on top of #918's main: measured on Node 26 at 981421 packed / 3858779 unpacked bytes, 511 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    // With the #911/#916/#917 trial fixes on top of #919's main: measured on Node 26 at 990298 packed / 3912067 unpacked bytes, 515 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 971 * 1024,
+    unpacked: 3824 * 1024,
+    entries: 519,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

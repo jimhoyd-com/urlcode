@@ -22,6 +22,7 @@ import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions, type OperatorPolicy } from './policy.ts';
 import { loadDocument } from './config.ts';
+import { assertExtensionMountsDisjoint } from './router.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
 import { ConfigError, HttpError, errorFields, revisionPinHint } from './errors.ts';
@@ -650,6 +651,8 @@ try {
           };
           if (values['host-file'] === undefined && declared.length) {
             // Without the operator host, declared extensions are checked against their installed schemas; no extension code runs.
+            // Mount ownership is a fact about the route keys alone, so it is checked here as activation would (#912).
+            assertExtensionMountsDisjoint(loaded.routes);
             const problems = await validateDeclaredExtensions(values.project);
             if (problems.length) throw new ConfigError(`Extension configuration does not match the installed schemas:\n${problems.map(problem => `  ${problem}`).join('\n')}`);
             await preflight(target ?? 'self-hosted');

@@ -44,7 +44,9 @@ syntax may fail validation. To constrain a segment's value, declare a bounded
 
 1. An exact literal route wins.
 2. A parameterized route wins next; more literal segments means higher priority.
-3. Static mounts follow; the longest matching mount prefix wins.
+3. Mounts follow (`static`, `extension` and `/**` redirects); the longest
+   matching mount prefix wins. An extension mount also matches its own path
+   without the trailing slash (`/api/auth/*` answers `/api/auth`).
 
 YAML order and include-file order do not decide priority. For example, `/r/help`
 wins over `/r/{code}`. Among parameter routes, `/r/fixed/{item}` wins over
@@ -59,6 +61,60 @@ Selection happens before method, enabled/expiry and input validation. A selected
 route returning 405, 404, 410 or 400 does not fall through to another route.
 Likewise, a missing file in the longest selected static mount does not fall back
 to a shorter mount. See [HTTP](HTTP.md) and [the contract](SPECIFICATION.md).
+
+### Extension mounts own their namespace
+
+An extension answers its whole mount (the mount path and everything below
+it) from its own code, so no other route may take a request there:
+
+| Beside `/api/auth/*` (`extension: auth`) | Result |
+|---|---|
+| `/*` or `/api/*` with `static`, `/api/**` redirect | Allowed: a shorter mount only gets what the longer one does not match |
+| `/`, `/api`, `/{page}` (shorter exact or parameterized routes) | Allowed: they cannot match under `/api/auth` |
+| `/api/auth`, `/api/auth/session`, `/api/{name}/session` | Refused: exact and parameterized routes win over mounts, so they would take the extension's requests |
+| `/api/auth/public/*` (any mount inside it) | Refused |
+| `/api/*` with `extension: store` (an extension mount enclosing it) | Refused: it would lose `/api/auth/` to the inner mount; mount extensions side by side (`/api/auth/*`, `/api/requests/*`) |
+
+This is the ordinary [precedence](#precedence-and-ambiguity) applied to a
+namespace the extension owns, not a separate rule: a broader mount is fine
+because mounts already pick the longest prefix. `urlcode validate` checks it
+with or without `--host-file`, before any extension activates, and the error
+names both routes:
+
+```text
+Extension mount /api/auth/* overlaps route /api/auth/session: extension "auth" answers /api/auth and every path below it, so move /api/auth/session outside it
+```
+
+The error line carries `code: extension-mount-overlap` and the extension
+mount's `route` and `pointer`.
+
+### A site-root frontend beside `/api/*` extension mounts
+
+Serve the built frontend from one root `static` mount and put the extension
+mounts under a prefix of their own. The extensions keep their namespaces; every
+other path is a file of the frontend or a 404:
+
+```yaml
+routes:
+  /*:
+    description: The built frontend (index.html, scripts, styles).
+    static: {directory: public, index: index.html}
+  /api/auth/*:
+    extension: auth
+    methods: [GET, POST]
+  /api/requests/*:
+    extension: store
+    methods: [GET, POST]
+    auth: true
+```
+
+`GET /` serves `public/index.html`, `GET /app.js` serves `public/app.js`, and
+`/api/auth/...` and `/api/requests/...` reach their extensions whatever files
+`public/` holds. A file under `public/api/auth/` is never served. A client-routed
+single-page app whose deep links must answer `index.html` adds the
+[`spa-shell` recipe](../recipes/spa-shell/README.md) plugin, with `/api` in its
+`exclude` so API paths keep their own answers; an exact `/` `page`
+plus an `/assets/*` mount is the alternative when the frontend is one page.
 
 ## Adding a configured redirect today
 

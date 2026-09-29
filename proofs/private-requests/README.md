@@ -42,6 +42,14 @@ application server code. It is not a starter or a release claim.
 | `app/urlcode.yaml` | application | Every route, protection, collection and the approval transition |
 | `client/main.js`, `app/public/` | application | The frontend and its Better Auth client |
 
+The frontend is one page, so it is an exact `/` `page` plus an `/assets/*`
+mount. A frontend with more files at the site root can instead be one root
+`/*` `static` mount beside the `/api/...` extension mounts: each extension
+keeps its whole mount, since the longest mount prefix wins
+([site-root frontend](../../docs/ROUTING.md#a-site-root-frontend-beside-api-extension-mounts)).
+A route inside an extension's mount, such as `/api/requests/export`, is
+refused by `urlcode validate`, which names both routes.
+
 The secret file (`data/auth.secret`), the Better Auth database
 (`data/auth.sqlite`), the store database (`data/store.sqlite`), the exact allowlist of served Better Auth paths, rate
 limiting and the client-address header are the package's defaults. The
