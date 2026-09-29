@@ -15,8 +15,8 @@ transport choice; streamed progress replies are an operator opt-in in
 
 Released as a tarball on core's GitHub Release, at core's version, and pinned
 by sha512 in core's `dist/addons.json`; only core is on npm. See
-[add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
-site layout and commands, and [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md)
+[add-ons][add-ons] for the
+site layout and commands, and [docs/EXTENSIONS.md][extensions]
 for the generic extension contract this package implements.
 
 `urlcode extensions add mcp` (or `urlcode init <site> --with mcp`) declares
@@ -88,7 +88,7 @@ type lists, `anyOf`/`oneOf`/`allOf`/`not`, `properties`, `required`,
 `additionalProperties`, `items`, scalar `enum`/`const`, string/number/array
 bounds, a bounded `pattern` and the standard string formats such as `uuid`,
 `date-time` and `email`; see
-[HTTP](../../docs/HTTP.md#body-schema-and-input-patterns)), compiled once at
+[HTTP][http-body-schema-and-input-patterns]), compiled once at
 activation, and must declare `type: object` — an
 MCP tool call's `arguments`, and its structured result, are always objects. A
 call whose arguments fail `inputSchema` never reaches the handler. Under
@@ -265,14 +265,14 @@ export default await composeHost(import.meta.url, [mcp({ streaming: true })]);
   every target (node, aws, vercel). A tool's `context.progress` does
   nothing.
 - **On.** The registration declares `streams: true`
-  ([streamed responses](../../docs/EXTENSIONS.md#streamed-responses)), so core
+  ([streamed responses][extensions-streamed-responses]), so core
   refuses it on `aws` before activation; the self-hosted server and Vercel
   deliver it. A `tools/call` whose `params._meta.progressToken` is set gets
   its `notifications/progress` messages, from
   `context.progress(progress, total?, message?)`, before its result. The
   server's stream limits (`--max-streams`, `--stream-idle-timeout-ms`,
   `--stream-max-duration-ms`, `--stream-max-bytes`;
-  [operations](../../docs/OPERATIONS.md#streamed-responses)) bound every
+  [operations][operations-streamed-responses]) bound every
   streamed reply.
 
 Every handler receives `context.signal`. It aborts when the client
@@ -315,7 +315,7 @@ extension has no identity or authorization model of its own.
   requires: a request whose `Origin` header is present and is not one of the
   site's origins, the canonical `--origin` or an operator `--alias-origin`
   (core's single same-origin rule, see
-  [site origins](../../docs/EXTENSIONS.md#site-origins-and-same-origin-checks)),
+  [site origins][extensions-site-origins-and-same-origin-checks]),
   answers HTTP `403` before its body is parsed, as does `Sec-Fetch-Site:
   cross-site` or a duplicated provenance header. A request with no provenance
   header (non-browser MCP clients send none) is admitted.
@@ -356,6 +356,17 @@ These are deliberate scope choices for a first, minimal, declarative surface
 than oversights; see the package's tracked follow-up issues for status.
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
+
+<!-- The links below are pinned to this release, so an installed copy of this README reads the docs of the
+version it describes; `npm run release:bump` moves them and scripts/check-local-links.ts checks their targets. -->
+<!-- urlcode-current-version:start -->
+[add-ons]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
+[extensions]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
+[http-body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
+[extensions-streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#streamed-responses
+[operations-streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#streamed-responses
+[extensions-site-origins-and-same-origin-checks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks
+<!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
 <!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->
