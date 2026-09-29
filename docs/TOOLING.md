@@ -376,7 +376,9 @@ naming the collection's `filterable` and `sortable` properties, `limit` and
 hold. With owner vocabulary the plan also requires `auth`, since per-owner
 records sit behind a principal-providing policy. When no planner term matches,
 a recipe is offered from its tags only if at least two goal terms are among
-them, so a single generic word ("status") never selects one.
+them and one of those tags is distinctive (carried by at most two recipes in
+the catalog), so a single generic word ("status") or generic tags such as
+`json`, `store`, `auth` or `extension` never select one.
 
 Extension surfaces come from the extensions' own authoring contracts, not from
 vocabulary kept in core (#913). Each surface of an extension's `authoring`
@@ -394,9 +396,15 @@ publishes `collections`, `ownership` (their own records), `transitions`
 (signed-in, users, private, owners, reviewers) and its mount. A goal such as
 "owners submit requests; reviewers approve or reject pending requests"
 therefore plans auth, store ownership, transitions, membership and readers.
-When no recipe matches its own terms, the recipes built on a named extension
-(its `services` name `<extension> extension`) are offered, ranked by the
-surface words they answer.
+When no recipe matches its own terms, the general recipe of the extension
+whose surfaces the goal named most is offered: among the recipes whose
+`services` name `<extension> extension`, the one needing the fewest services
+(`store-crud` for the store). Surface words are shared by every recipe built on
+that extension, so they are not distinctive: a specialised recipe such as
+`store-booking` or `store-credits` is offered only on its own terms (booking,
+slot, interval; credit, wallet, transfer, balance), never on an approval goal's
+submit, approve, reject or reviewers
+([#957](https://github.com/jimhoyd-com/urlcode/issues/957)).
 
 The goal is a 1–512 character string reduced to at most sixteen normalized
 terms; the returned JSON is capped at 32 KiB (an estimated token count is
