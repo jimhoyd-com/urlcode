@@ -58,9 +58,12 @@ archive does not contain: an installed copy has only the packed files. Ship the
 target, or link this repository's `blob/v<current version>/...` as a reference
 definition inside a `urlcode-current-version` block (below), which
 `check-local-links` checks against the checkout. A new extension fails until
-its reviewed policy is added. Increase a budget only with a reviewed explanation
-of the new installed requirement; do not use budget headroom instead of updating
-the allowlist.
+its reviewed policy is added. Each size limit is a measurement plus a fixed
+margin (the policy is the comment above the budgets table in
+`scripts/package-audit.ts`), so routine growth needs no edit. When intended
+growth reaches a limit, re-measure every package and reset the whole table by
+that policy, with a reviewed explanation of the new installed requirement in the
+PR; do not use budget headroom instead of updating the allowlist.
 
 `scripts/pack-addons.ts`, which packs core and every add-on into tarballs for
 the integration tests, the CI action job and `npm run release:pack`, packs with
