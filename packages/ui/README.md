@@ -1,6 +1,6 @@
 # URLCode UI
 
-Shared presentation for URLCode extensions (forms, the store's screens) and for operator builds beside core. Apache-2.0.
+Shared presentation for URLCode extensions (the store's screens) and for operator builds beside core. Apache-2.0.
 No production dependencies or runtime imports.
 
 ## Install
@@ -245,7 +245,7 @@ The `ui` extension needs exactly one such asset mount, besides any screen
 mounts; with none it refuses to activate (`ui extension needs exactly one route
 mount`), because every page it renders links the stylesheet and scripts under
 it. So a site that only serves JSON still declares the route once it installs an
-extension that requires `ui`, such as forms: it renders its own pages
+extension that requires `ui` to render its own pages
 ([#812](https://github.com/jimhoyd-com/urlcode/issues/812)).
 The mount is harmless: it answers `GET` and `HEAD` for the kit's hashed files
 only, `404` for any other path, and sets no cookie and keeps no state.
@@ -254,11 +254,11 @@ only, `404` for any other path, and sets no cookie and keeps no state.
 // host.mjs (trusted operator code, outside app/)
 import { composeHost } from '@jimhoyd/urlcode/host';
 import ui from '@jimhoyd/urlcode-ui/extension';
-import forms from '@jimhoyd/urlcode-forms/extension';
+import store from '@jimhoyd/urlcode-store/extension';
 
 export default await composeHost(import.meta.url, [
   ui(),      // or ui({ theme, sources, extensions })
-  forms(),   // requires ui
+  store(),   // uses ui for its screens
 ]);
 ```
 

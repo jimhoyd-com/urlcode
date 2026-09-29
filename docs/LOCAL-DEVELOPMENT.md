@@ -140,8 +140,8 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
 - Stateful extensions and hot reload: a reload activates the edited
   project's runtime while the running one keeps serving, then retires the old
   one. The store's activations share its one database connection, so a site
-  from `urlcode init --with auth,forms,store --example` reloads an edit such as
-  the contact form's title and keeps serving the records written before it; an
+  from `urlcode init --with auth,store --example` reloads an edit such as
+  the todos collection's title limit and keeps serving the records written before it; an
   extension that holds something exclusive would pass it on through the
   [reload hand-off](EXTENSIONS.md#reload-hand-off) instead. A rejected reload
   leaves the running runtime and its data untouched. Run one `dev` or `serve`

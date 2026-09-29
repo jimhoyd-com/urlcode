@@ -44,7 +44,8 @@ static hosting refuses it.
 
 Because every route is native, the project activates on the self-hosted, AWS,
 Vercel and Cloudflare targets. This endpoint accepts the sign-up but keeps
-nothing: add a `signals` entry to notify a hook (see the `contact-form`
-recipe), or mount the store extension to persist records (`store-crud`). Reach
+nothing: add a `signals` entry to notify a hook ([egress](../../docs/EGRESS.md)),
+mount the store extension to persist records (`store-crud`), or send an email
+from a trusted function (`contact-form`). Reach
 for a `function` only for behavior YAML cannot express, such as the signature
 check in `webhook-receiver`.

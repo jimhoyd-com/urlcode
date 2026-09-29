@@ -1,10 +1,10 @@
 id: contact-form
-description: Validate a JSON contact message with a declared body schema, answer 202 natively and notify an operator-granted hook with a fixed signal after the response.
-tags: [contact, form, message, email, post, json, validation, schema, signal, notify, hook, egress, "422", no-code]
+description: A static contact page posts JSON to a route whose declared body schema validates the message; the route answers 202 natively and notifies an operator-granted hook with a fixed signal after the response.
+tags: [contact, form, message, email, post, json, validation, schema, page, static, signal, notify, hook, egress, "422", no-code]
 complexity: intermediate
-capabilities: [enabled, methods, request.body, respond, response.headers, signals]
+capabilities: [enabled, methods, page, request.body, respond, response.headers, signals, static]
 targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
-routes: 1
+routes: 3
 services:
   - name: hook endpoint
     description: An HTTPS endpoint you own that receives the fixed signal payload (route, method, status); replace https://hooks.example.com/contact.
@@ -18,16 +18,20 @@ inputs:
   - name: field rules
     file: urlcode.yaml
     description: The name, email and message limits in request.body.POST.schema.
-files: [urlcode.yaml, tests/requests.json, README.md]
+  - name: page
+    file: public/index.html
+    description: The contact page and its script in public/assets/contact.js.
+files: [urlcode.yaml, public/index.html, public/assets/contact.js, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
     - urlcode permissions --project . > /operator/contact-policy.json
     - urlcode validate --local --project . --policy /operator/contact-policy.json
     - urlcode test --project . --policy /operator/contact-policy.json
-    - urlcode audit --project . --expect-routes 1 --policy /operator/contact-policy.json
+    - urlcode audit --project . --expect-routes 3 --policy /operator/contact-policy.json
 behavior:
-  - POST /contact with a valid name, email and message answers 202 {"accepted":true} from respond, with no project code
+  - GET / answers the contact page; its script posts the form to /contact as application/json
+  - POST /contact with a valid name, email-format address and message answers 202 {"accepted":true} from respond, with no project code
   - a missing or invalid field, or a body that is not an object, answers 422 from the runtime before the reply is built
-  - form-encoded bodies answer 415 and GET answers 405
+  - form-encoded bodies answer 415 and GET /contact answers 405, so a cross-site HTML form cannot submit
   - the signal carries route, method and status only, best effort; the message itself is never included

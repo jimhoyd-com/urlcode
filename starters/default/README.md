@@ -35,8 +35,7 @@ npx urlcode upgrade --check
 mount at `/api/auth/*`, with no route of yours protected yet), plus every
 extension it requires; auth requires no other extension. `--example` also writes each added
 extension's demo, such as store's `/api/todos` collection and `/todos` screen (per-user when auth
-is installed) or
-forms' `/contact` flow.
+is installed).
 
 Start with the local MCP `get_context` tool (or `npx urlcode context --project
 app`), then add the smallest declarative route or custom code the task requires.

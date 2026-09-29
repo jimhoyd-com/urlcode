@@ -109,11 +109,10 @@ jobs:
       - run: npm run typecheck
       # Phase one of JS type-checking (allowJs/checkJs): build/release tooling
       # only (tsconfig.checkjs.json), not the 61 recipe/example .mjs files.
-      # packages/auth/scripts pulls in packages/auth/src, which imports the
-      # types of ui, audit, abuse and mail through their built dist/ exports
-      # maps (the same self-import resolution `npm run typecheck` above relies
-      # on for `@jimhoyd/urlcode/*`), so the script itself builds those first — see `typecheck:tooling` in
-      # package.json.
+      # packages/ui/scripts resolves workspace types through their built dist/
+      # exports maps (the same self-import resolution `npm run typecheck` above
+      # relies on for `@jimhoyd/urlcode/*`), so the script itself builds ui and
+      # audit first — see `typecheck:tooling` in package.json.
       - run: npm run typecheck:tooling
       # `npm run check` stays complete for local use, but in CI the seven
       # documentation checks it contains already ran in the always-run `docs`
@@ -265,11 +264,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # `auth` imports `ui`, `audit`, `mail` and `abuse`; `admin` imports
-      # `auth` and so needs its dependencies too; `store` imports `ui` and
-      # `audit`; `forms` imports `ui`, `abuse` and `mail`. The matrix carries each package's
+      # `store` imports `ui` and `audit`. The matrix carries each package's
       # transitive dependencies in build order (empty for `ui`, `audit`,
-      # `abuse`, `mail` and `mcp`, which have none) so this job's own
+      # `auth` and `mcp`, which have none) so this job's own
       # typecheck/build can resolve them, the way the removed serial script
       # did by ordering.
       - if: matrix.deps != ''

@@ -56,7 +56,8 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Goal | Start here |
 |---|---|
 | Add accounts, sign-in and protected routes | [urlcode-auth](../packages/auth#readme), [auth security](../packages/auth/SECURITY.md) |
-| Keep an audit log, rate-limit forms, send email | [urlcode-audit](../packages/audit#readme), [urlcode-abuse](../packages/abuse#readme), [urlcode-mail](../packages/mail#readme) |
+| Keep an audit log | [urlcode-audit](../packages/audit#readme) |
+| Accept a form, rate-limit it and send email | [contact-form recipe](../recipes/contact-form/README.md), [`policies.throttle`](policies/throttle.md) |
 | Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
 | Serve a declared collection as a CRUD API (`store` extension) | [Data store](STORE.md) |
 | Add, remove or write an extension | [Extensions](EXTENSIONS.md), [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts), [example fixture](../examples/extensions/README.md) |
