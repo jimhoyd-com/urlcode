@@ -92,7 +92,13 @@ const listView = (page: Page, project: (record: StoredRecord) => StoredRecord = 
  * caller may run on it now (empty when none), the single-record form of a list's `may`.
  */
 const recordHeaders = (record: StoredRecord, may: string[] | undefined, tag: (record: StoredRecord) => string = etagOf): [string, string][] => [['etag', tag(record)], ...(may === undefined ? [] : [['allow-transitions', may.join(', ')] as [string, string]])];
-const shownAnswer = (shown: Shown, project: (record: StoredRecord) => StoredRecord = view, tag: (record: StoredRecord) => string = etagOf): HandlerResult => json(200, project(shown.record), recordHeaders(shown.record, shown.may, tag));
+const shownAnswer = (shown: Shown, project: (record: StoredRecord) => StoredRecord = view, tag: (record: StoredRecord) => string = etagOf, extra: [string, string][] = []): HandlerResult => json(200, project(shown.record), [...recordHeaders(shown.record, shown.may, tag), ...extra]);
+/**
+ * On a collection declaring `editable` or `deletable` (#952): the `Allow` header of the record `<mount>/<id>`, the
+ * methods it takes in its current state, or for a list `allow`, each listed record's by id. Nothing otherwise.
+ */
+const allowHeader = (collection: Collection, record: StoredRecord | undefined): [string, string][] => { const allowed = record && collection.allowed(record); return allowed ? [['allow', allowed.join(', ')]] : []; };
+const allowMap = (collection: Collection, page: Page): { allow?: Record<string, string[]> } => collection.spec.editable || collection.spec.deletable ? { allow: Object.fromEntries(page.items.map(record => [record.id as string, collection.allowed(record)!])) } : {};
 /**
  * What a projected readers mount (#929) shows of a record: its `id`, the listed properties it holds and, with
  * `showOwner`, `_owner`; never `createdAt`, `updatedAt` or another property. Its ETag is of exactly that, so it changes
@@ -172,8 +178,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   const live: { token: symbol; collections: readonly Collection[] }[] = [];
   // Whether this registration already warned that throttles and caches are per process (once, on seeing a live peer).
   let warnedPeers = false;
-  // The interval indexes each live activation reads through (#902), so a reload drops only indexes nobody declares.
-  const intervalIndexes = new Map<symbol, string[]>();
+  // The interval (#902) and unique (#953) indexes each live activation reads through, so a reload drops only indexes nobody declares.
+  const indexes = new Map<symbol, string[]>();
   // The one connection and how many live activations hold it.
   let connection: Connection | undefined;
   const acquire = async (): Promise<{ db: StoreDatabase; lease: ServerLease; release(): Promise<void> }> => {
@@ -326,8 +332,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       }
       const exported = shared.attach(collections);
       live.push({ token: exported, collections });
-      intervalIndexes.set(exported, collections.flatMap(collection => collection.intervalIndex ?? []));
-      dropStaleIntervalIndexes(held.db, new Set([...intervalIndexes.values()].flat()));
+      indexes.set(exported, collections.flatMap(collection => collection.indexes));
+      dropStaleIndexes(held.db, new Set([...indexes.values()].flat()));
       // Events a previous run left in the outbox drain now rather than at the next write or poll.
       if (pending > 0) attachment?.notify();
       let closed = false;
@@ -337,7 +343,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
           if (closed) return;
           closed = true;
           shared.detach(exported);
-          intervalIndexes.delete(exported);
+          indexes.delete(exported);
           const index = live.findIndex(entry => entry.token === exported);
           if (index >= 0) live.splice(index, 1);
           // A failed reload closes the newest activation: the one still serving is current again, and its declaration
@@ -354,14 +360,14 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
 }
 
 /**
- * Drops the interval indexes (#902) that no live activation declares: a changed or removed `intervals` would otherwise
- * leave an index every write keeps paying for. Housekeeping only: an index is never needed for a check to be correct,
- * so a lock another process holds just leaves the drop to the next activation.
+ * Drops the interval (#902) and unique (#953) indexes that no live activation declares: a changed or removed
+ * declaration would otherwise leave an index every write keeps paying for. Housekeeping only: an index is never needed
+ * for a check to be correct, so a lock another process holds just leaves the drop to the next activation.
  */
-function dropStaleIntervalIndexes(db: StoreDatabase, wanted: ReadonlySet<string>): void {
+function dropStaleIndexes(db: StoreDatabase, wanted: ReadonlySet<string>): void {
   try {
-    for (const { name } of db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND name GLOB 'store_intervals_*'"))
-      if (!wanted.has(name) && /^store_intervals_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
+    for (const { name } of db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND (name GLOB 'store_intervals_*' OR name GLOB 'store_unique_*')"))
+      if (!wanted.has(name) && /^store_(?:intervals|unique)_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
   } catch { /* Retried by the next activation. */ }
 }
 /** Records `collections`' declarations as the ones served (the fence, #927) and switches their writes to check it. */
@@ -436,11 +442,11 @@ function ifMatch(request: ExtensionRequest): string | undefined {
   return value;
 }
 /** The answer to a write: its status, the record with its ETag (a create adds `Location`), and whether it was replayed. */
-function written(outcome: Written, location?: string): HandlerResult {
+function written(outcome: Written, location?: string, extra: [string, string][] = []): HandlerResult {
   const replayed: [string, string][] = outcome.replayed ? [['idempotency-replayed', 'true']] : [];
   if (outcome.record === undefined) return { status: outcome.status, headers: [['cache-control', 'no-store'], ...replayed] };
   const record = outcome.record;
-  return json(outcome.status, view(record), [...(location === undefined ? [] : [['location', `${location}/${record.id as string}`] as [string, string]]), ...recordHeaders(record, outcome.may), ...replayed]);
+  return json(outcome.status, view(record), [...(location === undefined ? [] : [['location', `${location}/${record.id as string}`] as [string, string]]), ...recordHeaders(record, outcome.may), ...extra, ...replayed]);
 }
 /**
  * The answer to a transfer (#902): `{from, to?}`, the debited record and, when the caller may read it, the credited
@@ -485,7 +491,7 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
       return written(collection.transition(rest, transition.name, retryOf(request, retryKey(request, collection)), match, principal, actor, viewer));
     }
     if (rest === '') {
-      if (method === 'GET' || method === 'HEAD') return json(200, listView(collection.list(request.query, owner, viewer)));
+      if (method === 'GET' || method === 'HEAD') { const page = collection.list(request.query, owner, viewer); return json(200, { ...listView(page), ...allowMap(collection, page) }); }
       if (method === 'POST') {
         const key = retryKey(request, collection), body = bodyOf(request, collection);
         return written(collection.create(body, retryOf(request, key, body), principal, actor, viewer), request.mount);
@@ -509,11 +515,12 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
       return written(collection.transition(named[1]!, named[2]!, retryOf(request, retryKey(request, collection)), match, principal, actor, viewer));
     }
     if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
-    if (method === 'GET' || method === 'HEAD') return shownAnswer(collection.show(rest, owner, principal));
+    if (method === 'GET' || method === 'HEAD') { const shown = collection.show(rest, owner, principal); return shownAnswer(shown, view, etagOf, allowHeader(collection, shown.record)); }
     const match = ifMatch(request);
     if (method === 'PUT' || method === 'PATCH') {
       const key = retryKey(request, collection), body = bodyOf(request, collection);
-      return written(collection.update(rest, body, method === 'PUT', retryOf(request, key, body), match, owner, actor, viewer));
+      const outcome = collection.update(rest, body, method === 'PUT', retryOf(request, key, body), match, owner, actor, viewer);
+      return written(outcome, undefined, allowHeader(collection, outcome.record));
     }
     if (method === 'DELETE') return written(collection.remove(rest, retryOf(request, retryKey(request, collection)), match, owner, actor));
     return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, PUT, PATCH, DELETE'));

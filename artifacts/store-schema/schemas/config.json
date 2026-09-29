@@ -167,7 +167,7 @@
           "key": {
             "type": "string",
             "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
-            "description": "A required string property (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner."
+            "description": "A required string property (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner (use unique)."
           },
           "increments": {
             "type": "array",
@@ -529,6 +529,111 @@
                 }
               }
             }
+          },
+          "editable": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 8,
+            "propertyNames": {
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "uniqueItems": true,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "description": "The states in which PUT and PATCH may change a record, in the shape of a transition's from: each property must hold its value, or one of its listed values, for example {status: [draft]}. In any other state a PUT or PATCH (on HTTP, StoreExports or a host transaction) answers 409 record_locked and writes nothing, decided under the write lock. Each property must be in readOnlyProperties, so only a transition moves a record in or out. Transitions, increments and transfers are not affected."
+          },
+          "deletable": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 8,
+            "propertyNames": {
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "uniqueItems": true,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "description": "The states in which a record may be deleted, in the same shape as editable, for example {status: [draft, rejected]}; in any other a DELETE (or a host transaction's remove) answers 409 record_locked. Each property must be in readOnlyProperties."
+          },
+          "unique": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            },
+            "description": "String properties (maxLength at most 128, no default, not readOnly, not the key, not set by a transition) that no two records hold alike, across every owner on an owned collection: a create or update that would duplicate one answers 409 value_taken, checked under the write lock through an index. An absent value claims nothing. The 409 tells the caller the value is in use by someone, so declare it only for a public handle, never an email or anything private."
           }
         }
       },
