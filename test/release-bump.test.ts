@@ -35,6 +35,9 @@ async function fixture(version = '1.0.0'): Promise<string> {
     '.claude-plugin/marketplace.json': json({ name: 'urlcode', metadata: { version } }),
     'README.md': `Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: ${version}.\n<!-- urlcode-current-version:end -->\n`,
     'docs/GUIDE.md': 'No version here.\n',
+    'schemas/urlcode.schema.json': json({ description: `Matching rules in https://github.com/jimhoyd-com/urlcode/blob/v${version}/docs/ROUTING.md.` }),
+    'examples/site/urlcode.yaml': `# See https://github.com/jimhoyd-com/urlcode/blob/v${version}/docs/SITE.md#robots.\nroutes: {}\n`,
+    'test/fixture.json': json({ historical: 'https://github.com/jimhoyd-com/urlcode/blob/v0.1.0/docs/X.md' }),
     'packages/audit/CHANGELOG.md': `## ${version}\n`,
   };
   const manifests = ['packages/audit', 'packages/auth', 'artifacts/site'];
@@ -95,6 +98,10 @@ test('bump rewrites every version declaration and check accepts the result', () 
   assert.equal(await read(root, 'README.md'), 'Introduced in 0.1.0.\n\n<!-- urlcode-current-version:start -->\nCurrent: 1.1.0-alpha.1.\n<!-- urlcode-current-version:end -->\n');
   assert.equal(await read(root, 'packages/audit/CHANGELOG.md'), '## 1.0.0\n');
   assert(!changed.includes('docs/GUIDE.md'));
+  // Pinned links in non-Markdown release text move with the version (#948); this repository's tests are not release text.
+  assert.equal((await readJson(root, 'schemas/urlcode.schema.json')).description, 'Matching rules in https://github.com/jimhoyd-com/urlcode/blob/v1.1.0-alpha.1/docs/ROUTING.md.');
+  assert.equal(await read(root, 'examples/site/urlcode.yaml'), '# See https://github.com/jimhoyd-com/urlcode/blob/v1.1.0-alpha.1/docs/SITE.md#robots.\nroutes: {}\n');
+  assert(!changed.includes('test/fixture.json'));
 }));
 
 test('peers on core and sibling add-ons become exact, siblings optional, other peers untouched', () => withFixture(async root => {
@@ -134,6 +141,7 @@ const drifts: [string, (root: string) => Promise<void>, RegExp][] = [
   ['the plugin manifest', root => edit(root, '.claude-plugin/marketplace.json', text => text.replace('1.0.0', '0.9.0')), /marketplace\.json is not 1\.0\.0/],
   ['a current version outside its markers', root => edit(root, 'docs/GUIDE.md', () => 'Install 1.0.0.\n'), /GUIDE\.md: 1\.0\.0 appears outside a current-version block/],
   ['a stale marker block', root => edit(root, 'README.md', text => text.replace('Current: 1.0.0', 'Current: 0.9.0')), /README\.md: a current-version block does not name 1\.0\.0/],
+  ['a stale pinned link in a schema', root => edit(root, 'schemas/urlcode.schema.json', text => text.replace('blob/v1.0.0/', 'blob/v0.9.0/')), /schemas\/urlcode\.schema\.json links this repository at v0\.9\.0; a pinned link names the current version 1\.0\.0/],
   ['unbalanced markers', root => edit(root, 'README.md', text => text.replace('<!-- urlcode-current-version:end -->', '')), /markers are unbalanced/],
 ];
 for (const [name, drift, message] of drifts) {
