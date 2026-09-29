@@ -172,6 +172,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@hey-api/openapi-ts": "0.99.0",
     "@modelcontextprotocol/client": "2.1.0",
     "@types/mime-types": "3.0.1",
     "@types/node": "26.6.2",
@@ -193,5 +194,10 @@
   "homepage": "https://github.com/jimhoyd-com/urlcode#readme",
   "bugs": {
     "url": "https://github.com/jimhoyd-com/urlcode/issues"
+  },
+  "overrides": {
+    "@hey-api/json-schema-ref-parser": {
+      "js-yaml": "4.3.2"
+    }
   }
 }

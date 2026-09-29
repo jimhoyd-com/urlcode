@@ -320,7 +320,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | `stream: true` on a trusted `function` route (self-hosted only): the Response body is sent as it is produced, bounded by operator stream limits | Streaming from a `sandbox: true` route, on AWS/Cloudflare/static, WebSocket, or a route-level stream limit |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
-| Parameter validation, JSON body syntax checks and `request.body.<METHOD>.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP](HTTP.md#body-schema-and-input-patterns)) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, `date`, `time`, `date-time`, `email`, `uri`, `hostname`, `ipv4` and `ipv6`, OpenAPI documents or export |
+| Parameter validation, JSON body syntax checks and `request.body.<METHOD>.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP](HTTP.md#body-schema-and-input-patterns)) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, `date`, `time`, `date-time`, `email`, `uri`, `hostname`, `ipv4` and `ipv6`, OpenAPI documents as a body schema, response schemas (the reverse direction exists: `urlcode openapi` describes the project as OpenAPI 3.1) |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
 | File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store](STORE.md)) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
@@ -630,7 +630,10 @@ The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and previ
 without guest execution, environment reads or writes. Run `urlcode explain /route`
 to check effective methods, policies and cache outcome, and `urlcode manifest`
 for the generated route, capability and requirement summary, instead of
-inferring either from the YAML. MCP roots are selected by
+inferring either from the YAML. `urlcode openapi` (MCP `get_openapi`) gives a
+client-facing OpenAPI 3.1 description of the same operations; a function's
+answer is handler-defined there, so do not add a response schema to it by hand
+([OpenAPI export](TOOLING.md#openapi-export)). MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe and scaffold tools, and runner
 tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
