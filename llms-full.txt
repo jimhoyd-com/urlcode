@@ -394,6 +394,92 @@ These are the facts that keep generated projects valid. The full matrix is in
 - **Report evidence, not hope.** The commands above are the evidence. Local
   tests are not deployment, soak or independent security review.
 
+### Ownership
+
+The [#841](https://github.com/jimhoyd-com/urlcode/issues/841) redesign replaced
+owned subsystems with maintained libraries: Better Auth for accounts, SQLite for
+the store, the official MCP SDK, Ajv for body schemas, and the application's own
+frontend in place of the UI kit and forms. This section records the result as
+measured, including what was added, not as a target.
+
+**Commits.** The baseline is `a996f0d`, the commit audited in #841. The result
+is `2f94bfab`, the main commit after
+[#883](https://github.com/jimhoyd-com/urlcode/issues/883) slice 6. Between them
+are 36 commits; `git diff --shortstat` over the whole repository reports 725
+files changed, 21,249 insertions and 59,454 deletions.
+
+**Method.** Each count is physical lines (`wc -l`, comments and blank lines
+included) of files tracked at that commit:
+
+- *Source* is `packages/<name>/src/**/*.ts`.
+- *Tests* is `packages/<name>/test/**`. Core has no package test directory, so
+  its row counts the root `test/**`. That includes fixtures and the packed
+  add-on and proof integrations.
+- *Package docs* is the package's top-level `*.md` files plus `llms.txt`.
+- *Dependencies* are `package-lock.json` entries under `node_modules/`,
+  excluding workspace links, split by the lockfile's `dev` flag.
+- *Exports* are the symbols (values and types) of every `@jimhoyd/urlcode`
+  subpath entry in `package.json#exports`, resolved with the TypeScript
+  checker. The value count of `.` matches `Object.keys()` of the built
+  `dist/index.js`.
+- *MCP tools* come from `mcpToolInventory`. *CLI commands* are the top-level
+  commands in `urlcode --help`.
+
+| Package | Source before | Source after | Tests before | Tests after | Package docs before | Package docs after |
+|---|---:|---:|---:|---:|---:|---:|
+| core (`@jimhoyd/urlcode`) | 18,136 | 20,431 | 18,529 | 23,296 | 19 | 19 |
+| auth | 17,336 | 249 | 7,369 | 127 | 1,644 | 227 |
+| store | 1,502 | 2,393 | 2,052 | 3,526 | 412 | 515 |
+| audit | 890 | 891 | 830 | 827 | 386 | 384 |
+| mcp | 1,058 | 557 | 1,140 | 1,004 | 859 | 720 |
+| admin (deleted) | 1,305 | — | 1,174 | — | 717 | — |
+| ui (deleted) | 2,495 | — | 2,005 | — | 1,062 | — |
+| forms (deleted) | 589 | — | 1,237 | — | 813 | — |
+| form-records (deleted) | 443 | — | 805 | — | 410 | — |
+| mail (deleted) | 714 | — | 693 | — | 318 | — |
+| abuse (deleted) | 588 | — | 654 | — | 296 | — |
+| **Total** | **45,056** | **24,521** | **36,488** | **28,780** | **6,936** | **1,865** |
+
+Owned source fell 45.6%, to 24,521 lines. That is above the 12,100–19,000
+range #841 estimated. The estimate expected core to shrink to 8,000–11,000
+lines, but core grew by 2,295 lines: its deletions were small, and most of the
+additions below landed in core.
+
+| Measure | Before | After |
+|---|---:|---:|
+| Packages in `packages/` | 11 | 5 |
+| npm workspaces (packages plus `artifacts/store-schema`) | 12 | 6 |
+| Lockfile entries, installed | 235 | 189 |
+| Lockfile entries, not dev-only | 48 | 42 |
+| Lockfile entries, dev-only | 187 | 147 |
+| Direct runtime dependencies: core / auth / mcp | 6 / 5 / 0 | 7 / 1 / 1 |
+| `@jimhoyd/urlcode` exported symbols, all 15 entries (values + types) | 423 (180 + 243) | 431 (184 + 247) |
+| of which `.` / `./extensions` | 190 / 81 | 200 / 70 |
+| Authoring MCP tools (read + `--host-file` + `--allow-authoring`) | 43 (35 + 1 + 7) | 40 (32 + 1 + 7) |
+| `urlcode` CLI commands | 38 | 39 |
+| Package CLIs (`urlcode-*` bins) | 4 | 3 |
+| `docs/*.md` lines (pages) | 16,484 (81) | 17,122 (79) |
+| `recipes/` lines (files) | 4,733 (111) | 3,365 (99) |
+
+The baseline's read list included 6 deprecated aliases, so the canonical read
+list grew from 29 to 32. The application `mcp` extension ships no tools of its
+own before or after, because every tool is project-declared.
+
+What was added over the same span:
+
+| Addition | Owned source | Owned tests | Library it builds on |
+|---|---:|---:|---|
+| Better Auth adapter (all of `packages/auth/src`) | 249 | 127 | `better-auth` (23 installed lockfile entries) |
+| SQLite store, transactions, membership, backup (store source, net of the deleted screens) | +891 | +1,474 | `node:sqlite` |
+| OpenAPI 3.1 export (`openapi.ts`) | 313 | 415, plus a 1,411-line vendored official schema | `@hey-api/openapi-ts` (dev, generated-client check) |
+| Body schema profile and formats (`body-validation.ts`, `body-formats.ts`; `body-schema.ts` −118) | 423 net | 364 | Ajv |
+| Artifact inspection and staging (`artifact-inspect.ts`, `source-stage.ts`, plus `addon-manifest.ts`, `addon-install.ts` and `extensions-cli.ts` growth) | 1,349 | 712 | `yaml` |
+| Embedding in another host (`embed.ts`, `host-request.ts`) | 243 | 214 | — |
+| Proofs (`proofs/`) | 1,607 lines of application, operator and client files | 1,005 in three integrations | Better Auth, Auth.js, zod, Hono, esbuild |
+
+The MCP SDK swap removed 501 lines from `packages/mcp` and moved core's
+authoring server onto `@modelcontextprotocol/server`.
+
 ### Where to read next
 
 | Need | Read |
