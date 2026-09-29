@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { ConfigError, assert, extensionError } from './errors.ts';
 import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
 import { contractProblem } from './addon-manifest.ts';
-import { hermeticDataKey, hostRevisionPin, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
+import { hermeticConfirmationKey, hermeticDataKey, hostRevisionPin, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
 /**
@@ -49,13 +49,15 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   // Checked again here, not only in defineExtension: a definition made by another copy of core, or shaped by hand,
   // never passed this core's defineExtension (#844).
   for (const { definition } of entries) { const problem = contractProblem(definition.contract, `Extension ${definition.name}`); if (problem) throw new ConfigError(problem); }
-  // A site with no extensions has nothing to pin.
-  if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
-  const projectSha256 = hostRevisionPin();
   // A hermetic run's fresh data directory (RIM-EXT-HERMETIC-001), set only while loadOperatorHost imports the
   // host file for one; otherwise the site's own data directory.
   const hermeticData = (globalThis as Record<symbol, unknown>)[hermeticDataKey];
   const hermetic = typeof hermeticData === 'string', data = hermetic ? hermeticData : join(site, 'data');
+  // The confirmation a hermetic load checks (#976): every host() below was given this directory.
+  const confirmed = <T extends OperatorHost>(host: T): T => hermetic ? Object.assign(host, { [hermeticConfirmationKey]: data }) : host;
+  // A site with no extensions has nothing to pin.
+  if (!entries.length) return confirmed({ extensions: [], ...(plugins ? { plugins } : {}) });
+  const projectSha256 = hostRevisionPin();
   if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError(`The extension host needs the reviewed project revision: ${revisionPinGuidance}`, { code: 'revision-pin-required' });
   const definitions = entries.map(entry => entry.definition);
   // An installed `uses` extension orders like a requirement; an absent one is no edge at all.
@@ -94,5 +96,5 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
       exported.set(name, result.exports);
     }
   } catch (error) { await close().catch(() => undefined); throw error; }
-  return { extensions: hosted.map(({ result }) => result.registration), ...(plugins ? { plugins } : {}), close };
+  return confirmed({ extensions: hosted.map(({ result }) => result.registration), ...(plugins ? { plugins } : {}), close });
 }

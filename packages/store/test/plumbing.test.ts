@@ -27,7 +27,7 @@ function hostFile(database: string, extension?: string): string {
   return `import { composeHost } from ${JSON.stringify(hostModule)};
 import store from ${JSON.stringify(storeModule)};
 ${extension === undefined ? '' : `import counterexample from ${JSON.stringify(pathToFileURL(extension).href)};\n`}const schema = { type: 'object', properties: {}, additionalProperties: false };
-const standIn = { definition: { name: 'auth', contract: 1, targets: ['node'], schema, policySchema: schema, providesPrincipal: true,
+const standIn = { definition: { name: 'auth', contract: 2, targets: ['node'], schema, policySchema: schema, providesPrincipal: true,
   host({ projectSha256 }) {
     return { registration: { name: 'auth', version: '1', projectSha256, targets: ['node'], schema, policySchema: schema, providesPrincipal: true,
       activate() {

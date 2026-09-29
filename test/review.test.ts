@@ -116,7 +116,7 @@ test('the session hint names the declared principal provider, not the extension 
   const site=await mkdtemp(join(tmpdir(),'urlcode-review-principal-'));t.after(()=>rm(site,{recursive:true,force:true}));
   const app=join(site,'app');await mkdir(join(app,'functions'),{recursive:true});
   const directory=join(site,'node_modules','@example','urlcode-authjs');await mkdir(directory,{recursive:true});
-  await writeHostFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name:'authjs',description:'Auth.js stand-in',contract:1,requires:[],targets:['node'],providesPrincipal:true,schema:{type:'object'}}));
+  await writeHostFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name:'authjs',description:'Auth.js stand-in',contract:2,requires:[],targets:['node'],providesPrincipal:true,schema:{type:'object'}}));
   await writeHostFile(join(site,'package.json'),JSON.stringify({private:true,dependencies:{'@example/urlcode-authjs':'1.0.0'}}));
   await writeHostFile(join(app,'functions','f.mjs'),cookieSource);
   await writeHostFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{authjs:{version:'1',config:{}}},routes:{'/login':{methods:['POST'],function:{source:'functions/f.mjs'}}}}));

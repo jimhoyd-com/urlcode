@@ -75,7 +75,7 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   // root install's prepare step builds accepts it before the package is ever built.
   const descriptor = JSON.parse(await readFile(join(dir, 'urlcode.json'), 'utf8')) as Record<string, unknown>;
   const { definition } = (await import(pathToFileURL(join(dir, 'src', 'extension.ts')).href) as { default: { definition: Record<string, unknown> } }).default;
-  assert.deepEqual(descriptor, { kind: 'extension', name, description: 'A generated test extension.', contract: 1, requires: [], targets: ['node', 'aws', 'vercel'], schema: definition.schema, authoring: definition.authoring, agent: definition.agent });
+  assert.deepEqual(descriptor, { kind: 'extension', name, description: 'A generated test extension.', contract: 2, requires: [], targets: ['node', 'aws', 'vercel'], schema: definition.schema, authoring: definition.authoring, agent: definition.agent });
   assert.deepEqual(missingDescriptions(descriptor as unknown as AddonDescriptor), [], 'every generated schema property is described (#822)');
   assert.equal(JSON.stringify(descriptor.schema), JSON.stringify(definition.schema), 'key order matches, so build:addons --check sees no drift');
   assert.equal(JSON.stringify(descriptor.authoring), JSON.stringify(definition.authoring));

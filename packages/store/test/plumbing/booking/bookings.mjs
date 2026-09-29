@@ -122,7 +122,7 @@ function serve(tx, request, principal) {
 export default defineExtension({
   name: 'bookings',
   description: 'Room bookings served through a host transaction (a measurement fixture)',
-  contract: 1,
+  contract: 2,
   targets: ['node'],
   requires: ['store'],
   schema: { type: 'object', additionalProperties: false },

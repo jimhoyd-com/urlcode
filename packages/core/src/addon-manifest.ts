@@ -99,8 +99,12 @@ export const addonNamePattern = /^[a-z][a-z0-9-]{0,63}$/;
  * never with core's own semver: a release that only adds to the contract keeps it. Every descriptor and every
  * `defineExtension` definition declares the contract it was built for as `contract`, and core refuses any other
  * value by name at `extensions add`/`artifacts add`, `list --strict`, static `validate` and activation.
+ *
+ * Contract 2 (#976) added the hermetic obligation (RIM-EXT-HERMETIC-001): a `host()` given `hermetic: true` keeps
+ * every file under `context.data`. An extension built for contract 1 predates it, so it is refused rather than
+ * trusted to honour it, and only a contract-2 `composeHost` confirms the data directory a hermetic load checks.
  */
-export const extensionContract = 1;
+export const extensionContract = 2;
 /** Why a package's declared `contract` is missing or not this core's, naming both; undefined when they agree. */
 export function contractProblem(declared: unknown, who: string): string | undefined {
   if (!isContractVersion(declared)) return `${who} must declare contract, the URLCode extension contract it is built for (this core implements ${extensionContract})`;

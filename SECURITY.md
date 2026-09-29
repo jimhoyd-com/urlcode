@@ -78,6 +78,20 @@ MCP `run_tests` tool does execute it (trusted functions, middleware and
 extensions, with full Node access), so it exists only when the operator starts
 `urlcode mcp --allow-authoring`.
 
+A hermetic run (`test`, `audit`, `benchmark`, MCP `run_tests`, and a
+`--local-review` `validate` or `routes`) hands extensions a fresh temporary
+data directory instead of the site's `data/`. Core cannot see where trusted
+extension code writes, so it refuses what could not have agreed to stay there:
+an extension built for extension contract 1, and a host whose registrations
+`composeHost` did not confirm it composed on that directory (#976). That catches
+version skew and hand-made registrations, not a host file written to evade it.
+The directories hold seeded test accounts (hashed passwords) and fixture data.
+They are mode 0700, named `urlcode-hermetic-<pid>-*` and `urlcode-data-<pid>-*`,
+removed on close, SIGINT, SIGTERM and an unhandled rejection, and swept by a
+later run once their process is gone and they are an hour old (#977). A
+SIGKILL leaves them until that sweep. See
+[test data and seeds][docs/READINESS.md#test-data-and-seeds].
+
 Add-on packages are trusted by pin, not by review. A released add-on is pinned
 by the sha512 in core's own `addons.json`; an independent package the operator
 adds by npm spec or tarball is pinned by its `package-lock.json` sha512. Every
@@ -132,6 +146,7 @@ this page and in [the sandbox review][docs/SANDBOX-REVIEW.md].
 [docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
 [docs/EXTENSIONS.md#the-installed-file-record]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-installed-file-record
 [docs/OPERATIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md
+[docs/READINESS.md#test-data-and-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
 [docs/OPERATIONS.md#host-admission-on-a-loopback-bind]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#host-admission-on-a-loopback-bind
 [docs/SANDBOX-REVIEW.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SANDBOX-REVIEW.md
 <!-- urlcode-current-version:end -->

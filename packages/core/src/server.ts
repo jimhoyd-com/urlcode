@@ -2,10 +2,10 @@ import http from 'node:http';
 import type { IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
-import { readdir, lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir, lstat, mkdir } from 'node:fs/promises';
 import { join, relative as relativePath, resolve as resolvePath, sep as pathSep } from 'node:path';
 import { siteOrigins } from './site-origins.ts';
+import { createRunDirectory, removeRunDirectory } from './temp-dirs.ts';
 import { createRuntime } from './runtime.ts';
 import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.ts';
 import { createJsonLogger } from './logging.ts';
@@ -150,13 +150,13 @@ export async function startServer(options: ServerOptions = {}): Promise<Server> 
   assert(dataDir === undefined || !isolateData, 'Use dataDir or isolateData, not both');
   assert(dataDir === undefined || (typeof dataDir === 'string' && dataDir !== '' && !dataDir.includes('\0')), 'Data directory must be a path');
   const owned = dataDir === undefined;
-  const dir = owned ? await mkdtemp(join(tmpdir(), 'urlcode-data-')) : resolvePath(dataDir);
+  const dir = owned ? await createRunDirectory('data') : resolvePath(dataDir);
   try {
     if (!owned) await mkdir(dir, { recursive: true });
     const app = await startServerCore({ ...rest, environment: { ...(rest.environment ?? process.env), URLCODE_DATA_DIR: dir }, grantDataDir: true });
     if (!owned) return app;
-    return { ...app, close: async () => { try { await app.close(); } finally { await rm(dir, { recursive: true, force: true }); } } };
-  } catch (error) { if (owned) await rm(dir, { recursive: true, force: true }); throw error; }
+    return { ...app, close: async () => { try { await app.close(); } finally { await removeRunDirectory(dir); } } };
+  } catch (error) { if (owned) await removeRunDirectory(dir); throw error; }
 }
 async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),

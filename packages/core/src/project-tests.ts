@@ -1,5 +1,4 @@
-import { lstat, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Agent } from 'node:http';
 import { startServer } from './server.ts';
@@ -12,6 +11,7 @@ import { safeFile } from './config.ts';
 import { isRecord } from './object-guards.ts';
 import { seedFile } from './extensions.ts';
 import { SignalRecorder } from './signal-recorder.ts';
+import { createRunDirectory, removeRunDirectory } from './temp-dirs.ts';
 
 export interface ProjectTestOptions { extensions?: ServerOptions['extensions']; plugins?: ServerOptions['plugins']; log?: LogFn | undefined; permissions?: ServerOptions['permissions']; origin?: string | undefined; aliasOrigins?: ServerOptions['aliasOrigins'] }
 export interface ProjectTestResult { total: number; failed: number }
@@ -47,8 +47,8 @@ export async function startRestartable(options: ServerOptions): Promise<Restarta
   const seed = await readSeed(options.project ?? '.');
   // A read-only filesystem (a locked-down container) has nowhere to put it: run without one instead of
   // failing every test run. A project that reads `URLCODE_DATA_DIR` then refuses to activate, as it would unset.
-  const dataDir = await mkdtemp(join(tmpdir(), 'urlcode-data-')).catch(() => undefined);
-  const cleanup = async (): Promise<void> => { if (dataDir !== undefined) await rm(dataDir, { recursive: true, force: true }); };
+  const dataDir = await createRunDirectory('data').catch(() => undefined);
+  const cleanup = async (): Promise<void> => { if (dataDir !== undefined) await removeRunDirectory(dataDir); };
   let current: Server | undefined;
   try { current = await startServer({ ...options, dataDir, seed }); } catch (error) { await cleanup(); throw error; }
   const running = (): Server => { if (!current) throw new Error('Server is not running'); return current; };

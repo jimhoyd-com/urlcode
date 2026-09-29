@@ -44,7 +44,7 @@ export default defineExtension<AuditHostOptions>({
   name: 'audit',
   targets: ['node'],
   description: 'Durable, bounded audit log other extensions record privileged actions into',
-  contract: 1,
+  contract: 2,
   schema: auditConfigSchema,
   authoring: auditAuthoring,
   agent: {

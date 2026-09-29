@@ -443,6 +443,24 @@ do. `dev`, `serve`, and `validate` and `routes` with the reviewed pin, use the
 site's own `data/`: the pinned `validate` checks what `serve` will use,
 including a missing migration or secret.
 
+Core enforces the handover, not the extension's goodwill (#976). An
+extension built for extension contract 1 predates this obligation and is
+refused before its `host()` runs, and a run with `--host-file` refuses a host
+whose extensions `composeHost` did not confirm it composed on that run's
+directory (`hermetic-host-unconfirmed`): one built by an older copy of core,
+or registrations written by hand. The run then replays no request.
+
+The run's temporary directories are named
+`urlcode-hermetic-<pid>-XXXXXX` and `urlcode-data-<pid>-XXXXXX` under the OS
+temporary directory (#977). They are removed when the run ends, when `test`,
+`audit`, `benchmark`, `validate` or `routes` is stopped by SIGINT or SIGTERM
+(exit 130 or 143), and when an unhandled rejection ends the process. The MCP
+server's runners send SIGTERM and wait 5 seconds before SIGKILL. A process
+killed outright cannot clean up, so the next run removes a directory another
+run left behind once it is at least an hour old, its process no longer exists,
+and `lstat` shows a real directory owned by you with mode 0700. It never
+follows a symbolic link.
+
 What fixtures cannot create over HTTP is declared in `tests/seed.json` beside
 `tests/requests.json`: an object keyed by extension name, handed to that
 extension when the run's runtime first starts (never again after a `restart`

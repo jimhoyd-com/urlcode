@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, realpath, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep, extname } from 'node:path';
+import { realpath, stat } from 'node:fs/promises';
+import { isAbsolute, relative, resolve, sep, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConfigError, asConfigError, assert, hostLoadError } from './errors.ts';
 import type { RuntimeOptions } from './runtime.ts';
+import { createRunDirectory, removeRunDirectory } from './temp-dirs.ts';
+import { extensionContract } from './addon-manifest.ts';
 
 /** Explicitly loaded operator code. Never discovered in application directories. */
 export interface OperatorHost {
@@ -31,6 +32,15 @@ export const inspectionHostKey = Symbol.for('urlcode.host.inspection');
  */
 export const hermeticDataKey = Symbol.for('urlcode.host.hermeticData');
 /**
+ * The property a contract-2 `composeHost` sets on the host it returns: the data directory it composed every extension
+ * on (#976). A hermetic load refuses a host with registrations unless it names that load's own directory, so a host
+ * built by an older copy of core, or registrations shaped by hand without `composeHost`, never run a hermetic check
+ * against the site's live data. A `Symbol.for` key, so `Object.keys` (the host's settings) never lists it and a host
+ * file that spreads the composed host into its own export keeps it. It detects skew, not a hostile host file: host.mjs
+ * is trusted operator code.
+ */
+export const hermeticConfirmationKey = Symbol.for('urlcode.host.hermeticConfirmation');
+/**
  * The revision an unpinned inspection composes its registrations with: the SHA-256 of a fixed label, never a project's
  * revision, so every activation refuses it (`prepareExtensions` names it before any other check). Reading
  * registrations never needs the pin; activating or serving always does. Every copy of core derives the same value.
@@ -53,15 +63,18 @@ export function hostRevisionPin(): string {
 function assertRevisionsAgree(policy: string, env: string | undefined): void {
   if (env !== undefined && env !== '' && env !== policy) throw new ConfigError(`PROJECT_SHA256 (${env}) differs from the --policy revision (${policy}); with --policy the host is pinned to the policy's projectSha256, so unset PROJECT_SHA256 or set it to the same reviewed revision`, { code: 'revision-pin-mismatch' });
 }
+const hermeticUnconfirmed = `A hermetic run (test, audit, benchmark, MCP run_tests, or validate and routes with --local-review) needs the host file's extensions composed on its fresh temporary data directory, and this host did not confirm that: build host.mjs with composeHost from this core (@jimhoyd/urlcode/extensions) and extensions built for URLCode extension contract ${extensionContract}, which keep every file under context.data (wrap a hand-written registration in a defineExtension definition). No request was replayed; an older composeHost may already have opened files wherever its extensions keep them`;
 interface LoadOptions {
   /** The `projectSha256` of an operator policy the CLI already loaded and validated with `--policy`. */
   revision?: string | undefined;
   /** A read-only command: without a pin the host composes unpinned registrations that cannot activate (#910). */
   inspection?: boolean | undefined;
   /**
-   * A run that replays requests (`test`, `audit`, `benchmark`, MCP `run_tests`): the host is composed on a fresh,
-   * empty temporary data directory (RIM-EXT-HERMETIC-001), which the returned host's `close()` removes. Each hermetic
-   * load imports the host file anew, so a second run in the same process composes its own extensions.
+   * A run that replays requests (`test`, `audit`, `benchmark`, MCP `run_tests`), or a local review (`validate` or
+   * `routes` with `--local-review` and no operator pin): the host is composed on a fresh, empty temporary data
+   * directory (RIM-EXT-HERMETIC-001), which the returned host's `close()` removes. Each hermetic load imports the host
+   * file anew, so a second run in the same process composes its own extensions, and refuses a host whose
+   * registrations `composeHost` did not confirm were composed on that directory (`hermetic-host-unconfirmed`, #976).
    */
   hermetic?: boolean | undefined;
 }
@@ -78,8 +91,8 @@ export async function loadOperatorHost(given: string | undefined, project: strin
   // Importing runs host.mjs, including composeHost and every extension's host() hook. Core's own refusals (and an
   // extension's, already named by composeHost) keep their message; anything else is reported as the host file's.
   if (revision !== undefined) assertRevisionsAgree(revision, process.env.PROJECT_SHA256);
-  const data = hermetic === true ? await realpath(await mkdtemp(join(tmpdir(), 'urlcode-hermetic-'))) : undefined;
-  const removeData = async (): Promise<void> => { if (data !== undefined) await rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); };
+  const data = hermetic === true ? await createRunDirectory('hermetic') : undefined;
+  const removeData = async (): Promise<void> => { if (data !== undefined) await removeRunDirectory(data); };
   const slot = globalThis as Record<symbol, unknown>, previous = slot[operatorRevisionKey], previousInspection = slot[inspectionHostKey], previousData = slot[hermeticDataKey];
   if (revision !== undefined) slot[operatorRevisionKey] = revision;
   if (inspection === true) slot[inspectionHostKey] = true;
@@ -102,6 +115,12 @@ export async function loadOperatorHost(given: string | undefined, project: strin
     assert(result.plugins === undefined || Array.isArray(result.plugins), 'Host plugins must be an array');
     assert(result.close === undefined || typeof result.close === 'function', 'Host close must be a function');
     if (data === undefined) return result;
+    // Only this core's composeHost confirms the directory it gave every host() (#976): an older copy's, or a hand-made
+    // registration list, would have kept its files wherever it always did, which may be the site's live data.
+    if (result.extensions?.length && (host as Record<symbol, unknown>)[hermeticConfirmationKey] !== data) {
+      try { await result.close?.(); } catch { /* the refusal below is the error to report */ }
+      throw new ConfigError(hermeticUnconfirmed, { code: 'hermetic-host-unconfirmed' });
+    }
     // The run's data goes with the host: its extensions release their files first.
     return { ...result, async close() { try { await result.close?.(); } finally { await removeData(); } } };
   } catch (error) { await removeData().catch(() => undefined); throw error; }

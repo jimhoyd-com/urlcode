@@ -171,7 +171,7 @@ test('a route gated by any principal-providing extension gets 401/403 and its se
   const app=join(site,'app');await mkdir(app);
   for(const [name,provides] of [['authjs',true],['audit-trail',false]] as const){
     const directory=join(site,'node_modules','@example',`urlcode-${name}`);await mkdir(directory,{recursive:true});
-    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,contract:1,requires:[],targets:['node'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
+    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,contract:2,requires:[],targets:['node'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
   }
   await writeFile(join(site,'package.json'),JSON.stringify({private:true,dependencies:{'@example/urlcode-authjs':'1.0.0','@example/urlcode-audit-trail':'1.0.0'}}));
   await writeFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{authjs:{version:'1',config:{}},'audit-trail':{version:'1',config:{}}},routes:{

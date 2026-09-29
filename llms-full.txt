@@ -5651,8 +5651,9 @@ current activation that way.
 
 #### Hermetic runs and test seeds
 
-`urlcode test`, `urlcode audit`, `urlcode benchmark` and the MCP server's
-`run_tests` never touch the site's live data (`RIM-EXT-HERMETIC-001`). Each run
+`urlcode test`, `urlcode audit`, `urlcode benchmark`, the MCP server's
+`run_tests`, and `validate` and `routes` with `--local-review` and no operator
+pin never touch the site's live data (`RIM-EXT-HERMETIC-001`). Each run
 imports `host.mjs` anew with a fresh, empty temporary directory set, and
 `composeHost` hands every `host(ctx, options)` two more fields:
 
@@ -5660,7 +5661,8 @@ imports `host.mjs` anew with a fresh, empty temporary directory set, and
 interface HostContext {
   // <site>/data, or the run's temporary directory (removed when the host closes).
   data: string;
-  // true for test, audit, benchmark and MCP run_tests.
+  // true for test, audit, benchmark, MCP run_tests and a --local-review
+  // validate or routes.
   hermetic: boolean;
   // projectSha256, site, get as before
 }
@@ -5690,6 +5692,26 @@ entry naming an extension that is not registered, or one that declares no
 data even when a caller hands the harness registrations of its own. The
 activation writes the seed (accounts, memberships) before it returns. The
 first-party entries are in [test data and seeds](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds).
+
+This obligation is part of [extension contract](#the-extension-contract) 2
+(#976). Core cannot watch where an extension writes, so it refuses what could
+not have made the promise:
+
+- An extension built for contract 1 is refused, as any other contract is,
+  before its `host()` runs.
+- A hermetic load refuses a host with registrations unless `composeHost`
+  confirmed it gave every `host()` that run's directory
+  (`hermetic-host-unconfirmed`). A host built by an older copy of core, or
+  registrations written by hand without `composeHost`, cannot confirm it.
+  `composeHost` records the confirmation under a `Symbol.for` key, so a
+  `host.mjs` that spreads the composed host into its own export keeps it. The
+  check catches version skew, not a hostile host file: `host.mjs` is trusted
+  operator code.
+
+The run's directory is `urlcode-hermetic-<pid>-XXXXXX` under the OS temporary
+directory. It is removed on close, on SIGINT or SIGTERM, and on an unhandled
+rejection, and a later run sweeps one a killed process left behind
+([test data and seeds](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds)).
 
 #### Site origins and same-origin checks
 
@@ -5863,7 +5885,7 @@ const authoring = {
 };
 export default defineExtension({
   name: 'greeting', description: 'A minimal external greeting extension.',
-  contract: 1, // the URLCode extension contract it is built for
+  contract: 2, // the URLCode extension contract it is built for
   targets: ['node'],
   schema, authoring,
   host({ projectSha256 }) {
@@ -6070,8 +6092,8 @@ refuses any package whose `contract` differs from its own, naming both:
 
 ```text
 Refusing @example/urlcode-beyond: @example/urlcode-beyond@3.0.0 is built for
-URLCode extension contract 2, but this core implements extension contract 1;
-install a version of it built for contract 1, or a core that implements contract 2
+URLCode extension contract 3, but this core implements extension contract 2;
+install a version of it built for contract 2, or a core that implements contract 3
 ```
 
 The contract is checked at every point where a package enters the site or runs:
@@ -6085,6 +6107,13 @@ The contract is checked at every point where a package enters the site or runs:
   value. `composeHost` checks it again before any `host()` runs, so a
   definition made by another copy of core, or shaped by hand, cannot skip the
   check.
+
+Contract 2 (#976) added the [hermetic obligation](#hermetic-runs-and-test-seeds):
+a `host()` given `hermetic: true` keeps every file under `ctx.data`. A contract-1
+extension predates it, so it is refused rather than trusted with a run that
+must not touch the site's data. To move one to contract 2, make its `host()`
+keep every file under `ctx.data` when `ctx.hermetic` is true, then set
+`contract: 2`.
 
 For first-party packages, `npm run build:addons` writes `contract` into each
 extension's `urlcode.json` from its definition, and refuses to build one that
@@ -6500,7 +6529,7 @@ import { defineExtension } from '@jimhoyd/urlcode/extensions';
 export default defineExtension<MyHostOptions>({
   name: 'store',
   description: 'One line shown by `urlcode extensions available`',
-  contract: 1,                // the URLCode extension contract it is built for
+  contract: 2,                // the URLCode extension contract it is built for
   requires: [],               // extension names that must be installed and declared
   uses: [],                   // optional: extension names read only when installed
   schema,                     // JSON Schema of extensions.<name>.config
@@ -6565,7 +6594,10 @@ revision or registers a schema that differs from the definition.
 A `host()` hook reads the pin as `context.projectSha256` and registers it
 unchanged, so the generated `host.mjs` needs no edit and existing host files
 keep working. A hand-written host file that builds registrations without
-`composeHost` still reads `PROJECT_SHA256` itself. The pin travels through a
+`composeHost` still reads `PROJECT_SHA256` itself. It can serve, but a
+[hermetic run](#hermetic-runs-and-test-seeds) refuses it
+(`hermetic-host-unconfirmed`): wrap each registration in a `defineExtension`
+definition and compose them. The pin travels through a
 process-global `Symbol.for('urlcode.host.operatorRevision')` slot that is set
 only while the host file is imported, so a host file that imports another copy
 of core still sees it.
