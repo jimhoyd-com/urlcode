@@ -10,9 +10,14 @@
   paths only, which is why the allowlist is enforced here.
 - **Throttling cannot be bypassed by headers.** Better Auth's limiter is always
   on and reads the client address only from a header the mount overwrites with
-  the address URLCode admitted (see `--trusted-proxies`). It keeps its counters
-  in the auth database's `rateLimit` table, so every process serving that
-  database on one host shares one limit; each check is one atomic SQL update.
+  the address URLCode admitted (see `--trusted-proxies`); the `betterAuth`
+  option cannot turn it off or change that header. By default it keeps its
+  counters in the auth database's `rateLimit` table, so every process serving
+  that database on one host shares one limit; each check is one atomic SQL
+  update. The operator's `betterAuth.rateLimit` can replace its `storage`
+  (Better Auth's per-process `memory`, which gives each process its own
+  limit), `window`, `max` and `customRules` (which replaces the default
+  sign-in and sign-up rules rather than adding to them).
 - **Protected routes.** `auth: true` requires a session Better Auth verifies
   and refuses cross-origin unsafe methods. A database failure while verifying
   the session answers `503 auth_unavailable` with no detail, never a `401`;

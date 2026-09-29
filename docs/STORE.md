@@ -1873,9 +1873,13 @@ operator says made the change, not proof of it. Commands that change nothing
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   tables; the rows of a collection that is no longer declared stay untouched.
-  The one derived object is the partial index a declared
-  [`intervals`](#non-overlapping-intervals) reads through: activation builds
-  it, and drops an interval index no live activation declares any more.
+  The derived objects are partial indexes on `store_records`, built from the
+  declaration: for [`intervals`](#non-overlapping-intervals)
+  (`store_intervals_*`), for each [`unique`](#a-directory-by-a-unique-handle)
+  property (`store_unique_*`) and for the
+  [`sortable` and `filterable`](#sorting-and-filtering) properties
+  (`store_list_*`). Activation builds them, and drops any no live activation
+  declares any more.
 - The schema only moves forward. An empty file is initialized in one
   transaction; opening an up-to-date database changes nothing; a later release
   that changes the schema adds a step, and each step runs in its own
@@ -2090,8 +2094,9 @@ stay per process: a `throttle` quota across N processes allows up to N times
 the declared budget, each process fills its own cache, and each serves its
 own `/_urlcode/metrics`
 ([capacity](CAPACITY.md#several-serving-processes-on-one-host)). Better
-Auth's sign-in limit is the exception: it counts in `auth.sqlite`, so it is
-one budget across the processes.
+Auth's sign-in limit is the exception by default: it counts in `auth.sqlite`,
+so it is one budget across the processes, unless the operator chose
+per-process storage ([auth](../packages/auth/README.md#operator-options)).
 
 #### What the multi-process harness proves
 

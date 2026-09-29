@@ -145,13 +145,15 @@ auth({
 ```
 
 `BETTER_AUTH_SECRET` overrides the secret file. The extension always keeps
-Better Auth's rate limiter on (10 sign-in attempts per client address a
-minute), keyed by the client address URLCode admitted, and telemetry off; the
-`betterAuth` option cannot change either. The limiter counts in the auth
-database (`rateLimit.storage: 'database'`), so several server processes on one
-host serving the same `data/auth.sqlite` share one limit rather than each
-allowing 10; `betterAuth.rateLimit.storage` can choose Better Auth's
-per-process `memory` instead.
+Better Auth's rate limiter on, keyed by the client address URLCode admitted,
+and telemetry off; the `betterAuth` option cannot change either. By default
+the limiter allows 10 sign-in attempts per client address a minute and counts
+in the auth database (`rateLimit.storage: 'database'`), so several server
+processes on one host serving the same `data/auth.sqlite` share one limit
+rather than each allowing 10. `betterAuth.rateLimit` can replace `storage`
+(Better Auth's per-process `memory`), `window`, `max` and `customRules`; a
+`customRules` replaces the default sign-in and sign-up rules rather than adding
+to them.
 
 Several processes may open the database at once: a serving process,
 `urlcode-auth create-user` beside it, or more than one server behind a proxy on
@@ -165,14 +167,12 @@ serves, with or without the store. Activation (and `urlcode-auth migrate`,
 `create-user` and `find-user`) refuses a database directory on a network
 filesystem by its Linux `statfs` type, the list the store refuses (not checked
 on macOS or Windows). Each activation also keeps a lease row in `auth_servers`
-in `auth.sqlite` (hostname, Linux boot id, pid; renewed every 5 seconds) and is
-refused while a live peer runs on another host; processes and containers on one
-host are accepted ([several serving processes][store-several-processes]).
-Another host's row is judged by whether its heartbeat advances, never by
-comparing clocks: a row a crashed host left is deleted after 20 seconds of
-silence. A process that finds another host serving the database logs it and
-answers `503 auth_unavailable` to every auth request until that host is gone.
-The lease is checked once per request, before Better Auth runs.
+in `auth.sqlite` and is refused while a live peer runs on another host;
+processes and containers on one host are accepted. A process that finds another
+host serving the database logs it and answers `503 auth_unavailable` to every
+auth request until that host is gone. The lease is checked once per request,
+before Better Auth runs. How the lease judges a peer, and its timing, are in
+[several serving processes][store-several-processes].
 
 A storage failure answers `503 auth_unavailable`, never a false success or a
 false sign-out. Better Auth itself answers a sign-out whose session delete
