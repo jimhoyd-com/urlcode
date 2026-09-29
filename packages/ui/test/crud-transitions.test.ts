@@ -73,6 +73,43 @@ test('buttons appear only for transitions whose from values the record holds, on
     assert.deepEqual(rows(none.root).map(buttons), [[], [], []]);
 });
 
+// #873 item 2: the API says which transitions this viewer may run (a list's `may`, a write's Allow-Transitions), so
+// a non-member or the owner of a `by: others` record sees no button the store would refuse.
+test('with may, a button appears only for the transitions may names for that record, whatever its from values', async () => {
+    const items = [request('a', 'pending'), request('b', 'pending'), request('c', 'approved'), request('d', 'pending')];
+    const { root } = await boot(requests, [json({ items, total: 4, may: { a: ['withdraw'], b: [], c: ['withdraw'] }, etags: {} })]);
+    // a: may names one of two matching; b: may is empty; c: may is trusted over the from match; d: no entry, so the from match.
+    assert.deepEqual(rows(root).map(buttons), [['withdraw'], [], ['withdraw'], ['withdraw', 'mark_flagged']]);
+    const hostile = await boot(requests, [json({ items: [request('a', 'pending'), request('b', 'pending')], total: 2, may: { a: 'withdraw', b: [{ n: 'withdraw' }] } })]);
+    assert.deepEqual(rows(hostile.root).map(buttons), [['withdraw', 'mark_flagged'], []], 'a non-array entry falls back to from; an array names nothing it does not hold');
+    const nothing = await boot(requests, [json({ items: [request('a', 'pending')], total: 1, may: null })]);
+    assert.deepEqual(rows(nothing.root).map(buttons), [['withdraw', 'mark_flagged']], 'without may, the from match as before');
+});
+
+test('a write answer\'s Allow-Transitions replaces the row\'s may; a write without it falls back to from; a refresh reads may again', async () => {
+    const { root } = await boot(requests, [
+        json({ items: [request('a', 'pending'), request('b', 'pending')], total: 2, may: { a: ['withdraw'], b: [] } }),
+        json(request('a', 'pending', { title: 'renamed' }), 200, { 'allow-transitions': 'mark_flagged, withdraw' }),
+        json(request('n', 'pending'), 201, { 'allow-transitions': '' }),
+        json(request('a', 'pending'), 200),
+        json({ items: [request('a', 'pending')], total: 1, may: { a: [] } }),
+    ]);
+    assert.deepEqual(rows(root).map(buttons), [['withdraw'], []]);
+    editTitle(root, 'renamed');
+    await settle();
+    assert.deepEqual(buttons(rows(root)[0]!), ['withdraw', 'mark_flagged'], 'both named, in declaration order');
+    titleInput(root).value = 'new';
+    root.find(element => element.tagName === 'FORM').dispatch('submit');
+    await settle();
+    assert.deepEqual(buttons(rows(root)[2]!), [], 'an empty header offers nothing');
+    editTitle(root, 'again');
+    await settle();
+    assert.deepEqual(buttons(rows(root)[0]!), ['withdraw', 'mark_flagged'], 'no header: the from match');
+    root.button('Refresh').dispatch('click');
+    await settle();
+    assert.deepEqual(rows(root).map(buttons), [[]]);
+});
+
 test('a transition posts no body with the listed ETag as If-Match and a fresh Idempotency-Key, then shows the record it returns', async () => {
     const both: CrudCollection = { ...requests, transitions: [{ name: 'withdraw', from: { status: 'pending' } }, { name: 'approve', from: { status: 'pending' }, mount: '/api/approvals' }] };
     const { root, calls, headers } = await boot(both, [

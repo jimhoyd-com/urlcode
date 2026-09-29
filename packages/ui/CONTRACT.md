@@ -165,7 +165,8 @@ beside it and without changing the exports above:
   `transitionOnly` (shown read-only, never a control and never sent), and the
   collection may declare `transitions: [{name, from, mount?}]` (at most 16,
   checked by `crudTransitions`) and `idempotency`. Each transition is a button
-  on the rows holding its `from` values; the `crud` script posts it with no
+  on the rows the API's `may` (list) or `Allow-Transitions` (a write's answer)
+  names it for, else on the rows holding its `from` values; the `crud` script posts it with no
   body, `If-Match` from the list's `etags` map or its own last write, and a
   fresh `Idempotency-Key` when `idempotency` is set, and shows `409`, `403`
   and other refusals as page messages (`crudTransitionCopyKeys`). A screen

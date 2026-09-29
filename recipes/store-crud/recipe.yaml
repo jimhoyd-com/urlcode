@@ -25,7 +25,7 @@ tests:
     - urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
     - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://api.example.com
 behavior:
-  - GET /api/todos on an empty collection answers 200 {"items":[],"total":0,"etags":{}} with Cache-Control no-store
+  - GET /api/todos on an empty collection answers 200 {"items":[],"total":0,"may":{},"etags":{}} with Cache-Control no-store
   - POST /api/todos with a valid JSON record answers 201, the record with a server-assigned id, and a Location header
   - invalid or unknown fields answer 400, a non-JSON Content-Type answers 415, a missing id answers 404, an unsupported method answers 405
   - PUT replaces the record, PATCH updates supplied fields, DELETE answers 204; records survive a restart

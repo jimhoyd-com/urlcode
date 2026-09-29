@@ -55,6 +55,10 @@ const patches: unknown[] = [];
 const versions = new Map<string, number>();
 const etagOf = (id: string) => `"${String(versions.get(id) ?? 0).padStart(32, '0')}"`;
 const matches: (string | undefined)[] = [];
+// And like the store, `may` (#873 item 2): the list's `may` and each write's Allow-Transitions name what this viewer
+// may run, here archive on an open record unless the test denies it to the viewer.
+const denied = new Set<string>();
+const mayOf = (todo: { id: string; status: string }) => todo.status === 'open' && !denied.has(todo.id) ? ['archive'] : [];
 
 async function command<T = unknown>(method: string, params: object = {}): Promise<T> {
     const id = nextId++;
@@ -100,7 +104,7 @@ before(async () => {
         if (url.pathname === '/todos') { response.writeHead(200, Object.fromEntries(page.headers)); response.end(page.body); return; }
         const asset = kit.assets.find(candidate => url.pathname.endsWith(`/${candidate.name}`));
         if (asset) return reply(response, 200, asset.contentType, asset.body);
-        if (url.pathname === '/api/todos') return reply(response, 200, 'application/json', JSON.stringify({ items: todos, total: todos.length, etags: Object.fromEntries(todos.map(todo => [todo.id, etagOf(todo.id)])) }));
+        if (url.pathname === '/api/todos') return reply(response, 200, 'application/json', JSON.stringify({ items: todos, total: todos.length, may: Object.fromEntries(todos.map(todo => [todo.id, mayOf(todo)])), etags: Object.fromEntries(todos.map(todo => [todo.id, etagOf(todo.id)])) }));
         const step = /^\/api\/todos\/([^/]+)\/archive$/.exec(url.pathname)?.[1];
         const id = step ?? /^\/api\/todos\/([^/]+)$/.exec(url.pathname)?.[1];
         const match = request.headers['if-match'];
@@ -111,7 +115,7 @@ before(async () => {
             if (found.status !== 'open') return reply(response, 409, 'application/json', JSON.stringify({ error: { code: 'transition_conflict', message: 'no' } }));
             found.status = 'archived';
             versions.set(step, (versions.get(step) ?? 0) + 1);
-            response.writeHead(200, { 'content-type': 'application/json', etag: etagOf(step) });
+            response.writeHead(200, { 'content-type': 'application/json', etag: etagOf(step), 'allow-transitions': mayOf(found).join(', ') });
             response.end(JSON.stringify(found));
             return;
         }
@@ -127,7 +131,7 @@ before(async () => {
                     const found = todos.find(todo => todo.id === id)!;
                     Object.assign(found, body);
                     versions.set(id, (versions.get(id) ?? 0) + 1);
-                    response.writeHead(200, { 'content-type': 'application/json', etag: etagOf(id) });
+                    response.writeHead(200, { 'content-type': 'application/json', etag: etagOf(id), 'allow-transitions': mayOf(found).join(', ') });
                     response.end(JSON.stringify(found));
                 }, 300);
             });
@@ -241,6 +245,15 @@ test('browser: a transition click posts with the listed ETag and the row loses i
     assert.match(await run<string>(`document.querySelector('[data-id="t"]').textContent`), /archived/);
     assert.equal(await statusText(), '');
     assert.deepEqual(await run('window.__csp'), []);
+});
+
+test('browser: a record the list\'s may does not name for archive shows no button, though its status is open', { skip }, async () => {
+    todos = [record('x', 'Not mine'), record('y', 'Mine')];
+    versions.clear(); denied.clear(); denied.add('x');
+    await open();
+    assert.equal(await run<number>(`document.querySelectorAll('[data-id="x"] [data-transition]').length`), 0);
+    assert.equal(await run<number>(`document.querySelectorAll('[data-id="y"] [data-transition="archive"]').length`), 1);
+    denied.clear();
 });
 
 test('browser: an edit sends If-Match and the row takes the returned ETag, so a second edit succeeds too', { skip }, async () => {

@@ -98,10 +98,10 @@ A hand-authored public mount, as in the YAML above, stays supported.
 
 | Request | Answer |
 |---|---|
-| `GET /api/todos?limit=&cursor=` | `200 {items, total, next?, etags}` in creation order; `limit` is capped at the collection `pageSize`, `cursor` is the offset from `next`, and `etags` maps each listed record's `id` to its current [`ETag`](#conditional-writes) |
+| `GET /api/todos?limit=&cursor=` | `200 {items, total, next?, may, etags}` in creation order; `limit` is capped at the collection `pageSize`, `cursor` is the offset from `next`, `may` maps each listed record's `id` to the [transitions the caller may run on it now](#what-the-caller-may-run), and `etags` maps it to its current [`ETag`](#conditional-writes) |
 | `GET /api/todos?sort=-priority&kind=a&cursor=` | the same shape, sorted and filtered as [declared](#sorting-and-filtering); `total` counts the matches and `cursor` is the opaque `next` of a sorted page |
 | `POST /api/todos` | `201` and the record, `Location: /api/todos/<id>` |
-| `GET /api/todos/<id>` | `200` record, or `404` |
+| `GET /api/todos/<id>` | `200` record with `ETag` and `Allow-Transitions` ([`may`](#what-the-caller-may-run) for that record), or `404` |
 | `PUT /api/todos/<id>` | replaces every declared field (omitted fields take their default), `200` |
 | `PATCH /api/todos/<id>` | updates the supplied fields and removes those set to `null` ([clearing a field](#clearing-a-field)), `200` |
 | `DELETE /api/todos/<id>` | `204` |
@@ -455,6 +455,43 @@ still has no roles, and `auth` gains none.
   owner") would be an authorization language; this is one named set per gate.
   [`urlcode-store reassign`](#moving-records-to-another-principal) moves a
   principal's membership together with its owned records.
+
+### What the caller may run
+
+Every HTTP answer that carries records says which declared transitions the
+caller may run on each of them right now, so a client offers only what the
+store would accept:
+
+- **A list** (the collection mount or a readers mount) carries
+  `may: {<id>: [transition names]}`, with an entry for every listed record
+  (an empty array when none applies) and nothing for records off the page.
+- **One record** (`GET`/`HEAD <mount>/<id>`, a readers mount's
+  `GET <mount>/<id>`, and the answer to a create, `PUT`, `PATCH`, increment or
+  transition) carries the same list in the `Allow-Transitions` header, beside
+  its `ETag`: the names separated by `, `, and an empty value when none
+  applies. A write's answer is computed for the record as the write left it.
+  A `204` (a delete) carries neither.
+- **What decides it** is what the transition itself checks, read in the same
+  transaction as the records: the record holds every `from` value; `by: owner`
+  needs the caller to own it; `by: others` needs it to be someone else's (so
+  a reviewer's own request never lists `approve`); a `members` gate needs the
+  caller in that membership collection; a `readOnly` collection runs none.
+  The names are the collection's whole set, whichever mount serves each one, so
+  a member's own record on a readers mount lists its `by: owner` transitions.
+- **Bounded.** The caller's membership is looked up at most once per distinct
+  gate per answer, and only when some listed record could take a gated
+  transition, never once per record. The answer grows with the page (at most
+  `pageSize` records times 16 transitions).
+- **Privacy.** Only the caller's own membership is read, and the answer never
+  names a gate, a membership collection or another principal. What a caller
+  learns is whether they themselves are in a gate, which the `403` of the
+  transition already tells them. A caller with no principal (a shared
+  collection on an unauthenticated mount) is offered only transitions that
+  need none: an ungated transition of a shared collection. No gate is
+  evaluated for them.
+- **A hint, not a grant.** A membership change or another caller's write can
+  make it stale a moment later; the transition still checks everything again
+  in its own transaction. Trusted code (`StoreExports`) does not get `may`.
 
 ### Result-aware retries
 
@@ -1104,7 +1141,7 @@ A screen over a collection with
 [declared transitions](#declared-transitions) shows every `transitionOnly`
 field read-only (never in the create form or an edit row, never in a request
 body) and offers each transition the screen's viewer can run as a button, on
-the rows whose values match the transition's `from`. The owner's reads and
+the rows whose [`may`](#what-the-caller-may-run) names it. The owner's reads and
 the reviewer's reads live on different mounts, so there are two kinds of
 screen:
 
@@ -1137,18 +1174,21 @@ routes:
   mount>/<id>`) from the page's own origin, with no body, `If-Match` set to
   the ETag the record was listed with (or the ETag of the screen's own last
   write to it), and a fresh `Idempotency-Key` when the collection declares
-  `idempotency`. The row then shows the record the store returns.
+  `idempotency`. The row then shows the record the store returns, and its
+  buttons follow that answer's `Allow-Transitions`.
 - **A refusal is a page message**, and the row keeps its state:
   `412` (the record changed since the list was loaded; refresh and try
   again; the same message as a stale edit or delete), `409 transition_conflict`, `403` (`membership_required` or
   `own_record_refused`), and a generic message for anything else. Because
   `If-Match` is checked before `from`, a stale row answers `412`; a `409`
   reaches the page only for a record listed without an ETag.
-- **Who may run it is still the store's decision.** The screen offers a button
-  from the declaration and the record's values; it cannot know whether the
-  viewer is a member of a `members` gate, so a non-member gets the button
-  and the `403` message. A reviewer's own request is listed on the readers
-  screen with its `by: others` button, and the store refuses it with `403`.
+- **Buttons follow `may`.** A viewer outside a transition's `members` gate
+  gets no button for it, and a reviewer's own request on the readers screen
+  shows no `by: others` button. The screen needs no membership data of its
+  own: the store computes `may` for the viewer. An API that sends no `may`
+  (not this store) gets the older behavior, a button wherever the record holds
+  the transition's `from` values. `may` can go stale like any listed value, so
+  a refusal is still possible, and it is a page message as above.
 - A `readOnly` collection offers no transitions (the store refuses them).
   Membership collections have no mount and are refused, as before.
 
