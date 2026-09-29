@@ -116,7 +116,13 @@ CSP `connect-src 'self'`) fetches the records from `mount` and builds every node
 with `textContent` and `value`, never markup. An in-progress edit is kept as a
 per-record draft and restored, with focus and caret, whenever the list re-renders;
 a checkbox toggle is applied first and rolled back with a message when the update
-fails.
+fails. Every write to an existing record (a saved edit, a checkbox toggle, a
+delete, a transition) sends `If-Match` with the ETag the list returned for the
+record in `etags`, or the `ETag` of the screen's own last write to it (none when
+neither exists). A `412` means another write got there first: the page says so
+(`ui.crud.stale`), the edit row keeps what was typed, a toggle is rolled back and
+a delete leaves the row, so nothing changes until the viewer refreshes. After a
+successful write the row carries the ETag the response returned.
 
 In a composed site the `ui` extension serves these screens for the extensions
 that contribute them; it never reads another extension's configuration. An
@@ -168,7 +174,7 @@ the screen's own last write to it; none when neither exists) and, with
 `idempotency`, a fresh random `Idempotency-Key`. The row then shows the
 returned record. A refusal becomes a page message and leaves the row as it
 was: `409` (`ui.crud.transitionConflict`), `412`
-(`ui.crud.transitionStale`), `403` (`ui.crud.transitionForbidden`) and
+(`ui.crud.stale`, as for any write), `403` (`ui.crud.transitionForbidden`) and
 anything else (`ui.crud.transitionFailed`). The declaration is validated at
 activation (at most 16 transitions, names `^[a-z][a-z0-9_-]{0,63}$`, 1 to 8
 declared `from` fields with scalar values, a mount path); it reaches the page

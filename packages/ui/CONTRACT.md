@@ -167,9 +167,16 @@ beside it and without changing the exports above:
   checked by `crudTransitions`) and `idempotency`. Each transition is a button
   on the rows holding its `from` values; the `crud` script posts it with no
   body, `If-Match` from the list's `etags` map or its own last write, and a
-  fresh `Idempotency-Key` when `idempotency` is set, and shows `409`, `412`,
-  `403` and other refusals as page messages (`crudTransitionCopyKeys`). A
-  screen without transitions renders the same shell as before.
+  fresh `Idempotency-Key` when `idempotency` is set, and shows `409`, `403`
+  and other refusals as page messages (`crudTransitionCopyKeys`). A screen
+  without transitions renders the same shell as before.
+- Every write the `crud` script makes to an existing record (`PATCH` for an
+  edit or a toggle, `DELETE`, a transition's `POST`) carries `If-Match` from
+  the list's `etags` or the `ETag` of its own last write to that record, and
+  none when it has neither. A `412` is the `ui.crud.stale` page message (in
+  `crudCopyKeys`) and changes nothing on the page: the draft stays, a toggle
+  rolls back, a deleted row stays. A successful write replaces the record's
+  ETag with the response's.
 
 The main entry stays dependency-free and free of Node imports. The `./host`
 entry uses `node:fs` and `node:path` and mirrors the runtime's extension

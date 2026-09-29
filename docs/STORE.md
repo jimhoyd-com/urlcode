@@ -1011,7 +1011,13 @@ from the store's own `/api/todos` with the kit's `crud` script, served
 content-hashed and loaded with the page nonce, under a strict CSP (`connect-src
 'self'`, no inline script). Record values are only ever written as text. An
 edit in progress survives a reload of the list, and a checkbox toggle that the
-server refuses is rolled back. With `auth` composed, the screen route carries
+server refuses is rolled back. Every edit, toggle and delete sends
+[`If-Match`](#conditional-writes) with the ETag the list returned for that
+record in `etags` (or the ETag of the screen's own last write to it), so a page
+left open while someone else changed the record gets `412`: the page says the
+item changed since the list was loaded, keeps the edit as typed, rolls a toggle
+back and keeps a deleted row, and the store writes nothing. Refresh to see the
+current record. With `auth` composed, the screen route carries
 `auth: true` like the API mount, which gates who can *reach* it — not who owns
 which record. The screen is multi-user-safe **only for an
 [owned](#per-record-ownership) collection**: it reads and writes through the
@@ -1071,7 +1077,7 @@ routes:
   `idempotency`. The row then shows the record the store returns.
 - **A refusal is a page message**, and the row keeps its state:
   `412` (the record changed since the list was loaded; refresh and try
-  again), `409 transition_conflict`, `403` (`membership_required` or
+  again; the same message as a stale edit or delete), `409 transition_conflict`, `403` (`membership_required` or
   `own_record_refused`), and a generic message for anything else. Because
   `If-Match` is checked before `from`, a stale row answers `412`; a `409`
   reaches the page only for a record listed without an ETag.

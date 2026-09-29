@@ -15,11 +15,13 @@
  *    rolled back to the previous value when the server refuses the update, so
  *    the screen never keeps a value the server does not hold.
  *
- * A field marked `ro` (transitionOnly) is shown but never edited or sent. Each
- * declared transition is a button on the rows that hold its `from` values; a
- * click posts no body with `If-Match` set to the ETag the record was listed
- * (or last written) with, plus a fresh `Idempotency-Key` when the API retains
- * keys, and a refusal (409, 412, 403, anything else) becomes a page message.
+ * Every write to an existing record (an edit, a checkbox toggle, a delete, a
+ * transition) sends `If-Match` with the ETag the record was listed (or last
+ * written) with, so a stale page gets 412 and a page message and nothing is
+ * changed. A field marked `ro` (transitionOnly) is shown but never edited or
+ * sent. Each declared transition is a button on the rows that hold its `from`
+ * values; a click posts no body, plus a fresh `Idempotency-Key` when the API
+ * retains keys, and a refusal (409, 412, 403, anything else) is a page message.
  */
 export const crudScript: string = `(function(){
 'use strict';
@@ -115,51 +117,34 @@ say('error',Object.keys(errors).length?copy.invalid:copy.saveFailed);
 });
 });
 function replace(record){for(var i=0;i<items.length;i++)if(items[i].id===record.id){items[i]=record;return;}}
-function toggle(item,f,value){
-var previous=item[f.n],body={};
-item[f.n]=value;pending.add(item.id);say('info','');render();
-body[f.n]=value;
-call('PATCH',urlOf(item.id),body).then(function(res){
+function write(item,method,url,body,headers,fail,done){
+var tag=tags[item.id];if(tag)headers['if-match']=tag;
+pending.add(item.id);say('info','');render();
+call(method,url,body,headers).then(function(res){
 pending.delete(item.id);
-if(res.ok&&res.data&&res.data.id===item.id){replace(res.data);remember(item.id,res.tag);}
-else{item[f.n]=previous;say('error',copy.saveFailed);}
+if(res.ok&&(method==='DELETE'||res.data&&res.data.id===item.id)){if(method!=='DELETE'){replace(res.data);remember(item.id,res.tag);}if(done)done();}
+else{var m=fail(res);say('error',res.status===412?copy.stale:m);}
 render();
 });
+}
+function toggle(item,f,value){
+var previous=item[f.n],body={};item[f.n]=value;body[f.n]=value;
+write(item,'PATCH',urlOf(item.id),body,{},function(){item[f.n]=previous;return copy.saveFailed;});
 }
 function save(item,draft){
 var body={};
 editable.forEach(function(f){var v=typed(f,draft.values[f.n]);if(v!==undefined)body[f.n]=v;});
-pending.add(item.id);draft.errors={};render();
-call('PATCH',urlOf(item.id),body).then(function(res){
-pending.delete(item.id);
-if(res.ok&&res.data&&res.data.id===item.id){drafts.delete(item.id);replace(res.data);remember(item.id,res.tag);say('info','');}
-else{draft.errors=fieldErrors(res);say('error',Object.keys(draft.errors).length?copy.invalid:copy.saveFailed);}
-render();
-});
+draft.errors={};
+write(item,'PATCH',urlOf(item.id),body,{},function(res){draft.errors=fieldErrors(res);return Object.keys(draft.errors).length?copy.invalid:copy.saveFailed;},function(){drafts.delete(item.id);});
 }
 function remove(item){
-pending.add(item.id);render();
-call('DELETE',urlOf(item.id)).then(function(res){
-pending.delete(item.id);
-if(res.ok){items=items.filter(function(i){return i.id!==item.id;});drafts.delete(item.id);delete tags[item.id];say('info','');}
-else say('error',copy.deleteFailed);
-render();
-});
+write(item,'DELETE',urlOf(item.id),undefined,{},function(){return copy.deleteFailed;},function(){items=items.filter(function(i){return i.id!==item.id;});drafts.delete(item.id);delete tags[item.id];});
 }
-function refusal(status){return status===409?copy.transitionConflict:status===412?copy.transitionStale:status===403?copy.transitionForbidden:copy.transitionFailed;}
 function applies(item,t){for(var k in t.f)if(Object.prototype.hasOwnProperty.call(t.f,k)&&item[k]!==t.f[k])return false;return true;}
 function run(item,t){
-var headers={},tag=tags[item.id];
-if(tag)headers['if-match']=tag;
+var headers={};
 if(idem){var key=freshKey();if(key)headers['idempotency-key']=key;}
-var url=t.u?t.u+'/'+encodeURIComponent(item.id):urlOf(item.id)+'/'+encodeURIComponent(t.n);
-pending.add(item.id);say('info','');render();
-call('POST',url,undefined,headers).then(function(res){
-pending.delete(item.id);
-if(res.ok&&res.data&&res.data.id===item.id){replace(res.data);remember(item.id,res.tag);}
-else say('error',refusal(res.status));
-render();
-});
+write(item,'POST',t.u?t.u+'/'+encodeURIComponent(item.id):urlOf(item.id)+'/'+encodeURIComponent(t.n),undefined,headers,function(res){return res.status===409?copy.transitionConflict:res.status===403?copy.transitionForbidden:copy.transitionFailed;});
 }
 function button(label,cls,handler,disabled){var b=make('button','ui-button '+cls,label);b.type='button';b.disabled=disabled===true;b.addEventListener('click',handler);return b;}
 function editRow(item,draft,busy){
@@ -212,7 +197,7 @@ keys={};list.replaceChildren();
 if(!items.length)list.appendChild(make('li','ui-crud-empty',copy.empty));
 items.forEach(function(item){
 var busy=pending.has(item.id),draft=drafts.get(item.id);
-list.appendChild(draft&&!readOnly?editRow(item,draft,busy):viewRow(item,busy));
+list.appendChild(draft?editRow(item,draft,busy):viewRow(item,busy));
 });
 more.hidden=next===null;
 var target=focus&&keys[focus];

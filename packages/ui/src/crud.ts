@@ -75,10 +75,10 @@ interface ClientTransition { n: string; l: string; f: Record<string, string | nu
 
 const mountPattern = /^\/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$/;
 const fieldName = /^[a-z][A-Za-z0-9_]{0,63}$/;
-/** The copy ids the screen uses; the client receives the resolved text. */
-export const crudCopyKeys = ['add', 'save', 'cancel', 'edit', 'remove', 'refresh', 'more', 'empty', 'loading', 'loadFailed', 'saveFailed', 'deleteFailed', 'invalid', 'noScript'] as const;
+/** The copy ids the screen uses; the client receives the resolved text. `stale` answers a 412 on any write. */
+export const crudCopyKeys = ['add', 'save', 'cancel', 'edit', 'remove', 'refresh', 'more', 'empty', 'loading', 'loadFailed', 'saveFailed', 'deleteFailed', 'invalid', 'stale', 'noScript'] as const;
 /** The copy ids a screen with transitions adds: one message per refusal the page explains. */
-export const crudTransitionCopyKeys = ['transitionConflict', 'transitionStale', 'transitionForbidden', 'transitionFailed'] as const;
+export const crudTransitionCopyKeys = ['transitionConflict', 'transitionForbidden', 'transitionFailed'] as const;
 
 /** `dueDate` and `due_date` both read "Due date". */
 export function fieldLabel(name: string): string {

@@ -224,3 +224,49 @@ test('field values and a hostile title stay text on the served screen', async t 
   const html = await (await fetch(`${site.base}/review`, { headers: { authorization: 'Badge rita' } })).text();
   assert.ok(!html.includes('onerror'), 'no record value in the served markup');
 });
+
+// #873 item 1: edits and deletes through the served screen carry If-Match too, so a stale page changes nothing.
+test('a stale edit and a stale delete are 412 with a page message and nothing written; a current page edits then deletes', async t => {
+  const site = await serve(t);
+  const stored = () => records(site.database, 'requests').find(record => String(record.title).startsWith('lamp'));
+  const current = await open(site, '/requests', 'ann');
+  await current.create('lamp');
+  const stale = await open(site, '/requests', 'ann');
+  // One record per page, so its row is the only one; an edit row shows the title as an input value, not text.
+  const only = (screen: Awaited<ReturnType<typeof open>>) => screen.root.find(element => element.tagName === 'LI' && element.getAttribute('data-id') !== null);
+  const edit = async (screen: Awaited<ReturnType<typeof open>>, to: string) => {
+    only(screen).button('Edit').dispatch('click');
+    const input = only(screen).find(element => element.tagName === 'INPUT' && element.getAttribute('name') === 'title');
+    input.value = to; input.dispatch('input');
+    only(screen).button('Save').dispatch('click');
+    await screen.idle();
+  };
+
+  await edit(current, 'lamp two');
+  const saved = current.sent.at(-1)!;
+  assert.deepEqual([saved.method, saved.status], ['PATCH', 200]);
+  assert.match(saved.headers['if-match']!, /^"[0-9a-f]{32}"$/);
+  assert.equal(stored()!.title, 'lamp two');
+
+  // The other page still holds the ETag it listed: its edit and its delete are both refused.
+  await edit(stale, 'lamp mine');
+  assert.deepEqual([stale.sent.at(-1)!.method, stale.sent.at(-1)!.status], ['PATCH', 412]);
+  assert.equal(stale.sent.at(-1)!.headers['if-match'], saved.headers['if-match'], 'the version both pages listed');
+  assert.match(stale.message(), /changed since the list was loaded/);
+  assert.equal(stored()!.title, 'lamp two', 'the stale edit wrote nothing');
+  only(stale).button('Cancel').dispatch('click');
+  await stale.click('lamp', 'Delete');
+  assert.deepEqual([stale.sent.at(-1)!.method, stale.sent.at(-1)!.status], ['DELETE', 412]);
+  assert.match(stale.message(), /changed since the list was loaded/);
+  assert.ok(stored(), 'the stale delete removed nothing');
+  assert.ok(stale.row('lamp'), 'the stale page keeps the row');
+
+  // The current page moved to the ETag its edit returned, so its delete goes through.
+  await current.click('lamp two', 'Delete');
+  const removed = current.sent.at(-1)!;
+  assert.deepEqual([removed.method, removed.status], ['DELETE', 204]);
+  assert.match(removed.headers['if-match']!, /^"[0-9a-f]{32}"$/);
+  assert.notEqual(removed.headers['if-match'], saved.headers['if-match'], 'the delete used the ETag the edit returned');
+  assert.equal(stored(), undefined);
+  assert.equal(current.message(), '');
+});
