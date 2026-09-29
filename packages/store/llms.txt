@@ -68,8 +68,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   authenticated; `ownerless-assign`/`ownerless-delete` take `--project` and `--actor` and record the same way.
 - `urlcode-store members add|remove|list --database <file> --project <app> --collection <name> [--principal <id>]`
   maintains a membership collection (no HTTP API exists for it). `audit: true` on it records every added and removed
-  member in the same transaction. `readers.showOwner: true` shows the owner's principal id as `_owner` on the readers
-  mount only. `readers.properties: [name]` makes the readers mount a projection (`id` and those properties only, sorted
+  member in the same transaction. `readers` is a map of named mounts (`readers: {directory: {...}, audit: {...}}`), each with its own
+  `members`, `showOwner` and `properties`. `showOwner: true` shows the owner's principal id as `_owner` on that
+  mount only. `properties: [name]` makes a mount a projection (`id` and those properties only, sorted
   and filtered by those only, `ETag` of the projection) and `members` optional: a directory for finding a transfer
   recipient's record id without exposing balances.
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({database})`) in

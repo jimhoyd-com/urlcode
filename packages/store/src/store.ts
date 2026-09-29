@@ -236,7 +236,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       for (const collection of collections) {
         for (const [name, transition] of Object.entries(collection.spec.transitions)) if (transition.members !== undefined) membership(`Collection ${collection.name}: transition ${name}`, transition.members);
         for (const [name, transfer] of Object.entries(collection.spec.transfers)) if (transfer.members !== undefined) membership(`Collection ${collection.name}: transfer ${name}`, transfer.members);
-        if (collection.spec.readers?.members !== undefined) membership(`Collection ${collection.name}: readers`, collection.spec.readers.members);
+        for (const [name, readers] of Object.entries(collection.spec.readers)) if (readers.members !== undefined) membership(`Collection ${collection.name}: readers ${name}`, readers.members);
         if (collection.spec.create) membership(`Collection ${collection.name}: create`, collection.spec.create.members);
       }
       const shortByMount = new Map<string, ShortLink>();
@@ -264,15 +264,13 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         transitionByMount.set(transition.mount, { collection, name });
       }
       // Cross-owner reads are served on their own mount, which must carry a principal for the membership gate.
-      const readersByMount = new Map<string, Collection>();
-      for (const collection of collections) {
-        const readers = collection.spec.readers;
-        if (!readers) continue;
-        const where = `Collection ${collection.name}: readers`;
+      const readersByMount = new Map<string, ReadersMount>();
+      for (const collection of collections) for (const [name, readers] of Object.entries(collection.spec.readers)) {
+        const where = `Collection ${collection.name}: readers ${name}`;
         if (byMount.has(readers.mount) || shortByMount.has(readers.mount) || transitionByMount.has(readers.mount) || readersByMount.has(readers.mount)) throw new Error(`${where}: mount ${readers.mount} conflicts with another store mount`);
         if (!context.mounts.includes(readers.mount)) throw new Error(`${where}: route ${readers.mount}/* with extension: store is not declared`);
         if (!(context.principalMounts ?? []).includes(readers.mount)) throw new Error(`${where}: route ${readers.mount}/* needs a principal-providing policy (for example auth: true)`);
-        readersByMount.set(readers.mount, collection);
+        readersByMount.set(readers.mount, { collection, name });
       }
       // Fail closed at startup: an owned collection is only served on a mount where a request can carry a principal.
       const principalMounts = context.principalMounts ?? [];
@@ -358,7 +356,8 @@ function opener(database: string, durability: StoreDurability, probe: HostProbe)
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
 interface ShortLink { collection: Collection; destination: string; clicks: string }
 interface TransitionMount { collection: Collection; name: string }
-interface Mounts { byMount: Map<string, Collection>; shortByMount: Map<string, ShortLink>; transitionByMount: Map<string, TransitionMount>; readersByMount: Map<string, Collection> }
+interface ReadersMount { collection: Collection; name: string }
+interface Mounts { byMount: Map<string, Collection>; shortByMount: Map<string, ShortLink>; transitionByMount: Map<string, TransitionMount>; readersByMount: Map<string, ReadersMount> }
 
 /** Store's own wording for the codes it has always answered; any other refusal keeps core's code and fixed message. */
 const bodyMessages: Readonly<Record<string, string>> = { unsupported_media_type: 'Send Content-Type: application/json', invalid_json: 'Body is not valid JSON' };
@@ -493,21 +492,21 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
   }
 }
 /**
- * A readers mount (#863): `GET`/`HEAD <mount>` lists and `GET`/`HEAD <mount>/<id>` reads every owner's records for a
- * member of the declared membership collection. Read-only: every other method is 405. The principal (401) and the
+ * A readers mount (#863, #944): `GET`/`HEAD <mount>` lists and `GET`/`HEAD <mount>/<id>` reads every owner's records
+ * for a member of that mount's membership collection (or any principal, on a projection without one). Read-only: every other method is 405. The principal (401) and the
  * membership gate (403) are checked before the path is interpreted or any record is read.
  */
-async function dispatchReaders(collection: Collection, request: ExtensionRequest): Promise<HandlerResult> {
+async function dispatchReaders({ collection, name }: ReadersMount, request: ExtensionRequest): Promise<HandlerResult> {
   const rest = request.mount === null ? '' : request.path.slice(request.mount.length).replace(/^\/+/, '');
   const method = request.method.toUpperCase();
   try {
     if (method !== 'GET' && method !== 'HEAD') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), [['allow', 'GET, HEAD']]);
     const principal = request.principal?.id;
     // With showOwner, and only here, a member sees each record's owner: the opaque principal id, nothing more.
-    const readers = collection.spec.readers;
-    const { project, tag } = readers?.properties ? projection(readers.properties, readers.showOwner) : { project: (record: StoredRecord): StoredRecord => readers?.showOwner ? record : view(record), tag: etagOf };
-    if (rest === '') return json(200, listView(collection.listAcross(request.query, principal), project, tag));
-    return shownAnswer(collection.getAcross(rest, principal), project, tag);
+    const readers = collection.spec.readers[name]!;
+    const { project, tag } = readers.properties ? projection(readers.properties, readers.showOwner) : { project: (record: StoredRecord): StoredRecord => readers.showOwner ? record : view(record), tag: etagOf };
+    if (rest === '') return json(200, listView(collection.listAcross(name, request.query, principal), project, tag));
+    return shownAnswer(collection.getAcross(name, rest, principal), project, tag);
   } catch (error) {
     if (error instanceof StoreError) return failure(error);
     return failure(new StoreError(500, 'internal_error', 'The store failed to handle this request'));

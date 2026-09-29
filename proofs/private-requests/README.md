@@ -181,7 +181,7 @@ cannot do here (no server-side revocation) and where core keys on the name
   (with audit installed, `audit: true` on `reviewers` records
   `store.membership.added`/`removed`, and on `requests`
   `store.record.transitioned` with the reviewer as actor).
-- The review queue does not declare `readers.showOwner`, so a reviewer sees
+- The review queue (`readers.review`) does not declare `showOwner`, so a reviewer sees
   what was requested but not by whom; with it, each record carries the
   owner's opaque user id as `_owner` on the review mount only.
 - Requests cannot be edited or withdrawn: the route admits `GET` and `POST`

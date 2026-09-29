@@ -44,7 +44,7 @@ extensions:
               members: reviewers
               mount: /api/approvals
           # Reviewers list and read every owner's requests; owners see only their own on /api/requests.
-          readers: {mount: /api/review, members: reviewers}
+          readers: {review: {mount: /api/review, members: reviewers}}
 routes:
   /:
     description: The single-page frontend; it signs in through Better Auth's own client.
