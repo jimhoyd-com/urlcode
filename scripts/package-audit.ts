@@ -380,7 +380,8 @@ export const budgets: Record<string, Budget> = {
     // #835 transitions and retries, #863 membership gates: see the packed note above.
     // #866 membership follow-ups: see the packed note above.
     // #861/#881 record schema and OpenAPI description: see the packed note above.
-    unpacked: 376 * 1024,
+    // With #913 authoring goals and #916 README responses together: 386402 unpacked bytes (Node 26).
+    unpacked: 381 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,
