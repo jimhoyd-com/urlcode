@@ -39,6 +39,18 @@ extension it requires; auth requires no other extension. `--example` also writes
 extension's demo, such as store's `/api/todos` JSON collection (per-user when auth
 is installed).
 
+Once a site has an extension, the npm scripts also need the public origin and
+the operator's reviewed policy (the output of `npx urlcode permissions --project
+app`, reviewed and saved outside `app/`, for example as `operator/policy.json`).
+The scripts stay unchanged; the CLI reads both from the environment:
+
+```sh
+URLCODE_ORIGIN=https://your.site URLCODE_POLICY=operator/policy.json npm run validate
+```
+
+Without them the command refuses and prints the complete command to run.
+Nothing writes or updates the policy for you; re-review it after a project change.
+
 The frontend is your own code calling those JSON routes with `fetch`; URLCode
 ships no component kit. The
 [private-requests client](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/client/main.js)
