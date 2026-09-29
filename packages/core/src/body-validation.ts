@@ -19,7 +19,7 @@ export interface BodySchema {
   properties?: Record<string, BodySchema | boolean>;
   required?: string[];
 }
-/** The `uuid` format (also the only parameter format); the other body formats are body-formats.ts. */
+/** The `uuid` format; the other formats (for body and parameter schemas alike) are body-formats.ts. */
 export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /**
  * The largest request body any route admits: `request.body.<METHOD>.maxBytes` is at most this and defaults to it, on every host
