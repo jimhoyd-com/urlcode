@@ -109,20 +109,51 @@ test('activation refuses while a live peer serves the auth database from another
   const boot = (id: string, host = 'web-1') => ({ hostname: () => host, bootId: async () => id });
   const here = '11111111-1111-4111-8111-111111111111';
   const start = (probe: object) => startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, probe })] });
+  // The joiner's monotonic clock, which its `sleep` moves; `beat` stands in for the first server's heartbeat meanwhile.
+  const watching = (beat: () => void) => { let now = 0; return { monotonic: () => now, sleep: async (ms: number) => { now += ms; beat(); } }; };
+  const db = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (db.isOpen) db.close(); });
   const first = await start(boot(here));
   // Another container on the same kernel: its own hostname, the same boot id.
   const container = await start(boot(here, 'web-2'));
   await container.close();
-  await assert.rejects(start(boot('22222222-2222-4222-8222-222222222222')), /Another server on host "web-1" holds a live lease on this auth database: an auth database is served from one host only/);
+  const beating = watching(() => { db.prepare("UPDATE auth_servers SET heartbeat_at = heartbeat_at + 1 WHERE host = 'web-1'").run(); });
+  await assert.rejects(start({ ...boot('22222222-2222-4222-8222-222222222222'), ...beating }), /Another server on host "web-1" holds a live lease on this auth database: an auth database is served from one host only/);
   await first.close();
-  // Its lease went with it; a lease a vanished host left counts only until it expires.
-  const db = new DatabaseSync(at.database, { timeout: 5000 });
-  try {
-    assert.equal((db.prepare('SELECT count(*) AS n FROM auth_servers').get() as { n: number }).n, 0);
-    db.prepare("INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('gone', 'gone', 'boot-gone', 1, 0, ?)").run(Date.now() - 1);
-  } finally { db.close(); }
-  const elsewhere = await start(boot('22222222-2222-4222-8222-222222222222'));
+  // Its lease went with it; a row a vanished host left is watched for the TTL, then deleted.
+  assert.equal((db.prepare('SELECT count(*) AS n FROM auth_servers').get() as { n: number }).n, 0);
+  db.prepare("INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('gone', 'gone', 'boot-gone', 1, 0, ?)").run(Date.now() + 86_400_000);
+  const elsewhere = await start({ ...boot('22222222-2222-4222-8222-222222222222'), ...watching(() => {}) });
   at.defer(() => elsewhere.close());
+});
+
+test('a server that lost the auth database\'s host lease answers 503 until it holds it again (#978)', async t => {
+  const at = await project(t), userId = await withUser(at);
+  let now = 0;
+  const { call } = await serve(at, { probe: { hostname: () => 'web-1', bootId: async () => 'boot-1', monotonic: () => now } });
+  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+  // Another host took the lease over (it watched this server's row stay unchanged for the TTL and replaced it).
+  const db = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (db.isOpen) db.close(); });
+  db.exec("DELETE FROM auth_servers; INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('other', 'web-9', 'boot-9', 1, 1, 1)");
+  now += 10_000;
+  for (const path of ['/me', '/api/auth/get-session']) {
+    const refused = await call(path);
+    assert.equal(refused.status, 503, path);
+    assert.deepEqual(await refused.json(), { error: 'auth_unavailable' });
+  }
+  assert.deepEqual(db.prepare('SELECT host FROM auth_servers').all().map(row => row.host), ['web-9'], 'the server did not re-insert its row');
+  // That host stopped cleanly: at its next heartbeat this server rejoins and serves again.
+  db.exec('DELETE FROM auth_servers');
+  now += 1000;
+  assert.deepEqual(await (await call('/me')).json(), { identity: { userId }, cookie: null });
+});
+
+test('an activation that fails after joining the host lease releases it (#979)', async t => {
+  const at = await project(t);
+  const registration = createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, hermetic: true });
+  const users = [{ id: 'ann', email: 'ann@example.test', password: 'ann-local-password' }, { id: 'bob', email: 'ann@example.test', password: 'bob-local-password' }];
+  await assert.rejects(startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [registration], seed: { auth: { users } } }), /UNIQUE constraint failed/);
+  const db = new DatabaseSync(at.database, { readOnly: true }); at.defer(() => { if (db.isOpen) db.close(); });
+  assert.deepEqual(db.prepare('SELECT host FROM auth_servers').all(), []);
 });
 
 test('a hermetic host ignores the site database and secret, creates the tables and seeds accounts with their ids (#930)', async t => {
@@ -157,6 +188,61 @@ test('a protected route sees the verified user id, never the session cookie, and
   assert.equal((await call('/api/auth/sign-out', { method: 'POST', body: {}, headers: { origin: 'https://attacker.example' } })).status, 403);
   assert.equal((await call('/api/auth/sign-out', { method: 'POST', body: {} })).status, 200);
   assert.equal((await call('/me')).status, 401);
+});
+
+test('a sign-out whose session delete fails answers 503 and keeps the cookie, and the session still works (#980)', async t => {
+  const at = await project(t), userId = await withUser(at);
+  const { call, jar } = await serve(at, { betterAuth: { logger: { disabled: true } } });
+  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+  const cookies = [...jar];
+  const fault = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (fault.isOpen) fault.close(); });
+  fault.exec("CREATE TRIGGER fail_delete BEFORE DELETE ON session BEGIN SELECT RAISE(ABORT, 'simulated disk I/O error'); END");
+  // Better Auth logs the failed delete and answers success with a cleared cookie; the mount confirms and refuses.
+  for (const path of ['/api/auth/sign-out', '/api/auth/revoke-sessions']) {
+    const refused = await call(path, { method: 'POST', body: {} });
+    assert.equal(refused.status, 503, path);
+    assert.deepEqual(refused.headers.getSetCookie(), [], path);
+    assert.deepEqual(await refused.json(), { error: 'auth_unavailable' });
+  }
+  assert.deepEqual([...jar], cookies, 'the client keeps its cookie');
+  assert.deepEqual(await (await call('/me')).json(), { identity: { userId }, cookie: null }, 'and it was told the truth: the session is valid');
+  fault.exec('DROP TRIGGER fail_delete');
+  assert.equal((await call('/api/auth/sign-out', { method: 'POST', body: {} })).status, 200);
+  assert.equal(jar.size, 0);
+  // The token taken before sign-out is dead too.
+  const stolen = cookies.map(([name, value]) => `${name}=${value}`).join('; ');
+  assert.equal((await call('/me', { headers: { cookie: stolen } })).status, 401);
+  // No session at all: sign-out is still a success.
+  assert.equal((await call('/api/auth/sign-out', { method: 'POST', body: {} })).status, 200);
+});
+
+test('a storage failure reading the session answers 503 on the session endpoints, never a 401 that signs the client out (#980)', async t => {
+  const at = await project(t); await withUser(at);
+  const { call, jar } = await serve(at, { betterAuth: { logger: { disabled: true } } });
+  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+  // Better Auth on its own, without the mount, for comparison.
+  const raw = betterAuthOptions({ database: at.database, secret, betterAuth: { logger: { disabled: true } } }, origin, '/api/auth');
+  at.defer(() => (raw.database as DatabaseSync).close());
+  const upstream = betterAuth(raw);
+  assert.equal((await upstream.handler(new Request(`${origin}/api/auth/ok`))).status, 200);
+  const fault = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (fault.isOpen) fault.close(); });
+  // Every read of the session table fails, as an I/O error would.
+  fault.exec('ALTER TABLE session RENAME TO session_moved');
+  // Its session middleware reads the failure as "no session": a 401 that tells the client it is signed out.
+  const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+  assert.equal((await upstream.handler(new Request(`${origin}/api/auth/list-sessions`, { headers: { cookie } }))).status, 401);
+  const attempts: [string, string, unknown][] = [['GET', '/api/auth/list-sessions', undefined], ['POST', '/api/auth/revoke-session', { token: 'x' }], ['POST', '/api/auth/revoke-other-sessions', {}], ['POST', '/api/auth/change-password', { currentPassword: 'ann-local-password', newPassword: 'ann-other-password' }]];
+  for (const [method, path, body] of attempts) {
+    const refused = await call(path, { method, body });
+    assert.equal(refused.status, 503, path);
+    assert.deepEqual(refused.headers.getSetCookie(), [], path);
+  }
+  fault.exec('ALTER TABLE session_moved RENAME TO session');
+  assert.equal((await call('/api/auth/list-sessions')).status, 200);
+  // Without a session, those endpoints still answer 401.
+  assert.equal((await call('/api/auth/sign-out', { method: 'POST', body: {} })).status, 200);
+  assert.equal((await call('/api/auth/list-sessions')).status, 401);
+  assert.equal((await call('/api/auth/list-sessions', { headers: { cookie: 'better-auth.session_token=forged.token' } })).status, 401);
 });
 
 test('only allowlisted Better Auth paths answer; sign-up is off unless the operator enables it', async t => {

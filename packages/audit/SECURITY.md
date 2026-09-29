@@ -40,6 +40,10 @@ contract in the [README](README.md#being-a-producer):
    before it releases anything. `record` resolves only after a durable commit
    (`synchronous=FULL`). If it rejects, the action answers 503 and releases
    nothing.
+6. **One host writes the log.** Every ingest checks the host lease inside its
+   own transaction. A process that finds another host serving `audit.sqlite`
+   stores nothing (`503 audit_unavailable`) until that host is gone, so
+   producers keep their events in their outboxes (#978).
 
 A producer that writes an invalid event or an event with another `source` has
 broken the contract: audit stops draining it, reports it through

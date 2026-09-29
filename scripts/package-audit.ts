@@ -64,7 +64,8 @@ export const budgets: Record<string, Budget> = {
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-store': {
-    packed: 155 * 1024,
+    // #988-#990 on top of #991: 156305 packed / 611877 unpacked bytes, 36 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 157 * 1024,
     unpacked: 602 * 1024,
     entries: 36,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
