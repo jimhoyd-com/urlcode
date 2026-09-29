@@ -82,7 +82,7 @@ test('coveredElsewhere waives one method, lists it with its reason, and keeps re
  const app=await appFor(t,{'/f':{methods:['GET','POST'],coveredElsewhere:{POST:'store tests cover it'},function:{source:'f.mjs'}}},waiverFiles);
  const report=await auditProject(app);
  assert.equal(report.ready,true);assert.deepEqual(report.uncovered,[]);
- assert.deepEqual(report.waivedRouteMethods,[{route:'/f',method:'POST',reason:'store tests cover it'}]);
+ assert.deepEqual(report.waivedRouteMethods,[{route:'/f',method:'POST',reason:'store tests cover it',basis:'route-covered'}]);
  const bare=await auditProject(await appFor(t,{'/f':{methods:['GET','POST'],function:{source:'f.mjs'}}},waiverFiles));
  assert.equal(bare.ready,false);assert.deepEqual(bare.uncovered,[{route:'/f',method:'POST'}]);assert.deepEqual(bare.waivedRouteMethods,[]);
 });

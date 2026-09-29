@@ -480,6 +480,12 @@ Neither protected site can be audit-ready. Request fixtures cannot sign in, so
 every method of an `auth: true` mount is uncovered. The audit also ignores
 `coveredElsewhere` waivers when a route has no method covered normally.
 
+[#914](https://github.com/jimhoyd-com/urlcode/issues/914) answered both: a
+`steps` fixture that signs in through the provider's own endpoint covers an
+`auth: true` route, a waiver on a fully gated route counts once the gate's
+`401` is asserted, and fixtures name the origin as `{{origin}}`
+([authenticated routes](READINESS.md#authenticated-routes-auth-true)).
+
 The measured defects and gaps were drafted as GitHub issues. This is a single
 run by one agent, not a benchmark.
 

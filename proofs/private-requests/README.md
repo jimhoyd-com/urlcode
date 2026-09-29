@@ -82,7 +82,7 @@ Nothing computes or repins it for you:
 npm run -s proposal > operator/policy.json   # the reviewed projectSha256
 npm run validate
 npm test          # declarative fixtures, including a signed-in owner, foreign owner and reviewer flow
-npm run audit     # every route and method covered
+npm run audit     # ready: every route and method covered, the auth: true ones by signed-in steps
 npm start         # http://localhost:4180
 ```
 
@@ -105,6 +105,15 @@ review and regenerate `operator/policy.json`.
 The repository's end-to-end check does all of the above in a temporary
 directory and exercises every success and failure case over HTTP:
 `npm run build && npm run test:proof`.
+
+The fixtures sign in the way the browser does: a `steps` fixture posts to
+`/api/auth/sign-in/email` with a synthetic account, its cookie jar keeps
+Better Auth's session cookie, and the later steps read, create, approve and
+sign out as that user. No fixture key or header grants an identity. Unsafe
+requests send `"origin":"{{origin}}"`, the site origin of the run, so the same
+file is ready under any `--origin`; the end-to-end check audits it under a
+second one. See
+[authenticated routes](../../docs/READINESS.md#authenticated-routes-auth-true).
 
 ## What it refuses
 

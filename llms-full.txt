@@ -532,6 +532,12 @@ Neither protected site can be audit-ready. Request fixtures cannot sign in, so
 every method of an `auth: true` mount is uncovered. The audit also ignores
 `coveredElsewhere` waivers when a route has no method covered normally.
 
+[#914](https://github.com/jimhoyd-com/urlcode/issues/914) answered both: a
+`steps` fixture that signs in through the provider's own endpoint covers an
+`auth: true` route, a waiver on a fully gated route counts once the gate's
+`401` is asserted, and fixtures name the origin as `{{origin}}`
+([authenticated routes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#authenticated-routes-auth-true)).
+
 The measured defects and gaps were drafted as GitHub issues. This is a single
 run by one agent, not a benchmark.
 
@@ -922,7 +928,13 @@ expected and actual value, shortened to about 200 characters around the first
 difference. `urlcode test` exits nonzero when the project has an active route
 but no cases; a project with no routes yet passes with a warning. Ordered
 lifecycle fixtures (`steps`, `capture`, `restart`), coverage and the audit rules
-are in [readiness](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md).
+are in [readiness](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md). An `auth: true` route is covered by a `steps`
+fixture that signs in through the provider's own endpoint and sends
+`"origin":"{{origin}}"` on unsafe requests; see
+[authenticated routes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#authenticated-routes-auth-true). A case
+passing with a status below 400 counts toward coverage only when it also
+asserts `expectBody` or `expectHeaders`
+([coverage rules](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#coverage-rules)).
 
 #### Reading errors
 
@@ -1565,7 +1577,7 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.enabled` | boolean | no | — | Set false to switch the route off so it answers 404 without removing it. |
 | `routes.*.sandbox` | boolean | no | default: false | Run this route's function/middleware in the isolated QuickJS/WASM worker pool instead of the trusted, in-process default. false or absent (the default) means trusted, unsandboxed, direct host-process execution. |
 | `routes.*.sandboxReason` | string | no | maxLength: 500 | Optional justification for this route's sandbox decision, whether sandbox is true or false: why it needs isolation, or why it is safe to trust. Never inferred or enforced; surfaced verbatim by explain/context/manifest. |
-| `routes.*.coveredElsewhere` | object | no | minProperties: 1 | Audit-only waiver: methods of this route whose normal-response fixture is provided by other tests (for example stateful create/update/delete). Each method needs a non-empty reason and must be one of the route's methods. audit lists waived pairs with their reasons under waivedRouteMethods and still requires the route to have another normally covered method; it never hides a function route that only serves errors. Project file only: there is no CLI flag. |
+| `routes.*.coveredElsewhere` | object | no | minProperties: 1 | Audit-only waiver: methods of this route whose normal-response fixture is provided by other tests (for example stateful create/update/delete). Each method needs a non-empty reason and must be one of the route's methods. audit lists waived pairs with their reasons under waivedRouteMethods and honours a waiver only once the route is shown served: another of its methods covered normally, or, on a route behind a sign-in gate (auth: true), a passing fixture asserting the gate's anonymous 401. It never hides a function route that only serves errors. Project file only: there is no CLI flag. |
 | `routes.*.coveredElsewhere.*` | string | no | minLength: 1; maxLength: 500 | Why this method is tested elsewhere. |
 | `routes.*.errors` | object | no | unknown keys rejected | How this route's runtime-generated errors are written: the 405 for an undeclared method (Allow kept), 404 for a disabled route or missing asset, 410, 413, 415, 422 and gateway errors. Handler, policy and extension responses are never rewritten. Wins over site.errors. |
 | `routes.*.errors.format` | string | yes | enum: ["text","json"]; default: "text" | text (the default) sends the plain-text line, byte for byte as without this key; json sends {"error":{"code":…,"message":…}} as application/json with a code from a closed set keyed by status. HEAD still has no body. |

@@ -60,13 +60,15 @@ interface HitResult { pass: boolean; status: number; durationMs: number; error?:
  * (from just before `firstDifference`, the first differing character index, when that is further in).
  * `actual` is null when the response had no such header. Only `urlcode test` prints these, for the author's own project.
  */
-interface Mismatch { check: 'status' | 'header' | 'body'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number }
-const MAX_SHOWN = 200;
+interface Mismatch { check: 'status' | 'header' | 'body'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number;
+  /** A status mismatch only: the start of the response body, so a refusal's reason code (`{"error":"cross_origin_refused"}`) is shown. */
+  body?: string }
+const MAX_SHOWN = 200, STATUS_BODY_BYTES = 1024;
 const shown = (text: string): string => text.length > MAX_SHOWN ? `${text.slice(0, MAX_SHOWN)}... (${text.length} characters)` : text;
 /** Full-length mismatches; `presented` redacts and shortens them before anything prints them. */
 function mismatches(test: RequestCase, status: number, headers: IncomingMessage['headers'], body: Buffer): Mismatch[] {
   const found: Mismatch[] = [];
-  if (status !== test.status) found.push({ check: 'status', expected: test.status, actual: status });
+  if (status !== test.status) found.push({ check: 'status', expected: test.status, actual: status, ...(body.length ? { body: body.subarray(0, STATUS_BODY_BYTES).toString() } : {}) });
   for (const [name, expected] of Object.entries(test.expectHeaders ?? {})) {
     const value = headers[name.toLowerCase()];
     if (value === expected) continue;
@@ -86,6 +88,7 @@ function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: Rea
   const secrets = [...[...values].map(([name, value]) => [value, `{{${name}}}`]), ...[...cookies].map(([value, name]) => [value, `<cookie ${name}>`])].sort((a, b) => b[0]!.length - a[0]!.length);
   const redact = (text: string): string => { for (const [secret, placeholder] of secrets) text = text.split(secret!).join(placeholder); return text; };
   return { ...result, mismatches: list.map(item => {
+    if (item.body !== undefined) item = { ...item, body: shown(redact(item.body)) };
     if (typeof item.expected !== 'string' || typeof item.actual !== 'string') return { ...item, expected: typeof item.expected === 'string' ? shown(redact(item.expected)) : item.expected, actual: typeof item.actual === 'string' ? shown(redact(item.actual)) : item.actual };
     const expected = redact(item.expected), actual = redact(item.actual);
     // Long texts that differ late are shown from just before the first difference, so the cut never hides it.
@@ -125,12 +128,17 @@ interface AuditReport {
   counts: { configured: number; declared: number; generated: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
   expectedRoutes: number | null; countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
   unassertedCases: number[]; uncovered: { route: string; method: string }[];
-  /** Route/method pairs excused by a `coveredElsewhere` waiver, with the reason. Shown even when `ready`. */
-  waivedRouteMethods: { route: string; method: string; reason: string }[];
-  /** Waivers not honored (the route has no normally covered method, e.g. an error-only function route); their pairs stay in `uncovered`. */
+  /** HEAD pairs covered because the same route's GET is (see docs/READINESS.md#coverage-rules). Shown even when `ready`. */
+  impliedRouteMethods: { route: string; method: 'HEAD'; from: 'GET' }[];
+  /** Route/method pairs excused by a `coveredElsewhere` waiver, with the reason and what proved the route is served:
+   * `route-covered` (another method of it is covered) or `gate-refusal` (a principal gate's asserted 401 on it). Shown even when `ready`. */
+  waivedRouteMethods: { route: string; method: string; reason: string; basis: 'route-covered' | 'gate-refusal' }[];
+  /** Waivers not honored (nothing proves the route is served, e.g. an error-only function route); their pairs stay in `uncovered`. */
   ignoredWaivers: { route: string; method: string; reason: string }[];
   /** Waivers whose pair already has a passing normal-response fixture: remove them. Never blocks `ready`. */
   redundantWaivers: { route: string; method: string; reason: string }[];
+  /** Why coverage fell short and what to write, one entry per kind (see CoverageNote); empty when nothing is missing or unasserted. */
+  coverageNotes: CoverageNote[];
   policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
   /** Non-blocking `audit` observations, e.g. a route that looks webhook-shaped
    * but declares neither `sandbox: true` nor `sandboxReason`. Never affects `ready`. */
@@ -138,6 +146,12 @@ interface AuditReport {
   /** Non-blocking deployment findings (see AuditDeployment). Never affects `ready`. */
   deploymentAdvisories: DeploymentAdvisory[];
 }
+/**
+ * A fixed explanation of a coverage gap: `unasserted-success` (passing cases below 400 without an assertion),
+ * `gated-route-uncovered` (uncovered pairs on routes a principal gate protects) or `waiver-without-proof`
+ * (ignored waivers). Only route patterns and case numbers, never fixture text.
+ */
+interface CoverageNote { code: 'unasserted-success' | 'gated-route-uncovered' | 'waiver-without-proof'; message: string; routes?: string[]; cases?: number[] }
 interface BenchmarkOptions { requests?: number | undefined; concurrency?: number | undefined; maxP95Ms?: number | undefined; seconds?: number | undefined; warmup?: number | undefined; target?: string | undefined }
 interface BenchmarkReport {
   pass: boolean; requested: number; completed: number; complete: boolean; failed: number; transportErrors: number; shedResponses: number; concurrency: number;
@@ -165,14 +179,16 @@ function routeAdvisories(route: CompiledRoute): string[] {
   }
   return advisories;
 }
-export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPlan {
+/** `principalProviders`: the active extensions that set a request principal; a route naming one is reported `gatedBy` it. */
+export function projectPlan(compiled: CompiledRoutes<CompiledRoute>, principalProviders: ReadonlySet<string> = new Set()): ProjectPlan {
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
-  const inventory: RouteInventory[] = routes.map(route => { const advisories = routeAdvisories(route); return { path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
+  const inventory: RouteInventory[] = routes.map(route => { const advisories = routeAdvisories(route), gatedBy = (route.extensionPolicyNames ?? []).filter(name => principalProviders.has(name)); return { path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
     policies:[...(route.policy ? Object.keys(route.policy.describe) : []),...(route.extensionPolicyNames??[]).map(name=>`extensions.${name}`)],
     sandbox:route.sandbox === true, ...(route.sandboxReason ? { sandboxReason:route.sandboxReason } : {}),
     ...(route.coveredElsewhere ? { coveredElsewhere:route.coveredElsewhere } : {}),
     ...(route.generated ? { generated:route.generated } : {}),
+    ...(gatedBy.length ? { gatedBy } : {}),
     ...(advisories.length ? { advisories } : {}),
     state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }; });
   const cases: RequestCase[] = [];
@@ -231,6 +247,8 @@ function checkCase(test: unknown, inSteps: boolean): asserts test is RequestCase
   }
 }
 const FIXTURE_FILE = 'tests/requests.json';
+/** The one built-in reference, `{{origin}}`: the site origin the fixture's requests are sent to (see siteOrigin). */
+const ORIGIN = 'origin';
 const fixtureDetails = (pointer?: string, key?: string): ErrorDetails => ({ code: 'invalid-fixture', file: FIXTURE_FILE, pointer, key });
 /** JSON.parse with the failure's line and column, never the parser's excerpt of the file. */
 function parseFixtureJson(text: string): unknown {
@@ -295,9 +313,13 @@ export async function readFixtures(root: string, optional = false): Promise<Fixt
   try {
     for (const test of cases as unknown[]) {
       at++;
-      if (!(isRecord(test) && 'steps' in test)) { checkCase(test,false); requests++; continue; }
+      if (!(isRecord(test) && 'steps' in test)) {
+        checkCase(test,false); requests++;
+        for (const name of templated(test).flatMap(templates)) assert(name === ORIGIN, `{{${name}}} needs a steps fixture that captures it; outside steps the only reference is {{origin}}, the site origin`);
+        continue;
+      }
       assert(Object.keys(test).length === 1 && Array.isArray(test.steps) && test.steps.length >= 1 && test.steps.length <= MAX_STEPS, `steps must be the only key and hold 1-${MAX_STEPS} steps`);
-      const known = new Set<string>(); let here = 0;
+      const known = new Set<string>([ORIGIN]); let here = 0;
       for (const step of test.steps as unknown[]) {
         if (isRecord(step) && 'restart' in step) {
           assert(step.restart === true && Object.keys(step).length === 1, 'A restart step is exactly {"restart": true}');
@@ -306,7 +328,7 @@ export async function readFixtures(root: string, optional = false): Promise<Fixt
         }
         checkCase(step,true); requests++;
         for (const name of templated(step).flatMap(templates)) assert(known.has(name), 'A {{name}} reference needs an earlier step in the same fixture to capture it');
-        for (const name of Object.keys(step.capture ?? {})) known.add(name);
+        for (const name of Object.keys(step.capture ?? {})) { assert(name !== ORIGIN, '{{origin}} is the site origin and cannot be captured; choose another capture name'); known.add(name); }
       }
     }
   } catch (error) {
@@ -353,7 +375,9 @@ function resolveStep(test: RequestCase, values: Map<string,string>): RequestCase
  * The origin a fixture's cookie jar is a client of: the deployment under verification, or the site origin the local
  * runtime serves (its `--origin`, else its own loopback address).
  */
-const fixtureScope = (host: FixtureHost) => host.target ? jarScope(`${host.target.protocol}//${host.target.authority}`) : jarScope(host.app.origin ?? `http://127.0.0.1:${host.app.address.port}`);
+const siteOrigin = (app: AuditableApp, target?: BenchmarkTarget): string => target ? `${target.protocol}//${target.authority}` : app.origin ?? `http://127.0.0.1:${app.address.port}`;
+/** What `{{name}}` resolves to: `{{origin}}` (read per request, as a restart without `--origin` moves the loopback port) and the captured values. */
+const references = (host: FixtureHost, captured: ReadonlyMap<string,string> = new Map()): Map<string,string> => new Map([[ORIGIN, siteOrigin(host.app, host.target)], ...captured]);
 /** The Set-Cookie values of a single-request fixture's response, which no jar keeps, still never print. */
 function responseCookies(lines: readonly string[] = []): Map<string, string> {
   const values = new Map<string, string>();
@@ -370,18 +394,20 @@ export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit:
   let n = firstCase;
   for (const [f,fixture] of fixtures.entries()) {
     if (!isStepsFixture(fixture)) {
-      const {setCookies, ...result} = await hit(host.app,fixture,host.agent,host.target);
-      await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:presented(result,new Map(),responseCookies(setCookies))}); continue;
+      const resolved = resolveStep(fixture,references(host));
+      if (!resolved) { await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:{pass:false,status:0,durationMs:0,error:'unresolved'}}); continue; }
+      const {setCookies, ...result} = await hit(host.app,resolved,host.agent,host.target);
+      await visit({case:n++,fixture:f+1,test:resolved,original:fixture,result:presented(result,new Map(),responseCookies(setCookies))}); continue;
     }
     if (fixture.steps.some(isRestart) && host.restart === undefined) {
       const reason = 'contains a restart step, which needs a runtime this host can close and restart';
       assert(host.skipped !== undefined, `Fixture ${f+1} ${reason}`);
       host.skipped(f+1,reason); continue;
     }
-    const values = new Map<string,string>(), jar = new CookieJar(fixtureScope(host)); let broken = false;
+    const values = new Map<string,string>(), jar = new CookieJar(jarScope(siteOrigin(host.app, host.target))); let broken = false;
     for (const step of fixture.steps) {
       if (isRestart(step)) { if (!broken) { try { await host.restart?.(); } catch { broken = true; } } continue; }
-      const resolved = broken ? undefined : resolveStep(step,values);
+      const resolved = broken ? undefined : resolveStep(step,references(host,values));
       let result: HitResult = {pass:false,status:0,durationMs:0,error:'skipped'};
       if (resolved) {
         // An explicit Cookie header is sent as written; the jar adds only the cookies it does not name.
@@ -448,7 +474,8 @@ export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: Be
         : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:{'user-agent':probeAgent,...own},agent,timeout:10000};
       req=send(options,(res: IncomingMessage)=>{
         let size=0;const chunks: Buffer[]=[];
-        res.on('data',(chunk: Buffer)=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined || (test.capture && size<=MAX_CAPTURE_BODY))chunks.push(chunk);});
+        // A body no assertion or capture reads is kept only up to STATUS_BODY_BYTES, for a status mismatch's report.
+        res.on('data',(chunk: Buffer)=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined || (test.capture && size<=MAX_CAPTURE_BODY) || size-chunk.length<STATUS_BODY_BYTES)chunks.push(chunk);});
         res.on('error',fail);
         res.on('end',()=>{
           const status=res.statusCode ?? 0,durationMs=performance.now()-began,body=Buffer.concat(chunks),setCookies=res.headers['set-cookie'] ?? [];
@@ -480,11 +507,24 @@ export function deploymentAdvisories(policies: Record<string, PolicyInventory>, 
     message: '--metrics serves /_urlcode/metrics on the same listener as public traffic. Block that path at the proxy or network edge, or scrape through a private network path only.' });
   return found;
 }
+const unique = (items: string[]): string[] => [...new Set(items)].sort();
+function coverageNotesFor(unassertedCases: number[], uncovered: { route: string }[], ignoredWaivers: { route: string }[], metadata: ReadonlyMap<string, RouteInventory>): CoverageNote[] {
+  const notes: CoverageNote[] = [];
+  if (unassertedCases.length) notes.push({ code: 'unasserted-success', cases: unassertedCases,
+    message: 'These cases passed with a status below 400 but assert nothing else, so they cover no route: a status alone also matches a catch-all page or a wrong handler. Add expectBody or expectHeaders that only the intended response has.' });
+  const gated = unique(uncovered.filter(({ route }) => metadata.get(route)?.gatedBy?.length).map(({ route }) => route));
+  if (gated.length) notes.push({ code: 'gated-route-uncovered', routes: gated,
+    message: 'These routes are behind a sign-in gate (auth: true), so an anonymous request only reaches the refusal. Cover them with a steps fixture that signs in through the provider\'s own endpoint (the fixture\'s cookie jar keeps the session, and "origin": "{{origin}}" satisfies the same-origin check), or, where no fixture can sign in, waive the methods with coveredElsewhere and assert the anonymous 401.' });
+  const waived = unique(ignoredWaivers.map(({ route }) => route));
+  if (waived.length) notes.push({ code: 'waiver-without-proof', routes: waived,
+    message: 'A coveredElsewhere waiver counts only once the route is shown to be served: another of its methods covered by a passing, asserted fixture, or, on a sign-in-gated route, a passing 401 fixture with expectBody or expectHeaders.' });
+  return notes;
+}
 export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},compliance,deployment}: AuditOptions = {}): Promise<AuditReport> {
   const began=performance.now();
   const plan=app.testPlan(), fixtures=await readFixtures(app.root,true);
   const metadata=new Map(plan.inventory.map(r=>[r.path,r]));
-  const covered=new Set<string>(), unassertedCases: number[]=[];let passed=0,failed=0,checks=0;
+  const covered=new Set<string>(), gateRefused=new Set<string>(), unassertedCases: number[]=[];let passed=0,failed=0,checks=0;
   const agent=new Agent({keepAlive:true,maxSockets:1});
   // One accounting for generated cases and fixture steps, single or ordered: a step counts as
   // a check, and covers a route/method only when it passes and asserts the response. Coverage
@@ -497,6 +537,8 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
     const assertsResponse=test.expectBody!==undefined || Object.keys(test.expectHeaders || {}).length>0;
     if(result.pass && meta?.state==='active' && result.status<400 && !assertsResponse)unassertedCases.push(n);
     if(result.pass && assertsResponse && meta?.state==='active' && (result.status<400 || (meta.handler==='respond' && source==='generated')))covered.add(JSON.stringify([route,method]));
+    // An asserted 401 on a route a principal gate protects proves the route is served behind that gate (a waiver basis).
+    if(result.pass && assertsResponse && meta?.state==='active' && result.status===401 && meta.gatedBy?.length)gateRefused.add(route!);
     if(result.pass)passed++;else failed++;
     log({event:'check',case:n,source,pass:result.pass,status:result.status,expectedStatus:test.status});
   };
@@ -505,25 +547,32 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
     const restart=isRestartable(app)?()=>app.restart():undefined;
     await runFixtures(fixtures,{app,agent,restart},step=>record(step.case,step.test,step.result,'fixture'),plan.cases.length+1);
   } finally {agent.destroy();}
-  const missing=plan.inventory.filter(r=>r.state==='active').flatMap(r=>r.methods.filter(m=>!covered.has(JSON.stringify([r.path,m]))).map(method=>({route:r.path,method})));
+  const key=(route: string,method: string): string=>JSON.stringify([route,method]);
+  // HEAD is GET without a body: the runtime strips it for every handler, so a covered GET implies HEAD on the same route.
+  const impliedRouteMethods: AuditReport['impliedRouteMethods']=[];
+  for(const r of plan.inventory)if(r.state==='active' && r.methods.includes('HEAD') && covered.has(key(r.path,'GET')) && !covered.has(key(r.path,'HEAD')))impliedRouteMethods.push({route:r.path,method:'HEAD',from:'GET'});
+  for(const {route} of impliedRouteMethods)covered.add(key(route,'HEAD'));
+  const missing=plan.inventory.filter(r=>r.state==='active').flatMap(r=>r.methods.filter(m=>!covered.has(key(r.path,m))).map(method=>({route:r.path,method})));
   const waivedRouteMethods: AuditReport['waivedRouteMethods']=[],ignoredWaivers: AuditReport['ignoredWaivers']=[],redundantWaivers: AuditReport['redundantWaivers']=[];
   const uncovered=missing.filter(({route,method})=>{
     const reason=metadata.get(route)?.coveredElsewhere?.[method];
     if(reason===undefined)return true;
-    // A waiver excuses a missing fixture only where the route is otherwise shown to work normally.
-    const proven=[...covered].some(key=>(JSON.parse(key) as [string,string])[0]===route);
-    (proven?waivedRouteMethods:ignoredWaivers).push({route,method,reason});
-    return !proven;
+    // A waiver excuses a missing fixture only where the route is shown to be served: another method of it is
+    // covered normally, or (for a route no anonymous request can reach) its gate's asserted 401 was observed.
+    const basis=[...covered].some(pair=>(JSON.parse(pair) as [string,string])[0]===route)?'route-covered' as const:gateRefused.has(route)?'gate-refusal' as const:undefined;
+    if(basis)waivedRouteMethods.push({route,method,reason,basis});else ignoredWaivers.push({route,method,reason});
+    return !basis;
   });
-  for(const r of plan.inventory)if(r.state==='active')for(const [method,reason] of Object.entries(r.coveredElsewhere??{}))if(covered.has(JSON.stringify([r.path,method])))redundantWaivers.push({route:r.path,method,reason});
+  for(const r of plan.inventory)if(r.state==='active')for(const [method,reason] of Object.entries(r.coveredElsewhere??{}))if(covered.has(key(r.path,method)))redundantWaivers.push({route:r.path,method,reason});
   const counts: AuditReport['counts']={configured:plan.inventory.length,declared:plan.inventory.filter(r=>!r.generated).length,generated:plan.inventory.filter(r=>r.generated).length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;const handler=String(route.handler);counts.byHandler[handler]=(counts.byHandler[handler]||0)+1;}
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
   const advisories=plan.inventory.flatMap(route=>(route.advisories??[]).map(message=>({route:route.path,message})));
+  const coverageNotes=coverageNotesFor(unassertedCases,uncovered,ignoredWaivers,metadata);
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
   const notReadyReasons=[...(counts.active>0?[]:['no-active-routes']),...(countMatches?[]:['route-count-mismatch']),...(failed?['failed-checks']:[]),...(uncovered.length?['uncovered-route-methods']:[])];
-  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,waivedRouteMethods,ignoredWaivers,redundantWaivers,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
+  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,impliedRouteMethods,waivedRouteMethods,ignoredWaivers,redundantWaivers,coverageNotes,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');
@@ -532,7 +581,8 @@ export async function benchmarkProject(app: AuditableApp,{requests=1000,concurre
   assert(Number.isInteger(warmup)&&warmup>=0&&warmup<=10000,'Warmup must be 0–10000 requests');
   assert(maxP95Ms===undefined || (Number.isFinite(maxP95Ms)&&maxP95Ms>0),'Latency budget must be positive');
   const destination=target?benchmarkTarget(target):undefined;
-  const plan=app.testPlan();const fixtures=await readCases(app.root,true);
+  const plan=app.testPlan();const origin=new Map([[ORIGIN,siteOrigin(app,destination)]]);
+  const fixtures=(await readCases(app.root,true)).flatMap(test=>{const resolved=resolveStep(test,origin);return resolved?[resolved]:[];});
   const cases=[...plan.cases,...fixtures].filter(c=>['GET','HEAD'].includes(c.method||'GET')&&c.status<400);
   assert(cases.length>0,'No GET/HEAD workload: add representative successful request fixtures');
   const workload=(index: number): RequestCase=>{const found=cases[index%cases.length];assert(found,'Empty workload');return found;};

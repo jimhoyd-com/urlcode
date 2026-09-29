@@ -18,7 +18,7 @@
     "path": {
       "type": "string",
       "minLength": 1,
-      "description": "Local request target starting with /, such as /api/items?limit=2. Inside steps it may start with a {{name}} captured by an earlier step."
+      "description": "Local request target starting with /, such as /api/items?limit=2. Inside steps it may start with a {{name}} captured by an earlier step. Any case may use {{origin}}, the site origin, in path, headers, body, expectHeaders and expectBody (for example \"origin\": \"{{origin}}\" on an unsafe request to an auth: true route)."
     },
     "method": {
       "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
