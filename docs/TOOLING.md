@@ -166,7 +166,8 @@ before. `validate`, `test`, `routes` and `audit` alone also accept
 `--local-review`, which the generated npm scripts pass: with no operator pin,
 it pins that one run to the current revision, reads no policy and defaults the
 origin to `http://localhost`, and `serve` and `dev` refuse it
-([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). The
+authoring MCP runners `run_validate`, `run_test` and `run_audit` pass it too.
 
 ## Project context
 
@@ -1345,8 +1346,16 @@ What it can do, all inside the selected project root (resolved with realpath):
   environment variable a runner passes is `PROJECT_SHA256`, and only with a host
   file and when the server's own value is a well-formed 64-hex revision: it is
   the revision pin the server already loaded its own (composed) host under, not
-  a credential. No other variable goes along, no tool argument can add a flag,
-  and no grant is created or changed. The host file is operator-supplied trusted code: the
+  a credential. Every runner also passes a fixed `--local-review`: when neither
+  that `--policy` nor `PROJECT_SHA256` reaches the child, the run is pinned to
+  the project's current revision for that run only, reads no policy (no
+  binding or egress grant) and defaults the origin to `http://localhost`, so an
+  edited extension site is checked without a new pin and the output carries a
+  `local_review` event; an operator pin always wins, a stale one still refuses,
+  and serving never accepts the flag
+  ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). No other
+  variable goes along, no tool argument can add a flag, and no grant is created
+  or changed. The host file is operator-supplied trusted code: the
   child imports it, so its code (and every extension's `host()` hook and
   activation) runs with full Node access. The operator's `--policy` is read and
   verified once when the server starts: it pins the host to its reviewed

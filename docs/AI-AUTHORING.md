@@ -687,7 +687,11 @@ tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
 project's trusted code and, when the operator gave the server `--host-file`,
 that operator-supplied host module. The runners and `get_context`'s commands
 repeat only the operator's own `--host-file` and `--origin`; a flag the operator
-did not supply is listed under `prerequisites`, never guessed.
+did not supply is listed under `prerequisites`, never guessed. `run_validate`,
+`run_test` and `run_audit` also pass `--local-review`, so after an edit they
+check the current revision with no pin and no grant unless the operator gave
+the server a pin, which always wins
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 The CLI and the server read an absent `--origin` or `--policy` from
 `URLCODE_ORIGIN` or `URLCODE_POLICY`, so a site's generated npm scripts run
 unchanged with operator context in the environment, and a refusal for a missing
