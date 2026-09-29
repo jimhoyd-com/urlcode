@@ -84,12 +84,12 @@ async function copies(dir: string, name: string): Promise<number> {
 test('every extension installs once, composes, serves, and removes in dependency order', { timeout: 900000 }, async t => {
   const { dir } = await site(t);
   const all = (await addons()).filter(addon => addon.kind === 'extension').map(addon => addon.name);
-  // --example reproduces the demos a new user expects: /api/todos and /todos, /contact and /todo-form (#711, #529).
+  // --example reproduces the demos a new user expects: /api/todos and /todos, and /contact (#711).
   const added = await urlcode(t, dir, ['extensions', 'add', ...all, '--example']);
   assert.equal(added.status, 0, added.stderr);
   const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string; examples: string[] };
   assert.deepEqual([...result.added].sort(), [...all].sort());
-  assert.deepEqual([...result.examples].sort(), ['form-records', 'forms', 'store']);
+  assert.deepEqual([...result.examples].sort(), ['forms', 'store']);
   for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
   const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
@@ -127,8 +127,7 @@ test('every extension installs once, composes, serves, and removes in dependency
   // database while the service still holds it open.
   try {
     // /todos is the store's own screen, contributed to ui (#709); signed-in only, so it redirects rather than 404s.
-    // /todo-form is form-records' example, saving into the store example's owned todos (#529); signed-in only too.
-    for (const path of ['/api/auth/ok', '/api/todos', '/todos', '/contact', '/todo-form']) {
+    for (const path of ['/api/auth/ok', '/api/todos', '/todos', '/contact']) {
       const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
       assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
     }
@@ -137,8 +136,8 @@ test('every extension installs once, composes, serves, and removes in dependency
     assert.equal(mount.status, 404);
     assert.match(mount.headers.get('cache-control') ?? '', /no-store/);
 
-    // Better Auth in front of the two `auth: true` mounts: a signed-in HTML form POST (forms verifies its own token)
-    // and a JSON write, both with the session cookie from Better Auth's own sign-in.
+    // Better Auth in front of the `auth: true` JSON mount: a signed-in write with the session cookie from
+    // Better Auth's own sign-in.
     const credentials = { email: 'owner@site.example', password: 'integration owner passphrase', name: 'Owner' };
     operatorCli(t, dir, 'urlcode-auth', ['create-user'], credentials);
     const send = browser(`http://127.0.0.1:${server.address.port}`, 'https://site.example');
@@ -146,11 +145,6 @@ test('every extension installs once, composes, serves, and removes in dependency
     assert.equal(login.status, 200, await login.text());
     const created = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'first' }) });
     assert.equal(created.status, 201, await created.text());
-    const form = await (await send('/todo-form', { headers: { accept: 'text/html' } })).text();
-    const token = /name="csrf" value="([^"]+)"/.exec(form)?.[1];
-    assert.ok(token, 'the form carries forms\' own token');
-    const posted = await send('/todo-form', { method: 'POST', headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf: token, title: 'second' }).toString() });
-    assert.equal(posted.status, 303, await posted.text());
 
     // Hot reload an edit of the contact form's title: the replacement runtime's store serves the same database
     // connection, the new title is served, and the records written before the reload are still readable.
@@ -161,7 +155,7 @@ test('every extension installs once, composes, serves, and removes in dependency
     assert.equal(await server.reload(), true, 'the generated stateful site reloads');
     assert.match(await (await send('/contact', { headers: { accept: 'text/html' } })).text(), /Changed contact title/);
     const kept = await (await send('/api/todos', { headers: { accept: 'application/json' } })).json() as { items: { title: string }[] };
-    assert.deepEqual(kept.items.map(item => item.title), ['first', 'second']);
+    assert.deepEqual(kept.items.map(item => item.title), ['first']);
     const later = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'after reload' }) });
     assert.equal(later.status, 201, await later.text());
 

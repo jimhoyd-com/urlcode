@@ -1,11 +1,11 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the ten workspace packages are, how a
+One page for people and AI agents. It says what the nine workspace packages are, how a
 project grows from a handful of redirects into an application with accounts,
 data and forms, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Ten workspace packages, one project shape
+## Nine workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
@@ -17,11 +17,10 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
 | `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields, by 303 redirect or inline (200/201) in the POST response; per-flow submission budgets through `abuse` and a notification through `mail` | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth`, `abuse` and `mail` |
-| `@jimhoyd/urlcode-form-records` | [`packages/form-records`](../packages/form-records) | The forms-to-store composition: a declared form's submission becomes a record private to its signed-in creator in an owned collection, with a confirmation that reads it back, an edit page limited to declared fields and an optional per-user list page, through the typed exports of `forms` and `store` (and `ui` for the list) | `extensions.form-records` plus a `GET, HEAD, POST` mount with `auth: true`, over an `ownership: owner` collection |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All ten are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The nine extensions, and the inert `store-schema` artifact in
+All nine are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The eight extensions, and the inert `store-schema` artifact in
 [`artifacts/store-schema`](../artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
@@ -80,10 +79,6 @@ Each rung's YAML is valid on every rung above it.
    collections; the `forms` extension supplies declared browser form flows over
    the shared UI kit. Both are trusted operator extensions, not core YAML
    handlers. Add `auth: true` where a flow or collection is per-account.
-   The `form-records` extension composes them when a form should become a
-   record its creator can see again and edit: it saves the submission into
-   an owned collection and serves the confirmation and a constrained edit
-   page, with no handler code.
 7. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
    tool server: the official MCP SDK serves the protocol; each tool's own logic is a trusted project handler module the
    operator writes (`urlcode extensions add mcp` wires the extension but
@@ -116,12 +111,11 @@ to the site with `urlcode extensions add`, which wires it into the explicit
 operator host. Auth, audit and abuse additionally need the Node/SQLite
 runtime their packages document; forms (except a flow with `abuse`), mail and
 mcp declare Node, AWS and Vercel targets (mcp's opt-in streaming transport is
-self-hosted only), while store (its database is `node:sqlite`), and so form-records, are Node-only. See each package's README ([auth](../packages/auth/README.md),
+self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](../packages/auth/README.md),
 [ui](../packages/ui/README.md),
 [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md),
 [mail](../packages/mail/README.md),
 [store](../packages/store/README.md), [forms](../packages/forms/README.md),
-[form-records](../packages/form-records/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
 
 ## Using npm libraries directly
@@ -248,7 +242,6 @@ mail     requires []
 auth     requires []
 store    requires []                  uses [audit]
 forms    requires [ui]                uses [abuse, mail]
-form-records requires [forms, store, ui]
 mcp      requires []
 ```
 
@@ -301,9 +294,8 @@ only content-hashed files (ui's `/assets/ui/*`) is named in the instance's
 generic `assetMounts`, and `urlcode audit` covers it by that contract after
 probing an unknown name for 404
 ([extension asset mounts](EXTENSIONS.md#extension-asset-mounts)). A composition reaches
-the add-ons it requires only through their typed, versioned exports:
-`form-records` reads `FormsExports` and `StoreExports` with `ctx.get`, never
-their configuration ([nesting](EXTENSIONS.md#nesting)).
+the add-ons it requires only through their typed, versioned exports, read with
+`ctx.get`, never their configuration ([nesting](EXTENSIONS.md#nesting)).
 
 An artifact is a separate, optional authoring input, not another way to
 compose executable behavior. `urlcode artifacts add store-schema` installs
@@ -389,7 +381,6 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Configure an extension: every key it accepts | [extension field references](EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
 | Audit log, abuse budgets, email | [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md), [mail](../packages/mail/README.md) |
-| Save a form as an editable record | [form-records README](../packages/form-records/README.md), [data store](STORE.md) |
 | Restyle every page | [ui README](../packages/ui/README.md), [ui contract](../packages/ui/CONTRACT.md) |
 | Write an extension | [extensions](EXTENSIONS.md), [authoring rules](EXTENSIONS.md#generic-add-on-authoring-rules) |
 | Run it | [operations](OPERATIONS.md), [install](INSTALL.md), [deployment checks](DEPLOYMENT-CHECKS.md) |

@@ -158,8 +158,8 @@ beside it and without changing the exports above:
   does not know how the contributing extension declares a screen:
   it never loads the project document or reads another extension's block. The
   scaffold never adds another extension's screen; the owner scaffolds its own
-  (the store adds `/todos` when ui is installed). `requires` on forms and form-records makes `composeHost` activate
-  `ui` before them and hand them the kit.
+  (the store adds `/todos` when ui is installed). `requires` on forms makes `composeHost` activate
+  `ui` before it and hand it the kit.
 
 - Data screens (`crudScreen`, `crudMarkup`, `crudFields`): a field may be
   `transitionOnly` (shown read-only, never a control and never sent), and the

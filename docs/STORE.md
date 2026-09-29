@@ -1295,9 +1295,7 @@ errors are `400` with field names, `maxRecords` is `409 collection_full`, and
 a stale `ifMatch` is `412`. Failures are `StoreError`s with the same status and
 code as the HTTP answer. The export performs no request admission of its own:
 the consumer handles CSRF and origins for the requests it serves.
-[form-records](../packages/form-records/README.md) uses it to save a declared
-form into an owned collection, with a confirmation, a constrained edit page
-and an optional per-user list page. `transaction(work)` runs several of these
+`transaction(work)` runs several of these
 operations as one database transaction: see
 [host transactions](#host-transactions).
 

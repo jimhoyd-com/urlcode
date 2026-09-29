@@ -92,7 +92,7 @@ function score(candidate: Candidate, query: Query): Scored | undefined {
   const matched = query.words.filter(word => haystack.includes(word));
   if (!matched.length) return undefined;
   const phrase = query.phrase.length > 1 && haystack.includes(query.phrase);
-  // An add-on named by the whole query (for example "form-records") is the authoritative page for it.
+  // An add-on named by the whole query (for example "store") is the authoritative page for it.
   const named = candidate.addon !== undefined && query.tokens.some(token => token.toLowerCase() === candidate.addon);
   const value = (phrase ? 100 : 0) + (named ? 60 : 0) + matched.length * 10 + Math.min(9, occurrences(haystack, phrase ? query.phrase : matched[0]!));
   return { candidate, matched, score: value };

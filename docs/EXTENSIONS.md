@@ -2,7 +2,7 @@
 
 Extensions are trusted operator modules, separate from a project's own
 `function`/`middleware` code. The first-party extensions (`ui`, `audit`,
-`abuse`, `mail`, `auth`, `store`, `forms`, `form-records`, `mcp`) are workspace packages in this repository
+`abuse`, `mail`, `auth`, `store`, `forms`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
 a package: the operator's `host.mjs` does that (see
@@ -40,14 +40,6 @@ may be mounted behind `auth: true` when submissions need a signed-in caller: aut
 verified session and a same-origin POST, and forms still verifies its own token. A flow may declare a
 submission budget (`abuse`, when the abuse extension is installed) and a notification (`notify`, through mail). Its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
-
-The `form-records` extension composes the two: it requires `forms` and
-`store`, and saves a declared form into an `ownership: owner` collection, with a
-confirmation page that reads the saved record back and an edit page limited to
-declared fields. It reaches both only through their typed exports
-(`FormsExports` and `StoreExports`, read with `ctx.get`), never through their
-configuration, and refuses a shared collection or a mount without a
-principal-providing policy. See the [form-records package](../packages/form-records/README.md).
 
 The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
 server: named tools with a description, a `request.body.<METHOD>.schema`-shaped input
@@ -120,8 +112,8 @@ without a session Better Auth verifies from the request's cookie, and
 `403 {"error":"cross_origin_refused"}` for a `POST`, `PUT`, `PATCH` or `DELETE`
 that core's [same-origin rule](#site-origins-and-same-origin-checks) (with
 `whenAbsent: 'refuse'`) does not admit. There is no token mode and no
-per-route CSRF option: a mount that verifies its own token (forms,
-form-records) or accepts JSON only (a store collection) uses the same
+per-route CSRF option: a mount that verifies its own token (forms) or accepts
+JSON only (a store collection) uses the same
 `auth: true`. Identity is not permission: roles, ownership and approvals are
 application data keyed by the user id (see the
 [auth package](../packages/auth/README.md)).
@@ -387,7 +379,7 @@ for.
   `null`, because a provider may allow a request without setting one.
 
 `auth` is the first-party provider (the id of the user Better Auth verified
-for the request's session) and `store` and `form-records` the consumers. Auth
+for the request's session) and `store` the consumer. Auth
 exports nothing else to other extensions: it has no roles or permissions, and
 an application keeps those as its own data keyed by the user id. The core
 fixture `test/extension-principal.test.ts` proves the seam with a synthetic,
@@ -1183,7 +1175,7 @@ check it against core's pin.
 The first-party add-ons are:
 
 - Extensions: `ui`, `audit`, `abuse`, `mail`, `auth`, `forms` (requires `ui`),
-  `store`, `form-records` (requires `forms`, `store` and `ui`), `mcp`.
+  `store`, `mcp`.
 - Artifacts: `store-schema`, the `store` extension's configuration schema and an
   example configuration. Its schema is generated from the store extension's
   definition by `npm run build:addons`, so the two cannot drift.
@@ -1346,9 +1338,8 @@ command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
 on `/api/todos` (and, with `ui`, its `/todos` screen; per-user `ownership: owner`
-when `auth` is installed), forms' `/contact` flow and form-records' signed-in
-`/todo-form` (which needs `auth` and saves into the store example's `todos`);
-ui, auth and mcp ship none.
+when `auth` is installed) and forms' `/contact` flow; ui, auth and mcp ship
+none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
 the `store` example without `auth` would expose public write on its collection. The refusal
@@ -1450,7 +1441,6 @@ Each extension declares what it needs:
 | `auth` | none | none | |
 | `store` | none | `audit` | `ui` |
 | `forms` | `ui` | `abuse`, `mail` | `mail` |
-| `form-records` | `forms`, `store`, `ui` | | |
 
 A sibling add-on is an optional exact peer dependency, never a nested
 dependency, so every add-on is installed once at the top level of the site;
@@ -1514,7 +1504,7 @@ exports nothing to other extensions; it reaches them only through the
 | `AuditExports` | `audit` | producers (`attach` an outbox, `validate` an event; the store's audited collections) and readers (`query`, `record`) |
 | `AbuseExports` | `abuse` | forms: `namespace(name)` for budgets, backoff, the challenge and the honeypot |
 | `MailExports` | `mail` | forms: `send()` a contributed template; `available` says whether a transport is set |
-| `FormsExports`, `StoreExports` | `forms`, `store` | `form-records`: a flow renderer and validator, and an ownership-honouring records API |
+| `FormsExports`, `StoreExports` | `forms`, `store` | no first-party reader: a flow renderer and validator, and an ownership-honouring records API for an operator's own extension |
 
 Two copies of one extension cannot exist in a site, so duplicate-instance bugs
 (such as a second `ui` kit that never received another extension's templates)
