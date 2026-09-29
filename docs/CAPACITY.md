@@ -380,7 +380,9 @@ cache, so a cached response is computed up to once per process. Metrics are
 per process: scrape each process's port, not the proxy. When the store finds a
 live peer at activation it logs one `extension_warning` saying so. The store,
 auth and audit each refuse to activate while a live peer serves their database
-from another host. A budget
+from another host. A start that finds a row another host left behind waits up
+to 20 seconds to see whether it is live, so allow for that in a restart budget
+after an unclean shutdown or a reboot. A budget
 that must hold across the processes belongs at the proxy or in a
 [plugin](PLUGINS.md). Better Auth's sign-in limit is the one shared counter,
 because it counts in `auth.sqlite`.

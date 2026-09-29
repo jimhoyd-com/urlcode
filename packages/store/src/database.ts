@@ -111,6 +111,11 @@ export class StoreDatabase {
   private readonly statements = new Map<string, StatementSync>();
   private closed = false;
   private depth = 0;
+  /**
+   * Run first inside every write transaction (after `BEGIN IMMEDIATE`, under the write lock) when set: a serving process
+   * sets it to its host lease's `verify` (#978), so a process that lost the lease writes nothing. Its throw rolls back.
+   */
+  writeGuard: (() => void) | undefined;
   constructor(db: DatabaseSync) { this.db = db; }
   get open(): boolean { return !this.closed; }
   private statement(sql: string): StatementSync {
@@ -126,13 +131,17 @@ export class StoreDatabase {
    * Runs `work` inside BEGIN IMMEDIATE ... COMMIT: the write lock is taken before the first read, so everything
    * `work` reads is still true when it commits. `DEFERRED` is for reads: one consistent snapshot, no write lock. Any throw rolls the whole transaction back and is rethrown unchanged.
    * `work` is synchronous, so no other request of this process can run between its statements. Not reentrant.
+   * `guarded: false` skips `writeGuard` (the host lease's own heartbeat).
    */
-  transaction<T>(work: () => T, mode: 'IMMEDIATE' | 'DEFERRED' = 'IMMEDIATE'): T {
+  transaction<T>(work: () => T, mode: 'IMMEDIATE' | 'DEFERRED' = 'IMMEDIATE', guarded = true): T {
     if (this.closed) throw new Error('The store database is closed');
     if (this.depth) throw new Error('Store transactions do not nest');
     this.db.exec(`BEGIN ${mode}`);
     this.depth++;
-    try { const result = work(); this.db.exec('COMMIT'); return result; }
+    try {
+      if (mode === 'IMMEDIATE' && guarded) this.writeGuard?.();
+      const result = work(); this.db.exec('COMMIT'); return result;
+    }
     catch (error) { try { this.db.exec('ROLLBACK'); } catch { /* The original error wins. */ } throw error; }
     finally { this.depth--; }
   }
@@ -156,7 +165,7 @@ function versionOf(db: DatabaseSync): number {
  * BEGIN IMMEDIATE transaction together with the new `user_version`, so a crash mid-upgrade leaves the previous version.
  * Opening an up-to-date database changes nothing.
  */
-export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability; probe?: HostProbe } = {}): Promise<StoreDatabase> {
+export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability; probe?: Partial<HostProbe> } = {}): Promise<StoreDatabase> {
   const synchronous = storeDurability(options.durability).toUpperCase();
   if (!patched(process.versions.sqlite || '')) throw new Error(`The store requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
   const file = await privateFile(path, options.create !== false);
