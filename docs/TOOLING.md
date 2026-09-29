@@ -684,7 +684,7 @@ call), are `get_context`, `inspect`, `validate`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`,
 `get_release_addon_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
-`get_extension_artifact`, `inspect_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
+`get_extension_artifact`, `inspect_extension_artifact`, `stage_source_assets`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
 `urlcode review`), with `suggest_fixtures` and `summarize_yaml_change` listed
 after `explain_error` (see [fixture suggestions](#fixture-suggestions) and
 [YAML change summaries](#yaml-change-summaries)). None of them executes project
@@ -734,8 +734,15 @@ each listed document's media type, detected OpenAPI version or JSON Schema
 dialect, sha256, size and origin, its local `$ref`s resolved inside the
 package, and diagnostics for remote references (listed, never fetched),
 unresolvable references, cycles and limits (see
-[inspecting documents](EXTENSIONS.md#inspecting-artifact-documents)). All
-three are local, read-only and inert: they never download, install, update or
+[inspecting documents](EXTENSIONS.md#inspecting-artifact-documents)).
+`stage_source_assets {source, into?}` returns exactly what
+`urlcode artifacts stage <source> --json` prints for a shadcn registry item or
+Agent Skill directory inside the site (`source` and `into` are site-relative and
+may not leave the site or pass through a symlink): every file it would write,
+its npm and registry dependencies (listed, never installed or fetched) and its
+diagnostics (see [staging source assets](EXTENSIONS.md#staging-source-assets)).
+It writes nothing; materializing is only the CLI's `--materialize` opt-in. All
+four are local, read-only and inert: they never download, install, update or
 activate an add-on, fetch a reference or import package code, and never
 substitute for `get_extensions`, which reports the operator-registered
 executable contract.
@@ -1006,8 +1013,8 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty read
-tools above (thirty-one with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty-one read
+tools above (thirty-two with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 

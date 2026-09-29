@@ -4,11 +4,14 @@ import type { AddonKind } from './addon-manifest.ts';
 import { inspectInstalledArtifact } from './artifact-inspect.ts';
 import type { ArtifactInspection, InspectedFile } from './artifact-inspect.ts';
 import { ConfigError } from './errors.ts';
+import { materializeSourceAssets, stageSourceAssets } from './source-stage.ts';
+import type { MaterializeResult, SourceStageReport } from './source-stage.ts';
 
 type Print = (value: unknown) => boolean;
-interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined }
+interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined; materialize?: boolean | undefined; into?: string | undefined; 'allow-app'?: boolean | undefined }
 
-export const addonCommands = ['available', 'add', 'remove', 'list', 'inspect'] as const;
+export const addonCommands = ['available', 'add', 'remove', 'list', 'inspect', 'stage'] as const;
+const artifactOnly = new Set<string>(['inspect', 'stage']);
 
 /**
  * `urlcode extensions|artifacts available|add|remove|list`: the same verbs for both add-on kinds, plus `artifacts
@@ -20,6 +23,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
   const site = values.site ?? '.';
   if (values.ack?.length && operation !== 'add') throw new ConfigError(`--ack is only supported by ${command} add`);
   if (values.example && (operation !== 'add' || kind !== 'extension')) throw new ConfigError('--example is only supported by extensions add');
+  if ((values.materialize || values.into !== undefined || values['allow-app']) && !(operation === 'stage' && kind === 'artifact')) throw new ConfigError('--materialize, --into and --allow-app are only supported by artifacts stage');
   if (values.strict && operation !== 'list' && !(operation === 'inspect' && kind === 'artifact')) throw new ConfigError(`--strict is only supported by ${command} list${kind === 'artifact' ? ' and inspect' : ''}`);
   switch (operation) {
     case 'available': {
@@ -74,7 +78,21 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       const failed = [...inspection.documents, ...inspection.referencedFiles].some(file => file.diagnostics.some(diagnostic => diagnostic.severity === 'error'));
       return values.strict && failed ? 1 : undefined;
     }
-    default: throw new ConfigError(`Unknown ${command} command ${operation}; use ${(kind === 'artifact' ? addonCommands : addonCommands.filter(item => item !== 'inspect')).join(', ')}`);
+    case 'stage': {
+      if (kind !== 'artifact') throw new ConfigError('stage is only supported by artifacts: urlcode artifacts stage <source>');
+      if (names.length !== 1) throw new ConfigError('Use urlcode artifacts stage <registry-item.json|source directory> [--into directory] [--json] [--site directory], then add --materialize --into <directory> [--allow-app] to write the staged files');
+      if (values['allow-app'] && !values.materialize) throw new ConfigError('--allow-app is only supported with --materialize');
+      if (values.materialize) {
+        if (values.into === undefined) throw new ConfigError('--materialize needs --into <directory>: the directory the staged files are written under');
+        const result = await materializeSourceAssets(names[0]!, { into: values.into, site, allowApp: values['allow-app'] });
+        print(values.json ? result : renderMaterialized(result));
+        return undefined;
+      }
+      const report = await stageSourceAssets(names[0]!, { site, into: values.into });
+      print(values.json ? report : renderStage(report));
+      return report.summary.errors ? 1 : undefined;
+    }
+    default: throw new ConfigError(`Unknown ${command} command ${operation}; use ${(kind === 'artifact' ? addonCommands : addonCommands.filter(item => !artifactOnly.has(item))).join(', ')}`);
   }
 }
 
@@ -98,5 +116,33 @@ function renderInspection(inspection: ArtifactInspection): string {
     'Documents:',
     ...(inspection.documents.length ? inspection.documents.flatMap(file) : ['  none listed in its urlcode.json']),
     ...(inspection.referencedFiles.length ? ['Referenced files:', ...inspection.referencedFiles.flatMap(file)] : []),
+  ].join('\n') + '\n';
+}
+
+/** Text form of a staging report. Every source-supplied string is JSON-quoted, so it cannot pass for this output's own text. */
+function renderStage(report: SourceStageReport): string {
+  const { source, item, summary } = report;
+  const q = (value: unknown): string => JSON.stringify(value);
+  return [
+    `Staged ${source.format} ${q(item.name)}${item.version === null ? '' : ` ${q(item.version)}`} from ${source.path} (${source.descriptor} sha256 ${source.descriptorSha256}${source.schema === null ? '' : `, $schema ${q(source.schema)}`})`,
+    report.notice,
+    report.inertNotice,
+    `Files (${summary.files}: ${summary.code} code, ${summary.data} data, ${summary.docs} docs, ${summary.other} other; ${summary.bytes} bytes)${report.into === null ? '' : ` against ${report.into}`}:`,
+    ...(report.files.length ? report.files.map(file => `  ${file.review ? 'REVIEW ' : ''}${file.class} ${q(file.target)} <- ${q(file.source)}${file.inline ? ' (inline content)' : ''} ${file.mediaType}, ${file.bytes} bytes, sha256 ${file.sha256}${file.role ? `, ${file.role}` : ''}${file.status ? ` [${file.status}]` : ''}`) : ['  none']),
+    ...(report.dependencies.length ? ['npm dependencies (listed, never installed):', ...report.dependencies.map(dep => `  ${dep.kind} ${q(dep.spec)}${dep.declared === null ? '' : ` (site already declares ${q(dep.declared)})`}`)] : []),
+    ...(report.registryDependencies.length ? ['Registry dependencies (listed, never resolved or fetched):', ...report.registryDependencies.map(dep => `  ${dep.kind} ${q(dep.spec)}`)] : []),
+    ...(report.styles && Object.values(report.styles).some(value => value !== null) ? ['Style and configuration deltas (data, never applied):', ...Object.entries(report.styles).filter(([, value]) => value !== null).map(([key, value]) => `  ${key}: ${q(value)}`)] : []),
+    ...(report.skill && Object.values(report.skill).some(value => value !== null) ? ['Skill frontmatter (data, never granted):', ...Object.entries(report.skill).filter(([, value]) => value !== null).map(([key, value]) => `  ${key}: ${q(value)}`)] : []),
+    ...(report.install.dependencies || report.install.devDependencies ? ['An operator could run, after review (staging never does):', ...[report.install.dependencies, report.install.devDependencies].filter(Boolean).map(line => `  ${line}`)] : []),
+    ...report.diagnostics.map(item => `${item.severity} ${item.code}${item.subject === undefined ? '' : ` ${q(item.subject)}`}: ${item.message}`),
+    summary.errors ? `${summary.errors} error(s): --materialize would refuse this source.` : 'Write these files with: urlcode artifacts stage <source> --materialize --into <directory>',
+  ].join('\n') + '\n';
+}
+function renderMaterialized(result: MaterializeResult): string {
+  return [
+    `Wrote ${result.written.length} file(s) under ${result.into}:`,
+    ...result.written.map(file => `  ${file.class} ${JSON.stringify(file.target)} sha256 ${file.sha256}`),
+    result.notice,
+    ...[result.install.dependencies, result.install.devDependencies].filter(Boolean).map(line => `  ${line}`),
   ].join('\n') + '\n';
 }

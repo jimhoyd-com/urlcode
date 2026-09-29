@@ -1,0 +1,27 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "hello-card",
+  "type": "registry:block",
+  "title": "Hello card",
+  "description": "A synthetic card component with a formatting utility, theme variables and dependencies.",
+  "dependencies": ["zod@3.23.8", "clsx"],
+  "devDependencies": ["@types/react@19.1.0"],
+  "registryDependencies": ["button", "https://registry.example/r/editor.json"],
+  "files": [
+    {
+      "path": "components/hello-card.tsx",
+      "type": "registry:component",
+      "content": "import { formatGreeting } from '@/lib/format';\n\nexport function HelloCard({ name }: { name: string }) {\n  return <div className=\"rounded-lg bg-brand p-4\">{formatGreeting(name)}</div>;\n}\n"
+    },
+    { "path": "lib/format.ts", "type": "registry:lib" },
+    { "path": "hello.json", "type": "registry:file", "target": "~/content/hello.json" }
+  ],
+  "cssVars": {
+    "theme": { "font-heading": "Inter, sans-serif" },
+    "light": { "brand": "oklch(0.62 0.19 259)" },
+    "dark": { "brand": "oklch(0.72 0.16 259)" }
+  },
+  "envVars": { "HELLO_CARD_GREETING": "Hello" },
+  "meta": { "version": "1.0.0" },
+  "x-extra": true
+}

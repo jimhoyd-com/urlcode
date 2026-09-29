@@ -231,8 +231,14 @@ export const budgets: Record<string, Budget> = {
     // coherence refusals and pointer-based Ajv refusal diagnostics
     // (body-validation.ts) with the HTTP/RUNTIME-IMPLEMENTATION sections and
     // their llms-full.txt copies. Measured on Node 26: 887922 packed / 3543842 unpacked bytes, 489 entries.
-    packed: 870 * 1024,
-    unpacked: 3470 * 1024,
+    // Raised for #844 operation 2 (`urlcode artifacts stage` and MCP
+    // stage_source_assets: source-stage.ts with its declarations,
+    // RIM-SOURCE-STAGE-001, the EXTENSIONS "Staging source assets" section,
+    // TOOLING/AI-AUTHORING/skill lines and their llms-full.txt copies; no
+    // fixture ships). Measured on Node 26: 904925 packed / 3606184 unpacked
+    // bytes, 491 entries; about 3 KiB of headroom on each.
+    packed: 887 * 1024,
+    unpacked: 3525 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

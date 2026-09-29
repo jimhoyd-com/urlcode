@@ -1,0 +1,13 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "malicious",
+  "type": "registry:block",
+  "files": [
+    { "path": "escape.ts", "type": "registry:file", "target": "../escape.ts", "content": "export {};\n" },
+    { "path": "absolute.ts", "type": "registry:file", "target": "/etc/evil.ts", "content": "export {};\n" },
+    { "path": "tilde.ts", "type": "registry:file", "target": "~/../tilde.ts", "content": "export {};\n" },
+    { "path": "https://registry.example/r/remote.tsx", "type": "registry:component" },
+    { "path": "../outside.ts", "type": "registry:lib" },
+    { "path": "hidden.env", "type": "registry:file", "target": "~/.env", "content": "SECRET=synthetic\n" }
+  ]
+}
