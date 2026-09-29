@@ -158,8 +158,9 @@ free-runtime/operator requirements.
 
 Core has no durable store of its own to recover; a durable-state extension is
 responsible for its own backup and recovery procedure. `auth` (Better Auth's
-SQLite database `data/auth.sqlite` and the secret `data/auth.secret`; see
-[auth](../packages/auth/README.md#add-it)) and `store` (every collection in the
+SQLite database `data/auth.sqlite`, in WAL mode like the store's, and the
+secret `data/auth.secret`; stop the servers and copy it, or take an online
+copy with SQLite's backup API; see [auth](../packages/auth/README.md#add-it)) and `store` (every collection in the
 SQLite database `data/store.sqlite`, including undelivered audit events; stop
 the server and copy it, or take an online copy with `urlcode-store backup`, never
 a plain file copy of a running database; see

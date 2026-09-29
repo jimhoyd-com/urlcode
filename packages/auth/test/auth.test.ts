@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +15,7 @@ import extension from '../src/extension.ts';
 const origin = 'http://localhost:8123';
 const secret = 's'.repeat(40);
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const serveChild = fileURLToPath(new URL('./serve-child.ts', import.meta.url));
 
 /**
  * One unwind stack per test: node:test runs separate after hooks in registration order, which would remove the
@@ -38,9 +40,9 @@ async function project(t: test.TestContext) {
     '/api/auth/*': { extension: 'auth', methods: ['GET', 'POST'] },
     '/me': { methods: ['GET', 'POST'], auth: true, function: { source: 'functions/me.mjs' } },
   } }));
-  return { root, app, defer, database: join(root, 'auth.sqlite'), projectSha256: await inspectExtensionRevision(app) };
+  return { root, app, defer, database: join(root, 'data', 'auth.sqlite'), projectSha256: await inspectExtensionRevision(app) };
 }
-async function serve(at: Awaited<ReturnType<typeof project>>, settings: { signUp?: boolean } = {}) {
+async function serve(at: Awaited<ReturnType<typeof project>>, settings: Partial<Parameters<typeof createAuthExtension>[0]> = {}) {
   const server = await startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, ...settings })] });
   at.defer(() => server.close());
   const base = `http://127.0.0.1:${server.address.port}`;
@@ -54,6 +56,24 @@ async function serve(at: Awaited<ReturnType<typeof project>>, settings: { signUp
   };
   return { call, jar };
 }
+/** A server in its own process on the project's database, as a second `urlcode serve` would be; its base URL. */
+async function serveProcess(at: Awaited<ReturnType<typeof project>>, settings: object = {}): Promise<string> {
+  const child = spawn(process.execPath, ['--conditions=development', serveChild, at.app, at.database, at.projectSha256, JSON.stringify(settings)], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const exited = new Promise(resolve => child.once('exit', resolve));
+  at.defer(async () => {
+    // Closing stdin closes the server and its SQLite handle (on Windows too) before the directory is removed.
+    child.stdin.end();
+    const timer = setTimeout(() => child.kill(), 10_000);
+    await exited; clearTimeout(timer);
+  });
+  const line = await new Promise<string>((resolve, reject) => {
+    let out = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => { out += chunk; if (out.includes('\n')) resolve(out.slice(0, out.indexOf('\n'))); });
+    void exited.then(code => reject(new Error(`serve-child exited with ${String(code)} before listening`)));
+  });
+  return `http://127.0.0.1:${(JSON.parse(line) as { port: number }).port}`;
+}
+const signIn = (base: string, password: string) => fetch(`${base}/api/auth/sign-in/email`, { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ email: 'ann@example.test', password }) });
 async function withUser(at: Awaited<ReturnType<typeof project>>): Promise<string> {
   const options = betterAuthOptions({ database: at.database, secret }, origin, '/api/auth', true);
   try {
@@ -65,6 +85,10 @@ async function withUser(at: Awaited<ReturnType<typeof project>>): Promise<string
 test('activation refuses until Better Auth\'s tables exist', async t => {
   const at = await project(t);
   await assert.rejects(startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret })] }), /tables are not initialized .*run npx urlcode-auth migrate/);
+  // A database migrated without the shared rate-limit table is refused too, naming it.
+  const withoutLimits = betterAuthOptions({ database: at.database, secret, betterAuth: { rateLimit: { storage: 'memory' } } }, origin, '/api/auth');
+  try { await migrate(withoutLimits); } finally { (withoutLimits.database as DatabaseSync).close(); }
+  await assert.rejects(startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret })] }), /tables are not initialized \(rateLimit\)/);
   assert.throws(() => createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, paths: ['../escape'] }), /is not a Better Auth path/);
   assert.throws(() => betterAuthOptions({ database: at.database, secret: 'short' }, origin, '/api/auth'), /at least 32 characters/);
 });
@@ -104,6 +128,57 @@ test('sign-in is throttled per admitted client address, whatever forwarding head
   assert.ok(statuses.includes(429), statuses.join(','));
 });
 
+test('a storage failure while verifying a session answers 503, not a false 401; a bad session stays 401', async t => {
+  const at = await project(t), userId = await withUser(at);
+  // updateAge 0: every verification refreshes the session, so it needs the write lock.
+  const { call, jar } = await serve(at, { betterAuth: { session: { updateAge: 0 } } });
+  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+  // Another connection holds the write lock past the busy timeout, as a stuck process would.
+  const lock = new DatabaseSync(at.database); at.defer(() => { if (lock.isOpen) lock.close(); });
+  lock.exec('BEGIN IMMEDIATE');
+  const refused = await call('/me');
+  assert.equal(refused.status, 503);
+  assert.equal(refused.headers.get('retry-after'), '1');
+  assert.deepEqual(await refused.json(), { error: 'auth_unavailable' });
+  lock.exec('ROLLBACK'); lock.close();
+  // The session survived: it was never a sign-out.
+  assert.deepEqual(await (await call('/me')).json(), { identity: { userId }, cookie: null });
+  for (const [name] of jar) jar.set(name, 'forged.token');
+  assert.deepEqual(await (await call('/me')).json(), { error: 'authentication_required' });
+});
+
+test('the sign-in limit is one budget across every process serving the database', async t => {
+  const at = await project(t); await withUser(at);
+  const [first, second] = await Promise.all([serveProcess(at), serveProcess(at)]);
+  const statuses: number[] = [];
+  // Alternating between the processes: an in-memory limiter would let each take 10.
+  for (let attempt = 0; attempt < 12; attempt++) statuses.push((await signIn(attempt % 2 ? second! : first!, 'guess')).status);
+  assert.deepEqual(statuses, [...Array<number>(10).fill(401), 429, 429]);
+});
+
+test('urlcode-auth create-user succeeds while a serving process commits continuously', async t => {
+  const at = await project(t); await withUser(at);
+  // A limit high enough that every request below writes its rate-limit row: a steady stream of commits.
+  const base = await serveProcess(at, { betterAuth: { rateLimit: { max: 1_000_000 } } });
+  let stop = false; const served: number[] = [];
+  const load = (async () => { while (!stop) served.push((await fetch(`${base}/api/auth/ok`)).status); })();
+  try {
+    for (const name of ['bea', 'cai', 'dev']) {
+      const created = await new Promise<{ code: number | null; stderr: string }>(resolve => {
+        const run = spawn(process.execPath, ['--conditions=development', cli, 'create-user', '--site', at.root], { env: { ...process.env, BETTER_AUTH_SECRET: secret } });
+        let stderr = '';
+        run.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+        run.on('exit', code => resolve({ code, stderr }));
+        run.stdin.end(JSON.stringify({ email: `${name}@example.test`, password: `${name}-local-password`, name }));
+      });
+      assert.equal(created.code, 0, created.stderr);
+    }
+  } finally { stop = true; await load; }
+  assert.ok(served.length > 20, `the server committed throughout (${served.length} requests)`);
+  assert.deepEqual([...new Set(served)], [200]);
+  assert.equal((await signIn(base, 'ann-local-password')).status, 200);
+});
+
 test('the scaffold writes the mount and a private secret; host() reads it; the CLI migrates and creates a user', async t => {
   const site = await mkdtemp(join(tmpdir(), 'urlcode-auth-site-')); t.after(() => rm(site, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const scaffold = await extension.definition.scaffold!({ site, project: join(site, 'app'), installed: ['auth'], acknowledgements: [] });
@@ -118,7 +193,11 @@ test('the scaffold writes the mount and a private secret; host() reads it; the C
   assert.equal(hosted.registration.name, 'auth');
   const run = (args: string[], input?: string) => spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--site', site], { encoding: 'utf8', input, env: { ...process.env, BETTER_AUTH_SECRET: '' } });
   assert.equal(run(['migrate']).status, 0);
-  await stat(join(site, 'data', 'auth.sqlite'));
+  const database = join(site, 'data', 'auth.sqlite');
+  if (process.platform !== 'win32') assert.equal((await stat(database)).mode & 0o777, 0o600);
+  const probe = new DatabaseSync(database, { readOnly: true });
+  try { assert.equal((probe.prepare('PRAGMA journal_mode').get() as { journal_mode: string }).journal_mode, 'wal'); }
+  finally { probe.close(); }
   const created = run(['create-user'], JSON.stringify({ email: 'rita@example.test', password: 'rita-local-password', name: 'Rita' }));
   assert.equal(created.status, 0, created.stderr);
   assert.match(created.stdout, /"event":"user-created"/);
@@ -141,4 +220,8 @@ test('the scaffold writes the mount and a private secret; host() reads it; the C
   await assert.rejects(stat(join(empty, 'data', 'auth.sqlite')), 'find-user never creates the database');
   assert.equal(run(['nonsense']).status, 2);
   assert.match(await readFile(join(site, file.path), 'utf8'), /^[A-Za-z0-9_-]{43}\n$/);
+  if (process.platform !== 'win32') {
+    await chmod(database, 0o644);
+    assert.throws(() => betterAuthOptions({ database, secret }, origin, '/api/auth'), /must be a private regular file/);
+  }
 });

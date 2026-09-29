@@ -11,6 +11,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { TestContext } from 'node:test';
 import { packAddons } from '../scripts/pack-addons.ts';
 import { repositoryRoot } from '../scripts/workspaces.ts';
@@ -177,7 +178,11 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   // Every auth: true route is covered by the signed-in steps, so no note asks for a sign-in fixture.
   assert.ok(report.coverageNotes.every(note => note.code === 'unasserted-success'), audit.stdout);
   // The fixtures name the origin as {{origin}}, never a literal one: the same file is ready under another --origin.
-  const moved = urlcode(t, site, ['audit', '--expect-routes', '6', ...documented.map(value => value === 'http://localhost:4180' ? 'http://127.0.0.1:4181' : value), '--json'], fixtureEnv);
+  // Its own data: Better Auth's sign-in limit is kept in auth.sqlite, shared by every process (#927), and the two runs
+  // above already spent most of this minute's 10 sign-ins from 127.0.0.1.
+  const movedEnv = { ...fixtureEnv, PRIVATE_REQUESTS_DATA: join(root, 'fixture-data-moved') };
+  assert.equal(npm(t, site, ['run', '-s', 'setup'], movedEnv).status, 0);
+  const moved = urlcode(t, site, ['audit', '--expect-routes', '6', ...documented.map(value => value === 'http://localhost:4180' ? 'http://127.0.0.1:4181' : value), '--json'], movedEnv);
   const movedReport = JSON.parse(moved.stdout.trim().split('\n').at(-1)!) as { ready: boolean; failed: number };
   assert.deepEqual([movedReport.ready, movedReport.failed], [true, 0], moved.stdout);
 
@@ -341,6 +346,10 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
       { jsonrpc: '2.0', method: 'notifications/initialized' },
       ...['run_validate', 'run_test'].map((name, index) => ({ jsonrpc: '2.0', id: index + 2, method: 'tools/call', params: { name, arguments: {} } })),
     ];
+    // The throttling scenario above spent this minute's sign-ins from 127.0.0.1, and Better Auth keeps that count in
+    // data/auth.sqlite for every process (#927); an operator resets it by clearing the table, which is safe to do.
+    const counters = new DatabaseSync(join(site, 'data', 'auth.sqlite'), { timeout: 2000 });
+    try { counters.exec('DELETE FROM rateLimit'); } finally { counters.close(); }
     const { PROJECT_SHA256: _pin, ...ambient } = process.env;
     const mcp = spawnSync(process.execPath, [join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), 'mcp', '--allow-authoring', ...documented], { cwd: site, input: messages.map(message => JSON.stringify(message)).join('\n') + '\n', encoding: 'utf8', timeout: 300000, env: { ...ambient, SITE_ORIGIN: 'http://localhost:4180' } });
     const replies = mcp.stdout.trim().split('\n').map(line => JSON.parse(line) as { id: number; result: { content: { text: string }[] } });

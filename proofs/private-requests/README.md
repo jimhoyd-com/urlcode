@@ -94,6 +94,11 @@ npm run audit     # ready: every route and method covered, the auth: true ones b
 npm start         # http://localhost:4180
 ```
 
+The fixtures sign in through Better Auth, whose limit (10 sign-ins a minute per
+client address) is counted in `data/auth.sqlite` and so carries across these
+commands and the server. Running the fixtures a third time within a minute
+answers `429`; wait for the minute to pass.
+
 An authoring agent gets the same context from the operator's flags, with no
 `PROJECT_SHA256` export: `npx urlcode bootstrap --policy operator/policy.json
 --origin http://localhost:4180` prints complete commands, and the MCP server

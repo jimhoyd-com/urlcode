@@ -4580,7 +4580,9 @@ A route protected this way answers `401 {"error":"authentication_required"}`
 without a session Better Auth verifies from the request's cookie, and
 `403 {"error":"cross_origin_refused"}` for a `POST`, `PUT`, `PATCH` or `DELETE`
 that core's [same-origin rule](#site-origins-and-same-origin-checks) (with
-`whenAbsent: 'refuse'`) does not admit. There is no token mode and no
+`whenAbsent: 'refuse'`) does not admit. When the auth database cannot be read
+or written in time it answers `503 {"error":"auth_unavailable"}` instead of a
+`401`. There is no token mode and no
 per-route CSRF option: a mount that accepts JSON only (a store collection)
 uses the same `auth: true`. Identity is not permission: roles, ownership and approvals are
 application data keyed by the user id (see the
