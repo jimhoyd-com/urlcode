@@ -33,7 +33,7 @@ function workflowJob(workflow: Workflow, name: string): Job {
 test('CI gate covers every producer and all conditional jobs depend on the plan', async () => {
   const workflow = await ci();
   assert.deepEqual([...(workflowJob(workflow, 'verify-complete').needs as string[])].sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
-  for (const name of ['static', 'workspace-verify']) {
+  for (const name of ['static', 'workspace-verify', 'multiprocess']) {
     assert.deepEqual(workflowJob(workflow, name).needs, 'plan');
     assert.equal(workflowJob(workflow, name).if, "needs.plan.outputs.lane == 'full'");
   }
@@ -76,9 +76,13 @@ test('workflow command bodies call the tested CI scripts', async () => {
   const workflow = await ci();
   assert(runs(workflow, 'build-fidelity').includes('npm run ci:build-fidelity'));
   assert(runs(workflow, 'container').includes('npm run ci:container-smoke'));
+  // The multi-process harness (#927) runs on Linux against the built runtime and every built add-on.
+  assert.equal((workflowJob(workflow, 'multiprocess') as Job & { 'runs-on': string })['runs-on'], 'ubuntu-latest');
+  assert.deepEqual(runs(workflow, 'multiprocess').slice(-3), ['npm run build', 'node scripts/workspaces.ts run build', 'npm run test:multiprocess']);
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
   assert.equal(scripts['ci:build-fidelity'], 'node scripts/ci-build-fidelity.ts');
   assert.equal(scripts['ci:container-smoke'], 'node scripts/ci-container-smoke.ts');
+  assert.equal(scripts['test:multiprocess'], 'node --test test/multiprocess.integration.ts');
   const smoke = containerSmokeScript();
   for (const expected of ['recipes add typescript', 'build-typescript', '/_urlcode/ready', 'starters/default', 'examples/assets', 'trap \'docker logs urlcode; docker rm -f urlcode\' EXIT']) assert.match(smoke, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });

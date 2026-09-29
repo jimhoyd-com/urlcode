@@ -310,10 +310,12 @@ export const budgets: Record<string, Budget> = {
     // definition pinned to this repository's current version (README, SECURITY, the shipped docs, examples and
     // recipes, with their llms-full.txt copies): measured on Node 26 at 1013978 packed / 4010632 unpacked bytes,
     // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    // #932 --local-review and the store-booking/store-credits recipes on top of #937's pinned installed-doc links: measured on Node 26 at 1023434 packed / 4050658 unpacked bytes, 525 entries
+    // With #927's test:multiprocess script in package.json on top: 1014165 packed / 4011284 unpacked bytes on Node 26,
+    // inside these budgets with about 2.8 KiB of headroom on each once Node 24's ~800 extra packed bytes are counted.
+    // #932 --local-review and the store-booking/store-credits recipes on top of #937 and #946: measured on Node 26 at 1023556 packed / 4051874 unpacked bytes, 525 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     packed: 1004 * 1024,
-    unpacked: 3959 * 1024,
+    unpacked: 3960 * 1024,
     entries: 529,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -330,8 +332,10 @@ export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode-auth': {
     // Rebuilt on Better Auth (#841, #843): the adapter, definition and CLI with their declarations and docs.
     // First measured at 13593/42819/14 packed bytes, unpacked bytes and files.
-    packed: 18 * 1024,
-    unpacked: 56 * 1024,
+    // With #927's README note that auth alone detects no second host: 17700 packed / 54758 unpacked bytes, 14 files on
+    // Node 26, 732 packed bytes under the old 18 KiB (CI's Node 24 packs larger); ~3 KiB headroom on each.
+    packed: 21 * 1024,
+    unpacked: 57 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
