@@ -1,0 +1,50 @@
+version: "1"
+extensions:
+  # Who is signed in: the operator-installed auth extension provides the principal `auth: true` needs.
+  auth:
+    version: "1"
+    config: {}
+  store:
+    version: "1"
+    config:
+      collections:
+        # Who may issue credits: principal ids, maintained by the operator (`urlcode-store members add`); no mount.
+        issuers:
+          membership: true
+          key: userId
+          schema:
+            type: object
+            additionalProperties: false
+            required: [userId]
+            properties:
+              userId: {type: string, maxLength: 128}
+        wallets:
+          mount: /api/wallets
+          # Each signed-in user opens, lists and deletes only their own wallets, and spends only from them.
+          ownership: owner
+          idempotency: {maxKeys: 1000}
+          schema:
+            type: object
+            additionalProperties: false
+            required: [name, balance]
+            properties:
+              name: {type: string, minLength: 1, maxLength: 40}
+              # Whole credits only: a transfer never rounds.
+              balance: {type: integer}
+          # A wallet opens at 0, no body sets the balance and only a transfer changes it, so the sum never changes.
+          defaults: {balance: 0}
+          readOnlyProperties: [balance]
+          transfers:
+            # POST /api/wallets/transfers/pay: from the caller's own wallet to anyone's, never below 0.
+            pay: {amount: balance}
+            # POST /api/wallets/transfers/issue: the issuer pattern. Only an issuers member may run it, from their own
+            # wallet, which may go down to -1000000. That negative balance is the credit outstanding.
+            issue: {amount: balance, min: -1000000, members: issuers}
+          maxRecords: 10000
+          maxRecordsPerOwner: 10
+routes:
+  /api/wallets/*:
+    description: Signed-in users hold credit wallets, pay each other and receive credits from an issuer; every transfer keeps the total.
+    extension: store
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true

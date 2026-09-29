@@ -306,9 +306,11 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #902 declared transfers (STORE.md and llms-full.txt): measured on Node 26 at 1008512 packed / 3974160
     // unpacked bytes, 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 989 * 1024,
-    unpacked: 3885 * 1024,
-    entries: 521,
+    // With #932 --local-review, the store-booking and store-credits recipes and their docs: measured on Node 26 at
+    // 1018907 packed / 4016988 unpacked bytes (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 999 * 1024,
+    unpacked: 3927 * 1024,
+    entries: 529, // #932: eight recipe files for store-booking and store-credits (525 measured)
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
@@ -398,7 +400,9 @@ export const budgets: Record<string, Budget> = {
     // #908 named record schemas: see the packed note above.
     // #902 intervals and host transaction retries, and declared transfers: see the packed note above.
     // #928 transfer balances kept on delete (refuseBalance, activation rules, docs): 487562 unpacked bytes (Node 26), +3 KiB headroom.
-    unpacked: 480 * 1024,
+    // #932 the transfers surface names the issuer pattern (urlcode.json, README reference): 488286 unpacked bytes (Node 26),
+    // +800 bytes for Node 24 and ~3 KiB headroom.
+    unpacked: 481 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

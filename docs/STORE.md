@@ -728,6 +728,8 @@ appointment slots, shifts. The store checks it inside every write's
 transaction, through an index, with no application code. It replaces the host
 transaction the scheduling counterexample of #835 needed, which could only
 see the caller's own records.
+The [`store-booking` recipe](../recipes/store-booking/README.md)
+(`urlcode recipes add store-booking`) is this declaration with fixtures.
 
 ```yaml
 collections:
@@ -918,6 +920,10 @@ Idempotency-Key: 5f0c...
   double-entry bookkeeping. An issuer's own negative record is refused
   deletion like any nonzero one, so the outstanding supply cannot be written
   off by deleting it.
+
+The [`store-credits` recipe](../recipes/store-credits/README.md)
+(`urlcode recipes add store-credits`) declares these wallets with an issuer
+and fixtures that fund, pay, refuse an overdraft and close every wallet at `0`.
 
 ### Who may debit whom
 

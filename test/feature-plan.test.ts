@@ -140,3 +140,28 @@ test('a registered extension\'s own authoring goals take precedence over the cat
  assert.equal(isAuthoringGoals(['approve','per-user']),true);
  for(const bad of [['Approve'],['two words'],['x'.repeat(33)],['a','a'],Array.from({length:33},(_,index)=>`g${index}`),'approve'])assert.equal(isAuthoringGoals(bad),false,JSON.stringify(bad));
 });
+
+// #932: one incidental goal word is not a requirement. "Notify the team" named the store's membership surface through
+// "team" and made the store required; a surface needs two goal words, or its extension a stronger reason.
+test('feature planning does not require an extension for one incidental word, and still plans booking and credits goals (#932)',async t=>{
+ const root=await project(t,{});
+ for(const goal of ['Notify the team','send the team a welcome email','move the old page to a new address','update the homepage copy']){
+  const plan=await planFeature(root,goal);
+  assert.ok(!plan.extensions.required.some(item=>item.name==='store'),`${goal}: ${JSON.stringify(plan.extensions.required)}`);
+  assert.ok(!plan.extensions.surfaces.some(item=>item.extension==='store'),`${goal}: ${JSON.stringify(plan.extensions.surfaces)}`);
+ }
+ // A word that only happens to be a goal word still counts once the goal is about the extension.
+ const booking=await planFeature(root,'Let users book a room');
+ assert.equal(booking.applicable.recipes[0]?.name,'store-booking');
+ assert.ok(booking.extensions.required.some(item=>item.name==='store'));
+ assert.ok(booking.extensions.surfaces.some(item=>item.extension==='store'&&item.surface==='intervals'));
+ assert.match(booking.outline.find(item=>item.kind==='declarative booking')!.note,/interval_conflict/);
+ // The credits plan names the issuer pattern: a negative min with members.
+ const credits=await planFeature(root,'Users hold credits in wallets and pay each other');
+ assert.equal(credits.applicable.recipes[0]?.name,'store-credits');
+ assert.ok(credits.extensions.required.some(item=>item.name==='store'));
+ const note=credits.outline.find(item=>item.kind==='declarative credits')!.note;
+ for(const phrase of [/issuer/,/negative min/,/members: <membership collection>/,/readOnlyProperties/])assert.match(note,phrase);
+ assert.match(credits.outline.find(item=>item.kind==='store transfers')!.note,/issuer: a transfer with a negative `min`/);
+ assert.deepEqual(credits.applicationCode,[]);
+});
