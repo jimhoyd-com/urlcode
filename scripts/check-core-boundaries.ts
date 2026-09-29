@@ -32,7 +32,8 @@ const runtimeModuleLoaders = new Set([
   'packages/core/src/addon-install.ts: `${pkg}/extension`',
   'packages/core/src/addon-install.ts: pathToFileURL(path).href',
   "packages/core/src/extensions.ts: pathToFileURL(modulePath).href+'?urlcode-extension-hook-epoch='+epoch",
-  'packages/core/src/operator-host.ts: pathToFileURL(path).href',
+  // The operator's --host-file; a hermetic run (RIM-EXT-HERMETIC-001) imports it again under a query of its own.
+  "packages/core/src/operator-host.ts: pathToFileURL(path).href+(data===undefined?'':`?urlcode-hermetic=${randomUUID()}`)",
   "packages/core/src/trusted-functions.ts: pathToFileURL(definition.source).href+'?urlcode-trusted-epoch='+this.epoch",
 ]);
 

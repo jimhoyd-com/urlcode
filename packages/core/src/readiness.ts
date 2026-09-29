@@ -35,16 +35,25 @@ export interface RouteInventory extends PlanInventoryEntry {
 export interface RequestCase {
   path: string; method?: string | undefined; status: number; headers?: Record<string, string> | undefined; body?: string | undefined;
   expectHeaders?: Record<string, string> | undefined; expectBody?: string | undefined;
+  /**
+   * JSON Pointers (RFC 6901) into a JSON response body and the value each must equal (deep equality), so a case can
+   * assert `/balance` in a body that also carries generated ids. A string may hold `{{name}}` references; one that is
+   * exactly a single reference to a number or boolean a `{json}` capture kept stands for that number or boolean.
+   */
+  expectJson?: Record<string, JsonValue> | undefined;
   /** Signals the request must emit; checked only where the host records signals (`urlcode test`, `urlcode audit`). */
   expectSignals?: SignalExpectation[] | undefined;
   /** Only inside `steps`: values kept from this step's response for later steps' `{{name}}` references. */
   capture?: Record<string, CaptureSpec> | undefined;
 }
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 /**
  * Where a captured value comes from: a dotted path into a JSON response body, one single-valued response header, or
- * the value the fixture's cookie jar holds for a cookie name after this step's response.
+ * the value the fixture's cookie jar holds for a cookie name after this step's response. A failure report shows a
+ * json or header capture's value where it was substituted, unless the capture declares `secret: true`; a cookie
+ * value is a credential and is never shown.
  */
-type CaptureSpec = { json: string } | { header: string } | { cookie: string };
+type CaptureSpec = ({ json: string } | { header: string }) & { secret?: true } | { cookie: string };
 /** A step that closes and restarts the runtime on the same project and data directory. */
 interface RestartStep { restart: true }
 /** An ordered fixture: requests that share captured values, optionally with restarts between them. */
@@ -58,13 +67,13 @@ export interface ProjectPlan { inventory: RouteInventory[]; cases: RequestCase[]
  * `captured` holds values from a step's `capture` and `setCookies` the response's Set-Cookie lines; callers use them
  * for substitution and the cookie jar only, and never print them.
  */
-interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string>; setCookies?: string[]; mismatches?: Mismatch[] }
+interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string>; typed?: Record<string, number | boolean>; setCookies?: string[]; mismatches?: Mismatch[] }
 /**
  * One failed assertion of a fixture: what it expected and what the response had, each cut to MAX_SHOWN characters
  * (from just before `firstDifference`, the first differing character index, when that is further in).
- * `actual` is null when the response had no such header. Only `urlcode test` prints these, for the author's own project.
+ * `actual` is null when the response had no such header or JSON value. Only `urlcode test` prints these, for the author's own project.
  */
-interface Mismatch { check: 'status' | 'header' | 'body' | 'signals'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number;
+interface Mismatch { check: 'status' | 'header' | 'body' | 'json' | 'signals'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number;
   /** A status mismatch only: the start of the response body, so a refusal's reason code (`{"error":"cross_origin_refused"}`) is shown. */
   body?: string }
 const MAX_SHOWN = 200, STATUS_BODY_BYTES = 1024;
@@ -79,18 +88,55 @@ function mismatches(test: RequestCase, status: number, headers: IncomingMessage[
     found.push({ check: 'header', name: name.toLowerCase(), expected, actual: value === undefined ? null : Array.isArray(value) ? value.join(', ') : value });
   }
   if (test.expectBody !== undefined && body.toString() !== test.expectBody) found.push({ check: 'body', expected: test.expectBody, actual: body.toString() });
+  if (test.expectJson !== undefined) {
+    const document = parsedJson(body);
+    for (const [path, expected] of Object.entries(test.expectJson)) {
+      if (document === notJson) { found.push({ check: 'json', name: path, expected: JSON.stringify(expected), actual: 'the response body is not JSON (or is over 1 MiB)' }); break; }
+      const actual = jsonPointer(document, path);
+      if (!jsonMatches(expected, actual)) found.push({ check: 'json', name: path, expected: JSON.stringify(expected), actual: actual === undefined ? null : JSON.stringify(actual) });
+    }
+  }
   return found;
 }
+const notJson = Symbol('not JSON');
+function parsedJson(body: Buffer): unknown {
+  if (body.length > MAX_CAPTURE_BODY) return notJson;
+  try { return JSON.parse(body.toString('utf8')) as unknown; } catch { return notJson; }
+}
+/** RFC 6901: `""` is the whole document; `~1` is `/` and `~0` is `~` in a segment. Undefined when a segment is missing. */
+function jsonPointer(document: unknown, path: string): unknown {
+  if (path === '') return document;
+  let value = document;
+  for (const raw of path.slice(1).split('/')) {
+    const key = raw.replace(/~1/g, '/').replace(/~0/g, '~');
+    if (Array.isArray(value)) value = /^(0|[1-9]\d*)$/.test(key) ? value[Number(key)] : undefined;
+    else if (isRecord(value) && Object.hasOwn(value, key)) value = value[key];
+    else return undefined;
+    if (value === undefined) return undefined;
+  }
+  return value;
+}
+/** Deep JSON equality: object key order does not matter, array order does. */
+function jsonMatches(expected: unknown, actual: unknown): boolean {
+  if (expected === null || typeof expected !== 'object') return expected === actual;
+  if (Array.isArray(expected)) return Array.isArray(actual) && actual.length === expected.length && expected.every((item, i) => jsonMatches(item, actual[i]));
+  if (!isRecord(actual) || Array.isArray(actual)) return false;
+  const keys = Object.keys(expected);
+  return keys.length === Object.keys(actual).length && keys.every(key => Object.hasOwn(actual, key) && jsonMatches((expected as Record<string, unknown>)[key], actual[key]));
+}
 /**
- * Puts `{{name}}` back wherever a value captured earlier in the fixture appears, and `<cookie NAME>` wherever a cookie
- * value a response set appears, then shortens each string, so a failure report never prints either, even in part.
+ * Puts `{{name}}` back wherever a secret captured value (`secret: true`, or a cookie capture) appears, and
+ * `<cookie NAME>` wherever a cookie value a response set appears, so a report never prints either, even in part.
  */
-function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: ReadonlyMap<string, string>, cookies: ReadonlyMap<string, string> = new Map()): R {
+function redactor(secretValues: ReadonlyMap<string, string>, cookies: ReadonlyMap<string, string> = new Map()): (text: string) => string {
+  // Longest first, so a value that contains another is replaced whole.
+  const secrets = [...[...secretValues].map(([name, value]) => [value, `{{${name}}}`]), ...[...cookies].map(([value, name]) => [value, `<cookie ${name}>`])].sort((a, b) => b[0]!.length - a[0]!.length);
+  return (text: string): string => { for (const [secret, placeholder] of secrets) text = text.split(secret!).join(placeholder); return text; };
+}
+/** Redacts (see `redactor`) and shortens each string of a failure's mismatches. */
+function presented<R extends { mismatches?: Mismatch[] }>(result: R, redact: (text: string) => string): R {
   const list = result.mismatches;
   if (!list) return result;
-  // Longest first, so a value that contains another is replaced whole.
-  const secrets = [...[...values].map(([name, value]) => [value, `{{${name}}}`]), ...[...cookies].map(([value, name]) => [value, `<cookie ${name}>`])].sort((a, b) => b[0]!.length - a[0]!.length);
-  const redact = (text: string): string => { for (const [secret, placeholder] of secrets) text = text.split(secret!).join(placeholder); return text; };
   return { ...result, mismatches: list.map(item => {
     if (item.body !== undefined) item = { ...item, body: shown(redact(item.body)) };
     if (item.check === 'signals' || typeof item.expected !== 'string' || typeof item.actual !== 'string') return { ...item, expected: typeof item.expected === 'string' ? shown(redact(item.expected)) : item.expected, actual: typeof item.actual === 'string' ? shown(redact(item.actual)) : item.actual };
@@ -228,7 +274,10 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>, principalPr
 const MAX_STEPS = 50, MAX_RESTARTS = 5, MAX_TOTAL_RESTARTS = 20, MAX_CAPTURES = 16, MAX_CAPTURE_BYTES = 4096, MAX_CAPTURE_BODY = 1024 * 1024;
 const nameShape = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/, cookieShape = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,128}$/, pathShape = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/, control = /[\x00-\x1f\x7f]/;
 const templates = (text: string): string[] => [...text.matchAll(/\{\{([A-Za-z_][A-Za-z0-9_]{0,31})\}\}/g)].map(m => m[1] ?? '');
-const templated = (test: RequestCase): string[] => [test.path, test.body, test.expectBody, ...Object.values(test.headers ?? {}), ...Object.values(test.expectHeaders ?? {})].filter((v): v is string => v !== undefined);
+const jsonStrings = (value: unknown): string[] => typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(jsonStrings) : isRecord(value) ? Object.values(value).flatMap(jsonStrings) : [];
+const templated = (test: RequestCase): string[] => [test.path, test.body, test.expectBody, ...Object.values(test.headers ?? {}), ...Object.values(test.expectHeaders ?? {}), ...jsonStrings(test.expectJson)].filter((v): v is string => v !== undefined);
+/** An RFC 6901 pointer of at most 8 segments of at most 64 characters: `~` only as `~0` or `~1`. */
+const pointerShape = /^(?:\/(?:[^~/]|~[01]){0,64}){0,8}$/;
 function checkCase(test: unknown, inSteps: boolean): asserts test is RequestCase {
   assert(isRecord(test), 'Invalid request test');
   // A step path may start with a {{name}} (a captured Location); it is checked again once filled in.
@@ -237,13 +286,18 @@ function checkCase(test: unknown, inSteps: boolean): asserts test is RequestCase
   assert(!test.method || (typeof test.method === 'string' && ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'].includes(test.method)), 'Invalid test method');
   assert(test.body === undefined || typeof test.body === 'string', 'Test body must be text');
   assert(test.expectBody === undefined || typeof test.expectBody === 'string', 'Expected body must be text');
+  if (test.expectJson !== undefined) {
+    assert(isRecord(test.expectJson) && Object.keys(test.expectJson).length >= 1 && Object.keys(test.expectJson).length <= 16, 'expectJson must map 1-16 JSON Pointers to the values they must equal, such as {"/balance": 100}');
+    for (const path of Object.keys(test.expectJson)) assert(pointerShape.test(path), `expectJson key ${JSON.stringify(path.slice(0, 64))} is not a JSON Pointer: write "" for the whole body or /key/0/key (at most 8 segments; ~0 is ~ and ~1 is /)`);
+  }
   for (const headers of [test.headers,test.expectHeaders]) assert(headers === undefined || (isRecord(headers) && Object.values(headers).every(v => typeof v === 'string')), 'Test headers must be string mappings');
   assert(inSteps || test.capture === undefined, 'capture is only valid inside steps');
   if (test.capture !== undefined) {
     assert(isRecord(test.capture) && Object.keys(test.capture).length <= MAX_CAPTURES, `capture must be a mapping of at most ${MAX_CAPTURES} names`);
     for (const [name,spec] of Object.entries(test.capture)) {
       assert(nameShape.test(name), 'Capture names use letters, digits and underscores (at most 32, not starting with a digit)');
-      assert(isRecord(spec) && Object.keys(spec).length === 1, 'A capture is exactly one of {json: "a.b.0.c"}, {header: "name"} or {cookie: "name"}');
+      const secret = isRecord(spec) && Object.hasOwn(spec, 'secret');
+      assert(isRecord(spec) && Object.keys(spec).length === (secret ? 2 : 1) && (!secret || (spec.secret === true && typeof spec.cookie !== 'string')), 'A capture is exactly one of {json: "a.b.0.c"}, {header: "name"} or {cookie: "name"}; a json or header capture may add secret: true (a cookie value is always secret)');
       if (typeof spec.json === 'string') assert(spec.json.length <= 256 && pathShape.test(spec.json), 'Capture json path is dotted keys and array indexes, such as items.0.id');
       else if (typeof spec.cookie === 'string') assert(cookieShape.test(spec.cookie), 'A cookie capture names one cookie, such as {cookie: "session"}');
       else assert(typeof spec.header === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(spec.header) && spec.header.toLowerCase() !== 'set-cookie', 'A capture is exactly one of {json: "a.b.0.c"}, {header: "name"} (a single-valued header, not set-cookie) or {cookie: "name"}');
@@ -273,9 +327,9 @@ const validateFixtures = fixtureAjv.compile(fixtureSchema);
 /** Keys people reach for from other test tools, and what URLCode calls them. */
 const fixtureKeyHints: Record<string, string> = {
   json: 'send a JSON request body as body (the serialized text) with headers {"content-type": "application/json"}',
-  expectJson: 'assert a JSON response with expectBody (the exact serialized text)',
+  expectBodyJson: 'assert JSON values with expectJson ({"/balance": 100}), or the exact text with expectBody', matchBody: 'assert JSON values with expectJson ({"/balance": 100}), or the exact text with expectBody',
   expectStatus: 'the expected status is status', expectedStatus: 'the expected status is status',
-  response: 'assert the response with status, expectHeaders and expectBody', expect: 'assert the response with status, expectHeaders and expectBody',
+  response: 'assert the response with status, expectHeaders, expectBody and expectJson', expect: 'assert the response with status, expectHeaders, expectBody and expectJson',
   url: 'the request target is path, such as /api/items?limit=2', query: 'put the query string in path, such as /api/items?limit=2',
   data: 'the request body is body (text)',
   capture: 'capture is only valid inside steps',
@@ -349,8 +403,12 @@ export async function readFixtures(root: string, optional = false): Promise<Fixt
 async function readCases(root: string, optional = false): Promise<RequestCase[]> {
   return (await readFixtures(root,optional)).filter((fixture): fixture is RequestCase => !isStepsFixture(fixture));
 }
-/** One request a fixture run sent: `test` is the request as sent (captured values filled in), `original` as written. Print `original`, never `test`. */
-interface FixtureStep { case: number; fixture: number; test: RequestCase; original: RequestCase; result: HitResult }
+/**
+ * One request a fixture run sent: `test` is the request as sent (captured values filled in), `original` as written.
+ * `shown` is the target `test.path` with every secret value put back as `{{name}}` (or `<cookie NAME>`): the one to
+ * print locally. A report on a live deployment prints `original`: its values can be real.
+ */
+interface FixtureStep { case: number; fixture: number; test: RequestCase; original: RequestCase; shown: string; result: HitResult }
 interface FixtureHost {
   app: AuditableApp; agent: Agent; target?: BenchmarkTarget | undefined;
   /** The recorder the local runtime captures signals into. Absent (a deployment): `expectSignals` is not checked. */
@@ -365,7 +423,14 @@ const fill = (text: string, values: Map<string,string>): string | undefined => {
   const out = text.replace(/\{\{([A-Za-z_][A-Za-z0-9_]{0,31})\}\}/g, (_, name: string) => { const v = values.get(name); if (v === undefined) missing = true; return v ?? ''; });
   return missing ? undefined : out;
 };
-function resolveStep(test: RequestCase, values: Map<string,string>): RequestCase | undefined {
+/** Fills `{{name}}` in every string of an `expectJson` value; a string that is exactly one reference to a typed capture becomes that number or boolean. */
+function fillJson(value: JsonValue, values: Map<string,string>, typed: ReadonlyMap<string,JsonValue>): JsonValue | undefined {
+  if (typeof value === 'string') { const whole = /^\{\{([A-Za-z_][A-Za-z0-9_]{0,31})\}\}$/.exec(value)?.[1]; return whole !== undefined && typed.has(whole) ? typed.get(whole) : fill(value,values); }
+  if (Array.isArray(value)) { const out: JsonValue[] = []; for (const item of value) { const f = fillJson(item,values,typed); if (f === undefined) return undefined; out.push(f); } return out; }
+  if (value !== null && typeof value === 'object') { const out: Record<string,JsonValue> = {}; for (const [k,v] of Object.entries(value)) { const f = fillJson(v,values,typed); if (f === undefined) return undefined; out[k] = f; } return out; }
+  return value;
+}
+function resolveStep(test: RequestCase, values: Map<string,string>, typed: ReadonlyMap<string,JsonValue> = new Map()): RequestCase | undefined {
   const map = (headers: Record<string,string> | undefined): Record<string,string> | undefined | null => {
     if (headers === undefined) return undefined;
     const out: Record<string,string> = {};
@@ -374,8 +439,9 @@ function resolveStep(test: RequestCase, values: Map<string,string>): RequestCase
   };
   const path = fill(test.path,values), body = test.body === undefined ? undefined : fill(test.body,values), expectBody = test.expectBody === undefined ? undefined : fill(test.expectBody,values);
   const headers = map(test.headers), expectHeaders = map(test.expectHeaders);
-  if (path === undefined || !path.startsWith('/') || path.startsWith('//') || /[\r\n]/.test(path) || headers === null || expectHeaders === null || (test.body !== undefined && body === undefined) || (test.expectBody !== undefined && expectBody === undefined)) return undefined;
-  return { ...test, path, headers, body, expectHeaders, expectBody };
+  const expectJson = test.expectJson === undefined ? undefined : fillJson(test.expectJson,values,typed) as Record<string,JsonValue> | undefined;
+  if (path === undefined || !path.startsWith('/') || path.startsWith('//') || /[\r\n]/.test(path) || headers === null || expectHeaders === null || (test.body !== undefined && body === undefined) || (test.expectBody !== undefined && expectBody === undefined) || (test.expectJson !== undefined && expectJson === undefined)) return undefined;
+  return { ...test, path, headers, body, expectHeaders, expectBody, expectJson };
 }
 /**
  * The origin a fixture's cookie jar is a client of: the deployment under verification, or the site origin the local
@@ -401,30 +467,33 @@ export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit:
   for (const [f,fixture] of fixtures.entries()) {
     if (!isStepsFixture(fixture)) {
       const resolved = resolveStep(fixture,references(host));
-      if (!resolved) { await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:{pass:false,status:0,durationMs:0,error:'unresolved'}}); continue; }
+      if (!resolved) { await visit({case:n++,fixture:f+1,test:fixture,original:fixture,shown:fixture.path,result:{pass:false,status:0,durationMs:0,error:'unresolved'}}); continue; }
       host.signals?.take();
-      const {setCookies, ...result} = await hit(host.app,resolved,host.agent,host.target);
-      await visit({case:n++,fixture:f+1,test:resolved,original:fixture,result:presented(checkSignals(resolved,host,result),new Map(),responseCookies(setCookies))}); continue;
+      const {setCookies, captured: _none, typed: _unused, ...result} = await hit(host.app,resolved,host.agent,host.target);
+      await visit({case:n++,fixture:f+1,test:resolved,original:fixture,shown:resolved.path,result:presented(checkSignals(resolved,host,result),redactor(new Map(),responseCookies(setCookies)))}); continue;
     }
     if (fixture.steps.some(isRestart) && host.restart === undefined) {
       const reason = 'contains a restart step, which needs a runtime this host can close and restart';
       assert(host.skipped !== undefined, `Fixture ${f+1} ${reason}`);
       host.skipped(f+1,reason); continue;
     }
-    const values = new Map<string,string>(), jar = new CookieJar(jarScope(siteOrigin(host.app, host.target))); let broken = false;
+    // `secret` holds the captured values a report must not show (secret: true and cookie captures); `typed` the
+    // numbers and booleans json captures kept, for an expectJson value that is exactly one reference.
+    const values = new Map<string,string>(), secret = new Map<string,string>(), typed = new Map<string,JsonValue>(), jar = new CookieJar(jarScope(siteOrigin(host.app, host.target))); let broken = false;
     for (const step of fixture.steps) {
       if (isRestart(step)) { if (!broken) { try { await host.restart?.(); } catch { broken = true; } } continue; }
-      const resolved = broken ? undefined : resolveStep(step,references(host,values));
-      let result: HitResult = {pass:false,status:0,durationMs:0,error:'skipped'};
+      const resolved = broken ? undefined : resolveStep(step,references(host,values),typed);
+      let result: HitResult = {pass:false,status:0,durationMs:0,error:'skipped'}, shown = step.path;
       if (resolved) {
         // An explicit Cookie header is sent as written; the jar adds only the cookies it does not name.
         const explicit = Object.entries(resolved.headers ?? {}).find(([name]) => name.toLowerCase() === 'cookie')?.[1];
         const stored = jar.send(resolved.path, cookieNames(explicit ?? '')).map(({name,value}) => `${name}=${value}`);
         host.signals?.take();
         const hitResult = await hit(host.app,resolved,host.agent,host.target,stored.length ? [...(explicit ? [explicit] : []),...stored].join('; ') : undefined);
+        shown = redactor(secret,jar.values())(resolved.path);
         const sent = checkSignals(resolved,host,hitResult);
         jar.store(sent.setCookies ?? [],resolved.path);
-        const {captured: kept, setCookies: _stored, ...response} = sent;
+        const {captured: kept, typed: numbers, setCookies: _stored, ...response} = sent;
         let captured = kept, visible: HitResult = response;
         // A cookie capture reads the jar after this response, as the next request to this path would send it.
         for (const [name,spec] of Object.entries(resolved.capture ?? {})) {
@@ -433,11 +502,16 @@ export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit:
           if (value === undefined || !acceptable(value)) { visible = {...visible,pass:false,error:'capture'}; captured = undefined; break; }
           (captured ??= {})[name] = value;
         }
-        if (visible.pass) for (const [name,value] of Object.entries(captured ?? {})) values.set(name,value);
-        result = presented(visible,values,jar.values());
+        if (visible.pass) for (const [name,value] of Object.entries(captured ?? {})) {
+          const spec = resolved.capture![name]!;
+          values.set(name,value);
+          if ('cookie' in spec || spec.secret === true) secret.set(name,value); else secret.delete(name);
+          if (numbers !== undefined && Object.hasOwn(numbers,name)) typed.set(name,numbers[name]!); else typed.delete(name);
+        }
+        result = presented(visible,redactor(secret,jar.values()));
       } else if (!broken) result = {pass:false,status:0,durationMs:0,error:'unresolved'};
       if (!result.pass) broken = true;
-      await visit({case:n++,fixture:f+1,test:resolved ?? step,original:step,result});
+      await visit({case:n++,fixture:f+1,test:resolved ?? step,original:step,shown,result});
     }
   }
 }
@@ -456,7 +530,7 @@ function checkSignals(test: RequestCase, host: FixtureHost, result: HitResult): 
 }
 const acceptable = (text: string): boolean => text.length > 0 && Buffer.byteLength(text) <= MAX_CAPTURE_BYTES && !control.test(text);
 /** A json or header capture; cookie captures read the jar in runFixtures. */
-function extract(spec: { json: string } | { header: string }, headers: IncomingMessage['headers'], body: Buffer): string | undefined {
+function extract(spec: { json: string } | { header: string }, headers: IncomingMessage['headers'], body: Buffer): { text: string; typed?: number | boolean } | undefined {
   let value: unknown;
   if ('header' in spec) value = headers[spec.header.toLowerCase()];
   else {
@@ -469,7 +543,8 @@ function extract(spec: { json: string } | { header: string }, headers: IncomingM
     }
   }
   const text = typeof value === 'string' ? value : (typeof value === 'number' && Number.isFinite(value)) || typeof value === 'boolean' ? String(value) : undefined;
-  return text !== undefined && acceptable(text) ? text : undefined;
+  if (text === undefined || !acceptable(text)) return undefined;
+  return typeof value === 'string' ? { text } : { text, typed: value as number | boolean };
 }
 export function benchmarkTarget(value: string): BenchmarkTarget {
   let url: URL;
@@ -497,17 +572,18 @@ export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: Be
       req=send(options,(res: IncomingMessage)=>{
         let size=0;const chunks: Buffer[]=[];
         // A body no assertion or capture reads is kept only up to STATUS_BODY_BYTES, for a status mismatch's report.
-        res.on('data',(chunk: Buffer)=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined || (test.capture && size<=MAX_CAPTURE_BODY) || size-chunk.length<STATUS_BODY_BYTES)chunks.push(chunk);});
+        res.on('data',(chunk: Buffer)=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined || ((test.capture || test.expectJson) && size<=MAX_CAPTURE_BODY) || size-chunk.length<STATUS_BODY_BYTES)chunks.push(chunk);});
         res.on('error',fail);
         res.on('end',()=>{
           const status=res.statusCode ?? 0,durationMs=performance.now()-began,body=Buffer.concat(chunks),setCookies=res.headers['set-cookie'] ?? [];
-          let pass=status===test.status && Object.entries(test.expectHeaders || {}).every(([k,v])=>res.headers[k.toLowerCase()]===v) && (test.expectBody===undefined || body.toString()===test.expectBody);
-          if(!pass)return resolve({status,durationMs,pass,setCookies,mismatches:mismatches(test,status,res.headers,body)});
+          const found=mismatches(test,status,res.headers,body);
+          let pass=!found.length;
+          if(!pass)return resolve({status,durationMs,pass,setCookies,mismatches:found});
           if(!test.capture)return resolve({status,durationMs,pass,setCookies});
           // Values are kept only for later steps; a missing one fails the step without saying what the response held.
-          const captured: Record<string,string>={};
-          for(const [name,spec] of Object.entries(test.capture)){if('cookie' in spec)continue;const value=extract(spec,res.headers,body);if(value===undefined){pass=false;break;}captured[name]=value;}
-          resolve(pass?{status,durationMs,pass,captured,setCookies}:{status,durationMs,pass,setCookies,error:'capture'});
+          const captured: Record<string,string>={},typed: Record<string,number|boolean>={};
+          for(const [name,spec] of Object.entries(test.capture)){if('cookie' in spec)continue;const value=extract(spec,res.headers,body);if(value===undefined){pass=false;break;}captured[name]=value.text;if(value.typed!==undefined)typed[name]=value.typed;}
+          resolve(pass?{status,durationMs,pass,captured,typed,setCookies}:{status,durationMs,pass,setCookies,error:'capture'});
         });
       });
       req.on('error',fail);req.on('timeout',()=>req?.destroy(new Error('Timeout')));req.end(test.body);
@@ -533,13 +609,13 @@ const unique = (items: string[]): string[] => [...new Set(items)].sort();
 function coverageNotesFor(unassertedCases: number[], uncovered: { route: string }[], ignoredWaivers: { route: string }[], metadata: ReadonlyMap<string, RouteInventory>): CoverageNote[] {
   const notes: CoverageNote[] = [];
   if (unassertedCases.length) notes.push({ code: 'unasserted-success', cases: unassertedCases,
-    message: 'These cases passed with a status below 400 but assert nothing else, so they cover no route: a status alone also matches a catch-all page or a wrong handler. Add expectBody or expectHeaders that only the intended response has.' });
+    message: 'These cases passed with a status below 400 but assert nothing else, so they cover no route: a status alone also matches a catch-all page or a wrong handler. Add expectBody, expectJson or expectHeaders that only the intended response has.' });
   const gated = unique(uncovered.filter(({ route }) => metadata.get(route)?.gatedBy?.length).map(({ route }) => route));
   if (gated.length) notes.push({ code: 'gated-route-uncovered', routes: gated,
     message: 'These routes are behind a sign-in gate (auth: true), so an anonymous request only reaches the refusal. Cover them with a steps fixture that signs in through the provider\'s own endpoint (the fixture\'s cookie jar keeps the session, and "origin": "{{origin}}" satisfies the same-origin check), or, where no fixture can sign in, waive the methods with coveredElsewhere and assert the anonymous 401.' });
   const waived = unique(ignoredWaivers.map(({ route }) => route));
   if (waived.length) notes.push({ code: 'waiver-without-proof', routes: waived,
-    message: 'A coveredElsewhere waiver counts only once the route is shown to be served: another of its methods covered by a passing, asserted fixture, or, on a sign-in-gated route, a passing 401 fixture with expectBody or expectHeaders.' });
+    message: 'A coveredElsewhere waiver counts only once the route is shown to be served: another of its methods covered by a passing, asserted fixture, or, on a sign-in-gated route, a passing 401 fixture with expectBody, expectJson or expectHeaders.' });
   return notes;
 }
 export async function auditProject(app: AuditableApp, {signals,expectRoutes,log=()=>{},compliance,deployment}: AuditOptions = {}): Promise<AuditReport> {
@@ -556,7 +632,7 @@ export async function auditProject(app: AuditableApp, {signals,expectRoutes,log=
     let route: string|undefined;try {route=plan.resolve(test.path);} catch { /* Invalid-path negative fixture. */ }
     const meta=route===undefined?undefined:metadata.get(route);
     // Error-only fixtures cannot prove a function's normal path works.
-    const assertsResponse=test.expectBody!==undefined || Object.keys(test.expectHeaders || {}).length>0;
+    const assertsResponse=test.expectBody!==undefined || test.expectJson!==undefined || Object.keys(test.expectHeaders || {}).length>0;
     if(result.pass && meta?.state==='active' && result.status<400 && !assertsResponse)unassertedCases.push(n);
     if(result.pass && assertsResponse && meta?.state==='active' && (result.status<400 || (meta.handler==='respond' && source==='generated')))covered.add(JSON.stringify([route,method]));
     // An asserted 401 on a route a principal gate protects proves the route is served behind that gate (a waiver basis).
