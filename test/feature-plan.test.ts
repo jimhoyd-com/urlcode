@@ -83,3 +83,22 @@ test('feature planning bounds adversarial goal text before any output is constru
  assert.ok(Buffer.byteLength(JSON.stringify(plan))<=featurePlanMaxBytes);
  await assert.rejects(planFeature(root,'x'.repeat(featurePlanMaxGoalLength+1)),/Feature goal/);
 });
+
+test('feature planning maps list, filter, sort and paging goals to store filterable/sortable and query parameters, not a tag match on one word (#834)',async t=>{
+ const root=await project(t,{});
+ for(const goal of ['let an owner filter their request list by status','sort requests by date','paginate the orders list']){
+  const plan=await planFeature(root,goal);
+  assert.deepEqual(plan.applicable.recipes.map(recipe=>recipe.name),['store-crud'],goal);
+  assert.ok(plan.applicable.capabilities.some(item=>item.name==='parameters'),goal);
+  assert.ok(plan.extensions.required.some(item=>item.name==='store'),goal);
+  const query=plan.outline.find(item=>item.kind==='declarative list query');
+  assert.ok(query,goal);
+  for(const word of ['filterable','sortable','cursor','parameters'])assert.match(query!.note,new RegExp(word),`${goal}: ${word}`);
+  assert.deepEqual(plan.applicationCode,[],`${goal}: a declared list query needs no application code`);
+ }
+ // An owner's own list is per-principal ownership, so it needs the principal-providing auth extension too.
+ assert.deepEqual((await planFeature(root,'let an owner filter their request list by status')).extensions.required.map(item=>item.name),['auth','store']);
+ // The tag fallback needs more than one shared word: "status" alone is not a health goal, a real health goal still is.
+ assert.deepEqual((await planFeature(root,'show the service status')).applicable.recipes,[]);
+ assert.equal((await planFeature(root,'health status page')).applicable.recipes[0]?.name,'health-page');
+});

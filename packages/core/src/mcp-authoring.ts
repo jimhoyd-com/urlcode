@@ -23,8 +23,9 @@ import type {RuntimeExtension} from './extensions.ts';
  * grants, deploys, or touches operator policy, compliance rules or host files.
  * The runners spawn the CLI against the same root only; they activate the local
  * runtime, so the project's trusted code runs with full Node access. They repeat
- * only the operator's own `--host-file` and `--origin` (the server takes no
- * `--policy`), so the operator host module's code runs in the child too.
+ * only the operator's own `--host-file`, `--origin` and `--policy` (each as the
+ * server resolved it, including from URLCODE_ORIGIN / URLCODE_POLICY), so the
+ * operator host module's code runs in the child too.
  */
 const text={type:'string',maxLength:1024};
 const handler={anyOf:[{type:'string',maxLength:2048},{type:'object'}]};
