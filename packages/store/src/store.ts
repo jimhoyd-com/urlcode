@@ -178,7 +178,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   const live: { token: symbol; collections: readonly Collection[] }[] = [];
   // Whether this registration already warned that throttles and caches are per process (once, on seeing a live peer).
   let warnedPeers = false;
-  // The interval (#902) and unique (#953) indexes each live activation reads through, so a reload drops only indexes nobody declares.
+  // The derived indexes (interval, #902; unique, #953; list, #951) each live activation reads through, so a reload drops only indexes nobody declares.
   const indexes = new Map<symbol, string[]>();
   // The one connection and how many live activations hold it.
   let connection: Connection | undefined;
@@ -360,14 +360,17 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
 }
 
 /**
- * Drops the interval (#902) and unique (#953) indexes that no live activation declares: a changed or removed
- * declaration would otherwise leave an index every write keeps paying for. Housekeeping only: an index is never needed
- * for a check to be correct, so a lock another process holds just leaves the drop to the next activation.
+ * Drops the derived indexes, interval (#902), unique (#953) and list (#951), that no live activation declares: a
+ * changed or removed `intervals`, `unique`, `sortable` or `filterable` would otherwise leave an index every write keeps
+ * paying for. Housekeeping only: an index is never needed for a check or a page to be correct, so a lock another
+ * process holds just leaves the drop to the next activation. The drops are one write transaction.
  */
 function dropStaleIndexes(db: StoreDatabase, wanted: ReadonlySet<string>): void {
   try {
-    for (const { name } of db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND (name GLOB 'store_intervals_*' OR name GLOB 'store_unique_*')"))
-      if (!wanted.has(name) && /^store_(?:intervals|unique)_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
+    db.transaction(() => {
+      for (const { name } of db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND (name GLOB 'store_intervals_*' OR name GLOB 'store_unique_*' OR name GLOB 'store_list_*')"))
+        if (!wanted.has(name) && /^store_(?:intervals|unique|list)_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
+    });
   } catch { /* Retried by the next activation. */ }
 }
 /** Records `collections`' declarations as the ones served (the fence, #927) and switches their writes to check it. */
