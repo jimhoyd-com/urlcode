@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
+import { spawnSync } from 'node:child_process';
+import { comparisonVerdict, skipVerdict } from '../scripts/workerd-parity-verdict.ts';
 
 // The shape of the workflows a release depends on: Release (release.yml) prepares the bump branch, Publish
 // (publish.yml) ships what reaches main. ci-workflow.test.ts covers ci.yml's jobs and plan.
@@ -43,6 +45,26 @@ test('workerd-parity.yml is manually dispatched only, read-only, pins Wrangler a
 test('npm run test:workerd builds dist/ before it compares (#868: a stale build once passed every case)', async () => {
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8')) as { scripts: Record<string, string> };
   assert.match(scripts['test:workerd']!, /^npm run build && node scripts\/workerd-parity\.ts$/);
+});
+
+// A direct `node scripts/workerd-parity.ts` (no npm_execpath) compares nothing: it must say SKIP with the reason, and
+// fail when WORKERD_PARITY_REQUIRED=1. A run that compared zero requests, or fewer than it declared, never passes.
+test('workerd parity never passes a run that compared nothing', () => {
+  assert.deepEqual(comparisonVerdict(0, 0, 0).exitCode, 1);
+  assert.deepEqual(comparisonVerdict(0, 37, 0), { line: 'FAIL: compared 0 of 37 requests', exitCode: 1 });
+  assert.equal(comparisonVerdict(36, 37, 0).exitCode, 1);
+  assert.equal(comparisonVerdict(37, 37, 2).exitCode, 1);
+  assert.deepEqual(comparisonVerdict(37, 37, 0), { line: 'all 37 responses identical (status, headers except request id, body)', exitCode: 0 });
+  assert.deepEqual(skipVerdict('no network', false), { line: 'SKIP: compared 0 requests: no network', exitCode: 0 });
+  assert.equal(skipVerdict('no network', true).exitCode, 1);
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'npm_execpath' && key !== 'WORKERD_PARITY_REQUIRED'));
+  const direct = spawnSync(process.execPath, ['scripts/workerd-parity.ts'], { encoding: 'utf8', env });
+  assert.equal(direct.status, 0);
+  assert.match(direct.stdout, /^SKIP: compared 0 requests: npm_execpath is unset; run `npm run test:workerd`/);
+  assert.doesNotMatch(direct.stdout, /SAME|identical/);
+  const requiredRun = spawnSync(process.execPath, ['scripts/workerd-parity.ts'], { encoding: 'utf8', env: { ...env, WORKERD_PARITY_REQUIRED: '1' } });
+  assert.equal(requiredRun.status, 1);
+  assert.match(requiredRun.stdout, /^FAIL: compared 0 requests/);
 });
 
 // #708: a diagnostic that must stay opt-in. It never runs on a push or pull request, cannot write, is called by no

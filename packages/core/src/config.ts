@@ -21,7 +21,7 @@ const schema = JSON.parse(await readFile(new URL('../../../schemas/urlcode.schem
 const validate = new Ajv.default({ allErrors: false, verbose: true, strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
 export const MAX_CONFIG_BYTES = 32 * 1024 * 1024;
 /** Finds the 1-based line/column of the YAML node an RFC 6901 pointer names; with `key`, of that key in the named mapping. */
-export type YamlLocator = (pointer: string, key?: string) => { line: number; column: number } | undefined;
+type YamlLocator = (pointer: string, key?: string) => { line: number; column: number } | undefined;
 const unescapePointer = (segment: string): string => segment.replace(/~1/g, '/').replace(/~0/g, '~');
 const pointerSegments = (pointer: string): string[] => pointer ? pointer.split('/').slice(1).map(unescapePointer) : [];
 const escapePointer = (segment: string): string => segment.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -29,7 +29,7 @@ export function parseYaml(text: string): unknown {
   return parseYamlLocated(text).data;
 }
 /** `parseYaml` plus a locator that maps a schema failure back to its line. Syntax errors keep the parser's position. */
-export function parseYamlLocated(text: string): { data: unknown; locate: YamlLocator } {
+function parseYamlLocated(text: string): { data: unknown; locate: YamlLocator } {
   assert(Buffer.byteLength(text) <= MAX_CONFIG_BYTES, 'Configuration exceeds 32 MiB');
   const lineCounter = new LineCounter();
   const doc = parseDocument(text, { version: '1.2', uniqueKeys: false, strict: true, lineCounter });
@@ -350,7 +350,7 @@ export async function safeFile(root: string, file: unknown): Promise<string> {
   return actual;
 }
 /** An authored path for an error message: quoted and bounded, so it cannot run on or smuggle control characters. */
-export const quotePath = (file: string): string => JSON.stringify(file.length > 200 ? `${file.slice(0, 200)}...` : file);
+const quotePath = (file: string): string => JSON.stringify(file.length > 200 ? `${file.slice(0, 200)}...` : file);
 const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
 async function readConfig(file: string, budget: { remaining: number }): Promise<{ data: unknown; locate: YamlLocator }> {
   const handle = await open(file, 'r');

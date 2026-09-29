@@ -3,13 +3,16 @@
 // by request. Optional and never part of `npm run verify`: it needs the network
 // to install wrangler into a scratch directory, which it does outside the repo.
 // Exit 0 with SKIP when workerd cannot be installed or started here. `npm run test:workerd` builds first, so
-// `dist/` always matches the sources it covers (#868: a stale build once passed every case on both sides).
+// `dist/` always matches the sources it covers (#868: a stale build once passed every case on both sides); a direct
+// `node scripts/workerd-parity.ts` therefore SKIPs, naming the reason, rather than comparing a possibly stale dist/.
+// A run that compared no request never passes (scripts/workerd-parity-verdict.ts).
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { connect, createServer } from 'node:net';
+import { comparisonVerdict, skipVerdict } from './workerd-parity-verdict.ts';
 
 const repo = resolve(import.meta.dirname, '..');
 const npm = process.env.npm_execpath ?? '';
@@ -18,7 +21,7 @@ const scratch = await mkdtemp(join(tmpdir(), 'urlcode-workerd-'));
 const children: ChildProcess[] = [];
 // WORKERD_PARITY_REQUIRED=1 (the manual workflow sets it) turns a SKIP into a failure, so a run that never reached workerd cannot pass.
 const required = process.env.WORKERD_PARITY_REQUIRED === '1';
-const skip = (why: string): never => { console.log(`${required ? 'FAIL' : 'SKIP'}: ${why}`); process.exitCode = required ? 1 : 0; throw new Error('skip'); };
+const skip = (why: string): never => { const { line, exitCode } = skipVerdict(why, required); console.log(line); process.exitCode = exitCode; throw new Error('skip'); };
 const run = (bin: string, args: string[], cwd: string): string => {
   const r = spawnSync(bin, args, { cwd, encoding: 'utf8', timeout: 240000 });
   if (r.status !== 0) skip(`${bin} ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').slice(0, 300)}`);
@@ -31,10 +34,10 @@ const ready = async (port: number, path: string): Promise<void> => {
 };
 
 // fetch() refuses a GET or HEAD with a body, so those requests go over a raw socket (#868).
-const raw = (port: number, method: string, path: string, body: string): Promise<{ status: number; body: string; headers: string; ms: number }> => new Promise((done, fail) => {
+const raw = (port: number, method: string, path: string, body: string, lines: readonly string[] = []): Promise<{ status: number; body: string; headers: string; ms: number }> => new Promise((done, fail) => {
   const started = performance.now();
   const chunks: Buffer[] = [];
-  const socket = connect(port, '127.0.0.1', () => socket.end(`${method} ${path} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`));
+  const socket = connect(port, '127.0.0.1', () => socket.end(`${method} ${path} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: application/json\r\n${lines.map(line => `${line}\r\n`).join('')}Content-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`));
   socket.setTimeout(15000, () => socket.destroy(new Error(`${method} ${path}: no response within 15 s`)));
   socket.on('data', (chunk: Buffer) => chunks.push(chunk)).on('error', fail).on('close', () => {
     const text = Buffer.concat(chunks).toString('latin1');
@@ -95,21 +98,26 @@ const cases: Record<string, { path: string; method?: string; headers?: Record<st
 };
 // Sent over a raw socket, each with the status both sides must answer. /requests lists [GET, POST], so HEAD is not
 // implied there (405); /nobody takes the default GET and HEAD, each with `maxBytes: 0`.
-const rawCases: Record<string, { method: string; path: string; body: string; status: number }> = {
+// Repeated header lines: workerd joins them before the Worker runs, and the Worker counts a joined value with a comma
+// as a repeat (docs/CLOUDFLARE.md), so both sides refuse the same requests the Node server counts line by line.
+const rawCases: Record<string, { method: string; path: string; body: string; status: number; lines?: string[] }> = {
   'per-method GET with a body (raw socket)': { method: 'GET', path: '/requests', body: JSON.stringify({ title: secret }), status: 413 },
   'HEAD not listed, with a body (raw socket)': { method: 'HEAD', path: '/requests', body: JSON.stringify({ title: secret }), status: 405 },
   'GET maxBytes 0, with a body (raw socket)': { method: 'GET', path: '/nobody', body: JSON.stringify({ title: secret }), status: 413 },
   'HEAD maxBytes 0, with a body (raw socket)': { method: 'HEAD', path: '/nobody', body: JSON.stringify({ title: secret }), status: 413 },
   'GET maxBytes 0, empty body (raw socket)': { method: 'GET', path: '/nobody', body: '', status: 200 },
+  'header parameter sent once (raw socket)': { method: 'GET', path: '/mode', body: '', status: 200, lines: ['X-Mode: fast'] },
+  'header parameter repeated (raw socket)': { method: 'GET', path: '/mode', body: '', status: 400, lines: ['X-Mode: fast', 'X-Mode: slow'] },
+  'Content-Type repeated on a body (raw socket)': { method: 'POST', path: '/pat', body: JSON.stringify({ v: 'a!' }), status: 400, lines: ['Content-Type: application/json'] },
 };
 const volatile = new Set(['date', 'server', 'connection', 'keep-alive', 'transfer-encoding', 'content-length', 'x-request-id']);
 // workerd gzips a response when the client sends Accept-Encoding (docs/CLOUDFLARE.md: compression is delegated to the edge); fetch() decodes it, so the body still compares byte for byte.
 volatile.add('content-encoding');
 
 try {
-  if (!npm) skip('run through npm run test:workerd');
+  if (!npm) skip('npm_execpath is unset; run `npm run test:workerd`, which rebuilds dist/ before comparing');
   // The example plus two routes that exercise the 128-character `pattern` cap in a body and a query parameter, a query
-  // and a path parameter with a standard format, and one that refuses a body on its default GET and HEAD.
+  // and a path parameter with a standard format, a header parameter, and one that refuses a body on its default GET and HEAD.
   const extra = `  /pat:
     methods: [POST]
     request:
@@ -134,6 +142,10 @@ try {
   /hosts/{ip}:
     parameters:
       - {name: ip, in: path, required: true, schema: {type: string, format: ipv6}}
+    respond: {json: {ok: true}}
+  /mode:
+    parameters:
+      - {name: x-mode, in: header, required: true, schema: {type: string}}
     respond: {json: {ok: true}}
   /nobody:
     request:
@@ -166,24 +178,27 @@ try {
     const body = await r.text();
     return { status: r.status, body, ms: performance.now() - started, headers: JSON.stringify([...r.headers].filter(([k]) => !volatile.has(k)).sort()) };
   };
-  let different = 0;
+  let different = 0, compared = 0;
   console.log(`wrangler ${version}; workerd port ${workerdPort}, node port ${nodePort}`);
   for (const [name, c] of Object.entries(cases)) {
     const w = await call(workerdPort, c), n = await call(nodePort, c);
     const same = w.status === n.status && w.body === n.body && w.headers === n.headers && !w.body.includes('TOPSECRET');
+    compared++;
     if (!same) different++;
     console.log(`${same ? 'SAME' : 'DIFF'} ${w.status} ${name} (workerd ${w.ms.toFixed(1)} ms, node ${n.ms.toFixed(1)} ms)`);
     if (!same) console.log(`  workerd ${w.status} ${w.headers} ${JSON.stringify(w.body)}\n  node    ${n.status} ${n.headers} ${JSON.stringify(n.body)}`);
   }
   for (const [name, c] of Object.entries(rawCases)) {
-    const w = await raw(workerdPort, c.method, c.path, c.body), n = await raw(nodePort, c.method, c.path, c.body);
+    const w = await raw(workerdPort, c.method, c.path, c.body, c.lines), n = await raw(nodePort, c.method, c.path, c.body, c.lines);
     const same = w.status === c.status && n.status === c.status && w.body === n.body && w.headers === n.headers && !w.body.includes('TOPSECRET');
+    compared++;
     if (!same) different++;
     console.log(`${same ? 'SAME' : 'DIFF'} ${w.status} ${name} (workerd ${w.ms.toFixed(1)} ms, node ${n.ms.toFixed(1)} ms)`);
     if (!same) console.log(`  expected ${c.status}\n  workerd ${w.status} ${w.headers} ${JSON.stringify(w.body)}\n  node    ${n.status} ${n.headers} ${JSON.stringify(n.body)}`);
   }
-  console.log(different ? `${different} request(s) differ` : 'all responses identical (status, headers except request id, body)');
-  if (different) process.exitCode = 1;
+  const { line, exitCode } = comparisonVerdict(compared, Object.keys(cases).length + Object.keys(rawCases).length, different);
+  console.log(line);
+  process.exitCode = exitCode;
 } catch (error) {
   if (!(error instanceof Error && error.message === 'skip')) throw error;
 } finally {

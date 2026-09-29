@@ -39,6 +39,11 @@ extension it requires; auth requires no other extension. `--example` also writes
 extension's demo, such as store's `/api/todos` JSON collection (per-user when auth
 is installed).
 
+The frontend is your own code calling those JSON routes with `fetch`; URLCode
+ships no component kit. The
+[private-requests client](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/client/main.js)
+is the reference pattern.
+
 Start with the local MCP `get_context` tool (or `npx urlcode context --project
 app`), then add the smallest declarative route or custom code the task requires.
 `AGENTS.md` explains the workflow and points to the optional hosted shared

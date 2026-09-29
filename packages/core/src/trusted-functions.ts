@@ -39,7 +39,7 @@ import type { HandlerResult, HeaderPair } from './http-response.ts';
 interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined; root?: string | undefined }
 interface TrustedDefinition { source: string; export: string }
 /** Operator-side detail behind a generic `Function execution failed` answer; see functionFailure(). */
-export interface FunctionFailure { source?: string; export?: string; message: string; stack?: string }
+interface FunctionFailure { source?: string; export?: string; message: string; stack?: string }
 // Which module a thrown value came from. Tagged where it is first caught, so a
 // handler's error keeps naming the handler as it bubbles out through the
 // middleware that awaited next(); the thrown value itself is never replaced,

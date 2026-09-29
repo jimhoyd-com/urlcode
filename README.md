@@ -298,7 +298,15 @@ documented in [tooling](docs/TOOLING.md#optional-hosted-ai-mcp).
 
 ## Built with URLCode
 
-No public application built on URLCode is currently listed. The two earlier
+No public application built on URLCode is currently listed. The reference
+application is the [private-requests proof](proofs/private-requests/README.md)
+in this repository: owner-private records, a reviewed approval and a reviewer
+permission declared over the auth and store extensions, with no application
+server code. Its [client](proofs/private-requests/client/main.js) is the
+frontend pattern: the application's own code calling the JSON mounts with
+`fetch`.
+
+The two earlier
 ones were built on the public runtime as ordinary consumers and have since been
 retired: `urlcode-docs`, a static documentation site
 rendered through its own middleware at build time and served through native

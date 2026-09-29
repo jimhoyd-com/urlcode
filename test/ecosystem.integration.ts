@@ -146,9 +146,9 @@ test('ecosystem: direct npm library use and URLCode hosted inside Hono', { timeo
     const review = JSON.parse(urlcode(['review', ...hosted, '--json']).stdout) as { observations: { signal: string; routes: string[] }[] };
     const signals = review.observations.map(item => `${item.signal} ${item.routes.join(',')}`).sort();
     // Recorded as found (proofs/ecosystem/README.md): review suggests the declarative request.body schema instead of
-    // the zod code, and misreads Hono's in-process app.fetch(request) as an outbound network call. The installed
-    // package zod itself is not named anywhere in explain or review.
-    assert.deepEqual(signals, ['manual-body-validation /app/api/validate', 'outbound-network-call /app/sub/hello,/app/sub/items,/app/sub/items/{id}']);
+    // the zod code, and does not report Hono's in-process app.fetch(request) as an outbound network call (#889). The
+    // installed package zod itself is not named anywhere in explain or review.
+    assert.deepEqual(signals, ['manual-body-validation /app/api/validate']);
   });
 
   // Both hosts: URLCode's own server, and the Hono application embedding the same project.

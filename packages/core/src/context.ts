@@ -68,7 +68,7 @@ function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefi
  return `${options.hostFile===undefined?'':` --host-file ${shellWord(options.hostFile)}`}${options.origin===undefined?'':` --origin ${shellWord(options.origin)}`}${options.policy===undefined?'':` --policy ${shellWord(options.policy)}`}`;
 }
 /** The operator host for an inspection, pinned to the reviewed policy's revision when the operator gave one (#834). */
-export async function inspectionHost(project:string,options:{hostFile?:string|undefined;policy?:string|undefined}):Promise<OperatorHost> {
+async function inspectionHost(project:string,options:{hostFile?:string|undefined;policy?:string|undefined}):Promise<OperatorHost> {
  const policy=await loadOperatorPolicy(options.policy,project);
  return loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256});
 }

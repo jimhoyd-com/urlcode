@@ -93,7 +93,7 @@ whose diff touches one of these areas keeps the lane above and adds two things
   already gets ([above](#extension-suites-on-windows)).
 - **Packed add-on integration.** `workspace-integration` runs its Linux/Node 24
   leg, the same job releases run on every OS: pack core and every add-on, add,
-  serve and remove them in a site, plus the UI browser check.
+  serve and remove them in a site, then run the proofs.
 
 Docs-only and ordinary source pull requests do not get either. Ordinary
 extension code still gets its Windows `workspace-verify` suites. Main pushes are
@@ -117,11 +117,10 @@ exactly, packs and installs the real core tarball (the same
 `scripts/package-smoke.ts` check other legs run on newer Node) and builds every
 extension package, so the floor is proven rather than only asserted in prose.
 
-The `workspace-integration` Linux leg runs that add-on integration and the UI browser test
-([#332](https://github.com/jimhoyd-com/urlcode/issues/332)) using preinstalled
-Chrome through DevTools. CI sets `URLCODE_REQUIRE_BROWSER=1`; locally it uses
-installed Chrome/Chromium and skips when absent. It is not part of `npm test`;
-Firefox, Safari and platform-native browsers remain unverified.
+No CI job drives a browser. `npm run test:proof` bundles the
+[private-requests client](../proofs/private-requests/client/main.js) with esbuild
+and checks that the site serves it, but does not execute it; no browser is
+verified.
 
 `docs` runs `npm run check:docs`; full-lane `static` runs
 `npm run check:code`; together they are `npm run check`. Core shards and

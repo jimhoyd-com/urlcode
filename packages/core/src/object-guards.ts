@@ -4,7 +4,7 @@
 // than generic object checks; router.ts and body-validation.ts reach this file
 // instead so a Worker/edge bundle never pulls in Node builtins through it.
 
-export type UnknownRecord = Record<string, unknown>;
+type UnknownRecord = Record<string, unknown>;
 /** True for a non-null, non-array object -- the shape most parsed JSON/YAML fields expect. */
 export const isRecord = (value: unknown): value is UnknownRecord =>
   value !== null && typeof value === 'object' && !Array.isArray(value);

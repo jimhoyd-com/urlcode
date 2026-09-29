@@ -377,6 +377,15 @@ confidence level and a plain-language reason:
 - Manually assembled `Set-Cookie`/session construction (`manual-cookie-session`).
 - Module-scope mutable state later mutated in the same file (`global-mutable-state`).
 - A direct outbound call, `fetch`/`http(s).request`/`http(s).get` (`outbound-network-call`).
+  The global `fetch(...)`, in any spelling (`globalThis.fetch`, `window.fetch`,
+  `self.fetch`), always counts, as does a member `.fetch(...)` whose first
+  argument is a URL (a string or template literal, or `new URL(...)`). A member
+  call on a receiver the module imports, or builds with `new X(...)`/`X(...)`
+  from an imported `X` (Hono's `app.fetch(request)`, itty-router's
+  `router.fetch(request)`), is an in-process framework app and is not reported.
+  Any other member `.fetch(...)` (`env.API.fetch(request)`, `client.fetch(request)`)
+  is still reported, with a note that it may be in-process. A method or
+  function named `fetch` is a definition, not a call, and comments are ignored.
 - Hand-rolled request counting paired with a `429`/`Retry-After` response
   (`manual-rate-limit`). Reported as `native-alternative` (pointing at
   `get_capability("policies.throttle")`) when `policies.throttle` is not
@@ -757,7 +766,7 @@ What it describes:
   `/**` redirect are served by their provider or directory and are not
   enumerated: they are listed under `x-urlcode.opaqueMounts` with the handler
   and extension name. An extension's own endpoints (for example a store's
-  collection API or the admin screens) are therefore absent, including every
+  collection API or Better Auth's endpoints) are therefore absent, including every
   provider admin API. A disabled route is left out and listed under
   `x-urlcode.omitted`.
 - **Authentication.** A route gated by an extension that provides the request

@@ -65,7 +65,7 @@ export const initListLimit = 20;
 export function boundedList(paths: readonly string[], limit = initListLimit): string {
   return paths.length <= limit ? paths.join(', ') : `${paths.slice(0, limit).join(', ')} and ${paths.length - limit} more`;
 }
-export interface InitOptions {
+interface InitOptions {
   /**
    * `--adopt`: create the site around user files already in the destination. Refused when anything there collides
    * with what init writes; otherwise only new files are written and every existing entry is left exactly as it is.
@@ -94,7 +94,7 @@ const deniedCodes: Record<string, string> = { EPERM: 'operation not permitted', 
  * POSIX path (never an absolute host path) and the one supported next step. Never suggests changing permissions or
  * disabling a sandbox; other errors are returned unchanged.
  */
-export function initWriteError(error: unknown, operation: 'creating' | 'writing', path: string): unknown {
+function initWriteError(error: unknown, operation: 'creating' | 'writing', path: string): unknown {
   const code = typeof error === 'object' && error !== null && typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : undefined;
   const reason = code === undefined ? undefined : deniedCodes[code];
   if (reason === undefined) return error;
@@ -105,7 +105,7 @@ export function initWriteError(error: unknown, operation: 'creating' | 'writing'
   return new ConfigError(`init could not finish ${operation} ${shown}: the operating system or a sandbox policy refused it (${code}, ${reason}). ${path === '' ? 'Nothing was written into it' : 'Everything this run created was removed and existing files were left as they were'}; ${next}`, { code: 'init-write-denied', file: path === '' ? '.' : path }, { cause: error });
 }
 interface PlannedFile { path: string; source?: string; mode: number }
-export interface InitPlan {
+interface InitPlan {
   /** The absolute destination. */
   target: string;
   /** `new` (nothing there), `in-place` (only npm/git entries) or `adopt` (user entries, which need --adopt). */
@@ -186,7 +186,7 @@ export async function planInit(destination: string, options: InitOptions = {}): 
   return { target, mode, existing, foreign, collisions, refusal, files };
 }
 /** Undoes an init: a new directory is deleted, an adopted one loses only what init created and gets its package.json back. */
-export interface InitUndo { (): Promise<void> }
+interface InitUndo { (): Promise<void> }
 /**
  * `urlcode init <directory>`: one site layout, always. The route project lives in `app/`; `host.mjs` (the
  * operator host, initially with no extensions), `package.json` (exact runtime pin and scripts), AGENTS.md,

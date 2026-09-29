@@ -21,7 +21,7 @@ export function createJsonLogger(stream: LogSink = process.stdout, maxBufferByte
     } catch {sink.failed=true;dropped++;}
   };
 }
-export type EventFormatter = (event: Record<string, unknown>) => string | undefined;
+type EventFormatter = (event: Record<string, unknown>) => string | undefined;
 type JsonLogger = (event: object) => void;
 /**
  * Human-readable `dev`/`serve` request/reload/watch/extension-warning/pin-followed lines for a TTY (`GET /go 302 0.9ms`), falling back to the JSON

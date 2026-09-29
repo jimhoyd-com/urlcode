@@ -282,7 +282,7 @@ export const bodySchemaAjvOptions = {
 } as const;
 
 /** One error as Ajv reports it (only the fields this module reads). */
-export interface BodyValidationError { instancePath: string; schemaPath: string; keyword: string; params: Record<string, unknown>; propertyName?: string }
+interface BodyValidationError { instancePath: string; schemaPath: string; keyword: string; params: Record<string, unknown>; propertyName?: string }
 /** A compiled validator: Ajv's function, or its standalone code on the Worker. */
 export type BodyValidator = ((value: unknown) => boolean) & { errors?: readonly BodyValidationError[] | null | undefined };
 /** What a host keeps per route: the validator and the names an issue pointer may show. */
