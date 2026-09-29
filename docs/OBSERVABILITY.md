@@ -22,10 +22,12 @@ await startServer({
 ## Event catalogue
 
 `events` in `@jimhoyd/urlcode/observability` is a frozen object mapping each event name
-to the complete list of fields it may carry. A test runs a real server and
-holds every record to it, so a field or event that is not in the table below
-does not ship. Fields marked *optional* are present only in the situations
-named.
+to the complete list of fields it may carry, and the table below is that
+object written out. Tests hold all three to each other: every record a real
+server run emits must be in `events`, every event the source emits must be
+registered there, and this table must name exactly its events and fields. A
+field or event that is not in the table does not ship. Fields are present only
+in the situations named.
 
 | Event | Fields | Emitted when |
 |---|---|---|
@@ -43,7 +45,8 @@ named.
 | `throttle` | `route`, `outcome` `allowed`/`exceeded`, `remaining` integer | A throttle decision. `allowed` is logged only in `mode: report`; enforce mode logs refusals. |
 | `agents` | `route`, `list` string, `outcome` `denied`/`reported` | A User-Agent matched a list. The list name is logged, never the header. |
 | `cache` | `route`, `outcome` `hit`/`stale`/`miss`/`store`, or `vary-bypass`/`stream-bypass` when a response was not stored because of an undeclared `Vary` or because it streamed | A cache lookup or store. |
-| `listening` | `address`, `port`, `mode`, `origin` | Printed once by the CLI at startup, not emitted by the server. |
+| `listening` | `address`, `port`, `mode`, `origin`; `mode` `studio` with `url` and `opened` instead | Printed once by the CLI at startup, not emitted by the server. |
+| `site` | `key` string; then `path` string and `status` `generated`/`shadowed`, or `severity` `info`/`warning` and `message` string, with `list` string and `skipped` integer when list entries were left out | Activating a snapshot with [site conventions](SITE.md): one record per convention generated or shadowed by a declared route at its path, plus a note when `robots.txt` omits its `Sitemap:` line (no known origin) or entries of a bundled list, or `security.txt` expires more than a year away. At startup or a reload, never per request. |
 | `extension_warning` | `extension` string, `message` string | An operator extension called `warn()` while it activated ([activation warnings](EXTENSIONS.md#activation-warnings)): at startup or a reload, never per request. `message` is one line of at most 500 characters; at most 21 records per extension per activation. |
 
 Every event carries `event` (its name). Numbers are JSON numbers, never
@@ -67,7 +70,9 @@ observer receives.
 No event, snapshot or exposition carries a request URL, path, query string,
 header, body, client address, User-Agent string, binding, secret or user
 exception text. `route` is always a configured pattern
-from reviewed YAML. The one free-text field, `extension_warning.message`, is
+from reviewed YAML. `site.message` and `local_review.note` are fixed runtime
+text that names only configuration. The one free-text field,
+`extension_warning.message`, is
 what the operator's own installed extension chose to write at activation; the
 extension contract requires it to carry counts and configuration names only,
 never user data or secrets. The `function_error` and `reload_rejected` diagnostics that

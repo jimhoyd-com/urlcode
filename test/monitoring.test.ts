@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile, readdir } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../packages/core/src/server.ts';
@@ -18,10 +18,8 @@ test('request records carry the documented fields and no request text', async t 
   assert.equal((await request(app,'/u/customer-7?token=secret')).status,302);
   const record = events.find(event => event.event === 'request');
   assert.ok(record,'no request record was emitted');
-  for (const field of ['requestId','status','durationMs','method','route']) {
-    assert.ok(field in record,`request record is missing ${field}`);
-    assert.ok(docs.includes(field),`MONITORING.md does not document request field ${field}`);
-  }
+  // Fields are documented in OBSERVABILITY.md's catalogue, which test/observability.test.ts holds to `events`.
+  for (const field of ['requestId','status','durationMs','method','route']) assert.ok(field in record,`request record is missing ${field}`);
   assert.equal(record.route,'/u/{id}');
   assert.ok(!JSON.stringify(events).includes('customer-7'));
   assert.ok(!JSON.stringify(events).includes('secret'));
@@ -83,22 +81,13 @@ test('health details are opt-in and gate on the healthDetails/metrics option', a
   }
 });
 
-test('every operational event the runtime emits is documented', async () => {
-  // The first check runs documentation -> code. This one runs code ->
-  // documentation, which is the direction that catches a new event landing
-  // without a line explaining what an operator should do about it.
-  const dir = fileURLToPath(new URL('../packages/core/src', import.meta.url));
-  const emitted = new Set<string>();
-  for (const file of await readdir(dir)) {
-    if (!file.endsWith('.ts')) continue;
-    for (const [,name] of (await readFile(join(dir,file),'utf8')).matchAll(/event:\s*'([a-z_-]+)'/g)) emitted.add(name ?? '');
-  }
-  // Command and build-tool output, not operational records an operator scrapes
-  // from a server. Nothing here is ever emitted by a serving process.
-  const cliOutput = new Set(['listening','added','created','upgraded','valid','error','test','check','finding','prerendered','native-project','prerender-passes','stats','source-assets-materialized','openapi-check']);
-  const undocumented = [...emitted].filter(name => !cliOutput.has(name) && !docs.includes(name));
-  assert.deepEqual(undocumented,[],`MONITORING.md does not document: ${undocumented.join(', ')}`);
-  assert.ok(emitted.has('request') && emitted.has('function_worker'),'event scan found nothing; the pattern has drifted');
+test('the log record table covers every cataloged event and copies none of its fields', async () => {
+  const { events } = await import('../packages/core/src/observability.ts');
+  const table = docs.split('## Log records')[1]?.split('\n## ')[0] ?? '';
+  const missing = Object.keys(events).filter(name => !table.includes('`' + name + '`'));
+  assert.deepEqual(missing,[],`MONITORING.md log records do not explain: ${missing.join(', ')}`);
+  assert.ok(table.includes('OBSERVABILITY.md#event-catalogue'),'MONITORING.md log records must link the catalogue');
+  assert.ok(!/^\| Event \| Fields \|/m.test(table),'MONITORING.md keeps a second copy of the event fields; link the catalogue instead');
 });
 
 test('the example alert rules are valid YAML naming real signals', async () => {

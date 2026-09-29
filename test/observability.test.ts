@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startServer } from '../packages/core/src/server.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
 import { events, validateObservers, createObserverSink, createMetrics, renderPrometheus, SNAPSHOT_VERSION } from '../packages/core/src/observability.ts';
@@ -28,7 +29,7 @@ test('every event a real server run emits matches the catalogue and carries no r
     '/page': { page: { file: 'public/page.html' }, policies: { cache: { strategy: 'swr', maxAge: 60, staleWhileRevalidate: 60 } } },
     '/f': { sandbox: true, function: { source: 'f.mjs' } },
   }, { 'public/page.html': page, 'f.mjs': 'export default () => new Response("ok");' },
-  { policies: { throttle: { quota: 2, window: 60, partition: 'route' } } });
+  { policies: { throttle: { quota: 2, window: 60, partition: 'route' } }, site: { robots: { sitemap: true } } });
   const app = await startServer({ project: root, port: 0, requestLog: 'detailed', log: () => {}, observers: [observer] });
   t.after(() => app.close());
   assert.equal((await request(app, '/u/customer-7?token=secret', { headers: { 'user-agent': 'Mozilla/5.0 GPTBot' } })).status, 302);
@@ -42,7 +43,7 @@ test('every event a real server run emits matches the catalogue and carries no r
   await writeFile(join(app.root, 'urlcode.yaml'), 'version: "1"\nroutes: { "/": { redirect: { url: "not a url" } } }\n');
   assert.equal(await app.reload(), false);
   const names = new Set(seen.map(event => event.event));
-  for (const name of ['request', 'reload', 'function_worker', 'throttle', 'agents', 'cache']) assert.ok(names.has(name), `no ${name} event seen`);
+  for (const name of ['request', 'reload', 'function_worker', 'throttle', 'agents', 'cache', 'site']) assert.ok(names.has(name), `no ${name} event seen`);
   conforms(seen);
   assert.ok(!forbidden.test(JSON.stringify(seen)), 'an event carried request text');
   const detailed = seen.find(event => event.event === 'request');
@@ -206,4 +207,42 @@ test('observers validate like plugins and the sink isolates the fallback logger'
   assert.deepEqual(seen, [{ event: 'watch', status: 'failed' }]);
   assert.equal(sink.metrics.snapshot().watch.failed, 1);
   assert.ok(Object.isFrozen(events) && Object.isFrozen(events.request));
+});
+
+// The catalogue has three copies that must agree: the `events` object, the table
+// in docs/OBSERVABILITY.md and the calls that emit records. The test above holds
+// what one server run emits to `events`; these hold the other two to it.
+const catalogue = async (): Promise<Map<string, string>> => {
+  const page = await readFile(new URL('../docs/OBSERVABILITY.md', import.meta.url), 'utf8');
+  const section = page.split('## Event catalogue')[1]?.split('\n## ')[0] ?? '';
+  const rows = new Map<string, string>();
+  for (const [row, name] of section.matchAll(/^\| `([a-z_]+)` \|.*$/gm)) rows.set(name ?? '', row);
+  return rows;
+};
+
+test('the OBSERVABILITY.md event table is exactly the events object', async () => {
+  const rows = await catalogue();
+  assert.deepEqual([...rows.keys()].sort(), Object.keys(events).sort(), 'docs/OBSERVABILITY.md event table and `events` differ');
+  for (const [name, fields] of Object.entries(events)) {
+    const columns = rows.get(name)!.split(' | ');
+    for (const field of fields) if (field !== 'event') assert.ok(columns[1]?.includes('`' + field + '`'), `docs/OBSERVABILITY.md does not document ${name}.${field}`);
+  }
+});
+
+test('every event the runtime emits is registered in the events object', async () => {
+  const dir = fileURLToPath(new URL('../packages/core/src', import.meta.url));
+  const emitted = new Set<string>();
+  for (const file of await readdir(dir)) {
+    if (!file.endsWith('.ts')) continue;
+    for (const [, name] of (await readFile(join(dir, file), 'utf8')).matchAll(/event:\s*'([a-z_-]+)'/g)) emitted.add(name ?? '');
+  }
+  // One-shot command and build-tool output, never a record a serving process
+  // writes to its log or observers.
+  const commandOutput = ['added', 'built', 'check', 'created', 'error', 'finding', 'native-project', 'openapi-check', 'prerender-passes',
+    'prerendered', 'skipped', 'source-assets-materialized', 'stats', 'test', 'upgraded', 'valid', 'warning', 'written'];
+  // stderr diagnostics that are not events (docs/OBSERVABILITY.md, privacy guarantees).
+  const diagnostics = ['function_error', 'reload_rejected'];
+  const unregistered = [...emitted].filter(name => !declared(name) && !commandOutput.includes(name) && !diagnostics.includes(name));
+  assert.deepEqual(unregistered, [], `emitted but not in \`events\`: ${unregistered.join(', ')}`);
+  assert.ok(emitted.has('request') && emitted.has('site'), 'event scan found nothing; the pattern has drifted');
 });
