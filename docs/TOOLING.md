@@ -757,7 +757,7 @@ What it describes:
   `/**` redirect are served by their provider or directory and are not
   enumerated: they are listed under `x-urlcode.opaqueMounts` with the handler
   and extension name. An extension's own endpoints (for example a store's
-  collection API or the admin screens) are therefore absent, including every
+  collection API or Better Auth's endpoints) are therefore absent, including every
   provider admin API. A disabled route is left out and listed under
   `x-urlcode.omitted`.
 - **Authentication.** A route gated by an extension that provides the request
