@@ -285,7 +285,8 @@ export const budgets: Record<string, Budget> = {
     // bytes (30486 over 3623 KiB) and 505 entries (1 over 504). Packed raised to 927 KiB, unpacked to 3656 KiB and
     // entries to 510, keeping about 4 KiB, 3.3 KiB and 5 entries of headroom.
     packed: 927 * 1024,
-    unpacked: 3656 * 1024,
+    // Re-measured after merging main (#896-#899): 3747895 unpacked bytes.
+    unpacked: 3664 * 1024,
     entries: 510,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
