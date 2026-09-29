@@ -13,6 +13,7 @@ import {runProjectTests} from './project-tests.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {loadOperatorPolicy} from './policy.ts';
 import {buildManifest} from './manifest.ts';
+import {buildOpenApi} from './openapi.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,authoringAnnotations,callAuthoringTool} from './mcp-authoring.ts';
 // Only the public @jimhoyd/urlcode/agent-context surface is used here; scripts/package-smoke.ts proves that
@@ -44,6 +45,7 @@ const definitions=[
  {name:'get_schema',description:'Return the resolved JSON Schema fragment for a dotted urlcode.yaml path such as route, redirect or policies.cache.',properties:{path:{type:'string',maxLength:256}},required:['path']},
  {name:'explain',description:'Explain the route a path selects from the compiled configuration: methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes.',properties:{target:text},required:['target']},
  {name:'get_manifest',description:'The generated semantic manifest: routes, capabilities, extensions, external requirements, functions, target support and the revision digest.',properties:{}},
+ {name:'get_openapi',description:'The OpenAPI 3.1 document for the project\'s declared HTTP operations, the same document `urlcode openapi` prints: paths, methods, parameters, per-method request bodies and only the responses URLCode itself writes. Handler-defined answers carry no schema and extension mounts are listed under x-urlcode.opaqueMounts, never enumerated. Nothing executes and no binding is read.',properties:{}},
  {name:'preview_import',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
  {name:'preview_export',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
  {name:'list_recipes',description:'List bundled local recipes.',properties:{}},
@@ -147,6 +149,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_schema':return getSchemaFragment(args.path as string);
    case 'explain':return explainRoute(project,args.target as string,base);
    case 'get_manifest':return buildManifest(project,base);
+   case 'get_openapi':return buildOpenApi(project,base);
    case 'preview_import':return previewImport({format:args.format as InterchangeFormat,text:args.text as string,acceptProviderDifferences:args.acceptProviderDifferences===true});
    case 'preview_export':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
    case 'list_recipes':return listRecipes();

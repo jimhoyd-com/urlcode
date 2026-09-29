@@ -245,8 +245,17 @@ export const budgets: Record<string, Budget> = {
     // main's #866/#867 and #873 docs: measured 3612717 unpacked bytes.
     // With #861 item 6 and #844 operation 2 both merged, measured on Node 26: 911700 packed / 3630347
     // unpacked bytes, 493 entries; about 3 KiB of headroom on each.
-    packed: 893 * 1024,
-    unpacked: 3548 * 1024,
+    // Packed raised from 870 to 880 KiB for #845's OpenAPI export: dist/openapi.js with its declarations, the
+    // CLI/MCP wiring, and the TOOLING/HTTP/AI-AUTHORING sections with their llms-full.txt copies. Measured on
+    // Node 26: 897639 packed bytes, 6759 over the old budget; 880 KiB keeps about 3 KiB for the ~2 KiB
+    // cross-Node gzip variance noted above. Unpacked measures 3572415 bytes, 19135 over, so it is raised from
+    // 3470 to 3500 KiB.
+    // With both #861 item 6 and #845's OpenAPI export merged, measured on Node 26: 904686 packed /
+    // 3596578 unpacked bytes, 493 entries; about 3 KiB of headroom on each.
+    // With #861 item 6, #845's OpenAPI export and #844 operation 2 all merged, measured on Node 26:
+    // 920937 packed / 3658875 unpacked bytes, 495 entries; about 3 KiB of headroom on each.
+    packed: 902 * 1024,
+    unpacked: 3576 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

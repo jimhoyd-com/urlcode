@@ -39,6 +39,8 @@ The tooling API consolidates authoring operations without starting a runtime:
   `explainProject(project, options)` returns every route the same way.
 - `buildManifest(project, options)` returns the generated semantic manifest
   described under [`urlcode manifest`](#explain-and-manifest).
+- `buildOpenApi(project, options)` returns the OpenAPI 3.1 document described
+  under [OpenAPI export](#openapi-export); `renderOpenApi` writes it as the CLI does.
 - `getCapabilities(target?, project?)` describes local implementation support and
   separate deployment evidence. With `project` (`{extensions, declared}`: a
   project's declared extensions and, from `declaredExtensionTargetsOf(loaded)`,
@@ -675,12 +677,88 @@ project produces the same bytes. `urlcode build` writes the same document as
 It is generated output, never a checked-in source of truth; regenerate it
 rather than editing it.
 
+### OpenAPI export
+
+`urlcode openapi [--project DIR] [--origin URL] [--out FILE] [--host-file F] [--policy F]`
+prints (or, with `--out`, writes) an [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.1.html)
+JSON document for the project's declared HTTP operations. MCP `get_openapi` and
+the SDK's `buildOpenApi` return the same document from the same function. Like
+`manifest`, it is derived from the compiled configuration: nothing executes,
+no binding is read, and the same project and options give the same bytes.
+`--origin` becomes the one `servers` entry; `--host-file` only adds whether
+each extension mount's provider is registered.
+
+What it describes:
+
+- **Operations.** One path per route pattern (`{id}` placeholders as written)
+  and one operation per declared method, HEAD included. The route's
+  `parameters` are the path item's parameters, with their schemas as written.
+  `operationId` is the method plus the path words (`getTodosById`).
+- **Request bodies.** Each method's [`request.body.<METHOD>`](HTTP.md#per-method-body-rules)
+  entry is that operation's `requestBody`: its `contentTypes` (or the media type
+  its `format` implies), `required`, and `x-urlcode.maxBytes`. The body schema
+  is already JSON Schema 2020-12, which `jsonSchemaDialect` declares, so it is
+  published as the author wrote it under `components.schemas`. The one change
+  is to local references: in an OpenAPI document `#/$defs/x` would resolve
+  against the whole document, so each `$defs` entry becomes its own component
+  and each `$ref` points at it. A GET, HEAD or DELETE entry, which may only set
+  `maxBytes`, is `x-urlcode.body.maxBytes` on the operation.
+- **Responses URLCode knows.** A `redirect` gives its status with a `Location`
+  header; a `respond` gives its status and, for a body, a `const` schema of the
+  exact value; a `page` or `download` gives 200, 206, 304 and 416 with its media
+  type; each `conditional` branch contributes its status, with a 404 when there
+  is no fallback. The runtime's own refusals appear where the route can produce
+  them: 400 for declared inputs or a body, 413 and 415 for a body policy, and
+  the 422 for a body schema, each in the route's
+  [error format](HTTP.md#error-format) (`text/plain`, the
+  `UrlcodeErrorEnvelope`, or the `UrlcodeBodyValidationError` JSON). An
+  enforced `throttle` or `agents` policy adds its refusal status.
+- **What it does not know, stated as such.** A `function` handler's answer, a
+  proxy's upstream answer and anything `middleware` or an extension named in
+  `policies.extensions` may answer first is a `default` response with no
+  schema. No schema is invented for them.
+- **Mounts.** Paths below an `extension` mount, a `static` directory and a
+  `/**` redirect are served by their provider or directory and are not
+  enumerated: they are listed under `x-urlcode.opaqueMounts` with the handler
+  and extension name. An extension's own endpoints (for example a store's
+  collection API or the admin screens) are therefore absent, including every
+  provider admin API. A disabled route is left out and listed under
+  `x-urlcode.omitted`.
+- **Authentication.** An `auth: true` route (`policies.extensions.auth`) gets a
+  `security` requirement on a generic cookie scheme, `urlcodeSession`, and 401
+  and 403 responses whose bodies are extension-defined. The cookie's real name
+  is the operator's auth configuration and is not published; the scheme's
+  `name` is the placeholder `session` and says so.
+- **Never included.** Binding names and values (`env`, `secrets`), proxy and
+  signal targets, redirect targets, module paths, operator policy and grants,
+  and extension configuration.
+
+`x-urlcode` carries the facts OpenAPI has no field for: at the top, the
+runtime version, the project `revision`, `opaqueMounts` and `omitted`; on each
+path item, the handler kind, the execution mode when the route runs project
+code (`trusted` or `sandboxed`), the middleware count, the extension and policy
+names, the error format and per-target support.
+
+The export is checked by `test/openapi.test.ts`: the output validates against
+the official OpenAPI 3.1 schema (vendored in `test/fixtures/openapi`) with
+every Schema Object valid against the JSON Schema 2020-12 meta-schema; a
+client generated from it by [`@hey-api/openapi-ts`](https://heyapi.dev/)
+typechecks and calls `examples/body-validation`; and a contract run sends
+requests derived from the document (valid ones, then each declared refusal) to
+that example and checks each answer's status, media type and schema against
+the document.
+
+Not yet described: response bodies of `function` routes (there is no response
+schema field), extension contributions (an extension cannot describe its mount
+through the extension contract yet), header-level details the runtime always
+adds (`X-Request-Id`, `Cache-Control`), and the 405 for an undeclared method.
+
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its canonical, verb-first tools, in the order
 `tools/list` returns them (`get_context` first — it is the documented first
 call), are `get_context`, `inspect`, `validate`,
 `list_capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
-`preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
+`get_openapi`, `preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`,
 `get_release_addon_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
@@ -751,7 +829,7 @@ the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
 `inspectExtensions` report; without the option the tool is absent and calls to
 it are rejected. The same registrations reach `get_context` (its `project.host`
-counts), `inspect`, `validate`, `explain`, `get_manifest`, `plan_feature`
+counts), `inspect`, `validate`, `explain`, `get_manifest`, `get_openapi`, `plan_feature`
 and `review` (and `run_tests` in authoring mode), so each answers as the host-aware CLI command or
 SDK call (`extensions` option) does for that host file. Tools accept no project/file/output path argument; recipe names
 come from the fixed catalog, `get_capability` names from the capability catalog,
@@ -969,8 +1047,8 @@ starting or restarting the MCP-aware session in the now-initialized directory;
 this as the fallback next to the bootstrap command above.
 
 The generated `AGENTS.md` and the packaged skills tell agents to prefer
-`get_context`, `get_capability`, `get_schema`, `search_recipes`, `explain` and
-`get_manifest` when the server is registered and to fall back to the matching
+`get_context`, `get_capability`, `get_schema`, `search_recipes`, `explain`,
+`get_manifest` and `get_openapi` when the server is registered and to fall back to the matching
 CLI commands otherwise.
 
 ## Optional hosted AI MCP
@@ -1013,8 +1091,8 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty-one read
-tools above (thirty-two with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty-two read
+tools above (thirty-three with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 

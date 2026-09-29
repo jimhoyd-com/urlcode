@@ -453,11 +453,19 @@ the route formats and the site scope. Static hosting has no server to write an
 error, so it refuses `errors: {format: json}` and `site.errors` before building
 (`urlcode capabilities --target static` lists `errors` as refused).
 
+## OpenAPI description
+
+`urlcode openapi` (MCP `get_openapi`) describes these rules as an OpenAPI 3.1
+document: each method's body policy is that operation's `requestBody`, and the
+400, 413, 415 and 422 answers above appear in the route's error format. A
+function's own answer is stated as handler-defined, with no schema. See
+[OpenAPI export](TOOLING.md#openapi-export).
+
 ## Still outside this contract
 
 Automatic CORS/preflight policy, cookie parsing/signing, authentication
 (beyond the operator-installed auth extension), JSON Schema beyond the
-`request.body.<METHOD>.schema` profile above, OpenAPI export, multipart/file uploads, streaming, content negotiation,
+`request.body.<METHOD>.schema` profile above, response schemas, multipart/file uploads, streaming, content negotiation,
 WebSocket upgrades and proxies are not implemented. Do not advertise these as
 supported just because raw headers can be declared. Compression negotiation,
 security-header profiles, per-client throttling, User-Agent policy and HTTP

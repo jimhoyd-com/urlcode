@@ -4,10 +4,10 @@ import { parseArgs } from 'node:util';
 // extensions/plugins), and commands that read an operator binding policy
 // outside the project. `cli.ts` shares these lists with its help footnotes so
 // a command cannot accidentally advertise a privilege it rejects (or vice versa).
-export const hostFileCommands = ['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','report','studio','extensions','mcp'] as const;
+export const hostFileCommands = ['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','report','studio','extensions','mcp','openapi'] as const;
 // The inspection commands and the MCP server take it too: a verified policy pins their host to its reviewed revision,
 // their emitted commands repeat it, and the MCP runners forward it (#834). None of them creates or changes a grant.
-export const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment','report','studio','explain','context','plan-feature','review','bootstrap','mcp'] as const;
+export const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment','report','studio','explain','context','plan-feature','review','bootstrap','mcp','openapi'] as const;
 // Commands that activate the project locally and so accept the operator's `--alias-origin`.
 export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit','benchmark'] as const;
 
