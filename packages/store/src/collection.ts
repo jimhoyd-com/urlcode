@@ -33,6 +33,29 @@ export type Scalar = string | number | boolean;
 const PROPERTY_TYPES: readonly PropertyType[] = ['string', 'integer', 'number', 'boolean'];
 const TRANSITION_LIMITS = { transitions: 16, fields: 8, stamps: 4 } as const;
 const INTERVAL_LIMITS = { within: 4, when: 8 } as const;
+const TRANSFER_LIMITS = { transfers: 8 } as const;
+const RECORD_ID = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+/**
+ * The body every declared transfer takes (#902): two record ids and a positive integer amount no larger than a safe
+ * integer, nothing else. Generated, never declared, so every transfer of every collection validates alike.
+ */
+export const transferBodySchema = {
+  type: 'object', additionalProperties: false, required: ['from', 'to', 'amount'],
+  properties: {
+    from: { type: 'string', maxLength: 36, pattern: RECORD_ID, description: 'The record debited; on an owned collection one the caller owns.' },
+    to: { type: 'string', maxLength: 36, pattern: RECORD_ID, description: 'The record credited: another record of the same collection.' },
+    amount: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: 'The whole number moved, in the property\'s units (minor units for a currency). A fraction is refused.' },
+  },
+} as const;
+const compiledTransferBody = compileBodySchema(transferBodySchema as unknown as BodySchema);
+/** A transfer body validated against `transferBodySchema`, and its two ids distinct; otherwise 422 `invalid_transfer`. */
+export function transferBody(input: unknown): TransferBody {
+  const issues = bodyIssues(compiledTransferBody, input);
+  if (!issues.length && (input as TransferBody).from === (input as TransferBody).to) issues.push({ pointer: '/to', keyword: 'transfer', message: 'must differ from from' });
+  if (issues.length) throw new StoreError(422, 'invalid_transfer', 'The transfer request is not valid', { issues });
+  const { from, to, amount } = input as TransferBody;
+  return { from, to, amount };
+}
 /** A collection name, as the store's configuration schema admits it; an interval constraint embeds it in its index. */
 const COLLECTION_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 /** The only date-time an interval bound takes: RFC 3339 in UTC (`Z`) with at most millisecond precision. */
@@ -100,7 +123,7 @@ export interface CollectionSpec {
   /** Values stored on create (and on PUT) for properties the body omits; each must satisfy its property's schema. */
   defaults?: Record<string, Scalar>;
   /**
-   * Properties only a declared transition changes (its `set` or `stamp`): a create stores the default (or leaves them
+   * Properties only a declared transition (its `set` or `stamp`) or transfer (its `amount`) changes: a create stores the default (or leaves them
    * unset), PUT keeps the stored value, and a body naming one answers 422. The OpenAPI record marks them readOnly.
    */
   readOnlyProperties?: string[];
@@ -139,7 +162,27 @@ export interface CollectionSpec {
   readers?: ReadersSpec;
   /** A non-overlap constraint (#902): no two records in one scope hold overlapping half-open `[start, end)` intervals. */
   intervals?: IntervalSpec;
+  /** Declared transfers by name (#902): `POST <mount>/transfers/<name>` moves an integer amount between two records. */
+  transfers?: Record<string, TransferSpec>;
 }
+/**
+ * One declared transfer (#902): `POST <mount>/transfers/<name>` with `{from, to, amount}` subtracts `amount` from the
+ * `from` record's `amount` property and adds it to the `to` record's, in one transaction, so the sum over the
+ * collection never changes. On an owned collection the caller may debit only a record it owns; the credited record
+ * may be anyone's. Integers only: a currency is counted in minor units.
+ */
+export interface TransferSpec {
+  /** A required integer property with an integer default, not an increment or interval property: the balance moved. */
+  amount: string;
+  /** The lowest value the debited record may be left holding (default 0: no overdraft). */
+  min?: number;
+  /** A membership collection (`membership: true`): only principals it lists may run the transfer. */
+  members?: string;
+}
+/** A validated transfer. */
+export interface NormalizedTransfer { amount: string; min: number; members?: string }
+/** A transfer request body, as the generated schema admits it. */
+export interface TransferBody { from: string; to: string; amount: number }
 /** Where an interval constraint applies: every record of the collection, or each owner's records on their own. */
 export type IntervalScope = 'collection' | 'owner';
 /**
@@ -209,14 +252,14 @@ export const collectionSchema = {
       },
     }], description: 'The record schema, inline or by the name of a project named schema (top-level schemas:). Either way it is a request body schema restricted to a flat record: the collection\'s defaults and readOnlyProperties carry what the store does beyond value shape.' },
     defaults: { type: 'object', maxProperties: LIMITS.properties, propertyNames: { pattern: FIELD_NAME }, additionalProperties: { oneOf: [{ type: 'string', maxLength: 65_536 }, { type: 'number' }, { type: 'boolean' }] }, description: 'Declared properties and the value stored on create (and on PUT) when the body omits them; each value must satisfy its property\'s schema. A required property with a default may be omitted from a create.' },
-    readOnlyProperties: { type: 'array', maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties only a declared transition (its set or stamp) changes. A create stores the default (or leaves them unset), PUT keeps the stored value, and a POST, PUT or PATCH body naming one answers 422. A required one needs a default, and some transition must set or stamp it. Not the key or an increment. The OpenAPI record marks them readOnly.' },
+    readOnlyProperties: { type: 'array', maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties only a declared transition (its set or stamp) or transfer (its amount) changes. A create stores the default (or leaves them unset), PUT keeps the stored value, and a POST, PUT or PATCH body naming one answers 422. A required one needs a default, and some transition must set or stamp it or some transfer move it. Not the key or an increment. The OpenAPI record marks them readOnly.' },
     maxRecords: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'Records the collection may hold (default 1000); a create beyond it answers 409 collection_full.' },
     maxRecordBytes: { type: 'integer', minimum: 256, maximum: LIMITS.recordBytes, description: 'Largest serialized record in bytes (default 4096); larger answers 413.' },
     pageSize: { type: 'integer', minimum: 1, maximum: LIMITS.pageSize, description: 'Records per list page, and the cap on a list request\'s limit (default 50).' },
     readOnly: { type: 'boolean', description: 'true: the API serves only GET and HEAD (other methods answer 405); short-link click counting still works.' },
     key: { type: 'string', pattern: FIELD_NAME, description: 'A required string property (maxLength at most 128, no default) whose caller-chosen value the collection keeps unique; a duplicate create answers 409 key_exists. Not allowed with ownership: owner.' },
     increments: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Numeric properties with a numeric default that POST <mount>/<id>/increment/<property> raises by exactly one in one database transaction, within the property\'s schema (409 increment_limit otherwise).' },
-    idempotency: { description: 'Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE, increment and transitions. A retry with a retained key and the same request (method, path, body) replays the first answer\'s status with the record as it is now; the same key on a different request answers 422 idempotency_key_reused. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the request principal, or to the network client when there is none.', type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys, description: 'Newest distinct keys the collection retains, across all callers; an evicted key is no longer protected and a retry with it runs again.' } } },
+    idempotency: { description: 'Enables the Idempotency-Key header on POST, PUT, PATCH, DELETE, increment, transitions and transfers. A retry with a retained key and the same request (method, path, body) replays the first answer\'s status with the record as it is now; the same key on a different request answers 422 idempotency_key_reused. Without it the header answers 400 idempotency_not_enabled. A key is scoped to the request principal, or to the network client when there is none.', type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys, description: 'Newest distinct keys the collection retains, across all callers; an evicted key is no longer protected and a retry with it runs again.' } } },
     sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties a list request may sort by (sort=<property> or sort=-<property>).' },
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties a list request may filter by equality (<property>=<value>); a value the property\'s schema refuses answers 400 invalid_query. limit, cursor and sort cannot be filterable.' },
     ownership: { enum: ['shared', 'owner'], description: 'shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true.' },
@@ -233,7 +276,7 @@ export const collectionSchema = {
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transition; anyone else gets 403 membership_required before any record is read. Checked inside the write transaction, so a membership change applies to the next request.' },
       },
     } },
-    membership: { type: 'boolean', description: 'true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
+    membership: { type: 'boolean', description: 'true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, transfers, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
     readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner.', type: 'object', additionalProperties: false, required: ['mount', 'members'], properties: {
       mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
       members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read.' },
@@ -245,6 +288,14 @@ export const collectionSchema = {
       within: { type: 'array', maxItems: INTERVAL_LIMITS.within, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Required properties that partition the constraint (a room, a resource): two intervals conflict only when every one of these is equal.' },
       scope: { enum: ['collection', 'owner'], description: 'collection (default): every record blocks every other, across owners on an owned collection (another owner\'s conflicting record is never named). owner: with ownership: owner only, each owner\'s records are constrained among themselves.' },
       when: { type: 'object', minProperties: 1, maxProperties: INTERVAL_LIMITS.when, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property\'s schema. Without it every record takes part.' },
+    } },
+    transfers: { description: 'Declared transfers by name: POST <mount>/transfers/<name> with the JSON body {from, to, amount} (two distinct record ids and a positive whole number) subtracts amount from the from record\'s amount property and adds it to the to record\'s in one transaction, so the sum over the collection never changes; a debit that would leave from below min answers 409 insufficient_balance and nothing is written. On an owned collection the caller may debit only its own record and may credit any owned record (a transfer between owners); on a shared collection anyone who reaches the mount may move between any two records, so gate it with members or the route. Honours If-Match (on from) and Idempotency-Key; audited as store.record.transferred on both records. Not on a membership collection.', type: 'object', maxProperties: TRANSFER_LIMITS.transfers, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
+      type: 'object', additionalProperties: false, required: ['amount'],
+      properties: {
+        amount: { type: 'string', pattern: FIELD_NAME, description: 'A required integer property with an integer default (a currency in minor units): the balance moved. Not an increment and not named by intervals. List it under readOnlyProperties so only transfers change it.' },
+        min: { type: 'integer', minimum: -Number.MAX_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER, description: 'The lowest value the debited record may be left holding (default 0: no overdraft). A negative min on a members-gated transfer is an issuer: its records may go below zero, which is the supply outstanding, and the sum still never changes.' },
+        members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transfer; anyone else gets 403 membership_required before any record is read.' },
+      },
     } },
   },
 } as const;
@@ -334,7 +385,7 @@ export interface NormalizedSpec {
   mount?: string; records: CompiledRecordSchema; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
-  membership: boolean; readers?: Required<ReadersSpec>; intervals?: NormalizedIntervals;
+  membership: boolean; readers?: Required<ReadersSpec>; intervals?: NormalizedIntervals; transfers: Record<string, NormalizedTransfer>;
 }
 /**
  * A validated interval constraint and its SQL, built once from the declaration. `kind` says how a bound compares
@@ -405,7 +456,7 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
   if (membership) {
     // A membership list is authorization data: served over a collection API, anyone the route admits could add
     // themselves or enumerate members. It has no mount, and nothing that only makes sense with one.
-    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly'] as const).filter(option => spec[option] !== undefined);
+    const refused = (['mount', 'ownership', 'transitions', 'readers', 'increments', 'idempotency', 'sortable', 'filterable', 'readOnly', 'transfers'] as const).filter(option => spec[option] !== undefined);
     if (refused.length) throw new Error(`Collection ${name}: a membership collection takes no ${refused.join(', ')}`);
     if (key === undefined) throw new Error(`Collection ${name}: a membership collection needs a key, the property holding each member's principal id`);
   } else if (spec.mount === undefined) throw new Error(`Collection ${name}: mount is required`);
@@ -439,12 +490,35 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (Object.values(transitions).some(transition => transition.mount === readers.mount)) throw new Error(`Collection ${name}: the readers mount must differ from every transition mount`);
   }
   const intervals = spec.intervals === undefined ? undefined : intervalsOf(name, spec.intervals, records, ownership, membership, increments);
+  const transfers = transfersOf(name, spec, records, increments, intervals);
   for (const field of records.readOnly) {
     // A create never carries a readOnly property, so a required one is satisfiable only through its default.
     if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
-    if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field))) throw new Error(`Collection ${name}: property ${field} is readOnly but no transition sets or stamps it`);
+    if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field)) && !Object.values(transfers).some(transfer => transfer.amount === field)) throw new Error(`Collection ${name}: property ${field} is readOnly but no transition sets or stamps it and no transfer moves it`);
   }
-  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }), ...(intervals === undefined ? {} : { intervals }) };
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }), ...(intervals === undefined ? {} : { intervals }), transfers };
+}
+
+/**
+ * Validates the declared transfers (#902). The amount property is a required integer with an integer default, so every
+ * record created under the declaration holds a whole balance. It may not be an increment (which would change the sum
+ * outside a transfer) or a property the interval constraint reads (a transfer does not run the interval check).
+ */
+function transfersOf(name: string, spec: CollectionSpec, records: CompiledRecordSchema, increments: readonly string[], intervals: NormalizedIntervals | undefined): Record<string, NormalizedTransfer> {
+  const out: Record<string, NormalizedTransfer> = {};
+  const intervalFields = intervals ? [intervals.start, intervals.end, ...intervals.within, ...Object.keys(intervals.when)] : [];
+  for (const [transfer, declared] of Object.entries(spec.transfers ?? {})) {
+    const where = `Collection ${name}: transfer ${transfer}`, field = declared.amount;
+    const property = hasOwn(records.properties, field) ? records.properties[field] : undefined;
+    if (!property) throw new Error(`${where}: amount names ${String(field).slice(0, 64)}, which is not a declared property`);
+    if (property.type !== 'integer' || !records.required.includes(field) || !Number.isSafeInteger(records.defaults[field])) throw new Error(`${where}: amount property ${field} must be a required integer property with an integer default (count a currency in minor units)`);
+    if (increments.includes(field)) throw new Error(`${where}: amount property ${field} is an increment, which would change the sum outside a transfer`);
+    if (intervalFields.includes(field)) throw new Error(`${where}: amount property ${field} is named by intervals, which a transfer does not check`);
+    const min = declared.min ?? 0;
+    if (!Number.isSafeInteger(min)) throw new Error(`${where}: min must be a safe integer`);
+    out[transfer] = { amount: field, min, ...(declared.members === undefined ? {} : { members: declared.members }) };
+  }
+  return out;
 }
 
 /**
@@ -581,7 +655,7 @@ export const membershipEvent = (collection: string, change: 'added' | 'removed',
 
 /** What an audited collection needs from the audit extension: its pure event validator, and a wake-up for the drain after a commit that wrote an event. */
 export interface CollectionAuditor { validate(value: unknown): AuditEvent; notify(): void }
-type AuditAction = 'created' | 'replaced' | 'updated' | 'deleted' | 'incremented' | 'transitioned';
+type AuditAction = 'created' | 'replaced' | 'updated' | 'deleted' | 'incremented' | 'transitioned' | 'transferred';
 /**
  * An `Idempotency-Key` a write carries (#835): `key`, the header value hashed with the caller's scope (the principal,
  * or the network client when there is none), and `fingerprint`, the hash of the request it was first used for.
@@ -593,6 +667,11 @@ export interface Retry { key: string; fingerprint: string }
  */
 export interface Written { status: number; record: StoredRecord | undefined; replayed: boolean; may?: string[] }
 /**
+ * A transfer's answer (#902): the debited record and, when the caller may read it, the credited one (on an owned
+ * collection only the caller's own), each as it is now; `replayed` as for `Written`.
+ */
+export interface Transferred { status: number; from: StoredRecord | undefined; to: StoredRecord | undefined; replayed: boolean }
+/**
  * Who a response is computed for (#873): with a viewer, a list page, a read and a write's answer carry `may`, the
  * transitions that viewer may run on each record right now. Trusted callers (StoreExports, the operator CLI) pass none.
  */
@@ -601,6 +680,8 @@ export interface Viewer { principal: string | undefined }
 export interface Page { items: StoredRecord[]; total: number; next?: string | number; may?: Record<string, string[]> }
 /** What one write step inside a transaction produced: the record it left and whether it inserted an audit event. */
 export interface Step { record: StoredRecord | undefined; audited: boolean }
+/** A transfer step: `record` is the debited record, `to` the credited one as the write left it. */
+export interface TransferStep extends Step { record: StoredRecord; to: StoredRecord }
 /**
  * Maps a failure inside a store transaction to what a caller may see: a StoreError is kept, a row this declaration
  * cannot represent or a SQLite failure (a full disk, a lock held past the busy timeout) is a 503 with no detail, and
@@ -809,7 +890,7 @@ export class Collection {
    * the backlog cap the write is refused (and rolled back). The event names the changed fields, never their values; a
    * list too long for audit's metadata bound is cut and marked `truncated`. Returns whether an event was inserted.
    */
-  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, transition?: string, record?: StoredRecord): boolean {
+  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, extra: Record<string, string> = {}, record?: StoredRecord): boolean {
     if (!this.spec.audit) return false;
     // Activation refuses an audited collection without an active audit, so this is a wiring error, never a request's.
     if (!this.auditor) throw new StoreError(503, 'audit_unavailable', 'The audit log is unavailable');
@@ -820,7 +901,7 @@ export class Collection {
     }
     const names = [...fields]; let truncated = false;
     while (Buffer.byteLength(JSON.stringify(names)) > AUDIT_FIELDS_BYTES) { names.pop(); truncated = true; }
-    writeAuditEvent(db, this.name, this.auditor.validate, { action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, metadata: { collection: this.name, ...(transition === undefined ? {} : { transition }), fields: names, ...(truncated ? { truncated: true } : {}) } });
+    writeAuditEvent(db, this.name, this.auditor.validate, { action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, metadata: { collection: this.name, ...extra, fields: names, ...(truncated ? { truncated: true } : {}) } });
     return true;
   }
   /** Declared properties whose value differs between two versions of a record (a removed one counts), in declaration order. */
@@ -1057,6 +1138,47 @@ export class Collection {
   private caller(transition: NormalizedTransition, principal: string | undefined): string | undefined {
     return transition.by === 'any' && transition.members === undefined ? principal : this.principal(principal);
   }
+  /**
+   * Runs the declared transfer `name` for `principal` (#902): `input` is the request body `{from, to, amount}`. An
+   * unknown name is a 404; the principal (401), `readOnly` (405) and the body (422 `invalid_transfer`) are checked
+   * before the database. Inside the one write transaction, in order: with `members`, the membership gate (403); the
+   * retained `Idempotency-Key` (a replay answers both records as they are now, the credited one only when the caller
+   * may read it); then `transferIn`. Any refusal writes nothing.
+   */
+  transfer(name: string, input: unknown, retry?: Retry, expectedEtag?: string, principal?: string, actor?: string): Transferred {
+    const transfer = this.transferNamed(name), caller = this.transferCaller(transfer, principal);
+    this.writable();
+    const body = transferBody(input), db = this.database();
+    let outcome: { result: Transferred; audited: boolean };
+    try {
+      outcome = db.transaction(() => {
+        if (caller !== undefined) this.admit(db, transfer.members, caller);
+        const done = this.idempotent(db, retry, 200, id => this.current(db, id, this.transferScope(caller)), () => this.transferIn(db, name, body, expectedEtag, principal, actor));
+        return { result: { status: done.result.status, from: done.result.record, to: this.readable(db, body.to, caller), replayed: done.result.replayed }, audited: done.audited };
+      });
+    } catch (error) { return storageFailure(error, false); }
+    if (outcome.audited) this.notifyAudit();
+    return outcome.result;
+  }
+  private transferNamed(name: string): NormalizedTransfer {
+    const transfer = hasOwn(this.spec.transfers, name) ? this.spec.transfers[name]! : undefined;
+    if (!transfer) throw new StoreError(404, 'not_found', 'No such transfer');
+    return transfer;
+  }
+  /** Who runs a transfer: any caller on an ungated shared collection, otherwise a principal (401 without one). */
+  private transferCaller(transfer: NormalizedTransfer, principal: string | undefined): string | undefined {
+    return !this.owned && transfer.members === undefined ? principal : this.principal(principal);
+  }
+  /** The scope the debited record is read in: the caller's own records on an owned collection, every record otherwise. */
+  private transferScope(caller: string | undefined): string | undefined { return this.owned ? caller : undefined; }
+  /** Whether `reader` may read `record`: any record of a shared collection, only its own on an owned one. */
+  visible(record: StoredRecord, reader: string | undefined): boolean { return !this.owned || (reader !== undefined && record[OWNER_FIELD] === reader); }
+  /** Record `id` as it is now when `reader` may read it, else undefined. */
+  private readable(db: StoreDatabase, id: string, reader: string | undefined): StoredRecord | undefined {
+    const row = db.get<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? AND id = ?`, this.name, id);
+    const record = row && this.parse(row);
+    return record && this.visible(record, reader) ? record : undefined;
+  }
   recordClick(id: string, field: string): StoredRecord {
     // Store-owned click-counter bookkeeping for a short-link redirect (dispatchShortLink in store.ts), never reachable
     // from the public record API. Per the #552 triage decision, this is the one write a `readOnly` collection still
@@ -1091,7 +1213,7 @@ export class Collection {
     this.sized(record);
     this.fits(db, record, scope);
     this.insert(db, record);
-    return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, undefined, record) };
+    return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, {}, record) };
   }
   /** Creates in the owner's scope inside an open transaction (a host transaction's `create`). */
   createFor(db: StoreDatabase, input: unknown, owner: string | undefined, actor: string | undefined): Step { return this.createIn(db, input, this.scope(owner), actor); }
@@ -1136,7 +1258,7 @@ export class Collection {
     const current = this.current(db, id, scope);
     if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
     db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', this.name, id);
-    return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor, undefined, current) };
+    return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor, {}, current) };
   }
   /** Deletes in the owner's scope inside an open transaction (a host transaction's `remove`). */
   removeFor(db: StoreDatabase, id: string, expectedEtag: string | undefined, owner: string | undefined, actor: string | undefined): Step { return this.removeIn(db, id, expectedEtag, this.scope(owner), actor); }
@@ -1166,7 +1288,40 @@ export class Collection {
       this.fits(db, record, caller);
     }
     this.replaceRow(db, record);
-    return { record, audited: this.audited(db, 'transitioned', id, this.changed(current, record), actor, name) };
+    return { record, audited: this.audited(db, 'transitioned', id, this.changed(current, record), actor, { transition: name }) };
+  }
+  /**
+   * The transfer step (#902), inside an open transaction (the HTTP API's, or a host transaction's). In order: with
+   * `members`, the membership gate (403); the debited record in the caller's scope (404, so another owner's record
+   * is a missing one); `If-Match` on it (412); the floor, `min` (409 `insufficient_balance`); the credited record,
+   * any owned record on an owned collection (404); both new values within the amount property's schema and the safe
+   * integers (409 `transfer_limit`); the record size (413). The floor is checked before the credited record is read,
+   * so a caller cannot learn whether an id exists without funds to move. Then both rows, each with a new `updatedAt`,
+   * and one `store.record.transferred` event per record, all in the one transaction: the sum never changes.
+   */
+  transferIn(db: StoreDatabase, name: string, input: unknown, expectedEtag: string | undefined, principal: string | undefined, actor: string | undefined): TransferStep {
+    this.writable();
+    const transfer = this.transferNamed(name), caller = this.transferCaller(transfer, principal), body = transferBody(input), field = transfer.amount;
+    if (caller !== undefined) this.admit(db, transfer.members, caller);
+    const from = this.current(db, body.from, this.transferScope(caller));
+    if (expectedEtag !== undefined && expectedEtag !== etagOf(from)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
+    const held = from[field];
+    // A row stored before the property was declared may lack it; nothing is assumed about its balance.
+    if (!Number.isSafeInteger(held)) throw new StoreError(409, 'transfer_conflict', 'A record does not hold a whole balance to transfer');
+    const debited = (held as number) - body.amount;
+    if (debited < transfer.min) throw new StoreError(409, 'insufficient_balance', 'The balance is too low for this transfer');
+    const to = this.owned ? this.anyOwned(db, body.to) : this.current(db, body.to, undefined);
+    if (!Number.isSafeInteger(to[field])) throw new StoreError(409, 'transfer_conflict', 'A record does not hold a whole balance to transfer');
+    const credited = (to[field] as number) + body.amount;
+    // No issue list: on an owned collection it would describe another owner's balance.
+    if (!Number.isSafeInteger(credited) || propertyIssue(this.spec.records, field, debited) || propertyIssue(this.spec.records, field, credited)) throw new StoreError(409, 'transfer_limit', 'The transfer would leave a balance its property does not allow');
+    const debit: StoredRecord = { ...from, updatedAt: stamp(from.updatedAt as string), [field]: debited };
+    const credit: StoredRecord = { ...to, updatedAt: stamp(to.updatedAt as string), [field]: credited };
+    this.sized(debit); this.sized(credit);
+    this.replaceRow(db, debit); this.replaceRow(db, credit);
+    const audited = this.audited(db, 'transferred', debit.id as string, [field], actor, { transfer: name, side: 'from', counterpart: credit.id as string });
+    this.audited(db, 'transferred', credit.id as string, [field], actor, { transfer: name, side: 'to', counterpart: debit.id as string });
+    return { record: debit, to: credit, audited };
   }
   private incremented(db: StoreDatabase, id: string, field: string, owner: string | undefined): StoredRecord {
     if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');

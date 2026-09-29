@@ -13,6 +13,8 @@ import type { RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { createStore } from '../src/index.ts';
 import { assertValidOpenApi, contractRun, operations } from '../../../test/openapi-contract.ts';
 import type { Json, Operation } from '../../../test/openapi-contract.ts';
+import Ajv2020 from 'ajv/dist/2020.js';
+import { request } from '../../../test/helpers.ts';
 import { cleanup } from './cleanup.ts';
 
 const origin = 'https://store-openapi.example.test';
@@ -154,4 +156,40 @@ test('a contract run against the served store answers only declared statuses, bo
   const checked = await contractRun(document, app, { 'x-badge': 'u1', origin }, given);
   assert.equal(checked.filter(line => line.startsWith('valid ')).length, operations(document).length);
   for (const status of ['413', '415', '422']) assert.ok(checked.some(line => line.endsWith(` ${status}`)), status);
+});
+
+test('a declared transfer is described with its generated body, its answer and its refusals, and the served answer matches', async t => {
+  const treasurers = { membership: true, key: 'userId', schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
+  const wallets = {
+    mount: '/api/wallets', ownership: 'owner', idempotency: { maxKeys: 10 },
+    schema: { type: 'object', additionalProperties: false, required: ['name', 'balance'], properties: { name: { type: 'string', maxLength: 20 }, balance: { type: 'integer' } } }, defaults: { balance: 0 }, readOnlyProperties: ['balance'],
+    transfers: { pay: { amount: 'balance' }, issue: { amount: 'balance', min: -1000, members: 'treasurers' } },
+  };
+  const { project, store, extensions } = await site(t, { collections: { treasurers, wallets } }, { '/api/wallets/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...badge } });
+  const document = await buildOpenApi(project, { origin, extensions });
+  assertValidOpenApi(document);
+  assert.deepEqual(Object.keys(document.paths), ['/api/wallets', '/api/wallets/{id}', '/api/wallets/transfers/pay', '/api/wallets/transfers/issue']);
+  const schemas = document.components.schemas as Record<string, Json>;
+  assert.deepEqual(schemas.StoreWalletsTransfer!.required, ['from', 'to', 'amount']);
+  assert.deepEqual((schemas.StoreWalletsTransfer!.properties as Json).amount, { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: 'The whole number moved, in the property\'s units (minor units for a currency). A fraction is refused.' });
+  const pay = document.paths['/api/wallets/transfers/pay']!.post as Operation & { parameters: Json[] };
+  assert.deepEqual(pay.parameters.map(parameter => parameter.name), ['If-Match', 'Idempotency-Key']);
+  assert.deepEqual(Object.keys(pay.responses), ['200', '400', '401', '403', '404', '409', '412', '413', '415', '422', '503']);
+  assert.match(String((pay.responses['409'] as Json).description), /insufficient_balance.*transfer_limit/);
+  assert.match(String(((document.paths['/api/wallets/transfers/issue']!.post as Operation).responses['403'] as Json).description), /membership_required/);
+  // A served transfer's answer is what the document says it is.
+  const app = await startServer({ project, origin, port: 0, log: () => {}, extensions });
+  cleanup(t, () => app.close());
+  store.exports.records('treasurers').create(null, { userId: 'u1' });
+  const api = store.exports.records('wallets');
+  const mint = (await api.create({ id: 'u1' }, { name: 'mint' })).record.id, mine = (await api.create({ id: 'u1' }, { name: 'mine' })).record.id;
+  const body = JSON.stringify({ from: mint, to: mine, amount: 7 });
+  const answer = await request(app, '/api/wallets/transfers/issue', { method: 'POST', headers: { 'x-badge': 'u1', origin, 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) }, body });
+  assert.equal(answer.status, 200, answer.body);
+  const ajv = new Ajv2020.default({ strict: false, logger: false });
+  ajv.addSchema({ ...document, $id: 'urn:urlcode:openapi' });
+  const validate = ajv.getSchema('urn:urlcode:openapi#/components/schemas/StoreWalletsTransferred')!;
+  const parsed = JSON.parse(answer.body) as { from: { balance: number }; to: { balance: number } };
+  assert.equal(validate(parsed), true, JSON.stringify(validate.errors));
+  assert.deepEqual([parsed.from.balance, parsed.to.balance], [-7, 7]);
 });

@@ -304,8 +304,10 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #908 store named schemas on top of #923's main: measured on Node 26 at 1007745 packed / 3971128 unpacked bytes, 517 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 988 * 1024,
-    unpacked: 3882 * 1024,
+    // With #902 declared transfers (STORE.md and llms-full.txt): measured on Node 26 at 1008512 packed / 3974160
+    // unpacked bytes, 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 989 * 1024,
+    unpacked: 3885 * 1024,
     entries: 521,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -363,7 +365,10 @@ export const budgets: Record<string, Budget> = {
     // #902 declared intervals (their config schema again in urlcode.json and the README field reference, the index
     // and check in dist/collection.js, the OpenAPI 409) and retry-safe host transactions (dist/records.js), with
     // the README/CHANGELOG contract: 114883 packed / 445013 unpacked bytes, 32 entries (Node 26); +3 KiB headroom.
-    packed: 116 * 1024,
+    // #902 declared transfers (their config schema again in urlcode.json and the README field reference, the transfer
+    // step in dist/collection.js, the OpenAPI path, StoreExports.transfer) with the README/CHANGELOG contract, on top
+    // of the intervals slice: 123421 packed / 483179 unpacked bytes, 32 entries (Node 26); +3 KiB headroom.
+    packed: 124 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -391,8 +396,8 @@ export const budgets: Record<string, Budget> = {
     // #861/#881 record schema and OpenAPI description: see the packed note above.
     // With #913 authoring goals and #916 README responses together: 386402 unpacked bytes (Node 26).
     // #908 named record schemas: see the packed note above.
-    // #902 intervals and host transaction retries: see the packed note above.
-    unpacked: 438 * 1024,
+    // #902 intervals and host transaction retries, and declared transfers: see the packed note above.
+    unpacked: 475 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf, redirectable } from './collection.ts';
-import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Written } from './collection.ts';
+import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
 import { markAuditDrained, openStoreDatabase, storeDurability } from './database.ts';
 import type { StoreDatabase, StoreDurability } from './database.ts';
@@ -195,6 +195,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       };
       for (const collection of collections) {
         for (const [name, transition] of Object.entries(collection.spec.transitions)) if (transition.members !== undefined) membership(`Collection ${collection.name}: transition ${name}`, transition.members);
+        for (const [name, transfer] of Object.entries(collection.spec.transfers)) if (transfer.members !== undefined) membership(`Collection ${collection.name}: transfer ${name}`, transfer.members);
         if (collection.spec.readers) membership(`Collection ${collection.name}: readers`, collection.spec.readers.members);
       }
       const shortByMount = new Map<string, ShortLink>();
@@ -352,6 +353,16 @@ function written(outcome: Written, location?: string): HandlerResult {
   const record = outcome.record;
   return json(outcome.status, view(record), [...(location === undefined ? [] : [['location', `${location}/${record.id as string}`] as [string, string]]), ...recordHeaders(record, outcome.may), ...replayed]);
 }
+/**
+ * The answer to a transfer (#902): `{from, to?}`, the debited record and, when the caller may read it, the credited
+ * one, each as it is now, with the debited record's ETag (the one `If-Match` takes) and whether it was replayed.
+ */
+function transferred(outcome: Transferred): HandlerResult {
+  const replayed: [string, string][] = outcome.replayed ? [['idempotency-replayed', 'true']] : [];
+  // A replay after the debited record was deleted: nothing left to answer with, as for any write's replay.
+  if (outcome.from === undefined) throw new StoreError(404, 'not_found', 'No such record');
+  return json(outcome.status, { from: view(outcome.from), ...(outcome.to === undefined ? {} : { to: view(outcome.to) }) }, [['etag', etagOf(outcome.from)], ...replayed]);
+}
 /** A transition takes no body: its effect is declared, and the caller supplies only the record, `If-Match` and the key. */
 function noBody(request: ExtensionRequest): void {
   if (request.body.byteLength > 0) throw new StoreError(400, 'body_not_allowed', 'A transition takes no request body');
@@ -391,6 +402,12 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
         return written(collection.create(body, retryOf(request, key, body), owner, actor, viewer), request.mount);
       }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
+    }
+    const transfer = rest.match(/^transfers\/([a-z][a-z0-9_-]{0,63})$/);
+    if (transfer && Object.hasOwn(collection.spec.transfers, transfer[1]!)) {
+      if (method !== 'POST') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('POST'));
+      const key = retryKey(request, collection), match = ifMatch(request), body = bodyOf(request, collection);
+      return transferred(collection.transfer(transfer[1]!, body, retryOf(request, key, body), match, principal, actor));
     }
     const increment = rest.match(/^([0-9a-f-]{36})\/increment\/([a-z][A-Za-z0-9_]*)$/);
     if (increment && method === 'POST') return written(collection.increment(increment[1]!, increment[2]!, retryOf(request, retryKey(request, collection)), owner, actor, viewer));

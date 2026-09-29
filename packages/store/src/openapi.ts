@@ -5,7 +5,7 @@
 // answer (its always-set headers, Cache-Control: no-store) and what a sign-in gate on the route answers first.
 import type { ExtensionDescribeRequest, ExtensionOpenApi } from '@jimhoyd/urlcode/extensions';
 import { QUERY_LIMITS } from './query.ts';
-import { normalize } from './collection.ts';
+import { normalize, transferBodySchema } from './collection.ts';
 import type { CollectionSpec, NormalizedSpec, PropertySchema } from './collection.ts';
 
 type Json = Record<string, unknown>;
@@ -14,14 +14,14 @@ const ref = (name: string): Json => ({ $ref: `#/components/schemas/${name}` });
 const json = (schema: Json): Json => ({ 'application/json': { schema } });
 const ID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 
-/** The store's error envelope: `fields` on a 400 invalid_query, `issues` (core's body-validation issues) on a 422 invalid_record or a 409 increment_limit, `conflict` on a 409 interval_conflict. */
+/** The store's error envelope: `fields` on a 400 invalid_query, `issues` (core's body-validation issues) on a 422 invalid_record or invalid_transfer or a 409 increment_limit, `conflict` on a 409 interval_conflict. */
 const errorSchema: Json = {
   description: 'Every error the store writes: a fixed code and message, and never a submitted value.',
   type: 'object', required: ['error'], additionalProperties: false,
   properties: { error: { type: 'object', required: ['code', 'message'], additionalProperties: false, properties: {
     code: { type: 'string' }, message: { type: 'string' },
     fields: { type: 'object', additionalProperties: { type: 'string' }, description: 'invalid_query: the offending query parameters, each with a fixed message.' },
-    issues: { type: 'array', items: ref('UrlcodeBodyValidationIssue'), description: 'invalid_record and increment_limit: the schema issues, in the shape a body-schema route answers.' },
+    issues: { type: 'array', items: ref('UrlcodeBodyValidationIssue'), description: 'invalid_record, invalid_transfer and increment_limit: the schema issues, in the shape a body-schema route answers.' },
     conflict: { type: 'object', required: ['id'], additionalProperties: false, properties: { id: { type: 'string', pattern: ID_PATTERN } }, description: 'interval_conflict: the record whose interval overlaps, only when the caller may read it (on an owned collection, only the caller\'s own record; another owner\'s blocks the slot without being named).' },
   } } },
 };
@@ -35,9 +35,9 @@ const replayed = header('true when an Idempotency-Key replayed the first answer 
 const valueSchema = (property: PropertySchema): Json => structuredClone(property) as Json;
 
 /** Every schema of one collection, named `Store<Collection><Kind>`. */
-function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json; names: { record: string; reader: string; create: string; patch: string; list: string; readerList: string } } {
+function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json; names: { record: string; reader: string; create: string; patch: string; list: string; readerList: string; transfer: string; transferred: string } } {
   const base = `Store${pascal(name)}`, records = spec.records, properties = records.properties;
-  const names = { record: `${base}Record`, reader: `${base}ReaderRecord`, create: `${base}Create`, patch: `${base}Patch`, list: `${base}List`, readerList: `${base}ReaderList` };
+  const names = { record: `${base}Record`, reader: `${base}ReaderRecord`, create: `${base}Create`, patch: `${base}Patch`, list: `${base}List`, readerList: `${base}ReaderList`, transfer: `${base}Transfer`, transferred: `${base}Transferred` };
   const stored = {
     id: { type: 'string', format: 'uuid', readOnly: true, description: 'Store-owned: the record id.' },
     createdAt: { type: 'string', format: 'date-time', readOnly: true, description: 'Store-owned: when the record was created.' },
@@ -88,6 +88,13 @@ function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json;
     },
   });
   const schemas: Json = { [names.record]: record(), [names.create]: create, [names.patch]: patch, [names.list]: list(names.record) };
+  if (Object.keys(spec.transfers).length) {
+    schemas[names.transfer] = { description: 'A transfer request: the debited record, the credited record (a different one) and the whole amount moved.', ...structuredClone(transferBodySchema) as Json };
+    schemas[names.transferred] = {
+      description: 'A committed transfer: each record as it is now. to is present only when the caller may read it (on an owned collection, only its own record).',
+      type: 'object', required: ['from'], additionalProperties: false, properties: { from: ref(names.record), to: ref(names.record) },
+    };
+  }
   if (spec.readers?.showOwner) {
     schemas[names.reader] = record({ _owner: { type: 'string', readOnly: true, description: 'The owner\'s opaque principal id.' } }, ['_owner']);
     schemas[names.readerList] = list(names.reader);
@@ -160,6 +167,25 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
   if (!spec.readOnly && spec.increments.length) paths[`${mount}/{id}/increment/{field}`] = {
     parameters: [idParameter, { name: 'field', in: 'path', required: true, description: 'A declared increment property.', schema: { enum: [...spec.increments] } }],
     post: { summary: `Raise a ${name} counter by one`, parameters: retry, responses: { ...recordAnswer('200', 'Incremented.'), '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'), '404': notFound, '409': failure('increment_limit: one more would break the property\'s schema.'), ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable } },
+  };
+  if (!spec.readOnly) for (const [transfer, declared] of Object.entries(spec.transfers)) paths[`${mount}/transfers/${transfer}`] = {
+    post: {
+      summary: `Run the ${transfer} transfer between two ${name} records`,
+      description: `Moves amount from the from record's ${declared.amount} to the to record's in one transaction, so their sum is unchanged; the from record may be left no lower than ${declared.min}.${spec.ownership === 'owner' ? ' The caller may debit only its own record, and may credit any owned record.' : ''}`,
+      parameters: [ifMatch, ...retry], requestBody: body(names.transfer),
+      responses: {
+        '200': { description: 'Transferred.', headers: { ETag: header('The from record\'s strong ETag; send it back in If-Match.', { type: 'string' }), ...(spec.idempotency ? { 'Idempotency-Replayed': replayed } : {}) }, content: json(ref(names.transferred)) },
+        '400': badRequest,
+        '403': failure(['forbidden_origin: a cross-origin write', ...declared.members ? ['membership_required: the caller is not a member'] : []].join('; ') + '.'),
+        '404': failure('not_found: the from record is not in the caller\'s scope, or the to record does not exist.'),
+        '409': failure('insufficient_balance: the from record would be left below the floor; transfer_limit: a balance would break its property\'s schema or leave the safe integers; transfer_conflict: a record holds no whole balance.'),
+        '412': failure('precondition_failed: the from record changed since that ETag.'),
+        '413': failure('record_too_large: the body or a resulting record exceeds maxRecordBytes.'),
+        '415': failure('Send Content-Type: application/json.'),
+        '422': failure(`invalid_transfer: the body is not {from, to, amount} with two different record ids and a positive whole amount${spec.idempotency ? '; or idempotency_key_reused' : ''}.`),
+        '503': unavailable,
+      },
+    },
   };
   if (!spec.readOnly) for (const [transition, declared] of Object.entries(spec.transitions)) {
     if (declared.mount !== undefined) continue;
