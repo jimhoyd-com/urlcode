@@ -24,12 +24,17 @@ import type { CrudCollection } from '../../src/crud.ts';
 import { createKit } from '../../src/kit.ts';
 import { createPresentation } from '../../src/presentation.ts';
 
-const collection: CrudCollection = { mount: '/api/todos', fields: { title: { type: 'string', required: true, maxLength: 200 }, done: { type: 'boolean', default: false } } };
+// `status` changes only through the declared `archive` transition, so the screen shows a button for it (#863).
+const collection: CrudCollection = {
+    mount: '/api/todos',
+    fields: { title: { type: 'string', required: true, maxLength: 200 }, done: { type: 'boolean', default: false }, status: { type: 'string', enum: ['open', 'archived'], default: 'open', transitionOnly: true } },
+    transitions: [{ name: 'archive', from: { status: 'open' } }],
+};
 const kit = createKit({ presentation: createPresentation({ defaults: {} }), assetsBase: '/assets/ui' });
 const page = crudScreen(kit, { collection, title: 'Todos' });
 const hostile = '<img src=x onerror="window.__pwned=1">';
 const stamp = '2026-01-01T00:00:00.000Z';
-const record = (id: string, title: string, done = false) => ({ id, title, done, createdAt: stamp, updatedAt: stamp });
+const record = (id: string, title: string, done = false) => ({ id, title, done, status: 'open', createdAt: stamp, updatedAt: stamp });
 
 function findBrowser(): string | undefined {
     const candidates = [process.env.CHROME_BIN, '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser',
@@ -45,6 +50,11 @@ const waiting = new Map<number, (message: Reply) => void>();
 let todos: ReturnType<typeof record>[] = [];
 let patchFails = false;
 const patches: unknown[] = [];
+// A store-like version per record: the list carries `etags`, every write checks `If-Match` (412 when stale) and
+// answers with the new ETag, the way the store extension does (#873).
+const versions = new Map<string, number>();
+const etagOf = (id: string) => `"${String(versions.get(id) ?? 0).padStart(32, '0')}"`;
+const matches: (string | undefined)[] = [];
 
 async function command<T = unknown>(method: string, params: object = {}): Promise<T> {
     const id = nextId++;
@@ -90,8 +100,21 @@ before(async () => {
         if (url.pathname === '/todos') { response.writeHead(200, Object.fromEntries(page.headers)); response.end(page.body); return; }
         const asset = kit.assets.find(candidate => url.pathname.endsWith(`/${candidate.name}`));
         if (asset) return reply(response, 200, asset.contentType, asset.body);
-        if (url.pathname === '/api/todos') return reply(response, 200, 'application/json', JSON.stringify({ items: todos, total: todos.length }));
-        const id = /^\/api\/todos\/([^/]+)$/.exec(url.pathname)?.[1];
+        if (url.pathname === '/api/todos') return reply(response, 200, 'application/json', JSON.stringify({ items: todos, total: todos.length, etags: Object.fromEntries(todos.map(todo => [todo.id, etagOf(todo.id)])) }));
+        const step = /^\/api\/todos\/([^/]+)\/archive$/.exec(url.pathname)?.[1];
+        const id = step ?? /^\/api\/todos\/([^/]+)$/.exec(url.pathname)?.[1];
+        const match = request.headers['if-match'];
+        if (id && (step ? request.method === 'POST' : request.method === 'PATCH')) matches.push(match);
+        if (id && match !== undefined && match !== etagOf(id)) return reply(response, 412, 'application/json', JSON.stringify({ error: { code: 'precondition_failed', message: 'stale' } }));
+        if (step && request.method === 'POST') {
+            const found = todos.find(todo => todo.id === step)!;
+            if (found.status !== 'open') return reply(response, 409, 'application/json', JSON.stringify({ error: { code: 'transition_conflict', message: 'no' } }));
+            found.status = 'archived';
+            versions.set(step, (versions.get(step) ?? 0) + 1);
+            response.writeHead(200, { 'content-type': 'application/json', etag: etagOf(step) });
+            response.end(JSON.stringify(found));
+            return;
+        }
         if (id && request.method === 'PATCH') {
             const chunks: Buffer[] = [];
             request.on('data', chunk => chunks.push(chunk as Buffer));
@@ -103,7 +126,9 @@ before(async () => {
                     if (patchFails) return reply(response, 500, 'application/json', JSON.stringify({ error: { code: 'internal', message: 'no' } }));
                     const found = todos.find(todo => todo.id === id)!;
                     Object.assign(found, body);
-                    reply(response, 200, 'application/json', JSON.stringify(found));
+                    versions.set(id, (versions.get(id) ?? 0) + 1);
+                    response.writeHead(200, { 'content-type': 'application/json', etag: etagOf(id) });
+                    response.end(JSON.stringify(found));
                 }, 300);
             });
             return;
@@ -193,5 +218,57 @@ test('browser: a failed PATCH rolls the checkbox back', { skip }, async () => {
         assert.match(await run<string>(`document.querySelector('.ui-crud-status').textContent`), /not saved/);
         assert.deepEqual(patches, [{ done: true }]);
     } finally { patchFails = false; }
+    assert.deepEqual(await run('window.__csp'), []);
+});
+
+const click = (label: string) => run(`[...document.querySelectorAll('button')].find(b=>b.textContent===${JSON.stringify(label)}).click()`);
+const statusText = () => run<string>(`document.querySelector('.ui-crud-status').textContent`);
+async function editTitle(id: string, text: string): Promise<void> {
+    await click('Edit');
+    await run(`(()=>{const i=document.querySelector('[data-ui-key="${id}:title"]');i.focus();i.select();})()`);
+    await command('Input.insertText', { text });
+    await click('Save');
+}
+
+test('browser: a transition click posts with the listed ETag and the row loses its button', { skip }, async () => {
+    todos = [record('t', 'File report')];
+    versions.clear(); versions.set('t', 4); matches.length = 0;
+    await open();
+    await run(`document.querySelector('[data-transition="archive"]').click()`);
+    await until(`!document.querySelector('[data-transition="archive"]')`, 'the transition to finish');
+    assert.deepEqual(matches, [`"${'4'.padStart(32, '0')}"`]);
+    assert.equal(todos[0]!.status, 'archived');
+    assert.match(await run<string>(`document.querySelector('[data-id="t"]').textContent`), /archived/);
+    assert.equal(await statusText(), '');
+    assert.deepEqual(await run('window.__csp'), []);
+});
+
+test('browser: an edit sends If-Match and the row takes the returned ETag, so a second edit succeeds too', { skip }, async () => {
+    todos = [record('e', 'Draft')];
+    versions.clear(); versions.set('e', 1); matches.length = 0; patches.length = 0;
+    await open();
+    await editTitle('e', 'First');
+    await until(`!document.querySelector('[data-ui-key="e:title"]')`, 'the first edit to save');
+    await editTitle('e', 'Second');
+    await until(`!document.querySelector('[data-ui-key="e:title"]')`, 'the second edit to save');
+    assert.deepEqual(matches, [`"${'1'.padStart(32, '0')}"`, `"${'2'.padStart(32, '0')}"`]);
+    assert.equal(todos[0]!.title, 'Second');
+    assert.equal(await run<string>(`document.querySelector('[data-id="e"] .ui-crud-lead').textContent`), 'Second');
+    assert.equal(await statusText(), '');
+});
+
+test('browser: a stale edit gets 412 and a page message, and nothing changes', { skip }, async () => {
+    todos = [record('s', 'Original')];
+    versions.clear(); versions.set('s', 1); matches.length = 0; patches.length = 0;
+    await open();
+    // Another writer moves the record on after the page listed it.
+    versions.set('s', 2);
+    await editTitle('s', 'Mine');
+    await until(`document.querySelector('.ui-crud-status [role="alert"]')`, 'the refusal message');
+    assert.match(await statusText(), /changed since the list was loaded/);
+    assert.deepEqual(matches, [`"${'1'.padStart(32, '0')}"`]);
+    assert.deepEqual(patches, [], 'the stale write never reached the record');
+    assert.equal(todos[0]!.title, 'Original');
+    assert.equal(await run<string>(`document.querySelector('[data-ui-key="s:title"]').value`), 'Mine', 'the edit row keeps what was typed');
     assert.deepEqual(await run('window.__csp'), []);
 });
