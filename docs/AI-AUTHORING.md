@@ -267,7 +267,7 @@ header. Assert a JSON answer with its exact text in `expectBody`, or only the
 values that matter with `expectJson`. An item with `steps` is an ordered
 fixture instead of a case: each step is a case that may `capture` values for
 later steps, or the restart step `{"restart": true}` (see
-[multi-step fixtures](READINESS.md#multi-step-fixtures)).
+[multi-step fixtures][docs/READINESS.md#multi-step-fixtures]).
 
 ```json
 [
@@ -780,6 +780,7 @@ programmatic compatibility analysis and provider verification limits.
 [docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md
 [docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
 [docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
+[docs/READINESS.md#multi-step-fixtures]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#multi-step-fixtures
 [docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md
 [docs/RESILIENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RESILIENCE.md
 [docs/FRAMEWORK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
