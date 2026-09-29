@@ -82,10 +82,13 @@ test('handler-defined answers, mounts, auth and operator configuration are state
   // auth: true → the provider's cookie-session requirement and its 401 on every method; its 403 refuses only a
   // cross-origin unsafe method, so a GET never declares it. Bodies are extension-defined.
   assert.deepEqual(op('/me').security,[{'urlcodeSession.auth':[]}]);
-  assert.deepEqual(Object.keys(op('/me').responses),['401','default']);
-  assert.deepEqual(Object.keys(op('/me','post').responses),['401','403','default']);
+  assert.deepEqual(Object.keys(op('/me').responses),['401','503','default']);
+  assert.deepEqual(Object.keys(op('/me','post').responses),['401','403','503','default']);
   assert.equal(op('/me').responses['401']!.content,undefined);
   assert.match(String((op('/me').responses['401'] as Json).description),/refused by the auth extension/);
+  // A session that cannot be verified (the provider's storage is unavailable) is a 503 with Retry-After, never a false 401.
+  assert.match(String((op('/me').responses['503'] as Json).description),/could not reach its own storage.*never answered as a 401/);
+  assert.ok(((op('/me').responses['503'] as Json).headers as Json)['Retry-After']);
   const scheme=document.components.securitySchemes?.['urlcodeSession.auth'] as Json;
   assert.equal(scheme.type,'apiKey');assert.equal(scheme.in,'cookie');assert.equal(scheme.name,'session');
   assert.deepEqual(scheme['x-urlcode'],{extension:'auth',cookieName:'operator-defined'});
@@ -179,7 +182,7 @@ test('a route gated by any principal-providing extension gets 401/403 and its se
   const op=(path:string)=>document.paths[path]!.get as Operation;
   for(const path of ['/me','/explicit']){
     assert.deepEqual(op(path).security,[{'urlcodeSession.authjs':[]}],path);
-    assert.deepEqual(Object.keys(op(path).responses),['200','401'],path);
+    assert.deepEqual(Object.keys(op(path).responses),['200','401','503'],path);
     assert.match(String((op(path).responses['401'] as Json).description),/refused by the authjs extension/);
   }
   // An extension that provides no principal is not a sign-in gate: no security, only the generic may-answer note.

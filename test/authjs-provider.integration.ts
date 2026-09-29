@@ -209,7 +209,7 @@ test('private-requests with Auth.js: an independently owned provider behind the 
         assert.equal(exported.status, 0, exported.stdout + exported.stderr);
         const document = JSON.parse(exported.stdout) as { paths: Record<string, { get: { security?: unknown; responses: Record<string, unknown> } }>; components: { securitySchemes?: Record<string, { 'x-urlcode'?: unknown }> } };
         assert.deepEqual(document.paths['/api/whoami']!.get.security, [{ 'urlcodeSession.authjs': [] }]);
-        assert.deepEqual(Object.keys(document.paths['/api/whoami']!.get.responses).sort(), ['200', '401']); // 403 is declared only on unsafe methods (#881)
+        assert.deepEqual(Object.keys(document.paths['/api/whoami']!.get.responses).sort(), ['200', '401', '503']); // 403 is declared only on unsafe methods (#881)
         assert.deepEqual(document.components.securitySchemes?.['urlcodeSession.authjs']?.['x-urlcode'], { extension: 'authjs', cookieName: 'operator-defined' });
       }
     } finally { await writeFile(yamlFile, yaml); }

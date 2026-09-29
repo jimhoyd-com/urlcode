@@ -895,7 +895,7 @@ What it describes:
   declares, assigns every `operationId`, and adds what the runtime does on
   every extension answer: `X-Request-Id`, `X-Content-Type-Options` and
   `Cache-Control: no-store`, a sign-in gate's security requirement and its
-  401/403 (a status both the gate and the extension answer claims no body
+  401/403/503 (a status both the gate and the extension answer claims no body
   schema, since either may answer). The mount is then listed under
   `x-urlcode.describedMounts`, and each of its path items carries
   `x-urlcode.handler: extension`, the extension name and the route pattern.
