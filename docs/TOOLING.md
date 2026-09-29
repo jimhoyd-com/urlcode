@@ -342,7 +342,11 @@ are grouped:
   registered and, if so, whether the registration is pinned to this project's
   current revision (`registered`/`revisionPinned` on the observation). A
   registered extension is still never reported as active or executable —
-  only as registered, which is a narrower, verifiable claim.
+  only as registered, which is a narrower, verifiable claim. With `--target`,
+  an extension that does not run on that target (its registration's targets,
+  or without `--host-file` its descriptor's) is no alternative there: the
+  observation falls back to what it would be without the extension (`gap` or
+  `manual-review`) and carries `refusedOn: <target>`.
 - `gap`: no current native or extension composition covers the pattern (for
   example durable, cross-instance counters); this is reported as a real
   capability gap, not a mistake to silently patch.
@@ -654,7 +658,14 @@ prints what `explainRoute` returns: one route in detail, or without a path a
 one-line-per-route table (methods, handler, state, execution mode, middleware
 count, policies, cache outcome and target support). `--target` narrows the support columns to
 one deployment target; `--host-file` supplies the operator registry so
-extension requirements show their provider. An unknown route exits 1 and names
+extension requirements show their provider and its registered targets decide
+extension support. Without it, each declared extension's installed
+`urlcode.json` descriptor (else the release catalog) decides as it does for
+[`validate` and `capabilities`](CAPABILITIES.md): a target the extension does
+not declare is `refused`, any other stays `conditional`
+([#875](https://github.com/jimhoyd-com/urlcode/issues/875)). `manifest`,
+`context` (its per-target `refused`/`conditional` lists) and `review --target`
+read them the same way. An unknown route exits 1 and names
 the nearest patterns. Everything comes from the compiled configuration: no
 request is evaluated, no function runs and no binding is read.
 
@@ -670,8 +681,10 @@ per-target support), the union of capabilities used, extension declarations
 (from a `recipe.yaml` beside the entry file when one exists), external
 requirements (environment and secret names, proxy and signal origins,
 extensions), the function and middleware
-modules with the routes that use them, and per-target compatibility. Without
-`--json` a short summary prints. The manifest is deterministic: the same
+modules with the routes that use them, and per-target compatibility
+(`{compatible, issues, refused}`: `refused` counts the issues the target
+refuses outright; the rest are `conditional` or `unknown`; schema version 4).
+Without `--json` a short summary prints. The manifest is deterministic: the same
 project produces the same bytes. `urlcode build` writes the same document as
 `manifest.json` beside its output, and `buildManifest` returns it from the SDK.
 It is generated output, never a checked-in source of truth; regenerate it

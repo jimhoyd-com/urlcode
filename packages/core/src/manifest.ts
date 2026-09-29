@@ -17,7 +17,7 @@ import type {RouteExplanation} from './explain.ts';
 
 // Bumped to 3 when `sandbox`/`sandboxReason` moved from the `function` handler
 // record to the route, so a middleware-only route reports its execution mode too.
-export const MANIFEST_SCHEMA_VERSION=3;
+export const MANIFEST_SCHEMA_VERSION=4;
 export interface ManifestRoute {
   path:string; methods:string[]; handler:RouteExplanation['handler']; enabled:boolean; expires?:string; generated?:string; description?:string;
   /** Execution mode for the route's whole `function`/`middleware` chain: `true` for the
@@ -37,7 +37,8 @@ export interface Manifest {
   recipes:RecipeProvenance[];
   external:{env:string[];secrets:string[];egress:{proxy:string[];signals:string[]};extensions:string[]};
   functions:ManifestModule[]; middleware:ManifestModule[];
-  targets:Record<CapabilityTarget,{compatible:boolean;issues:number}>;
+  /** `refused`: how many of the issues the target refuses outright (the rest are conditional or unknown). */
+  targets:Record<CapabilityTarget,{compatible:boolean;issues:number;refused:number}>;
 }
 const compare=(a:string,b:string):number=>a<b?-1:a>b?1:0;
 const sorted=(values:Iterable<string>):string[]=>[...new Set(values)].sort(compare);
@@ -62,8 +63,8 @@ async function recipeProvenance(root:string):Promise<RecipeProvenance[]> {
 }
 /** Build the semantic manifest for a project from its compiled IR. Deterministic for a given project. */
 export async function buildManifest(project:string,options:InspectOptions={}):Promise<Manifest> {
-  const {loaded,compiled,routes,chains,projectSha256}=await prepare(project,options);
-  const explanations=routes.map(route=>explainCompiledRoute(loaded,route,chains.get(route.pattern),{projectSha256,now:0})).sort((a,b)=>compare(a.path,b.path));
+  const {loaded,compiled,routes,chains,projectSha256,declaredTargets}=await prepare(project,options);
+  const explanations=routes.map(route=>explainCompiledRoute(loaded,route,chains.get(route.pattern),{projectSha256,now:0,declaredTargets})).sort((a,b)=>compare(a.path,b.path));
   const functions=new Map<string,ManifestModule>(),middleware=new Map<string,ManifestModule>();
   const register=(table:Map<string,ManifestModule>,source:string,name:string,path:string)=>{const key=`${source}#${name}`;const entry=table.get(key)??{source,export:name,routes:[]};entry.routes.push(path);table.set(key,entry);};
   const env=new Set<string>(),secrets=new Set<string>(),proxy=new Set<string>(),signals=new Set<string>();
@@ -96,7 +97,7 @@ export async function buildManifest(project:string,options:InspectOptions={}):Pr
       protectedRoutes:sorted(Object.entries(loaded.routes).filter(([,route])=>Object.hasOwn(effectiveExtensionPolicies(loaded.document,route),name)).map(([path])=>path))};
   }
   const targets={} as Manifest['targets'];
-  for(const target of capabilityTargets){const report=analyzeCompiledCapabilities(loaded.document,compiled,target,options.extensions);targets[target]={compatible:report.compatible,issues:report.issues.length};}
+  for(const target of capabilityTargets){const report=analyzeCompiledCapabilities(loaded.document,compiled,target,options.extensions,declaredTargets);targets[target]={compatible:report.compatible,issues:report.issues.length,refused:report.issues.filter(issue=>issue.support==='refused').length};}
   const capabilities=new Set<CapabilityName>();
   for(const route of routes)for(const capability of routeCapabilities(route,loaded.document))capabilities.add(capability);
   const modules=(table:Map<string,ManifestModule>)=>[...table.values()].map(entry=>({...entry,routes:sorted(entry.routes)})).sort((a,b)=>compare(a.source,b.source)||compare(a.export,b.export));

@@ -6,6 +6,8 @@ import {prepare} from './tooling.ts';
 import type {InspectOptions} from './tooling.ts';
 import {effectivePolicies} from './policies.ts';
 import type {RuntimeExtension} from './extensions.ts';
+import {normalizeCapabilityTarget} from './capabilities.ts';
+import type {CapabilityTarget} from './capabilities.ts';
 
 // Read-only static review; see docs/TOOLING.md#project-review.
 export type ReviewCategory = 'native-alternative' | 'extension-alternative' | 'gap' | 'manual-review';
@@ -18,6 +20,8 @@ export interface ReviewObservation {
   capability?: 'request.body' | 'respond' | 'proxy' | 'policies.throttle' | 'policies.security'; extension?: string; note: string;
   /** Set only for an extension-alternative observation when the caller supplied operator registrations (InspectOptions.extensions): whether that extension is actually registered, and, if so, whether the registration is pinned to this project's current revision. Absent when registration state could not be determined (no registrations supplied), in which case `note` stays with the conservative "declared, setup unconfirmed" wording. */
   registered?: boolean; revisionPinned?: boolean;
+  /** Set when `--target` names a target the declared extension does not run on (its registration's targets, or without registrations its urlcode.json descriptor's, #875): the finding falls back to what it would be without the extension. */
+  refusedOn?: CapabilityTarget;
 }
 export interface ProjectReview {
   format: 1; projectSha256: string; routeCount: number; moduleCount: number;
@@ -130,7 +134,15 @@ function extensionStatus(name: string, extensions: readonly Pick<RuntimeExtensio
 }
 
 export async function reviewProject(project: string, options: InspectOptions = {}): Promise<ProjectReview> {
-  const {loaded, projectSha256, routes} = await prepare(project, options);
+  const {loaded, projectSha256, routes, declaredTargets} = await prepare(project, options);
+  const target = options.target === undefined ? undefined : normalizeCapabilityTarget(options.target);
+  // An extension that does not run on the requested target is no alternative there (#875); unknown targets stay usable.
+  const refusedOn = (name: string): CapabilityTarget | undefined => {
+    if (target === undefined) return undefined;
+    const targets: readonly string[] | undefined = options.extensions ? options.extensions.find(item => item.name === name)?.targets : declaredTargets?.get(name);
+    return targets && !targets.includes(target === 'self-hosted' ? 'node' : target) ? target : undefined;
+  };
+  const refusedNote = (name: string, refused: CapabilityTarget): string => `${name} is declared but does not run on ${refused} (its declared targets), so it is no alternative there. `;
   const declaredExtensions = new Set(Object.keys(loaded.document.extensions ?? {}));
   interface ModuleInfo { source: string; routes: Set<string>; routesMissingSchema: Set<string>; routesWithThrottle: Set<string>; routesWithSecurity: Set<string>; handlerRoutes: Set<string>; middleware: boolean; boundArgs: boolean }
   const modules = new Map<string, ModuleInfo>();
@@ -182,12 +194,13 @@ export async function reviewProject(project: string, options: InspectOptions = {
 
     const cookieSession = detectCookieSession(source);
     if (cookieSession) {
-      const authDeclared = declaredExtensions.has('auth');
+      const authRefused = declaredExtensions.has('auth') ? refusedOn('auth') : undefined;
+      const authDeclared = declaredExtensions.has('auth') && authRefused === undefined;
       const authStatus = authDeclared ? extensionStatus('auth', options.extensions, projectSha256) : undefined;
       push(cookieSession, {
         category: authDeclared ? 'extension-alternative' : 'manual-review', signal: 'manual-cookie-session', routes: routesList, confidence: 'medium',
         reason: 'Hand-built Set-Cookie with session values (id, token, expiry, HttpOnly).',
-        ...(authDeclared ? {extension: 'auth'} : {}),
+        ...(authDeclared ? {extension: 'auth'} : {}), ...(authRefused ? {refusedOn: authRefused} : {}),
         ...(authStatus?.registered ? {registered: true, revisionPinned: authStatus.revisionPinned} : {}),
         note: authDeclared
           ? authStatus?.registered
@@ -195,18 +208,19 @@ export async function reviewProject(project: string, options: InspectOptions = {
               ? 'auth is registered and revision-pinned to this project: Better Auth owns sessions and cookies, so protect the route with auth: true and read context.capabilities.auth.identity.userId; hand-built cookies still need a human decision.'
               : 'auth is registered but not revision-pinned to this project\'s current revision; once it is, Better Auth owns sessions and the route reads context.capabilities.auth.identity.userId behind auth: true. Hand-built cookies still need a human decision.'
             : 'auth owns sessions through Better Auth once registered; protect the route with auth: true and read context.capabilities.auth.identity.userId. Hand-built cookies still need a human decision.'
-          : 'No session extension declared; needs human review (rotation, invalidation).',
+          : `${authRefused ? refusedNote('auth', authRefused) : 'No session extension declared; '}needs human review (rotation, invalidation).`,
       });
     }
 
     const globalState = detectGlobalState(source);
     if (globalState) {
-      const storeDeclared = declaredExtensions.has('store');
+      const storeRefused = declaredExtensions.has('store') ? refusedOn('store') : undefined;
+      const storeDeclared = declaredExtensions.has('store') && storeRefused === undefined;
       const storeStatus = storeDeclared ? extensionStatus('store', options.extensions, projectSha256) : undefined;
       push(globalState, {
         category: storeDeclared ? 'extension-alternative' : 'gap', signal: 'global-mutable-state', routes: routesList, confidence: 'medium',
         reason: 'Module-scope let/var starts empty, later mutated: local state.',
-        ...(storeDeclared ? {extension: 'store'} : {}),
+        ...(storeDeclared ? {extension: 'store'} : {}), ...(storeRefused ? {refusedOn: storeRefused} : {}),
         ...(storeStatus?.registered ? {registered: true, revisionPinned: storeStatus.revisionPinned} : {}),
         note: storeDeclared
           ? storeStatus?.registered
@@ -214,7 +228,7 @@ export async function reviewProject(project: string, options: InspectOptions = {
               ? 'store is registered and revision-pinned to this project; resets on restart, not shared across multiple instances.'
               : 'store is registered but not revision-pinned to this project\'s current revision; resets on restart, not shared across multiple instances.'
             : 'store can own this once registered; resets on restart, not shared across multiple instances.'
-          : 'Resets on restart, not shared across multiple instances; no alternative yet: a real gap.',
+          : `${storeRefused ? refusedNote('store', storeRefused) : ''}Resets on restart, not shared across multiple instances; no alternative yet: a real gap.`,
       });
     }
 

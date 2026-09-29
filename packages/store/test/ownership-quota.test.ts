@@ -60,7 +60,7 @@ test('records without an owner count toward the collection but no owner, and own
   assert.equal(await codeOf(await post(as, 'bob', 'b1')), 'collection_full', 'the three legacy records still fill the collection');
   await stop();
   // Assigning them to bob puts bob over his limit: activation still succeeds, and bob cannot create more.
-  await assignOwnerless(database, 'notes', 'bob');
+  await assignOwnerless(database, { collections: { notes: capped } as never, collection: 'notes', owner: 'bob' });
   const app = await start();
   try { assert.equal(await codeOf(await postAt(app.address.port, 'bob')), 'owner_quota_exceeded'); }
   finally { await app.close(); }
@@ -71,7 +71,7 @@ test('ownerless-delete frees room for owners after the restart', async t => {
   await create('alice', 'a1'); await create('alice', 'a2');
   assert.equal(await codeOf(await post(as, 'bob', 'b1')), 'collection_full');
   await stop();
-  await deleteOwnerless(database, 'notes');
+  await deleteOwnerless(database, { collections: { notes: capped } as never, collection: 'notes' });
   const app = await start();
   try {
     assert.equal((await postAt(app.address.port, 'bob')).status, 201);

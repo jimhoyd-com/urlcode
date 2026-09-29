@@ -115,11 +115,11 @@ test('records without an owner are served to nobody until the operator assigns o
   }
   // Each operator command is one transaction on its own connection, so it runs beside the serving process.
   assert.deepEqual(await reportOwnerless(database, 'notes'), { collection: 'notes', records: 3, ownerless: 2, ids: [old1.id, old2.id] });
-  await assert.rejects(assignOwnerless(database, 'notes', 'not an id'), /Owner must be a principal id/);
+  await assert.rejects(assignOwnerless(database, { collections: { notes } as never, collection: 'notes', owner: 'not an id' }), /Owner must be a principal id/);
   // The shipped CLI reports the same thing.
   const cli = await promisify(execFile)(process.execPath, ['--conditions=development', join(import.meta.dirname, '..', 'src', 'cli.ts'), 'ownerless', '--database', database, '--collection', 'notes']);
   assert.equal((JSON.parse(cli.stdout) as { ownerless: number }).ownerless, 2);
-  const assigned = await assignOwnerless(database, 'notes', 'alice');
+  const assigned = await assignOwnerless(database, { collections: { notes } as never, collection: 'notes', owner: 'alice' });
   assert.deepEqual(assigned.ids, [old1.id, old2.id]);
   assert.deepEqual((await stored()).records.map(record => record._owner), ['alice', 'alice', 'alice']);
   assert.equal((await reportOwnerless(database, 'notes')).ownerless, 0);
@@ -131,7 +131,7 @@ test('records without an owner are served to nobody until the operator assigns o
 test('the operator can delete records without an owner instead', async t => {
   const old = legacy('old');
   const { database } = await boot(t, { seed: [old, { ...legacy('owned'), _owner: 'bob' }] });
-  const removed = await deleteOwnerless(database, 'notes');
+  const removed = await deleteOwnerless(database, { collections: { notes } as never, collection: 'notes' });
   assert.deepEqual(removed.ids, [old.id]);
   const stored = records(database, 'notes');
   assert.equal(stored.length, 1); assert.equal(stored[0]!._owner, 'bob');

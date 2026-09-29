@@ -254,8 +254,11 @@ export const budgets: Record<string, Budget> = {
     // 3596578 unpacked bytes, 493 entries; about 3 KiB of headroom on each.
     // With #861 item 6, #845's OpenAPI export and #844 operation 2 all merged, measured on Node 26:
     // 920937 packed / 3658875 unpacked bytes, 495 entries; about 3 KiB of headroom on each.
+    // Unpacked raised from 3576 to 3584 KiB for #875 (descriptor targets in explain/manifest/context/review, the
+    // manifest's per-target `refused` count, and the STORE/TOOLING/CAPABILITIES operator-audit sections): measured
+    // on Node 26 at 3664264 unpacked bytes, 2440 over the old budget.
     packed: 902 * 1024,
-    unpacked: 3576 * 1024,
+    unpacked: 3584 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

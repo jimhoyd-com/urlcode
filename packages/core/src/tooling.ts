@@ -12,7 +12,8 @@ import {listRecipes,showRecipe,searchRecipes} from './recipes.ts';
 import {listExamples,searchExamples} from './examples.ts';
 import type {CompiledRoute,PolicyChain,PolicyShared} from './types.ts';
 import {checkExtensionPolicies,effectiveExtensionPolicies,emptyPolicyOnly} from './extensions.ts';
-import {readInstalledDescriptor} from './addon-install.ts';
+import {declaredExtensionTargetsOf,readInstalledDescriptor} from './addon-install.ts';
+import type {DeclaredExtensionTargets} from './capabilities.ts';
 import Ajv from 'ajv/dist/2020.js';
 import {dirname} from 'node:path';
 import type {LoadedDocument} from './types.ts';
@@ -35,7 +36,11 @@ export type {FeaturePlan,FeaturePlanOptions} from './feature-plan.ts';
 export type {RouteExplanation,ExplainedHandler,ExplainedCache,ExplainedExtensionRequirement,ExtensionProvider,TargetSupport} from './explain.ts';
 export {reviewProject} from './review.ts';
 export type {ProjectReview,ReviewObservation,ReviewCategory,ReviewSignal} from './review.ts';
-/** `extensions` are operator registrations from a host file; explain reports whether each requirement has a provider. Nothing is activated. */
+/**
+ * `extensions` are operator registrations from a host file; explain reports whether each requirement has a provider.
+ * Without them, `prepare` reads each declared extension's descriptor targets (`declaredExtensionTargetsOf`, #875), so
+ * a target an extension does not declare is `refused` rather than `conditional`. Nothing is activated.
+ */
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number;extensions?:RuntimeExtension[]|undefined}
 function routesOf(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[] {return [...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];}
 export async function prepare(project:string,options:InspectOptions={}) {
@@ -49,7 +54,9 @@ export async function prepare(project:string,options:InspectOptions={}) {
  // The same policy inventory the runtime attaches (src/runtime.ts): compiled for every route when the project declares any.
  const anyPolicy=Boolean(loaded.document.policies)||routes.some(route=>route.policies),chains=new Map<string,PolicyChain>();
  try {for(const route of routes){const chain=await compilePolicies(loaded.document,route,{route,shared,target:'node',root:loaded.root});if(anyPolicy)chains.set(route.pattern,chain);}}finally{await closePolicies(shared);}
- return {loaded,compiled,routes,chains,projectSha256:snapshot.projectSha256};
+ // Descriptor targets only decide when no registrations were supplied: a loaded registration is the authority.
+ const declaredTargets:DeclaredExtensionTargets|undefined=options.extensions===undefined?await declaredExtensionTargetsOf(loaded):undefined;
+ return {loaded,compiled,routes,chains,projectSha256:snapshot.projectSha256,declaredTargets};
 }
 function compatibilitySummary(report:CompatibilityReport) {return {target:report.target,compatible:report.compatible,deployment:report.deployment,requirementCount:report.requirements.length,issueCount:report.issues.length};}
 /** Semantic authoring inspection; no binding reads, sandbox execution or runtime activation. */
@@ -59,9 +66,9 @@ function inspectionPage(options:InspectOptions):{offset:number;limit:number} {
  if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>1000)throw new Error('Invalid inspection page');
  return {offset,limit};
 }
-function inspectPrepared({loaded,compiled,routes,projectSha256}:Awaited<ReturnType<typeof prepare>>,options:InspectOptions) {
+function inspectPrepared({loaded,compiled,routes,projectSha256,declaredTargets}:Awaited<ReturnType<typeof prepare>>,options:InspectOptions) {
  const {offset,limit}=inspectionPage(options);
- const report=analyzeCompiledCapabilities(loaded.document,compiled,options.target??'self-hosted',options.extensions);
+ const report=analyzeCompiledCapabilities(loaded.document,compiled,options.target??'self-hosted',options.extensions,declaredTargets);
  return {format:1,projectSha256,routeCount:compiled.count,offset,limit,routes:routes.slice(offset,offset+limit).map(route=>({path:route.pattern,methods:route.methods,enabled:route.enabled!==false,capabilities:routeCapabilities(route,loaded.document)})),compatibility:{...compatibilitySummary(report),offset,limit,hasMore:offset+limit<report.issues.length,issues:report.issues.slice(offset,offset+limit)}};
 }
 /**
@@ -90,14 +97,14 @@ export async function validateProject(project:string,options:InspectOptions={}) 
 export interface RouteMiss {matched:false;nearest:string[];note:string}
 /** Explain the route a path selects from the compiled IR: effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes and no binding is read. */
 export async function explainRoute(project:string,target:string,options:InspectOptions={}):Promise<RouteExplanation|RouteMiss> {
- const {loaded,compiled,chains,projectSha256}=await prepare(project,options),match=matchRoute(compiled,parseTarget(target));
+ const {loaded,compiled,chains,projectSha256,declaredTargets}=await prepare(project,options),match=matchRoute(compiled,parseTarget(target));
  if(!match)return {matched:false,nearest:nearestRoutes(target,routesOf(compiled).map(route=>route.pattern)),note:'No route selects this path.'};
- return explainCompiledRoute(loaded,match.route,chains.get(match.route.pattern),{extensions:options.extensions,projectSha256});
+ return explainCompiledRoute(loaded,match.route,chains.get(match.route.pattern),{extensions:options.extensions,declaredTargets,projectSha256});
 }
 /** Every route's explanation, in the router's precedence order. */
 export async function explainProject(project:string,options:InspectOptions={}):Promise<{projectSha256:string;routeCount:number;routes:RouteExplanation[]}> {
- const {loaded,routes,chains,projectSha256}=await prepare(project,options);
- return {projectSha256,routeCount:routes.length,routes:routes.map(route=>explainCompiledRoute(loaded,route,chains.get(route.pattern),{extensions:options.extensions,projectSha256}))};
+ const {loaded,routes,chains,projectSha256,declaredTargets}=await prepare(project,options);
+ return {projectSha256,routeCount:routes.length,routes:routes.map(route=>explainCompiledRoute(loaded,route,chains.get(route.pattern),{extensions:options.extensions,declaredTargets,projectSha256}))};
 }
 export async function previewImport(options:ImportRoutesOptions) {return importRoutes(options);}
 export async function previewExport(project:string,format:InterchangeFormat,acceptProviderDifferences=false) {const loaded=await loadDocument(project);const {includes:_includes,...document}=loaded.document;return exportRoutes({format,document:{...document,routes:loaded.routes},acceptProviderDifferences});}

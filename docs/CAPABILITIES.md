@@ -43,7 +43,12 @@ for them; with no readable project (`--project` defaults to `app/` in a site
 directory) it prints the generic catalog. `validate` preflights `--target`
 (default `self-hosted`) and fails with the refusal, naming the extension;
 without `--host-file` the remaining `conditional` extension answer is not an
-error there, and with one the registrations decide. See [egress](EGRESS.md) and
+error there, and with one the registrations decide. `urlcode explain`,
+`manifest`, `context` and `review` read the same descriptors when no
+`--host-file` is loaded ([#875](https://github.com/jimhoyd-com/urlcode/issues/875)),
+so their per-target support agrees with `validate` and `capabilities`: an
+extension on a target it does not declare is `refused` there too (see
+[TOOLING](TOOLING.md#explain-and-manifest)). See [egress](EGRESS.md) and
 [conditions](CONDITIONS.md).
 
 | Support | Meaning |

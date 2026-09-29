@@ -1,7 +1,7 @@
 import {relative} from 'node:path';
 import Ajv from 'ajv/dist/2020.js';
 import {analyzeCompiledCapabilities,capabilityTargets,routeCapabilities} from './capabilities.ts';
-import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
+import type {CapabilityName,CapabilityTarget,DeclaredExtensionTargets} from './capabilities.ts';
 import {effectiveExtensionPolicies} from './extensions.ts';
 import type {RuntimeExtension} from './extensions.ts';
 import {effectivePolicies} from './policies.ts';
@@ -46,7 +46,8 @@ export interface RouteExplanation {
   responseHeaders:[string,string][]; capabilities:CapabilityName[]; targets:Record<CapabilityTarget,TargetSupport>;
   note:string;
 }
-interface ExplainOptions { extensions?:RuntimeExtension[]|undefined; projectSha256?:string|undefined; now?:number|undefined }
+/** `declaredTargets`: the extensions' descriptor targets, used only when no `extensions` registrations are given. */
+interface ExplainOptions { extensions?:RuntimeExtension[]|undefined; declaredTargets?:DeclaredExtensionTargets|undefined; projectSha256?:string|undefined; now?:number|undefined }
 
 const relativeSource=(root:string,source:string):string=>relative(root,source).split('\\').join('/');
 function origin(url:string):string {try{return new URL(url).origin;}catch{return url;}}
@@ -92,7 +93,7 @@ function targetsOf(loaded:LoadedDocument,route:CompiledRoute,options:ExplainOpti
   const table={exact:new Map([[route.pattern,route]]),byLength:new Map(),mounts:[],modules:[],count:1};
   const result={} as Record<CapabilityTarget,TargetSupport>;
   for(const target of capabilityTargets){
-    const report=analyzeCompiledCapabilities(loaded.document,table,target,options.extensions);
+    const report=analyzeCompiledCapabilities(loaded.document,table,target,options.extensions,options.extensions?undefined:options.declaredTargets);
     const issues=report.issues.filter(issue=>issue.path===route.pattern).map(({capability,support,reason})=>({capability,support,reason}));
     result[target]={compatible:issues.length===0,issues};
   }

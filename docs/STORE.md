@@ -394,9 +394,10 @@ still has no roles, and `auth` gains none.
   A membership collection may declare `audit: true`. Then every added member
   is recorded as `store.membership.added` and every removed one as
   `store.membership.removed`, with subject `<collection>/<principal id>`,
-  metadata `{collection}` and the actor of the change: `operator` for
-  `urlcode-store members` and `reassign`, or the principal a `StoreExports`
-  caller passed (`anonymous` for `null`). Whichever path makes the change, the
+  metadata `{collection}` and the actor of the change: `operator` (or the
+  command's [`--actor`](#operator-attribution)) for `urlcode-store members`
+  and `reassign`, or the principal a `StoreExports` caller passed
+  (`anonymous` for `null`). Whichever path makes the change, the
   event is inserted into the outbox **in the same transaction** as the member
   row, so a grant or revocation and its event commit or roll back together; at
   the backlog cap the change is refused with `503 audit_backlog`. The operator
@@ -637,10 +638,14 @@ filterable: [kind, done]         # <field>=<value>, equality only
   `sort`; `total` is the number of matches.
 - Anything else is `400 invalid_query` with `fields` naming the key: an
   undeclared sort or filter name, a repeated key, a value that does not parse
-  as the field's type, a value outside the field's `enum` (`is not one of the
-  allowed values`: a value the field can never hold is refused rather than
-  answered with an empty page, on an owner's mount and a readers mount alike),
-  an unrelated parameter such as `q`, more than 16 parameters. Names that are
+  as the field's type, a value the field can never hold, an unrelated
+  parameter such as `q`, more than 16 parameters. A value the field can never
+  hold is one a write would refuse: outside its `enum` (`is not one of the
+  allowed values`), below its `minimum` or above its `maximum` (`must be at
+  least 1`), shorter than its `minLength` or longer than its `maxLength`
+  (`must be at most 4 characters`), or not matching its `format`. It is refused
+  rather than answered with an empty page, on an owner's mount and a readers
+  mount alike, with the same fixed message a write gets. Names that are
   not plain identifiers are reported as `(unsupported name)`, and values are
   never echoed. Unknown query parameters are therefore refused rather than
   ignored on every collection, declared or not. There are no ranges,
@@ -779,14 +784,24 @@ server serves, which sees the change on its next request:
 
 ```sh
 npx urlcode-store ownerless --database /srv/site/data/store.sqlite --collection notes
-npx urlcode-store ownerless-assign --database /srv/site/data/store.sqlite --collection notes --owner <principal id>
-npx urlcode-store ownerless-delete --database /srv/site/data/store.sqlite --collection notes
+npx urlcode-store ownerless-assign --database /srv/site/data/store.sqlite --project /srv/site/app \
+  --collection notes --owner <principal id>
+npx urlcode-store ownerless-delete --database /srv/site/data/store.sqlite --project /srv/site/app \
+  --collection notes
 ```
 
 Each prints `{collection, records, ownerless, ids}` as JSON. `--owner` takes a
 principal id exactly as the provider sets it (for auth, the user's Better Auth
-id). The same operations are exported
-from the package as `reportOwnerless`, `assignOwnerless` and `deleteOwnerless`.
+id). Assigning and deleting read `--project` (the route project, as for
+`reassign`): the collection must be declared `ownership: owner`, and on an
+[audited](#audited-writes) collection each record they change is recorded
+(`store.record.reassigned` with metadata `{collection, to}`, or
+`store.record.deleted` with `{collection, ownerless: true}`), in the same
+transaction and within the [backlog](#operator-changes-in-the-audit-log). The
+same operations are exported from the package as
+`reportOwnerless(database, collection)`,
+`assignOwnerless(database, {collections, collection, owner, actor?})` and
+`deleteOwnerless(database, {collections, collection, actor?})`.
 
 Going back is refused: a collection declared shared whose database rows carry
 an owner fails activation, because serving them shared would hand every user's
@@ -825,28 +840,34 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   that lists `--from`, its entry becomes `--to`'s (the key field and its
   index together, in its original place), or is removed when `--to` already
   is a member. On an audited membership collection this is recorded as
-  `--from` removed and, unless it already was a member, `--to` added, with
-  actor `operator`. It happens in the same transaction as the record moves.
-- It prints `{from, to, dryRun, moved, collections: [{collection, moved,
-  toBefore, toAfter, maxRecordsPerOwner}], memberships: [{collection,
-  toWasMember}]}` as JSON. `--dry-run` counts and writes nothing.
+  `--from` removed and, unless it already was a member, `--to` added. It
+  happens in the same transaction as the record moves.
+- **Record moves are audited** ([#875](https://github.com/jimhoyd-com/urlcode/issues/875)).
+  On an owned collection declared `audit: true`, every moved record is
+  recorded as `store.record.reassigned`, subject `<collection>/<id>`, metadata
+  `{collection, from, to}`, in the same transaction as the move. See
+  [operator changes in the audit log](#operator-changes-in-the-audit-log).
+- It prints `{from, to, dryRun, moved, auditEvents, collections: [{collection,
+  moved, toBefore, toAfter, maxRecordsPerOwner}], memberships: [{collection,
+  toWasMember}]}` as JSON. `auditEvents` is how many audit events the move
+  records (or would). `--dry-run` counts and writes nothing.
 - **The per-owner limit is respected.** When moving would leave `--to` holding
   more than a collection's `maxRecordsPerOwner`, the whole command is refused,
   naming the collection and the counts, and no collection is changed (a dry run
   is refused the same way). Delete or move some of `--to`'s records first, or
   raise the limit. `maxRecords` is unaffected, since no record is added.
 - It is one database transaction across every affected collection: all counts
-  are checked, then every collection moves, and a failure part-way (a full disk,
-  a lock held past the busy timeout, a full audit backlog) rolls all of them
-  back, membership and its events included. Like the
+  and the audit backlog are checked, then every collection moves, and a failure
+  part-way (a full disk, a lock held past the busy timeout) rolls all of them
+  back, membership and every event included. Like the
   `ownerless` commands it may run while the server serves.
 - It does not touch `Idempotency-Key` retention, which is scoped by principal: a
   retry by `--to` with a key `--from` used is a new request, and a retry by
   `--from` of a write to a moved record replays as `404`.
 
 The same operation is exported as `reassignOwner(database, {from, to,
-collections, collection?, dryRun?})`, where `collections` is the declared
-`extensions.store.config.collections`.
+collections, collection?, dryRun?, actor?})`, where `collections` is the
+declared `extensions.store.config.collections`.
 
 ## Audited writes
 
@@ -902,8 +923,53 @@ own database: the store's transaction ends at its outbox, and delivery into the
 audit log is a separate, idempotent step (audit ignores an id it already
 holds). When 1000 events wait undelivered in one collection, the next write
 answers `503 audit_backlog` and changes nothing until audit catches up. Turning
-`audit` off keeps any undelivered events in the outbox. The operator's
-`urlcode-store` ownership commands keep the outbox and add no event.
+`audit` off keeps any undelivered events in the outbox.
+
+### Operator changes in the audit log
+
+The `urlcode-store` commands that change records record them on an audited
+collection too ([#866](https://github.com/jimhoyd-com/urlcode/issues/866),
+[#875](https://github.com/jimhoyd-com/urlcode/issues/875)):
+
+| Command | Action, per record | Metadata |
+|---|---|---|
+| `members add` / `members remove` | `store.membership.added` / `removed` (subject `<collection>/<principal id>`) | `{collection}` |
+| `reassign` (owned collection) | `store.record.reassigned` | `{collection, from, to}` |
+| `reassign` (membership collection) | `store.membership.removed`, then `added` unless `--to` already was a member | `{collection}` |
+| `ownerless-assign` | `store.record.reassigned` (no `from`: the record had no owner) | `{collection, to}` |
+| `ownerless-delete` | `store.record.deleted` | `{collection, ownerless: true}` |
+
+`from` and `to` are the opaque principal ids the provider set (never an email
+or a name), the same ids a request-made event carries as its actor and a
+membership event as its subject. They are the evidence of a move: who lost the
+records and who gained them.
+
+- **One event per record, bounded by the backlog.** Each command counts its
+  events before it writes anything. When they would take a collection past its
+  1000 undelivered events, the whole command is refused with the same
+  `503 audit_backlog` (on the command line, the message names the collection,
+  the events it needs and how many are waiting), a `--dry-run` included, and
+  nothing changes. So one command changes at most 1000 records of one audited
+  collection; with events already waiting, fewer. Wait for the serving
+  process's audit drain to deliver them and run it again.
+- **In the same transaction.** The records, the memberships and every event
+  commit or roll back together.
+- **Delivered by the serving process.** The CLI writes into the outbox; the
+  audit drain of a server running with audit delivers the events on its next
+  poll. While no such server runs, they wait in the outbox (and count toward
+  the backlog).
+
+### Operator attribution
+
+Every command that changes records (`members add`, `members remove`,
+`reassign`, `ownerless-assign`, `ownerless-delete`) takes `--actor <principal
+id>`: the actor of the events it records. It defaults to `operator` and is
+validated like any principal id (1 to 128 ASCII letters, digits, `.`, `_`, `:`
+or `-`), refused unechoed otherwise; the library functions take it as
+`actor`. It is **operator-asserted, not authenticated**: whoever can run the
+command against the database can write any id there, so it records who the
+operator says made the change, not proof of it. Commands that change nothing
+(`ownerless`, `members list`, `backup`) refuse it.
 
 ## Storage and concurrency: what it does and does not guarantee
 
