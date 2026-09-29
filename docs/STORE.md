@@ -135,7 +135,9 @@ keyword, message, `expected`, `property`) a route's body schema answers
 ([body schema](HTTP.md#body-schema-and-input-patterns)); like it, the validator
 stops at the first failure. A list query is `400 invalid_query` with `fields`
 mapping each offending parameter to a fixed message.
-Status codes: `400` malformed JSON, header or query, `403` `own_record_refused` (a
+Status codes: `400` malformed JSON, header or query (a JSON string or key
+holding an unpaired surrogate is `400 invalid_unicode`; see
+[well-formed text](#well-formed-text)), `403` `own_record_refused` (a
 `by: others` transition on the caller's own record), `404`, `405` with
 `Allow`, `409` `collection_full` (or `owner_quota_exceeded` on an
 [owned collection with a per-owner limit](#per-owner-record-limit),
@@ -433,19 +435,26 @@ requests:
   transition moves a record into or out of the state (a body could otherwise
   unlock the record, or lock itself), and each value to satisfy its schema.
   Not on a membership collection or a `readOnly` one.
-- **The refusal.** Outside `editable`, `PUT` and `PATCH` answer
-  `409 record_locked`; outside `deletable`, `DELETE` does. Nothing is written.
+- **The refusal.** Outside `editable`, `PUT`, `PATCH` and
+  `POST <mount>/<id>/increment/<property>` answer `409 record_locked`; outside
+  `deletable`, `DELETE` does. Nothing is written.
   The check reads the record inside the write's `BEGIN IMMEDIATE`
   transaction, after the scope (`404`) and `If-Match` (`412`) and before the
   body, so a transition committing first always wins and the answer names no
   state. It applies to every path that edits or deletes a record: HTTP,
   `StoreExports.update`, and a host transaction's `update` and `remove` (which
-  roll the whole transaction back).
+  roll the whole transaction back). An increment changes a value as a `PATCH`
+  would, so `editable` gates it too
+  ([#989](https://github.com/jimhoyd-com/urlcode/issues/989)): the owner cannot
+  count up an approved `amount`.
 - **What it leaves alone.** A create takes every writable property as before
-  (the state comes from `defaults`), and transitions, increments and transfers
-  have their own rules: a transfer still moves a locked wallet's balance, and
-  `submit`/`withdraw` are how the owner leaves and re-enters `draft`. The
-  operator's `urlcode-store ownerless-delete` is not gated.
+  (the state comes from `defaults`), and transitions and transfers have their
+  own rules: a transfer still moves a locked wallet's balance, and
+  `submit`/`withdraw` are how the owner leaves and re-enters `draft`. A
+  [short link](#bounded-keyed-transitions)'s click count, which the store keeps
+  on a redirect, and the operator's `urlcode-store ownerless-delete` are not
+  gated. A counter that must keep counting on a locked record (views on a
+  published post) belongs in a collection that does not declare `editable`.
 - **The hint.** On a collection declaring either, a record's `GET`/`HEAD` and
   the answer to its `PUT`/`PATCH` carry `Allow` with the methods it takes now
   (`GET, HEAD, PUT, PATCH, DELETE` for a draft, `GET, HEAD` once approved), and
@@ -836,7 +845,7 @@ membership check (`403 membership_required`); the retained key (`422` or a
 replay); the record in the caller's scope (`404`, so another owner's record is
 a missing one); for `by: others` the owner check (`403 own_record_refused`);
 `If-Match` (`412`); the transition's `from` values
-(`409 transition_conflict`), or for `PUT`, `PATCH` and `DELETE` the
+(`409 transition_conflict`), or for `PUT`, `PATCH`, an increment and `DELETE` the
 [edit and delete states](#edit-and-delete-states) (`409 record_locked`); the record schema and the interval rules
 (`422 invalid_record`); quotas and [unique values](#a-directory-by-a-unique-handle) (`409`); the
 [interval check](#non-overlapping-intervals) (`409 interval_conflict`); then
@@ -1274,9 +1283,14 @@ wallets:
   second record would collide with it), not in `readOnlyProperties`, not the
   collection's `key` and not set or stamped by a transition (a constant cannot
   be unique twice). Up to four per collection; not on a membership collection.
-- **Exact values.** `Bob` and `bob` are different values. A handle people read
-  should have a `pattern` that makes look-alikes impossible to register, such
-  as lower case only, as above.
+- **Exact values.** Values are compared exactly, as stored. `Bob` and `bob`
+  are different values, and so are the two Unicode spellings of `é` (U+00E9,
+  and `e` followed by the combining U+0301), a value with leading or trailing
+  whitespace and one without, and characters that merely look alike (Latin `a`
+  and Cyrillic `а`). The store normalizes nothing; it only refuses
+  [ill-formed text](#well-formed-text). A handle people read should have a
+  `pattern` that makes look-alikes impossible to register, such as lower-case
+  ASCII only, as above.
 - **Privacy.** Uniqueness across owners leaks existence: anyone who may create
   (or edit) a record learns, from the `409`, that some record holds a value,
   and can probe values one request at a time. That is what a public handle
@@ -1374,6 +1388,28 @@ What the store adds to the profile, and why:
   atomic counters, scoping, state changes), not value constraints, so they are
   not JSON Schema keywords. A name one of them gives that the schema does not
   declare is refused at activation.
+
+### Well-formed text
+
+A stored string is always well-formed Unicode: it never holds an unpaired
+UTF-16 surrogate, the value a JSON escape such as `"\ud800"` decodes to without
+its partner ([#988](https://github.com/jimhoyd-com/urlcode/issues/988)). SQLite
+and JavaScript carry such a string as different bytes, so `unique`,
+`intervals.within`, `key` and the sorted list order could not compare it: two
+owners could hold the "same" handle or overlapping bookings, and the next
+activation would refuse the database.
+
+- Over HTTP, core's JSON body reader refuses it before the store runs:
+  `400 invalid_unicode`, for a value or an object key. A surrogate pair
+  (`"\ud83d\ude00"`) and the replacement character U+FFFD are ordinary text.
+- `StoreExports` and a host transaction (which do not pass through HTTP) refuse
+  it as `422 invalid_record` with the issue keyword `unicode`, and the whole
+  transaction rolls back. A declaration (`defaults`, a transition's `from` or
+  `set`, `editable`, `intervals.when`) holding one is refused at activation.
+- A row an earlier release stored with one refuses activation, naming the
+  collection, the record and the property; a request that meets one (written
+  into the file by hand) is `503`. Change or delete that record in the
+  database first. A list cursor holding one is `400 invalid_query`.
 
 *Why one place for defaults and read-only markers.* The store used to read
 `default` and `readOnly` from the record schema's properties and strip them
@@ -1540,11 +1576,14 @@ filterable: [kind, done]         # <property>=<value>, equality only
   differs from it only between U+E000–U+FFFF and the code points above U+FFFF),
   and a number, integer or boolean as a double, compared exactly as
   JavaScript compares them. A stored value that key cannot order exactly, a
-  string holding a lone surrogate or a value of another type than declared (a
-  row written under another declaration), is found through one more index that
-  holds only such rows; while the collection holds one, its sorted and filtered
-  pages are ordered in memory instead, with the same results and cursors, and
-  cost what they did before #951.
+  value of another type than declared (a row written under another
+  declaration), is found through one more index that holds only such rows;
+  while the collection holds one, its sorted and filtered pages are ordered in
+  memory instead, with the same results and cursors, and cost what they did
+  before #951. A string holding an unpaired surrogate would not order either,
+  but no row holds one ([well-formed text](#well-formed-text)), so ordinary
+  text such as `C:\udo` stays on the index
+  ([#990](https://github.com/jimhoyd-com/urlcode/issues/990)).
 
 ## Per-record ownership
 
@@ -1902,9 +1941,13 @@ operator says made the change, not proof of it. Commands that change nothing
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   tables; the rows of a collection that is no longer declared stay untouched.
-  The one derived object is the partial index a declared
-  [`intervals`](#non-overlapping-intervals) reads through: activation builds
-  it, and drops an interval index no live activation declares any more.
+  The derived objects are partial indexes on `store_records`, built from the
+  declaration: for [`intervals`](#non-overlapping-intervals)
+  (`store_intervals_*`), for each [`unique`](#a-directory-by-a-unique-handle)
+  property (`store_unique_*`) and for the
+  [`sortable` and `filterable`](#sorting-and-filtering) properties
+  (`store_list_*`). Activation builds them, and drops any no live activation
+  declares any more.
 - The schema only moves forward. An empty file is initialized in one
   transaction; opening an up-to-date database changes nothing; a later release
   that changes the schema adds a step, and each step runs in its own
@@ -2119,8 +2162,9 @@ stay per process: a `throttle` quota across N processes allows up to N times
 the declared budget, each process fills its own cache, and each serves its
 own `/_urlcode/metrics`
 ([capacity](CAPACITY.md#several-serving-processes-on-one-host)). Better
-Auth's sign-in limit is the exception: it counts in `auth.sqlite`, so it is
-one budget across the processes.
+Auth's sign-in limit is the exception by default: it counts in `auth.sqlite`,
+so it is one budget across the processes, unless the operator chose
+per-process storage ([auth](../packages/auth/README.md#operator-options)).
 
 #### What the multi-process harness proves
 
@@ -2357,7 +2401,8 @@ read-only properties and requires only what has no default,
 per-mount reader (with `_owner` under `showOwner`, and only the listed
 properties under `properties`) and `StoreError` shapes are named the same way.
 A gated create lists its `401` and `403 membership_required`, `editable` and
-`deletable` add `409 record_locked` (naming the states) and the `Allow`
+`deletable` add `409 record_locked` (naming the states, on the increment
+path too) and the `Allow`
 header and list `allow`, `unique` adds `409 value_taken`, and a declared
 `length`, `step` or `origin` is named in the `422`. Each operation lists the headers it takes (`If-Match`, and
 `Idempotency-Key` where the collection enables it) and answers (`ETag`,

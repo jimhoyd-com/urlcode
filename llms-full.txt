@@ -706,6 +706,96 @@ The remaining findings were tooling and docs:
 - It is still one run by one agent, not a benchmark. The frontend and the
   served (non-test) path were not exercised.
 
+#### Fourth run
+
+On 2026-09-29 the third run's method ran again on main `7454d3f2`. That main
+had the fixes for #952–#960: the hermetic local review and the one route count
+in `app/tests/audit.json` (#970), `editable`, `deletable` and `unique` (#984),
+SQL sorting (#986), and the new store recipes (#992). The open pull requests
+[#987](https://github.com/jimhoyd-com/urlcode/pull/987),
+[#996](https://github.com/jimhoyd-com/urlcode/pull/996) and
+[#998](https://github.com/jimhoyd-com/urlcode/pull/998) were not included.
+
+One thing changed: each app started from its recipe. `plan-feature` named
+exactly one recipe for each goal (`store-booking`, `store-credits`,
+`store-approval`). The agent copied that recipe's YAML into the site and
+rewrote its fixtures to sign in through the auth extension.
+
+| Task | CLI runs (validate / test / audit) | Correction rounds (third run) | YAML lines (third run) | Fixture lines (requests + seed) | Code lines | Audit ready | `openapi --check` |
+|---|---:|---:|---:|---:|---:|---|---|
+| Room booking | 19 (2 / 4 / 3) | 3 (3) | 53 (52) | 29 + 8 | 0 | yes | passes |
+| Credits | 9 (1 / 2 / 1) | 0 (2) | 54 (53) | 43 + 9 | 0 | yes | passes |
+| Request approval | 9 (1 / 2 / 1) | 0 (2) | 70 (77) | 54 + 8 | 0 | yes | passes |
+
+The booking count includes one audit that was a deliberate probe for #959.
+All three projects were valid on their first edit. Their fixtures passed on
+the first run, and again on a second run. No round came from the YAML. The
+three booking rounds:
+
+- `plan-feature` refused to run before a site existed (`no-project`), though
+  its help shows `--project` as optional
+  ([#1000](https://github.com/jimhoyd-com/urlcode/issues/1000)).
+- `init --with` refused the version skew and named its fix, as in the second
+  and third runs. The cause is the trial's packing, not the site: the core
+  tarball `pack-addons.ts` packs carries the build's development manifest
+  ([#1002](https://github.com/jimhoyd-com/urlcode/issues/1002)).
+- The first audit was not ready. The sign-in steps passed but asserted
+  nothing, so the auth mount's own `GET` and `POST` were uncovered. An
+  `expectJson` on each sign-in and one `GET /api/auth/get-session` fixed it.
+
+Credits and approval needed no rounds. They reused what booking had
+taught.
+
+The third run's findings held fixed:
+
+- **#952.** Once approved, a request's `PATCH`, `PUT` and `DELETE` answer
+  `409 record_locked`, and its `Allow` header is `GET, HEAD`.
+- **#953.** A second user's `bob` wallet answers `409 value_taken`, and `Bob`
+  answers `422`. The directory lookup returns the one `bob` wallet.
+- **#954.** `npm run validate` passed on each fresh site with no
+  `urlcode-auth migrate`.
+- **#955.** The route count is one number in `app/tests/audit.json`, and
+  `extensions add` moves it. The agent still edits it for each route it
+  adds, but no audit reported a mismatch.
+- **#956 and #957.** Each recipe's YAML was used unchanged, apart from
+  comments and descriptions.
+- **#958.** `openapi --local-review --check` passes.
+- **#959.** With booking's only `PATCH` success case removed, the audit named
+  the method in a `method-without-success` note, not a sign-in note.
+- **#960.** Not observed: the add-ons were built before packing.
+
+The open store bugs could not be reached from these recipes:
+
+- The approval recipe declares no `increments` (#989).
+- Its queue is gated by `reviewers` (#972).
+- The credits `issue` transfer names `members` (#974).
+
+#973 was not probed.
+
+The new findings were tooling and docs:
+
+- The recipes' fixtures sign in with a `Bearer` stand-in. Adopting a recipe
+  into a site with the auth extension meant rewriting every case: 22, 34 and
+  38 of them. The recipes do not say that the auth mount then needs coverage
+  too ([#1001](https://github.com/jimhoyd-com/urlcode/issues/1001)).
+- After `extensions add`, the site's `AGENTS.md`, `README.md` and workflow
+  still describe an empty project, with `no-active-routes` and
+  `allow-empty-project: true`
+  ([#1003](https://github.com/jimhoyd-com/urlcode/issues/1003)).
+
+**Caveats.**
+
+- The agent knows this repository, and this was its fourth pass at the same
+  three apps. It read no repository source while building the sites. It
+  looked at the packed core's `dist/addons.json` to diagnose #1002.
+- The first site was created without `URLCODE_ADDONS`. It installed the
+  add-ons from the checkout's source directories, so it was discarded. Its
+  `init` and `plan-feature` runs are not counted.
+- Starting from a recipe is what cut the rounds. The YAML was copied, not
+  written, so this run measures adoption more than authoring.
+- It is still one run by one agent, not a benchmark. The frontend and the
+  served (non-test) path were not exercised.
+
 #### Plumbing removed by intervals and transfers
 
 For [#902](https://github.com/jimhoyd-com/urlcode/issues/902) item 6, both
@@ -3280,7 +3370,7 @@ status or default `Cache-Control: no-store` on functions/redirects.
 | `request.body.<METHOD>.required` | Reject an empty body with 400; default false |
 | `request.body.<METHOD>.maxBytes` | 0–1048576; tighter per-route budget, enforced while reading fixed/chunked bodies; 413 on overflow |
 | `request.body.<METHOD>.contentTypes` | Exact lowercase MIME essences for nonempty bodies; parameters ignored; mismatch/missing type returns 415 |
-| `request.body.<METHOD>.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax; malformed input returns 400 |
+| `request.body.<METHOD>.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax, and refuse a string or key holding an unpaired surrogate escape (`"\ud800"` without its partner, which I-JSON forbids and UTF-8 cannot carry); malformed input returns 400 |
 | `request.body.<METHOD>.schema` | Requires `format: json`. A JSON Schema 2020-12 document in a bounded profile, compiled at load and checked after parsing; a body that breaks it returns 422 (see below) |
 
 The operator request limit remains an upper bound; YAML cannot raise it. A
@@ -5432,7 +5522,7 @@ parsing, JSON responses or origin checks; use these:
 
 | Helper | What it does |
 |---|---|
-| `readBody(request, {maxBytes, maxDepth?})` | Reads a JSON body and returns the parsed value. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), any media type but `application/json` (415), invalid UTF-8 (400), and nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
+| `readBody(request, {maxBytes, maxDepth?})` | Reads a JSON body and returns the parsed value. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), any media type but `application/json` (415), invalid UTF-8 (400), and nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`, then a string or key holding an unpaired UTF-16 surrogate escape such as `"\ud800"` (400 `invalid_unicode`), which UTF-8 and so SQLite cannot carry. |
 | `jsonResponse(status, value, headers?)` | A JSON answer with `no-store`, `nosniff`, a deny-all CSP and a `strict-origin` referrer policy; a header you pass replaces the default of the same name. |
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
@@ -5445,7 +5535,7 @@ serves, the ones the store, auth and audit share
 | Helper | What it does |
 |---|---|
 | `refuseNetworkFilesystem(directory, what, probe?)` | Refuses a database directory on a network filesystem by its Linux `statfs` type (`NETWORK_FILESYSTEMS`); skipped on macOS and Windows. |
-| `joinHostLease(db, {table, what, probe?, now?, log?})` | Creates the extension's lease table in its own database when absent, refuses while a live peer runs on another host (another Linux boot id, or another hostname when either has none), and inserts this process's row. Another host's row is live while its heartbeat advances, judged on this process's monotonic clock (`SERVER_LEASE`: renewed every 5 s, dead after 20 s unchanged), so joining may wait up to 20 s watching one. A heartbeat that finds another host's row loses the lease (`held` turns false, the loss is logged) until none is left. Call `verify()` first inside each write transaction, or `renew()` before work you cannot wrap, and refuse the write with a 503 when it fails. `close()` stops the heartbeat and deletes the row. `db` is a `node:sqlite` `DatabaseSync` or an object with `transaction`, `run` and `all`. |
+| `joinHostLease(db, {table, what, probe?, now?, log?})` | Creates the extension's lease table in its own database when absent, refuses while a live peer runs on another host (another Linux boot id, or another hostname when either has none), and inserts this process's row. Another host's row is live while its heartbeat advances, judged on this process's monotonic clock (`SERVER_LEASE`; the timing and rules are in [store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host)), so joining may wait up to the lease's time to live watching one. A heartbeat that finds another host's row loses the lease (`held` turns false, the loss is logged) until none is left. Call `verify()` first inside each write transaction, or `renew()` before work you cannot wrap, and refuse the write with a 503 when it fails. `close()` stops the heartbeat and deletes the row. `db` is a `node:sqlite` `DatabaseSync` or an object with `transaction`, `run` and `all`. |
 
 #### OpenAPI description
 

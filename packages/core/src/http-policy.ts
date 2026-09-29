@@ -3,7 +3,7 @@ import { assert, HttpError } from './errors.ts';
 import { byteLength } from './http-response.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
-import { assertBodySchema, bodyIssues, bodySchemaLine, bodySchemaJson, bodySchemaEnvelope, maxRequestBodyBytes } from './body-validation.ts';
+import { assertBodySchema, bodyIssues, bodySchemaLine, bodySchemaJson, bodySchemaEnvelope, holdsIllFormedString, maxRequestBodyBytes } from './body-validation.ts';
 import type { BodySchema, CompiledBodySchema } from './body-validation.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
@@ -104,6 +104,7 @@ export function checkRequest(route: HttpRoute, method: string, body: Uint8Array,
       if (!/^application\/(?:[\w.+-]+\+)?json$/.test(type)) throw new HttpError(415,'Expected JSON media type');
       let parsed: unknown;
       try { parsed = JSON.parse(text); } catch { throw new HttpError(400,'Invalid JSON body'); }
+      if (holdsIllFormedString(parsed)) throw new HttpError(400,'JSON body holds an unpaired surrogate escape (\\uD800-\\uDFFF)');
       if (policy.schema) {
         // A declared schema that no host compiled is a runtime defect, never a reason to skip validation.
         const compiled = route.bodySchemas?.[method];

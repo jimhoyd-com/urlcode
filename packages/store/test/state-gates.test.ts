@@ -74,6 +74,26 @@ test('editable and deletable: an approved request cannot be edited or deleted, a
   assert.equal((await store.call('DELETE', `/api/requests/${second}`, { who: 'alice' })).status, 204);
 });
 
+test('editable gates increments too: an approved amount cannot be counted up by its owner (#989 reproduction)', async t => {
+  const counted = { ...requests, defaults: { status: 'draft', amount: 1 }, increments: ['amount'] };
+  const store = await direct(t, { collections: { reviewers: members, requests: counted } }, { mounts: approvalMounts });
+  store.first.records('reviewers').create(null, { userId: 'rita' });
+  const id = (await store.call('POST', '/api/requests', { who: 'alice', body: { title: 'x', amount: 6 } })).body!.id as string, url = `/api/requests/${id}`;
+  const draft = await store.call('POST', `${url}/increment/amount`, { who: 'alice' });
+  assert.equal(draft.status, 200); assert.equal(draft.body!.amount, 7, 'a draft still counts');
+  await store.call('POST', `${url}/submit`, { who: 'alice' });
+  assert.equal((await store.call('POST', `/api/approve/${id}`, { who: 'rita' })).status, 200);
+  const before = { counts: counts(store.database), rows: records(store.database, 'requests') };
+  const refused = await store.call('POST', `${url}/increment/amount`, { who: 'alice' });
+  assert.equal(refused.status, 409); assert.equal(code(refused), 'record_locked');
+  assert.deepEqual({ counts: counts(store.database), rows: records(store.database, 'requests') }, before, 'nothing written');
+  // Scope and name come first: another owner's record is still a 404, and an undeclared increment too.
+  assert.equal((await store.call('POST', `${url}/increment/amount`, { who: 'mallory' })).status, 404);
+  assert.equal((await store.call('POST', `${url}/increment/title`, { who: 'alice' })).status, 404);
+  const described = describeStore({ mount: '/api/requests', config: { collections: { reviewers: members, requests: counted } }, schemas: {} } as unknown as Parameters<typeof describeStore>[0]) as unknown as { paths: Record<string, { post: { responses: Record<string, { description: string }> } }> };
+  assert.match(described.paths['/api/requests/{id}/increment/{field}']!.post.responses['409']!.description, /^record_locked: the record is not in an editable state \(status is "draft"\); increment_limit/);
+});
+
 test('editable and deletable hold for StoreExports and host transactions, which roll back', async t => {
   const store = await direct(t, approvals, { mounts: approvalMounts });
   store.first.records('reviewers').create(null, { userId: 'rita' });

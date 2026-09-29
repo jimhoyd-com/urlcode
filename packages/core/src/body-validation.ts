@@ -26,6 +26,23 @@ export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a
  * (#713). A JSON string can never hold more characters than its body has bytes, so it is also the string-length cap.
  */
 export const maxRequestBodyBytes = 1048576;
+/**
+ * Whether a parsed JSON value holds a string, as a value or an object key, that is not well-formed UTF-16: one with an
+ * unpaired surrogate, which after fatal UTF-8 decoding only a `\uD800`-`\uDFFF` escape can produce. I-JSON (RFC 7493)
+ * forbids such strings and UTF-8 cannot carry them, so every JSON body boundary refuses them (#988). Iterative.
+ */
+export function holdsIllFormedString(value: unknown): boolean {
+  const pending: unknown[] = [value];
+  while (pending.length) {
+    const item = pending.pop();
+    if (typeof item === 'string') { if (!item.isWellFormed()) return true; }
+    else if (Array.isArray(item)) { for (const entry of item) pending.push(entry); }
+    else if (item !== null && typeof item === 'object') {
+      for (const [key, entry] of Object.entries(item)) { if (!key.isWellFormed()) return true; pending.push(entry); }
+    }
+  }
+  return false;
+}
 
 const types: readonly BodySchemaType[] = ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'];
 /** How each supported keyword's value is checked; see `bodySchemaProfile` for the published list. */

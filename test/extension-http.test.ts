@@ -45,6 +45,14 @@ test('readBody refuses duplicate JSON keys at any depth, compared after decoding
   assert.deepEqual(read('{"__proto__":1}'), JSON.parse('{"__proto__":1}'));
 });
 
+test('readBody refuses a string or key holding an unpaired surrogate escape (#988)', () => {
+  const read = (text: string) => readBody(json(text), { maxBytes: 4096 });
+  for (const text of ['"\\ud800"', '{"a":"x\\uDFFF"}', '{"a":["ok",{"b":"\\udc00\\ud800"}]}', '{"\\ud800":1}', '{"a":"\\ud83d"}'])
+    assert.throws(() => read(text), refused(400, 'invalid_unicode'), text);
+  assert.deepEqual(read('{"a":"\\ud83d\\ude00","\\u00e9":"\\ufffd"}'), { a: '\u{1F600}', '\u00e9': '\ufffd' }, 'a surrogate pair and U+FFFD are well-formed');
+  assert.deepEqual(read('{"path":"C:\\\\udo"}'), { path: 'C:\\udo' }, 'an escaped backslash before ud is ordinary text');
+});
+
 test('readBody bounds JSON nesting before parsing: default 32, at most 64', () => {
   const read = (text: string, maxDepth?: number) => readBody(json(text), { maxBytes: 4096, ...(maxDepth === undefined ? {} : { maxDepth }) });
   assert.deepEqual(read(nested(32)), JSON.parse(nested(32)));
