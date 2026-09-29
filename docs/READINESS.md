@@ -46,6 +46,21 @@ A mismatch exits nonzero. Keep N reviewed in your application CI so accidentally
 removing a route cannot silently reduce the test workload. Change it intentionally
 when adding/removing routes; do not calculate the expected value from the same YAML.
 
+Commit N once, in the project's `tests/audit.json`:
+
+```json
+{"expectRoutes": 2}
+```
+
+With no `--expect-routes`, `audit` compares against that file, so a site's
+`npm run audit`, its CI workflow and a hand-typed command share one reviewed
+value; the flag overrides it for one run. `expectedRoutesFrom` in the report
+names the source (`tests/audit.json`, `--expect-routes` or `null` when
+unchecked), and a file that is not exactly `{"expectRoutes": N}` refuses the
+audit with `invalid-audit-expectation`. `urlcode init` writes it as `0`, and
+`extensions add|remove` move it by the routes they write
+([tooling](TOOLING.md#operator-context-for-commands-and-npm-scripts)).
+
 ## Generated checks plus explicit examples
 
 The audit generates GET/HEAD checks for concrete native redirects, declared
@@ -150,11 +165,20 @@ coverage requirements. Inactive parameter patterns still need explicit negative
 fixtures to exercise them.
 
 `coverageNotes` explains each kind of gap once, with fixed wording, the route
-patterns or case numbers, and what to write: `unasserted-success`,
-`gated-route-uncovered` (uncovered pairs on a route behind a sign-in gate; see
-[authenticated routes](#authenticated-routes-auth-true)) and
-`waiver-without-proof` (see [waivers](#waive-a-method-covered-elsewhere)). It
-never affects `ready`.
+patterns, methods or case numbers, and what to write: `unasserted-success`,
+`method-without-success`, `gated-route-uncovered` and `waiver-without-proof`
+(see [waivers](#waive-a-method-covered-elsewhere)). It never affects `ready`.
+The two for uncovered pairs split on whether the route was reached at all:
+
+- `method-without-success`: another method of the route is covered, so the
+  route is reached (signed in, where it is gated), and each listed `methods`
+  entry lacks its own passing, asserted success case. `cases` lists the
+  fixture cases that sent the method only a refusal (a status of 400 or
+  more), which proves the refusal and covers nothing. Add a success case for
+  that method.
+- `gated-route-uncovered`: a route behind a sign-in gate with no method
+  covered, so no case reached it signed in; see
+  [authenticated routes](#authenticated-routes-auth-true).
 
 `ready: true` requires a nonempty active project, matching expected count (when
 supplied), zero failed checks and no uncovered active route/method combinations.
@@ -413,8 +437,11 @@ ends: every first-party extension keeps its database there (whatever
 `database` option or `STORE_DATABASE` the host names), auth creates Better
 Auth's tables itself and signs sessions with a secret that lives only as long
 as the run, so no `urlcode-auth migrate`, `data/auth.secret` or cleanup is
-needed, and a rerun starts from nothing. `dev`, `serve`, `validate` and
-`routes` use the site's own `data/` (`validate` checks what `serve` will use).
+needed, and a rerun starts from nothing. `validate` and `routes` run the same
+way under `--local-review` with no operator pin, as the generated npm scripts
+do. `dev`, `serve`, and `validate` and `routes` with the reviewed pin, use the
+site's own `data/`: the pinned `validate` checks what `serve` will use,
+including a missing migration or secret.
 
 What fixtures cannot create over HTTP is declared in `tests/seed.json` beside
 `tests/requests.json`: an object keyed by extension name, handed to that

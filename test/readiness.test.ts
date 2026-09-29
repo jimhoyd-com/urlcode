@@ -20,6 +20,21 @@ test('audit --expect-routes counts routes generated from site keys and reports t
  assert.equal(report.countMatches,true);assert.equal(report.counts.configured,2);assert.equal(report.counts.declared,1);assert.equal(report.counts.generated,1);
  assert.equal((await auditProject(app,{expectRoutes:1})).countMatches,false);
 });
+// #955: the project commits its route count once, in tests/audit.json; every audit run without the flag reads it.
+test('audit reads the committed tests/audit.json when no --expect-routes is given, and the flag wins',async t=>{
+ const routes={'/status':{respond:{json:{ok:true}}}};
+ const committed=await appFor(t,routes,{'tests/audit.json':JSON.stringify({expectRoutes:2})});
+ const report=await auditProject(committed);
+ assert.deepEqual([report.expectedRoutes,report.expectedRoutesFrom,report.countMatches,report.notReadyReasons],[2,'tests/audit.json',false,['route-count-mismatch']]);
+ const flagged=await auditProject(committed,{expectRoutes:1});
+ assert.deepEqual([flagged.expectedRoutes,flagged.expectedRoutesFrom,flagged.ready],[1,'--expect-routes',true]);
+ const none=await auditProject(await appFor(t,routes));
+ assert.deepEqual([none.expectedRoutes,none.expectedRoutesFrom,none.ready],[null,null,true]);
+ for(const bad of ['{"expectRoutes":-1}','{"expectRoutes":1,"extra":true}','[1]','nope']){
+  const app=await appFor(t,routes,{'tests/audit.json':bad});
+  await assert.rejects(auditProject(app),(error:Error&{details?:{code?:string}})=>error.details?.code==='invalid-audit-expectation'&&/tests\/audit\.json/.test(error.message),bad);
+ }
+});
 test('audit requires concrete function/parameter fixtures and covers methods separately',async t=>{
  const routes={'/hello/{id}':{parameters:[param('id')],function:{source:'hello.mjs'}}};
  const files={'hello.mjs':'export default () => new Response("hello")'};

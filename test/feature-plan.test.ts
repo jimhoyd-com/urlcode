@@ -126,7 +126,7 @@ test('feature planning maps an approval goal to store transitions, membership an
  for(const surface of ['auth/route protection','store/ownership','store/transitions','store/membership','store/readers'])assert.ok(surfaces.includes(surface),surface);
  assert.ok(plan.extensions.surfaces.find(item=>item.surface==='transitions')!.matched.includes('approve'));
  assert.match(plan.outline.find(item=>item.kind==='store transitions')!.note,/by: others/);
- assert.match(plan.outline.find(item=>item.kind==='store readers')!.note,/readers: \{mount, members/);
+ assert.match(plan.outline.find(item=>item.kind==='store readers')!.note,/readers: \{<name>: \{mount, members/);
  assert.equal(plan.applicable.recipes[0]?.name,'store-crud');
  assert.ok(!plan.applicable.recipes.some(recipe=>recipe.name==='contact-form'),'one generic word is not a contact form');
 });

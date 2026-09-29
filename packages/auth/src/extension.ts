@@ -42,7 +42,7 @@ function scaffold(): ScaffoldResult {
     routes: { '/api/auth/*': { extension: 'auth', methods: ['GET', 'POST'], description: 'Better Auth: sign-in, sign-out and sessions.' } },
     files: [{ path: SECRET_FILE, content: `${randomBytes(32).toString('base64url')}\n`, mode: 0o600 }],
     notes: [
-      'Create Better Auth\'s tables, then an account: npx urlcode-auth migrate && echo \'{"email":"you@example.com","password":"...","name":"You"}\' | npx urlcode-auth create-user',
+      'Before serving, create Better Auth\'s tables, then an account (npm run validate, test and audit need neither: they run on throwaway data): npx urlcode-auth migrate && echo \'{"email":"you@example.com","password":"...","name":"You"}\' | npx urlcode-auth create-user',
       'Protect a route with `auth: true`; its function reads context.capabilities.auth.identity.userId. Sign in from the browser with better-auth/client (basePath /api/auth).',
       'Keep data/auth.secret and data/auth.sqlite private and backed up; the secret signs every session.',
     ],

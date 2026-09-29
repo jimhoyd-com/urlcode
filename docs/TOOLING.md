@@ -108,8 +108,9 @@ An explicit flag always wins and an empty variable counts as unset. A relative
 `URLCODE_POLICY` resolves against the working directory, which for an npm
 script is the site root. The npm scripts `urlcode init` writes (`dev`, `start`,
 `validate`, `test`, `routes`, `audit`) carry `--project app --host-file host.mjs`
-and nothing else beyond the audit's `--expect-routes N` and, on `validate`,
-`test`, `routes` and `audit`, `--local-review`. npm runs them under `sh` on POSIX and `cmd` on Windows, so no
+and nothing else beyond `--local-review` on `validate`, `test`, `routes` and
+`audit`. The audit's route count is not in the script: it is committed once in
+`app/tests/audit.json` (below). npm runs them under `sh` on POSIX and `cmd` on Windows, so no
 variable syntax in a script is portable, and neither value is the runtime's to
 choose. With neither value set, the check scripts review the current revision
 locally ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]); `dev`
@@ -141,12 +142,20 @@ reviewed revision. `urlcode permissions --project app` prints the revision as
 and forwards the resolved values to its `run_validate`, `run_test` and
 `run_audit` children as flags.
 
-`urlcode extensions add` and `remove` keep the generated route counts in step:
-they move the `--expect-routes N` of the `audit` script, the `expect-routes:` of
-the generated GitHub workflow and the audit line of `AGENTS.md` by the number of
-routes the command added or removed (including an `--example` route), and name
-the files they changed. A count the operator rewrote into another form is left
-alone. New routes still need request fixtures in `app/tests/requests.json`.
+The site commits its expected route count once, in `app/tests/audit.json`
+(`{"expectRoutes": N}`, which `init` writes as `0`). `urlcode audit` reads it
+whenever no `--expect-routes` is given, so the npm script, the generated GitHub
+workflow and a hand-typed command all compare against the same reviewed value
+([#955](https://github.com/jimhoyd-com/urlcode/issues/955)); `--expect-routes` still overrides it for one run. The report's
+`expectedRoutesFrom` says which applied (`tests/audit.json`,
+`--expect-routes` or `null`). A malformed file refuses the audit
+(`invalid-audit-expectation`). The file is under `tests/`, outside the project
+revision, so changing it needs no new pin. `urlcode extensions add` and
+`remove` move it by the number of routes the command added or removed
+(including an `--example` route) and name it; a site without the file is left
+without one. Any other route change is a one-line edit of that file, reviewed
+like any other. New routes still need request fixtures in
+`app/tests/requests.json`.
 
 ### Inspection without a revision pin
 
@@ -162,11 +171,15 @@ note in `extensions`), and every activation refuses it with
 `serve`, `dev`, `validate` (with or without `--local`), `test`, `routes`,
 `audit`, `benchmark` and the MCP `run_tests` runner still need the reviewed pin.
 With a pin, the inspection commands compose pinned registrations exactly as
-before. `validate`, `test`, `routes` and `audit` alone also accept
-`--local-review`, which the generated npm scripts pass: with no operator pin,
-it pins that one run to the current revision, reads no policy and defaults the
-origin to `http://localhost`, and `serve` and `dev` refuse it
-([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
+before. `validate`, `test`, `routes` and `audit` also accept `--local-review`,
+which the generated npm scripts pass: with no operator pin, it pins that one
+run to the current revision, reads no policy, defaults the origin to
+`http://localhost` and activates the extensions on throwaway data. `explain`,
+`context`, `plan-feature`, `review`, `report` and `openapi` need no pin and
+ignore the flag; `serve`, `dev` and every other command refuse it, naming
+themselves
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). The
+authoring MCP runners `run_validate`, `run_test` and `run_audit` pass it too.
 
 ## Project context
 
@@ -201,8 +214,10 @@ always appear in this order:
   note spelling out how it differs between the two trust modes.
 - `targets`: for each capability target (or the one `--target`), which of this
   project's used features are supported, conditional, refused or unknown.
-- `commands`: the exact `validate`, `test`, `audit --expect-routes N` (N is
-  the compiled route count), `routes` and `capabilities` invocations. The four
+- `commands`: the exact `validate`, `test`, `audit` (with `--expect-routes N`,
+  N the compiled route count, unless the project commits its count in
+  `tests/audit.json`, which the audit reads), `routes` and `capabilities`
+  invocations. The four
   that activate the project (`validate`, `test`, `audit`, `routes`) repeat the
   operator's own `--host-file` and `--origin` when they were given, so the
   suggested command checks the same host-registered extensions (#778). Every
@@ -1345,8 +1360,16 @@ What it can do, all inside the selected project root (resolved with realpath):
   environment variable a runner passes is `PROJECT_SHA256`, and only with a host
   file and when the server's own value is a well-formed 64-hex revision: it is
   the revision pin the server already loaded its own (composed) host under, not
-  a credential. No other variable goes along, no tool argument can add a flag,
-  and no grant is created or changed. The host file is operator-supplied trusted code: the
+  a credential. Every runner also passes a fixed `--local-review`: when neither
+  that `--policy` nor `PROJECT_SHA256` reaches the child, the run is pinned to
+  the project's current revision for that run only, reads no policy (no
+  binding or egress grant) and defaults the origin to `http://localhost`, so an
+  edited extension site is checked without a new pin and the output carries a
+  `local_review` event; an operator pin always wins, a stale one still refuses,
+  and serving never accepts the flag
+  ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). No other
+  variable goes along, no tool argument can add a flag, and no grant is created
+  or changed. The host file is operator-supplied trusted code: the
   child imports it, so its code (and every extension's `host()` hook and
   activation) runs with full Node access. The operator's `--policy` is read and
   verified once when the server starts: it pins the host to its reviewed

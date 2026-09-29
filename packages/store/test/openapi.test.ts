@@ -33,7 +33,7 @@ const links = {
 };
 const reviewers = { membership: true, key: 'userId', schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
 const notes = {
-  mount: '/api/notes', ownership: 'owner', readers: { mount: '/api/review', members: 'reviewers', showOwner: true },
+  mount: '/api/notes', ownership: 'owner', readers: { review: { mount: '/api/review', members: 'reviewers', showOwner: true } },
   schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 40 }, body: { type: 'string', maxLength: 200 } } },
 };
 const config = { collections: { links, reviewers, notes }, shortLinks: { public: { mount: '/go', collection: 'links', destination: 'destination', clicks: 'clicks' } } };
@@ -94,7 +94,7 @@ test('every store mount is described from the collection schema, and the documen
   assert.deepEqual(Object.keys(create.properties as Json), ['code', 'destination', 'clicks']); assert.deepEqual(create.required, ['code', 'destination']);
   assert.deepEqual((schemas.StoreNotesPatch!.properties as Json).body, { anyOf: [{ type: 'string', maxLength: 200 }, { type: 'null' }] });
   assert.deepEqual((schemas.StoreNotesPatch!.properties as Json).title, { type: 'string', minLength: 1, maxLength: 40 }, 'a required property cannot be cleared');
-  assert.ok(((schemas.StoreNotesReaderRecord!.required as string[]).includes('_owner')), 'showOwner adds the owner on the readers mount only');
+  assert.ok(((schemas.StoreNotesReviewReaderRecord!.required as string[]).includes('_owner')), 'showOwner adds the owner on the readers mount only');
   const op = (path: string, method: string) => document.paths[path]![method] as Operation & { parameters?: Json[] };
   // Filters take their property's schema (without the store's annotations); sort is the declared list.
   assert.deepEqual(op('/api/links', 'get').parameters!.map(parameter => [parameter.name, parameter.schema]).slice(2), [['sort', { enum: ['code', '-code'] }], ['state', { type: 'string', enum: ['live', 'archived'] }]]);

@@ -23,7 +23,9 @@ npm test
 
 Run from the site directory, CLI commands default `--project` to `app`.
 
-The initial `audit --expect-routes 0` reports `no-active-routes`: that is the
+`app/tests/audit.json` commits the audit's expected route count (`0`); change
+it there when routes are added or removed. The initial audit reports
+`no-active-routes`: that is the
 expected state of an intentionally empty app, not deployment readiness. The
 generated GitHub workflow permits only that result until its first route is
 added; then remove `allow-empty-project: true` and require a passing audit.

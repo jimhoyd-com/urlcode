@@ -17,6 +17,7 @@ import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, in
 import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './extensions.ts';
 import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
+import { auditExpectationFile, readAuditExpectation } from './readiness.ts';
 import { generatedPaths } from './site.ts';
 import { isCode, isRecord } from './object-guards.ts';
 import { addonNamePattern, addonPackage, contractProblem, declaredExtensionTargets, installedProviders, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, readInstalledDescriptor, withRequirements } from './addon-manifest.ts';
@@ -370,14 +371,8 @@ async function writeExclusive(target: string, content: string | Uint8Array, mode
 }
 
 export interface Snapshot { restore(): Promise<void>; created: string[] }
-/** The files whose generated audit route count `extensions add|remove` keeps in step with the routes it writes (#910). */
-function expectedRouteFiles(site: Site): [string, RegExp][] {
-  return [
-    [site.packageFile, /("audit"\s*:\s*"urlcode audit --expect-routes )(\d+)/],
-    [join(site.site, '.github', 'workflows', 'urlcode.yml'), /(^\s*expect-routes: )(\d+)/m],
-    [join(site.site, 'AGENTS.md'), /(^npm run audit\s+# urlcode audit --expect-routes )(\d+)/m],
-  ];
-}
+/** The committed audit route count `extensions add|remove` keeps in step with the routes it writes (#910, #955). */
+function expectedRouteFile(site: Site): string { return join(site.project, ...auditExpectationFile.split('/')); }
 /** Configured routes as the audit counts them: declared routes plus each active `site.*` convention no route shadows. */
 async function configuredRouteCount(project: string): Promise<number> {
   const loaded = await loadDocument(project), site: Record<string, unknown> = { ...loaded.document.site };
@@ -385,20 +380,18 @@ async function configuredRouteCount(project: string): Promise<number> {
   return Object.keys(loaded.routes).length + conventions.length;
 }
 /**
- * Moves each generated `--expect-routes` count by the routes this command added or removed, so the site's own audit
- * keeps passing without hand edits. A count the operator rewrote into another form is left alone; the files changed
- * are named in the result.
+ * Moves the committed audit route count by the routes this command added or removed, so the site's own audit keeps
+ * passing without hand edits. A site without the file, or with one the audit would refuse, is left alone; the result
+ * names the file it changed.
  */
 async function syncExpectedRoutes(site: Site, delta: number): Promise<string | undefined> {
   if (!delta) return undefined;
-  const changed: string[] = [];
-  for (const [file, pattern] of expectedRouteFiles(site)) {
-    let text: string;
-    try { text = await readFile(file, 'utf8'); } catch (error) { if (isCode(error, 'ENOENT')) continue; throw error; }
-    const next = text.replace(pattern, (_match, lead: string, count: string) => `${lead}${Math.max(0, Number(count) + delta)}`);
-    if (next !== text) { await writeFile(file, next); changed.push(relative(site.site, file)); }
-  }
-  return changed.length ? `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in ${changed.join(', ')}${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}` : undefined;
+  const file = expectedRouteFile(site);
+  let expected: number | undefined;
+  try { expected = await readAuditExpectation(site.project); } catch (error) { if (error instanceof ConfigError) return undefined; throw error; }
+  if (expected === undefined) return undefined;
+  await writeFile(file, `${JSON.stringify({ expectRoutes: Math.max(0, expected + delta) }, null, 2)}\n`);
+  return `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in ${relative(site.site, file).split(sep).join('/')}${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}`;
 }
 export async function snapshot(paths: readonly string[]): Promise<Snapshot> {
   const saved = new Map<string, string | undefined>();
@@ -542,7 +535,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     return result;
   }
   const yamlFile = join(site.project, 'urlcode.yaml');
-  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, filesLockPath, ...expectedRouteFiles(site).slice(1).map(([file]) => file)]);
+  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, filesLockPath, expectedRouteFile(site)]);
   const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
   const tree = await dependencyTree(site.site);
   // What each independent package provided before npm ran, so a re-added one is recognised as an upgrade (#857).
@@ -764,7 +757,7 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   // An add-on that only uses this one keeps working without it, except the features that need it.
   const notes = others.filter(other => edges(other).uses.includes(name)).map(other => other.name).sort().map(other => `${other} uses ${name}; features of ${other} that need ${name} will refuse to activate`);
   const yamlFile = join(site.project, 'urlcode.yaml'), routesFile = join(site.project, 'routes', `${name}.yaml`);
-  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile, join(site.site, ADDON_FILES_LOCK), ...expectedRouteFiles(site).slice(1).map(([file]) => file)]);
+  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile, join(site.site, ADDON_FILES_LOCK), expectedRouteFile(site)]);
   const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
   const tree = await dependencyTree(site.site);
   const kept: string[] = [];

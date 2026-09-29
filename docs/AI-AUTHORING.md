@@ -51,7 +51,9 @@ registrations without activating them, while `validate`, `test`, `dev` and
 ([inspection without a revision pin](TOOLING.md#inspection-without-a-revision-pin)).
 A site's `npm run validate`, `npm test` and `npm run audit` pass
 `--local-review`, which pins one local run to the current revision with no
-grants, so the edit loop needs no new pin; serving still does
+grants on throwaway data, so the edit loop needs no new pin and no
+`urlcode-auth migrate`; serving still does, and the read-only commands above
+accept the flag and ignore it
 ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). One goal word
 alone ("notify the team") does not require an extension: a surface needs two
 of its goal words, or its extension a matching recipe or noun. Scheduling
@@ -235,7 +237,9 @@ urlcode audit --project ./my-links/app --expect-routes 2
 urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
-Use the intentional actual count, not always 2. Runtime checkout users can replace
+Use the intentional actual count, not always 2. A site created by `init`
+commits it once in `app/tests/audit.json`, which `audit` reads when the flag is
+absent, so its `npm run audit` and CI carry no count. Runtime checkout users can replace
 `urlcode` with `node packages/core/src/cli.ts`. Template users can use the equivalent npm scripts.
 External bindings require an already reviewed policy; add `--policy` where needed.
 The benchmark operates locally; it is not a load test of an external deployment.
@@ -387,7 +391,7 @@ Roles, ownership and approvals are application data keyed by the user id.
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
 declared route at the same path still wins. Count its generated routes in
-`--expect-routes`. `site.sitemap` needs `--origin` at every command that
+the expected route count (`tests/audit.json` or `--expect-routes`). `site.sitemap` needs `--origin` at every command that
 activates the project; see [site conventions][docs/SITE.md].
 
 ## Built-in features by task
@@ -687,7 +691,11 @@ tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
 project's trusted code and, when the operator gave the server `--host-file`,
 that operator-supplied host module. The runners and `get_context`'s commands
 repeat only the operator's own `--host-file` and `--origin`; a flag the operator
-did not supply is listed under `prerequisites`, never guessed.
+did not supply is listed under `prerequisites`, never guessed. `run_validate`,
+`run_test` and `run_audit` also pass `--local-review`, so after an edit they
+check the current revision with no pin and no grant unless the operator gave
+the server a pin, which always wins
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 The CLI and the server read an absent `--origin` or `--policy` from
 `URLCODE_ORIGIN` or `URLCODE_POLICY`, so a site's generated npm scripts run
 unchanged with operator context in the environment, and a refusal for a missing

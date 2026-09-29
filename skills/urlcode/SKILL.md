@@ -112,15 +112,16 @@ may take several minutes, so let them finish instead of repeatedly rebuilding.
 ```sh
 urlcode validate --local --project DIR
 urlcode test --project DIR
-urlcode audit --project DIR --expect-routes N
+urlcode audit --project DIR --expect-routes N   # or commit N in DIR/tests/audit.json and omit the flag
 ```
 
 Add fixtures to `tests/requests.json` for each new route: positive and negative
 cases, every active method, `HEAD`. Cases take only `path, status, method, headers,
 body, expectHeaders, expectBody` (`schemas/requests.schema.json`); JSON is text. `N` is declared routes plus one per active
 `site.*` convention; an audit mismatch reports the declared/generated split. Update it
-deliberately when routes are added or removed, and update any `--expect-routes` in the project's README,
-Makefile or CI workflow to match. A failing validation names the route; fix
+deliberately when routes are added or removed. A site created by `urlcode init` commits it once in
+`app/tests/audit.json` (`{"expectRoutes": N}`), which `audit` reads when no `--expect-routes` is given: edit only
+that file. A failing validation names the route; fix
 the declaration rather than working around it.
 
 ## 5. Grants, secrets and what to report

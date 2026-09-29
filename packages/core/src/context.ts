@@ -1,3 +1,4 @@
+import {existsSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {dirname,join,relative,resolve} from 'node:path';
 import {stringify} from 'yaml';
@@ -6,6 +7,7 @@ import {ConfigError} from './errors.ts';
 import {applySite} from './site.ts';
 import {loadOperatorPolicy,prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {compileRoutes} from './router.ts';
+import {auditExpectationFile} from './readiness.ts';
 import {checkAssetReferences} from './assets.ts';
 import {compilePolicies,closePolicies,effectivePolicies,registry} from './policies.ts';
 import {capabilityTargets,getCapabilities,normalizeCapabilityTarget,routeCapabilities} from './capabilities.ts';
@@ -144,14 +146,18 @@ export async function cliInvocation(project:string):Promise<string> {
  * portable, and neither value is the runtime's to invent. The CLI itself reads URLCODE_ORIGIN and URLCODE_POLICY when
  * the flags are absent (#834), and a refusal for either prints the complete command with placeholders.
  */
+/** A project that commits its route count in tests/audit.json needs no flag: the audit reads it (#955). */
+function expectRoutesFlag(project:string,count:number|string):string {
+ return existsSync(join(project,auditExpectationFile))?'':` --expect-routes ${count}`;
+}
 /**
  * The npm scripts of a site: `app/` is the route project and `host.mjs` the explicitly named operator host. validate,
  * test, routes and audit pass `--local-review` (#932), so the edit loop needs no new pin after every edit; dev and start
- * never do, so serving still needs the reviewed pin.
+ * never do, so serving still needs the reviewed pin. audit carries no route count: it reads app/tests/audit.json (#955).
  */
-export function projectScripts(routes:number):Record<string,string> {
+export function projectScripts():Record<string,string> {
  const site='--project app --host-file host.mjs',review=`${site} --local-review`;
- return {dev:`urlcode dev ${site}`,start:`urlcode serve ${site}`,validate:`urlcode validate --local ${review}`,test:`urlcode test ${review}`,routes:`urlcode routes ${review}`,audit:`urlcode audit --expect-routes ${routes} ${review}`};
+ return {dev:`urlcode dev ${site}`,start:`urlcode serve ${site}`,validate:`urlcode validate --local ${review}`,test:`urlcode test ${review}`,routes:`urlcode routes ${review}`,audit:`urlcode audit ${review}`};
 }
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
 export async function buildContext(project:string,options:ContextOptions={}):Promise<ProjectContext> {
@@ -212,7 +218,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    commands:{
     validate:`${cli} validate --local --project ${flag}${operator}`,
     test:`${cli} test --project ${flag}${operator}`,
-    audit:`${cli} audit --project ${flag} --expect-routes ${compiled.count}${operator}`,
+    audit:`${cli} audit --project ${flag}${expectRoutesFlag(project,compiled.count)}${operator}`,
     routes:`${cli} routes --project ${flag}${operator}`,
     capabilities:`${cli} capabilities${options.target===undefined?'':` --target ${selected[0]}`}`,
    },
@@ -290,7 +296,7 @@ export function redirectStarter():TaskStarter {
   file:'urlcode.yaml',
   yaml:stringify(document,{lineWidth:0,aliasDuplicateObjects:false}),
   companions:{'404.html':'<!doctype html><title>Not found</title><h1>404</h1>\n'},
-  packageScripts:{start:projectScripts(0).start!},
+  packageScripts:{start:projectScripts().start!},
   note:'Delete the routes you do not need and adjust the rest. `npm start` honors PORT and listens on loopback; add `--host 0.0.0.0` to the script in a container. Shapes marked gap above are not in this file; do not add them.',
  };
 }
@@ -325,7 +331,7 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const cli=await cliInvocation(project);
  context.recipe=`${cli} recipes show redirect`;
  const operator=operatorFlags(options);
- context.commands={validate:`${cli} validate --local --project ${flag}${operator}`,test:`${cli} test --project ${flag}${operator}`,audit:`${cli} audit --project ${flag} --expect-routes ${context.project?context.project.routes:'N'}${operator}`,schema:`${cli} schema redirect`};
+ context.commands={validate:`${cli} validate --local --project ${flag}${operator}`,test:`${cli} test --project ${flag}${operator}`,audit:`${cli} audit --project ${flag}${expectRoutesFlag(project,context.project?context.project.routes:'N')}${operator}`,schema:`${cli} schema redirect`};
  if(budget===undefined)return context;
  // Fixed order, like fitBudget: this project's facts, then commands, then the notes, then the shapes.
  const omitted:string[]=[];

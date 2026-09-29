@@ -130,7 +130,8 @@ try {
     command(process.execPath,[cli,'init',site]);
     assert.ok((await readFile(join(site,'.gitignore'),'utf8')).includes('.env.*'));
     assert.ok((await readFile(join(site,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
-    assert.ok((await readFile(join(site,'AGENTS.md'),'utf8')).includes('urlcode audit --expect-routes 0'));
+    assert.ok((await readFile(join(site,'AGENTS.md'),'utf8')).includes('urlcode audit --project app --host-file host.mjs --local-review'));
+    assert.deepEqual(JSON.parse(await readFile(join(project,'tests','audit.json'),'utf8')),{expectRoutes:0});
     assert.ok(existsSync(join(site,'host.mjs')) && existsSync(join(site,'package.json')));
     assert.deepEqual(JSON.parse(await readFile(join(site,'.mcp.json'),'utf8')),{ mcpServers:{ urlcode:{ command:'npx',args:['--no','--package','@jimhoyd/urlcode','urlcode','mcp','--project','app'] } } });
     command(process.execPath,[cli,'test','--project',project]);
@@ -139,7 +140,7 @@ try {
     assert.equal((JSON.parse(command(process.execPath,[cli,'init',bare,'--no-mcp','--json'])) as { mcpRegistration?: string }).mcpRegistration,'skipped');
     assert.ok(!existsSync(join(bare,'.mcp.json')) && existsSync(join(bare,'app','urlcode.yaml')));
     command(process.execPath,[cli,'test','--project',join(bare,'app')]);
-    const emptyAudit=spawnSync(process.execPath,[cli,'audit','--project',project,'--expect-routes','0'],{encoding:'utf8',timeout:childTimeoutMs});
+    const emptyAudit=spawnSync(process.execPath,[cli,'audit','--project',project],{encoding:'utf8',timeout:childTimeoutMs});
     assert.equal(emptyAudit.status,1,'A project with no active routes is intentionally not ready');
     const emptyReport=JSON.parse(emptyAudit.stdout.trim().split('\n').at(-1) ?? '') as {ready:boolean;notReadyReasons:string[]};
     assert.equal(emptyReport.ready,false);assert.deepEqual(emptyReport.notReadyReasons,['no-active-routes']);

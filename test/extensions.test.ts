@@ -626,6 +626,8 @@ test('--local-review pins a non-serving run to the current revision, never serve
   await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
 const data=${JSON.stringify(data)};
 const demo={definition:{name:'demo',contract:1,targets:data.targets,schema:data.schema,host(context){
+  // Stands in for an extension whose serving data is not set up yet (auth's unmigrated tables, #954).
+  if(process.env.DEMO_SITE_DATA_UNSET&&!context.hermetic)throw new Error('demo: the site data is not set up; run demo migrate');
   return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned'};}};}}};
 }},options:{}};
 export default await composeHost(import.meta.url,[demo]);
@@ -649,12 +651,27 @@ export default await composeHost(import.meta.url,[demo]);
     // Without the flag nothing changed: the run still needs the reviewed pin.
     assert.equal(lines(run(['validate','--local']).stderr).at(-1)?.code,'revision-pin-required');
   });
-  for(const args of [['serve','--port','0'],['dev','--port','0'],['benchmark'],['explain']])await t.test(`${args[0]} refuses --local-review`,()=>{
+  for(const [args,message] of [[['serve','--port','0'],/^serve does not take --local-review: serving always needs the reviewed revision pin/],[['dev','--port','0'],/^dev does not take --local-review: serving always needs the reviewed revision pin/],[['benchmark'],/^benchmark does not take --local-review; it is for the checks validate\/test\/routes\/audit and the pin-free read-only commands explain\/.*openapi$/]] as const)await t.test(`${args[0]} refuses --local-review, naming itself`,()=>{
     const out=run([...args,'--local-review']);assert.equal(out.status,1,out.stdout+out.stderr);
     const error=lines(out.stderr).at(-1)!;
     assert.equal(error.code,'local-review-unsupported',out.stderr);
-    assert.match(error.message!,/serve and dev always need the reviewed revision pin/);
+    assert.match(error.message!,message);
     assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  });
+  // #958: a read-only command that needs no pin takes the flag the check scripts pass, and ignores it.
+  for(const args of [['openapi','--check'],['explain','/demo/x'],['review']])await t.test(`${args[0]} needs no pin and ignores --local-review`,()=>{
+    const out=run([...args,'--local-review']);assert.equal(out.status,0,out.stdout+out.stderr);
+    assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  });
+  // #954: a local review activates on throwaway data, as test and audit do; the reviewed pin checks the data serve uses.
+  await t.test('a local review never needs the site data set up; the pinned validate still checks it',async()=>{
+    for(const args of [['validate','--local'],['routes']]){
+      const out=run([...args,'--local-review'],{DEMO_SITE_DATA_UNSET:'1'});assert.equal(out.status,0,out.stdout+out.stderr);
+    }
+    const pinned=run(['validate','--local','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:await inspectExtensionRevision(root)});
+    assert.equal(pinned.status,1);assert.match(lines(pinned.stderr).at(-1)!.message!,/the site data is not set up; run demo migrate/,pinned.stderr);
+    const flagged=run(['validate','--local','--local-review','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:await inspectExtensionRevision(root)});
+    assert.equal(flagged.status,1,'with an operator pin the flag changes nothing');
   });
   await t.test('an operator pin wins: a stale --policy or PROJECT_SHA256 still refuses',()=>{
     const policy=run(['validate','--local','--local-review','--origin',origin],{URLCODE_POLICY:stale});assert.equal(policy.status,1);
@@ -662,6 +679,29 @@ export default await composeHost(import.meta.url,[demo]);
     const pinned=run(['validate','--local','--local-review','--origin',origin],{PROJECT_SHA256:'b'.repeat(64)});assert.equal(pinned.status,1);
     assert.match(lines(pinned.stderr).at(-1)!.message!,/Extension revision pin mismatch: demo/,pinned.stderr);
     for(const out of [policy,pinned])assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  });
+  // #940: the authoring MCP runners pass --local-review too, so an agent's edit is checked without a new pin; the same
+  // CLI rule decides, so a pin the operator gave the server still wins.
+  await t.test('the MCP runners review an edit locally and an operator pin still wins (#940)',async()=>{
+    const mcp=(env:Record<string,string>={})=>{
+      const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},
+        ...['run_validate','run_test','run_audit'].map((name,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params:{name,arguments:{}}}))];
+      const out=spawnSync(process.execPath,[cli,'mcp','--allow-authoring','--project',root,'--host-file',host],{encoding:'utf8',timeout:120000,input:messages.map(message=>JSON.stringify(message)).join('\n')+'\n',env:{...base,...env}});
+      const replies=out.stdout.trim().split('\n').map(line=>JSON.parse(line) as {id?:number;result?:{content:{text:string}[]}});
+      return [2,3,4].map(id=>{const reply=replies.find(message=>message.id===id);assert.ok(reply?.result,out.stdout+out.stderr);return JSON.parse(reply.result.content[0]!.text) as {command:string;exitCode:number;stdout:string;stderr:string};});
+    };
+    await writeFile(join(root,'urlcode.yaml'),(await readFile(join(root,'urlcode.yaml'),'utf8')).replace(/label: \w+/,'label: agent'));
+    const revision=await inspectExtensionRevision(root);
+    for(const result of mcp()){
+      assert.equal(result.exitCode,0,result.command+result.stdout+result.stderr);
+      const notice=lines(result.stderr).find(line=>line.event==='local_review');
+      assert.deepEqual({revision:notice?.revision,origin:notice?.origin},{revision,origin:'http://localhost'},result.stderr);
+    }
+    for(const result of mcp({PROJECT_SHA256:'b'.repeat(64),URLCODE_ORIGIN:origin})){
+      assert.notEqual(result.exitCode,0,result.command+result.stdout);
+      assert.match(result.stderr,/Extension revision pin mismatch: demo/,result.command);
+      assert.equal(lines(result.stderr).some(line=>line.event==='local_review'),false,result.stderr);
+    }
   });
   await t.test('a local review holds no grant: egress a policy has not approved is still denied',async()=>{
     const upstream=await project(t,{'/demo/*':mount,'/up':{proxy:{url:'https://upstream.example.test/'}}},{},{extensions:declarations});

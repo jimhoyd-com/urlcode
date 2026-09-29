@@ -32,7 +32,7 @@ test('the redirect starter compiles as one project and carries the start script 
  for(const [name,body] of Object.entries(starter.companions))await writeFile(join(root,name),body);
  const loaded=await loadDocument(root);
  await assert.doesNotReject(compileRoutes(loaded,{}));
- assert.equal(starter.packageScripts.start,projectScripts(0).start);
+ assert.equal(starter.packageScripts.start,projectScripts().start);
  assert.ok(starter.yaml.includes('/legacy/**')&&starter.yaml.includes('/profiles/{id}'),'starter carries the wildcard and relative shapes');
  assert.ok(!starter.yaml.includes('//evil'),'starter must not contain a gap shape');
 });

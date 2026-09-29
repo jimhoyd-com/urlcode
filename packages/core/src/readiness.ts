@@ -176,7 +176,10 @@ interface AuditReport {
   /** `configured` is every route in the table, including routes generated from `site` keys; `--expect-routes` compares against it.
    * `declared` + `generated` always equals `configured`. */
   counts: { configured: number; declared: number; generated: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
-  expectedRoutes: number | null; countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
+  expectedRoutes: number | null;
+  /** Where `expectedRoutes` came from: the caller's `--expect-routes`, the project's committed `tests/audit.json`, or null when unchecked. */
+  expectedRoutesFrom: '--expect-routes' | 'tests/audit.json' | null;
+  countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
   unassertedCases: number[]; uncovered: { route: string; method: string }[];
   /** HEAD pairs covered because the same route's GET is (see docs/READINESS.md#coverage-rules). Shown even when `ready`. */
   impliedRouteMethods: { route: string; method: 'HEAD'; from: 'GET' }[];
@@ -198,10 +201,12 @@ interface AuditReport {
 }
 /**
  * A fixed explanation of a coverage gap: `unasserted-success` (passing cases below 400 without an assertion),
- * `gated-route-uncovered` (uncovered pairs on routes a principal gate protects) or `waiver-without-proof`
- * (ignored waivers). Only route patterns and case numbers, never fixture text.
+ * `gated-route-uncovered` (routes a principal gate protects with no method covered at all), `method-without-success`
+ * (uncovered methods of routes another method of which is covered; `cases` are the passing asserted refusals, status
+ * 400 or more, sent to them) or `waiver-without-proof` (ignored waivers). Only route patterns, methods and case
+ * numbers, never fixture text.
  */
-interface CoverageNote { code: 'unasserted-success' | 'gated-route-uncovered' | 'waiver-without-proof'; message: string; routes?: string[]; cases?: number[] }
+interface CoverageNote { code: 'unasserted-success' | 'gated-route-uncovered' | 'method-without-success' | 'waiver-without-proof'; message: string; routes?: string[]; methods?: { route: string; method: string }[]; cases?: number[] }
 interface BenchmarkOptions { requests?: number | undefined; concurrency?: number | undefined; maxP95Ms?: number | undefined; seconds?: number | undefined; warmup?: number | undefined; target?: string | undefined }
 interface BenchmarkReport {
   pass: boolean; requested: number; completed: number; complete: boolean; failed: number; transportErrors: number; shedResponses: number; concurrency: number;
@@ -356,6 +361,25 @@ function checkFixtureSchema(cases: unknown[]): void {
   if (e.keyword === 'enum') throw new ConfigError(`${where}${path.slice(path.lastIndexOf('/') + 1) ? `, ${path.slice(path.lastIndexOf('/') + 1)}` : ''}: must be one of ${((e.params as { allowedValues?: unknown[] }).allowedValues ?? []).join(', ')}`, fixtureDetails(path));
   // Ajv's message comes from the schema (a type or bound), never from the fixture value.
   throw new ConfigError(`${where}${e.instancePath.split('/').length > 2 ? `, ${e.instancePath.split('/').slice(2).join('.')}` : ''}: ${e.message ?? 'is invalid'} (see schemas/requests.schema.json)`, fixtureDetails(path));
+}
+/** The project's committed audit expectation (#955), relative to the project root. */
+export const auditExpectationFile = 'tests/audit.json';
+/**
+ * The route count the project commits to, `tests/audit.json` `{"expectRoutes": N}`: one reviewed value that every
+ * `audit` run (the npm script, CI and a hand-typed command) compares against when no `--expect-routes` is given.
+ * Undefined when the project has no such file.
+ */
+export async function readAuditExpectation(root: string): Promise<number | undefined> {
+  try { await lstat(join(root, auditExpectationFile)); }
+  catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined; throw error; }
+  const details = { code: 'invalid-audit-expectation', file: auditExpectationFile };
+  const bytes = await readFile(await safeFile(root, auditExpectationFile));
+  assert(bytes.length <= 4096, `${auditExpectationFile} exceeds 4 KiB`, details);
+  let value: unknown;
+  try { value = JSON.parse(bytes.toString('utf8')); } catch { throw new ConfigError(`${auditExpectationFile} is not valid JSON`, details); }
+  assert(isRecord(value) && !Array.isArray(value) && Object.keys(value).length === 1 && Number.isSafeInteger(value.expectRoutes) && (value.expectRoutes as number) >= 0 && (value.expectRoutes as number) <= 100000,
+    `${auditExpectationFile} must be exactly {"expectRoutes": N}, the configured route count the audit expects (a whole number, 0-100000)`, details);
+  return value.expectRoutes as number;
 }
 export async function readFixtures(root: string, optional = false): Promise<Fixture[]> {
   if(optional) {
@@ -606,13 +630,24 @@ export function deploymentAdvisories(policies: Record<string, PolicyInventory>, 
   return found;
 }
 const unique = (items: string[]): string[] => [...new Set(items)].sort();
-function coverageNotesFor(unassertedCases: number[], uncovered: { route: string }[], ignoredWaivers: { route: string }[], metadata: ReadonlyMap<string, RouteInventory>): CoverageNote[] {
+/**
+ * `servedRoutes` holds the routes with at least one covered method; `refusals` maps a route/method key to the passing,
+ * asserted cases that answered it with 400 or more.
+ */
+function coverageNotesFor(unassertedCases: number[], uncovered: { route: string; method: string }[], ignoredWaivers: { route: string }[], metadata: ReadonlyMap<string, RouteInventory>, servedRoutes: ReadonlySet<string>, refusals: ReadonlyMap<string, number[]>): CoverageNote[] {
   const notes: CoverageNote[] = [];
   if (unassertedCases.length) notes.push({ code: 'unasserted-success', cases: unassertedCases,
     message: 'These cases passed with a status below 400 but assert nothing else, so they cover no route: a status alone also matches a catch-all page or a wrong handler. Add expectBody, expectJson or expectHeaders that only the intended response has.' });
-  const gated = unique(uncovered.filter(({ route }) => metadata.get(route)?.gatedBy?.length).map(({ route }) => route));
+  // A route with some covered method is reached (signed in, where gated): what is missing is a method's own success case.
+  const partial = uncovered.filter(({ route }) => servedRoutes.has(route));
+  if (partial.length) {
+    const cases = [...new Set(partial.flatMap(({ route, method }) => refusals.get(JSON.stringify([route, method])) ?? []))].sort((a, b) => a - b);
+    notes.push({ code: 'method-without-success', methods: partial.map(({ route, method }) => ({ route, method })), ...(cases.length ? { cases } : {}),
+      message: 'Other methods of these routes are covered, so the route is reached (signed in, where it is gated); these methods have no passing case with a status below 400 that asserts the response. A refusal (400 or more) proves only the refusal and covers no method: add a success case for each method listed' + (cases.length ? ' (the listed cases are refusals sent to them)' : '') + ', or, where another fixture exercises one, waive it with coveredElsewhere.' });
+  }
+  const gated = unique(uncovered.filter(({ route }) => !servedRoutes.has(route) && metadata.get(route)?.gatedBy?.length).map(({ route }) => route));
   if (gated.length) notes.push({ code: 'gated-route-uncovered', routes: gated,
-    message: 'These routes are behind a sign-in gate (auth: true), so an anonymous request only reaches the refusal. Cover them with a steps fixture that signs in through the provider\'s own endpoint (the fixture\'s cookie jar keeps the session, and "origin": "{{origin}}" satisfies the same-origin check), or, where no fixture can sign in, waive the methods with coveredElsewhere and assert the anonymous 401.' });
+    message: 'These routes are behind a sign-in gate (auth: true) and none of their methods is covered, so no case reached them signed in: an anonymous request only reaches the refusal. Cover them with a steps fixture that signs in through the provider\'s own endpoint (the fixture\'s cookie jar keeps the session, and "origin": "{{origin}}" satisfies the same-origin check), or, where no fixture can sign in, waive the methods with coveredElsewhere and assert the anonymous 401.' });
   const waived = unique(ignoredWaivers.map(({ route }) => route));
   if (waived.length) notes.push({ code: 'waiver-without-proof', routes: waived,
     message: 'A coveredElsewhere waiver counts only once the route is shown to be served: another of its methods covered by a passing, asserted fixture, or, on a sign-in-gated route, a passing 401 fixture with expectBody, expectJson or expectHeaders.' });
@@ -621,8 +656,10 @@ function coverageNotesFor(unassertedCases: number[], uncovered: { route: string 
 export async function auditProject(app: AuditableApp, {signals,expectRoutes,log=()=>{},compliance,deployment}: AuditOptions = {}): Promise<AuditReport> {
   const began=performance.now();
   const plan=app.testPlan(), fixtures=await readFixtures(app.root,true);
+  // The committed expectation is read only when the caller gave none, so a malformed file cannot hide behind the flag.
+  const committed=expectRoutes===undefined?await readAuditExpectation(app.root):undefined;
   const metadata=new Map(plan.inventory.map(r=>[r.path,r]));
-  const covered=new Set<string>(), gateRefused=new Set<string>(), unassertedCases: number[]=[];let passed=0,failed=0,checks=0;
+  const covered=new Set<string>(), gateRefused=new Set<string>(), refusals=new Map<string,number[]>(), unassertedCases: number[]=[];let passed=0,failed=0,checks=0;
   const agent=new Agent({keepAlive:true,maxSockets:1});
   // One accounting for generated cases and fixture steps, single or ordered: a step counts as
   // a check, and covers a route/method only when it passes and asserts the response. Coverage
@@ -637,6 +674,8 @@ export async function auditProject(app: AuditableApp, {signals,expectRoutes,log=
     if(result.pass && assertsResponse && meta?.state==='active' && (result.status<400 || (meta.handler==='respond' && source==='generated')))covered.add(JSON.stringify([route,method]));
     // An asserted 401 on a route a principal gate protects proves the route is served behind that gate (a waiver basis).
     if(result.pass && assertsResponse && meta?.state==='active' && result.status===401 && meta.gatedBy?.length)gateRefused.add(route!);
+    // A fixture's asserted refusal covers nothing, but names the method a success case is missing for.
+    if(source==='fixture' && result.pass && assertsResponse && meta?.state==='active' && result.status>=400){const pair=JSON.stringify([route,method]);refusals.set(pair,[...(refusals.get(pair) ?? []),n]);}
     if(result.pass)passed++;else failed++;
     log({event:'check',case:n,source,pass:result.pass,status:result.status,expectedStatus:test.status});
   };
@@ -664,13 +703,16 @@ export async function auditProject(app: AuditableApp, {signals,expectRoutes,log=
   for(const r of plan.inventory)if(r.state==='active')for(const [method,reason] of Object.entries(r.coveredElsewhere??{}))if(covered.has(key(r.path,method)))redundantWaivers.push({route:r.path,method,reason});
   const counts: AuditReport['counts']={configured:plan.inventory.length,declared:plan.inventory.filter(r=>!r.generated).length,generated:plan.inventory.filter(r=>r.generated).length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;const handler=String(route.handler);counts.byHandler[handler]=(counts.byHandler[handler]||0)+1;}
-  const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
+  const expectedRoutesFrom: AuditReport['expectedRoutesFrom']=expectRoutes!==undefined?'--expect-routes':committed!==undefined?auditExpectationFile:null;
+  const expected=expectRoutes ?? committed;
+  const countMatches=expected===undefined || counts.configured===expected;
   const advisories=plan.inventory.flatMap(route=>(route.advisories??[]).map(message=>({route:route.path,message})));
-  const coverageNotes=coverageNotesFor(unassertedCases,uncovered,ignoredWaivers,metadata);
+  const servedRoutes=new Set([...covered].map(pair=>(JSON.parse(pair) as [string,string])[0]));
+  const coverageNotes=coverageNotesFor(unassertedCases,uncovered,ignoredWaivers,metadata,servedRoutes,refusals);
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
   const notReadyReasons=[...(counts.active>0?[]:['no-active-routes']),...(countMatches?[]:['route-count-mismatch']),...(failed?['failed-checks']:[]),...(uncovered.length?['uncovered-route-methods']:[])];
-  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,impliedRouteMethods,waivedRouteMethods,ignoredWaivers,redundantWaivers,coverageNotes,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
+  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expected ?? null,expectedRoutesFrom,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,impliedRouteMethods,waivedRouteMethods,ignoredWaivers,redundantWaivers,coverageNotes,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

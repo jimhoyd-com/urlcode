@@ -21,7 +21,7 @@ const collections = {
       approve: { from: { status: 'pending' }, set: { status: 'approved' }, by: 'others', members: 'reviewers', mount: '/api/approvals' },
       escalate: { from: { status: 'pending' }, set: { status: 'escalated' }, by: 'others', members: 'leads', mount: '/api/escalations' },
     },
-    readers: { mount: '/api/review', members: 'reviewers' },
+    readers: { review: { mount: '/api/review', members: 'reviewers' } },
   },
   notes: {
     mount: '/api/notes', schema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', maxLength: 64 }, state: { type: 'string', enum: ['draft', 'published', 'pinned'] } } }, defaults: { state: 'draft' }, readOnlyProperties: ['state'],

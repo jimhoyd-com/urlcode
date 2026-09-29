@@ -345,7 +345,8 @@ collections:
       withdraw:                    # POST /api/requests/<id>/withdraw, owner only
         from: {status: pending}
         set: {status: withdrawn}
-    readers: {mount: /api/review, members: reviewers}   # GET /api/review?status=pending
+    readers:
+      review: {mount: /api/review, members: reviewers}   # GET /api/review?status=pending
 routes:
   /api/requests/*: {extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true}
   /api/approvals/*: {extension: store, methods: [POST], auth: true}
@@ -493,9 +494,9 @@ still has no roles, and `auth` gains none.
       create: {members: staff}   # a signed-in non-member gets 403 and nothing is written
       schema: {type: object, additionalProperties: false, required: [title], properties: {title: {type: string, maxLength: 80}}}
   ```
-- **Cross-owner reads.** An owned collection may declare
-  `readers: {mount, members}`. Members then list and read **every** owner's
-  records, read-only, on that separate mount: `GET <mount>` takes the
+- **Cross-owner reads.** An owned collection may declare named readers
+  mounts, `readers: {<name>: {mount, members}}`. Members then list and read
+  **every** owner's records, read-only, on that separate mount: `GET <mount>` takes the
   collection's `limit`, `cursor`, `sort` and filters (so `?status=pending` is
   a review queue), and `GET <mount>/<id>` reads one record with its `ETag`.
   Any other method is `405`. The mount needs its own route with a
@@ -504,8 +505,8 @@ still has no roles, and `auth` gains none.
   is read. A non-member gets one `403` for the list, an existing id, a missing
   id and a malformed one. Records with no owner are left out, and owners keep
   their own view on the collection mount. The stored owner is not shown unless
-  the collection declares `readers.showOwner: true` (below).
-- **Seeing the requester.** With `readers: {mount, members, showOwner: true}`,
+  the mount declares `showOwner: true` (below).
+- **Seeing the requester.** With `readers: {review: {mount, members, showOwner: true}}`,
   every record the readers mount answers carries `_owner`: the owner's
   principal id, the same opaque id the store stamped on create (for auth, the
   Better Auth user id; never an email or a name). It is shown on the readers
@@ -516,9 +517,10 @@ still has no roles, and `auth` gains none.
   adds a stable cross-record link to one account. To show something a reviewer
   can act on (a display name, a team), keep it in an ordinary declared property
   that the owner writes; see [the store's security notes](../packages/store/SECURITY.md).
-- **A projection, and a directory.** `readers.properties: [<property>, ...]`
-  ([#929](https://github.com/jimhoyd-com/urlcode/issues/929)) narrows the
-  readers mount to what it lists. Each record is answered as `id`, the listed
+- **A projection, and a directory.** A readers mount's
+  `properties: [<property>, ...]`
+  ([#929](https://github.com/jimhoyd-com/urlcode/issues/929)) narrows that
+  mount to what it lists. Each record is answered as `id`, the listed
   properties and (with `showOwner`) `_owner`: no `createdAt`, `updatedAt` or
   unlisted property. Sort and filters take only listed properties; any other is
   `400 invalid_query`, even when the collection declares it `sortable` or
@@ -538,7 +540,8 @@ still has no roles, and `auth` gains none.
     ownership: owner
     filterable: [name]
     # ...schema, defaults, readOnlyProperties and transfers as in declared transfers below
-    readers: {mount: /api/directory, properties: [name]}   # GET /api/directory?name=bob -> {items: [{id, name}]}
+    readers:
+      directory: {mount: /api/directory, properties: [name]}   # GET /api/directory?name=bob -> {items: [{id, name}]}
   # and the route: /api/directory/*: {extension: store, methods: [GET, HEAD], auth: true}
   ```
 
@@ -550,18 +553,47 @@ still has no roles, and `auth` gains none.
   is too much. *Why this shape:* it reuses the readers mount (one read path,
   one gate, the same query rules) rather than adding a second kind of mount,
   and it keeps transfers addressed by record id, so a transfer never has to
-  resolve an owner or a handle inside its transaction. A readers declaration
+  resolve an owner or a handle inside its transaction. A readers mount
   with neither `members` nor `properties` is refused: an ungated mount must say
-  what it shows. One collection has one readers mount, so a collection that
-  needs both a full reviewer view and a directory needs one of them elsewhere.
+  what it shows.
+- **Several mounts, one collection.** `readers` is a map of named mounts
+  ([#944](https://github.com/jimhoyd-com/urlcode/issues/944)), each with its
+  own `mount`, `members`, `showOwner` and `properties`, so a collection can
+  serve a directory to everyone and whole records to a few:
+
+  ```yaml
+  # snippet: partial -- one collection, the rest as in declared transfers
+  wallets:
+    mount: /api/wallets
+    ownership: owner
+    filterable: [name]
+    sortable: [name, balance]
+    readers:
+      directory: {mount: /api/directory, properties: [name]}           # every signed-in principal: id and name
+      audit: {mount: /api/audit, members: treasurers, showOwner: true}  # treasurers: whole records and owners
+  # routes: /api/directory/* and /api/audit/*, each {extension: store, methods: [GET, HEAD], auth: true}
+  ```
+
+  Each mount keeps its own rules: its gate is checked first on it alone, a
+  projection's sort, filters, `may` and `ETag` are its own (the directory above
+  refuses `?sort=balance` while the audit mount takes it), and a whole-record
+  mount answers the record's own `ETag`. Two readers of one collection may not
+  share a mount, and no readers mount may be the collection's, a transition's
+  or another store mount. The name identifies the mount in activation errors
+  and OpenAPI schema names; it is not part of any URL. *Why a map rather than a
+  list:* a name gives every mount a stable identity in diagnostics and in the
+  declaration fingerprint without depending on order, as `transitions` and
+  `transfers` already do.
 - **Changes apply immediately.** Membership is read inside each gated
   request's transaction, so an addition or removal committed before a request
   begins applies to it; there is no cache. Of concurrent approvals by members
   exactly one commits, as for any transition.
 - **Activation** refuses a `members` (on a transition, a transfer, `create` or
-  `readers`) naming a collection that is not declared or is not a membership
-  collection, `readers` on a shared collection or on a mount that another store
-  mount already uses, and `readers.properties` naming an undeclared property.
+  a readers mount) naming a collection that is not declared or is not a
+  membership collection, `readers` on a shared collection, a readers mount on a
+  mount that another store mount (another readers mount included) already
+  uses, and a readers mount's `properties` naming an undeclared property. The
+  message names the mount (`readers audit: ...`).
 - **Why this shape.** Only `members` on a transition, a transfer and `create`,
   `readers` on a collection and `membership: true` are new. Richer rules (roles with
   hierarchies, per-record sharing, a reader scope narrower than "every
@@ -785,7 +817,7 @@ The #835 counterexamples, and what serves each:
 | Contract | Served by | Not built |
 |---|---|---|
 | Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `readOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
-| Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a declared [`intervals`](#non-overlapping-intervals) constraint checked through an index, across owners on an owned collection, with `If-Match` and transitions (cancel, reopen); fixed-length, aligned slots with `length` and `step`; members-only booking with `create.members`; no application code | recurring intervals, capacity above one per slot |
+| Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a declared [`intervals`](#non-overlapping-intervals) constraint checked through an index, across owners on an owned collection, with `If-Match` and transitions (cancel, reopen); fixed-length, aligned slots with `length` and `step` (and `origin` for a fixed-offset local grid); members-only booking with `create.members`; no application code | recurring intervals, capacity above one per slot |
 | Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); the recipient's id from a [projected readers mount](#membership-gates-and-cross-owner-reads) that shows no balance; no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
@@ -832,7 +864,7 @@ collections:
       within: [room]            # a room's bookings conflict with each other only
       when: {status: booked}    # a cancelled booking frees its slot
       length: PT1H              # every booking is exactly one hour...
-      step: PT1H                # ...and starts on the hour, UTC
+      step: PT1H                # ...and starts on the hour (UTC, unless origin moves the grid)
     transitions:
       cancel: {from: {status: booked}, set: {status: cancelled}}
       reopen: {from: {status: cancelled}, set: {status: booked}}
@@ -875,8 +907,9 @@ collections:
 - **Length and step** ([#929](https://github.com/jimhoyd-com/urlcode/issues/929)).
   `length` fixes every interval's length: `end` must be exactly `start` plus
   `length`. `step` puts both bounds on a grid: each must be a whole multiple of
-  `step`, counted from 1970-01-01T00:00:00Z for date-times, so `PT1H` is on
-  the hour and `PT15M` on the quarter hour, in UTC. Alone, `step` makes every
+  `step`, counted from `origin` (below; by default 1970-01-01T00:00:00Z for
+  date-times, so `PT1H` is on the hour and `PT15M` on the quarter hour, in
+  UTC, and 0 for integers). Alone, `step` makes every
   interval a whole number of steps (one-hour slots booked one or more at a
   time); with both, `length` must be a multiple of `step`, or activation
   refuses the declaration. For date-time bounds each is an ISO 8601 duration
@@ -889,9 +922,41 @@ collections:
   multiple of PT1H from 1970-01-01T00:00:00Z`), never the submitted value. The
   rule applies to every record, whatever `when` says, on every write path
   (create, `PUT`, `PATCH`, a transition, `StoreExports` and host
-  transactions), and activation refuses stored records that break it. A grid
-  in local time (a clinic's 09:00 in a zone with daylight saving) is not
-  expressible: convert on the client, or use integer bounds.
+  transactions), and activation refuses stored records that break it.
+- **A grid with an origin** ([#945](https://github.com/jimhoyd-com/urlcode/issues/945)).
+  `origin` says where the `step` grid counts from: an RFC 3339 date-time for
+  date-time bounds, which may carry a fixed offset, or an integer for integer
+  bounds. It needs `step`. A bound is on the grid when `bound - origin` is a
+  whole multiple of `step`, before or after the origin, so only the origin's
+  position within one step matters and the check stays exact.
+
+  ```yaml
+  # snippet: partial -- the intervals of a clinic at UTC+05:30
+  intervals:
+    start: start
+    end: end
+    within: [room]
+    length: PT1H
+    step: PT1H
+    origin: 1970-01-01T00:00:00+05:30   # 09:00 local is 03:30Z: slots start at :30 past, UTC
+  ```
+
+  With `step: P1D` the same origin is local midnight (18:30Z). Record bounds
+  stay UTC with `Z`; only the declaration names the offset, and a `422`
+  names the declared origin (`must be a whole multiple of PT1H from
+  1970-01-01T00:00:00+05:30`). Changing `origin` changes the declaration, and
+  activation refuses stored records the new grid would not hold.
+  *Daylight saving is not followed.* `origin` is a fixed offset, not a time
+  zone. A zone's rules would need time-zone data in the write path, where the
+  result of a check could then depend on the tz database each process
+  loaded (two processes on one database could disagree), and a local grid has
+  no exact answer in a daylight-saving gap or overlap, where a local hour does
+  not exist or happens twice. The grid stays exact arithmetic on instants
+  instead. For a grid of an hour or less, a whole-hour daylight-saving change
+  does not move it (UTC+10:30 and UTC+09:30 both put `PT1H` at :30 past), so
+  only daily and longer grids in zones that change their offset are affected:
+  there, local midnight moves by an hour for part of the year. Convert on the
+  client, or use integer bounds in local units, when that matters.
 - **Cost.** The declaration builds one partial SQLite index over the records
   it applies to, keyed by owner (with `scope: owner`), the `within` values and
   the start instant. Because stored intervals in one scope never overlap, the
@@ -1040,7 +1105,7 @@ and fixtures that fund, pay, refuse an overdraft and close every wallet at `0`.
   caller needs the recipient's record id, which the recipient shares, like an
   account number, or which a
   [projected readers mount](#membership-gates-and-cross-owner-reads) lists
-  (`readers: {mount: /api/directory, properties: [name]}`: every signed-in
+  (`readers: {directory: {mount: /api/directory, properties: [name]}}`: every signed-in
   principal finds a wallet's id by its name, and sees no balance). Ids are
   random UUIDs and never listed on the collection mount to other owners. The
   store checks the floor before it looks up the credited record, so a caller
@@ -2044,7 +2109,7 @@ the project's declaration alone, without opening the database.
 | Mount | Paths |
 |---|---|
 | Collection | `GET`/`HEAD <mount>` (the list: `limit`, `cursor`, `sort` as an enum of the sortable properties, each filter with its property's schema), `POST <mount>`; `GET`/`HEAD`/`PUT`/`PATCH`/`DELETE <mount>/{id}`; `POST <mount>/{id}/increment/{field}`; `POST <mount>/{id}/<transition>` per transition on the mount; `POST <mount>/transfers/<transfer>` per transfer, taking `Store<Collection>Transfer` and answering `Store<Collection>Transferred` |
-| Readers | `GET`/`HEAD <mount>` and `<mount>/{id}`; with `properties`, `Store<Collection>ReaderRecord` holds `id` and the listed properties only, `sort` and the filters are the listed ones, and there is no `403` without `members` |
+| Readers | Per readers mount: `GET`/`HEAD <mount>` and `<mount>/{id}`. With `properties` or `showOwner`, the mount's own `Store<Collection><Name>ReaderRecord` and `...ReaderList` (for `readers.directory` of `wallets`, `StoreWalletsDirectoryReaderRecord`); with `properties` it holds `id` and the listed properties only, `sort` and the filters are the listed ones, and there is no `403` without `members`. A mount with neither answers `Store<Collection>Record` |
 | `by: others` transition | `POST <mount>/{id}` |
 | Short link | `GET`/`HEAD <mount>/{key}`, a `302` with `Location` |
 
@@ -2054,10 +2119,10 @@ The schemas come from the record schema: `Store<Collection>Record` is it with
 annotations, `Store<Collection>Create` (for `POST` and `PUT`) leaves out the
 read-only properties and requires only what has no default,
 `Store<Collection>Patch` lets an optional property be `null`, and the list,
-reader (with `_owner` under `showOwner`, and only the listed properties under
-`readers.properties`) and `StoreError` shapes are named the same way. A gated
-create lists its `401` and `403 membership_required`, and a declared `length`
-or `step` is named in the `422`. Each operation lists the headers it takes (`If-Match`, and
+per-mount reader (with `_owner` under `showOwner`, and only the listed
+properties under `properties`) and `StoreError` shapes are named the same way.
+A gated create lists its `401` and `403 membership_required`, and a declared
+`length`, `step` or `origin` is named in the `422`. Each operation lists the headers it takes (`If-Match`, and
 `Idempotency-Key` where the collection enables it) and answers (`ETag`,
 `Allow-Transitions`, `Location`, `Idempotency-Replayed`), its `requestBody`
 bound (`x-urlcode.maxBytes`: `maxRecordBytes` plus 4 KiB), and its refusals,

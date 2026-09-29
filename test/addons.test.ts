@@ -72,7 +72,7 @@ async function registry(t: TestContext, dir: string, extra: Record<string, Recor
 }
 
 /** The note `extensions add|remove` prints after moving a fresh site's generated audit counts (#910). */
-const moved = (delta: number): string => `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in package.json, ${join('.github', 'workflows', 'urlcode.yml')}, AGENTS.md${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}`;
+const moved = (delta: number): string => `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in app/tests/audit.json${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}`;
 async function site(t: TestContext): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-site-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -319,29 +319,28 @@ test('extensions add and remove edit only the extensions and includes nodes of u
   assert.equal(await readFile(demoYaml, 'utf8'), handWritten, 'removing every extension restores the hand-written file');
 });
 
-test('extensions add and remove keep the generated --expect-routes counts in step with the routes they write (#910)', async t => {
-  const m = manifest(), dir = await site(t);
-  const counts = async (): Promise<string[]> => {
-    const script = (JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts.audit!;
-    const workflow = await readFile(join(dir, '.github', 'workflows', 'urlcode.yml'), 'utf8'), guide = await readFile(join(dir, 'AGENTS.md'), 'utf8');
-    return [/--expect-routes (\d+)/.exec(script)![1]!, /expect-routes: (\d+)/.exec(workflow)![1]!, /npm run audit\s+# urlcode audit --expect-routes (\d+)/.exec(guide)![1]!];
-  };
-  assert.deepEqual(await counts(), ['0', '0', '0']);
-  await addAddons(dir, 'extension', ['alpha'], { manifest: m, example: true });
-  assert.deepEqual(await counts(), ['2', '2', '2'], 'the capability mount and the example route');
+test('extensions add and remove keep the one committed audit route count in step with the routes they write (#910, #955)', async t => {
+  const m = manifest(), dir = await site(t), file = join(dir, 'app', 'tests', 'audit.json');
+  const count = async (): Promise<number> => (JSON.parse(await readFile(file, 'utf8')) as { expectRoutes: number }).expectRoutes;
+  // The count lives in one file: the npm script, AGENTS.md and the workflow carry none (#955).
+  const script = (JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts.audit!;
+  for (const text of [script, await readFile(join(dir, '.github', 'workflows', 'urlcode.yml'), 'utf8'), await readFile(join(dir, 'AGENTS.md'), 'utf8')]) assert.doesNotMatch(text, /expect-routes/);
+  assert.equal(await count(), 0);
+  const added = await addAddons(dir, 'extension', ['alpha'], { manifest: m, example: true });
+  assert.equal(await count(), 2, 'the capability mount and the example route');
+  assert.ok(added.notes.includes(`The audit's expected route count moved by +2 in app/tests/audit.json; add request fixtures for the new routes to app/tests/requests.json`));
   // A site.* convention the add does not touch is not counted again.
   const yaml = join(dir, 'app', 'urlcode.yaml');
   await writeFile(yaml, `${await readFile(yaml, 'utf8')}site:\n  robots: {}\n`);
   await addAddons(dir, 'extension', ['beta'], { manifest: m, acknowledgements: ['beta:risky'] });
-  assert.deepEqual(await counts(), ['3', '3', '3']);
-  // A count the operator rewrote into another form is left alone; the others still move.
-  const pkgFile = join(dir, 'package.json'), pkg = JSON.parse(await readFile(pkgFile, 'utf8')) as { scripts: Record<string, string> };
-  pkg.scripts.audit = 'urlcode audit --project app --host-file host.mjs';
-  await writeFile(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
+  assert.equal(await count(), 3);
   const removed = await removeAddon(dir, 'extension', 'beta', { manifest: m });
-  assert.deepEqual(removed.notes, [`The audit's expected route count moved by -1 in ${join('.github', 'workflows', 'urlcode.yml')}, AGENTS.md`]);
-  assert.equal((JSON.parse(await readFile(pkgFile, 'utf8')) as { scripts: Record<string, string> }).scripts.audit, 'urlcode audit --project app --host-file host.mjs');
-  assert.match(await readFile(join(dir, '.github', 'workflows', 'urlcode.yml'), 'utf8'), /expect-routes: 2 /);
+  assert.deepEqual(removed.notes, [`The audit's expected route count moved by -1 in app/tests/audit.json`]);
+  assert.equal(await count(), 2);
+  // A site that commits no count is left without one.
+  await rm(file);
+  await addAddons(dir, 'extension', ['beta'], { manifest: m, acknowledgements: ['beta:risky'] });
+  await assert.rejects(readFile(file, 'utf8'), /ENOENT/);
 });
 
 test('the minimal YAML edits handle block and flow collections and keep CRLF', () => {

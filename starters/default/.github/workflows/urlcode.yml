@@ -17,9 +17,9 @@ jobs:
         with:
           persist-credentials: false
       # The action installs exactly what package-lock.json pins, then checks app/ and every add-on against
-      # core's pins. `urlcode upgrade` moves this tag together with the runtime.
+      # core's pins. `urlcode upgrade` moves this tag together with the runtime. The audit expects the route
+      # count committed in app/tests/audit.json, as `npm run audit` does.
       - uses: jimhoyd-com/urlcode/action@v0.6.5
         with:
-          expect-routes: 0 # update when adding or removing routes
           allow-empty-project: true # remove after adding the first active route
           compliance: baseline

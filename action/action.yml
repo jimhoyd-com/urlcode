@@ -15,7 +15,7 @@ inputs:
     description: Node.js version passed to actions/setup-node.
     default: '26'
   expect-routes:
-    description: Expected configured route count for `audit --expect-routes`. Empty skips the count check.
+    description: Expected configured route count for `audit --expect-routes`. Empty uses the count the project commits in app/tests/audit.json, and skips the check when there is none.
     default: ''
   allow-empty-project:
     description: Permit only the intentional `no-active-routes` audit result. Use for a newly initialized bare site; remove after adding its first active route.

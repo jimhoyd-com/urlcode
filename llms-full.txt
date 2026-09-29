@@ -360,7 +360,8 @@ seed accounts and memberships from `app/tests/seed.json`
 [the revision pin](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval before serving. The site's check scripts
 (`npm run validate`, `npm test`, `npm run audit`) pass `--local-review` and
-review each edit locally without one
+review each edit locally without one, on throwaway data, so no migration is
+needed before them either
 ([the local review loop](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop)).
 
 ### Rules an agent must follow
@@ -961,7 +962,9 @@ registrations without activating them, while `validate`, `test`, `dev` and
 ([inspection without a revision pin](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#inspection-without-a-revision-pin)).
 A site's `npm run validate`, `npm test` and `npm run audit` pass
 `--local-review`, which pins one local run to the current revision with no
-grants, so the edit loop needs no new pin; serving still does
+grants on throwaway data, so the edit loop needs no new pin and no
+`urlcode-auth migrate`; serving still does, and the read-only commands above
+accept the flag and ignore it
 ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). One goal word
 alone ("notify the team") does not require an extension: a surface needs two
 of its goal words, or its extension a matching recipe or noun. Scheduling
@@ -1145,7 +1148,9 @@ urlcode audit --project ./my-links/app --expect-routes 2
 urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
-Use the intentional actual count, not always 2. Runtime checkout users can replace
+Use the intentional actual count, not always 2. A site created by `init`
+commits it once in `app/tests/audit.json`, which `audit` reads when the flag is
+absent, so its `npm run audit` and CI carry no count. Runtime checkout users can replace
 `urlcode` with `node packages/core/src/cli.ts`. Template users can use the equivalent npm scripts.
 External bindings require an already reviewed policy; add `--policy` where needed.
 The benchmark operates locally; it is not a load test of an external deployment.
@@ -1297,7 +1302,7 @@ Roles, ownership and approvals are application data keyed by the user id.
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
 declared route at the same path still wins. Count its generated routes in
-`--expect-routes`. `site.sitemap` needs `--origin` at every command that
+the expected route count (`tests/audit.json` or `--expect-routes`). `site.sitemap` needs `--origin` at every command that
 activates the project; see [site conventions][docs/SITE.md].
 
 ### Built-in features by task
@@ -1597,7 +1602,11 @@ tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
 project's trusted code and, when the operator gave the server `--host-file`,
 that operator-supplied host module. The runners and `get_context`'s commands
 repeat only the operator's own `--host-file` and `--origin`; a flag the operator
-did not supply is listed under `prerequisites`, never guessed.
+did not supply is listed under `prerequisites`, never guessed. `run_validate`,
+`run_test` and `run_audit` also pass `--local-review`, so after an edit they
+check the current revision with no pin and no grant unless the operator gave
+the server a pin, which always wins
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 The CLI and the server read an absent `--origin` or `--policy` from
 `URLCODE_ORIGIN` or `URLCODE_POLICY`, so a site's generated npm scripts run
 unchanged with operator context in the environment, and a refusal for a missing
@@ -6586,7 +6595,7 @@ generated `npm run validate`, `npm test`, `npm run routes` and
 ```sh
 npm run validate   # urlcode validate --local --project app --host-file host.mjs --local-review
 npm test           # urlcode test --project app --host-file host.mjs --local-review
-npm run audit      # urlcode audit --expect-routes N --project app --host-file host.mjs --local-review
+npm run audit      # urlcode audit --project app --host-file host.mjs --local-review
 ```
 
 With the flag and no operator pin (no `--policy`, `URLCODE_POLICY` or
@@ -6597,15 +6606,29 @@ stderr, so the output shows the run was not a reviewed one. Edit, run the
 three scripts, and repeat. When the change is ready, review it, pin the
 revision (`urlcode permissions --project app`), then serve.
 
+A local review also activates the extensions on a fresh, empty temporary data
+directory, as `test` and `audit` always do
+([test data and seeds](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds)), so `validate` and
+`routes` need nothing set up in the site's `data/`: no `urlcode-auth migrate`
+and no signing secret ([#954](https://github.com/jimhoyd-com/urlcode/issues/954)). The site's own `data/` is checked by the
+pinned run instead: with `--policy`, `URLCODE_POLICY` or `PROJECT_SHA256`,
+`validate` activates on it exactly as `serve` will, so a missing migration or
+secret surfaces there, before serving, with the command that fixes it.
+
 The boundary holds for these reasons:
 
-- **Serving refuses it.** Only `validate`, `test`, `routes` and `audit` accept
-  the flag. `serve`, `dev`, `benchmark` and every other command refuse it
-  (`code` `local-review-unsupported`), so a served runtime is always pinned by
-  the operator.
+- **Serving refuses it.** Only `validate`, `test`, `routes` and `audit` act on
+  the flag. The read-only commands that need no pin (`explain`, `context`,
+  `plan-feature`, `review`, `report` and `openapi`) accept it and ignore it
+  ([#958](https://github.com/jimhoyd-com/urlcode/issues/958)), so the flag the check scripts pass works on every check. `serve`
+  and `dev` refuse it because serving always needs the reviewed pin, and
+  every other command, such as `benchmark`, refuses it too; the refusal
+  names the command (`code` `local-review-unsupported`). A served runtime is
+  always pinned by the operator.
 - **Nothing is persisted.** The derived pin exists only in the process for
   that run. It writes no policy, sets no environment variable and changes no
-  file, so the next `serve` still refuses until the operator pins a revision.
+  file, and the run's temporary data directory is removed when it ends, so
+  the next `serve` still refuses until the operator pins a revision.
 - **An operator pin wins.** When `--policy`, `URLCODE_POLICY` or
   `PROJECT_SHA256` is given, the flag does nothing: that pin and its policy
   apply exactly as without it. A stale pin still refuses.
@@ -6619,9 +6642,12 @@ The boundary holds for these reasons:
   Node access either way.
 
 `urlcode dev` keeps its narrower rule: its first start needs the reviewed pin,
-then hot reloads follow it (above). The MCP runners (`run_validate`,
-`run_test`, `run_audit`) do not pass the flag; they forward only what the
-operator gave `urlcode mcp` ([#940](https://github.com/jimhoyd-com/urlcode/issues/940)).
+then hot reloads follow it (above). The authoring MCP runners (`run_validate`,
+`run_test`, `run_audit`) always pass the flag, so an agent's edit is checked
+at its new revision without a new pin; the same rules decide, so a `--policy`
+or `PROJECT_SHA256` the operator gave `urlcode mcp` still wins
+([#940](https://github.com/jimhoyd-com/urlcode/issues/940)). The in-process
+`run_tests` has no such mode and still needs the pin.
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
@@ -6937,7 +6963,7 @@ Two distinctions hold throughout:
 | `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 59 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 60 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ### Capability to reference
@@ -6952,7 +6978,7 @@ full definition and a checked example live.
 | Email each submission | core: a trusted `function` route that calls the mail provider's API, SDK or nodemailer directly, with its credentials in granted `secrets` | [sending mail from your own code](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md#sending-mail-from-your-own-code-instead) |
 | A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference), [recipe `store-crud`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/store-crud/README.md) |
 | Records private to each signed-in user | store: `ownership: owner` on the collection, and a principal-providing policy (`auth: true`) on its route | [per-record ownership](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership) |
-| A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {mount, members}`; the operator adds members with `addMember` | [membership gates](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) |
+| A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {<name>: {mount, members}}`; the operator adds members with `addMember` | [membership gates](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) |
 | Sign-in and protected routes | auth: mount Better Auth at `/api/auth/*` with `extension: auth`; `auth: true` on a protected route; the function reads `context.capabilities.auth.identity.userId` | [auth extension guide](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) |
 | Submission rate limits | core: `policies.throttle` on the route; sign-in is throttled by Better Auth's own limiter, keyed by the admitted client address | [policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md), [auth security model](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md) |
 | An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md#field-reference) |

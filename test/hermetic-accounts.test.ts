@@ -38,7 +38,7 @@ test('a site with accounts and memberships tests hermetically, again and again, 
   await writeFile(join(app, 'urlcode.yaml'), stringify({ version: '1',
     extensions: { auth: { version: '1', config: {} }, store: { version: '1', config: { collections: {
       reviewers: { membership: true, key: 'userId', schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } },
-      notes: { mount: '/api/notes', ownership: 'owner', readers: { mount: '/api/review', members: 'reviewers' }, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 100 } } } },
+      notes: { mount: '/api/notes', ownership: 'owner', readers: { review: { mount: '/api/review', members: 'reviewers' } }, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 100 } } } },
     } } } },
     routes: {
       '/api/auth/*': { extension: 'auth', methods: ['GET', 'POST'] },

@@ -25,7 +25,7 @@ const requests = {
   mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 50 }, filterable: ['status'], sortable: ['title'],
   schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved'] }, reviewedBy: { type: 'string', maxLength: 128 } } }, defaults: { status: 'pending' }, readOnlyProperties: ['status', 'reviewedBy'],
   transitions: { approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { reviewedBy: 'actor' }, by: 'others', members: 'reviewers', mount: '/api/approvals' } },
-  readers: { mount: '/api/review', members: 'reviewers' },
+  readers: { review: { mount: '/api/review', members: 'reviewers' } },
 };
 const config = { collections: { reviewers, requests } };
 const mounts = ['/api/requests', '/api/approvals', '/api/review'];
@@ -170,16 +170,16 @@ test('activation refuses a gate naming an unknown or ordinary collection, and a 
   };
   const approve = requests.transitions.approve;
   await refuses({ reviewers, requests: { ...requests, transitions: { approve: { ...approve, members: 'nobody' } } } }, /transition approve: members names nobody, which is not a declared collection/);
-  await refuses({ reviewers, notes: { mount: '/api/notes', schema: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' } } } }, requests: { ...requests, readers: { mount: '/api/review', members: 'notes' } } }, /readers: members names notes, which is not a membership collection/, [...mounts, '/api/notes']);
+  await refuses({ reviewers, notes: { mount: '/api/notes', schema: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' } } } }, requests: { ...requests, readers: { review: { mount: '/api/review', members: 'notes' } } } }, /readers review: members names notes, which is not a membership collection/, [...mounts, '/api/notes']);
   await refuses({ reviewers, requests: { ...requests, transitions: { approve: { ...approve, members: 'requests' } } } }, /members names requests, which is not a membership collection/);
   await refuses({ reviewers: { ...reviewers, mount: '/api/reviewers' }, requests }, /a membership collection takes no mount/);
   await refuses({ reviewers: { membership: true, schema: reviewers.schema }, requests }, /needs a key/);
-  await refuses({ reviewers, shared: { mount: '/api/requests', schema: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' } } }, readers: { mount: '/api/review', members: 'reviewers' } } }, /readers needs ownership: owner/);
+  await refuses({ reviewers, shared: { mount: '/api/requests', schema: { type: 'object', additionalProperties: false, properties: { title: { type: 'string' } } }, readers: { review: { mount: '/api/review', members: 'reviewers' } } } }, /readers needs ownership: owner/);
   await refuses({ reviewers, requests: { ...requests, mount: undefined } }, /mount is required/);
   // The readers mount needs its own route, carrying a principal.
-  await refuses(config.collections, /readers: route \/api\/review\/\* with extension: store is not declared/, ['/api/requests', '/api/approvals']);
+  await refuses(config.collections, /readers review: route \/api\/review\/\* with extension: store is not declared/, ['/api/requests', '/api/approvals']);
   const store = createStore({ database: join(nowhere, 'store.sqlite'), projectSha256: 'a'.repeat(64) });
-  await assert.rejects(async () => store.registration.activate(config, { origin: 'https://x.example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts, principalMounts: ['/api/requests', '/api/approvals'], root: join(nowhere, 'app') }), /readers: route \/api\/review\/\* needs a principal-providing policy/);
+  await assert.rejects(async () => store.registration.activate(config, { origin: 'https://x.example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts, principalMounts: ['/api/requests', '/api/approvals'], root: join(nowhere, 'app') }), /readers review: route \/api\/review\/\* needs a principal-providing policy/);
 });
 
 const cliPath = join(import.meta.dirname, '..', 'src', 'cli.ts');
@@ -342,7 +342,7 @@ test('a filter value outside the property\'s enum is a 400 on the owner mount an
 });
 
 test('readers.showOwner shows each record\'s owner id on the readers mount only', async t => {
-  const shown = { ...requests, readers: { ...requests.readers, showOwner: true } };
+  const shown = { ...requests, readers: { review: { ...requests.readers.review, showOwner: true } } };
   const store = await site(t, { collections: { reviewers, requests: shown } });
   await store.member('rita');
   const ann = await store.create('ann', 'laptop');
