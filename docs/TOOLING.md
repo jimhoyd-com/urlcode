@@ -47,7 +47,7 @@ The tooling API consolidates authoring operations without starting a runtime:
   the `targets` their installed descriptors declare), the `extension` rows are
   `refused` on a target one of them does not declare. The CLI does this for a
   readable `--project`, and `urlcode validate --target T` fails on such a
-  refusal without a host file ([capabilities](CAPABILITIES.md#inspect-target-support)).
+  refusal without a host file ([capabilities][docs/CAPABILITIES.md#inspect-target-support]).
 - `getCapability(name)` returns one catalog entry: kind, summary, resolved schema
   fragments, constraints, required operator grants, per-target support, refused
   targets and the bundled recipes and cookbook routes that use it. Unknown names
@@ -82,7 +82,7 @@ The tooling API consolidates authoring operations without starting a runtime:
   `--host-file` rules (absolute path, outside the project) and releases it
   afterwards; without one it lists declarations only. `describeExtensions(project,
   registrations?)` produces the same report from registrations already in hand.
-  Neither activates an extension. See [EXTENSIONS.md](EXTENSIONS.md).
+  Neither activates an extension. See [EXTENSIONS.md][docs/EXTENSIONS.md].
 - `buildContext(project, {target?, hostFile?, host?, budget?})` returns the compact
   project context an authoring agent needs before it writes anything (see
   below); `host` is an operator host the caller already loaded, used in place
@@ -112,7 +112,7 @@ and nothing else beyond the audit's `--expect-routes N` and, on `validate`,
 `test`, `routes` and `audit`, `--local-review`. npm runs them under `sh` on POSIX and `cmd` on Windows, so no
 variable syntax in a script is portable, and neither value is the runtime's to
 choose. With neither value set, the check scripts review the current revision
-locally ([the local review loop](EXTENSIONS.md#the-local-review-loop)); `dev`
+locally ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]); `dev`
 and `start` refuse. The CLI reads the variables itself, so after the operator
 has reviewed the project and saved the output of
 `urlcode permissions --project app` (say as `operator/policy.json`), the
@@ -166,7 +166,7 @@ before. `validate`, `test`, `routes` and `audit` alone also accept
 `--local-review`, which the generated npm scripts pass: with no operator pin,
 it pins that one run to the current revision, reads no policy and defaults the
 origin to `http://localhost`, and `serve` and `dev` refuse it
-([the local review loop](EXTENSIONS.md#the-local-review-loop)).
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 
 ## Project context
 
@@ -244,7 +244,7 @@ Inspection reads declared configuration and function source graphs to validate
 references and compute revision hashes. It compiles route and policy semantics
 using dummy binding values. It checks that each page, download and static
 reference names an existing file or directory inside the project, with the same
-message `validate` prints (see [assets](ASSETS.md)), without reading asset
+message `validate` prints (see [assets][docs/ASSETS.md]), without reading asset
 bytes. It never reads environment or dotenv credentials,
 starts guest execution, follows network destinations, or opens operator link
 stores. The result contains no raw compiled route, binding values or source text.
@@ -319,7 +319,7 @@ holding user files is refused with every file kept), then reports the new site.
 already holds your files, such as a built `frontend/` or `dist/`: the site is
 written around them, they are never moved, overwritten or read through a
 symlink, and a collision is refused with nothing written (see
-[adopting a directory](STARTERS.md#adopting-a-directory-that-already-holds-files)).
+[adopting a directory][docs/STARTERS.md#adopting-a-directory-that-already-holds-files]).
 Those directories then appear under `paths.outsideProject`: YAML cannot reach
 them until you build or copy their output into `app/`.
 Run again, it finds the site and writes nothing. It is refused at a directory
@@ -413,7 +413,7 @@ These SDK functions have explicit write or execution effects and are available
 to trusted callers only. Project tests use normal runtime activation, grants and
 sandboxing; granted proxy fixtures can perform real outbound operations.
 Signals are recorded in process, never delivered, so fixtures can assert them
-with `expectSignals` ([EGRESS](EGRESS.md#checking-signals-locally)).
+with `expectSignals` ([EGRESS][docs/EGRESS.md#checking-signals-locally]).
 Compilation and authoring write caller-selected destinations under each existing
 helper's documented rules. They are **not** MCP tools. MCP remains limited to
 the read-only operations below; adding a package-root export does not grant an
@@ -439,7 +439,7 @@ are grouped:
   `request.method` is never flagged: several methods on one path share one
   function by design, and splitting that path into one route per method is not
   an equivalent supported shape. Per-method body rules on that path are declared
-  with `request.body.<METHOD>` ([HTTP](HTTP.md#per-method-body-rules)).
+  with `request.body.<METHOD>` ([HTTP][docs/HTTP.md#per-method-body-rules]).
 - `extension-alternative`: the project **declares** an extension that could
   plausibly own the behavior. Without `--host-file`, the required operator
   setup (registration, revision pin) is stated as unconfirmed — a declaration
@@ -536,7 +536,7 @@ cases from URLCode YAML, in one of two modes:
 
 - **Project mode** (the CLI, and MCP `suggest_fixtures` without `yaml`) reads
   the project's `urlcode.yaml` and its
-  [includes](ORGANIZATION.md#mix-inline-and-included-routes) through the same configuration loader that
+  [includes][docs/ORGANIZATION.md#mix-inline-and-included-routes] through the same configuration loader that
   serving uses, so include paths are resolved, confined to the project root
   and checked (no nesting, no duplicate routes, the same size limits) exactly
   as `urlcode validate` does; an include the loader refuses is refused here
@@ -583,9 +583,9 @@ parameterized or wildcard route in a text-mode document with includes), `request
 `site`, `unknown-path` and `size`. A route in `gaps` or `review` never appears
 in `cases`, so a suggestion never reads as coverage it is not. An
 `extension-policy` gap for `auth:` is written as a signed-in `steps` fixture
-([authenticated routes](READINESS.md#authenticated-routes-auth-true)); `audit`
+([authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]); `audit`
 then names anything still missing in `coverageNotes`
-([coverage rules](READINESS.md#coverage-rules)).
+([coverage rules][docs/READINESS.md#coverage-rules]).
 
 ```json
 {"format":1,"scope":"supplied-yaml-only","routeCount":3,
@@ -644,7 +644,7 @@ never reported as added or removed.
   `auth:` expansion), the handler before and after and the route's capability
   names added and removed. A project-level policy or profile change that alters
   a route's effective capabilities lists that route with empty `keys`.
-- `capabilities`: the project-wide union of [capability](CAPABILITIES.md) names
+- `capabilities`: the project-wide union of [capability][docs/CAPABILITIES.md] names
   added and removed.
 - `code`: the project code seams, each `{route, kind: function|middleware,
   source, export, mode: trusted|sandboxed}`: `added`, `removed`, `argsChanged`
@@ -784,7 +784,7 @@ one deployment target; `--host-file` supplies the operator registry so
 extension requirements show their provider and its registered targets decide
 extension support. Without it, each declared extension's installed
 `urlcode.json` descriptor (else the release catalog) decides as it does for
-[`validate` and `capabilities`](CAPABILITIES.md): a target the extension does
+[`validate` and `capabilities`][docs/CAPABILITIES.md]: a target the extension does
 not declare is `refused`, any other stays `conditional`
 ([#875](https://github.com/jimhoyd-com/urlcode/issues/875)). `manifest`,
 `context` (its per-target `refused`/`conditional` lists) and `review --target`
@@ -834,14 +834,14 @@ What it describes:
   and one operation per declared method, HEAD included. The route's
   `parameters` are the path item's parameters, with their schemas as written.
   `operationId` is the method plus the path words (`getTodosById`).
-- **Request bodies.** Each method's [`request.body.<METHOD>`](HTTP.md#per-method-body-rules)
+- **Request bodies.** Each method's [`request.body.<METHOD>`][docs/HTTP.md#per-method-body-rules]
   entry is that operation's `requestBody`: its `contentTypes` (or the media type
   its `format` implies), `required`, and `x-urlcode.maxBytes`. The body schema
   is already JSON Schema 2020-12, which `jsonSchemaDialect` declares, so it is
   published as the author wrote it under `components.schemas`. The one change
   is to local references: in an OpenAPI document `#/$defs/x` would resolve
   against the whole document, so each `$defs` entry becomes its own component
-  and each `$ref` points at it. A [named schema](HTTP.md#named-schemas)
+  and each `$ref` points at it. A [named schema][docs/HTTP.md#named-schemas]
   (`schema: contact`) is written once, as `components.schemas.contact` (its
   `$defs` as `contact_<name>`), the first time an operation uses it, and every
   operation that names it references that one component; a named schema no
@@ -856,7 +856,7 @@ What it describes:
   is no fallback. The runtime's own refusals appear where the route can produce
   them: 400 for declared inputs or a body, 413 and 415 for a body policy, and
   the 422 for a body schema, each in the route's
-  [error format](HTTP.md#error-format) (`text/plain`, the
+  [error format][docs/HTTP.md#error-format] (`text/plain`, the
   `UrlcodeErrorEnvelope`, or the `UrlcodeBodyValidationError` JSON). An
   enforced `throttle` or `agents` policy adds its refusal status.
 - **Headers the runtime always sets.** Every response names
@@ -875,9 +875,9 @@ What it describes:
   plugin on a path no extension policy protects) may answer first. An
   extension's `authorize()` and `middleware()` never run for an undeclared
   method, so an `auth: true` path answers this 405, not a 401 or 403
-  ([method admission](EXTENSIONS.md#protecting-a-route-the-auth-short-form)).
+  ([method admission][docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form]).
 - **Error format per path.** A route's own `errors.format` wins; otherwise each
-  [`site.errors`](HTTP.md#error-format) entry is compared with the route
+  [`site.errors`][docs/HTTP.md#error-format] entry is compared with the route
   pattern segment by segment, since the runtime checks the concrete request
   path. When an entry covers every path the pattern matches (`/api/*` over
   `/api/{id}`), the path is `json`. When it covers only some (an exact
@@ -894,7 +894,7 @@ What it describes:
   under `x-urlcode.opaqueMounts`. So is an `extension` mount, unless the host
   file's registration of that extension describes it. An extension describes a
   mount through the optional `describe()` of its registration
-  ([extension contract](EXTENSIONS.md#openapi-description)): from the mount and
+  ([extension contract][docs/EXTENSIONS.md#openapi-description]): from the mount and
   the project's declared configuration it returns OpenAPI path items and
   prefixed Schema Objects, as JSON data. Core checks the contribution (paths at
   or below the mount that no other route declares, `Store...`-style prefixed
@@ -903,13 +903,13 @@ What it describes:
   declares, assigns every `operationId`, and adds what the runtime does on
   every extension answer: `X-Request-Id`, `X-Content-Type-Options` and
   `Cache-Control: no-store`, a sign-in gate's security requirement and its
-  401/403 (a status both the gate and the extension answer claims no body
+  401/403/503 (a status both the gate and the extension answer claims no body
   schema, since either may answer). The mount is then listed under
   `x-urlcode.describedMounts`, and each of its path items carries
   `x-urlcode.handler: extension`, the extension name and the route pattern.
   The store describes every collection, readers, transition and short-link
   mount from each collection's record schema
-  ([store OpenAPI](STORE.md#openapi)); the other first-party extensions leave
+  ([store OpenAPI][docs/STORE.md#openapi]); the other first-party extensions leave
   their mounts opaque, so their endpoints (Better Auth's, for example) and every
   provider admin API stay absent. A disabled
   route is left out and listed under `x-urlcode.omitted`.
@@ -1010,21 +1010,21 @@ The `list_skills`, `get_skill`, `list_agent_catalog`, `get_release_addon_catalog
 server. A host building its own MCP server, or any other agent-tooling
 integration, can import that module directly instead of reimplementing this
 behavior or reaching into `dist/agent-context.js`; see
-[TypeScript](TYPESCRIPT.md).
+[TypeScript][docs/TYPESCRIPT.md].
 `get_release_addon_catalog` returns the release-wide add-on catalog shipped in
 core's `dist/addon-catalog.json`: every extension and artifact of this core's
 release with its package, version, description, `requires`, an artifact's
 listed `documents` (path and media type, never contents) and, when its
 descriptor declares one, its agent references (each `path` is relative to that
-add-on's package). It is [release-wide discovery](EXTENSIONS.md#the-release-wide-agent-catalog),
+add-on's package). It is [release-wide discovery][docs/EXTENSIONS.md#the-release-wide-agent-catalog],
 not evidence that the project installed or activated an add-on; installed
 components come from `get_addon_agent_tooling`, `get_extension_artifacts` and
 `get_extensions`. Reading it imports, downloads and installs nothing.
 `get_extension_artifacts` lists the artifacts installed in the site around the
-project (`<site>/node_modules`), released or [independent](EXTENSIONS.md#independent-artifact-packages),
+project (`<site>/node_modules`), released or [independent][docs/EXTENSIONS.md#independent-artifact-packages],
 checking each is inert, pin-verified (core's pin, or npm's lock integrity) and
 unmodified against the sha256 record in `addon-files.lock.json` (status
-`modified` otherwise; see [the installed file record](EXTENSIONS.md#the-installed-file-record)),
+`modified` otherwise; see [the installed file record][docs/EXTENSIONS.md#the-installed-file-record]),
 and returns its package, version, status, file check, files and listed documents.
 `get_extension_artifact` accepts only an installed, pinned artifact name and one
 of its JSON, YAML or Markdown paths, and labels the content as untrusted
@@ -1034,13 +1034,13 @@ each listed document's media type, detected OpenAPI version or JSON Schema
 dialect, sha256, size and origin, the installed-file check, its local `$ref`s resolved inside the
 package, and diagnostics for remote references (listed, never fetched),
 unresolvable references, cycles and limits (see
-[inspecting documents](EXTENSIONS.md#inspecting-artifact-documents)).
+[inspecting documents][docs/EXTENSIONS.md#inspecting-artifact-documents]).
 `stage_source_assets {source, into?}` returns exactly what
 `urlcode artifacts stage <source> --json` prints for a shadcn registry item or
 Agent Skill directory inside the site (`source` and `into` are site-relative and
 may not leave the site or pass through a symlink): every file it would write,
 its npm and registry dependencies (listed, never installed or fetched) and its
-diagnostics (see [staging source assets](EXTENSIONS.md#staging-source-assets)).
+diagnostics (see [staging source assets][docs/EXTENSIONS.md#staging-source-assets]).
 It writes nothing; materializing is only the CLI's `--materialize` opt-in. All
 four are local, read-only and inert: they never download, install, update or
 activate an add-on, fetch a reference or import package code, and never
@@ -1056,7 +1056,7 @@ and `review` (and `run_tests` in authoring mode), so each answers as the host-aw
 SDK call (`extensions` option) does for that host file. Tools accept no project/file/output path argument; recipe names
 come from the fixed catalog, `get_capability` names from the capability catalog,
 `get_schema` paths from the bundled schema, and the two searches match bundled
-metadata locally (see [recipes](RECIPES.md)).
+metadata locally (see [recipes][docs/RECIPES.md]).
 There is no shell, arbitrary file read, remote fetch, binding access, write or
 route-execution tool without the explicit [authoring mode](#authoring-mode) flag. Configuration includes and module references retain the
 runtime's existing root containment checks. Returned project and recipe content
@@ -1419,3 +1419,29 @@ process is not an authenticated remote service or an independent security review
 Protocol references: [MCP stdio transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports),
 [MCP lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),
 and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
+
+<!-- urlcode-current-version:start -->
+[docs/CAPABILITIES.md#inspect-target-support]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md#inspect-target-support
+[docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
+[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
+[docs/STARTERS.md#adopting-a-directory-that-already-holds-files]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STARTERS.md#adopting-a-directory-that-already-holds-files
+[docs/EGRESS.md#checking-signals-locally]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md#checking-signals-locally
+[docs/HTTP.md#per-method-body-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#per-method-body-rules
+[docs/ORGANIZATION.md#mix-inline-and-included-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ORGANIZATION.md#mix-inline-and-included-routes
+[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
+[docs/READINESS.md#coverage-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#coverage-rules
+[docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md
+[docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
+[docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
+[docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form
+[docs/EXTENSIONS.md#openapi-description]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#openapi-description
+[docs/STORE.md#openapi]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#openapi
+[docs/TYPESCRIPT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT.md
+[docs/EXTENSIONS.md#the-release-wide-agent-catalog]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-release-wide-agent-catalog
+[docs/EXTENSIONS.md#independent-artifact-packages]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#independent-artifact-packages
+[docs/EXTENSIONS.md#the-installed-file-record]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-installed-file-record
+[docs/EXTENSIONS.md#inspecting-artifact-documents]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#inspecting-artifact-documents
+[docs/EXTENSIONS.md#staging-source-assets]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#staging-source-assets
+[docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
+<!-- urlcode-current-version:end -->

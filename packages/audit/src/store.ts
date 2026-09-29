@@ -2,7 +2,7 @@
 // 100 events, pages of at most 100 rows), and a write resolves only after a durable commit (synchronous=FULL).
 import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
-import { lstat, open, realpath } from 'node:fs/promises';
+import { lstat, open, realpath, statfs } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { AuditError } from './types.ts';
 import type { AuditEvent, AuditPage, AuditStoredEvent, AuditValue } from './types.ts';
@@ -48,6 +48,27 @@ async function privateFile(path: string, create: boolean): Promise<string> {
   return database;
 }
 
+/**
+ * Linux `statfs` `f_type` magic numbers of network filesystems (#927; the store refuses the same list): SQLite says
+ * its write-ahead log does not work over one, and `fcntl` locks over them are unreliable.
+ */
+export const NETWORK_FILESYSTEMS: ReadonlyMap<number, string> = new Map([
+  [0x6969, 'NFS'], [0x517b, 'SMB'], [0xfe534d42, 'SMB2'], [0xff534d42, 'CIFS'], [0x65735546, 'FUSE'], [0x01021997, '9P'], [0x00c36400, 'Ceph'], [0x5346414f, 'AFS'],
+]);
+/** What the network filesystem check reads; tests pass a fake. */
+export interface FilesystemProbe { platform: NodeJS.Platform; statfs(path: string): Promise<{ type: number | bigint }> }
+const filesystemProbe: FilesystemProbe = { platform: process.platform, statfs: path => statfs(path) };
+/**
+ * Refuses an audit database directory on a network filesystem. Linux only: macOS and Windows expose no filesystem type
+ * a check can trust through Node, so there it is skipped.
+ */
+export async function refuseNetworkFilesystem(directory: string, probe: FilesystemProbe = filesystemProbe): Promise<void> {
+  if (probe.platform !== 'linux') return;
+  // `f_type` is a signed long in the kernel's ABI; the magic numbers are unsigned 32-bit values.
+  const type = Number((await probe.statfs(directory)).type) >>> 0, name = NETWORK_FILESYSTEMS.get(type);
+  if (name) throw new Error(`The audit database is on a ${name} filesystem (statfs type 0x${type.toString(16)}); SQLite needs it on local disk. Move it to a local filesystem.`);
+}
+
 function checkIdentity(db: DatabaseSync): 'empty' | 'audit' {
   const version = db.prepare('PRAGMA user_version').get()?.user_version, application = db.prepare('PRAGMA application_id').get()?.application_id;
   const empty = db.prepare("SELECT count(*) AS n FROM sqlite_master").get()?.n === 0;
@@ -88,10 +109,11 @@ function queryAudit(db: DatabaseSync, query: NormalizedQuery): AuditPage {
   };
 }
 
-/** Opens (creating when absent) the audit database for the host. */
-export async function openAuditStore(path: string, onPruned?: (removed: number) => void): Promise<AuditStore> {
+/** Opens (creating when absent) the audit database for the host, refusing one on a network filesystem (`probe` is a test seam). */
+export async function openAuditStore(path: string, onPruned?: (removed: number) => void, probe?: FilesystemProbe): Promise<AuditStore> {
   if (!patched(process.versions.sqlite || '')) throw new Error(`The audit log requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
   const database = await privateFile(path, true);
+  await refuseNetworkFilesystem(dirname(database), probe);
   const db = new DatabaseSync(database, { allowExtension: false });
   let closed = false;
   try {

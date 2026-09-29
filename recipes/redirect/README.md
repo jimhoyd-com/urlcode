@@ -18,4 +18,8 @@ For the shapes this recipe does not cover — a root-relative or `/**` suffix
 redirect, or a host/scheme-based redirect — run
 `urlcode context --project . --task redirects` (MCP `get_context
 {"task":"redirects"}`) for the exact supported alternative and the exact
-validation error, or see [docs/OPEN-DECISIONS.md](../../docs/OPEN-DECISIONS.md).
+validation error, or see [docs/OPEN-DECISIONS.md][docs/OPEN-DECISIONS.md].
+
+<!-- urlcode-current-version:start -->
+[docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
+<!-- urlcode-current-version:end -->

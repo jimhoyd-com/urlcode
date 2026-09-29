@@ -77,8 +77,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## Do not guess
 - No CRUD or persistence code in project `function`/`middleware` routes; declare the
   collection. Those routes run trusted and in-process, but hold no store authority of their own.
-- One server process per database (supported, not enforced); each request is one SQLite
-  transaction over one record; last write wins unless a caller sends `If-Match`; a repeated
+- Several serving processes on one host, one release, local disk (#927): a process whose
+  collection declaration (or store schema) is older than the newest activation's answers `503
+  storage_unavailable` to writes; a network filesystem or a live peer on another host refuses
+  activation; one process drains audit. Each request is one SQLite transaction over one record; last write wins unless a caller sends `If-Match`; a repeated
   `Idempotency-Key` replays the first answer's status with the record as it is now, and the same key on a
   different request is `422`.
 - `sortable`/`filterable` field lists are declared per collection; `?sort=`/`?<field>=` queries

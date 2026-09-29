@@ -7,6 +7,8 @@ import { lstat, mkdir, open, realpath } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue, StatementSync } from 'node:sqlite';
+import { refuseNetworkFilesystem } from './topology.ts';
+import type { HostProbe } from './topology.ts';
 
 /** PRAGMA application_id of a store database: "USTR". */
 export const STORE_APPLICATION_ID = 0x55535452;
@@ -47,6 +49,20 @@ const MIGRATIONS: readonly string[] = [
   // written in the transaction it records. Keys are store-wide, not per collection: a transaction spans collections.
   `CREATE TABLE store_transaction_results(seq INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE,
      fingerprint TEXT NOT NULL, result TEXT CHECK (result IS NULL OR json_valid(result)), claimed_at INTEGER NOT NULL);`,
+  // 4 -> 5. Several serving processes on one host (#927). `store_declarations`: per collection, the fingerprint of the
+  // declaration the newest activation serves and the schema version it was built for; every serving write checks its
+  // own against it under the write lock (the declaration fence). `store_servers`: one lease row per serving process,
+  // renewed by its heartbeat, so an activation can see a live peer on another host. The drain marker gains the audit
+  // drain's lease (`holder`, `lease_until`), so one process drains the outbox; `drained_at` is NULL until a drain kept up.
+  `CREATE TABLE store_declarations(collection TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, schema_version INTEGER NOT NULL,
+     activated_at INTEGER NOT NULL) WITHOUT ROWID;
+   CREATE TABLE store_servers(instance TEXT PRIMARY KEY, host TEXT NOT NULL, boot TEXT, pid INTEGER NOT NULL,
+     heartbeat_at INTEGER NOT NULL, expires_at INTEGER NOT NULL) WITHOUT ROWID;
+   CREATE TABLE store_audit_drain_next(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER, holder TEXT,
+     lease_until INTEGER NOT NULL DEFAULT 0);
+   INSERT INTO store_audit_drain_next(id, drained_at) SELECT id, drained_at FROM store_audit_drain;
+   DROP TABLE store_audit_drain;
+   ALTER TABLE store_audit_drain_next RENAME TO store_audit_drain;`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /**
@@ -133,16 +149,19 @@ function versionOf(db: DatabaseSync): number {
 }
 
 /**
- * Opens (creating when absent, unless `create` is false) the store database and brings its schema forward. `durability`
+ * Opens (creating when absent, unless `create` is false) the store database and brings its schema forward. A database
+ * directory on a network filesystem is refused first (`refuseNetworkFilesystem`; `probe` is a test seam). `durability`
  * sets the connection's `synchronous` level (default `full`); the operator commands never pass it, so they always commit
  * with FULL whatever the serving process uses. Each missing step runs in its own
  * BEGIN IMMEDIATE transaction together with the new `user_version`, so a crash mid-upgrade leaves the previous version.
  * Opening an up-to-date database changes nothing.
  */
-export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability } = {}): Promise<StoreDatabase> {
+export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability; probe?: HostProbe } = {}): Promise<StoreDatabase> {
   const synchronous = storeDurability(options.durability).toUpperCase();
   if (!patched(process.versions.sqlite || '')) throw new Error(`The store requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
-  const db = new DatabaseSync(await privateFile(path, options.create !== false), { allowExtension: false });
+  const file = await privateFile(path, options.create !== false);
+  await refuseNetworkFilesystem(dirname(file), 'store', options.probe);
+  const db = new DatabaseSync(file, { allowExtension: false });
   try {
     db.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}; PRAGMA trusted_schema=OFF;`);
     let version = versionOf(db);
@@ -166,7 +185,59 @@ export async function openStoreDatabase(path: string, options: { create?: boolea
 
 /** Records that the audit drain kept up with the outbox at `now` (epoch ms): after an ack, or a peek that found it empty. */
 export function markAuditDrained(db: StoreDatabase, now: number): void {
-  db.run('INSERT INTO store_audit_drain(id, drained_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET drained_at = max(drained_at, excluded.drained_at)', now);
+  db.run('INSERT INTO store_audit_drain(id, drained_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET drained_at = max(coalesce(drained_at, 0), excluded.drained_at)', now);
+}
+/**
+ * How long the audit drain's lease lasts (#927). Its holder renews it once less than half is left, which its 1 second
+ * poll does long before expiry; a peer takes the drain over only after the lease expired (or was released on close).
+ */
+export const AUDIT_DRAIN_LEASE_MS = 10_000;
+/**
+ * Whether `holder` (a serving process's lease instance) may drain the outbox now: it holds an unexpired lease, or it
+ * takes one because nobody else holds an unexpired one. A renewal or take-over is one write transaction; a holder with
+ * more than half its lease left and a process that sees another's unexpired lease only read.
+ */
+export function holdsAuditDrain(db: StoreDatabase, holder: string, now: number): boolean {
+  type Lease = { holder: string | null; lease_until: number };
+  const other = (lease: Lease | undefined): boolean => lease !== undefined && lease.holder !== null && lease.holder !== holder && lease.lease_until > now;
+  const seen = db.get<Lease>('SELECT holder, lease_until FROM store_audit_drain WHERE id = 1');
+  if (seen?.holder === holder && seen.lease_until - now > AUDIT_DRAIN_LEASE_MS / 2) return true;
+  if (other(seen)) return false;
+  return db.transaction(() => {
+    // Re-read under the write lock: of two processes whose leases both look expired, one takes it.
+    if (other(db.get<Lease>('SELECT holder, lease_until FROM store_audit_drain WHERE id = 1'))) return false;
+    db.run('INSERT INTO store_audit_drain(id, holder, lease_until) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET holder = excluded.holder, lease_until = excluded.lease_until', holder, now + AUDIT_DRAIN_LEASE_MS);
+    return true;
+  });
+}
+/** Whether `holder` still holds the drain lease, read inside the caller's transaction (an ack deletes only then). */
+export function auditDrainHolder(db: StoreDatabase, holder: string): boolean {
+  return db.get<{ holder: string | null }>('SELECT holder FROM store_audit_drain WHERE id = 1')?.holder === holder;
+}
+/** Gives the drain lease up (a closing process), so a peer takes over at its next poll instead of after expiry. */
+export function releaseAuditDrain(db: StoreDatabase, holder: string): void {
+  db.run('UPDATE store_audit_drain SET lease_until = 0 WHERE id = 1 AND holder = ?', holder);
+}
+
+/**
+ * The declaration fence (#927). An activation records, per collection, the fingerprint of the declaration it serves
+ * and the schema version it was built for, replacing whatever an earlier activation (in this process or another)
+ * recorded: the newest activation wins. `declarationOf` is the one indexed read a write makes under its write lock to
+ * compare its own with them and with the file's `user_version`.
+ */
+export function recordDeclarations(db: StoreDatabase, fingerprints: ReadonlyMap<string, string>, now: number): void {
+  db.transaction(() => {
+    db.run('DELETE FROM store_declarations');
+    for (const [collection, fingerprint] of fingerprints) db.run('INSERT INTO store_declarations(collection, fingerprint, schema_version, activated_at) VALUES (?, ?, ?, ?)', collection, fingerprint, STORE_SCHEMA_VERSION, now);
+  });
+}
+/** The recorded declaration of `collection` and the file's schema version, or `undefined` when none is recorded. */
+export function declarationOf(db: StoreDatabase, collection: string): { fingerprint: string; schema_version: number; version: number } | undefined {
+  return db.get('SELECT fingerprint, schema_version, (SELECT user_version FROM pragma_user_version) AS version FROM store_declarations WHERE collection = ?', collection);
+}
+/** Whether any serving process holds an unexpired lease on the database (`store_servers`). */
+export function liveServer(db: StoreDatabase, now: number): boolean {
+  return db.get('SELECT 1 AS found FROM store_servers WHERE expires_at > ? LIMIT 1', now) !== undefined;
 }
 /** How old the last drain may be before an operator command warns that its events are not being delivered. */
 export const AUDIT_DRAIN_STALE_MS = 60_000;
@@ -180,7 +251,7 @@ export function auditDelivery(db: StoreDatabase, collections: readonly string[],
   const undeliveredEvents: Record<string, number> = {};
   for (const collection of [...new Set(collections)].sort())
     undeliveredEvents[collection] = db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', collection)!.n;
-  const drainedAt = db.get<{ drained_at: number }>('SELECT drained_at FROM store_audit_drain WHERE id = 1')?.drained_at;
+  const drainedAt = db.get<{ drained_at: number | null }>('SELECT drained_at FROM store_audit_drain WHERE id = 1')?.drained_at ?? undefined;
   const report: AuditDelivery = { undeliveredEvents, lastAuditDrain: drainedAt === undefined ? null : new Date(drainedAt).toISOString() };
   const waiting = Object.values(undeliveredEvents).reduce((sum, n) => sum + n, 0);
   if (waiting && (drainedAt === undefined || now - drainedAt > AUDIT_DRAIN_STALE_MS)) {

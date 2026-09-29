@@ -183,7 +183,9 @@ test('200 interleaved transfers conserve the total, in one process and across co
   const racers = Array.from({ length: 4 }, (_, worker) => plan.slice(worker * 50, worker * 50 + 50).map(body => ({ method: 'POST', path: '/api/accounts/transfers/move', init: { body } })));
   const answers = (await race(t, store.database, config, store.activation, racers)).flat();
   assert.equal(answers.length, 200);
-  assert.ok(answers.every(answer => answer.status === 200 || answer.status === 409), JSON.stringify(answers.map(answer => answer.status)));
+  // Separate connections contend for the write lock: a writer that waits past the busy timeout answers 503
+  // storage_unavailable and writes nothing (slow filesystems such as Windows CI hit this); the sum still holds.
+  assert.ok(answers.every(answer => answer.status === 200 || answer.status === 409 || (answer.status === 503 && (answer.body as { error?: { code?: string } } | undefined)?.error?.code === 'storage_unavailable')), JSON.stringify(answers.map(answer => answer.status)));
   assert.equal(sum(store.database, 'accounts'), 0, 'the total never changes');
   assert.equal(held(store.database), 400);
   assert.ok(Object.values(balances(store.database, 'accounts')).every(balance => (balance as number) >= 0), 'no balance went below the floor');

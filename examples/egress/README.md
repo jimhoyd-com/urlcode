@@ -19,6 +19,10 @@ readiness probes do not emit signals; `urlcode test` and `urlcode audit`
 requests to `/event` do, to the granted destination.
 There is no retry, queue or delivery guarantee.
 
-See [egress contract](../../docs/EGRESS.md). Integration tests execute this example
+See [egress contract][docs/EGRESS.md]. Integration tests execute this example
 with trusted fake transport and public-address fixtures, never by allowing private
 network destinations in production.
+
+<!-- urlcode-current-version:start -->
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+<!-- urlcode-current-version:end -->

@@ -721,7 +721,7 @@ Core then completes it: it drops each operation whose method the route does not
 declare (the runtime answers that method itself), assigns every `operationId`,
 adds `X-Request-Id`, `X-Content-Type-Options` and `Cache-Control: no-store` to
 every response (the runtime adds them to every extension answer), adds a
-sign-in gate's security requirement and its `401`/`403` (and an enforced
+sign-in gate's security requirement and its `401`/`403`/`503` (and an enforced
 throttle's refusal), and marks the path item `x-urlcode.handler: extension`.
 When the gate and the extension both declare a status, either may answer, so
 the response keeps both descriptions and claims no body schema. A throw from

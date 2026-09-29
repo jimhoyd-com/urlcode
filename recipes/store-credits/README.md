@@ -19,7 +19,7 @@ is no handler code, and the sum over all wallets never changes:
 - **Closing.** A wallet still holding credits cannot be deleted
   (`409 balance_not_zero`). Pay it back to `0` first.
 
-Full contract: [declared transfers](../../docs/STORE.md#declared-transfers).
+Full contract: [declared transfers][docs/STORE.md#declared-transfers].
 
 ## Operator prerequisites
 
@@ -53,7 +53,7 @@ urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --loc
 
 `--local-review` pins the host to the project's current revision for that one
 run, on `http://localhost`, and reads no operator policy, so every edit is
-checked without a new pin ([the local review loop](../../docs/EXTENSIONS.md#the-local-review-loop)).
+checked without a new pin ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 Serving is not: `urlcode serve` and `urlcode dev` need the revision you
 reviewed and the public `--origin`.
 
@@ -68,3 +68,8 @@ retries a transfer with an `Idempotency-Key` and nothing moves twice. The issuer
 floor bounds the credit outstanding; raise it deliberately. Cloudflare, AWS,
 Vercel and static targets refuse the store, so run it on the self-hosted
 runtime with a persistent disk.
+
+<!-- urlcode-current-version:start -->
+[docs/STORE.md#declared-transfers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#declared-transfers
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
+<!-- urlcode-current-version:end -->

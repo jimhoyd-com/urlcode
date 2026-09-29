@@ -35,6 +35,15 @@ test('a blank install declares no collection, no route and needs no acknowledgem
   }
 });
 
+// #931: what `urlcode extensions add store` prints must point at a page the site has installed, not a docs/ page of
+// this repository that the site does not have.
+test('the add output points at the installed store README, never at an uninstalled docs/ page', async () => {
+  const blank = await store.definition.scaffold!({ ...request, acknowledgements: [] });
+  const text = [...(blank.notes ?? []), ...Object.values(blank.env ?? {}), ...((await scaffold()).notes ?? [])].join('\n');
+  assert.doesNotMatch(text, /docs\/[A-Z-]+\.md/);
+  assert.match(text, /node_modules\/@jimhoyd\/urlcode-store\/README\.md/);
+});
+
 test('the example returns the todos collection and its route, and validates with core', async () => {
   const result = await scaffold();
   assert.deepEqual(Object.keys(result.config), ['collections']);
