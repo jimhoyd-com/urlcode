@@ -11,6 +11,7 @@ import {compilePolicies,closePolicies,effectivePolicies,registry} from './polici
 import {capabilityTargets,getCapabilities,normalizeCapabilityTarget,routeCapabilities} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {loadOperatorHost} from './operator-host.ts';
+import {declaredExtensionTargetsOf} from './addon-install.ts';
 import type {OperatorHost} from './operator-host.ts';
 import {handlerNames,resolveHandlerName} from './types.ts';
 import type {CompiledRoute,PolicyName,PolicyShared} from './types.ts';
@@ -172,7 +173,10 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    for(const item of route.middleware??[])middleware.add(item.source);
   }
   const topLevel=effectivePolicies(document,undefined);
-  const catalog=getCapabilities();
+  // Without registrations, the declared extensions' descriptor targets refine the extension rows (#875), as for
+  // `urlcode capabilities`: a target an extension does not declare is refused rather than conditional.
+  const extensionNames=Object.keys(document.extensions??{});
+  const catalog=getCapabilities(undefined,host.extensions===undefined&&extensionNames.length?{extensions:extensionNames,declared:await declaredExtensionTargetsOf(loaded)}:undefined);
   const targets:NonNullable<ProjectContext['targets']>={};
   for(const target of selected) {
    const entry={deployment:catalog.targets.find(item=>item.target===target)!.deployment,supported:[] as string[],conditional:[] as string[],refused:[] as string[],unknown:[] as string[]};

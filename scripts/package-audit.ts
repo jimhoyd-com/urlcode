@@ -254,8 +254,11 @@ export const budgets: Record<string, Budget> = {
     // 3596578 unpacked bytes, 493 entries; about 3 KiB of headroom on each.
     // With #861 item 6, #845's OpenAPI export and #844 operation 2 all merged, measured on Node 26:
     // 920937 packed / 3658875 unpacked bytes, 495 entries; about 3 KiB of headroom on each.
+    // Unpacked raised from 3576 to 3584 KiB for #875 (descriptor targets in explain/manifest/context/review, the
+    // manifest's per-target `refused` count, and the STORE/TOOLING/CAPABILITIES operator-audit sections): measured
+    // on Node 26 at 3664264 unpacked bytes, 2440 over the old budget.
     packed: 902 * 1024,
-    unpacked: 3576 * 1024,
+    unpacked: 3584 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -315,7 +318,9 @@ export const budgets: Record<string, Budget> = {
     // (dist/collection.js, dist/membership.js, dist/ownership.js with declarations), readers.showOwner and enum
     // filter refusal, the schema again in urlcode.json and the README field reference, and the SECURITY/CHANGELOG
     // contract measure 83457 packed and 334230 unpacked bytes (32 entries).
-    packed: 86 * 1024,
+    // With #873 item 2 (may) and #875 (operator audit, bounded filters) both merged,
+    // measured on Node 26: 89093 packed / 354706 unpacked bytes, 32 entries.
+    packed: 90 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -340,7 +345,7 @@ export const budgets: Record<string, Budget> = {
     // #822 generated field reference in the README (measured 220290 unpacked).
     // #835 transitions and retries, #863 membership gates: see the packed note above.
     // #866 membership follow-ups: see the packed note above.
-    unpacked: 340 * 1024,
+    unpacked: 350 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

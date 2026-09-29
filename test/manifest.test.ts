@@ -21,7 +21,7 @@ test('the manifest is deterministic and its revision is the extension revision d
   const first=await buildManifest(cookbook),second=await buildManifest(cookbook);
   assert.equal(renderManifest(first),renderManifest(second));
   assert.equal(first.revision,await inspectExtensionRevision(cookbook));
-  assert.equal(first.schemaVersion,3);assert.equal(first.urlcode,version);assert.equal(first.entry,'urlcode.yaml');
+  assert.equal(first.schemaVersion,4);assert.equal(first.urlcode,version);assert.equal(first.entry,'urlcode.yaml');
   assert.deepEqual(first.files,['urlcode.yaml','routes/code.yaml','routes/redirects.yaml','routes/responses.yaml','routes/files.yaml','routes/policies.yaml','routes/middleware.yaml']);
   const inspected=await inspectProject(cookbook);
   assert.equal(first.routeCount,inspected.routeCount);assert.equal(first.revision,inspected.projectSha256);

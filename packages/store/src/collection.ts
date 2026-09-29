@@ -175,8 +175,8 @@ export function etagOf(record: StoredRecord): string {
   return `"${createHash('sha256').update(`${record.id as string}:${record.updatedAt as string}`).digest('hex').slice(0, 32)}"`;
 }
 
-/** Checks one value against its declared field; returns a fixed, value-free message on failure. */
-function checkValue(spec: FieldSpec, value: unknown): string | undefined {
+/** Checks one value against its declared field; returns a fixed, value-free message on failure. Also judges list filters (query.ts). */
+export function checkValue(spec: FieldSpec, value: unknown): string | undefined {
   if (spec.type === 'boolean') { if (typeof value !== 'boolean') return 'must be a boolean'; }
   else if (spec.type === 'string') {
     if (typeof value !== 'string') return 'must be a string';

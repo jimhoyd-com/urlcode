@@ -74,13 +74,16 @@ the principal a policy such as `auth: true` on its mount sets (another user's
 record is a `404`, records written before it became owned are served to nobody
 until `urlcode-store ownerless-assign` or `ownerless-delete` handles them,
 `urlcode-store reassign --from <principal> --to <principal>` moves one
-principal's records to another in one transaction, and
+principal's records to another in one transaction (on an `audit: true`
+collection every moved or deleted record is recorded, with the operator's
+optional `--actor`), and
 `maxRecordsPerOwner` caps each user's records with `409 owner_quota_exceeded`; see
 [per-record ownership](../../docs/STORE.md#per-record-ownership)). A collection may declare
 `sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`
 and `?<field>=<value>` list queries (one sort field, equality filters, `id`
 tie-break, opaque cursor; undeclared names, unparseable values and values
-outside the field's `enum` are `400`s); they apply to the whole
+the field can never hold (outside its `enum`, `minimum`/`maximum`,
+`minLength`/`maxLength` or `format`) are `400`s); they apply to the whole
 collection, or on an owned collection to the caller's own records. A `PATCH`
 that sets a field to `null` removes it; a required field refuses that with a
 `400` field error, and `PUT` still takes only values (see

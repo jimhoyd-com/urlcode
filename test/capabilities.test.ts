@@ -91,6 +91,47 @@ test('validate and capabilities refuse an extension on a target its installed de
   assert.equal(run('validate', '--project', app, '--target', 'vercel').status, 1);
 });
 
+test('explain, manifest, context and review use installed descriptor targets without a host file (#875)', async t => {
+  const site = await mkdtemp(join(tmpdir(), 'urlcode-targets-tools-'));
+  t.after(() => rm(site, { recursive: true, force: true }));
+  const app = join(site, 'app'), installed = join(site, 'node_modules', '@jimhoyd', 'urlcode-store');
+  await mkdir(app); await mkdir(installed, { recursive: true });
+  const descriptor = JSON.parse(await readFile(new URL('../packages/store/urlcode.json', import.meta.url), 'utf8')) as { targets: string[] };
+  const install = (targets: string[]) => writeFile(join(installed, 'urlcode.json'), JSON.stringify({ ...descriptor, targets }));
+  await install(['node']);
+  await writeFile(join(app, 'hit.mjs'), 'let hits = 0;\nexport default function(request){\n  hits++;\n  return {status:200,body:String(hits)};\n}\n');
+  await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1',
+    extensions: { store: { version: '1', config: { collections: { todos: { mount: '/api/todos', fields: { title: { type: 'string', required: true, maxLength: 80 } } } } } } },
+    routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST'] }, '/hit': { methods: ['GET'], function: { source: 'hit.mjs' } } } }));
+  const run = (...args: string[]) => { const result = spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--project', app], { encoding: 'utf8', timeout: 20000 }); assert.equal(result.status, 0, result.stderr); return result.stdout; };
+  type Support = { compatible: boolean; issues: { capability: string; support: string; reason: string }[] };
+
+  const explained = JSON.parse(run('explain', '/api/todos/x', '--json')) as { targets: Record<string, Support> };
+  const extensionIssue = (support: Support) => support.issues.find(issue => issue.capability === 'extension');
+  assert.equal(extensionIssue(explained.targets.aws!)?.support, 'refused'); assert.match(extensionIssue(explained.targets.aws!)!.reason, /declared targets.*store/);
+  assert.equal(extensionIssue(explained.targets.vercel!)?.support, 'refused');
+  assert.equal(extensionIssue(explained.targets['self-hosted']!)?.support, 'conditional', 'a descriptor can refuse a target, never confirm one');
+  assert.match(run('explain', '/api/todos/x', '--target', 'aws'), /target aws: extension refused \(Refused by the extension's declared targets/);
+
+  const manifest = JSON.parse(run('manifest', '--json')) as { targets: Record<string, { compatible: boolean; issues: number; refused: number }> };
+  assert.equal(manifest.targets.aws!.compatible, false); assert.equal(manifest.targets.aws!.refused, 3, 'the project, the store mount and the function route');
+  assert.equal(manifest.targets['self-hosted']!.refused, 0);
+  assert.match(run('manifest'), /aws \d+ issues \(3 refused\)/);
+
+  const context = JSON.parse(run('context', '--json')) as { targets: Record<string, { refused: string[]; conditional: string[] }> };
+  assert.ok(context.targets.aws!.refused.includes('extension')); assert.ok(context.targets['self-hosted']!.conditional.includes('extension'));
+
+  const observation = (target?: string) => (JSON.parse(run('review', '--json', ...(target ? ['--target', target] : []))) as { observations: { signal: string; category: string; extension?: string; refusedOn?: string; note: string }[] }).observations.find(item => item.signal === 'global-mutable-state')!;
+  assert.equal(observation().category, 'extension-alternative'); assert.equal(observation('self-hosted').refusedOn, undefined);
+  const refused = observation('aws');
+  assert.equal(refused.category, 'gap'); assert.equal(refused.refusedOn, 'aws'); assert.equal(refused.extension, undefined); assert.match(refused.note, /store is declared but does not run on aws/);
+
+  // A descriptor that declares aws is not refused there.
+  await install(['node', 'aws']);
+  assert.equal(extensionIssue((JSON.parse(run('explain', '/api/todos/x', '--json')) as { targets: Record<string, Support> }).targets.aws!)?.support, 'conditional');
+  assert.equal(observation('aws').category, 'extension-alternative');
+});
+
 test('preflight and compiled IR agree, including inherited and disabled policies', async t => {
   const root = await project(t, {
     '/go': { ...redirect(), policies: { throttle: { partition: 'route' }, cache: false } },
