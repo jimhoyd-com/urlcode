@@ -9,7 +9,7 @@ inputs:
     description: Directory holding the site's package.json, package-lock.json and host.mjs, relative to the workspace. The route project is always <site>/app.
     default: '.'
   host-file:
-    description: Operator host relative to the site (usually host.mjs); needs `origin`. When set, validate and test activate the installed extensions through it; the workflow must provide the secrets it reads (for example through env). PROJECT_SHA256 is computed from the checked-out project for this run only. Empty checks declared extensions statically against their installed schemas and skips test and audit when the project declares extensions.
+    description: Operator host relative to the site (usually host.mjs); needs `origin`. When set, test and audit activate the installed extensions through it, each run on a fresh, empty data directory seeded from app/tests/seed.json, so no account, membership, migration or signing secret has to be provisioned (a third-party extension may still read its own environment). validate always checks the declared extensions statically against their installed schemas. PROJECT_SHA256 is computed from the checked-out project for this run only. Empty skips test and audit when the project declares extensions.
     default: ''
   node-version:
     description: Node.js version passed to actions/setup-node.
@@ -83,13 +83,13 @@ runs:
         else
           echo "args=" >> "$GITHUB_OUTPUT"; echo "run=true" >> "$GITHUB_OUTPUT"
         fi
+    # Static: the host's extensions are activated by test and audit on throwaway data, never against a live database here.
     - name: Validate
       shell: bash
       working-directory: ${{ inputs.site }}
       env:
         ORIGIN: ${{ inputs.origin }}
-        HOST_ARGS: ${{ steps.host.outputs.args }}
-      run: urlcode validate --project app $HOST_ARGS ${ORIGIN:+--origin "$ORIGIN"}
+      run: urlcode validate --project app ${ORIGIN:+--origin "$ORIGIN"}
     - name: Test
       if: steps.host.outputs.run == 'true'
       shell: bash

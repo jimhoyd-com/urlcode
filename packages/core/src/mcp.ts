@@ -144,7 +144,11 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
    // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
-   case 'run_tests':{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:host.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,events};}
+   // Each run composes its own host on a fresh, empty data directory, as `urlcode test` does (RIM-EXT-HERMETIC-001):
+   // never the site's live data, and never what an earlier run wrote.
+   case 'run_tests':{const runHost=options.hostFile===undefined?undefined:await loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256,hermetic:true});
+    try{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:runHost?.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,events};}
+    finally{await runHost?.close?.();}}
    case 'list_capabilities':return getCapabilities(deployTargetOf(args));
    case 'get_capability':return getCapability(args.name as string);
    case 'get_schema':return getSchemaFragment(args.path as string);

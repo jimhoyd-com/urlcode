@@ -18,11 +18,11 @@ grants:
 inputs:
   - name: issuers
     file: urlcode.yaml
-    description: Who may issue credits is data, not YAML. The operator adds a principal id with `urlcode-store members add` before issuing; the fixtures expect the issuer `treasurer`.
+    description: Who may issue credits is data, not YAML. The operator adds a principal id with `urlcode-store members add` before issuing; test and audit runs seed the issuer `treasurer` from tests/seed.json into their throwaway database.
   - name: supply
     file: urlcode.yaml
     description: The issuer floor (`min` on issue) bounds the credit outstanding; the wallet limits and the idempotency window.
-files: [urlcode.yaml, tests/requests.json, README.md]
+files: [urlcode.yaml, tests/requests.json, tests/seed.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:

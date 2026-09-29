@@ -9,9 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { addRecipe, loadDocument } from '@jimhoyd/urlcode';
-import { addMember } from '../src/index.ts';
-import type { CollectionSpec } from '../src/index.ts';
+import { addRecipe } from '@jimhoyd/urlcode';
 import { cleanup } from './cleanup.ts';
 import { records } from './rows.ts';
 
@@ -72,15 +70,12 @@ function commands(run: Run) {
 test('the store-booking recipe refuses overlapping bookings of a room and frees a cancelled slot, with no pin given', async t => {
   const { database, run } = await site(t, 'store-booking');
   commands(run);
-  assert.deepEqual(records(database, 'bookings'), [], 'the fixtures deleted every booking they made');
+  assert.deepEqual(records(database, 'bookings'), [], 'test and audit wrote nothing to the configured database');
 });
 
 test('the store-credits recipe funds wallets from a members-only issuer and keeps the total, with no pin given', async t => {
-  const { project, database, run } = await site(t, 'store-credits');
-  // Who may issue is data: the operator adds the issuer the fixtures sign in as before they run.
-  const { document } = await loadDocument(project);
-  const collections = (document.extensions!.store!.config as { collections: Record<string, CollectionSpec> }).collections;
-  assert.equal((await addMember(database, { collections, collection: 'issuers', principal: 'treasurer' })).changed, true);
+  const { database, run } = await site(t, 'store-credits');
+  // Who may issue is data: tests/seed.json seeds the issuer the fixtures sign in as into each run's throwaway database.
   commands(run);
-  assert.deepEqual(records(database, 'wallets'), [], 'every wallet was paid back to 0 and deleted');
+  assert.deepEqual(records(database, 'wallets'), [], 'test and audit wrote nothing to the configured database');
 });
