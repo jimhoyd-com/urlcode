@@ -122,11 +122,11 @@ Each bound refuses rather than growing without limit:
 |---|---|---|
 | Audit log | keeps the newest `extensions.audit.config.retention` events (default 100,000; 1,000 to 10,000,000) | older events are pruned |
 | Store records | `maxRecords` per collection (default 1,000, at most 10,000), `maxRecordBytes` each (default 4,096, at most 65,536), at most 32 collections, all in one SQLite database | a create answers `409 collection_full`, an oversized record `413` |
-| Store writes | one SQLite transaction at a time per database, each fsynced (`synchronous=FULL`) before it answers; statements are synchronous, so each commit blocks the event loop for its fsync | a write blocked by another process's lock for 2 s answers `503 storage_unavailable` |
+| Store writes | one SQLite transaction at a time per database, each fsynced (`synchronous=FULL`, unless the operator chose [`durability: 'normal'`](STORE.md#durability)) before it answers; statements are synchronous, so each commit blocks the event loop for its fsync | a write blocked by another process's lock for 2 s answers `503 storage_unavailable` |
 | Store sorted or filtered lists | read the `id` and the named fields of every record in scope (at most `maxRecords`), then the page | bounded by `maxRecords` and `pageSize` (at most 200) |
 | Audit outboxes | 1,000 undelivered events per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
 
-The store's database path is an operator choice in `host.mjs`; the store and
+The store's database path and commit durability are operator choices in `host.mjs`; the store and
 audit bounds are reviewed YAML. See the
 [store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee)
 and [audit](../packages/audit/README.md) packages. One local measurement of the store
@@ -176,8 +176,8 @@ database, 3,000 each; the store's own setting was not changed):
 
 | Setting | commits/s | p50 / p99 µs |
 |---|---:|---:|
-| `synchronous=FULL` (what the store uses) | 19,313 | 41 / 136 |
-| `synchronous=NORMAL` | 54,482 | 12 / 65 |
+| `synchronous=FULL` (the store's default, `durability: 'full'`) | 19,313 | 41 / 136 |
+| `synchronous=NORMAL` (`durability: 'normal'`) | 54,482 | 12 / 65 |
 | `synchronous=FULL` with `fullfsync=ON` | 235 | 4,018 / 7,996 |
 
 On this machine a `FULL` commit costs about 30 µs more than `NORMAL`, 1–2% of
@@ -188,7 +188,10 @@ same disk (about 4 ms, capping one database near 250 commits/s and blocking the
 event loop for each). Linux `fsync` does flush, so `FULL` on a Linux server
 costs something between these rows depending on the disk. **Measure on the
 deployment's Linux host before reading these numbers as the store's write
-ceiling there.**
+ceiling there.** Where the fsync does bound writes, the operator can choose
+[`store({durability: 'normal'})`](STORE.md#durability) per site: commits then
+skip it, and the last ones before a power loss or OS crash can be lost (a
+process crash loses nothing). The default stays `full`.
 
 **Lists** (HTTP, concurrency 1, 400 requests each; the last row at
 concurrency 16):
