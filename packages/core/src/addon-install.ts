@@ -18,7 +18,7 @@ import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './ex
 import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
 import { isCode, isRecord } from './object-guards.ts';
-import { addonNamePattern, addonPackage, declaredExtensionTargets, installedProviders, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, readInstalledDescriptor, withRequirements } from './addon-manifest.ts';
+import { addonNamePattern, addonPackage, contractProblem, declaredExtensionTargets, installedProviders, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, readInstalledDescriptor, withRequirements } from './addon-manifest.ts';
 import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin, ArtifactDocument, ExtensionTarget, InstalledProvider } from './addon-manifest.ts';
 
 /**
@@ -261,6 +261,8 @@ export async function assertInertArtifact(directory: string, name: string): Prom
   for (const key of Object.keys(manifest)) assert(artifactManifestKeys.has(key), `Artifact ${name} package.json declares ${key}; an artifact's package.json may declare only ${[...artifactManifestKeys].join(', ')}, so it can never execute or pull anything in`);
   const descriptor = parseDescriptor(await readJson(join(root, 'urlcode.json')), `${name}/urlcode.json`);
   assert(descriptor.kind === 'artifact' && descriptor.name === name, `${name}/urlcode.json does not describe artifact ${name}`);
+  const incompatible = contractProblem(descriptor.contract, `Artifact ${name}`);
+  if (incompatible) throw new ConfigError(incompatible);
   for (const document of descriptor.documents ?? []) assert(files.includes(document.path), `Artifact ${name} lists document ${document.path}, which the package does not contain`);
   return descriptor;
 }
@@ -285,6 +287,8 @@ async function loadDefinition(site: string, name: string, pkg = addonPackage(nam
   const module = await import(pathToFileURL(path).href) as { default?: DefinedExtension<unknown> };
   const definition = module.default?.definition;
   assert(definition && definition.name === name, `${pkg}/extension must default-export defineExtension({name: '${name}', …})`);
+  const incompatible = contractProblem(definition.contract, `${pkg}/extension`);
+  if (incompatible) throw new ConfigError(`Refusing ${pkg}: ${incompatible}`);
   return definition;
 }
 /** An operator's npm package spec (a registry name, `name@version` or a local tarball path) rather than a catalog name. */
@@ -509,6 +513,9 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         assert(descriptor.kind === kind, `Refusing ${dependency}: its descriptor declares an ${descriptor.kind}; add it with \`urlcode ${kindNoun(descriptor.kind)} add\``);
         assert(!dependency.startsWith('@jimhoyd/urlcode'), `Refusing ${dependency}: first-party packages install from core's pins with \`urlcode ${kindNoun(kind)} add ${descriptor.name}\``);
         assert(!manifest.addons[descriptor.name], `Refusing ${dependency}: it names itself ${descriptor.name}, which is a first-party ${manifest.addons[descriptor.name]?.kind} released with this core`);
+        // Its declared contract is read from the descriptor before anything is imported (#844).
+        const incompatible = contractProblem(descriptor.contract, `${dependency}@${locked[`node_modules/${dependency}`]?.version ?? '(unknown)'}`);
+        if (incompatible) throw new ConfigError(`Refusing ${dependency}: ${incompatible}`);
         const earlier = Object.hasOwn(prior, dependency) ? previous.get(dependency) : undefined;
         if (earlier) assert(earlier.name === descriptor.name && earlier.descriptor.kind === kind, `Refusing ${dependency}: the installed version provides the ${earlier.descriptor.kind} ${earlier.name}, but the new one provides the ${descriptor.kind} ${descriptor.name}; remove ${earlier.name} first, then add it`);
         const lockProblem = independentLockProblem(locked, dependency) ?? (kind === 'artifact' ? artifactLockProblem(locked, dependency) : undefined);
@@ -544,7 +551,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     const lock = await lockPackages(site.site);
     for (const name of toAdd) { const problem = pinProblem(lock, manifest.addons[name]!); if (problem) throw new ConfigError(`Refusing ${name}: ${problem}`); }
     const nested = nestedCopies(lock);
-    assert(!nested.length, `An add-on was installed as a nested copy (${nested.join(', ')}); every add-on must resolve once, at the top level of the site`);
+    assert(!nested.length, `Refusing ${requested.join(', ')}: npm installed a nested copy of URLCode (${nested.join(', ')}); core and every add-on must resolve once, at the top level of the site, so a package that bundles or pins its own @jimhoyd/urlcode is refused`);
     const artifacts = toAdd.filter(name => manifest.addons[name]!.kind === 'artifact');
     await assertInertArtifacts(site.site, lock, manifest, artifacts);
     if (tree.hadLock && kind === 'artifact') {
@@ -757,6 +764,7 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
     if (pinned) problems.push(pinned);
     const descriptor = await readInstalledDescriptor(site.site, name).catch(error => { problems.push(error instanceof Error ? error.message : String(error)); return undefined; });
     if (!descriptor) problems.push(`${pin.package} is not installed; run npm ci`);
+    else if (kind === 'extension') { const incompatible = contractProblem(descriptor.contract, pin.package); if (incompatible) problems.push(incompatible); }
     const isDeclared = Object.hasOwn(declared, name), hosted = host.split('\n').includes(importLine(name));
     // Any mention of the extension entry, even one hand-written in another form, wires it as an extension.
     const wired = isDeclared || hosted || host.includes(`${addonPackage(name)}/extension`);
@@ -786,6 +794,8 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
     if (kind === 'extension') {
       isDeclared = Object.hasOwn(declared, name); hosted = host.split('\n').includes(importLine(name, packageName));
       mode = isDeclared || hosted || host.includes(`${packageName}/extension`) ? 'extension' : 'library';
+      const incompatible = contractProblem(descriptor.contract, packageName);
+      if (incompatible) problems.push(incompatible);
       if (mode === 'extension') {
         if (!isDeclared) problems.push(`${PROJECT_DIRECTORY}/urlcode.yaml does not declare extensions.${name}`);
         if (!hosted) problems.push(`${HOST_FILE} does not import ${packageName}/extension`);
@@ -803,7 +813,7 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
   }
   if (kind === 'extension') {
     for (const name of Object.keys(declared)) if (!report.addons.some(item => item.name === name)) report.problems.push(`${PROJECT_DIRECTORY}/urlcode.yaml declares extensions.${name}, but no installed extension provides it${host.includes(name) ? ' (it may be wired by hand in host.mjs)' : ''}`);
-    for (const nested of nestedCopies(lock)) report.problems.push(`nested copy ${nested}: every add-on must resolve once, at the top level`);
+    for (const nested of nestedCopies(lock)) report.problems.push(`nested copy ${nested}: core and every add-on must resolve once, at the top level; a package that bundles or pins its own @jimhoyd/urlcode is not supported`);
   }
   return report;
 }
@@ -823,6 +833,8 @@ export async function validateDeclaredExtensions(project: string): Promise<strin
   for (const name of Object.keys(declared)) {
     const descriptor = providers.get(name)?.descriptor ?? await readInstalledDescriptor(site, name).catch(() => undefined);
     if (!descriptor || descriptor.kind !== 'extension' || !descriptor.schema) { problems.push(`extensions.${name}: no package installed in ${site} provides the extension ${name}; add it with \`urlcode extensions add <name or package>\`, or run npm ci`); continue; }
+    const incompatible = contractProblem(descriptor.contract, `extensions.${name}: the installed package`);
+    if (incompatible) { problems.push(incompatible); continue; }
     problems.push(...declaredExtensionProblems(loaded, name, descriptor));
   }
   return problems;

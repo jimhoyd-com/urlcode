@@ -26,6 +26,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { extensionContract } from '../packages/core/src/addon-manifest.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const packagesDir = join(root, 'packages');
@@ -175,7 +176,7 @@ function authoringContract(name: string): Record<string, unknown> {
  * prepare step (which builds the add-on catalog from every urlcode.json) accepts the package before its first build.
  */
 function urlcodeJson(name: string, description: string, fork: ForkShape | undefined): string {
-  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name), targets: ['node', 'aws', 'vercel'], schema: configSchema(), authoring: authoringContract(name), agent: agentTooling(name) }, null, 2)}\n`;
+  return `${JSON.stringify({ kind: 'extension', name, description, contract: extensionContract, requires: (fork?.peers ?? []).map(peer => peer.name), targets: ['node', 'aws', 'vercel'], schema: configSchema(), authoring: authoringContract(name), agent: agentTooling(name) }, null, 2)}\n`;
 }
 
 function readmeMd(name: string, camel: string, description: string, fork: ForkShape | undefined): string {
@@ -379,6 +380,7 @@ function scaffold(_request: ScaffoldRequest): ScaffoldResult {
 export default defineExtension<${Name}HostOptions>({
   name: '${name}',
   description: ${JSON.stringify(description)},
+  contract: ${extensionContract},
   requires: ${JSON.stringify(requires)},
   targets: ['node', 'aws', 'vercel'],
   schema: ${camel}ConfigSchema,

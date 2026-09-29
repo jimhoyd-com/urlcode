@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 import { initSite } from '../packages/core/src/authoring.ts';
 import { planUpgrade, upgradeSite } from '../packages/core/src/upgrade.ts';
+import { addAddons, listAddons } from '../packages/core/src/addon-install.ts';
+import { parseAddonManifest } from '../packages/core/src/addon-manifest.ts';
+import type { AddonManifest } from '../packages/core/src/addon-manifest.ts';
+import { readFilesLock } from '../packages/core/src/package-files.ts';
+// @ts-expect-error: a plain JavaScript test fixture without type declarations.
+import { packTarball } from './fixtures/addons/tarball.mjs';
 
 const fixtures = fileURLToPath(new URL('./fixtures/addons/', import.meta.url));
 const sha = 'b'.repeat(64);
@@ -194,4 +200,30 @@ test('a site without package-lock.json is refused before anything changes', asyn
   await assert.rejects(upgradeSite(dir), /has no package-lock\.json[\s\S]*npm install --ignore-scripts/);
   assert.equal(await readFile(join(dir, 'package.json'), 'utf8'), before);
   assert.equal(JSON.parse(await readFile(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'package.json'), 'utf8')).version, '1.0.0');
+});
+
+test('a locked independent package survives upgrade and a catalog change, keeping its own version (#844)', async t => {
+  // 2.0.0's catalog differs from 1.0.0's: it also releases notes. Neither catalog knows the independent greeting package.
+  const reg = await registry(t, { '1.0.0': { addons: ['alpha'] }, '2.0.0': { addons: ['alpha', 'notes'] } });
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  const dir = await site(t, reg, '1.0.0', ['alpha']);
+  const coreManifest = async (): Promise<AddonManifest> => parseAddonManifest(JSON.parse(await readFile(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'addons.json'), 'utf8')), 'installed core');
+  const packages = await mkdtemp(join(tmpdir(), 'urlcode-tarballs-'));
+  t.after(() => rm(packages, { recursive: true, force: true }));
+  const file = join(packages, 'greeting-2.3.4.tgz');
+  await writeFile(file, (packTarball as (dir: string) => Buffer)(join(fixtures, 'greeting')));
+  await addAddons(dir, 'extension', [file], { manifest: await coreManifest() });
+  const pkgName = '@example/urlcode-greeting';
+  const locked = async (): Promise<unknown> => (JSON.parse(await readFile(join(dir, 'package-lock.json'), 'utf8')) as { packages: Record<string, unknown> }).packages[`node_modules/${pkgName}`];
+  const before = { spec: (await dependencies(dir))[pkgName], lock: await locked(), recorded: (await readFilesLock(dir)).packages[pkgName] };
+  assert.equal(before.spec, `file:${file}`);
+  assert.equal((before.lock as { version: string }).version, '2.3.4');
+
+  const result = await upgradeSite(dir);
+  assert.deepEqual([result.upgraded, result.target, result.addons], [true, '2.0.0', ['alpha']], 'upgrade moves core and its own add-ons, never the independent package');
+  assert.deepEqual({ spec: (await dependencies(dir))[pkgName], lock: await locked(), recorded: (await readFilesLock(dir)).packages[pkgName] }, before, 'its spec, lock entry and recorded files are exactly as they were');
+  assert.equal((JSON.parse(await readFile(join(dir, 'node_modules', '@example', 'urlcode-greeting', 'package.json'), 'utf8')) as { version: string }).version, '2.3.4', 'it keeps its own version, not the core release version');
+  const report = await listAddons(dir, 'extension', { manifest: await coreManifest() });
+  assert.deepEqual(report.addons.map(item => [item.name, item.version, item.independent ?? false]), [['alpha', '2.0.0', false], ['greeting', '2.3.4', true]]);
+  assert.deepEqual(report.problems.filter(problem => problem.startsWith('greeting')), []);
 });

@@ -1,0 +1,1 @@
+{ "name": "@example/urlcode-beyond", "version": "3.0.0", "type": "module", "exports": { "./extension": "./extension.js" } }

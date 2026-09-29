@@ -5257,10 +5257,14 @@ For an AI assistant integrating an extension:
    `get_extensions` when the operator has configured the local MCP server with
    the host file; otherwise use the CLI below. Hosted release catalogs describe
    first-party releases, not an external package's installed behavior.
-5. Report compatibility and tests actually exercised. Keep external package
-   upgrades explicit; core's `extensions add/remove`, release catalog and
-   `upgrade` do not manage arbitrary third-party packages. Do not override the
-   development catalog to impersonate a managed release add-on.
+5. Report compatibility and tests actually exercised. A package that carries a
+   `urlcode.json` descriptor is managed by its npm spec
+   ([independent extension packages](#independent-extension-packages)):
+   `extensions add <spec>` installs, re-running it upgrades, and `remove` takes
+   it out; core's release catalog and `upgrade` never move it. A private
+   operator module without a descriptor is wired by hand and stays invisible to
+   descriptor-only tooling. Do not override the development catalog to
+   impersonate a managed release add-on.
 
 #### Minimal external operator module
 
@@ -5281,7 +5285,9 @@ const authoring = {
     description: 'Plain text returned by the greeting mount.' }],
 };
 export default defineExtension({
-  name: 'greeting', description: 'A minimal external greeting extension.', targets: ['node'],
+  name: 'greeting', description: 'A minimal external greeting extension.',
+  contract: 1, // the URLCode extension contract it is built for
+  targets: ['node'],
   schema, authoring,
   host({ projectSha256 }) {
     return { registration: {
@@ -5344,12 +5350,19 @@ urlcode test --project app --host-file host.mjs --origin http://localhost:3000
 Use the site's installed CLI (or prefix with `npx --no --package @jimhoyd/urlcode`).
 For commands accepting `--policy`, an external reviewed operator policy can
 supply the revision instead; see [the revision pin](#the-revision-pin).
-Always pass the host for external schemas: descriptor-only discovery assumes
-managed package conventions and is not a general third-party package resolver.
+Pass the host for a private operator module like this one: it has no
+package and no `urlcode.json`, so validation without `--host-file` cannot see
+its schemas. Descriptor-only discovery covers every direct dependency of the
+site that carries a `urlcode.json` at its package root, whatever its name or
+scope: a first-party add-on pinned by core, or an
+[independent package](#independent-extension-packages) pinned by its npm lock
+integrity. It reads only those top-level descriptors, never walks transitive
+dependencies and never imports a package.
 
 An external author should publish configuration/policy schemas, hook contracts,
-`authoring` surfaces and fast checks in the registration, plus compatible core
-versions, supported targets and lifecycle cleanup instructions. Test the packed
+`authoring` surfaces and fast checks in the registration, plus the
+[extension contract](#the-extension-contract) it is built for, supported
+targets and lifecycle cleanup instructions. Test the packed
 package in a separate consumer, including invalid configuration, unsupported
 targets, revision mismatch and relevant authorization failures. The generic
 rules apply; this repository's `build:addons`, descriptor and release scripts
@@ -5425,8 +5438,10 @@ URLCode ships two kinds of add-on with one shape:
 | Commands | `urlcode extensions …` | `urlcode artifacts …` |
 
 Every add-on is an npm-packable workspace carrying a static `urlcode.json`
-descriptor: `{kind, name, description, requires, uses?, targets, schema?,
-policySchema?, hooks?, authoring?}`. For an extension the descriptor is written from its
+descriptor: `{kind, name, description, contract, requires, uses?, targets,
+schema?, policySchema?, hooks?, authoring?}`. `contract` is required for both
+kinds: the [extension contract](#the-extension-contract) the package is built
+for. For an extension the descriptor is written from its
 `defineExtension` definition by `npm run build:addons`, and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
 contracts without running any of its code. `targets` is required for an
@@ -5435,8 +5450,10 @@ definition declares. `composeHost` refuses a `host()` whose registration
 declares different targets, and the capability preflight reads the descriptor's
 `targets` so a recipe or project that uses the extension on a target it does not
 declare is `refused` there, before any host file is loaded (#859). An artifact descriptor carries only
-`kind`, `name`, `description`, `requires` and, optionally, `agent` and the
-[`documents`](#artifact-documents) it ships.
+`kind`, `name`, `description`, `contract`, `requires` and, optionally, `agent`
+and the [`documents`](#artifact-documents) it ships. `npm run build:addons`
+stamps a first-party artifact's hand-written descriptor with the contract core
+implements.
 
 Add-ons are versioned in lockstep with core. Only core is published to npm;
 each add-on is released as a tarball on the same GitHub Release as core. The
@@ -5456,6 +5473,46 @@ The first-party add-ons are:
 
 `urlcode extensions available` and `urlcode artifacts available` list what the
 running core pins.
+
+#### The extension contract
+
+Core implements one URLCode extension contract, an integer exported as
+`extensionContract` from `@jimhoyd/urlcode/extensions` (#844). It covers
+everything a package relies on from core: the `urlcode.json` descriptor format,
+`defineExtension` and `composeHost`, the registration and activation interfaces
+and the rest of the `@jimhoyd/urlcode/extensions` exports. It moves only when
+that contract changes incompatibly, never with core's own semver: a core
+release that only adds to the contract keeps the same integer, so a package
+does not need a new release for every core release.
+
+Every descriptor declares `contract`, and every `defineExtension` definition
+declares the same value. There is no range. A contract version that changes
+only on breaking changes has nothing in between to span, and a range such as
+`>=1 <3` would claim compatibility with a contract nobody has tested. Core
+refuses any package whose `contract` differs from its own, naming both:
+
+```text
+Refusing @example/urlcode-beyond: @example/urlcode-beyond@3.0.0 is built for
+URLCode extension contract 2, but this core implements extension contract 1;
+install a version of it built for contract 1, or a core that implements contract 2
+```
+
+The contract is checked at every point where a package enters the site or runs:
+
+- `extensions add` and `artifacts add` read it from the installed descriptor
+  before any extension entry is imported, and roll the install back.
+- `extensions list --strict` and static `validate` report it for every
+  installed or declared extension. The inert checks behind `artifacts list`,
+  inspection and `upgrade` refuse an artifact with the wrong contract.
+- `defineExtension` refuses a definition that omits it or declares another
+  value. `composeHost` checks it again before any `host()` runs, so a
+  definition made by another copy of core, or shaped by hand, cannot skip the
+  check.
+
+For first-party packages, `npm run build:addons` writes `contract` into each
+extension's `urlcode.json` from its definition, and refuses to build one that
+does not declare the contract core implements. Core's own catalog is one
+release, so its entries carry no separate contract.
 
 #### The release-wide agent catalog
 
@@ -5768,10 +5825,15 @@ locked` for a `file:` directory), static `validate` checks its declaration
 against its descriptor's schemas, and `remove` takes it out by name.
 
 `add` refuses a package with no valid extension descriptor, a descriptor of
-kind `artifact`, a name that a first-party add-on of this core already has,
+kind `artifact`, a descriptor or definition built for another
+[extension contract](#the-extension-contract), a name that a first-party add-on of this core already has,
 a `@jimhoyd/urlcode*` package (those install from core's pins), two installed
-packages providing the same name, and an independent extension whose
-`requires` are not installed. When two installed packages still provide one
+packages providing the same name, an independent extension whose
+`requires` are not installed, and any package that brings a nested copy of
+`@jimhoyd/urlcode` (bundled in its tarball or pinned to another version): a
+site has one core, so every extension shares one `defineExtension` and one
+contract. `list --strict` reports such a nested copy when it was installed some
+other way. When two installed packages still provide one
 name (for example after editing `package.json` by hand), the first by package
 name is kept and the problem is reported once: by `extensions list` when the
 package set aside is an extension, by `artifacts list` when it is an artifact.
@@ -5851,6 +5913,7 @@ import { defineExtension } from '@jimhoyd/urlcode/extensions';
 export default defineExtension<MyHostOptions>({
   name: 'store',
   description: 'One line shown by `urlcode extensions available`',
+  contract: 1,                // the URLCode extension contract it is built for
   requires: [],               // extension names that must be installed and declared
   uses: [],                   // optional: extension names read only when installed
   schema,                     // JSON Schema of extensions.<name>.config

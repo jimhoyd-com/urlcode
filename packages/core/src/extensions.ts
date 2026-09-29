@@ -8,8 +8,13 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import type { HandlerResult } from './http-response.ts';
 import type { LogFn, ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
 import type { BodySchema } from './body-validation.ts';
-import { extensionTargetNames } from './addon-manifest.ts';
+import { contractProblem, extensionContract, extensionTargetNames } from './addon-manifest.ts';
 import type { AddonAgentTooling, ExtensionTarget } from './addon-manifest.ts';
+/**
+ * The URLCode extension contract this core implements (#844): an integer that moves only on a breaking change to
+ * the extension contract, never with core's semver. A definition declares the one it is built for as `contract`.
+ */
+export { extensionContract };
 export type { HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
 /** Why a streamed response ended; also the `reason` of `ExtensionRequest.signal` when a stream ends early. */
 export type { StreamEndReason } from './http-stream.ts';
@@ -564,6 +569,11 @@ export interface HostedExtension {
 export interface ExtensionDefinition<Options=Record<string,never>> {
   name:string;
   description:string;
+  /**
+   * The URLCode extension contract this extension is built for (`extensionContract`). `defineExtension` and
+   * `composeHost` refuse any other value, naming both, and the build writes it into `urlcode.json` as `contract`.
+   */
+  contract:number;
   requires?:readonly string[];
   /**
    * Extensions this one reads through `ctx.get` only when installed: an optional edge. An installed one is hosted
@@ -611,6 +621,8 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   assert(definition&&typeof definition==='object'&&typeof definition.name==='string'&&namePattern.test(definition.name),'Extension definition needs a lowercase name');
   assert(typeof definition.description==='string'&&definition.description.length>0&&definition.description.length<=300,`Extension ${definition.name} needs a one-line description`);
   assert(definition.schema&&typeof definition.schema==='object'&&typeof definition.host==='function',`Extension ${definition.name} needs a schema and a host function`);
+  const incompatible=contractProblem(definition.contract,`Extension ${definition.name}`);
+  if(incompatible)throw new ConfigError(incompatible);
   assert(Array.isArray(definition.targets)&&definition.targets.length>0&&new Set(definition.targets).size===definition.targets.length&&definition.targets.every(target=>(extensionTargetNames as readonly string[]).includes(target)),`Extension ${definition.name} targets must list ${extensionTargetNames.join(', ')} once each (at least one)`);
   assert((definition.requires??[]).every(name=>namePattern.test(name)&&name!==definition.name),`Extension ${definition.name} requires must list other extension names`);
   const uses=definition.uses??[];
