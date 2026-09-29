@@ -52,7 +52,12 @@ package-specific design/status documents stay in the source repository.
 with a reviewed budget, runs `npm pack --dry-run` without package hooks, and
 enforces this boundary. It rejects unexpected top-level paths, source/tests/maps
 and environment files, missing export/executable targets, and archives over the
-reviewed compressed, unpacked or file-count budgets. A new extension fails until
+reviewed compressed, unpacked or file-count budgets. It also reads every packed
+Markdown file and `llms.txt` and fails on a relative link whose target the
+archive does not contain: an installed copy has only the packed files. Ship the
+target, or link this repository's `blob/v<current version>/...` as a reference
+definition inside a `urlcode-current-version` block (below), which
+`check-local-links` checks against the checkout. A new extension fails until
 its reviewed policy is added. Increase a budget only with a reviewed explanation
 of the new installed requirement; do not use budget headroom instead of updating
 the allowlist.

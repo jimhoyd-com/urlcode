@@ -7,6 +7,10 @@ The fixture has no function code, bindings, assets, policies or provider setting
 All redirect destinations use the reserved `example.test` domain; the verifier
 never follows them. POST requests return constants and have no side effects.
 
-See [provider verification](../../docs/PROVIDER-VERIFICATION.md) for the runner,
+See [provider verification][docs/PROVIDER-VERIFICATION.md] for the runner,
 evidence format and limitations. CI replays the fixture through local adapters;
 that does not establish that any provider deployment has been verified.
+
+<!-- urlcode-current-version:start -->
+[docs/PROVIDER-VERIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROVIDER-VERIFICATION.md
+<!-- urlcode-current-version:end -->

@@ -16,7 +16,7 @@ The runtime answers 422 when a body breaks one of these rules, before `respond`
 builds the reply. It also refuses a wrong method (405), a content type other
 than `application/json` (415), a body larger than 16 KiB (413) and malformed
 JSON (400). The 422 names the first failing field and never echoes what the
-client sent ([HTTP](../../docs/HTTP.md#body-schema-and-input-patterns)
+client sent ([HTTP][docs/HTTP.md#body-schema-and-input-patterns]
 describes its format). Because the route takes JSON only, a cross-site HTML
 form cannot submit to it.
 
@@ -35,7 +35,7 @@ project hash, so regenerate and re-review the policy afterwards.
 
 A signal carries a fixed payload (route, method, status), not the submitted
 message, and is best effort: drops are counted, never retried. See
-[egress](../../docs/EGRESS.md).
+[egress][docs/EGRESS.md].
 
 `urlcode test` and `urlcode audit` record signals instead of delivering them,
 so the tests never call the hook. The valid `POST` in `tests/requests.json`
@@ -43,7 +43,7 @@ asserts its one signal with `expectSignals` (destination origin, route, method
 and status), and the refused `422` and `415` cases assert `"expectSignals": []`,
 so a rejected message notifies nobody. While you develop, `urlcode dev
 --signal-sink stdout` prints each would-be delivery as a JSON line instead of
-sending it ([checking signals locally](../../docs/EGRESS.md#checking-signals-locally)).
+sending it ([checking signals locally][docs/EGRESS.md#checking-signals-locally]).
 
 `urlcode dev` without that flag and `urlcode serve` do deliver. The policy can
 only grant the origin that `urlcode.yaml` declares, and the transport refuses
@@ -53,13 +53,13 @@ and review its own policy with `urlcode permissions`. Switch to the production
 URL (and regenerate the policy) when you deploy.
 
 Throttle the route before you publish the page. `policies.throttle` limits
-requests per client on this one route ([policies](../../docs/POLICIES.md)).
+requests per client on this one route ([policies][docs/POLICIES.md]).
 
 This recipe does not deliver or keep the message. Nothing downstream can
 recover it either: request logs and events never carry a request body or field
-value ([privacy guarantees](../../docs/OBSERVABILITY.md#privacy-guarantees)).
-To keep messages, post the JSON to a [store](../../packages/store/README.md)
-collection mount as well ([STORE](../../docs/STORE.md) says who may write to
+value ([privacy guarantees][docs/OBSERVABILITY.md#privacy-guarantees]).
+To keep messages, post the JSON to a [store][packages/store/README.md]
+collection mount as well ([STORE][docs/STORE.md] says who may write to
 one).
 
 ## Sending mail from your own code instead
@@ -84,3 +84,13 @@ export default async function contact(request, {secrets}) {
 
 Add the package to the site's `package.json`, and declare `sandboxReason` to
 say why the route is trusted (the `webhook-receiver` recipe shows the shape).
+
+<!-- urlcode-current-version:start -->
+[docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+[docs/EGRESS.md#checking-signals-locally]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md#checking-signals-locally
+[docs/POLICIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md
+[docs/OBSERVABILITY.md#privacy-guarantees]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OBSERVABILITY.md#privacy-guarantees
+[packages/store/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md
+[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
+<!-- urlcode-current-version:end -->

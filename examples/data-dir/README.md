@@ -37,5 +37,9 @@ urlcode audit --project . --expect-routes 1 --policy /operator/data-dir-policy.j
 
 For local development, `DATA_DIR=...` may live in an ignored `.env.local`;
 production `serve` reads only the process environment. See
-[bindings](../../docs/yaml/organization.md#12-environment-and-secret-references)
+[bindings][docs/yaml/organization.md#12-environment-and-secret-references]
 and [policy setup](../../docs/FUNCTION-SECURITY.md).
+
+<!-- urlcode-current-version:start -->
+[docs/yaml/organization.md#12-environment-and-secret-references]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/organization.md#12-environment-and-secret-references
+<!-- urlcode-current-version:end -->

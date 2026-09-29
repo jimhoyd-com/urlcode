@@ -9,7 +9,7 @@ fails when one is missing; array items, map values and union options without
 one show — in that column. Read the linked guide section for behavior JSON
 Schema does not express.
 
-Read the [YAML guide](YAML-GUIDE.md) for examples and [specification](SPECIFICATION.md)
+Read the [YAML guide][docs/YAML-GUIDE.md] for examples and [specification][docs/SPECIFICATION.md]
 for semantic validation beyond JSON Schema. Exactly one handler is required per
 route; respond.text/respond.json are mutually exclusive. Runtime defaults include
 GET/HEAD, redirect 302, respond 200, default module export, and asset no-cache.
@@ -35,7 +35,7 @@ schema-valid combinations activate successfully.
 
 ## Project entry: version, includes, shared
 
-See [organization](yaml/organization.md) for examples.
+See [organization][docs/yaml/organization.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -89,7 +89,7 @@ See [organization](yaml/organization.md) for examples.
 
 ## Routes: common fields (methods, parameters, env, secrets, policies, cache)
 
-See [functions, inputs and methods](yaml/functions.md) and [bindings, split files and tests](yaml/organization.md) for examples.
+See [functions, inputs and methods][docs/yaml/functions.md] and [bindings, split files and tests][docs/yaml/organization.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -274,7 +274,7 @@ See [functions, inputs and methods](yaml/functions.md) and [bindings, split file
 
 ## Handler: function
 
-See [functions, inputs and methods](yaml/functions.md) for examples.
+See [functions, inputs and methods][docs/yaml/functions.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -297,7 +297,7 @@ See [functions, inputs and methods](yaml/functions.md) for examples.
 
 ## Handler: redirect
 
-See [redirects](yaml/redirects.md) for examples.
+See [redirects][docs/yaml/redirects.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -316,7 +316,7 @@ See [redirects](yaml/redirects.md) for examples.
 
 ## Handler: page, static, download
 
-See [pages, static folders and downloads](yaml/assets.md) for examples.
+See [pages, static folders and downloads][docs/yaml/assets.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -337,7 +337,7 @@ See [pages, static folders and downloads](yaml/assets.md) for examples.
 
 ## Handler: respond
 
-See [declared responses, headers and cookies](yaml/responses.md) for examples.
+See [declared responses, headers and cookies][docs/yaml/responses.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -348,7 +348,7 @@ See [declared responses, headers and cookies](yaml/responses.md) for examples.
 
 ## Middleware
 
-See [middleware before and after a handler](yaml/middleware.md) for examples.
+See [middleware before and after a handler][docs/yaml/middleware.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -361,7 +361,7 @@ See [middleware before and after a handler](yaml/middleware.md) for examples.
 
 ## Handler: conditional
 
-See [enable, disable and expire](yaml/conditions.md) for examples.
+See [enable, disable and expire][docs/yaml/conditions.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -413,7 +413,7 @@ See [enable, disable and expire](yaml/conditions.md) for examples.
 
 ## Handler: proxy and signals
 
-See [bounded egress](EGRESS.md) for examples.
+See [bounded egress][docs/EGRESS.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -441,7 +441,7 @@ See [bounded egress](EGRESS.md) for examples.
 
 ## Handler: extension mount
 
-See [extensions](EXTENSIONS.md) for examples.
+See [extensions][docs/EXTENSIONS.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -449,7 +449,7 @@ See [extensions](EXTENSIONS.md) for examples.
 
 ## Policies and profiles
 
-See [policies and profiles](yaml/policies.md) for examples.
+See [policies and profiles][docs/yaml/policies.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -586,7 +586,7 @@ See [policies and profiles](yaml/policies.md) for examples.
 
 ## Site conventions
 
-See [site conventions](yaml/site.md) for examples.
+See [site conventions][docs/yaml/site.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -630,7 +630,7 @@ See [site conventions](yaml/site.md) for examples.
 
 ## Extensions (top-level)
 
-See [extensions](EXTENSIONS.md) for examples.
+See [extensions][docs/EXTENSIONS.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
@@ -641,9 +641,25 @@ See [extensions](EXTENSIONS.md) for examples.
 
 ## Other
 
-See [YAML guide](YAML-GUIDE.md) for examples.
+See [YAML guide][docs/YAML-GUIDE.md] for examples.
 
 | Field | Type | Required | Schema constraints | Description |
 |---|---|---|---|---|
 | `schemas` | object | no | maxProperties: 64 | Named JSON Schema 2020-12 documents in the request body profile, each written inline or loaded from a project file with {file: <path>}. A route's request.body.<METHOD>.schema and an extension such as mcp (a tool's inputSchema or outputSchema) name one by its key instead of repeating it, so HTTP and MCP validate against the same document with the same diagnostics; the OpenAPI export emits each named schema once as a component. A schema carries only the shape of a JSON value: authorization, query/path parameter coercion, display metadata and stored defaults stay with the route, the parameters, the page and the store (docs/HTTP.md#named-schemas). Names are a letter then letters, digits or _ (Urlcode... is reserved). Entry urlcode.yaml only. Each schema is admitted against the same profile, limits and diagnostics as an inline body schema, and its content (and every schema file's sha256) is part of the project revision. |
 | `schemas.*` | object | no | — | A JSON Schema 2020-12 document in the request body profile (see request.body.<METHOD>.schema), or {file: <path>}: a project-relative .json, .yaml or .yml file holding one. A file is read offline: its relative $refs to other project files are followed and bundled into /$defs (a whole file as <stem>, one of its /$defs entries as <stem>.<name>); a remote reference, a path that leaves the project, a symlink, a missing target and more than 256 KiB per file, 2 MiB or 64 files in all are refused before serving. An object whose only key is file is a file reference. |
+
+<!-- urlcode-current-version:start -->
+[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
+[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
+[docs/yaml/organization.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/organization.md
+[docs/yaml/functions.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/functions.md
+[docs/yaml/redirects.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/redirects.md
+[docs/yaml/assets.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/assets.md
+[docs/yaml/responses.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/responses.md
+[docs/yaml/middleware.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/middleware.md
+[docs/yaml/conditions.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/conditions.md
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+[docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
+[docs/yaml/policies.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/policies.md
+[docs/yaml/site.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/site.md
+<!-- urlcode-current-version:end -->

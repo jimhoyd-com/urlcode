@@ -12,7 +12,7 @@ done
 
 The route declares `stream: true`, so the runtime sends the function's
 Response body as it is produced, with chunked transfer and no
-`Content-Length` ([streamed responses](../../docs/SPECIFICATION.md#streamed-responses)).
+`Content-Length` ([streamed responses][docs/SPECIFICATION.md#streamed-responses]).
 The function returns an ordinary `Response` whose body is an async generator
 wrapped in `ReadableStream.from`. Without `stream: true` the same function
 would still work, but the client would see all four lines at once, after the
@@ -23,7 +23,7 @@ answers 400 before any code runs. HEAD answers the status and headers without
 running the steps.
 
 `context.signal` aborts when the client disconnects or an operator
-[stream limit](../../docs/OPERATIONS.md#streamed-responses) ends the stream;
+[stream limit][docs/OPERATIONS.md#streamed-responses] ends the stream;
 the loop checks it and stops. The operator sets those limits on the command
 line (`--max-streams`, `--stream-idle-timeout-ms`, `--stream-max-duration-ms`,
 `--stream-max-bytes`), never in the route.
@@ -38,3 +38,8 @@ curl -N 'http://127.0.0.1:3000/jobs/progress?steps=5'   # -N prints each line as
 Streaming is self-hosted only: the route is a trusted function, and AWS,
 Vercel, Cloudflare and static refuse the project before serving rather than
 buffering it. `stream: true` cannot be combined with `sandbox: true`.
+
+<!-- urlcode-current-version:start -->
+[docs/SPECIFICATION.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md#streamed-responses
+[docs/OPERATIONS.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#streamed-responses
+<!-- urlcode-current-version:end -->

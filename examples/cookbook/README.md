@@ -6,7 +6,7 @@ headers, cookies, methods, expiry, assets, included files and host policies
 (security headers, agent denial, caching and a request budget) plus generated site
 conventions (robots.txt, favicon, security.txt, llms.txt). Fifteen of the routes
 exercise the fourteen reusable modules in `middleware/`, described in
-[middleware examples](../../docs/MIDDLEWARE-EXAMPLES.md). No credentials or
+[middleware examples][docs/MIDDLEWARE-EXAMPLES.md]. No credentials or
 external services are required. Redirects target example.com; tests never follow them.
 
 Copy it with `urlcode examples add cookbook --out cookbook`, then from that directory:
@@ -18,9 +18,14 @@ urlcode audit --project . --expect-routes 40
 urlcode dev --project .
 ```
 
-The [YAML guide](../../docs/YAML-GUIDE.md) explains the recipes and binding policy.
+The [YAML guide][docs/YAML-GUIDE.md] explains the recipes and binding policy.
 `/notice` deliberately returns 503, `/paused` 404 and `/expired` 410. `/preflight`
 is an OPTIONS/header example, not a complete cross-origin API; `/cors/data` is the
 middleware version. `/maintenance` returns 503 without its bypass header and
 `/inspect` echoes request details only with `X-Debug: 1`. The small default
 starter remains the recommended starting point for a new application.
+
+<!-- urlcode-current-version:start -->
+[docs/MIDDLEWARE-EXAMPLES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE-EXAMPLES.md
+[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
+<!-- urlcode-current-version:end -->
