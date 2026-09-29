@@ -484,6 +484,57 @@ What was added over the same span:
 The MCP SDK swap removed 501 lines from `packages/mcp` and moved core's
 authoring server onto `@modelcontextprotocol/server`.
 
+### Agent workflow trial
+
+On 2026-09-29, for [#841](https://github.com/jimhoyd-com/urlcode/issues/841)
+order 5, one agent built three small sites from scratch on main `4a095468`.
+
+**Method.** `scripts/pack-addons.ts` packed core and the add-ons. Each site was
+created by `urlcode init` from the packed core, with its runtime pin pointed at
+that tarball. The agent then worked only through the installed CLI (`context`,
+`plan-feature`, `docs search`, `capabilities`, `schema`, `recipes`, `explain`,
+`fixtures suggest`, `validate`, `test`, `audit`, `review`, `openapi`), the
+installed READMEs and each site's `AGENTS.md`. It read no repository source.
+The trial measured:
+
+- *CLI runs*: every `urlcode` invocation, including help.
+- *Correction rounds*: a failed command or behavior that needed a change.
+- *YAML*: the lines of `app/**/*.yaml` the agent wrote or kept, excluding the
+  generated `routes/auth.yaml`.
+- *Code*: the hand-written files, counted separately for server and frontend.
+- *New gaps*: framework defects, and tooling or docs gaps, each counted in
+  the task that first found it. There were 13 in total, and each was drafted
+  as an issue.
+
+Signed-in behavior was checked with a separate script: it signed in as each
+user and ran the create, read, update and delete requests. The notes frontend
+was also exercised in a browser.
+
+| Task | CLI runs (validate / test / audit) | Correction rounds | YAML lines | Code lines (server + frontend) | New gaps | Final state |
+|---|---:|---:|---:|---:|---:|---|
+| Private notes: Better Auth plus an owned store collection, and a static frontend | 38 (6 / 3 / 4) | 8 | 44 | 0 + 44 | 7 | validate and 16 fixtures pass; audit not ready (`uncovered-route-methods`) |
+| Request approval: an owned collection, a `reviewers` membership, a `by: others` transition and a readers mount | 18 (3 / 2 / 2) | 3 | 67 | 0 + 0 | 3 | valid on the first edit; 14 fixtures pass; audit not ready (same reason) |
+| Public contact endpoint: body schema, `respond: 202`, a signal and an OpenAPI export | 15 (1 / 2 / 1) | 0 | 28 | 0 + 0 | 3 | audit ready; the OpenAPI output of all three sites passes a third-party 3.1 validator |
+
+No task needed server code. The only hand-written code was the frontend,
+which the application owns by design.
+
+Most correction rounds were setup, not YAML:
+
+- The generated npm scripts (`dev`, `validate`, `test`, `audit`) stop working
+  after `extensions add`. With an extension installed they need
+  `PROJECT_SHA256` and `--origin`.
+- `init --with` failed with a generic error.
+- A static `/*` route overlapped the extension mounts, and the error named
+  neither route.
+
+Neither protected site can be audit-ready. Request fixtures cannot sign in, so
+every method of an `auth: true` mount is uncovered. The audit also ignores
+`coveredElsewhere` waivers when a route has no method covered normally.
+
+The measured defects and gaps were drafted as GitHub issues. This is a single
+run by one agent, not a benchmark.
+
 ### Where to read next
 
 | Need | Read |
