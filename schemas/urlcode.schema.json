@@ -9,7 +9,7 @@
     },
     "routes": {
       "type": "object",
-      "description": "Map of route path patterns to the route each one serves (matching rules in docs/ROUTING.md).",
+      "description": "Map of route path patterns to the route each one serves (matching rules in https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md).",
       "maxProperties": 100000,
       "additionalProperties": {
         "$ref": "#/$defs/route"
@@ -392,7 +392,7 @@
     },
     "schemas": {
       "type": "object",
-      "description": "Named JSON Schema 2020-12 documents in the request body profile, each written inline or loaded from a project file with {file: <path>}. A route's request.body.<METHOD>.schema and an extension such as mcp (a tool's inputSchema or outputSchema) name one by its key instead of repeating it, so HTTP and MCP validate against the same document with the same diagnostics; the OpenAPI export emits each named schema once as a component. A schema carries only the shape of a JSON value: authorization, query/path parameter coercion, display metadata and stored defaults stay with the route, the parameters, the page and the store (docs/HTTP.md#named-schemas). Names are a letter then letters, digits or _ (Urlcode... is reserved). Entry urlcode.yaml only. Each schema is admitted against the same profile, limits and diagnostics as an inline body schema, and its content (and every schema file's sha256) is part of the project revision.",
+      "description": "Named JSON Schema 2020-12 documents in the request body profile, each written inline or loaded from a project file with {file: <path>}. A route's request.body.<METHOD>.schema and an extension such as mcp (a tool's inputSchema or outputSchema) name one by its key instead of repeating it, so HTTP and MCP validate against the same document with the same diagnostics; the OpenAPI export emits each named schema once as a component. A schema carries only the shape of a JSON value: authorization, query/path parameter coercion, display metadata and stored defaults stay with the route, the parameters, the page and the store (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas). Names are a letter then letters, digits or _ (Urlcode... is reserved). Entry urlcode.yaml only. Each schema is admitted against the same profile, limits and diagnostics as an inline body schema, and its content (and every schema file's sha256) is part of the project revision.",
       "maxProperties": 64,
       "propertyNames": {
         "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
@@ -526,7 +526,7 @@
               },
               "schema": {
                 "type": "object",
-                "description": "Type and constraints the input must satisfy, a documented subset of JSON Schema (docs/HTTP.md).",
+                "description": "Type and constraints the input must satisfy, a documented subset of JSON Schema (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md).",
                 "properties": {
                   "type": {
                     "description": "Value type the raw input is converted to; path inputs are strings and arrays are query-only.",
@@ -589,12 +589,12 @@
                   },
                   "pattern": {
                     "type": "string",
-                    "description": "Regular expression a string input must match, from a bounded subset that also needs maxLength (docs/HTTP.md).",
+                    "description": "Regular expression a string input must match, from a bounded subset that also needs maxLength (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md).",
                     "minLength": 1,
                     "maxLength": 128
                   },
                   "format": {
-                    "description": "Named string format the input must match, with the same checks and length caps as a request body schema: uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6 (docs/HTTP.md). Each bounds its own length, so no maxLength is needed.",
+                    "description": "Named string format the input must match, with the same checks and length caps as a request body schema: uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6 (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md). Each bounds its own length, so no maxLength is needed.",
                     "enum": [
                       "uuid",
                       "date",
@@ -654,7 +654,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "Destination URL: a literal http(s) URL or a same-site path starting with /, where {name} placeholders are filled from declared path inputs and a subtree redirect can append the matched remainder (docs/yaml/redirects.md).",
+              "description": "Destination URL: a literal http(s) URL or a same-site path starting with /, where {name} placeholders are filled from declared path inputs and a subtree redirect can append the matched remainder (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/redirects.md).",
               "maxLength": 8192
             },
             "status": {
@@ -723,7 +723,7 @@
           "additionalProperties": false
         },
         "function": {
-          "description": "Run a JavaScript module for this route, as a project-relative .mjs/.js path or an object naming source, export and args (docs/yaml/functions.md).",
+          "description": "Run a JavaScript module for this route, as a project-relative .mjs/.js path or an object naming source, export and args (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/functions.md).",
           "oneOf": [
             {
               "type": "string",
@@ -1026,7 +1026,7 @@
         },
         "middleware": {
           "type": "array",
-          "description": "Modules that run in order before the handler and in reverse after it, each able to answer early or change the response (docs/MIDDLEWARE.md).",
+          "description": "Modules that run in order before the handler and in reverse after it, each able to answer early or change the response (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md).",
           "maxItems": 16,
           "items": {
             "oneOf": [
@@ -1062,12 +1062,12 @@
           "$ref": "#/$defs/policies"
         },
         "match": {
-          "description": "Exact conditions every request must meet for this route to answer; a mismatch answers 404 (docs/CONDITIONS.md).",
+          "description": "Exact conditions every request must meet for this route to answer; a mismatch answers 404 (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md).",
           "$ref": "#/$defs/routeMatch"
         },
         "conditional": {
           "type": "object",
-          "description": "Several redirect or respond answers at one path, chosen by disjoint request conditions (docs/CONDITIONS.md).",
+          "description": "Several redirect or respond answers at one path, chosen by disjoint request conditions (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md).",
           "properties": {
             "cases": {
               "type": "array",
@@ -1089,12 +1089,12 @@
           "additionalProperties": false
         },
         "proxy": {
-          "description": "Forward the request to one granted HTTPS upstream and return its answer (docs/EGRESS.md).",
+          "description": "Forward the request to one granted HTTPS upstream and return its answer (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md).",
           "$ref": "#/$defs/proxy"
         },
         "signals": {
           "type": "array",
-          "description": "Webhooks told, best effort and after the response, that this route answered (docs/EGRESS.md).",
+          "description": "Webhooks told, best effort and after the response, that this route answered (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md).",
           "minItems": 1,
           "maxItems": 8,
           "items": {
@@ -1205,7 +1205,7 @@
           "maximum": 86400
         },
         "partition": {
-          "description": "What gets its own counter: each client address, the whole route, or each client on each route (docs/policies/throttle.md).",
+          "description": "What gets its own counter: each client address, the whole route, or each client on each route (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/throttle.md).",
           "enum": [
             "client",
             "route",
@@ -1244,7 +1244,7 @@
       "properties": {
         "deny": {
           "type": "array",
-          "description": "Bundled list names or project-relative .json lists whose User-Agents are refused (docs/policies/agents.md).",
+          "description": "Bundled list names or project-relative .json lists whose User-Agents are refused (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/agents.md).",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -1314,7 +1314,7 @@
       "description": "Response security headers. Profiles follow the OWASP Secure Headers Project; set overrides or adds individual headers; unset removes one from the profile.",
       "properties": {
         "headers": {
-          "description": "Which header profile to add: oshp, oshp-no-csp (the same without Content-Security-Policy) or off (docs/policies/security.md).",
+          "description": "Which header profile to add: oshp, oshp-no-csp (the same without Content-Security-Policy) or off (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/security.md).",
           "enum": [
             "oshp",
             "oshp-no-csp",
@@ -1387,7 +1387,7 @@
         },
         "level": {
           "type": "integer",
-          "description": "One compression effort setting mapped onto each codec's own scale (docs/policies/compression.md).",
+          "description": "One compression effort setting mapped onto each codec's own scale (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/compression.md).",
           "minimum": 1,
           "maximum": 11
         },
@@ -1404,7 +1404,7 @@
       "description": "Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged.",
       "properties": {
         "strategy": {
-          "description": "Named caching pattern that decides the Cache-Control output and whether the origin memory cache is used (docs/policies/cache.md).",
+          "description": "Named caching pattern that decides the Cache-Control output and whether the origin memory cache is used (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/cache.md).",
           "enum": [
             "no-store",
             "revalidate",
@@ -2010,7 +2010,7 @@
       "properties": {
         "body": {
           "type": "object",
-          "description": "Request body checks, keyed by HTTP method: each key is one of the route's methods and holds that method's policy, so GET and POST on one path state their own rules. A method without an entry has no body policy (docs/HTTP.md).",
+          "description": "Request body checks, keyed by HTTP method: each key is one of the route's methods and holds that method's policy, so GET and POST on one path state their own rules. A method without an entry has no body policy (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md).",
           "minProperties": 1,
           "properties": {
             "GET": {
@@ -2049,7 +2049,7 @@
     },
     "requestBody": {
       "type": "object",
-      "description": "One method's request body policy: size, media types, format and JSON schema (docs/HTTP.md).",
+      "description": "One method's request body policy: size, media types, format and JSON schema (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md).",
       "properties": {
         "required": {
           "type": "boolean",
@@ -2080,7 +2080,7 @@
           ]
         },
         "schema": {
-          "description": "The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object.",
+          "description": "The name of one of the project's named schemas (top-level schemas:), or a JSON Schema 2020-12 document in URLCode's bounded profile, compiled once at load and checked after parsing (requires format: json); a body that breaks it answers 422 (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md). $schema may only name https://json-schema.org/draft/2020-12/schema. Supported keywords: $schema and $defs (root only), $comment, $ref (local #/$defs/<name> only; never remote or recursive), title, description, examples, deprecated, type (object, array, string, integer, number, boolean, null, or a list such as [string, null]), enum and const (scalar values), allOf, anyOf, oneOf, not, properties, patternProperties (needs propertyNames with maxLength of at most 128), additionalProperties, propertyNames, required, minProperties, maxProperties, items, prefixItems, minItems, maxItems (up to 10000), uniqueItems (needs maxItems of at most 64), minLength, maxLength (up to 1048576, the request body limit), pattern (needs maxLength of at most 128 on the same node), format (uuid, date, time, date-time, email, uri, hostname, ipv4 or ipv6; each bounds its own length, so no maxLength is needed), minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf. Anything else, including $id, $dynamicRef, if/then/else, unevaluatedProperties, default and format: idn-email, fails activation naming the keyword and its JSON pointer. At most 8 levels, 256 nodes (1024 expanded through $ref), 32 $ref uses, 32 $defs entries and 64 properties per object.",
           "anyOf": [
             {
               "type": "object"
@@ -2112,7 +2112,7 @@
       "properties": {
         "headers": {
           "type": "object",
-          "description": "Literal response headers added to the route's answer; only Set-Cookie takes a list, and runtime-owned headers are refused (docs/HTTP.md).",
+          "description": "Literal response headers added to the route's answer; only Set-Cookie takes a list, and runtime-owned headers are refused (https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md).",
           "maxProperties": 64,
           "additionalProperties": {
             "oneOf": [

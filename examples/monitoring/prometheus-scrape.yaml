@@ -7,10 +7,11 @@
 # on an internal interface or restrict it at the ingress. Never expose it
 # publicly.
 #
-# Metric names and labels are fixed in docs/OBSERVABILITY.md. Requests are
-# labelled by status_class (2xx..5xx), not exact status, so the example rules
-# in prometheus-rules.yaml carry a status_class form of each expression next
-# to the log-derived one from vector.toml.
+# Metric names and labels are fixed in
+# https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OBSERVABILITY.md.
+# Requests are labelled by status_class (2xx..5xx), not exact status, so the
+# example rules in prometheus-rules.yaml carry a status_class form of each
+# expression next to the log-derived one from vector.toml.
 scrape_configs:
   - job_name: urlcode
     metrics_path: /_urlcode/metrics
