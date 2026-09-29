@@ -145,7 +145,7 @@ const HIGH_IMPACT_PATHS = {
   installer: ['packages/core/src/addon-install.ts', 'packages/core/src/extensions-cli.ts', 'packages/core/src/upgrade.ts', 'packages/core/src/scaffold.ts', 'packages/core/src/init-with.ts', 'scripts/create-extension.ts', 'starters/default/app/urlcode.yaml'],
   manifests: ['package.json', 'package-lock.json', 'packages/core/package.json', 'packages/auth/package.json', 'packages/store/urlcode.json', 'examples/hello/package.json', 'scripts/workspaces.ts', 'scripts/build-addon-manifest.ts'],
   release: ['scripts/npm-command.ts', 'scripts/release-bump.ts', 'scripts/release-pack.ts', 'scripts/release-publish.ts', 'scripts/pack-addons.ts', 'scripts/package-smoke.ts', 'scripts/package-audit.ts', '.github/workflows/publish.yml'],
-  integration: ['test/addons.integration.ts', 'scripts/test-addons.ts', 'packages/auth/test/cleanup.ts', 'packages/store/test/cleanup.ts', 'test/private-requests.integration.ts', 'proofs/private-requests/app/urlcode.yaml'],
+  integration: ['test/addons.integration.ts', 'scripts/test-addons.ts', 'packages/auth/test/cleanup.ts', 'packages/store/test/cleanup.ts', 'test/private-requests.integration.ts', 'proofs/private-requests/app/urlcode.yaml', 'test/ecosystem.integration.ts', 'proofs/ecosystem/hono/server.mjs'],
   shared: ['.github/workflows/ci.yml', '.github/dependabot.yml', 'tsconfig.json', 'eslint.config.js', '.node-version', '.gitattributes', 'install.sh', 'Makefile'],
 };
 const ORDINARY = ['packages/core/src/runtime.ts', 'packages/core/src/server.ts', 'test/runtime.test.ts', 'examples/hello/urlcode.yaml', 'packages/auth/src/auth.ts', 'packages/ui/src/kit.ts', 'schemas/urlcode.schema.json', 'packages/auth/README.md', 'scripts/ci-build-fidelity.ts'];

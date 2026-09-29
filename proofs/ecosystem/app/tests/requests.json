@@ -1,0 +1,19 @@
+[
+  {"path": "/app/api/validate", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"name\":\" Ada \",\"email\":\"ada@example.test\"}", "status": 200, "expectBody": "{\"ok\":true,\"value\":{\"name\":\"Ada\",\"email\":\"ada@example.test\",\"tags\":[]}}"},
+  {"path": "/app/api/validate", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"name\":\"\",\"email\":\"nope\"}", "status": 422, "expectBody": "{\"error\":\"invalid\",\"issues\":[{\"path\":\"name\",\"code\":\"too_small\"},{\"path\":\"email\",\"code\":\"invalid_format\"}]}"},
+  {"path": "/app/api/validate", "status": 405},
+  {"path": "/app/api/echo", "status": 200, "expectHeaders": {"x-echo": "yes"}},
+  {"path": "/app/api/stream", "status": 200, "expectBody": "chunk 1\nchunk 2\nchunk 3\n"},
+  {"path": "/app/api/who/ada", "status": 200, "expectBody": "{\"hello\":\"someone\"}"},
+  {"path": "/app/api/who/ADA", "status": 400},
+  {"path": "/app/go", "status": 302, "expectHeaders": {"location": "/app/api/who/ada"}},
+  {"path": "/app/sub/hello", "status": 200, "expectBody": "{\"from\":\"hono\",\"path\":\"/app/sub/hello\"}"},
+  {"path": "/app/sub/items/7?q=x", "status": 200, "expectBody": "{\"id\":\"7\",\"q\":\"x\"}"},
+  {"path": "/app/sub/items/x", "status": 400},
+  {"path": "/app/sub/items", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"n\":1}", "status": 201, "expectBody": "{\"created\":{\"n\":1}}"},
+  {"path": "/app/sub/missing", "status": 404},
+  {"path": "/app/hono/deep/1/2", "status": 200, "expectBody": "{\"a\":\"1\",\"b\":\"2\"}"},
+  {"path": "/app/hono/nothing", "status": 404},
+  {"path": "/app/probe/x", "status": 200},
+  {"path": "/elsewhere", "status": 404}
+]

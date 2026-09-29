@@ -1,0 +1,8 @@
+version: "1"
+# Expected to be refused before serving: a `sandbox: true` route may import only relative modules inside the
+# project, so the same direct zod import that works on a trusted route is not available here (docs/FUNCTION-SECURITY.md).
+routes:
+  /validate:
+    methods: [POST]
+    sandbox: true
+    function: functions/validate.mjs
