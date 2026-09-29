@@ -319,8 +319,10 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // #938 installed strings (llms.txt pinned reference definitions, llms-full.txt on the release tag, dist/release.js)
     // on top: measured on Node 26 at 1025624 packed / 4061375 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
+    // #948 pinned docs links in schema descriptions, example YAML comments and llms-full.txt prose: measured on Node 26
+    // at 1026007 packed / 4065372 unpacked bytes, 527 entries; the packed budget still leaves ~3.2 KiB over Node 24.
     packed: 1006 * 1024,
-    unpacked: 3970 * 1024,
+    unpacked: 3974 * 1024,
     entries: 529,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -538,6 +540,37 @@ export function packedStringProblems(path: string, source: string, packed: Reado
   return problems;
 }
 
+/**
+ * Whether a packed path is other text an installed reader meets (#948): schemas whose descriptions an editor shows,
+ * example and starter YAML, the llms indexes, templates and the rest. Markdown is read for links by
+ * `packedLinkProblems` and scripts for string literals by `packedStringProblems`; TypeScript declarations are code
+ * whose comments address maintainers, as in `dist/` scripts.
+ */
+export const isPackedText = (path: string): boolean => !path.endsWith('.md') && !isPackedCode(path) && !/\.[cm]?ts$/.test(path);
+/** `MAIN_BRANCH`, ending before a quote as well, since text here includes JSON strings. */
+const TEXT_MAIN_BRANCH = /https:\/\/github\.com\/jimhoyd-com\/urlcode\/(?:blob|tree)\/main(?=[/)\s"'`]|$)[^\s)"'`]*/g;
+/** A docs page mention in text: `DOCS_PAGE`, also not preceded by `[` or `` [` ``, which make it a link label or reference the link check follows. */
+const TEXT_DOCS_PAGE = /(?<![\w/.\-[])(?<!\[`)docs\/[\w./-]+?\.md\b/g;
+
+/**
+ * Lines of one packed text file (`path`, its `source`) that name a `docs/*.md` page the package does not ship, or
+ * this repository's main branch outside a `package.json` (#948). A JSON schema description, a YAML comment or an
+ * llms index is read as it is, so every line counts, fenced or not. Name a page that ships, a `urlcode docs search` query, or this release's
+ * `https://github.com/jimhoyd-com/urlcode/blob/v<version>/docs/...` copy, which `npm run release:bump` moves. A file
+ * holding a NUL byte is binary and not read.
+ */
+export function packedTextProblems(path: string, source: string, packed: ReadonlySet<string>): string[] {
+  if (source.includes('\0')) return [];
+  // A manifest's `homepage` names the project, which is its main branch by design; npm shows it as a link, not as docs.
+  const manifest = posix.basename(path) === 'package.json';
+  const problems: string[] = [];
+  for (const [index, line] of source.split('\n').entries()) {
+    if (!manifest) for (const match of line.matchAll(TEXT_MAIN_BRANCH)) problems.push(`${path}:${index + 1} names \`${match[0]}\`, this repository's main branch; link blob/v<current version>/... instead`);
+    for (const match of line.matchAll(TEXT_DOCS_PAGE)) if (!packed.has(match[0])) problems.push(`${path}:${index + 1} names \`${match[0]}\`, which the package does not ship`);
+  }
+  return problems;
+}
+
 /** Core (`.`) plus every add-on, in dependency order, as directories relative to `root`. */
 export async function auditedPackages(root = repositoryRoot): Promise<{ directory: string; kind: PackageKind }[]> {
   return [{ directory: '.', kind: 'core' }, ...(await addons(root)).map(addon => ({ directory: relative(root, addon.directory), kind: addon.kind }))];
@@ -628,6 +661,9 @@ async function auditOne(target: string): Promise<void> {
     const deadStrings: string[] = [];
     for (const path of [...shipped].filter(isPackedCode).sort()) deadStrings.push(...packedStringProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
     assert.deepEqual(deadStrings, [], `Shipped code names docs pages ${pack.name} does not ship (#938); link this release's copy with docsUrl() from packages/core/src/release.ts, name a shipped page, or a urlcode docs search query:\n${deadStrings.join('\n')}`);
+    const deadText: string[] = [];
+    for (const path of [...shipped].filter(isPackedText).sort()) deadText.push(...packedTextProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
+    assert.deepEqual(deadText, [], `Shipped text names docs pages ${pack.name} does not ship (#948); link this repository's blob/v<current version>/docs/... (npm run release:bump moves it), name a shipped page, or a urlcode docs search query:\n${deadText.join('\n')}`);
     // Core also carries its add-on pins and the release-wide add-on agent catalog beside them (#721).
     const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {}), ...(kind === 'core' ? ['dist/addons.json', 'dist/addon-catalog.json'] : [])]
       .map(path => path.replace(/^\.\//, ''));

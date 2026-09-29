@@ -96,5 +96,24 @@ link a page as `docsUrl('HTTP.md#error-format')` from
 core's source that the bump rewrites. The package audit parses every packed
 script and fails when a string or template literal (not a comment) names a
 `docs/*.md` page the package does not ship (#938).
+
+Other packed text follows it too (#948): schema descriptions, which an editor
+shows on hover, comments in example and starter YAML, the llms indexes and every
+other packed file that is neither Markdown nor code. They have no marker blocks,
+so they carry this release's full URL,
+`https://github.com/jimhoyd-com/urlcode/blob/v<version>/docs/...`, and
+`release:bump` rewrites every such link in tracked non-Markdown text (JSON,
+YAML, TXT, TOML, HTML, CSS; not this repository's tests, scripts or workflows);
+`--check` fails when one names another version. `npm run docs:reference` turns
+a schema description's pinned URL into a reference link labelled by its
+`docs/` path, defined in the page's marker block, so `YAML-REFERENCE.md` names
+the version once. `scripts/build-llms-full.ts` links a bare `docs/X.md`
+mention in prose, or a code span holding only that path, to the release tag
+when the package does not ship the page. The package audit reads every other
+packed text line, fenced or not, and fails on a `docs/*.md` mention of a page
+the package does not ship that is not a link label, and on a main-branch link
+outside a `package.json` (a manifest's `homepage` names the project).
+TypeScript declarations are code, and their comments are not read.
+
 The release procedure is in
 [release operations](RELEASE-OPERATIONS.md#release-a-version).

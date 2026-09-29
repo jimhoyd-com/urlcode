@@ -5,7 +5,7 @@
 # directory). Where the built-in endpoint (prometheus-scrape.yaml, enabled with
 # startServer({ metrics: true })) offers the same signal, a comment gives the
 # equivalent expression; it labels by status_class rather than exact status.
-# Rule names are explained in docs/MONITORING.md.
+# Rule names are explained in https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MONITORING.md.
 groups:
   - name: urlcode-availability
     interval: 30s

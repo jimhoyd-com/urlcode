@@ -44,6 +44,17 @@ function documentation(root: string): string[] {
   return tracked(root).filter(path => (path.endsWith('.md') || path === 'llms.txt') && !path.endsWith('/CHANGELOG.md'));
 }
 const LLMS_FULL = 'llms-full.txt';
+/** This repository's tree at a release tag, as pinned in non-Markdown text: the version it names. */
+const PINNED_RELEASE = /(?<=github\.com\/jimhoyd-com\/urlcode\/(?:blob|tree)\/v)\d[^/\s#)"'`]*(?=\/)/g;
+/**
+ * Tracked non-Markdown text whose links to this repository name a release tag (#948): schema descriptions, example
+ * YAML comments and the like, which have no urlcode-current-version blocks. Every such link names the current
+ * version and the bump moves it. This repository's tests, scripts and workflows are not release text (a starter's workflow is), and the llms indexes are handled
+ * above.
+ */
+function pinnedText(root: string): string[] {
+  return tracked(root).filter(path => /\.(?:json|ya?ml|txt|toml|html|css)$/.test(path) && !['llms.txt', LLMS_FULL, 'package-lock.json'].includes(path) && !/^(?:\.github|scripts|test)\/|^packages\/[^/]+\/(?:scripts|test)\//.test(path));
+}
 const hasLlmsFull = (root: string): boolean => tracked(root).includes(LLMS_FULL);
 /** Every version outside the marker blocks is history; every block names the current version. */
 function markedVersions(text: string, path: string, version: string): number {
@@ -119,6 +130,9 @@ export async function check(root = repositoryRoot): Promise<string> {
   let blocks = 0;
   for (const path of documentation(root)) blocks += markedVersions(await readFile(join(root, path), 'utf8'), path, version);
   assert(blocks > 0, 'No urlcode-current-version blocks found');
+  for (const path of pinnedText(root)) {
+    for (const match of (await readFile(join(root, path), 'utf8')).matchAll(PINNED_RELEASE)) assert.equal(match[0], version, `${path} links this repository at v${match[0]}; a pinned link names the current version ${version}`);
+  }
   if (hasLlmsFull(root)) assert(await readFile(join(root, LLMS_FULL), 'utf8') === await buildLlmsFull(root), `${LLMS_FULL} is not built for ${version}; run npm run docs:llms`);
   return version;
 }
@@ -155,6 +169,10 @@ export async function bump(version: string, root = repositoryRoot): Promise<stri
     const text = await readFile(join(root, path), 'utf8');
     if (!text.includes(markerStart)) continue;
     const next = text.replace(markerBlock, (whole, marked: string) => whole.replace(marked, marked.replaceAll(previous, version)));
+    if (next !== text) await write(path, next);
+  }
+  for (const path of pinnedText(root)) {
+    const text = await readFile(join(root, path), 'utf8'), next = text.replace(PINNED_RELEASE, version);
     if (next !== text) await write(path, next);
   }
   if (hasLlmsFull(root)) await write(LLMS_FULL, await buildLlmsFull(root));

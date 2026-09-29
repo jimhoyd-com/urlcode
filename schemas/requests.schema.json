@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/schemas/requests.schema.json",
   "title": "URLCode request fixtures",
-  "description": "tests/requests.json, replayed by `urlcode test` and `urlcode audit`: an array of request cases and ordered `steps` fixtures. Unknown keys are rejected. See docs/READINESS.md.",
+  "description": "tests/requests.json, replayed by `urlcode test` and `urlcode audit`: an array of request cases and ordered `steps` fixtures. Unknown keys are rejected. See https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md.",
   "type": "array",
   "maxItems": 10000,
   "items": {
@@ -45,7 +45,7 @@
     "expectSignals": {
       "type": "array",
       "maxItems": 8,
-      "description": "Signals this request must emit, checked by `urlcode test` and `urlcode audit`, which record signals in process and deliver none. Each entry counts the captured signals it matches: exactly `count` when given, else at least one. An empty array expects no signal at all. Signals the list does not mention are allowed. `urlcode verify-deployment` cannot observe a deployment's signals and reports these as not checked. See docs/EGRESS.md.",
+      "description": "Signals this request must emit, checked by `urlcode test` and `urlcode audit`, which record signals in process and deliver none. Each entry counts the captured signals it matches: exactly `count` when given, else at least one. An empty array expects no signal at all. Signals the list does not mention are allowed. `urlcode verify-deployment` cannot observe a deployment's signals and reports these as not checked. See https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md.",
       "items": {
         "type": "object",
         "properties": {
