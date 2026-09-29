@@ -58,5 +58,7 @@ committed lockfile keep an existing application from changing on a new release.
 `urlcode init` writes a `package.json` pinning the running runtime exactly;
 `urlcode extensions add` and `urlcode artifacts add` add each add-on's release
 tarball URL, and `package-lock.json` records its integrity.
+`addon-files.lock.json` records the sha256 of every installed add-on file.
 `urlcode extensions list --strict` and `urlcode artifacts list --strict` fail
-when the lockfile no longer matches core's pins.
+when the lockfile no longer matches core's pins or an installed file no longer
+matches its record.

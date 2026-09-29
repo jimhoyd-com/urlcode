@@ -7,7 +7,9 @@ application's YAML and tests describe only the behavior you intend to ship.
 - `host.mjs` is the trusted operator host. It lists the installed extensions
   and stays outside `app/`.
 - `package.json` pins the URLCode runtime, and every add-on, exactly;
-  `package-lock.json` records their integrity.
+  `package-lock.json` records their integrity, and `addon-files.lock.json`
+  (written by `urlcode extensions add` / `artifacts add`; commit it) the sha256
+  of every installed add-on file, which `urlcode extensions verify` checks.
 
 ```sh
 npm install

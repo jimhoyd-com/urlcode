@@ -847,14 +847,16 @@ components come from `get_addon_agent_tooling`, `get_extension_artifacts` and
 `get_extensions`. Reading it imports, downloads and installs nothing.
 `get_extension_artifacts` lists the artifacts installed in the site around the
 project (`<site>/node_modules`), released or [independent](EXTENSIONS.md#independent-artifact-packages),
-checking each is inert and pin-verified (core's pin, or npm's lock integrity),
-and returns its package, version, status, files and listed documents.
+checking each is inert, pin-verified (core's pin, or npm's lock integrity) and
+unmodified against the sha256 record in `addon-files.lock.json` (status
+`modified` otherwise; see [the installed file record](EXTENSIONS.md#the-installed-file-record)),
+and returns its package, version, status, file check, files and listed documents.
 `get_extension_artifact` accepts only an installed, pinned artifact name and one
 of its JSON, YAML or Markdown paths, and labels the content as untrusted
 package data. `inspect_extension_artifact {name}` returns exactly what
 `urlcode artifacts inspect <name> --json` prints, from the same core function:
 each listed document's media type, detected OpenAPI version or JSON Schema
-dialect, sha256, size and origin, its local `$ref`s resolved inside the
+dialect, sha256, size and origin, the installed-file check, its local `$ref`s resolved inside the
 package, and diagnostics for remote references (listed, never fetched),
 unresolvable references, cycles and limits (see
 [inspecting documents](EXTENSIONS.md#inspecting-artifact-documents)).

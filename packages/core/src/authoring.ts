@@ -14,6 +14,7 @@ import { projectScripts } from './context.ts';
 import { runningCoreVersion } from './version.ts';
 import { HOST_FILE, PROJECT_DIRECTORY, renderInitialHost } from './addon-install.ts';
 import { enclosingProject, isFile } from './site-layout.ts';
+import { ADDON_FILES_LOCK } from './package-files.ts';
 
 /**
  * Points the copied starter's version-bearing references at the release of the runtime running init: the
@@ -70,7 +71,7 @@ export interface InitOptions {
    * with what init writes; otherwise only new files are written and every existing entry is left exactly as it is.
    */
   adopt?: boolean | undefined;
-  /** npm runs after init (`init --with`), so node_modules and package-lock.json are part of what an adopting init writes. */
+  /** npm runs after init (`init --with`), so node_modules, package-lock.json and addon-files.lock.json are part of what an adopting init writes. */
   installs?: boolean | undefined;
   /**
    * `--no-mcp` (`mcp: false`): write no MCP client configuration. `.mcp.json` is the only client or agent
@@ -171,7 +172,7 @@ export async function planInit(destination: string, options: InitOptions = {}): 
   if (options.mcp !== false && !existing.includes(mcpConfigFile)) files.push({ path: mcpConfigFile, mode: 0o644 });
   // In place, npm's package.json gains the pin and scripts; adopting, it would be an existing file init changes.
   if (mode !== 'in-place' || !existing.includes('package.json')) files.push({ path: 'package.json', mode: 0o644 });
-  const collisions = mode === 'adopt' ? await findCollisions(target, files.map(file => file.path), [PROJECT_DIRECTORY, ...(options.installs ? ['node_modules', 'package-lock.json'] : [])]) : [];
+  const collisions = mode === 'adopt' ? await findCollisions(target, files.map(file => file.path), [PROJECT_DIRECTORY, ...(options.installs ? ['node_modules', 'package-lock.json', ADDON_FILES_LOCK] : [])]) : [];
   const site = mode !== 'adopt' ? undefined : await isFile(join(target, PROJECT_DIRECTORY, 'urlcode.yaml')) ? `${PROJECT_DIRECTORY}/urlcode.yaml` : await isFile(join(target, 'urlcode.yaml')) ? 'urlcode.yaml' : undefined;
   const enclosing = options.adopt ? await enclosingProject(target) : undefined;
   let refusal: string | undefined;

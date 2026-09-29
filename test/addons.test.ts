@@ -221,7 +221,8 @@ test('an independent extension package installs by spec, is found by its descrip
   assert.deepEqual(loaded.document.extensions, { greeting: { version: '1', config: { text: 'hi' } } });
   assert.deepEqual(loaded.document.includes, ['routes/greeting.yaml']);
   assert.match(await readFile(join(dir, 'host.mjs'), 'utf8'), /import greeting from '@example\/urlcode-greeting\/extension';/);
-  await assert.rejects(addAddons(dir, 'extension', [join(fixtures, 'greeting')], { manifest: m }), /already installed; nothing to do/);
+  const again = await addAddons(dir, 'extension', [join(fixtures, 'greeting')], { manifest: m });
+  assert.deepEqual([again.added, again.upgraded, again.alreadyInstalled], [[], [], [join(fixtures, 'greeting')]], 're-adding the same spec is a no-op');
 
   const report = await listAddons(dir, 'extension', { manifest: m });
   assert.deepEqual(report.problems, []);
@@ -356,7 +357,10 @@ test('list --strict accepts an extension installed only as a library, but not dr
   await writeFile(lockFile, JSON.stringify(lock));
   const mismatch = await state(library);
   assert.equal(mismatch.mode, 'library');
-  assert.deepEqual(mismatch.problems, [`alpha: @jimhoyd/urlcode-alpha should link the development source file:${join(fixtures, 'alpha')}`], 'a library install is still checked against the pin');
+  assert.deepEqual(mismatch.problems, [
+    `alpha: @jimhoyd/urlcode-alpha should link the development source file:${join(fixtures, 'alpha')}`,
+    'alpha: package-lock.json locks @jimhoyd/urlcode-alpha 9.9.9 sha512-other, but addon-files.lock.json recorded 1.0.0 (linked): it was changed outside `urlcode extensions add`; add it again with `urlcode extensions add` so it passes the install checks',
+  ], 'a library install is still checked against the pin, and against the files record');
 });
 
 test('a failed npm install rolls every file back, and node_modules with them', async t => {

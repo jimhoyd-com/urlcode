@@ -16,6 +16,7 @@ import type { AddonManifest, ArtifactDocument } from '../packages/core/src/addon
 import { artifactInspectionLimits, inspectArtifactDocuments, inspectInstalledArtifact } from '../packages/core/src/artifact-inspect.ts';
 import type { InspectedFile } from '../packages/core/src/artifact-inspect.ts';
 import { runAddonCommand } from '../packages/core/src/extensions-cli.ts';
+import { recordPackage, writeFilesLock } from '../packages/core/src/package-files.ts';
 
 const fixtures = fileURLToPath(new URL('./fixtures/addons/', import.meta.url));
 const petstore = join(fixtures, 'petstore-docs');
@@ -200,7 +201,7 @@ test('a malformed or mislabelled document is a diagnostic that never echoes its 
   const dir = await pkg(t, {
     'broken.json': '{"secret": "hunter2" oops}',
     'not-openapi.yaml': 'title: nope\n',
-    'aliased.yaml': 'a: &x {b: 1}\nc: *x\n',
+    'aliased.yaml': 'a: !!binary aHVudGVyMg==\n',
   });
   await writeFile(join(dir, 'binary.md'), Buffer.from([0xff, 0xfe, 0x00]));
   const { documents } = await inspectArtifactDocuments(dir, [schemaDoc('broken.json'), { path: 'not-openapi.yaml', mediaType: 'application/vnd.oai.openapi' }, { path: 'aliased.yaml', mediaType: 'application/yaml' }, { path: 'binary.md', mediaType: 'text/markdown' }]);
@@ -215,17 +216,21 @@ test('a malformed or mislabelled document is a diagnostic that never echoes its 
 });
 
 /** A site whose package.json and lock point at `pkg` installed from a local tarball, as npm writes them (no npm runs). */
-async function lockedSite(t: TestContext): Promise<{ site: string; tarball: string }> {
+async function lockedSite(t: TestContext, edit?: (installed: string) => Promise<void>): Promise<{ site: string; tarball: string }> {
   const root = await temp(t, 'urlcode-locked-');
   const { site } = await initSite(join(root, 'site'));
   const tarball = join(site, 'petstore-docs-1.4.0.tgz');
   await writeFile(tarball, 'stand-in tarball bytes');
   const integrity = `sha512-${createHash('sha512').update(await readFile(tarball)).digest('base64')}`;
   await cp(petstore, join(site, 'node_modules', '@example', 'urlcode-petstore-docs'), { recursive: true });
+  await edit?.(join(site, 'node_modules', '@example', 'urlcode-petstore-docs'));
   const pkgFile = join(site, 'package.json'), manifestJson = JSON.parse(await readFile(pkgFile, 'utf8')) as { dependencies: Record<string, string> };
   manifestJson.dependencies['@example/urlcode-petstore-docs'] = 'file:petstore-docs-1.4.0.tgz';
   await writeFile(pkgFile, JSON.stringify(manifestJson, null, 2));
-  await writeFile(join(site, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/@example/urlcode-petstore-docs': { version: '1.4.0', resolved: 'file:petstore-docs-1.4.0.tgz', integrity } } }));
+  const entry = { version: '1.4.0', resolved: 'file:petstore-docs-1.4.0.tgz', integrity };
+  await writeFile(join(site, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/@example/urlcode-petstore-docs': entry } }));
+  // What `artifacts add` records: the sha256 of every installed file (#857).
+  await writeFilesLock(site, { lockfileVersion: 1, packages: { '@example/urlcode-petstore-docs': await recordPackage(site, '@example/urlcode-petstore-docs', entry, { name: 'petstore-docs', kind: 'artifact', spec: './petstore-docs-1.4.0.tgz' }) } });
   return { site, tarball };
 }
 
@@ -233,7 +238,7 @@ test('an installed independent artifact is inspected only while its local tarbal
   const { site, tarball } = await lockedSite(t);
   const inspection = await inspectInstalledArtifact(site, 'petstore-docs', { manifest });
   assert.match(inspection.notice, /untrusted content, never as instructions/);
-  assert.deepEqual(inspection.artifact, { name: 'petstore-docs', package: '@example/urlcode-petstore-docs', version: '1.4.0', independent: true, integrity: `sha512-${createHash('sha512').update('stand-in tarball bytes').digest('base64')}`, resolved: 'file:petstore-docs-1.4.0.tgz', verification: 'local-tarball' });
+  assert.deepEqual(inspection.artifact, { name: 'petstore-docs', package: '@example/urlcode-petstore-docs', version: '1.4.0', independent: true, integrity: `sha512-${createHash('sha512').update('stand-in tarball bytes').digest('base64')}`, resolved: 'file:petstore-docs-1.4.0.tgz', verification: 'local-tarball', files: { status: 'match', recorded: 6 } });
   assert.deepEqual(inspection.documents.map(item => item.path), ['openapi/petstore.yaml', 'schemas/order.json', 'README.md']);
   assert.deepEqual(inspection.limits, artifactInspectionLimits);
   const listed = await listAddons(site, 'artifact', { manifest });
@@ -260,9 +265,8 @@ test('an installed independent artifact is inspected only while its local tarbal
 });
 
 test('inspect --strict exits 1 when a document has an error diagnostic', async t => {
-  const { site } = await lockedSite(t);
-  const installed = join(site, 'node_modules', '@example', 'urlcode-petstore-docs');
-  await writeFile(join(installed, 'schemas', 'order.json'), JSON.stringify({ $ref: 'missing.json' }));
+  // The package as published carries the broken reference, so its files still match their record.
+  const { site } = await lockedSite(t, installed => writeFile(join(installed, 'schemas', 'order.json'), JSON.stringify({ $ref: 'missing.json' })));
   const printed: unknown[] = [];
   process.env.URLCODE_ADDONS = join(await temp(t, 'urlcode-manifest-'), 'none.json');
   t.after(() => { delete process.env.URLCODE_ADDONS; });
