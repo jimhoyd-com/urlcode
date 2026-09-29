@@ -163,11 +163,14 @@ Use validated `args` and `inputs` instead of parsing query strings again. Return
 JSON through `Response.json`; escape user data explicitly when producing HTML.
 For dynamic redirects, map a validated enum to known destinations rather than
 accepting any user-controlled URL. Keep modules free of top-level work other than
-simple definitions: initialization runs during validation and fresh invocations.
+simple definitions: initialization runs during validation, on reload and, for
+`sandbox: true`, on every invocation.
 
 Prefer pure helpers with explicit inputs and outputs. Module globals are not a
-cache, database, session store or rate limiter: guest state resets per request
-regardless of trust mode. If a route declares `sandbox: true`, review
+cache, database, session store or rate limiter: a trusted route's module state
+lasts only as long as its process and is not shared across replicas, and a
+`sandbox: true` route's resets on every call
+([what persists](FUNCTION-SECURITY.md#what-the-trusted-default-can-and-cant-do)). If a route declares `sandbox: true`, review
 [sandbox constraints](FUNCTION-SECURITY.md) before choosing dependencies —
 trusted (default) routes have ordinary Node module access instead.
 
