@@ -160,7 +160,7 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
     item.patch = update('Update', names.patch);
     item.delete = {
       summary: `Delete a ${name} record`, parameters: [ifMatch, ...retry],
-      responses: { '204': { description: 'Deleted.', headers: spec.idempotency ? { 'Idempotency-Replayed': replayed } : {} }, '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'), '404': notFound, '412': failure('precondition_failed: the record changed since that ETag.'), ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable },
+      responses: { '204': { description: 'Deleted.', headers: spec.idempotency ? { 'Idempotency-Replayed': replayed } : {} }, '400': badRequest, '403': failure('forbidden_origin: a cross-origin write.'), '404': notFound, ...(Object.keys(spec.transfers).length ? { '409': failure('balance_not_zero: the record still holds a transfer balance; transfer it out first, so the sum never changes.') } : {}), '412': failure('precondition_failed: the record changed since that ETag.'), ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable },
     };
   }
   paths[`${mount}/{id}`] = item;

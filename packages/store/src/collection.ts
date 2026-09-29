@@ -219,6 +219,18 @@ export class StoreError extends Error {
   readonly status: number; readonly code: string; readonly fields: FieldErrors | undefined; readonly issues: readonly BodySchemaIssue[] | undefined; readonly conflict: { id: string } | undefined;
   constructor(status: number, code: string, message: string, details: StoreErrorDetails = {}) { super(message); this.status = status; this.code = code; this.fields = details.fields; this.issues = details.issues; this.conflict = details.conflict; }
 }
+/**
+ * Refuses deleting a record that still holds a transfer balance (#928): on a collection declaring `transfers`, the sum
+ * of each amount property never changes, so a record leaves only at 0. 409 `balance_not_zero`, naming no amount; every
+ * delete path (HTTP DELETE, a host transaction's `remove`, the operator's ownerless-delete) calls it
+ * before writing anything.
+ */
+export function refuseBalance(spec: Pick<NormalizedSpec, 'transfers'>, record: Readonly<StoredRecord>): void {
+  for (const transfer of Object.values(spec.transfers)) {
+    const held = record[transfer.amount];
+    if (held !== undefined && held !== 0) throw new StoreError(409, 'balance_not_zero', 'The record still holds a balance; transfer it to another record before deleting it');
+  }
+}
 /** The 422 for a record that breaks the collection schema (or a store rule on a named property). */
 export const invalidRecord = (issues: readonly BodySchemaIssue[]): StoreError => new StoreError(422, 'invalid_record', 'Record does not match the collection schema', { issues });
 
@@ -289,10 +301,10 @@ export const collectionSchema = {
       scope: { enum: ['collection', 'owner'], description: 'collection (default): every record blocks every other, across owners on an owned collection (another owner\'s conflicting record is never named). owner: with ownership: owner only, each owner\'s records are constrained among themselves.' },
       when: { type: 'object', minProperties: 1, maxProperties: INTERVAL_LIMITS.when, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property\'s schema. Without it every record takes part.' },
     } },
-    transfers: { description: 'Declared transfers by name: POST <mount>/transfers/<name> with the JSON body {from, to, amount} (two distinct record ids and a positive whole number) subtracts amount from the from record\'s amount property and adds it to the to record\'s in one transaction, so the sum over the collection never changes; a debit that would leave from below min answers 409 insufficient_balance and nothing is written. On an owned collection the caller may debit only its own record and may credit any owned record (a transfer between owners); on a shared collection anyone who reaches the mount may move between any two records, so gate it with members or the route. Honours If-Match (on from) and Idempotency-Key; audited as store.record.transferred on both records. Not on a membership collection.', type: 'object', maxProperties: TRANSFER_LIMITS.transfers, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
+    transfers: { description: 'Declared transfers by name: POST <mount>/transfers/<name> with the JSON body {from, to, amount} (two distinct record ids and a positive whole number) subtracts amount from the from record\'s amount property and adds it to the to record\'s in one transaction, so the sum over the collection never changes (a record is created at 0 and deleted only at 0, else 409 balance_not_zero); a debit that would leave from below min answers 409 insufficient_balance and nothing is written. On an owned collection the caller may debit only its own record and may credit any owned record (a transfer between owners); on a shared collection anyone who reaches the mount may move between any two records, so gate it with members or the route. Honours If-Match (on from) and Idempotency-Key; audited as store.record.transferred on both records. Not on a membership collection.', type: 'object', maxProperties: TRANSFER_LIMITS.transfers, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['amount'],
       properties: {
-        amount: { type: 'string', pattern: FIELD_NAME, description: 'A required integer property with an integer default (a currency in minor units): the balance moved. Not an increment and not named by intervals. List it under readOnlyProperties so only transfers change it.' },
+        amount: { type: 'string', pattern: FIELD_NAME, description: 'A required integer property with default 0 (a currency in minor units), listed under readOnlyProperties: the balance moved. Only transfers change it: not an increment, not set or stamped by a transition and not named by intervals. A record still holding a nonzero balance cannot be deleted (409 balance_not_zero).' },
         min: { type: 'integer', minimum: -Number.MAX_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER, description: 'The lowest value the debited record may be left holding (default 0: no overdraft). A negative min on a members-gated transfer is an issuer: its records may go below zero, which is the supply outstanding, and the sum still never changes.' },
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transfer; anyone else gets 403 membership_required before any record is read.' },
       },
@@ -490,7 +502,7 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (Object.values(transitions).some(transition => transition.mount === readers.mount)) throw new Error(`Collection ${name}: the readers mount must differ from every transition mount`);
   }
   const intervals = spec.intervals === undefined ? undefined : intervalsOf(name, spec.intervals, records, ownership, membership, increments);
-  const transfers = transfersOf(name, spec, records, increments, intervals);
+  const transfers = transfersOf(name, spec, records, increments, intervals, transitions);
   for (const field of records.readOnly) {
     // A create never carries a readOnly property, so a required one is satisfiable only through its default.
     if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
@@ -501,10 +513,13 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
 
 /**
  * Validates the declared transfers (#902). The amount property is a required integer with an integer default, so every
- * record created under the declaration holds a whole balance. It may not be an increment (which would change the sum
- * outside a transfer) or a property the interval constraint reads (a transfer does not run the interval check).
+ * record created under the declaration holds a whole balance. The sum over the collection never changes (#928), so
+ * only a transfer may change the amount: it is readOnly (no create, PUT or PATCH body names it), its default is 0 (a
+ * create adds nothing to the sum), no transition sets or stamps it, it is not an increment and no interval constraint
+ * reads it (a transfer does not run the interval check). A delete of a record still holding a balance is refused at
+ * write time (`refuseBalance`).
  */
-function transfersOf(name: string, spec: CollectionSpec, records: CompiledRecordSchema, increments: readonly string[], intervals: NormalizedIntervals | undefined): Record<string, NormalizedTransfer> {
+function transfersOf(name: string, spec: CollectionSpec, records: CompiledRecordSchema, increments: readonly string[], intervals: NormalizedIntervals | undefined, transitions: Record<string, NormalizedTransition>): Record<string, NormalizedTransfer> {
   const out: Record<string, NormalizedTransfer> = {};
   const intervalFields = intervals ? [intervals.start, intervals.end, ...intervals.within, ...Object.keys(intervals.when)] : [];
   for (const [transfer, declared] of Object.entries(spec.transfers ?? {})) {
@@ -514,6 +529,10 @@ function transfersOf(name: string, spec: CollectionSpec, records: CompiledRecord
     if (property.type !== 'integer' || !records.required.includes(field) || !Number.isSafeInteger(records.defaults[field])) throw new Error(`${where}: amount property ${field} must be a required integer property with an integer default (count a currency in minor units)`);
     if (increments.includes(field)) throw new Error(`${where}: amount property ${field} is an increment, which would change the sum outside a transfer`);
     if (intervalFields.includes(field)) throw new Error(`${where}: amount property ${field} is named by intervals, which a transfer does not check`);
+    if (!records.readOnly.includes(field)) throw new Error(`${where}: amount property ${field} must be listed under readOnlyProperties, so only a transfer changes it and the sum never does`);
+    if (records.defaults[field] !== 0) throw new Error(`${where}: amount property ${field} must default to 0, so a new record adds nothing to the sum; fund records with a transfer from an issuer (a negative min)`);
+    const setter = Object.keys(transitions).find(transition => hasOwn(transitions[transition]!.set, field) || hasOwn(transitions[transition]!.stamp, field));
+    if (setter !== undefined) throw new Error(`${where}: amount property ${field} is set by transition ${setter}, which would change the sum outside a transfer`);
     const min = declared.min ?? 0;
     if (!Number.isSafeInteger(min)) throw new Error(`${where}: min must be a safe integer`);
     out[transfer] = { amount: field, min, ...(declared.members === undefined ? {} : { members: declared.members }) };
@@ -1257,6 +1276,7 @@ export class Collection {
     this.writable();
     const current = this.current(db, id, scope);
     if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
+    refuseBalance(this.spec, current);
     db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', this.name, id);
     return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor, {}, current) };
   }

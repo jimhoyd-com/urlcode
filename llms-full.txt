@@ -592,7 +592,9 @@ Nine gaps were found. The main five:
 - A non-member could create a booking. Creates can't be limited to a
   membership list.
 - `DELETE` of a wallet holding credits succeeded, which breaks the
-  sum-never-changes guarantee.
+  sum-never-changes guarantee. Since fixed
+  ([#928](https://github.com/jimhoyd-com/urlcode/issues/928)): it answers
+  `409 balance_not_zero`.
 - Fixtures run against the site's own `data/` databases. Accounts and members
   are created out of band, and a rerun of the credits fixtures failed.
 - `READINESS.md` and the store's interval and transfer sections are not

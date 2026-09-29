@@ -43,6 +43,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   own record and may credit anyone's (`to` is answered only when the caller owns it). Integers only (minor units);
   a fraction or `from == to` is `422 invalid_transfer`. `If-Match` (on `from`), `Idempotency-Key` and audit
   (`store.record.transferred` on both records) apply. A members-gated transfer with a negative `min` is an issuer.
+  The amount property must be in `readOnlyProperties` with default 0 and set by no transition; deleting a record
+  holding a nonzero amount is `409 balance_not_zero` on every path (HTTP, host transaction `remove`, operator CLI).
 - Scheduling: `intervals: {start, end, within?, scope?: collection|owner, when?}` on a collection refuses any
   write whose half-open `[start, end)` overlaps another record's in its scope with `409 interval_conflict`
   (checked in the write's transaction through a partial index; `error.conflict.id` only for a record the

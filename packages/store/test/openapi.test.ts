@@ -177,6 +177,8 @@ test('a declared transfer is described with its generated body, its answer and i
   assert.deepEqual(Object.keys(pay.responses), ['200', '400', '401', '403', '404', '409', '412', '413', '415', '422', '503']);
   assert.match(String((pay.responses['409'] as Json).description), /insufficient_balance.*transfer_limit/);
   assert.match(String(((document.paths['/api/wallets/transfers/issue']!.post as Operation).responses['403'] as Json).description), /membership_required/);
+  // #928: a record still holding a balance is not deleted.
+  assert.match(String(((document.paths['/api/wallets/{id}']!.delete as Operation).responses['409'] as Json).description), /balance_not_zero/);
   // A served transfer's answer is what the document says it is.
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions });
   cleanup(t, () => app.close());

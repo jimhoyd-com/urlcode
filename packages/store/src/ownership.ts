@@ -28,8 +28,8 @@
 import { isAbsolute } from 'node:path';
 import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
-import { AUDIT_BACKLOG, StoreError, membershipEvent, normalize, overlapping, stamp, writeAuditEvent } from './collection.ts';
-import type { CollectionSpec, NormalizedSpec } from './collection.ts';
+import { AUDIT_BACKLOG, StoreError, membershipEvent, normalize, overlapping, refuseBalance, stamp, writeAuditEvent } from './collection.ts';
+import type { CollectionSpec, NormalizedSpec, StoredRecord } from './collection.ts';
 import { auditValidator, operatorActor } from './membership.ts';
 import { auditDelivery, openStoreDatabase } from './database.ts';
 import type { AuditDelivery, StoreDatabase } from './database.ts';
@@ -119,11 +119,16 @@ export async function assignOwnerless(database: string, options: OwnerlessOption
     return { collection, records: total(db, collection), ownerless: 0, ids, ...(validate ? auditDelivery(db, [collection], Date.now()) : {}) };
   });
 }
-/** Deletes every record that has no owner. Records that have one are untouched. */
+/**
+ * Deletes every record that has no owner. Records that have one are untouched. On a collection declaring `transfers`,
+ * one ownerless record still holding a balance refuses the whole command (409 `balance_not_zero`, #928) and nothing is
+ * deleted: assign the records first and transfer the balance out.
+ */
 export async function deleteOwnerless(database: string, options: OwnerlessOptions): Promise<OwnerlessReport> {
-  const { collection, validate, actor } = await ownedCollection(options);
+  const { collection, spec, validate, actor } = await ownedCollection(options);
   return transaction(database, db => {
     const ids = ownerlessIds(db, collection);
+    if (Object.keys(spec.transfers).length) for (const row of db.all<{ data: string }>('SELECT data FROM store_records WHERE collection = ? AND owner IS NULL ORDER BY seq', collection)) refuseBalance(spec, JSON.parse(row.data) as StoredRecord);
     if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
     db.run('DELETE FROM store_records WHERE collection = ? AND owner IS NULL', collection);
     if (validate) for (const id of ids) writeAuditEvent(db, collection, validate, { action: 'store.record.deleted', actor, subject: `${collection}/${id}`, metadata: { collection, ownerless: true } });
