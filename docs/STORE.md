@@ -142,8 +142,9 @@ Status codes: `400` malformed JSON, header or query, `403` `own_record_refused` 
 `transition_conflict`, or `interval_conflict` with
 [declared intervals](#non-overlapping-intervals)), `412` stale `If-Match`, `413` body or record too
 large, `415`, `422` `invalid_record` or `idempotency_key_reused`, `503`
-`storage_unavailable` when the database write failed or another process held its
-lock past the busy timeout (nothing is written), `500` for anything unexpected
+`storage_unavailable` when the database write failed, another process held its
+lock past the busy timeout or a newer activation redeclared the collection
+([fence](#several-serving-processes-on-one-host); nothing is written), `500` for anything unexpected
 (no cause in the body).
 
 ## Bounded keyed transitions
@@ -692,8 +693,9 @@ claims as they are and moves membership with the owned records.
 **One process and several.** Every guarantee here is a SQLite `BEGIN
 IMMEDIATE` transaction on one database file, so it holds for every connection
 to that file: the tests race retries and approvals from separate threads, each
-with its own connection, as separate processes would. The supported deployment
-is still one serving process (see [storage](#storage-and-concurrency-what-it-does-and-does-not-guarantee));
+with its own connection, and run the declaration fence across real child
+processes. Several serving processes on one host, on one release, are
+supported ([several serving processes](#several-serving-processes-on-one-host));
 several hosts, network filesystems and clustered workers are unsupported, and
 nothing spans the store and another database.
 
@@ -1524,9 +1526,13 @@ operator says made the change, not proof of it. Commands that change nothing
   `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
   the request fingerprint, the status and the record id, never record values) and
   `store_audit_outbox` (undelivered audit events), plus the one-row
-  `store_audit_drain` (when the audit drain last kept up; schema version 3)
-  and `store_transaction_results` (retained
-  [host transaction](#host-transactions) keys and results; schema version 4).
+  `store_audit_drain` (when the audit drain last kept up, schema version 3;
+  and which process holds the drain's lease, schema version 5),
+  `store_transaction_results` (retained
+  [host transaction](#host-transactions) keys and results; schema version 4),
+  `store_declarations` (the [declaration fence](#several-serving-processes-on-one-host):
+  each collection's served declaration fingerprint; schema version 5) and
+  `store_servers` (one lease row per serving process; schema version 5).
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   tables; the rows of a collection that is no longer declared stay untouched.
@@ -1559,16 +1565,14 @@ operator says made the change, not proof of it. Commands that change nothing
 - Nothing is cached in memory: every read queries the database. Activation
   still validates every stored record against the declaration and refuses a
   database that no longer matches it rather than serving bad data.
-- **One process serves the database.** That is the supported and tested
-  deployment. SQLite's file locks keep any other connection from corrupting it:
-  the `urlcode-store` operator commands and an online backup run beside the
-  server, reads are never blocked by a writer, and a write that finds another
-  process holding the write lock waits up to 2 seconds (`busy_timeout`, blocking
-  the server's event loop meanwhile) and then answers `503 storage_unavailable`
-  with nothing written. Nothing refuses a second server over the same database,
-  but that is not tested and not supported (the audit drain, for one, is woken
-  only in the process that wrote the event). Network filesystems, several hosts
-  and clustered workers are unsupported.
+- **Several serving processes on one host** may share the database; see
+  [below](#several-serving-processes-on-one-host) for what that supports and
+  what the store refuses. SQLite's file locks keep every connection from
+  corrupting it: the `urlcode-store` operator commands and an online backup run
+  beside the servers, reads are never blocked by a writer, and a write that
+  finds another process holding the write lock waits up to 2 seconds
+  (`busy_timeout`, blocking the server's event loop meanwhile) and then answers
+  `503 storage_unavailable` with nothing written.
 - Transactions span collections of this one database (`urlcode-store reassign`
   and [host transactions](#host-transactions) use that), but each HTTP request
   changes exactly one record: there is no multi-record or cross-collection
@@ -1603,6 +1607,76 @@ operator says made the change, not proof of it. Commands that change nothing
   server runs is not a consistent backup.
 
 Errors never contain record values, SQL or filesystem paths.
+
+### Several serving processes on one host
+
+The supported topology is N `urlcode serve` processes or containers on **one
+host**, on distinct ports behind a proxy, all on **one release**, with the
+database on **local disk**. Every guarantee above is one `BEGIN IMMEDIATE`
+transaction, so it holds across processes. The tests race the invariants
+from threads, each with its own connection, and run the declaration fence and
+the host lease across real `node` child processes; the race suites do not yet
+run across processes. More processes do not add write throughput:
+SQLite takes one writer at a time, and each commit's fsync blocks its
+process ([capacity](CAPACITY.md#measured-the-sqlite-store)). `node:cluster`
+workers, several hosts and network filesystems stay unsupported.
+
+**The declaration fence.** Each activation records, per collection, a
+fingerprint of its normalized declaration (the record schema with a named
+schema resolved, defaults, `readOnlyProperties`, key, increments, limits,
+ownership, audit, transitions, membership, readers, intervals, transfers,
+idempotency and mounts) and the store schema version, in
+`store_declarations`. The newest activation wins: it replaces what any
+earlier activation, in this process or another, recorded. Every write
+transaction (HTTP writes, increments, transitions, transfers, short-link
+clicks, `StoreExports` writes and each collection a host `transaction()`
+writes) first reads, under the write lock and through the primary key, the
+recorded fingerprint and version and the file's `user_version`. When any of
+them differs from its own, the write answers `503 storage_unavailable` with
+the fixed message `The collection was redeclared by another process` and
+writes nothing. Reads keep working. So an older process, whether it runs the
+previous declaration or a previous release whose schema a newer one migrated,
+cannot keep writing rows the newer declaration forbids. Two processes on the
+same declaration both write. A retiring process never becomes current again
+by itself: to roll back, restart (or reload) the previous release, whose
+activation records its declaration again.
+
+The operator commands carry the project's declaration rather than an
+activation's. A `urlcode-store` command that writes (`members add|remove`,
+`reassign`, `ownerless-assign`, `ownerless-delete`) is refused when a live
+server has recorded a different declaration of a collection it touches, and
+proceeds when none is recorded or no server holds a live lease.
+
+**Refused setups.** Opening the database (serving, or an operator command)
+refuses a database directory on a network filesystem, by the `statfs` type
+on Linux: NFS (`0x6969`), SMB (`0x517b`), SMB2 (`0xfe534d42`), CIFS
+(`0xff534d42`), FUSE (`0x65735546`, which includes sshfs, s3fs and Docker
+Desktop's gRPC FUSE file sharing), 9P (`0x01021997`, WSL2's `/mnt` drives),
+Ceph (`0x00c36400`) and AFS (`0x5346414f`). On macOS and Windows Node exposes
+no filesystem type the check can trust, so it is skipped there. The audit
+extension refuses the same list for `audit.sqlite`. A serving process also
+joins `store_servers`: a lease row with its instance id, hostname, Linux boot
+id (`/proc/sys/kernel/random/boot_id`, when readable) and pid, renewed every
+5 seconds and live for 20. Activation is refused while a live peer reports a
+different boot id (or, when either side has none, a different hostname), that
+is another host sharing the file. Containers on one host have their own
+hostnames and share the boot id, so they are accepted. A lease left by a host
+that is gone expires 20 seconds after its last heartbeat. When an activation
+finds a live peer, it logs one `extension_warning`: throttle policies and
+origin caches are per process, so each process applies its own limits and
+keeps its own cache.
+
+**One audit drainer.** With the audit extension every process has a drain
+loop, but only the holder of the drain lease (`holder` and `lease_until` in
+`store_audit_drain`, 10 seconds, renewed once half is left) peeks and acks
+the outbox; another process peeks nothing. A peer takes the drain over once
+the lease expires, or at its next poll when the holder closes and releases
+it. Delivery stays at least once and stored once: audit inserts by event id
+and ignores a duplicate, and a holder that lost its lease between peek and
+ack leaves the rows for the new holder. An event written in any process is
+drained within the holder's 1 second poll. `audit.flush()` waits for its own
+process's drain only, so in a process that does not hold the lease it does
+not wait for a peer's delivery.
 
 ### Durability
 
@@ -1650,11 +1724,14 @@ activation and closed with its last, so it needs no hand-off:
 - A changed collection declaration reloads too: the replacement validates every
   stored record against its new declaration (a record that no longer matches
   refuses the reload, as it would refuse a restart), and a changed `key`
-  recomputes the stored key column in one transaction. While the retiring
-  runtime finishes in-flight requests, a record it writes that the new
-  declaration cannot represent makes the new view answer
-  `503 storage_unavailable` for requests that read it instead of serving or
-  overwriting it; restart to recover.
+  recomputes the stored key column in one transaction. The replacement's
+  activation records its declarations, so the
+  [declaration fence](#several-serving-processes-on-one-host) refuses the
+  retiring runtime's writes to a changed collection with
+  `503 storage_unavailable` while it finishes in-flight requests; its reads
+  keep working. When the reload fails after the store activated, the
+  replacement's close records the serving runtime's declarations again, so it
+  keeps writing.
 - Changing the host's `database` option needs a restart.
 
 ## Trust and operation
