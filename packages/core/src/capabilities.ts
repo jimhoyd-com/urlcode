@@ -14,7 +14,7 @@ export type CapabilitySupport = PolicySupport | 'conditional' | 'unknown';
 export const capabilityNames = ['extension','policies.extensions','proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'parameters', 'methods', 'enabled', 'expires', 'errors', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle', 'streaming'] as const;
 export type CapabilityName = typeof capabilityNames[number];
 /** The resolved operator registration set, when known (loaded via --host-file, same as `inspectExtensions`). Keyed by extension name. */
-export type ExtensionRegistry = ReadonlyMap<string, RuntimeExtension>;
+type ExtensionRegistry = ReadonlyMap<string, RuntimeExtension>;
 /**
  * The targets each extension declares in its `urlcode.json` descriptor (the release add-on catalog), keyed by name.
  * Read without a host file: it can refuse a target the extension declares no support for, but it never makes an

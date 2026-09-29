@@ -9,7 +9,6 @@
 export const bodySchemaFormatMaxLength = {
   uuid: 36, date: 10, time: 24, 'date-time': 35, email: 254, uri: 2048, hostname: 253, ipv4: 15, ipv6: 45,
 } as const;
-export type BodySchemaFormat = keyof typeof bodySchemaFormatMaxLength;
 
 /**
  * Builds the format checks (every format except `uuid`, which stays a RegExp) and the regexes they use. The caps

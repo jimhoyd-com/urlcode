@@ -2,7 +2,7 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import { HttpError } from './errors.ts';
 
 export type HeaderPair = [string, string];
-export type ResponseBody = string | Uint8Array | null | undefined;
+type ResponseBody = string | Uint8Array | null | undefined;
 /** One piece of a streamed response body: text is sent as UTF-8. An empty chunk sends nothing but commits the status and headers. */
 export type StreamChunk = string | Uint8Array;
 /** A streamed response body: pulled one chunk at a time, cancelled through the iterator's `return()`. */
@@ -16,7 +16,7 @@ export type ResponseStream = AsyncIterable<StreamChunk>;
 export interface HandlerResult { status: number; headers: HeaderPair[]; body?: ResponseBody; contentLength?: number; stream?: ResponseStream }
 interface PreparedResponse { status: number; headers: HeaderPair[]; cookies: string[]; body: ResponseBody }
 /** A streamed result once prepared: runtime-decorated status and headers (no Content-Length); `stream` is absent for HEAD and bodyless statuses. */
-export interface PreparedStream { status: number; headers: HeaderPair[]; cookies: string[]; stream: ResponseStream | undefined }
+interface PreparedStream { status: number; headers: HeaderPair[]; cookies: string[]; stream: ResponseStream | undefined }
 interface ErrorAnswer { status: number; headers: HeaderPair[]; body: string | undefined }
 // `enforceContentLength` defaults to on: the host asks Node itself to refuse
 // a body that does not match the length just stated (belt-and-suspenders
@@ -192,7 +192,7 @@ export const errorCodes: Readonly<Record<number, string>> = Object.freeze({
   503: 'SERVICE_UNAVAILABLE', 504: 'GATEWAY_TIMEOUT',
 });
 /** The envelope code for `status`; `ERROR` for a status outside the closed set (the runtime generates none today). */
-export const errorCode = (status: number): string => errorCodes[status] ?? 'ERROR';
+const errorCode = (status: number): string => errorCodes[status] ?? 'ERROR';
 export const jsonErrorType = 'application/json; charset=utf-8';
 /**
  * The fixed JSON error envelope, `{"error":{"code":…,"message":…}}`, plus the bounded `issues`/`truncated` fields for

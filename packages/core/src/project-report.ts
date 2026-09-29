@@ -22,11 +22,11 @@ import {loadDocument} from './config.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import type {OperatorPolicy} from './policy.ts';
 
-export interface ReportAttention {
+interface ReportAttention {
   /** `fix`: the project will not run as intended with the supplied host file or policy. `check`: a person should look before approving. */
   level:'fix'|'check'; from:'explain'|'review'|'diff'|'policy'; message:string; route?:string;
 }
-export interface ProjectReport {
+interface ProjectReport {
   format:1; projectSha256:string; routeCount:number;
   /** Whether operator registrations were supplied; without them add-on registration and its revision pin are unchecked. */
   host:boolean;
@@ -43,7 +43,7 @@ export interface ProjectReport {
  * this is where an edit to function code, a module it imports or an extension's handler shows. Dot-entries,
  * `node_modules` and symbolic links are skipped; nothing is parsed or run.
  */
-export interface ReportFileChanges {
+interface ReportFileChanges {
   added:string[]; removed:string[]; changed:string[];
   /**
    * Changed or added files a route runs, with those routes: its function or middleware, or a file named in the
@@ -56,7 +56,7 @@ export interface ReportFileChanges {
   /** Set, with the lists empty, when the files could not be read. */
   error?:string;
 }
-export interface ProjectReportOptions {
+interface ProjectReportOptions {
   extensions?:RuntimeExtension[]|undefined;
   /** The operator's binding policy (`--policy`), compared with what the project requests. Its values are never read: a policy holds names only. */
   policy?:OperatorPolicy|undefined;
@@ -78,7 +78,7 @@ export async function buildProjectReport(project:string,options:ProjectReportOpt
     attention,routes:explained.routes,review,...(change?{change}:{})};
 }
 /** Files per side the comparison reads before it stops: a report is for a project, not a whole checkout. */
-export const fileLimit=5000;
+const fileLimit=5000;
 async function fileHashes(root:string):Promise<{files:Map<string,string>;truncated:boolean}> {
   const files=new Map<string,string>();
   let truncated=false;
@@ -350,7 +350,7 @@ ${body}
 </main></body></html>
 `;
 }
-export interface RenderReportOptions {
+interface RenderReportOptions {
   /** When the page was built. `urlcode studio` passes it; `urlcode report` leaves it out so its page is deterministic. */
   builtAt?:Date|undefined;
 }

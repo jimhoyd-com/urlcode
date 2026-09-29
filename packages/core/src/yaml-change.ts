@@ -36,7 +36,7 @@ export interface ChangedRoute {
 }
 /** One project code seam: a route's `function` or one `middleware` entry. */
 export interface CodeSeam { route: string; kind: 'function'|'middleware'; source: string; export: string; mode: ExecutionMode; /** From a project side: the YAML file that declares the route. */ file?: string }
-export type YamlSide = 'yaml'|'project';
+type YamlSide = 'yaml'|'project';
 export interface GrantSet {
   env: { route: string; name: string }[];
   secrets: { route: string; name: string }[];
@@ -172,7 +172,7 @@ export async function summarizeChange(before:YamlChangeInput, after:YamlChangeIn
   return summarizeProjects(await read(before,'before YAML'),await read(after,'after YAML'));
 }
 /** Compares two read sides; see `summarizeYamlChange`. A project side (`sources` present) reports each route's file. */
-export function summarizeProjects(beforeSide:YamlProject, afterSide:YamlProject):YamlChangeSummary {
+function summarizeProjects(beforeSide:YamlProject, afterSide:YamlProject):YamlChangeSummary {
   const unresolved:NonNullable<YamlChangeSummary['routes']['unresolved']>=[];
   const before=setAside(beforeSide,afterSide,'before',unresolved), after=setAside(afterSide,beforeSide,'after',unresolved);
   const sides={before:(before.sources?'project':'yaml') as YamlSide,after:(after.sources?'project':'yaml') as YamlSide};

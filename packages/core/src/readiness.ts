@@ -45,7 +45,7 @@ type CaptureSpec = { json: string } | { header: string } | { cookie: string };
 interface RestartStep { restart: true }
 /** An ordered fixture: requests that share captured values, optionally with restarts between them. */
 interface StepsFixture { steps: (RequestCase | RestartStep)[] }
-export type Fixture = RequestCase | StepsFixture;
+type Fixture = RequestCase | StepsFixture;
 export const isStepsFixture = (fixture: Fixture): fixture is StepsFixture => 'steps' in fixture;
 const isRestartable = (app: AuditableApp): app is RestartableApp => typeof (app as Partial<RestartableApp>).restart === 'function';
 const isRestart = (step: RequestCase | RestartStep): step is RestartStep => 'restart' in step;
@@ -60,7 +60,7 @@ interface HitResult { pass: boolean; status: number; durationMs: number; error?:
  * (from just before `firstDifference`, the first differing character index, when that is further in).
  * `actual` is null when the response had no such header. Only `urlcode test` prints these, for the author's own project.
  */
-export interface Mismatch { check: 'status' | 'header' | 'body'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number }
+interface Mismatch { check: 'status' | 'header' | 'body'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number }
 const MAX_SHOWN = 200;
 const shown = (text: string): string => text.length > MAX_SHOWN ? `${text.slice(0, MAX_SHOWN)}... (${text.length} characters)` : text;
 /** Full-length mismatches; `presented` redacts and shortens them before anything prints them. */
@@ -111,9 +111,9 @@ export type { ComplianceOptions, ComplianceReport } from './compliance.ts';
  * `--trusted-proxies` and `--metrics` on `audit`). The audit's own probe server applies neither;
  * they only decide which `deploymentAdvisories` apply.
  */
-export interface AuditDeployment { trustedProxies?: string | string[] | undefined; metrics?: boolean | undefined }
+interface AuditDeployment { trustedProxies?: string | string[] | undefined; metrics?: boolean | undefined }
 /** A non-blocking finding about how the project will be deployed rather than about one route. */
-export interface DeploymentAdvisory { code: 'client-throttle-without-trusted-proxies' | 'metrics-on-public-listener'; message: string; routes?: string[] }
+interface DeploymentAdvisory { code: 'client-throttle-without-trusted-proxies' | 'metrics-on-public-listener'; message: string; routes?: string[] }
 interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined; deployment?: AuditDeployment | undefined }
 interface AuditReport {
   elapsedMs: number; ready: boolean;

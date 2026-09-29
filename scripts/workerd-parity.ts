@@ -3,13 +3,16 @@
 // by request. Optional and never part of `npm run verify`: it needs the network
 // to install wrangler into a scratch directory, which it does outside the repo.
 // Exit 0 with SKIP when workerd cannot be installed or started here. `npm run test:workerd` builds first, so
-// `dist/` always matches the sources it covers (#868: a stale build once passed every case on both sides).
+// `dist/` always matches the sources it covers (#868: a stale build once passed every case on both sides); a direct
+// `node scripts/workerd-parity.ts` therefore SKIPs, naming the reason, rather than comparing a possibly stale dist/.
+// A run that compared no request never passes (scripts/workerd-parity-verdict.ts).
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { connect, createServer } from 'node:net';
+import { comparisonVerdict, skipVerdict } from './workerd-parity-verdict.ts';
 
 const repo = resolve(import.meta.dirname, '..');
 const npm = process.env.npm_execpath ?? '';
@@ -18,7 +21,7 @@ const scratch = await mkdtemp(join(tmpdir(), 'urlcode-workerd-'));
 const children: ChildProcess[] = [];
 // WORKERD_PARITY_REQUIRED=1 (the manual workflow sets it) turns a SKIP into a failure, so a run that never reached workerd cannot pass.
 const required = process.env.WORKERD_PARITY_REQUIRED === '1';
-const skip = (why: string): never => { console.log(`${required ? 'FAIL' : 'SKIP'}: ${why}`); process.exitCode = required ? 1 : 0; throw new Error('skip'); };
+const skip = (why: string): never => { const { line, exitCode } = skipVerdict(why, required); console.log(line); process.exitCode = exitCode; throw new Error('skip'); };
 const run = (bin: string, args: string[], cwd: string): string => {
   const r = spawnSync(bin, args, { cwd, encoding: 'utf8', timeout: 240000 });
   if (r.status !== 0) skip(`${bin} ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').slice(0, 300)}`);
@@ -112,7 +115,7 @@ const volatile = new Set(['date', 'server', 'connection', 'keep-alive', 'transfe
 volatile.add('content-encoding');
 
 try {
-  if (!npm) skip('run through npm run test:workerd');
+  if (!npm) skip('npm_execpath is unset; run `npm run test:workerd`, which rebuilds dist/ before comparing');
   // The example plus two routes that exercise the 128-character `pattern` cap in a body and a query parameter, a query
   // and a path parameter with a standard format, a header parameter, and one that refuses a body on its default GET and HEAD.
   const extra = `  /pat:
@@ -175,11 +178,12 @@ try {
     const body = await r.text();
     return { status: r.status, body, ms: performance.now() - started, headers: JSON.stringify([...r.headers].filter(([k]) => !volatile.has(k)).sort()) };
   };
-  let different = 0;
+  let different = 0, compared = 0;
   console.log(`wrangler ${version}; workerd port ${workerdPort}, node port ${nodePort}`);
   for (const [name, c] of Object.entries(cases)) {
     const w = await call(workerdPort, c), n = await call(nodePort, c);
     const same = w.status === n.status && w.body === n.body && w.headers === n.headers && !w.body.includes('TOPSECRET');
+    compared++;
     if (!same) different++;
     console.log(`${same ? 'SAME' : 'DIFF'} ${w.status} ${name} (workerd ${w.ms.toFixed(1)} ms, node ${n.ms.toFixed(1)} ms)`);
     if (!same) console.log(`  workerd ${w.status} ${w.headers} ${JSON.stringify(w.body)}\n  node    ${n.status} ${n.headers} ${JSON.stringify(n.body)}`);
@@ -187,12 +191,14 @@ try {
   for (const [name, c] of Object.entries(rawCases)) {
     const w = await raw(workerdPort, c.method, c.path, c.body, c.lines), n = await raw(nodePort, c.method, c.path, c.body, c.lines);
     const same = w.status === c.status && n.status === c.status && w.body === n.body && w.headers === n.headers && !w.body.includes('TOPSECRET');
+    compared++;
     if (!same) different++;
     console.log(`${same ? 'SAME' : 'DIFF'} ${w.status} ${name} (workerd ${w.ms.toFixed(1)} ms, node ${n.ms.toFixed(1)} ms)`);
     if (!same) console.log(`  expected ${c.status}\n  workerd ${w.status} ${w.headers} ${JSON.stringify(w.body)}\n  node    ${n.status} ${n.headers} ${JSON.stringify(n.body)}`);
   }
-  console.log(different ? `${different} request(s) differ` : 'all responses identical (status, headers except request id, body)');
-  if (different) process.exitCode = 1;
+  const { line, exitCode } = comparisonVerdict(compared, Object.keys(cases).length + Object.keys(rawCases).length, different);
+  console.log(line);
+  process.exitCode = exitCode;
 } catch (error) {
   if (!(error instanceof Error && error.message === 'skip')) throw error;
 } finally {
