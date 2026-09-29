@@ -236,9 +236,10 @@ export const budgets: Record<string, Budget> = {
     // RIM-SOURCE-STAGE-001, the EXTENSIONS "Staging source assets" section,
     // TOOLING/AI-AUTHORING/skill lines and their llms-full.txt copies; no
     // fixture ships). Measured on Node 26: 904925 packed / 3606184 unpacked
-    // bytes, 491 entries; about 3 KiB of headroom on each.
+    // bytes, 491 entries. Unpacked raised again to 3535 KiB after merging
+    // main's #866/#867 and #873 docs: measured 3612717 unpacked bytes.
     packed: 887 * 1024,
-    unpacked: 3525 * 1024,
+    unpacked: 3535 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
