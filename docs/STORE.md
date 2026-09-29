@@ -881,11 +881,24 @@ Idempotency-Key: 5f0c...
   one audit event per record and the `Idempotency-Key` claim. Everything
   commits or nothing does, so the sum over the collection is the same after
   every transfer, whatever runs concurrently.
-- **Whole numbers only.** The `amount` property must be a required `integer`
-  with an integer default. There is no decimal amount: count a currency in its
-  minor units (cents), so no transfer ever rounds. A fraction is refused, never
-  rounded. Activation also refuses an amount property that is an increment
-  (which would add value outside a transfer) or that `intervals` names.
+- **Whole numbers only.** The `amount` property must be a required `integer`.
+  There is no decimal amount: count a currency in its minor units (cents), so
+  no transfer ever rounds. A fraction is refused, never rounded.
+- **Only a transfer changes it.** Activation refuses an amount property that
+  is not listed in `readOnlyProperties`, whose default is not `0`, that a
+  transition sets or stamps, that is an increment or that `intervals` names:
+  each would add or remove value outside a transfer
+  ([#928](https://github.com/jimhoyd-com/urlcode/issues/928)). So every record
+  is created at `0`, `POST`, `PUT` and `PATCH` bodies naming the property are
+  `422`, and `PUT` keeps the stored balance.
+- **Deleting.** A record still holding a nonzero amount cannot be deleted:
+  `DELETE`, a host transaction's `remove` (the records export has no
+  delete) and the operator's `urlcode-store ownerless-delete` all answer
+  `409 balance_not_zero` and delete nothing (the operator command refuses as a
+  whole if any ownerless record holds a balance). The message names no amount.
+  Transfer the balance to another record first; a record at `0` is deleted as
+  usual. Together with the rules above, the sum over the collection is the
+  same after every write, not only after every transfer.
 - **The floor.** `min` (default `0`) is the lowest value the debited record may
   be left holding: a transfer that would go below it answers
   `409 insufficient_balance` and writes nothing, so `pay` above never
@@ -899,14 +912,14 @@ Idempotency-Key: 5f0c...
   move between two of its own wallets). A replayed `Idempotency-Key` answers
   both records as they are now, with `Idempotency-Replayed: true`, like any
   [replay](#result-aware-retries); nothing moves twice.
-- **Funding.** A transfer never creates value, so the sum changes only when a
-  record is created with its default or deleted. To bring value in, declare a
+- **Funding.** Nothing creates value: a record opens at `0`, a transfer only
+  moves value and a record leaves only at `0`. To bring value in, declare a
   members-gated issuer: `issue` above lets a member of `treasurers` debit their
   own wallet down to `min: -100000000`. That wallet's negative balance is the
   supply outstanding, and the sum over the collection stays zero, as in
-  double-entry bookkeeping. With `readOnlyProperties: [balance]` nothing else
-  can change a balance: `PUT` and `PATCH` bodies naming it are `422`, and
-  activation accepts a read-only property that a transfer moves.
+  double-entry bookkeeping. An issuer's own negative record is refused
+  deletion like any nonzero one, so the outstanding supply cannot be written
+  off by deleting it.
 
 ### Who may debit whom
 
