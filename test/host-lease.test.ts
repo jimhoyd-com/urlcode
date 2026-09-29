@@ -10,16 +10,24 @@ import type { HostLease, HostProbe } from '../packages/core/src/host-lease.ts';
 // The shared setup checks of the SQLite-backed extensions (#927, #941, #978). The store, auth and audit tests exercise
 // them through each extension's activation; these pin the rules themselves, with injected clocks: a wall clock per
 // host and a monotonic clock that the joiner's `sleep` moves, so a 20 s TTL takes no real time.
+// t.after hooks run in registration order, and Windows cannot delete a directory holding an open SQLite file (EBUSY):
+// every connection is closed by the one hook that then removes the directory, so the order never depends on callers.
+const opened = new Map<string, DatabaseSync[]>();
 async function directory(t: test.TestContext): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'urlcode-lease-'));
-  t.after(() => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
+  opened.set(dir, []);
+  t.after(async () => {
+    for (const db of opened.get(dir) ?? []) if (db.isOpen) db.close();
+    opened.delete(dir);
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  });
   return dir;
 }
-/** One connection to the test database: a "host". Closed before the directory goes (Windows keeps it busy otherwise). */
-function connect(t: test.TestContext, dir: string): DatabaseSync {
+/** One connection to the test database: a "host". Closed by its directory's cleanup, before the directory goes. */
+function connect(_t: test.TestContext, dir: string): DatabaseSync {
   const db = new DatabaseSync(join(dir, 'lease.sqlite'), { timeout: 2000 });
   db.exec('PRAGMA journal_mode=WAL');
-  t.after(() => { if (db.isOpen) db.close(); });
+  opened.get(dir)!.push(db);
   return db;
 }
 async function database(t: test.TestContext): Promise<DatabaseSync> { return connect(t, await directory(t)); }

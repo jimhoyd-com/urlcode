@@ -36,8 +36,8 @@ per route by `sandbox` (docs/SPIKE-DEFAULT-TRUST-MODEL.md):
   thread — see "Trusted-path deadlines" below for what that does and does not
   protect against.
 
-  This was architectural reasoning, not a measurement, until the run below:
-  see "Measured: sandboxed vs trusted dispatch" for the actual comparison.
+  This is architectural reasoning, not a published measurement: see
+  [sandbox and trusted dispatch](#sandbox-and-trusted-dispatch) below.
 
 Node's main event loop remains a shared bottleneck for HTTP parsing, logging and
 native responses. The sandbox contains a `sandbox: true` route's application
@@ -107,10 +107,12 @@ The CLI and the embedding JS API accept `--workers`/`workers` (1–32),
 `--max-in-flight-health`/`maxInFlightHealthRequests` (1–1,024; default 16). Measure the effect with
 [load testing](LOAD-TESTING.md) rather than guessing; `shedResponses` names the
 limit that bound. These are
-operator choices on `startServer`, not supported YAML fields or CLI flags.
+operator deployment controls on `urlcode serve`/`dev` and `startServer`, not
+supported YAML fields; without them the CLI and the API use the defaults in the
+table above. `urlcode --help` lists the flags under `capacity`.
 Route body policy still cannot exceed 1 MiB. More workers consume memory and CPU;
 increasing a timeout also increases how long an attacker can occupy capacity.
-The CLI uses defaults. Keep settings identical across replicas unless testing a
+Keep settings identical across replicas unless testing a
 controlled rollout. See [operations](OPERATIONS.md).
 
 ### Extension storage bounds
@@ -293,9 +295,9 @@ evidence; measure your own with [load testing](LOAD-TESTING.md).
 
 This worker-slot model describes the `sandbox: true` path only. A trusted
 route has no fixed worker count to plug in as W; its ceiling is ordinary Node
-request concurrency bounded by `--max-in-flight`, not this model — see
-"Measured: sandboxed vs trusted dispatch" above for what that ceiling looks
-like in practice.
+request concurrency bounded by `--max-in-flight`, not this model. No public
+measurement of that ceiling is published; see
+[sandbox and trusted dispatch](#sandbox-and-trusted-dispatch) above.
 
 Let W be worker slots, S the measured mean slot occupancy in seconds (including
 sandbox startup and cleanup effects), and lambda the offered programmable
@@ -352,8 +354,12 @@ configuration in YAML today.
 Horizontal replicas can add capacity if balanced well and supplied identical
 runtime/application revisions and bindings. Scaling is not perfectly linear,
 and capacity falls during failures/rollouts. Rate limits must account for all
-replicas. In-memory counters in middleware reset per request and cannot implement
-a shared rate limiter or durable application state.
+replicas. In-memory counters in middleware cannot implement a shared rate
+limiter or durable application state: module state lives in one process (or,
+for `sandbox: true`, one invocation), so it is neither shared across replicas
+nor kept across restarts; see [the trusted
+default](FUNCTION-SECURITY.md#what-the-trusted-default-can-and-cant-do) for
+what persists between calls.
 
 Optional [policies](POLICIES.md) keep their state per runtime instance, and
 their memory bounds are per instance too: the `throttle` counter table is one
