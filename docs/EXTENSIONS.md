@@ -679,6 +679,15 @@ parsing, JSON responses or origin checks; use these:
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
 | `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
 
+An extension that keeps a SQLite database runs two setup checks before it
+serves, the ones the store, auth and audit share
+([several serving processes](STORE.md#several-serving-processes-on-one-host)):
+
+| Helper | What it does |
+|---|---|
+| `refuseNetworkFilesystem(directory, what, probe?)` | Refuses a database directory on a network filesystem by its Linux `statfs` type (`NETWORK_FILESYSTEMS`); skipped on macOS and Windows. |
+| `joinHostLease(db, {table, what, probe?})` | Creates the extension's lease table in its own database when absent, refuses while a live peer (`SERVER_LEASE`: renewed every 5 s, live 20 s) runs on another host (another Linux boot id, or another hostname when either has none), and inserts this process's row. `close()` stops the heartbeat and deletes the row. `db` is a `node:sqlite` `DatabaseSync` or an object with `transaction`, `run` and `all`. |
+
 ### OpenAPI description
 
 A registration may implement `describe(request)` so the

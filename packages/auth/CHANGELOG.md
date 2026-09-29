@@ -6,6 +6,13 @@
   full or the lock was held past the busy timeout) answers `503 {"error":"auth_unavailable"}` with `Retry-After: 1` and
   no `Set-Cookie` (#902). Before, a full disk was Better Auth's bare `500`, and a lock timeout a throw that core answered
   `500`.
+- auth refuses a second host and a network filesystem without the store (#941). Activation and the `urlcode-auth`
+  commands refuse a database directory on a network filesystem by its Linux `statfs` type (NFS, SMB, SMB2, CIFS, FUSE,
+  9P, Ceph, AFS; not checked on macOS or Windows). Each activation joins a host lease, a new `auth_servers` table in
+  `auth.sqlite` created on first activation (heartbeat every 5 s, live 20 s), and is refused while a live peer runs on
+  another host (another Linux boot id, or another hostname when either has none). Both checks are core's
+  (`joinHostLease`, `refuseNetworkFilesystem`), shared with the store and audit. `createAuthExtension` takes a `probe`
+  test seam; operators never set it.
 - `urlcode test`, `audit` and `benchmark` never touch the site's accounts (#930). In a hermetic run (`HostContext.hermetic`)
   the host ignores `database`, `secretFile` and `BETTER_AUTH_SECRET`: Better Auth gets a fresh database in the run's data
   directory, its tables are created at activation, and sessions are signed with a secret that lives only for the run. The

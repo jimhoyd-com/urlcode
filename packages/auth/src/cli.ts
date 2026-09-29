@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { betterAuth } from 'better-auth';
-import { betterAuthOptions, defaultBasePath, migrate } from './auth.ts';
+import { betterAuthOptions, defaultBasePath, migrate, refuseRemoteAuthDatabase } from './auth.ts';
 import { DATABASE, readSecret } from './extension.ts';
 
 const usage = 'Usage: urlcode-auth migrate [--site DIR]\n       urlcode-auth create-user [--site DIR]   (reads {"email","password","name"} as JSON on stdin)\n       urlcode-auth find-user --email <email> [--site DIR]   (prints the user id, e.g. for urlcode-store members add --principal)\n';
@@ -16,6 +16,7 @@ async function main(argv: string[]): Promise<number> {
   const site = resolve(option(rest, '--site') ?? '.');
   if (command !== 'migrate' && command !== 'create-user' && command !== 'find-user') { process.stderr.write(usage); return 2; }
   if (command === 'find-user') return findUser(site, option(rest, '--email'));
+  await refuseRemoteAuthDatabase(join(site, DATABASE));
   // The origin only matters to browsers; the server API used here never builds a URL from it.
   const options = betterAuthOptions({ database: join(site, DATABASE), secret: await readSecret(site) }, 'http://localhost', defaultBasePath, command === 'create-user');
   await migrate(options);
@@ -36,6 +37,7 @@ async function findUser(site: string, email: string | undefined): Promise<number
   if (email === undefined || email.startsWith('--') || !email.includes('@')) { process.stderr.write('find-user needs --email <email>\n'); return 2; }
   const database = join(site, DATABASE);
   if (!existsSync(database)) { process.stderr.write(`No auth database at ${database}; run urlcode-auth migrate in the site first\n`); return 1; }
+  await refuseRemoteAuthDatabase(database);
   const options = betterAuthOptions({ database, secret: await readSecret(site) }, 'http://localhost', defaultBasePath, false);
   const context = await betterAuth(options).$context;
   const found = await context.internalAdapter.findUserByEmail(email);
