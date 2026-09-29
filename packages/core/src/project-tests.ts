@@ -8,6 +8,7 @@ import { readFixtures, runFixtures } from './readiness.ts';
 import type { RestartableApp } from './readiness.ts';
 import type { LogFn } from './types.ts';
 import { ConfigError } from './errors.ts';
+import { SignalRecorder } from './signal-recorder.ts';
 
 export interface ProjectTestOptions { extensions?: ServerOptions['extensions']; plugins?: ServerOptions['plugins']; log?: LogFn | undefined; permissions?: ServerOptions['permissions']; origin?: string | undefined; aliasOrigins?: ServerOptions['aliasOrigins'] }
 export interface ProjectTestResult { total: number; failed: number }
@@ -36,7 +37,9 @@ export async function runProjectTests(project: string, { log = () => {}, permiss
   // A newly initialized project has no behavior yet, so it intentionally has no
   // fixture file. Once an application has routes, its author adds this file.
   const root = await realpath(project), fixtures = await readFixtures(root, true);
-  const app = await startRestartable({ project, port: 0, local: true, log, permissions, origin, aliasOrigins, extensions, plugins });
+  // Signals are recorded in process, never delivered, so fixtures can assert them with expectSignals.
+  const signals = new SignalRecorder();
+  const app = await startRestartable({ project, port: 0, local: true, log, permissions, origin, aliasOrigins, extensions, plugins, signalRecorder: signals });
   const agent = new Agent({keepAlive:true,maxSockets:1}); let failed = 0, total = 0;
   try {
     if (!fixtures.length) {
@@ -47,7 +50,7 @@ export async function runProjectTests(project: string, { log = () => {}, permiss
     }
     // A failing case names the fixture's own path and method as written and each failed assertion (expected and actual,
     // shortened, with captured values put back as {{name}}); a passing case logs only its number and status.
-    await runFixtures(fixtures, { app, agent, restart: () => app.restart() }, ({ case: n, original, result }) => {
+    await runFixtures(fixtures, { app, agent, signals, restart: () => app.restart() }, ({ case: n, original, result }) => {
       total++;
       if(!result.pass)failed++;
       log(result.pass ? {event:'test',case:n,pass:true,status:result.status}

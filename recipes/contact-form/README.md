@@ -37,17 +37,20 @@ A signal carries a fixed payload (route, method, status), not the submitted
 message, and is best effort: drops are counted, never retried. See
 [egress](../../docs/EGRESS.md).
 
-`urlcode test` and `urlcode audit` send their fixtures as ordinary HTTP
-requests. A fixture that reaches this route, such as the valid `POST` in
-`tests/requests.json`, therefore calls the granted destination exactly as a
-visitor would. Only `HEAD` requests and the runtime's internal readiness probes
-skip the signal. Run the tests against a receiver you control. The policy can
+`urlcode test` and `urlcode audit` record signals instead of delivering them,
+so the tests never call the hook. The valid `POST` in `tests/requests.json`
+asserts its one signal with `expectSignals` (destination origin, route, method
+and status), and the refused `422` and `415` cases assert `"expectSignals": []`,
+so a rejected message notifies nobody. While you develop, `urlcode dev
+--signal-sink stdout` prints each would-be delivery as a JSON line instead of
+sending it ([checking signals locally](../../docs/EGRESS.md#checking-signals-locally)).
+
+`urlcode dev` without that flag and `urlcode serve` do deliver. The policy can
 only grant the origin that `urlcode.yaml` declares, and the transport refuses
 loopback and private addresses, so a receiver on `localhost` cannot stand in.
-Declare a public HTTPS test endpoint you own while you test, and generate and
-review its own policy with `urlcode permissions`. Switch to the production URL
-(and regenerate the policy) when you deploy. Each test call carries only the
-route, method and status.
+To try a real delivery, declare a public HTTPS endpoint you own and generate
+and review its own policy with `urlcode permissions`. Switch to the production
+URL (and regenerate the policy) when you deploy.
 
 Throttle the route before you publish the page. `policies.throttle` limits
 requests per client on this one route ([policies](../../docs/POLICIES.md)).

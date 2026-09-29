@@ -157,6 +157,12 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   same stderr diagnostics on for a server; they never reach responses, the JSON
   event log or observers. Sandboxed (`sandbox: true`) routes are unchanged and
   still report only the generic answer.
+- A route emits `signals`: `urlcode test` and `audit` record them instead of
+  delivering, and fixtures assert them with `expectSignals`. `urlcode dev
+  --signal-sink stdout` (or a `.jsonl` file outside the project) writes each
+  would-be delivery as a JSON line with outcome `captured` and sends nothing.
+  `serve` refuses the flag. See
+  [checking signals locally](EGRESS.md#checking-signals-locally).
 - An extension fails to activate: `validate`, `test` and `dev` with
   `--host-file` print `Extension "<name>" failed to activate: <message>` (or
   `registration could not be prepared` when core rejects the registration's

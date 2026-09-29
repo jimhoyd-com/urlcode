@@ -207,8 +207,10 @@ historical, not valid YAML guidance.
 - Write exact response fixtures for success and failure, covering every active
   method, middleware behavior, HEAD, and any range or cache semantics.
   `tests/requests.json` is an array of `{path, status, method?, headers?, body?,
-  expectHeaders?, expectBody?}` (schema: `schemas/requests.schema.json`); any
-  other key is refused. There is no `json`/`expectJson`: send a JSON `body` as
+  expectHeaders?, expectBody?, expectSignals?}` (schema:
+  `schemas/requests.schema.json`); any other key is refused. `urlcode test`
+  records signals without delivering them, so assert a signal route's
+  notification with `"expectSignals": [{"destination": "https://hooks.example.com", "count": 1}]`. There is no `json`/`expectJson`: send a JSON `body` as
   text with a `content-type` header and assert the exact text in `expectBody`,
   for example `{"path":"/api/status","status":200,"expectBody":"{\"ok\":true}"}`.
 - Errors are one JSON line with `code`, `file`, `line`, `route` and `pointer`

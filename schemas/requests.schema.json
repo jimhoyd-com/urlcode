@@ -42,6 +42,26 @@
       "type": "string",
       "description": "Expected response body, compared exactly as UTF-8 text. For JSON, write the exact serialized text."
     },
+    "expectSignals": {
+      "type": "array",
+      "maxItems": 8,
+      "description": "Signals this request must emit, checked by `urlcode test` and `urlcode audit`, which record signals in process and deliver none. Each entry counts the captured signals it matches: exactly `count` when given, else at least one. An empty array expects no signal at all. Signals the list does not mention are allowed. `urlcode verify-deployment` cannot observe a deployment's signals and reports these as not checked. See docs/EGRESS.md.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "destination": { "type": "string", "maxLength": 2048, "pattern": "^https://[^/?#]+$", "description": "The signal's destination origin, exactly as `urlcode permissions` grants it (https://hooks.example.com)." },
+          "count": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Exactly this many matching signals. Absent: at least one." },
+          "match": {
+            "type": "object",
+            "maxProperties": 8,
+            "description": "JSON Pointers into the signal payload {version, route, status, method} and the value each must equal exactly, such as {\"/status\": 202, \"/route\": \"/contact\"}.",
+            "propertyNames": { "pattern": "^(/[^/]{1,64}){1,4}$" },
+            "additionalProperties": { "anyOf": [{ "type": "string", "maxLength": 2048 }, { "type": "number" }] }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "case": {
       "type": "object",
       "required": ["path", "status"],
@@ -52,7 +72,8 @@
         "body": { "$ref": "#/$defs/body" },
         "status": { "$ref": "#/$defs/status" },
         "expectHeaders": { "$ref": "#/$defs/expectHeaders" },
-        "expectBody": { "$ref": "#/$defs/expectBody" }
+        "expectBody": { "$ref": "#/$defs/expectBody" },
+        "expectSignals": { "$ref": "#/$defs/expectSignals" }
       },
       "additionalProperties": false
     },
@@ -84,6 +105,7 @@
         "status": { "$ref": "#/$defs/status" },
         "expectHeaders": { "$ref": "#/$defs/expectHeaders" },
         "expectBody": { "$ref": "#/$defs/expectBody" },
+        "expectSignals": { "$ref": "#/$defs/expectSignals" },
         "capture": { "$ref": "#/$defs/capture" }
       },
       "additionalProperties": false
