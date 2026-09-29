@@ -32,21 +32,27 @@ configuration digest and route count, so keep them internal.
 
 ## Log records
 
-| Event | Fields | Why it matters |
-|---|---|---|
-| `request` | `requestId`, `status`, `durationMs`; plus `method` and `route` with `--request-log detailed` | Error rate and latency per route. `route` is the configured pattern such as `/u/{id}`, never the requested path. |
-| `stream` | `requestId`, `status`, `bytes`, `durationMs`, `reason`; plus `method` and `route` with `--request-log detailed` | A [streamed response](SPECIFICATION.md#streamed-responses) ended. `reason` is `complete`, `client-closed`, `idle-timeout`, `max-duration`, `max-bytes`, `error` or `shutdown`. A rising share of `error` is a failing producer; of `idle-timeout`/`max-duration`/`max-bytes`, a stream limit that is too tight or a producer that never ends ([stream limits](OPERATIONS.md#streamed-responses)). The `request` record for the same `requestId` was written when its head was sent. |
-| `stream_refused` | `requestId`, `route`, `reason` (`undeclared`, `invalid`, `capacity`) | `undeclared`/`invalid`: code returned a stream on a route that does not declare streaming (answered 502); fix the route or the extension registration. `capacity`: `--max-streams` were open (answered 503, counted as shed). |
-| `reload` | `status` (`ok`/`rejected`); `version` and `routes` on `ok` | A `rejected` reload means the last-good snapshot is still serving and a deploy did not take effect. |
-| `watch` | `status` | Development watcher failure; not used by `serve`. |
-| `local_review` | `revision`, `origin`, `note` | `validate`, `test`, `routes` or `audit` with `--local-review` and no operator pin, on stderr: the run was pinned to the current revision with no policy grants ([the local review loop](EXTENSIONS.md#the-local-review-loop)). Never emitted by `serve` or `dev`, which refuse the flag. |
-| `extension_pin_followed` | `extensions` (names), `from`, `to` (project revisions) | `urlcode dev` only: a hot reload accepted extensions still pinned to the revision dev started from for the edited project ([the revision pin](EXTENSIONS.md#the-revision-pin)). Never emitted by `serve`; if a deployed process logs it, something other than `serve` is running. Re-review and re-pin `to` before serving that revision. |
-| `function_worker` | `status` (`started`/`restarting`), `slot`; `attempt` and `delayMs` on `restarting` | Sustained `restarting` means a function is failing on real traffic. |
-| `logs_dropped` | `count` | The logger shed records because the collector fell behind. Every other signal is unreliable while this fires. |
-| `observer` | `status` (`failed`), `name` | An in-process observer threw; the request was unaffected. Written to the log only, never to observers. Sustained failures mean the observer's own sink is broken. |
-| `throttle`, `agents`, `cache` | `route`, `outcome`; `remaining` or `list` | Policy decisions; see [policies](POLICIES.md). `throttle` logs `allowed` only in report mode. |
-| `site` | `key`, `path`, `status` (`generated`/`shadowed`); or `severity` (`info`/`warning`) and `message` | Activation records for [site conventions](SITE.md). `shadowed` means a declared route took the path; an `info`/`warning` line reports an omitted `Sitemap:` line (no `--origin`), skipped list names or a far-future `security.txt` expiry. |
-| `extension_warning` | `extension`, `message` | An extension reported a non-fatal problem while activating. One bounded line per warning, at most 20 per extension per activation; see [activation warnings](EXTENSIONS.md#activation-warnings). Act on it before users hit the condition it describes. |
+Each record's fields, and when it is written, are in the
+[event catalogue](OBSERVABILITY.md#event-catalogue); this table adds only what
+each one means for an operator.
+
+| Event | Why it matters |
+|---|---|
+| `request` | Error rate and latency per route. With `--request-log detailed`, `route` is the configured pattern such as `/u/{id}`, never the requested path. |
+| `stream` | A [streamed response](SPECIFICATION.md#streamed-responses) ended. A rising share of `reason` `error` is a failing producer; of `idle-timeout`/`max-duration`/`max-bytes`, a stream limit that is too tight or a producer that never ends ([stream limits](OPERATIONS.md#streamed-responses)). |
+| `stream_refused` | `undeclared`/`invalid`: code returned a stream on a route that does not declare streaming (answered 502); fix the route or the extension registration. `capacity`: `--max-streams` were open (answered 503, counted as shed). |
+| `reload` | A `rejected` reload means the last-good snapshot is still serving and a deploy did not take effect. |
+| `watch` | Development watcher failure; not used by `serve`. |
+| `local_review` | A CLI run was pinned to the current revision with no policy grants ([the local review loop](EXTENSIONS.md#the-local-review-loop)). Never emitted by `serve` or `dev`, which refuse the flag. |
+| `extension_pin_followed` | Never emitted by `serve`; if a deployed process logs it, something other than `serve` is running. Re-review and re-pin `to` before serving that revision ([the revision pin](EXTENSIONS.md#the-revision-pin)). |
+| `function_worker` | Sustained `restarting` means a function is failing on real traffic. |
+| `signal` | A rising `failed` or `dropped` count means webhook deliveries are being lost. |
+| `logs_dropped` | The logger shed records because the collector fell behind. Every other signal is unreliable while this fires. |
+| `observer` | An in-process observer threw; the request was unaffected. Sustained failures mean the observer's own sink is broken. |
+| `throttle`, `agents`, `cache` | Policy decisions; see [policies](POLICIES.md). |
+| `site` | `shadowed` means a declared route took a [site convention](SITE.md)'s path; an `info`/`warning` record is a configuration note, such as a missing `--origin` omitting the `Sitemap:` line. |
+| `extension_warning` | An extension reported a non-fatal problem while activating ([activation warnings](EXTENSIONS.md#activation-warnings)). Act on it before users hit the condition it describes. |
+| `listening` | See below. |
 
 `urlcode dev`, and `serve` only with `--debug-errors`, also write two
 diagnostics to stderr that are not log records and never reach observers:
