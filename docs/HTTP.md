@@ -431,6 +431,25 @@ The code set is closed and keyed by status:
 Any other status the runtime might write gets `ERROR`; the runtime generates
 none today. The envelope has no configurable fields.
 
+**One parser for runtime and store errors.** The store extension writes its own
+refusals as `{"error":{"code","message","issues"?,"fields"?}}`
+([store HTTP contract](STORE.md#http-contract)), the same nesting as this
+envelope, and `issues` is the same issue list. With `format: json` on the API
+paths, a client reads `error.code`, `error.message` and `error.issues` from
+both. The code vocabularies differ: the runtime's are the status-keyed
+upper-case codes above (`UNPROCESSABLE_CONTENT`), the store's are its own
+lower-case reasons (`invalid_record`, `collection_full`), so branch on the HTTP
+status or on `code` per source. Without `format: json`, a body-schema 422 is
+the text-mode body above, `{"error":"body_validation_failed","message","issues"}`,
+where `error` is a string, not an object:
+
+```yaml
+site:
+  errors:
+    format: json
+    paths: [/api/*]   # the body-schema routes and the store mounts both under /api
+```
+
 Which format applies:
 
 1. A matched route's own `errors.format` (`text` or `json`).
