@@ -593,7 +593,10 @@ still has no roles, and `auth` gains none.
   approval included) and `StoreExports` never show it, and a non-member still
   gets the `403` before anything is read. It is off by default: a member who
   can list every owner's records already sees their content, and `showOwner`
-  adds a stable cross-record link to one account. To show something a reviewer
+  adds a stable cross-record link to one account. `showOwner` needs `members`:
+  activation refuses it on a mount without a gate, a projected directory
+  included, so only members ever receive a principal id
+  ([#972](https://github.com/jimhoyd-com/urlcode/issues/972)). To show something a reviewer
   can act on (a display name, a team), keep it in an ordinary declared property
   that the owner writes; see [the store's security notes](../packages/store/SECURITY.md).
 - **A projection, and a directory.** A readers mount's
@@ -634,7 +637,8 @@ still has no roles, and `auth` gains none.
   and it keeps transfers addressed by record id, so a transfer never has to
   resolve an owner or a handle inside its transaction. A readers mount
   with neither `members` nor `properties` is refused: an ungated mount must say
-  what it shows.
+  what it shows. An ungated mount never shows `_owner`: `showOwner` on it is
+  refused too.
 - **Several mounts, one collection.** `readers` is a map of named mounts
   ([#944](https://github.com/jimhoyd-com/urlcode/issues/944)), each with its
   own `mount`, `members`, `showOwner` and `properties`, so a collection can
@@ -1135,6 +1139,17 @@ Idempotency-Key: 5f0c...
 - **Whole numbers only.** The `amount` property must be a required `integer`.
   There is no decimal amount: count a currency in its minor units (cents), so
   no transfer ever rounds. A fraction is refused, never rounded.
+- **Bounded from below only.** The amount property's schema may carry `type`,
+  `minimum`, `exclusiveMinimum` and annotations (`title`, `description`,
+  `$comment`, `deprecated`, `examples`), and nothing else: activation refuses
+  `maximum`, `exclusiveMaximum`, `multipleOf`, `enum`, `const` and every
+  combinator, since a credit only raises a balance and a limit a credit could
+  break would tell the payer the recipient's balance
+  ([#973](https://github.com/jimhoyd-com/urlcode/issues/973)). The lowest `min`
+  of the collection's transfers times `maxRecords` must stay within 2^53 − 1:
+  the sum is zero and no record goes below that floor, so no balance can leave
+  the safe integers. To cap what one account holds, keep the cap in a handler
+  or a host transaction that reads the caller's own balance.
 - **Only a transfer changes it.** Activation refuses an amount property that
   is not listed in `readOnlyProperties`, whose default is not `0`, that a
   transition sets or stamps, that is an increment or that `intervals` names:
@@ -1153,10 +1168,17 @@ Idempotency-Key: 5f0c...
 - **The floor.** `min` (default `0`) is the lowest value the debited record may
   be left holding: a transfer that would go below it answers
   `409 insufficient_balance` and writes nothing, so `pay` above never
-  overdraws. The new values must also satisfy the property's own schema and
-  stay safe integers, or the answer is `409 transfer_limit`; that refusal
-  carries no issue list and no value, because on an owned collection it would
-  describe another owner's balance.
+  overdraws. The debited value must also satisfy the property's own schema
+  (its `minimum`), or the answer is `409 transfer_limit`.
+- **The credit.** Nothing about the credited record decides the answer: under
+  the rules above its new value always satisfies the schema and the safe
+  integers, and every create, update and transition measures `maxRecordBytes`
+  with each amount property at its widest (17 bytes, `-9007199254740991`), so
+  a credit can never push a record over the limit. A record near the limit is
+  refused on the write that brings it there, by its owner, not on a later
+  credit. A credited record stored outside the declaration (a row from before
+  the amount property was declared, or edited in the database) answers one
+  fixed `409 transfer_conflict` with no detail.
 - **The answer.** `200 {from, to?}`: each record as the transfer left it, with
   `from`'s `ETag`. `to` is included only when the caller may read it: always on
   a shared collection, and on an owned one only when the caller owns it (a
@@ -1168,7 +1190,12 @@ Idempotency-Key: 5f0c...
   members-gated issuer: `issue` above lets a member of `treasurers` debit their
   own wallet down to `min: -100000000`. That wallet's negative balance is the
   supply outstanding, and the sum over the collection stays zero, as in
-  double-entry bookkeeping. An issuer's own negative record is refused
+  double-entry bookkeeping. On an owned collection activation refuses a
+  negative `min` without `members`: every signed-in principal holds records
+  there, so an ungated floor below zero would let each of them mint
+  ([#974](https://github.com/jimhoyd-com/urlcode/issues/974)). A shared
+  collection's route is its gate: whoever reaches the mount can already move
+  any record's balance. An issuer's own negative record is refused
   deletion like any nonzero one, so the outstanding supply cannot be written
   off by deleting it.
 
@@ -1196,10 +1223,10 @@ wallets at `0`.
   random UUIDs and never listed on the collection mount to other owners. The
   store checks the floor before it looks up the credited record, so a caller
   cannot learn whether an id exists without the funds to move; a transfer that
-  goes through tells the payer the id exists and nothing else about it.
-  `transfer_limit` does reveal that the recipient's balance is near its
-  property's `maximum`, so leave the amount property without a `maximum`
-  unless that is acceptable (the safe-integer bound still applies).
+  goes through tells the payer the id exists and nothing else about it; the
+  answer never depends on the recipient's balance or record size (see
+  *The credit* above). The same step serves HTTP, `StoreExports` and host
+  transactions, so all three answer alike.
 - **Shared.** Anyone who reaches the mount may move value between any two
   records, as anyone may run a shared collection's transition. Guard the route
   (`auth: true` and a policy) or name `members`.
@@ -1279,11 +1306,13 @@ origin (`403`), the headers (`400`), `readOnly` (`405`) and the body (`422
 invalid_transfer`), inside the write transaction: the membership gate (`403`);
 the retained `Idempotency-Key` (a replay, or `422 idempotency_key_reused`);
 `from` in the caller's scope (`404`); `If-Match` (`412`); the floor
-(`409 insufficient_balance`); `to` (`404`); the property's schema and the
-safe integers (`409 transfer_limit`); the record size (`413`); then the two
-writes, the two audit events and the claim. A stored record without a whole
-balance (written before the property was declared) is
-`409 transfer_conflict`. Every refusal writes nothing.
+(`409 insufficient_balance`); `to` (`404`); the debited value against the
+property's schema (`409 transfer_limit`) and the debited record's size
+(`413`); anything about the credited record (`409 transfer_conflict`, only for
+a row stored outside the declaration); then the two writes, the two audit
+events and the claim. A debited record without a whole balance (written before
+the property was declared) is `409 transfer_conflict` too. Every refusal
+writes nothing.
 
 - **Audit.** On an audited collection each record gets a
   `store.record.transferred` event (subject `<collection>/<id>`, the caller as

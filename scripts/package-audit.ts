@@ -40,20 +40,20 @@ export interface Budget {
 // packs about 800 bytes larger. When a PR hits a limit and the growth is
 // intended, re-measure every package and reset all of them by this policy
 // rather than raising one by the overshoot, and say why in the PR.
-// Baseline: 1047859/4132700/531 core, 27418/89089/26 audit, 20313/63962/14
-// auth, 144031/560117/34 store, 33066/136737/12 mcp, 11896/45543/7
-// store-schema (packed/unpacked bytes/entries).
+// Baseline: 1050708/4143195/531 core, 27418/89089/26 audit, 20313/63962/14
+// auth, 158405/619315/36 store, 33066/136737/12 mcp, 12716/50521/7
+// store-schema (packed/unpacked bytes/entries), each limit rounded up to a KiB.
 export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode': {
-    packed: 1048 * 1024,
-    unpacked: 4116 * 1024,
+    packed: 1051 * 1024,
+    unpacked: 4127 * 1024,
     entries: 542,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
   '@jimhoyd/urlcode-audit': {
     packed: 33 * 1024,
-    unpacked: 111 * 1024,
+    unpacked: 112 * 1024,
     entries: 28,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
@@ -64,10 +64,9 @@ export const budgets: Record<string, Budget> = {
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-store': {
-    // #988-#990 on top of #991: 156305 packed / 611877 unpacked bytes, 36 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 157 * 1024,
-    unpacked: 602 * 1024,
-    entries: 36,
+    packed: 171 * 1024,
+    unpacked: 666 * 1024,
+    entries: 38,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-mcp': {
@@ -78,8 +77,8 @@ export const budgets: Record<string, Budget> = {
   },
   // Artifacts are inert JSON: a few KiB, and the exact file shape below.
   '@jimhoyd/urlcode-store-schema': {
-    packed: 18 * 1024,
-    unpacked: 69 * 1024,
+    packed: 19 * 1024,
+    unpacked: 74 * 1024,
     entries: 9,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'config', 'package.json', 'schemas', 'urlcode.json'],
   },

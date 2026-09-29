@@ -42,7 +42,11 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   below `min` (default 0) is `409 insufficient_balance` and nothing is written. Owned: the caller debits only its
   own record and may credit anyone's (`to` is answered only when the caller owns it). Integers only (minor units);
   a fraction or `from == to` is `422 invalid_transfer`. `If-Match` (on `from`), `Idempotency-Key` and audit
-  (`store.record.transferred` on both records) apply. A members-gated transfer with a negative `min` is an issuer.
+  (`store.record.transferred` on both records) apply. A members-gated transfer with a negative `min` is an issuer;
+  an owned collection refuses a negative `min` without `members`. The amount property is bounded from below only
+  (no `maximum`, `multipleOf`, `enum`, `const`), the lowest `min` times `maxRecords` stays within 2^53 - 1, and
+  every write reserves the widest balance within `maxRecordBytes`, so any refusal about the credited record is one
+  fixed `409 transfer_conflict` that never depends on its balance.
   The amount property must be in `readOnlyProperties` with default 0 and set by no transition; deleting a record
   holding a nonzero amount is `409 balance_not_zero` on every path (HTTP, host transaction `remove`, operator CLI).
 - Scheduling: `intervals: {start, end, within?, scope?: collection|owner, when?}` on a collection refuses any
@@ -77,7 +81,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   maintains a membership collection (no HTTP API exists for it). `audit: true` on it records every added and removed
   member in the same transaction. `readers` is a map of named mounts (`readers: {directory: {...}, audit: {...}}`), each with its own
   `members`, `showOwner` and `properties`. `showOwner: true` shows the owner's principal id as `_owner` on that
-  mount only. `properties: [name]` makes a mount a projection (`id` and those properties only, sorted
+  mount only and needs `members`. `properties: [name]` makes a mount a projection (`id` and those properties only, sorted
   and filtered by those only, `ETag` of the projection) and `members` optional: a directory for finding a transfer
   recipient's record id without exposing balances.
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({database})`) in
