@@ -1,6 +1,6 @@
 # Validates, tests and audits this project on every push and pull request, and
 # comments a route-inventory diff on pull requests. See
-# https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md
+# https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CI.md
 name: urlcode
 on:
   push:

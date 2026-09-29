@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
-import {absolutizeLinks,demoteHeadings,slug,DOCUMENTS,githubBlob} from '../scripts/build-llms-full.ts';
+import {absolutizeLinks,demoteHeadings,pinDocsMentions,slug,DOCUMENTS,githubBlob} from '../scripts/build-llms-full.ts';
 
 const root=resolve(import.meta.dirname,'..');
 const script=join(root,'scripts','build-llms-full.ts');
@@ -45,4 +45,22 @@ test('link rewriting and heading demotion are conservative',()=>{
   assert.equal(absolutizeLinks('[a](YAML-GUIDE.md#x) [b](../schemas/s.json) [c](#top) [d](https://x.y/z) [e](mailto:a@b)','docs/AI-AUTHORING.md',GITHUB_BLOB),
     `[a](${GITHUB_BLOB}docs/YAML-GUIDE.md#x) [b](${GITHUB_BLOB}schemas/s.json) [c](#top) [d](https://x.y/z) [e](mailto:a@b)`);
   assert.equal(demoteHeadings('# A\n```md\n# not a heading\n```\n## B'),'## A\n```md\n# not a heading\n```\n### B');
+});
+
+test('bare docs page mentions of unshipped pages become pinned links (#948)',()=>{
+  const shipped=new Set(['docs/TOOLING.md']);
+  const source=[
+    'See docs/CAPACITY.md, `docs/STORE.md#intervals` and docs/TOOLING.md.',
+    '[docs/HTTP.md] [x](docs/ROUTING.md) [y][docs/SITE.md] [`docs/CLOUDFLARE.md`](https://x.y/z) `cat docs/EGRESS.md` `docs/*.md`',
+    '```sh',
+    'cat docs/MIDDLEWARE.md',
+    '```',
+  ].join('\n');
+  assert.equal(pinDocsMentions(source,GITHUB_BLOB,shipped),[
+    `See [docs/CAPACITY.md](${GITHUB_BLOB}docs/CAPACITY.md), [docs/STORE.md#intervals](${GITHUB_BLOB}docs/STORE.md#intervals) and docs/TOOLING.md.`,
+    '[docs/HTTP.md] [x](docs/ROUTING.md) [y][docs/SITE.md] [`docs/CLOUDFLARE.md`](https://x.y/z) `cat docs/EGRESS.md` `docs/*.md`',
+    '```sh',
+    'cat docs/MIDDLEWARE.md',
+    '```',
+  ].join('\n'));
 });

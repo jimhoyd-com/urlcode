@@ -1,7 +1,8 @@
 version: "1"
 # Reusable middleware patterns. Each module lives in middleware/ and is documented
-# in docs/MIDDLEWARE-EXAMPLES.md. Bindings are literal values here; production
-# projects use {secret: name} with an operator grant instead.
+# in https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE-EXAMPLES.md.
+# Bindings are literal values here; production projects use {secret: name} with
+# an operator grant instead.
 routes:
   /api/private:
     description: Bearer token gate with a constant-time comparison
