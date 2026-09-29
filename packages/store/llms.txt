@@ -49,7 +49,12 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   write whose half-open `[start, end)` overlaps another record's in its scope with `409 interval_conflict`
   (checked in the write's transaction through a partial index; `error.conflict.id` only for a record the
   caller may read, so another owner's booking blocks without being named). Bounds are both numbers or both
-  `format: date-time` strings in UTC (`Z`, at most millisecond precision).
+  `format: date-time` strings in UTC (`Z`, at most millisecond precision). `length` (`PT1H`, or an integer for
+  integer bounds) fixes every slot's length and `step` puts both bounds on a grid from the epoch (`PT1H`: on the
+  hour, UTC); a slot breaking either is `422 invalid_record`.
+- Members-only create: `create: {members: <membership collection>}` answers `401` without a principal and `403
+  membership_required` to a non-member before the body, the `Idempotency-Key` or any record is read (HTTP,
+  `StoreExports` and host transactions alike).
 - Stored short links: `extensions.store.config.shortLinks.<name>: {mount, collection, destination, clicks}`
   over a collection with a `key`, a required `format: uri` destination property (HTTP(S) only) and one
   `increments` counter, plus a route `<mount>/*: {extension: store, methods: [GET, HEAD]}`; no
@@ -64,7 +69,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - `urlcode-store members add|remove|list --database <file> --project <app> --collection <name> [--principal <id>]`
   maintains a membership collection (no HTTP API exists for it). `audit: true` on it records every added and removed
   member in the same transaction. `readers.showOwner: true` shows the owner's principal id as `_owner` on the readers
-  mount only.
+  mount only. `readers.properties: [name]` makes the readers mount a projection (`id` and those properties only, sorted
+  and filtered by those only, `ETag` of the projection) and `members` optional: a directory for finding a transfer
+  recipient's record id without exposing balances.
 - The operator activates it in the site's `host.mjs` with `store()` (or `store({database})`) in
   the `composeHost` list; `urlcode extensions add store` writes that line.
 

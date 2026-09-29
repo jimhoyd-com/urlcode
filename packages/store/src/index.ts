@@ -4,7 +4,7 @@ export type { StoreExtensionOptions } from './store.ts';
 export { STORE_APPLICATION_ID, STORE_DURABILITIES, STORE_SCHEMA_VERSION } from './database.ts';
 export type { StoreDurability } from './database.ts';
 export { AUDIT_BACKLOG, Collection, StoreError, collectionSchema, compileRecordSchema, normalize, LIMITS, OWNER_FIELD, RESERVED_FIELDS } from './collection.ts';
-export type { CollectionAuditor, CollectionSpec, IntervalScope, IntervalSpec, Ownership, Page, PropertySchema, PropertyType, ReadersSpec, RecordSchema, Scalar, Shown, StoredRecord, TransferSpec, Transferred, TransitionSpec, Viewer } from './collection.ts';
+export type { CollectionAuditor, CollectionSpec, CreateSpec, IntervalScope, IntervalSpec, Ownership, Page, PropertySchema, PropertyType, ReadersSpec, RecordSchema, Scalar, Shown, StoredRecord, TransferSpec, Transferred, TransitionSpec, Viewer } from './collection.ts';
 export { assignOwnerless, deleteOwnerless, reassignOwner, reportOwnerless } from './ownership.ts';
 export { backupStore } from './backup.ts';
 export type { StoreBackupOptions, StoreBackupResult } from './backup.ts';
