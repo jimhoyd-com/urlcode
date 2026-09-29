@@ -3,15 +3,17 @@ import { realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
-import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf, redirectable } from './collection.ts';
+import { Collection, OWNER_FIELD, StoreError, canonical, collectionSchema, etagOf, redirectable } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
-import { markAuditDrained, openStoreDatabase, storeDurability } from './database.ts';
+import { auditDrainHolder, holdsAuditDrain, markAuditDrained, openStoreDatabase, recordDeclarations, releaseAuditDrain, storeDurability } from './database.ts';
 import type { StoreDatabase, StoreDurability } from './database.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
 import { describeStore } from './openapi.ts';
 import type { StoreExports } from './records.ts';
+import { hostProbe, joinServers } from './topology.ts';
+import type { HostProbe, ServerLease } from './topology.ts';
 
 /** At most how often the drain's last-kept-up time is written (well inside the CLI's AUDIT_DRAIN_STALE_MS). */
 const AUDIT_DRAIN_MARK_MS = 10_000;
@@ -35,6 +37,11 @@ export interface StoreExtensionOptions {
    * declares `audit: true` refuses to activate without an active one.
    */
   audit?: AuditExports | undefined;
+  /**
+   * Test seam for the setup checks (#927): the filesystem type, hostname and boot id the store reads. Defaults to the
+   * real machine; an operator never sets it.
+   */
+  probe?: Partial<HostProbe> | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -105,7 +112,13 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
  *
  * The registration owns one connection to the database, opened by its first activation and closed with its last. A
  * dev reload activates the replacement while the serving activation is still live (core RIM-EXT-HANDOFF-001); both
- * are views over the same connection, so there is no second writer and nothing to hand off.
+ * are views over the same connection, so there is no second writer. Each activation records its collections'
+ * declarations (the fence, #927): a retiring activation whose declaration differs has its writes refused, in this
+ * process as in another one serving the same database.
+ *
+ * Opening the connection refuses a database on a network filesystem and joins the database's server leases, refusing a
+ * live peer on another host (topology.ts). The lease instance also holds the audit drain's lease, so with several
+ * serving processes one drains the outbox.
  *
  * With `audit`, the store attaches itself as the audit producer `store` once, here: its outbox is the
  * `store_audit_outbox` table, which audit drains (peek, then ack in a transaction). `close` detaches it; the host
@@ -114,30 +127,37 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
 export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; durability: StoreDurability; close(): Promise<void> } {
   if (typeof options.database !== 'string' || !isAbsolute(options.database)) throw new Error('Store database must be an absolute path');
   const database = resolve(options.database), durability = storeDurability(options.durability);
-  const shared = storeExports(), audit = options.audit;
-  // The live activations, oldest first. The newest is the one being served; the producer drains only while one is live.
-  const live: symbol[] = [];
+  const shared = storeExports(), audit = options.audit, probe: HostProbe = { ...hostProbe, ...options.probe };
+  // The live activations, oldest first, with their collections. The newest is the one being served; the producer
+  // drains only while one is live.
+  const live: { token: symbol; collections: readonly Collection[] }[] = [];
+  // Whether this registration already warned that throttles and caches are per process (once, on seeing a live peer).
+  let warnedPeers = false;
   // The interval indexes each live activation reads through (#902), so a reload drops only indexes nobody declares.
   const intervalIndexes = new Map<symbol, string[]>();
   // The one connection and how many live activations hold it.
   let connection: Connection | undefined;
-  const acquire = async (): Promise<{ db: StoreDatabase; release(): Promise<void> }> => {
-    const held: Connection = connection ?? opener(database, durability);
+  const acquire = async (): Promise<{ db: StoreDatabase; lease: ServerLease; release(): Promise<void> }> => {
+    const held: Connection = connection ?? opener(database, durability, probe);
     connection = held;
     held.refs++;
-    let db: StoreDatabase;
-    try { db = await held.opening; }
+    let opened: { db: StoreDatabase; lease: ServerLease };
+    try { opened = await held.opening; }
     catch (error) { if (--held.refs === 0 && connection === held) connection = undefined; throw error; }
+    const { db, lease } = opened;
     let released = false;
-    return { db, async release() {
+    return { db, lease, async release() {
       if (released) return;
       released = true;
       if (--held.refs > 0) return;
       if (connection === held) connection = undefined;
+      // A peer takes the drain over at its next poll, and this process's server lease goes with it.
+      try { releaseAuditDrain(db, lease.instance); } catch { /* The lease expires on its own. */ }
+      lease.close();
       db.close();
     } };
   };
-  const current = (): StoreDatabase | undefined => live.length && connection?.db?.open ? connection.db : undefined;
+  const current = (): { db: StoreDatabase; instance: string } | undefined => live.length && connection?.db?.open && connection.lease ? { db: connection.db, instance: connection.lease.instance } : undefined;
   // When the drain last kept up (an ack, or a peek that found the outbox empty) is written to the database at most
   // every AUDIT_DRAIN_MARK_MS, so the operator CLI can tell a live drain from none (#875) without a write per poll.
   let marked = 0;
@@ -151,16 +171,26 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
     source: 'store',
     // The oldest pending events across every collection: audit's flush settles once a peek holds only newer events,
     // so an older event left behind would be missed.
+    // Only the drain lease's holder peeks and acks (#927): with several serving processes one drains the outbox, and a
+    // peer takes over once its lease expired or it closed. A process that does not hold it peeks nothing.
     async peek(limit) {
-      const db = current();
-      if (!db) return [];
-      const events = db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent);
-      if (!events.length) drained(db);
+      const serving = current();
+      if (!serving || !holdsAuditDrain(serving.db, serving.instance, Date.now())) return [];
+      const events = serving.db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent);
+      if (!events.length) drained(serving.db);
       return events;
     },
     async ack(ids) {
-      const db = current();
-      if (db && ids.length) { db.transaction(() => { db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids)); }); drained(db); }
+      const serving = current();
+      if (!serving || !ids.length) return;
+      const { db, instance } = serving;
+      // A holder that lost the lease meanwhile leaves the rows: the new holder delivers them again, stored once by id.
+      const acked = db.transaction(() => {
+        if (!auditDrainHolder(db, instance)) return false;
+        db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids));
+        return true;
+      });
+      if (acked) drained(db);
     },
   });
   const auditor: CollectionAuditor | undefined = audit && attachment ? { validate: value => audit.validate(value), notify: () => attachment.notify() } : undefined;
@@ -246,9 +276,16 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       try {
         pending = checkOutbox(held.db, auditor);
         for (const collection of collections) collection.open(held.db);
+        // The newest activation wins the declaration fence (#927): from here on a write through an older declaration
+        // of any of these collections, in this process or another, is refused.
+        record(held.db, collections);
       } catch (error) { await held.release(); throw error; }
+      if (held.lease.peers > 0 && !warnedPeers) {
+        warnedPeers = true;
+        context.warn?.(`${held.lease.peers === 1 ? 'another serving process uses' : `${held.lease.peers} other serving processes use`} this store database: throttle policies and origin caches are per process, so each process applies its own limits and caches`);
+      }
       const exported = shared.attach(collections);
-      live.push(exported);
+      live.push({ token: exported, collections });
       intervalIndexes.set(exported, collections.flatMap(collection => collection.intervalIndex ?? []));
       dropStaleIntervalIndexes(held.db, new Set([...intervalIndexes.values()].flat()));
       // Events a previous run left in the outbox drain now rather than at the next write or poll.
@@ -261,8 +298,12 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
           closed = true;
           shared.detach(exported);
           intervalIndexes.delete(exported);
-          const index = live.indexOf(exported);
+          const index = live.findIndex(entry => entry.token === exported);
           if (index >= 0) live.splice(index, 1);
+          // A failed reload closes the newest activation: the one still serving is current again, and its declaration
+          // is recorded again so its writes pass the fence. A retired (older) activation's close records nothing.
+          const serving = live.at(-1);
+          if (index >= 0 && index === live.length && serving) { try { record(held.db, serving.collections); } catch { /* Its writes answer 503 until the next activation. */ } }
           for (const collection of collections) collection.close();
           await held.release();
         },
@@ -283,11 +324,24 @@ function dropStaleIntervalIndexes(db: StoreDatabase, wanted: ReadonlySet<string>
       if (!wanted.has(name) && /^store_intervals_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
   } catch { /* Retried by the next activation. */ }
 }
-/** The registration's one connection while any activation holds it. */
-interface Connection { readonly opening: Promise<StoreDatabase>; db?: StoreDatabase; refs: number }
-function opener(database: string, durability: StoreDurability): Connection {
-  const connection: Connection = { opening: openStoreDatabase(database, { durability }), refs: 0 };
-  connection.opening.then(db => { connection.db = db; }, () => undefined);
+/** Records `collections`' declarations as the ones served (the fence, #927) and switches their writes to check it. */
+function record(db: StoreDatabase, collections: readonly Collection[]): void {
+  recordDeclarations(db, new Map(collections.map(collection => [collection.name, collection.fingerprint])), Date.now());
+  for (const collection of collections) collection.fence = 'serving';
+}
+/** The registration's one connection while any activation holds it, and its server lease (topology.ts). */
+interface Connection { readonly opening: Promise<{ db: StoreDatabase; lease: ServerLease }>; db?: StoreDatabase; lease?: ServerLease; refs: number }
+/**
+ * Opens the database (refusing a network filesystem) and joins its server leases (refusing a live peer on another
+ * host) before any activation reads it (#927).
+ */
+function opener(database: string, durability: StoreDurability, probe: HostProbe): Connection {
+  const opening = (async () => {
+    const db = await openStoreDatabase(database, { durability, probe });
+    try { return { db, lease: await joinServers(db, probe) }; } catch (error) { db.close(); throw error; }
+  })();
+  const connection: Connection = { opening, refs: 0 };
+  opening.then(({ db, lease }) => { connection.db = db; connection.lease = lease; }, () => undefined);
   return connection;
 }
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }
@@ -308,12 +362,6 @@ function bodyOf(request: ExtensionRequest, collection: Collection): unknown {
     if (error.status === 413) throw new StoreError(413, 'record_too_large', 'Request body is too large');
     throw new StoreError(error.status, error.code, bodyMessages[error.code] ?? error.message);
   }
-}
-/** A JSON value with object keys sorted at every depth: two bodies that differ only in key order fingerprint alike. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`;
-  return JSON.stringify(value);
 }
 /**
  * The request's `Idempotency-Key` scoped to its caller (#835), or `undefined` without the header. The raw value is hashed

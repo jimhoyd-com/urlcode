@@ -176,7 +176,8 @@ function kept(value: unknown): string | null {
 
 /**
  * One host transaction over the activation's collections. Every operation is a write step from collection.ts run on
- * the one open database; audited collections are woken after the commit. `open` turns false when `work` returns, so a
+ * the one open database, the first write to each collection after its declaration fence; audited collections are
+ * woken after the commit. `open` turns false when `work` returns, so a
  * handle kept past the transaction (for example across an `await`) refuses instead of writing outside it.
  */
 function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTransaction) => T, options?: StoreTransactionOptions): T {
@@ -189,6 +190,10 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
   let open = true;
   const live = (): void => { if (!open) throw new Error('This store transaction has ended; use tx only inside the transaction function'); };
   const step = (collection: Collection, done: Step): StoredRecord | undefined => { if (done.audited) audited.add(collection); return done.record; };
+  // The declaration fence (#927), once per collection this transaction writes, before its first write step: a
+  // transaction that only reads a collection is not refused for it.
+  const fenced = new Set<Collection>();
+  const writing = (collection: Collection): void => { live(); if (!fenced.has(collection)) { collection.fenced(db); fenced.add(collection); } };
   const handles = new Map<string, StoreTransactionRecords>();
   const tx: StoreTransaction = Object.freeze({
     records(name: string): StoreTransactionRecords {
@@ -199,13 +204,13 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
       if (!handle) {
         handle = Object.freeze({
           name,
-          create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { live(); return result(step(collection, collection.createFor(db, { ...values }, ownerOf(principal), actorOf(principal)))!); },
+          create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { writing(collection); return result(step(collection, collection.createFor(db, { ...values }, ownerOf(principal), actorOf(principal)))!); },
           get(principal: StorePrincipal, id: string) { live(); return result(collection.getIn(db, known(id), ownerOf(principal))); },
-          update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) { live(); return result(step(collection, collection.updateFor(db, known(id), { ...patch }, matchOf(options), ownerOf(principal), actorOf(principal)))!); },
-          remove(principal: StorePrincipal, id: string, options: { ifMatch?: string } = {}) { live(); step(collection, collection.removeFor(db, known(id), matchOf(options), ownerOf(principal), actorOf(principal))); },
-          transition(principal: StorePrincipal, id: string, transition: string, options: { ifMatch?: string } = {}) { live(); return result(step(collection, collection.transitionIn(db, known(id), String(transition), matchOf(options), ownerOf(principal), actorOf(principal)))!); },
+          update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) { writing(collection); return result(step(collection, collection.updateFor(db, known(id), { ...patch }, matchOf(options), ownerOf(principal), actorOf(principal)))!); },
+          remove(principal: StorePrincipal, id: string, options: { ifMatch?: string } = {}) { writing(collection); step(collection, collection.removeFor(db, known(id), matchOf(options), ownerOf(principal), actorOf(principal))); },
+          transition(principal: StorePrincipal, id: string, transition: string, options: { ifMatch?: string } = {}) { writing(collection); return result(step(collection, collection.transitionIn(db, known(id), String(transition), matchOf(options), ownerOf(principal), actorOf(principal)))!); },
           transfer(principal: StorePrincipal, transfer: string, request: StoreTransferRequest, options: { ifMatch?: string } = {}) {
-            live();
+            writing(collection);
             const done = collection.transferIn(db, String(transfer), plain(request), matchOf(options), ownerOf(principal), actorOf(principal));
             step(collection, done);
             return transferResult(done.record, collection.visible(done.to, ownerOf(principal)) ? done.to : undefined);

@@ -96,27 +96,41 @@ test('a reload that fails after the store accepted its hand-off leaves the servi
   assert.deepEqual(await titles(call), ['one', 'two']);
 });
 
-test('during the overlap both runtimes write through one path and see each other at once (#777)', async t => {
+test('during the overlap the replacement\'s declaration wins: the retiring runtime reads but its writes are refused (#777, #927)', async t => {
   const { project, data, database, edit, store, projectSha256, extensions } = await site(t);
   cleanup(t, () => store.close());
   const serving = await createRuntime(project, { origin, extensions });
   const post = (runtime: typeof serving, title: string) => runtime.handle({ target: '/api/todos', method: 'POST', headers: new Headers(json), body: Buffer.from(JSON.stringify({ title })) });
   const list = async (runtime: typeof serving) => (JSON.parse(Buffer.from((await runtime.handle({ target: '/api/todos' })).body as Uint8Array).toString()) as { items: { title: string }[] }).items.map(item => item.title);
   assert.equal((await post(serving, 'a')).status, 201);
-  // A tighter declaration for the replacement: the retiring runtime's writes that break it make it answer 503.
+  // A tighter declaration for the replacement: the retiring runtime would write rows it forbids.
   await edit({ ...todos, schema: { ...todos.schema, properties: { ...todos.schema.properties, title: { ...todos.schema.properties.title, maxLength: 5 } } } });
   const next = await createRuntime(project, { origin, extensions, replacing: serving, acceptedExtensionPin: { from: projectSha256 } });
   assert.deepEqual(await list(next), ['a']);
   assert.equal((await post(next, 'b')).status, 201);
-  assert.deepEqual(await list(serving), ['a', 'b'], 'the serving view sees the replacement write at once');
-  assert.equal((await post(serving, 'c')).status, 201);
-  assert.deepEqual(await list(next), ['a', 'b', 'c'], 'and the reverse');
-  assert.deepEqual(await stored(database), ['a', 'b', 'c'], 'no write was lost to a second writer');
-  assert.equal((await post(serving, 'far too long')).status, 201, 'the retiring declaration still admits it');
-  const refused = await next.handle({ target: '/api/todos' });
-  assert.equal(refused.status, 503, 'a view that cannot represent the committed state refuses instead of overwriting it');
+  assert.deepEqual(await list(serving), ['a', 'b'], 'the serving view still reads, and sees the replacement write at once');
+  const refused = await post(serving, 'far too long');
+  assert.equal(refused.status, 503, 'the retiring declaration no longer writes');
+  assert.deepEqual(JSON.parse(Buffer.from(refused.body as Uint8Array).toString()), { error: { code: 'storage_unavailable', message: 'The collection was redeclared by another process' } });
+  assert.deepEqual(await stored(database), ['a', 'b'], 'and wrote nothing');
+  assert.equal((await post(next, 'c')).status, 201);
   await serving.close();
-  assert.equal((await next.handle({ target: '/api/todos' })).status, 503, 'still refused after the retiring runtime closed: the row stays');
+  assert.equal((await post(next, 'd')).status, 201, 'closing the retired runtime leaves the replacement writing');
+  assert.deepEqual(await list(next), ['a', 'b', 'c', 'd']);
   await next.close();
   await closedCleanly(data);
+});
+
+test('a reload whose store activation recorded a new declaration but that fails later leaves the serving declaration writing (#927)', async t => {
+  const { project, database, edit, store, projectSha256, extensions } = await site(t);
+  cleanup(t, () => store.close());
+  const serving = await createRuntime(project, { origin, extensions });
+  const post = (runtime: typeof serving, title: string) => runtime.handle({ target: '/api/todos', method: 'POST', headers: new Headers(json), body: Buffer.from(JSON.stringify({ title })) });
+  assert.equal((await post(serving, 'one')).status, 201);
+  // The store activates the changed declaration (recording it), then the breaker refuses and the runtime closes it.
+  await edit({ ...todos, maxRecords: 9 }, true);
+  await assert.rejects(createRuntime(project, { origin, extensions, replacing: serving, acceptedExtensionPin: { from: projectSha256 } }), /breaker refused/);
+  assert.equal((await post(serving, 'two')).status, 201, 'the serving declaration is recorded again');
+  assert.deepEqual(await stored(database), ['one', 'two']);
+  await serving.close();
 });

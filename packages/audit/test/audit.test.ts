@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { AuditError, auditOutboxLimits, auditPermissions, createAudit, validateAuditEvent } from '../src/index.ts';
 import type { AuditEvent, AuditExports, AuditStoredEvent } from '../src/index.ts';
 import { activation, activeAudit, event, openAudit, pin, tempDir } from './support.ts';
+import { openAuditStore, refuseNetworkFilesystem } from '../src/store.ts';
 
 const rejectsWith = (promise: Promise<unknown>, status: number, code: string) =>
   assert.rejects(promise, (error: unknown) => error instanceof AuditError && error.status === status && error.code === code);
@@ -230,4 +231,14 @@ test('a closed audit refuses a late attachment', async t => {
   const { audit } = await activeAudit(t);
   await audit.close();
   assert.throws(() => audit.exports.attach({ source: 'late', peek: async () => [], ack: async () => {} }), (error: unknown) => error instanceof AuditError && error.code === 'audit_unavailable');
+});
+
+test('an audit database directory on a network filesystem is refused on Linux and not checked elsewhere (#927)', async t => {
+  const dir = await tempDir(t);
+  const linux = (type: number) => ({ platform: 'linux' as const, statfs: async () => ({ type }) });
+  for (const [type, name] of [[0x6969, 'NFS'], [0xff534d42 - 2 ** 32, 'CIFS'], [0x65735546, 'FUSE']] as const)
+    await assert.rejects(openAuditStore(join(dir, 'audit.sqlite'), undefined, linux(type)), new RegExp(`^Error: The audit database is on a ${name} filesystem`));
+  await refuseNetworkFilesystem(dir, { platform: 'darwin', statfs: async () => ({ type: 0x6969 }) });
+  const local = await openAuditStore(join(dir, 'audit.sqlite'), undefined, linux(0xef53));
+  local.close();
 });

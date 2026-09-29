@@ -28,7 +28,7 @@
 import { isAbsolute } from 'node:path';
 import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
-import { AUDIT_BACKLOG, StoreError, membershipEvent, normalize, overlapping, refuseBalance, stamp, writeAuditEvent } from './collection.ts';
+import { AUDIT_BACKLOG, StoreError, declarationFingerprint, membershipEvent, normalize, operatorFence, overlapping, refuseBalance, stamp, writeAuditEvent } from './collection.ts';
 import type { CollectionSpec, NormalizedSpec, StoredRecord } from './collection.ts';
 import { auditValidator, operatorActor } from './membership.ts';
 import { auditDelivery, openStoreDatabase } from './database.ts';
@@ -111,6 +111,7 @@ export async function assignOwnerless(database: string, options: OwnerlessOption
   if (typeof owner !== 'string' || !principalIdPattern.test(owner)) throw new Error('Owner must be a principal id: 1 to 128 ASCII letters, digits, ".", "_", ":" or "-", starting with a letter or digit');
   const { collection, spec, validate, actor } = await ownedCollection(options);
   return transaction(database, db => {
+    operatorFence(db, collection, declarationFingerprint(spec));
     const ids = ownerlessIds(db, collection);
     if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
     refuseOverlap(db, collection, spec, null, owner);
@@ -127,6 +128,7 @@ export async function assignOwnerless(database: string, options: OwnerlessOption
 export async function deleteOwnerless(database: string, options: OwnerlessOptions): Promise<OwnerlessReport> {
   const { collection, spec, validate, actor } = await ownedCollection(options);
   return transaction(database, db => {
+    operatorFence(db, collection, declarationFingerprint(spec));
     const ids = ownerlessIds(db, collection);
     if (Object.keys(spec.transfers).length) for (const row of db.all<{ data: string }>('SELECT data FROM store_records WHERE collection = ? AND owner IS NULL ORDER BY seq', collection)) refuseBalance(spec, JSON.parse(row.data) as StoredRecord);
     if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
@@ -195,6 +197,7 @@ export async function reassignOwner(database: string, options: ReassignOptions):
   const validate = audited ? await auditValidator(audited.name) : undefined;
   const specOf = (name: string) => selected.find(entry => entry.name === name)!.spec;
   return transaction(database, db => {
+    for (const { name, spec } of selected) operatorFence(db, name, declarationFingerprint(spec));
     const member = (collection: string, principal: string) => db.get<{ id: string; updated_at: string }>('SELECT id, updated_at FROM store_records WHERE collection = ? AND key = ?', collection, principal);
     const memberships: ReassignMembershipReport[] = lists.filter(({ name }) => member(name, from) !== undefined).map(({ name }) => ({ collection: name, toWasMember: member(name, to) !== undefined }));
     const count = (collection: string, owner: string) => db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ? AND owner = ?', collection, owner)!.n;
