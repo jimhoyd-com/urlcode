@@ -165,3 +165,33 @@ test('the shipped example satisfies its own assertions on the Worker runtime', a
     if (item.expectBody !== undefined) assert.equal(response.body,item.expectBody,`body differs for ${item.path}`);
   }
 });
+
+test('a repeated request header joined by the platform is refused like a repeated line on the self-hosted server', async t => {
+  const root = await project(t,{
+    '/mode': { parameters:[param('x-mode','string','header')],
+      redirect:{ url:'https://example.com/m', query:{ map:{ m:{ from:'header', name:'x-mode' } } } } },
+    '/in': { methods:['POST'], request:{ body:{ POST:{ format:'json' } } }, respond:{ text:'ok' } },
+  });
+  const worker = await build(t,root);
+  const call = async (path: string, entries: [string, string][], init: RequestInit = {}) => {
+    const headers = new Headers();
+    for (const [name,value] of entries) headers.append(name,value);
+    return read(await worker.fetch(new Request(`https://links.example${path}`,{ ...init, headers })));
+  };
+
+  const once = await call('/mode',[['x-mode','fast']]);
+  assert.equal(once.status,302);
+  assert.equal(once.headers.location,'https://example.com/m?m=fast');
+  // Two lines arrive as one joined value; the lost repeat still counts, as it does on the Node server.
+  const twice = await call('/mode',[['x-mode','fast'],['x-mode','slow']]);
+  assert.equal(twice.status,400);
+  assert.match(twice.body,/Duplicate scalar parameter/);
+  // The documented cost: one line whose value contains a comma is indistinguishable, so it is refused too.
+  assert.equal((await call('/mode',[['x-mode','a,b']])).status,400);
+
+  const post = { method:'POST', body:'{"a":1}' };
+  assert.equal((await call('/in',[['content-type','application/json']],post)).status,200);
+  const dup = await call('/in',[['content-type','application/json'],['content-type','application/json']],post);
+  assert.equal(dup.status,400);
+  assert.match(dup.body,/Duplicate Content-Type/);
+});
