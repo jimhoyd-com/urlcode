@@ -208,6 +208,9 @@ test('three serving processes on one data directory keep every store, audit and 
       distinct: Number(db.prepare('SELECT count(DISTINCT id) AS n FROM audit_events').get()!.n),
       byAction: Object.fromEntries((db.prepare("SELECT action || ' ' || json_extract(metadata, '$.collection') AS kind, count(*) AS n FROM audit_events GROUP BY kind").all() as { kind: string; n: number }[]).map(row => [row.kind, Number(row.n)])),
       sides: db.prepare("SELECT json_extract(metadata, '$.side') AS side, count(*) AS n FROM audit_events WHERE action = 'store.record.transferred' GROUP BY side").all().map(row => [row.side, Number(row.n)]),
+      // An event's `at` is read while its transaction holds the write lock, so commit order is `at` order on one host's
+      // clock; the drainer delivers oldest first, so stored order must never go back in time.
+      backwards: Number(db.prepare('SELECT count(*) AS n FROM (SELECT at, lag(at) OVER (ORDER BY seq) AS before FROM audit_events) WHERE at < before').get()!.n),
     }));
     assert.equal(facts.outbox, 0, 'the outbox drained');
     assert.equal(delivered.distinct, delivered.total, 'no event stored twice');
@@ -220,6 +223,7 @@ test('three serving processes on one data directory keep every store, audit and 
       ...(facts.claimed ? { 'store.record.transitioned tickets': facts.claimed } : {}),
     }, 'one event per committed change: none lost, none duplicated');
     assert.deepEqual(delivered.sides, [['from', facts.transfers], ['to', facts.transfers]]);
+    assert.equal(delivered.backwards, 0, 'events are stored in commit order, across the lease take-over too');
     return { events: delivered.total };
   };
   const outboxEmpty = () => withDatabase(store, db => Number(db.prepare('SELECT count(*) AS n FROM store_audit_outbox').get()!.n) === 0);

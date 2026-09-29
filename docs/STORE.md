@@ -1735,7 +1735,8 @@ behind `auth: true`. The harness asserts:
   throughout. Once the outbox is empty, `audit.sqlite` holds one event per
   committed change and each event id once: one per created record, two per
   committed transfer (counted by the retained `Idempotency-Key` claims) and one
-  per claimed ticket.
+  per claimed ticket. They are stored in commit order: no event's `at` is
+  earlier than the one stored before it.
 - **No false 401:** 24 correct sign-ins spread over the processes run while
   60 signed-in reads hit all three. Every sign-in answers `200`, `429` or
   `503`, every read `200` or `503`, and at most the shared limit's remaining
