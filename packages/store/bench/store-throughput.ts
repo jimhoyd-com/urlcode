@@ -4,7 +4,7 @@
 //   npm run bench:store -- --quick      # smaller counts, for checking the script itself
 //   npm run bench:store -- --json out.json
 //
-// Three parts, each printed as a table:
+// Four parts, each printed as a table (`--intervals` runs only the fourth):
 //   1. HTTP: a real server (a child process running startServer with the store, audit and a header principal) driven
 //      by a bounded keep-alive node:http client at fixed concurrency. Creates (Idempotency-Key), PATCH with If-Match
 //      and declared transitions on an owned collection with audit off and on, then list latency at page sizes 20 and
@@ -15,6 +15,9 @@
 //   3. List micro-benchmark: the store's sorted/filtered list path (projection query, JS ordering via runList, page
 //      fetch) at 1k/10k/50k records, beside an ORDER BY ... LIMIT in SQL with and without an expression index. 50k is
 //      above the configurable maxRecords and is measured only to show the curve.
+//   4. Interval micro-benchmark (#902): the declared non-overlap check's query through its index at 1k and 10k
+//      records, beside the same query without the index and the host-transaction scan it replaces, and whole creates
+//      (refused and accepted) with and without `intervals`.
 import { fork } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -340,11 +343,89 @@ async function main(): Promise<void> {
     for (const size of [1000, 10_000, 50_000]) micro.push(...await listMicro(dir, size));
     table(micro as unknown as Record<string, unknown>[]);
     report.listMicro = micro;
+    await intervalPart(root, report);
     if (jsonOut) await writeFile(jsonOut, JSON.stringify(report, null, 2));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Interval micro-benchmark (#902 item 1): the declared non-overlap check at 1k and 10k records (the configurable
+// maximum), in process. The check's own query through the interval index, the same query with the index dropped, and
+// the host-transaction check it replaces (read every record in the calendar, compare in JS); then whole writes (one
+// synchronous=FULL commit each) through Collection.create with and without `intervals`. The records are 20 rooms of
+// back-to-back one-hour bookings, owned by 50 principals, `scope: collection`.
+interface IntervalMicro { size: number; shape: string; p50us: number; p95us: number; p99us: number }
+async function intervalMicro(dir: string, size: number): Promise<IntervalMicro[]> {
+  const { openStoreDatabase } = await import('../src/database.ts');
+  const { Collection } = await import('../src/collection.ts');
+  const rooms = 20, perRoom = size / rooms, base = Date.UTC(2026, 0, 1), hourMs = 3_600_000;
+  const bookingSchema = { type: 'object', additionalProperties: false, required: ['room', 'start', 'end'], properties: { room: { type: 'string', maxLength: 20 }, start: { type: 'string', format: 'date-time' }, end: { type: 'string', format: 'date-time' } } };
+  const spec = (intervals: boolean) => ({ mount: '/api/bookings', ownership: 'owner', maxRecords: 10_000, schema: bookingSchema, ...(intervals ? { intervals: { start: 'start', end: 'end', within: ['room'] } } : {}) }) as unknown as import('../src/collection.ts').CollectionSpec;
+  const db = await openStoreDatabase(join(dir, `intervals-${size}.sqlite`));
+  const now = new Date().toISOString(), iso = (ms: number) => new Date(ms).toISOString();
+  db.transaction(() => {
+    for (let r = 0; r < rooms; r++) for (let h = 0; h < perRoom; h++)
+      db.run('INSERT INTO store_records(collection, id, owner, key, created_at, updated_at, data) VALUES (?, ?, ?, NULL, ?, ?, ?)', 'bookings', randomUUID(), `p${(r * perRoom + h) % 50}`, now, now, JSON.stringify({ room: `room-${r}`, start: iso(base + h * hourMs), end: iso(base + (h + 1) * hourMs) }));
+  });
+  const checked = new Collection('bookings', spec(true));
+  checked.open(db);
+  const intervals = checked.spec.intervals!;
+  const time = (shape: string, iterations: number, fn: (i: number) => unknown): IntervalMicro => {
+    for (let i = 0; i < 5; i++) fn(i);
+    const times: number[] = [];
+    for (let i = 0; i < iterations; i++) { const t0 = performance.now(); fn(i); times.push((performance.now() - t0) * 1000); }
+    times.sort((a, b) => a - b);
+    return { size, shape, p50us: round(pct(times, 50), 1), p95us: round(pct(times, 95), 1), p99us: round(pct(times, 99), 1) };
+  };
+  // A probe inside the booked range, so both a hit and a miss have to find their neighbour.
+  const probe = (i: number) => { const h = (i * 7919) % perRoom; return { room: `room-${i % rooms}`, start: base + h * hourMs + 1_800_000 }; };
+  const iterations = quick ? 200 : 2000;
+  const out: IntervalMicro[] = [];
+  const query = (label: string) => time(`check query, ${label}`, iterations, i => { const p = probe(i); return db.get(intervals.latest, p.room, p.start + hourMs, 'none'); });
+  out.push(query('interval index'));
+  // What a host transaction did before (#835's scheduling proof): read the calendar's records and compare in JS.
+  out.push(time('host-transaction scan (read the room, compare in JS)', quick ? 20 : 200, i => {
+    const p = probe(i);
+    return db.all<{ data: string }>("SELECT data FROM store_records WHERE collection = ? AND data ->> '$.room' = ?", 'bookings', p.room).some(row => { const b = JSON.parse(row.data) as { start: string; end: string }; return p.start < Date.parse(b.end) && Date.parse(b.start) < p.start + hourMs; });
+  }));
+  db.run(`DROP INDEX "${intervals.index}"`);
+  out.push(time('check query, index dropped', quick ? 20 : 200, i => { const p = probe(i); return db.get(intervals.latest, p.room, p.start + hourMs, 'none'); }));
+  db.run(intervals.create);
+  // Whole writes: refused (conflict) and accepted (a fresh room each, so every create is a new booking), with and
+  // without the declaration. Accepted creates stop below maxRecords.
+  const writes = quick ? 50 : 300;
+  out.push(time('create refused (409 interval_conflict), intervals', quick ? 50 : 500, i => { const p = probe(i); try { checked.create({ room: p.room, start: iso(p.start), end: iso(p.start + hourMs) }, undefined, 'p1', 'p1'); } catch { /* expected */ } }));
+  // Room for the accepted writes under maxRecords: the newest seeded bookings go, and the writes bring the size back.
+  const room = () => db.run('DELETE FROM store_records WHERE seq IN (SELECT seq FROM store_records WHERE collection = ? ORDER BY seq DESC LIMIT ?)', 'bookings', writes + 10);
+  room();
+  let fresh = 0;
+  out.push(time('create accepted, intervals', writes, () => checked.create({ room: `new-${fresh++}`, start: iso(base), end: iso(base + hourMs) }, undefined, 'p1', 'p1')));
+  room();
+  db.run(`DROP INDEX "${intervals.index}"`);
+  const plain = new Collection('bookings', spec(false));
+  plain.open(db);
+  out.push(time('create accepted, no intervals (no index)', writes, () => plain.create({ room: `plain-${fresh++}`, start: iso(base), end: iso(base + hourMs) }, undefined, 'p1', 'p1')));
+  db.close();
+  return out;
+}
+async function intervalPart(root: string, report: Record<string, unknown>): Promise<void> {
+  console.log('## Interval micro-benchmark (in process, no HTTP)\n');
+  const dir = join(root, 'intervals');
+  await mkdir(dir, { recursive: true });
+  const rows: IntervalMicro[] = [];
+  for (const size of [1000, 10_000]) rows.push(...await intervalMicro(dir, size));
+  table(rows as unknown as Record<string, unknown>[]);
+  report.intervals = rows;
+}
+
 if (args.includes('--server')) await serve();
+else if (args.includes('--intervals')) {
+  // Only the interval part: npm run bench:store -- --intervals
+  const root = await mkdtemp(join(tmpdir(), 'store-bench-'));
+  const report: Record<string, unknown> = { machine: { cpu: cpus()[0]?.model, cores: cpus().length, platform: `${platform()} ${release()}` }, node: process.version, sqlite: process.versions.sqlite, quick };
+  try { await intervalPart(root, report); if (jsonOut) await writeFile(jsonOut, JSON.stringify(report, null, 2)); }
+  finally { await rm(root, { recursive: true, force: true }); }
+}
 else await main();

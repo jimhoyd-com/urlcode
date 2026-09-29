@@ -14,7 +14,7 @@ const ref = (name: string): Json => ({ $ref: `#/components/schemas/${name}` });
 const json = (schema: Json): Json => ({ 'application/json': { schema } });
 const ID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 
-/** The store's error envelope: `fields` on a 400 invalid_query, `issues` (core's body-validation issues) on a 422 invalid_record or a 409 increment_limit. */
+/** The store's error envelope: `fields` on a 400 invalid_query, `issues` (core's body-validation issues) on a 422 invalid_record or a 409 increment_limit, `conflict` on a 409 interval_conflict. */
 const errorSchema: Json = {
   description: 'Every error the store writes: a fixed code and message, and never a submitted value.',
   type: 'object', required: ['error'], additionalProperties: false,
@@ -22,6 +22,7 @@ const errorSchema: Json = {
     code: { type: 'string' }, message: { type: 'string' },
     fields: { type: 'object', additionalProperties: { type: 'string' }, description: 'invalid_query: the offending query parameters, each with a fixed message.' },
     issues: { type: 'array', items: ref('UrlcodeBodyValidationIssue'), description: 'invalid_record and increment_limit: the schema issues, in the shape a body-schema route answers.' },
+    conflict: { type: 'object', required: ['id'], additionalProperties: false, properties: { id: { type: 'string', pattern: ID_PATTERN } }, description: 'interval_conflict: the record whose interval overlaps, only when the caller may read it (on an owned collection, only the caller\'s own record; another owner\'s blocks the slot without being named).' },
   } } },
 };
 const failure = (description: string): Json => ({ description, content: json(ref('StoreError')) });
@@ -124,11 +125,12 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
     ...(conflict ? { '409': failure(conflict) } : {}),
     '413': failure('record_too_large: the body or the resulting record exceeds maxRecordBytes.'),
     '415': failure('Send Content-Type: application/json.'),
-    '422': failure(`invalid_record: the record does not satisfy the collection schema${spec.idempotency ? '; or idempotency_key_reused' : ''}.`),
+    '422': failure(`invalid_record: the record does not satisfy the collection schema${spec.intervals ? ' or its intervals (a bound that is not a UTC date-time, or an end not after its start)' : ''}${spec.idempotency ? '; or idempotency_key_reused' : ''}.`),
     '503': unavailable,
   });
   const listed = { parameters: listParameters(spec), responses: { '200': { description: 'One page of the caller\'s records.', content: json(ref(names.list)) }, '400': failure('invalid_query: an undeclared, repeated or invalid list parameter.'), '503': unavailable } };
-  const conflicts = [spec.key ? 'key_exists' : '', 'collection_full', spec.maxRecordsPerOwner ? 'owner_quota_exceeded' : ''].filter(Boolean).join(', ');
+  const overlap = spec.intervals ? 'interval_conflict (the interval overlaps another record\'s; see error.conflict)' : '';
+  const conflicts = [spec.key ? 'key_exists' : '', 'collection_full', spec.maxRecordsPerOwner ? 'owner_quota_exceeded' : '', overlap].filter(Boolean).join(', ');
   const paths: Record<string, Json> = {
     [mount]: {
       summary: `The ${name} collection`,
@@ -145,7 +147,7 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
   if (!spec.readOnly) {
     const update = (kind: string, schema: string): Json => ({
       summary: `${kind} a ${name} record`, parameters: [ifMatch, ...retry], requestBody: body(schema),
-      responses: { ...recordAnswer('200', 'Updated.'), '404': notFound, '412': failure('precondition_failed: the record changed since that ETag.'), ...writeErrors(spec.key ? 'key_exists' : undefined) },
+      responses: { ...recordAnswer('200', 'Updated.'), '404': notFound, '412': failure('precondition_failed: the record changed since that ETag.'), ...writeErrors([spec.key ? 'key_exists' : '', overlap].filter(Boolean).join(', ') || undefined) },
     });
     item.put = update('Replace', names.create);
     item.patch = update('Update', names.patch);
@@ -176,7 +178,7 @@ function transitionOperation(name: string, transition: string, declared: Normali
       ...recordAnswer('200', 'Transitioned.'),
       '400': badRequest,
       '403': failure(['forbidden_origin: a cross-origin write', ...declared.members ? ['membership_required: the caller is not a member'] : [], ...declared.by === 'others' ? ['own_record_refused: the caller owns the record'] : []].join('; ') + '.'),
-      '404': notFound, '409': failure('transition_conflict: the record is not in the from state.'), '412': failure('precondition_failed: the record changed since that ETag.'),
+      '404': notFound, '409': failure(`transition_conflict: the record is not in the from state${spec.intervals ? '; or interval_conflict: the record as the transition leaves it would overlap another record\'s interval (see error.conflict)' : ''}.`), '412': failure('precondition_failed: the record changed since that ETag.'),
       ...(spec.idempotency ? { '422': failure('idempotency_key_reused.') } : {}), '503': unavailable,
     },
   };

@@ -9,6 +9,8 @@
  * `transaction(work)` (#835) runs several of those operations, across the declared collections, as one database
  * transaction: trusted host code only (never sandboxed, never a route function), synchronous, one database.
  */
+import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { ExtensionPrincipal } from '@jimhoyd/urlcode/extensions';
 import { OWNER_FIELD, StoreError, etagOf, storageFailure } from './collection.ts';
 import type { Collection, Ownership, RecordSchema, Scalar, Step, StoredRecord } from './collection.ts';
@@ -29,9 +31,31 @@ export interface StoreExports {
    * and rolled back, and `tx` refuses every call once `work` has returned. Transactions do not nest, and calling
    * `records()` inside `work` is refused because it would open a second one. Trusted host code only: this is not a
    * sandbox, `work` runs with full Node access, and the principals it passes are taken as given.
+   *
+   * With `options.idempotencyKey` (#902) the transaction is retry-safe: the key's claim is read under the write lock,
+   * so of racing calls with one key exactly one runs `work`. Its return value, which must then be a JSON value (or
+   * `undefined`) of at most `TRANSACTION_RETRIES.resultBytes` bytes serialized, is kept with the claim in the same
+   * transaction, and a later call with the key and the same `fingerprint` returns a copy of it without running `work`
+   * or writing anything. A different fingerprint is a 422 `idempotency_key_reused` `StoreError`. A transaction that
+   * throws keeps nothing, so its retry runs again. Keys are store-wide: prefix them with the caller's own scope.
    */
-  transaction<T>(work: (tx: StoreTransaction) => T): T;
+  transaction<T>(work: (tx: StoreTransaction) => T, options?: StoreTransactionOptions): T;
 }
+/** Makes a host transaction retry-safe (`StoreExports.transaction`). */
+export interface StoreTransactionOptions {
+  /** The caller's key for this logical operation, 1 to `TRANSACTION_RETRIES.keyLength` characters; stored only as a hash. */
+  idempotencyKey: string;
+  /**
+   * What the operation is (for example the canonical request it serves), at most `TRANSACTION_RETRIES.fingerprintLength`
+   * characters; stored only as a hash. A retry with the key must carry the same one (absent counts as the empty string).
+   */
+  fingerprint?: string;
+}
+/**
+ * Host transaction retry bounds: the key and fingerprint lengths a caller may pass, the largest result kept (its JSON
+ * in bytes), and how many keys the store retains, newest first; an evicted key's retry runs again.
+ */
+export const TRANSACTION_RETRIES = { keyLength: 256, fingerprintLength: 4096, resultBytes: 16_384, keys: 1_000 } as const;
 /** The operations of one host transaction (`StoreExports.transaction`). */
 export interface StoreTransaction {
   /** One declared collection, inside this transaction. Throws an `Error` for an undeclared one. */
@@ -114,13 +138,39 @@ function pageOf(collection: Collection, options: { limit?: number; cursor?: stri
   });
 }
 
+const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
+/** The hashed key and fingerprint of an idempotent host transaction, or `undefined` without a key. Misuse is a TypeError. */
+function retryOf(options: StoreTransactionOptions | undefined): { key: string; fingerprint: string } | undefined {
+  if (options === undefined) return undefined;
+  if (options === null || typeof options !== 'object') throw new TypeError('transaction options must be an object');
+  const { idempotencyKey, fingerprint = '' } = options;
+  if (idempotencyKey === undefined) return undefined;
+  if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 1 || idempotencyKey.length > TRANSACTION_RETRIES.keyLength) throw new TypeError(`idempotencyKey must be a string of 1 to ${TRANSACTION_RETRIES.keyLength} characters`);
+  if (typeof fingerprint !== 'string' || fingerprint.length > TRANSACTION_RETRIES.fingerprintLength) throw new TypeError(`fingerprint must be a string of at most ${TRANSACTION_RETRIES.fingerprintLength} characters`);
+  return { key: sha256(idempotencyKey), fingerprint: sha256(fingerprint) };
+}
+/**
+ * An idempotent transaction's result as it is kept: its JSON (null for `undefined`). A value JSON would change (a
+ * Date, a Map, NaN, a class instance) or one over the size bound throws, which rolls the transaction back, so a
+ * replay always returns exactly what the first call returned.
+ */
+function kept(value: unknown): string | null {
+  if (value === undefined) return null;
+  let text: string | undefined;
+  try { text = JSON.stringify(value); } catch { text = undefined; }
+  if (text === undefined || !isDeepStrictEqual(JSON.parse(text), value)) throw new TypeError('An idempotent store transaction must return a JSON value or undefined: its result is kept for replay, so nothing it did was committed');
+  if (Buffer.byteLength(text) > TRANSACTION_RETRIES.resultBytes) throw new RangeError(`An idempotent store transaction's result must serialize to at most ${TRANSACTION_RETRIES.resultBytes} bytes of JSON, so nothing it did was committed; return ids rather than records`);
+  return text;
+}
+
 /**
  * One host transaction over the activation's collections. Every operation is a write step from collection.ts run on
  * the one open database; audited collections are woken after the commit. `open` turns false when `work` returns, so a
  * handle kept past the transaction (for example across an `await`) refuses instead of writing outside it.
  */
-function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTransaction) => T): T {
+function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTransaction) => T, options?: StoreTransactionOptions): T {
   if (typeof work !== 'function') throw new TypeError('transaction needs a synchronous function');
+  const retry = retryOf(options);
   const first = byName.values().next().value as Collection | undefined;
   if (!first) throw new Error('store declares no collections');
   const db: StoreDatabase = first.database();
@@ -153,11 +203,25 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
   let value: T;
   try {
     value = db.transaction(() => {
+      if (retry) {
+        // Read under the write lock: of racing calls with one key, exactly one gets past here without a claim.
+        const claimed = db.get<{ fingerprint: string; result: string | null }>('SELECT fingerprint, result FROM store_transaction_results WHERE key = ?', retry.key);
+        if (claimed) {
+          open = false;
+          if (claimed.fingerprint !== retry.fingerprint) throw new StoreError(422, 'idempotency_key_reused', 'This idempotency key was already used for a different operation');
+          return (claimed.result === null ? undefined : JSON.parse(claimed.result)) as T;
+        }
+      }
+      let returned: T;
       try {
-        const returned = work(tx);
+        returned = work(tx);
         if (returned !== null && typeof returned === 'object' && typeof (returned as { then?: unknown }).then === 'function') throw new TypeError('A store transaction function must be synchronous: it returned a promise, so nothing it did was committed');
-        return returned;
       } finally { open = false; }
+      if (retry) {
+        db.run('INSERT INTO store_transaction_results(key, fingerprint, result, claimed_at) VALUES (?, ?, ?, ?)', retry.key, retry.fingerprint, kept(returned), Date.now());
+        db.run('DELETE FROM store_transaction_results WHERE seq <= (SELECT seq FROM store_transaction_results ORDER BY seq DESC LIMIT 1 OFFSET ?)', TRANSACTION_RETRIES.keys);
+      }
+      return returned;
     });
   } catch (error) { return storageFailure(error, true); }
   for (const collection of audited) collection.notifyAudit();
@@ -201,9 +265,9 @@ export function storeExports(): { exports: StoreExports; attach(collections: rea
       if (!found) throw new Error(`store declares no collection ${String(name).slice(0, 64)}`);
       return found;
     },
-    transaction<T>(work: (tx: StoreTransaction) => T): T {
+    transaction<T>(work: (tx: StoreTransaction) => T, options?: StoreTransactionOptions): T {
       if (!current) throw new Error('store is not active yet: run transactions from activate or a request, not from host()');
-      return runTransaction(current.collections, work);
+      return runTransaction(current.collections, work, options);
     },
   });
   return {

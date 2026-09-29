@@ -357,6 +357,67 @@
                 "description": "true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner's mount, transitions and StoreExports never do."
               }
             }
+          },
+          "intervals": {
+            "description": "A non-overlap constraint for scheduling: among the records it applies to, no two in the same scope (and with equal within values) may hold overlapping half-open [start, end) intervals, so an interval ending where another starts is allowed. Checked inside the write transaction of every create, PUT, PATCH and transition against an index, never a scan of the collection; an overlap answers 409 interval_conflict and nothing is written, so a move that would overlap keeps the record where it was. Activation refuses stored records that already overlap. Not on a membership collection.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start",
+              "end"
+            ],
+            "properties": {
+              "start": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+                "description": "A required property holding the start: a string with format: date-time, whose values must be UTC (ending in Z) with at most millisecond precision and compare as instants, or an integer or number."
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$",
+                "description": "A required property of the same kind as start holding the end; a record whose end is not after its start answers 422 invalid_record."
+              },
+              "within": {
+                "type": "array",
+                "maxItems": 4,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                },
+                "description": "Required properties that partition the constraint (a room, a resource): two intervals conflict only when every one of these is equal."
+              },
+              "scope": {
+                "enum": [
+                  "collection",
+                  "owner"
+                ],
+                "description": "collection (default): every record blocks every other, across owners on an owned collection (another owner's conflicting record is never named). owner: with ownership: owner only, each owner's records are constrained among themselves."
+              },
+              "when": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 8,
+                "propertyNames": {
+                  "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                },
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "description": "Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property's schema. Without it every record takes part."
+              }
+            }
           }
         }
       },

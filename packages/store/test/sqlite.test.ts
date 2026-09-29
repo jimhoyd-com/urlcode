@@ -88,7 +88,7 @@ test('schema initialization is forward-only and idempotent: reopening changes no
   (await openStoreDatabase(path)).close();
   const initial = schema();
   assert.equal(initial.version, STORE_SCHEMA_VERSION); assert.equal(initial.application, STORE_APPLICATION_ID);
-  assert.deepEqual(initial.objects.map(object => object.name), ['store_audit_drain', 'store_audit_outbox', 'store_audit_outbox_collection', 'store_audit_outbox_order', 'store_idempotency', 'store_idempotency_order', 'store_records', 'store_records_order', 'store_records_owner']);
+  assert.deepEqual(initial.objects.map(object => object.name), ['store_audit_drain', 'store_audit_outbox', 'store_audit_outbox_collection', 'store_audit_outbox_order', 'store_idempotency', 'store_idempotency_order', 'store_records', 'store_records_order', 'store_records_owner', 'store_transaction_results']);
   const { todos: api, close } = await activate(t, root, path);
   await api.create(null, { title: 'kept' });
   await close();

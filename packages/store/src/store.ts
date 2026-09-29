@@ -42,7 +42,7 @@ const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 const FIELD = /^[a-z][A-Za-z0-9_]{0,63}$/;
 const json = (status: number, value: unknown, extra: [string, string][] = []): HandlerResult => jsonResponse(status, value, extra);
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
-  json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}), ...(error.issues ? { issues: error.issues } : {}) } }, extra);
+  json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}), ...(error.issues ? { issues: error.issues } : {}), ...(error.conflict ? { conflict: error.conflict } : {}) } }, extra);
 /** What a caller sees of a record: everything but the stored owner, which only a readers mount with `showOwner` shows. */
 const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record, OWNER_FIELD)) return record; const { [OWNER_FIELD]: _owner, ...rest } = record; return rest; };
 /**
@@ -117,6 +117,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   const shared = storeExports(), audit = options.audit;
   // The live activations, oldest first. The newest is the one being served; the producer drains only while one is live.
   const live: symbol[] = [];
+  // The interval indexes each live activation reads through (#902), so a reload drops only indexes nobody declares.
+  const intervalIndexes = new Map<symbol, string[]>();
   // The one connection and how many live activations hold it.
   let connection: Connection | undefined;
   const acquire = async (): Promise<{ db: StoreDatabase; release(): Promise<void> }> => {
@@ -246,6 +248,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       } catch (error) { await held.release(); throw error; }
       const exported = shared.attach(collections);
       live.push(exported);
+      intervalIndexes.set(exported, collections.flatMap(collection => collection.intervalIndex ?? []));
+      dropStaleIntervalIndexes(held.db, new Set([...intervalIndexes.values()].flat()));
       // Events a previous run left in the outbox drain now rather than at the next write or poll.
       if (pending > 0) attachment?.notify();
       let closed = false;
@@ -255,6 +259,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
           if (closed) return;
           closed = true;
           shared.detach(exported);
+          intervalIndexes.delete(exported);
           const index = live.indexOf(exported);
           if (index >= 0) live.splice(index, 1);
           for (const collection of collections) collection.close();
@@ -266,6 +271,17 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   return { registration, exports: shared.exports, durability, close: async () => { await attachment?.close(); } };
 }
 
+/**
+ * Drops the interval indexes (#902) that no live activation declares: a changed or removed `intervals` would otherwise
+ * leave an index every write keeps paying for. Housekeeping only: an index is never needed for a check to be correct,
+ * so a lock another process holds just leaves the drop to the next activation.
+ */
+function dropStaleIntervalIndexes(db: StoreDatabase, wanted: ReadonlySet<string>): void {
+  try {
+    for (const { name } of db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND name GLOB 'store_intervals_*'"))
+      if (!wanted.has(name) && /^store_intervals_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
+  } catch { /* Retried by the next activation. */ }
+}
 /** The registration's one connection while any activation holds it. */
 interface Connection { readonly opening: Promise<StoreDatabase>; db?: StoreDatabase; refs: number }
 function opener(database: string, durability: StoreDurability): Connection {

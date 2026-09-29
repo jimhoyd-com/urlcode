@@ -360,7 +360,10 @@ export const budgets: Record<string, Budget> = {
     // entries (Node 26), keeping about 3.4 KiB and 4.2 KiB of headroom.
     // #908 named record schemas, the collection's defaults/readOnlyProperties and the README "Named schemas" section,
     // on top of #920's main: 103298 packed / 399594 unpacked bytes, 32 entries (Node 26); ~3 KiB headroom on each.
-    packed: 104 * 1024,
+    // #902 declared intervals (their config schema again in urlcode.json and the README field reference, the index
+    // and check in dist/collection.js, the OpenAPI 409) and retry-safe host transactions (dist/records.js), with
+    // the README/CHANGELOG contract: 114883 packed / 445013 unpacked bytes, 32 entries (Node 26); +3 KiB headroom.
+    packed: 116 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -388,7 +391,8 @@ export const budgets: Record<string, Budget> = {
     // #861/#881 record schema and OpenAPI description: see the packed note above.
     // With #913 authoring goals and #916 README responses together: 386402 unpacked bytes (Node 26).
     // #908 named record schemas: see the packed note above.
-    unpacked: 394 * 1024,
+    // #902 intervals and host transaction retries: see the packed note above.
+    unpacked: 438 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

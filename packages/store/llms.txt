@@ -33,8 +33,14 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   stamps, `If-Match`, `Idempotency-Key`; `409 transition_conflict` otherwise). `by: others` on an owned
   collection lets any principal but the owner act, on its own guarded mount; properties listed in the collection's
   `readOnlyProperties` change only through a transition. `idempotency: {maxKeys}` replays a retried key (same request: first
-  status, current record; different request: `422 idempotency_key_reused`). Interval constraints and
-  multi-record transfers are not declarative: a host extension uses `StoreExports.transaction(work)`.
+  status, current record; different request: `422 idempotency_key_reused`). Multi-record transfers
+  are not declarative: a host extension uses `StoreExports.transaction(work, {idempotencyKey?, fingerprint?})`,
+  which with a key keeps `work`'s JSON result (at most 16 KiB) and returns it to a retry without running `work`.
+- Scheduling: `intervals: {start, end, within?, scope?: collection|owner, when?}` on a collection refuses any
+  write whose half-open `[start, end)` overlaps another record's in its scope with `409 interval_conflict`
+  (checked in the write's transaction through a partial index; `error.conflict.id` only for a record the
+  caller may read, so another owner's booking blocks without being named). Bounds are both numbers or both
+  `format: date-time` strings in UTC (`Z`, at most millisecond precision).
 - Stored short links: `extensions.store.config.shortLinks.<name>: {mount, collection, destination, clicks}`
   over a collection with a `key`, a required `format: uri` destination property (HTTP(S) only) and one
   `increments` counter, plus a route `<mount>/*: {extension: store, methods: [GET, HEAD]}`; no
