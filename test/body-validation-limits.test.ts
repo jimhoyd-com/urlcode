@@ -46,7 +46,10 @@ test('accepted patterns stay fast on adversarial input at the length cap (ReDoS 
     assert.doesNotThrow(() => assertSafePattern(ordinary), ordinary);
   }
   const schema: BodySchema = { type: 'string', pattern: '^[a-z]*[a-z]*[a-z]*!$', maxLength: 128 };
-  const start = performance.now(); checkBodySchema(schema, 'a'.repeat(100000)); assert.ok(performance.now() - start < 50, 'over-long input never reaches the regex');
+  // Structural, not timed: an over-long string is refused on length alone, and the pattern (which it would also fail)
+  // is never evaluated. A wall-clock bound here flaked under load.
+  assert.deepEqual(checkBodySchema(schema, 'a'.repeat(100000)), ['/ must be at most 128 characters'], 'over-long input never reaches the regex');
+  assert.deepEqual(checkBodySchema(schema, 'a'.repeat(10)), ['/ does not match the declared pattern'], 'a string within the bound is matched');
 });
 
 test('activation rejects ReDoS-prone or unbounded body patterns before serving', async t => {
