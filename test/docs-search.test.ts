@@ -241,6 +241,16 @@ test('a shell comment in a code fence is not the section of a store README match
   assert.ok(!headings.some(title => title.startsWith('or, in an existing site')));
 });
 
+// #931: intervals and transfers have their own store README headings, so a search for either lands on it.
+test('a search for intervals or transfers lands on its own store README section (#931)', async t => {
+  const root = await site(t, ['store']);
+  for (const [query, section] of [['intervals', 'Intervals'], ['transfers', 'Transfers']] as const) {
+    const found = await searchDocs(query, { project: join(root, 'app') });
+    bounded(found);
+    assert.equal(found.results.find(result => result.id === 'store:README.md')?.section, section, query);
+  }
+});
+
 test('headings inside backtick and tilde fences are ignored, with CommonMark closing rules (#826)', () => {
   const titles = (text: string) => headingsOf(text).map(heading => heading.title);
   // No fences: every ATX heading at column 0, as before.

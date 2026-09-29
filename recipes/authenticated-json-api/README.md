@@ -21,7 +21,7 @@ urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --ori
 
 A real deployment installs the `auth` extension (`urlcode extensions add auth`),
 which serves Better Auth on its own mount and admits a request only with a
-verified session; see [the auth package](../../packages/auth/README.md). The
+verified session; see [the auth package][packages/auth/README.md]. The
 minimal shape below
 accepts one bearer token read from the operator's environment, so the bundled
 fixtures pass; it is a protocol example, not deployable authentication. Keep it
@@ -84,15 +84,22 @@ auth` (with `--policy`, a `revision-pin-mismatch` naming both revisions) until
 the operator reviews the change and supplies the new revision. `urlcode dev`
 alone lets a hot reload carry the pin it started with forward to the edited
 project, for development only (#777; see
-[the revision pin](../../docs/EXTENSIONS.md#the-revision-pin)).
+[the revision pin][docs/EXTENSIONS.md#the-revision-pin]).
 
 `auth: true` is the whole requirement: the auth policy has no role or
 permission keys. With the real extension the function reads the signed-in user
 id from `context.capabilities.auth.identity.userId` (declare nothing more), and
 roles, ownership and approvals are application data keyed by that id. The demo
-host above provides no such capability. See [extensions](../../docs/EXTENSIONS.md)
+host above provides no such capability. See [extensions][docs/EXTENSIONS.md]
 and the end-to-end application in
-[`proofs/private-requests`](../../proofs/private-requests/README.md).
+[`proofs/private-requests`][proofs/private-requests/README.md].
 
 Edit `functions/profile.mjs` to return real data. Cloudflare refuses extensions;
 functions need the self-hosted runtime.
+
+<!-- urlcode-current-version:start -->
+[packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md
+[docs/EXTENSIONS.md#the-revision-pin]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-revision-pin
+[docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
+[proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md
+<!-- urlcode-current-version:end -->

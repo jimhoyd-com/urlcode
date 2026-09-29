@@ -10,7 +10,7 @@ operator-installed extensions instead of building them again.
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
-[Documentation](docs/README.md) · [Concepts](docs/CONCEPTS.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [URLCode AI](https://urlcode.ai/) · [Starter](docs/STARTERS.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Documentation](docs/README.md) · [Concepts][docs/CONCEPTS.md] · [The framework][docs/FRAMEWORK.md] · [For AI agents](llms.txt) · [URLCode AI](https://urlcode.ai/) · [Starter][docs/STARTERS.md] · [Contributing][CONTRIBUTING.md] · [Security](SECURITY.md)
 
 **Your AI should build your application, not your framework.** Coding agents
 rebuild the same routing, validation, middleware, policies and authentication
@@ -19,8 +19,8 @@ represents those behaviors as a strict, portable YAML contract that both people
 and agents can read: the agent describes what, the runtime owns how, and
 generated code goes to the part that is actually the application. It is
 infrastructure for AI-built software, not a framework for building AI models.
-[Why](docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework) ·
-[roadmap](ROADMAP.md).
+[Why][docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework] ·
+[roadmap][ROADMAP.md].
 
 ## Install
 
@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/install.sh
 ```
 
 For project-local installs, exact version pins, and provenance details, see
-[the installation guide](docs/INSTALL.md).
+[the installation guide][docs/INSTALL.md].
 
 ## Try it
 
@@ -65,7 +65,7 @@ The starter deliberately has no routes. Ask the local MCP `get_context` tool
 or custom code the application needs. `urlcode test` runs the project's HTTP
 fixtures, and `urlcode studio` opens a read-only page on localhost showing
 what each route does and what needs attention
-([review report and studio](docs/TOOLING.md#review-report)). The [install guide](docs/INSTALL.md) covers the checksum-verified
+([review report and studio](docs/TOOLING.md#review-report)). The [install guide][docs/INSTALL.md] covers the checksum-verified
 script, project-local installs, the container image and signed provenance. To
 work from a clone: `git clone … && make dev`.
 
@@ -93,15 +93,15 @@ export default function hello(request, { args, env }) {
 Add `middleware: [{ source: middleware/headers.mjs }]` to wrap any handler with
 `await next()`. Fourteen ready-made middleware patterns ship in the cookbook
 and as `urlcode recipes add middleware`. See [functions and the sandbox](docs/FUNCTION-SECURITY.md)
-and [middleware](docs/MIDDLEWARE.md).
+and [middleware][docs/MIDDLEWARE.md].
 
 ## Documentation
 
-New to the vocabulary? Read [Concepts](docs/CONCEPTS.md) first — route,
+New to the vocabulary? Read [Concepts][docs/CONCEPTS.md] first — route,
 handler, middleware, policy, extension; project vs operator; trusted vs
 sandbox; extension vs artifact.
 
-Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
+Start with the [YAML guide and recipe book][docs/YAML-GUIDE.md],
 [complete field reference](docs/YAML-REFERENCE.md), and
 [runnable 40-route cookbook](examples/cookbook/README.md). For AI-assisted
 authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled agent skills
@@ -110,35 +110,35 @@ authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled agent skills
 For optional hosted reference and shared skills, use [URLCode AI](https://urlcode.ai/);
 its anonymous remote MCP augments, rather than replaces, the local project server.
 Agents can also read installed artifacts (inert extension schemas and examples)
-through the read-only MCP tools described in [artifacts](docs/EXTENSIONS.md#artifacts).
-Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
-project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
-[DDoS and recovery playbook](docs/RESILIENCE.md). Embedding the runtime from
-TypeScript is covered in [TypeScript](docs/TYPESCRIPT.md). [All documentation](docs/README.md).
+through the read-only MCP tools described in [artifacts][docs/EXTENSIONS.md#artifacts].
+Follow [organization and readability practices][docs/BEST-PRACTICES.md] as your
+project grows. Operators should read [capacity/concurrency][docs/CAPACITY.md] and the
+[DDoS and recovery playbook][docs/RESILIENCE.md]. Embedding the runtime from
+TypeScript is covered in [TypeScript][docs/TYPESCRIPT.md]. [All documentation](docs/README.md).
 
 All of it lives in [`docs/`](docs/README.md) in this repository. See
-[the roadmap](ROADMAP.md#history) for the retired `urlcode-docs` site repository.
+[the roadmap][ROADMAP.md#history] for the retired `urlcode-docs` site repository.
 
 ## The framework
 
 Core plus four extensions, one site shape. A project climbs from redirects to a
 full application by adding YAML; the operator wires trusted extensions in one
 host file outside the project. The full map, the composition contract and the
-rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
+rules an AI agent must follow are in [the framework][docs/FRAMEWORK.md].
 
 | Component | Adds | Distribution |
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
-| [audit](packages/audit) extension | The durable audit log audited store collections record their writes in, through a transactional outbox | add-on on core's GitHub Release |
-| [auth](packages/auth) extension | Accounts and sessions from [Better Auth](https://better-auth.com/) on one mount; `auth: true` routes receive the signed-in user id | add-on on core's GitHub Release |
-| [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API, with optional audited writes | add-on on core's GitHub Release |
-| [mcp](packages/mcp) extension | Declarative MCP tool server over a project-declared tool map | add-on on core's GitHub Release |
-| [store-schema](artifacts/store-schema) artifact | Inert store configuration schema and example, for tooling | add-on on core's GitHub Release |
+| [audit][packages/audit] extension | The durable audit log audited store collections record their writes in, through a transactional outbox | add-on on core's GitHub Release |
+| [auth][packages/auth] extension | Accounts and sessions from [Better Auth](https://better-auth.com/) on one mount; `auth: true` routes receive the signed-in user id | add-on on core's GitHub Release |
+| [store][packages/store] extension | Durable bounded JSON collections exposed as a typed CRUD API, with optional audited writes | add-on on core's GitHub Release |
+| [mcp][packages/mcp] extension | Declarative MCP tool server over a project-declared tool map | add-on on core's GitHub Release |
+| [store-schema][artifacts/store-schema] artifact | Inert store configuration schema and example, for tooling | add-on on core's GitHub Release |
 
 Only core is published to npm. Every add-on is released as a tarball on the
 same GitHub Release, at core's version, and core pins each by URL and sha512.
 A site adds them with `urlcode extensions add <name>` or `urlcode artifacts add
-<name>` ([add-ons](docs/EXTENSIONS.md#add-ons-extensions-and-artifacts));
+<name>` ([add-ons][docs/EXTENSIONS.md#add-ons-extensions-and-artifacts]);
 `urlcode upgrade` moves core and every add-on together. See [package and channel
 alignment](docs/VERSION-ALIGNMENT.md).
 
@@ -146,14 +146,14 @@ alignment](docs/VERSION-ALIGNMENT.md).
 `0.1.0-alpha.1` and have since been retired: both were unpublished from npm and
 their repositories deleted, and neither has a direct successor. A project that
 wants stored short links declares a collection through the `store` extension
-(see [docs/STORE.md](docs/STORE.md)) instead. Anything still pinned to
+(see [docs/STORE.md][docs/STORE.md]) instead. Anything still pinned to
 `@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1`
 also has to deal with its exact declared peer `@jimhoyd/urlcode: 0.4.0-alpha.1`,
 which cannot be installed beside core `0.4.0-alpha.2` and never will be.
 
 `urlcode-middleware` was retired too: **per-route middleware is native to
 core**, through the `middleware:` array documented in
-[docs/MIDDLEWARE.md](docs/MIDDLEWARE.md). See [the roadmap](ROADMAP.md#history)
+[docs/MIDDLEWARE.md][docs/MIDDLEWARE.md]. See [the roadmap][ROADMAP.md#history]
 for that retirement's history and migration note.
 
 ```yaml
@@ -198,7 +198,7 @@ policies are declared in YAML, not hand-wired; isolating a specific route's
 code from the host is an explicit `sandbox: true` opt-in, not something every
 route gets by writing a handler. It is not a provider configuration format:
 infrastructure settings stay out of route YAML.
-See [project direction](docs/PROJECT-DIRECTION.md), or [Concepts](docs/CONCEPTS.md)
+See [project direction][docs/PROJECT-DIRECTION.md], or [Concepts][docs/CONCEPTS.md]
 for the vocabulary these two paragraphs use.
 
 ## Status
@@ -218,11 +218,11 @@ authoring modes. `0.4.0-alpha.2` then made `function` and `middleware` routes
 run trusted and unsandboxed by default, with `sandbox: true` as a per-route
 opt-in, and removed the native `link:`/`dynamicLinks:` YAML shape. That is a
 behaviour change for existing projects with no YAML edit; read
-[the roadmap entry](ROADMAP.md) before upgrading. Use the schema and docs from
+[the roadmap entry][ROADMAP.md] before upgrading. Use the schema and docs from
 the runtime revision you run.
 <!-- urlcode-current-version:end -->
-The [roadmap](ROADMAP.md) separates implemented from planned, and
-[production readiness](docs/RELEASE-OPERATIONS.md#production-readiness) records what is proven and
+The [roadmap][ROADMAP.md] separates implemented from planned, and
+[production readiness][docs/RELEASE-OPERATIONS.md#production-readiness] records what is proven and
 what is not: provider deployments, soak and independent security review
 remain open.
 
@@ -248,28 +248,28 @@ npm run dev
 Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./my-links --dry-run`,
 then remove `--dry-run` to create missing modules, pages and directories. Existing
 files are preserved; code placeholders return 501 until implemented.
-[Scaffolding guide](docs/SCAFFOLDING.md). Node 22.13+ installed, 22.18+ to run
+[Scaffolding guide][docs/SCAFFOLDING.md]. Node 22.13+ installed, 22.18+ to run
 the TypeScript source. The `auth` extension runs on the Node target only
-([auth](packages/auth/README.md)).
+([auth][packages/auth/README.md]).
 
 ## Everything else in YAML
 
 - **Pages, files, downloads:** `page`, `static`, `download` with MIME detection,
-  ETags, ranges and safety limits. [Assets](docs/ASSETS.md).
+  ETags, ranges and safety limits. [Assets][docs/ASSETS.md].
 - **HTTP:** methods, validated path/query/header inputs, body limits, response
-  headers and cookies. [HTTP](docs/HTTP.md).
+  headers and cookies. [HTTP][docs/HTTP.md].
 - **Policies and site conventions:** throttle, agents, security headers,
   compression, cache; robots, sitemap, favicon, security.txt, llms.txt.
-  [Policies](docs/POLICIES.md), [site](docs/SITE.md).
+  [Policies][docs/POLICIES.md], [site][docs/SITE.md].
 - **Conditions, proxy, signals:** exact predicates with disjoint cases; a bounded
   HTTPS proxy and best-effort webhooks behind operator grants.
-  [Conditions](docs/CONDITIONS.md), [egress](docs/EGRESS.md).
+  [Conditions][docs/CONDITIONS.md], [egress][docs/EGRESS.md].
 - **Organization:** `includes` across folders; strict CSV/JSON/YAML and
-  provider-file import; searchable recipes and examples. [Organization](docs/ORGANIZATION.md),
-  [interchange](docs/INTERCHANGE.md), [bulk](docs/BULK.md), [recipes](docs/RECIPES.md).
+  provider-file import; searchable recipes and examples. [Organization][docs/ORGANIZATION.md],
+  [interchange][docs/INTERCHANGE.md], [bulk][docs/BULK.md], [recipes][docs/RECIPES.md].
 - **Checks:** `validate`, `test`, `routes`, `audit --expect-routes`, `benchmark`,
   `capabilities`, deployment verification and a GitHub Action.
-  [Readiness](docs/READINESS.md), [CI](docs/CI.md).
+  [Readiness][docs/READINESS.md], [CI][docs/CI.md].
 
 ## Deploy
 
@@ -280,13 +280,13 @@ into a Worker; `urlcode build --target static` compiles redirects and static
 files into plain objects and redirect metadata for S3 + CloudFront, with no
 server at all. Each target refuses at activation or build time what it cannot
 run, with the route named. None has been exercised on its provider yet; the
-adapters have local conformance tests only. [Operations](docs/OPERATIONS.md),
-[capabilities](docs/CAPABILITIES.md), [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md),
-[Cloudflare](docs/CLOUDFLARE.md), [static hosting](docs/STATIC.md).
+adapters have local conformance tests only. [Operations][docs/OPERATIONS.md],
+[capabilities][docs/CAPABILITIES.md], [Vercel][docs/VERCEL.md], [AWS][docs/AWS.md],
+[Cloudflare][docs/CLOUDFLARE.md], [static hosting][docs/STATIC.md].
 
 ## For AI agents
 
-[llms.txt](llms.txt) is the compact index; [the framework](docs/FRAMEWORK.md)
+[llms.txt](llms.txt) is the compact index; [the framework][docs/FRAMEWORK.md]
 is the map; [AI authoring](docs/AI-AUTHORING.md) is the contract with the
 capability matrix and a copyable task prompt. `urlcode mcp` exposes read-only
 inspection, validation and conversion previews over stdio, and
@@ -299,10 +299,10 @@ documented in [tooling](docs/TOOLING.md#optional-hosted-ai-mcp).
 ## Built with URLCode
 
 No public application built on URLCode is currently listed. The reference
-application is the [private-requests proof](proofs/private-requests/README.md)
+application is the [private-requests proof][proofs/private-requests/README.md]
 in this repository: owner-private records, a reviewed approval and a reviewer
 permission declared over the auth and store extensions, with no application
-server code. Its [client](proofs/private-requests/client/main.js) is the
+server code. Its [client][proofs/private-requests/client/main.js] is the
 frontend pattern: the application's own code calling the JSON mounts with
 `fetch`.
 
@@ -316,10 +316,61 @@ supplied the pages, assets and routing, the application supplied anonymous
 creation, link storage and its own limits. `urlcode-short`'s repository is
 deleted, so its build retrospective is no longer reachable; what it recorded
 about the gap between the runtime and a real application is carried in
-[principles and open decisions](docs/OPEN-DECISIONS.md) and [roadmap](ROADMAP.md).
+[principles and open decisions][docs/OPEN-DECISIONS.md] and [roadmap][ROADMAP.md].
 
 ## License and contributing
 
 Apache-2.0. Commercial use, modification, redistribution and self-hosting are
-permitted. See [contributing](CONTRIBUTING.md), [security](SECURITY.md),
-[governance](GOVERNANCE.md) and the [roadmap](ROADMAP.md).
+permitted. See [contributing][CONTRIBUTING.md], [security](SECURITY.md),
+[governance][GOVERNANCE.md] and the [roadmap][ROADMAP.md].
+
+<!-- urlcode-current-version:start -->
+[docs/CONCEPTS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONCEPTS.md
+[docs/FRAMEWORK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
+[docs/STARTERS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STARTERS.md
+[CONTRIBUTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/CONTRIBUTING.md
+[docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework
+[ROADMAP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/ROADMAP.md
+[docs/INSTALL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INSTALL.md
+[docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md
+[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
+[docs/EXTENSIONS.md#artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
+[docs/BEST-PRACTICES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BEST-PRACTICES.md
+[docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md
+[docs/RESILIENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RESILIENCE.md
+[docs/TYPESCRIPT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT.md
+[ROADMAP.md#history]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/ROADMAP.md#history
+[packages/audit]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/audit
+[packages/auth]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/auth
+[packages/store]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/store
+[packages/mcp]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/mcp
+[artifacts/store-schema]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/artifacts/store-schema
+[docs/EXTENSIONS.md#add-ons-extensions-and-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
+[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
+[docs/PROJECT-DIRECTION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROJECT-DIRECTION.md
+[docs/RELEASE-OPERATIONS.md#production-readiness]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RELEASE-OPERATIONS.md#production-readiness
+[docs/SCAFFOLDING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SCAFFOLDING.md
+[packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md
+[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
+[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md
+[docs/POLICIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md
+[docs/SITE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md
+[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+[docs/ORGANIZATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ORGANIZATION.md
+[docs/INTERCHANGE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md
+[docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
+[docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
+[docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
+[docs/CI.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CI.md
+[docs/OPERATIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md
+[docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md
+[docs/VERCEL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/VERCEL.md
+[docs/AWS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/AWS.md
+[docs/CLOUDFLARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CLOUDFLARE.md
+[docs/STATIC.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STATIC.md
+[proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md
+[proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
+[docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
+[GOVERNANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/GOVERNANCE.md
+<!-- urlcode-current-version:end -->

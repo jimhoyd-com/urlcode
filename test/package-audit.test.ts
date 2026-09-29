@@ -38,3 +38,23 @@ test('the audited package list is core plus every add-on, and every one has a bu
   for (const addon of found) assert.ok(budgets[addon.packageName], `${addon.packageName} has no package audit budget`);
   assert.ok(budgets['@jimhoyd/urlcode']);
 });
+
+test('packedLinkProblems names every relative link a packed document cannot follow (#931)', async () => {
+  const { packedLinkProblems, isPackedDocument } = await import('../scripts/package-audit.ts');
+  const packed = new Set(['README.md', 'llms.txt', 'docs/AI-AUTHORING.md', 'docs/TOOLING.md', 'schemas/urlcode.schema.json', 'examples/cookbook/urlcode.yaml']);
+  const source = [
+    '[tooling](TOOLING.md#mcp) [schema](../schemas/urlcode.schema.json) [examples](../examples) [here](#top)',
+    '[readiness](READINESS.md#coverage-rules) [pinned](https://github.com/jimhoyd-com/urlcode/blob/v1.2.3/docs/READINESS.md)',
+    '`[code](NOT-A-LINK.md)` [ref]: ../ROADMAP.md',
+    '[roadmap]: ../ROADMAP.md',
+    '```md',
+    '[fenced](FENCED.md)',
+    '```',
+  ].join('\n');
+  assert.deepEqual(packedLinkProblems('docs/AI-AUTHORING.md', source, packed), [
+    'docs/AI-AUTHORING.md:2 links `READINESS.md#coverage-rules`, but `docs/READINESS.md` is not in the package',
+    'docs/AI-AUTHORING.md:4 links `../ROADMAP.md`, but `ROADMAP.md` is not in the package',
+  ]);
+  assert.deepEqual(packedLinkProblems('llms.txt', '[docs](docs/STORE.md) [ok](docs/TOOLING.md)', packed), ['llms.txt:1 links `docs/STORE.md`, but `docs/STORE.md` is not in the package']);
+  assert.deepEqual(['README.md', 'llms.txt', 'llms-full.txt', 'dist/cli.js'].filter(isPackedDocument), ['README.md', 'llms.txt']);
+});

@@ -3,7 +3,7 @@
 `/api/todos/*` is a persistent JSON CRUD API. The project declares one
 collection and its mount; the operator-installed `store` extension serves it
 and keeps the data in the operator's SQLite database. There is no handler code. Full
-contract, limits and guarantees: [docs/STORE.md](../../docs/STORE.md).
+contract, limits and guarantees: [docs/STORE.md][docs/STORE.md].
 
 ## Operator prerequisites
 
@@ -57,7 +57,12 @@ The mount is public unless you protect it: add `auth: true` (with the auth
 extension) or another policy before any writable collection is reachable. Every
 caller sees the whole collection, which is shared by default; for per-user data
 declare `ownership: owner` on the collection and keep `auth: true` on its mount
-([per-record ownership](../../docs/STORE.md#per-record-ownership)). Changing
+([per-record ownership][docs/STORE.md#per-record-ownership]). Changing
 `urlcode.yaml` changes the revision and needs a new pin. Cloudflare and static
 targets refuse extensions, and the store keeps a local SQLite file, so run it on
 the self-hosted runtime with a persistent disk.
+
+<!-- urlcode-current-version:start -->
+[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
+[docs/STORE.md#per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership
+<!-- urlcode-current-version:end -->

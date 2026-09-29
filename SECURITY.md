@@ -65,14 +65,14 @@ the request-bound `identity` capability
 route still never receives the `Cookie` or `Authorization` header, no session
 token or role is included, and a `sandbox: true` route cannot name `auth`.
 Identity is not permission: authorization stays in the application. See the
-[auth package's security model](packages/auth/SECURITY.md) and
-[request-bound capabilities](docs/EXTENSIONS.md#request-bound-capabilities).
+[auth package's security model][packages/auth/SECURITY.md] and
+[request-bound capabilities][docs/EXTENSIONS.md#request-bound-capabilities].
 
 Declarative proxy and signal handlers run in a separate bounded host transport;
 they do not grant guest networking. They require per-route, per-purpose HTTPS
 origin grants pinned to the project revision. Every connection checks public
 addresses and pins DNS, refuses redirects, filters headers and limits resources.
-See [egress semantics and limitations](docs/EGRESS.md). Build-time TypeScript
+See [egress semantics and limitations][docs/EGRESS.md]. Build-time TypeScript
 transpilation and read-only MCP do not execute project code in the host. The
 MCP `run_tests` tool does execute it (trusted functions, middleware and
 extensions, with full Node access), so it exists only when the operator starts
@@ -91,7 +91,7 @@ package that was already malicious when it was installed. `verify --online`
 re-downloads the locked tarball and compares it only when explicitly asked,
 and an independent package moves only when the operator re-runs its `add`
 (`urlcode upgrade` never moves it). See
-[the installed file record](docs/EXTENSIONS.md#the-installed-file-record).
+[the installed file record][docs/EXTENSIONS.md#the-installed-file-record].
 
 ## Report a vulnerability privately
 
@@ -110,7 +110,7 @@ LTS/backport promise yet. Changes ship through pull requests and automated check
 confirmed issues use private coordination and a public advisory when appropriate.
 
 Bind loopback by default; protect public deployments with HTTPS, rate limits,
-network controls and restricted operational endpoints. See [operations](docs/OPERATIONS.md).
+network controls and restricted operational endpoints. See [operations][docs/OPERATIONS.md].
 A server bound to loopback refuses, with 421 and before routing, any request
 whose `Host` is not a loopback name on its bound port, the `--origin`
 authority or an operator `--alias-origin` authority, so a DNS-rebinding page cannot reach it as same-origin. A
@@ -118,10 +118,20 @@ non-loopback bind (including the container image's `0.0.0.0`) and the
 platform-fronted AWS, Vercel and Cloudflare targets are not checked, and a
 runtime embedded in another framework is checked only when its host passes
 `loopbackHost`; see
-[host admission](docs/OPERATIONS.md#host-admission-on-a-loopback-bind).
+[host admission][docs/OPERATIONS.md#host-admission-on-a-loopback-bind].
 
 Use a current reviewed commit: a shared version label alone does not
 identify which hardening patches are present. Internal source-review details are
 maintainer material, not an independent assessment; the public security model,
 reporting path and outstanding assessment gate are the authoritative claims on
-this page and in [the sandbox review](docs/SANDBOX-REVIEW.md).
+this page and in [the sandbox review][docs/SANDBOX-REVIEW.md].
+
+<!-- urlcode-current-version:start -->
+[packages/auth/SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md
+[docs/EXTENSIONS.md#request-bound-capabilities]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-bound-capabilities
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+[docs/EXTENSIONS.md#the-installed-file-record]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-installed-file-record
+[docs/OPERATIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md
+[docs/OPERATIONS.md#host-admission-on-a-loopback-bind]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#host-admission-on-a-loopback-bind
+[docs/SANDBOX-REVIEW.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SANDBOX-REVIEW.md
+<!-- urlcode-current-version:end -->
