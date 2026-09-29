@@ -31,8 +31,7 @@ the npm registry; nothing after it does.
 | `app/tests/requests.json` | application | Declarative fixtures for `urlcode test` |
 | `sandboxed/` | application | The same zod import on a `sandbox: true` route; expected to be refused |
 | `host.mjs` | operator | Two plain extension registrations: `probe` reports the origin, client address and same-origin verdict URLCode computed; `hono` mounts a whole Hono app |
-| `hono/server.mjs` | operator | The Hono application hosting URLCode (`createRuntime` from `@jimhoyd/urlcode`) |
-| `hono/urlcode-fetch.mjs` | operator | The bridge: a standard `Request` to `runtime.handle()` and back to a standard `Response` |
+| `hono/server.mjs` | operator | The Hono application hosting URLCode (`createRuntime` and `createEmbeddedHandler` from `@jimhoyd/urlcode`) |
 
 ## Run it
 
@@ -50,7 +49,7 @@ checkout. Then pin the extensions in `host.mjs` to the reviewed revision.
 export PROJECT_SHA256=<revision>
 npm test                 # the declarative fixtures on URLCode's own harness
 npm start                # URLCode's own server on http://localhost:4190
-npm run start:hono       # the Hono host on http://localhost:4191; URLCode answers /app/*
+npm run start:hono       # the Hono host on http://localhost:4191; URLCode answers /app/* (and /mounted/app/*)
 ```
 
 ## 1. Direct library use
@@ -94,22 +93,21 @@ Review findings, recorded as the test asserts them:
 
 | Direction | How | Status |
 |---|---|---|
-| URLCode inside Hono | `createRuntime(project, {origin, extensions})` once before listening, then `app.all('/app/*', c => bridge(c.req.raw, {client, rawHeaders}))` | Works through the published API plus a 112-line operator bridge. The gaps are below |
+| URLCode inside Hono | `createRuntime(project, {origin, extensions})` once before listening, then `createEmbeddedHandler(runtime, {origin, trustedProxies, loopbackHost})` and `app.all('/app/*', c => urlcode(c.req.raw, {peer, rawHeaders}))`; `app.mount('/mounted', …)` uses a second handler with `basePath: '/mounted'` | Works through the published API; the only glue is reading the peer and raw header lines. The remaining gaps are below |
 | Hono inside URLCode, application side | A trusted function route returns `app.fetch(request)` | Works. Function routes have no wildcard, so every path shape is a declared route (`/app/sub/hello`, `/app/sub/items`, `/app/sub/items/{id}`), and URLCode still validates `{id}` |
 | Hono inside URLCode, operator side | An `extension:` mount (`/app/hono/*`) whose registration calls `app.fetch` | Works. The app's router owns the paths under the mount. Review shows the mount as "provider-defined, not enumerated"; responses are buffered and no-store like any extension mount |
 
-The reusable contract is not Hono-specific. It consists of `createRuntime`,
-`runtime.handle(RuntimeRequest)` returning a `HandlerResult`, and
-`runtime.requestLimit`, `errorFormat`, `errorHeaders` and `close`. The only
-Hono-specific details are:
+The reusable contract is not Hono-specific: `createRuntime`, then
+`createEmbeddedHandler` ([hosting inside another framework](../../docs/OPERATIONS.md#hosting-urlcode-inside-another-framework)),
+then `runtime.close()`. The only Hono-specific details are:
 
 - reading the socket peer and raw header lines from `@hono/node-server`'s
   `c.env.incoming`;
-- `mount()` stripping its prefix;
+- `mount()` stripping its prefix, which `basePath` restores;
 - the adapter's default content type.
 
 Any host that can produce a `Request` and a client address can use the same
-bridge.
+handler; one without raw header lines declares `headerLines: 'unavailable'`.
 
 ### What was checked, both hosts side by side
 
@@ -121,75 +119,58 @@ bridge.
 | Streaming | `stream: true` arrives chunk by chunk with no `Content-Length` in both hosts |
 | The URL a function sees | Built from the operator `origin` in both, never from the `Host` the server received |
 | Origin and same-origin | `ExtensionRequest.origin` is the operator origin. `isSameOriginRequest` admits the site origin and refuses a foreign or missing origin, `Sec-Fetch-Site: cross-site` and repeated `Origin` lines |
+| Client address | The socket peer; `X-Forwarded-For` from a trusted proxy (`--trusted-proxies` / `trustedProxies`) resolves to the client, and a repeated one is ignored, in both hosts |
+| Loopback `Host` admission | A foreign `Host` is refused with 421 by both hosts on URLCode's paths (`loopbackHost`); Hono's own routes are Hono's to guard |
+| Base path | Behind `mount('/mounted', …)`, the redirect is `/mounted/app/api/who/ada` and a function's URL keeps `/mounted` |
 | Startup refusal | A stale revision pin, or a sandboxed direct import, exits 1 with URLCode's message and no stack; nothing listens |
 | Shutdown | SIGTERM closes Hono's server, then `runtime.close()`; the port is released |
 
 ### Gaps
 
 Each gap is observed in the test or read from the source at the location
-given. None is fixed here.
+given. The embedded handler (#889) closed the earlier ones: the missing
+response adapter (the fixture no longer copies core's response rules),
+trusted-proxy client resolution, the loopback `Host` check, repeated request
+headers (raw lines on Node, `headerLines: 'unavailable'` elsewhere) and the
+base path.
 
-1. **No public fetch-style or Node handler for an embedded runtime.** The
-   rules that turn a `HandlerResult` into a response live in
-   `packages/core/src/http-response.ts`: `prepareResponse` (line 50),
-   `prepareStream` (line 95), `errorResponse` (line 208) and the error-code
-   table (line 167). The package exports none of them, so
-   `hono/urlcode-fetch.mjs` copies them and can drift from
-   RIM-OUTPUT-001, RIM-ERRORS-001 and RIM-STREAM-001. `createVercelHandler`
-   is the only exported `(req, res)` handler. It runs as target `vercel`,
-   which refuses function routes (`packages/core/src/capabilities.ts:137`),
-   so it is not an embedding option.
-2. **Client address and trusted proxies belong to the host.**
-   `compileTrustedProxies` and `resolveClient`
-   (`packages/core/src/client-address.ts:42`, `:68`) are applied only in
-   `startServer` (`packages/core/src/server.ts:288`) and are not exported.
-   The bridge passes the socket peer and has no trusted-proxy list, so
-   `X-Forwarded-For` is ignored even from a trusted proxy. That is safe, but
-   it is not `--trusted-proxies`.
-3. **The loopback `Host` check is lost.** `loopbackHostCheck`
-   (`client-address.ts:126`, wired at `server.ts:349`) answers 421 to a
-   foreign `Host` on a loopback bind. Under Hono the same request is served.
-4. **Server-owned operations are absent.** Missing under Hono:
-   - `/_urlcode/health`, `/ready` and `/metrics` (`server.ts:251`), and the
-     readiness drain;
-   - the per-request event log (`server.ts:321`; the test sees no `request`
-     records from the Hono host);
-   - in-flight admission (`server.ts:274`) and the header, request and
-     keep-alive timeouts (`server.ts:225`);
-   - the streamed-response limits (`StreamHost`, `server.ts:202`: concurrent
-     streams, idle time, duration and bytes). The bridge's stream has none;
-   - hot reload and watch (`server.ts:350`), `--data-dir`, and loading
-     `--policy`/`--host-file` from the CLI. The host passes `permissions`,
-     `extensions` and `plugins` to `createRuntime` itself.
+1. **Server-owned operations stay with `urlcode serve`.** Missing under Hono,
+   as [operations](../../docs/OPERATIONS.md#hosting-urlcode-inside-another-framework)
+   lists them:
+   - `/_urlcode/health`, `/ready` and `/metrics`, and the readiness drain;
+   - the per-request event log (the test sees no `request` records from the
+     Hono host);
+   - in-flight admission and the header, request and keep-alive timeouts;
+   - the streamed-response limits (`StreamHost`: concurrent streams, idle
+     time, duration and bytes);
+   - trusting an upstream `X-Request-Id`;
+   - hot reload and watch, `--data-dir`, and loading `--policy`/`--host-file`
+     from the CLI. The host passes `permissions`, `extensions` and `plugins`
+     to `createRuntime` itself.
 
    The embedder must provide each of these or do without it.
-5. **Repeated request headers need the raw lines.** A fetch `Request` joins
-   repeated header fields. `RuntimeRequest.headerCounts` is optional
-   (`runtime.ts:90`), and a missing count reads as 0. The duplicate-header
-   refusals therefore weaken on a pure-fetch host (Bun, Deno, a Worker):
-   - duplicate scalar parameters (`match.ts:98`);
-   - duplicate `Content-Type` (`http-policy.ts:90`);
-   - repeated `Origin`/`Sec-Fetch-Site`/`Referer` (`extension-http.ts:191`).
-
-   On Node the bridge passes `incoming.rawHeaders`, so the counts are exact,
-   and the test checks repeated `Origin` in both hosts. A host with no raw
-   lines cannot.
-6. **No base path.** URLCode matches the full path it is given. Mounted with
-   its full paths (`/app/*`), everything matches. Behind Hono's
-   prefix-stripping `mount('/mounted', ...)`, the redirect it generates
-   (`Location: /app/api/who/ada`) and a function's `request.url` both lose
-   `/mounted`.
-7. **Byte-level response differences.** A fetch `Headers` object joins
+2. **A pure-fetch host counts repeated headers conservatively.** With
+   `headerLines: 'unavailable'` (Bun, Deno, a Worker), a joined header value
+   containing a comma counts as two lines, so the duplicate-header refusals
+   still fire, and a single line with a legitimate comma in a checked header
+   is refused too. On Node the host passes `incoming.rawHeaders` and the counts
+   are exact.
+3. **The base path covers `Location` and `request.url` only.** Links inside
+   HTML bodies and absolute URLs generated from `origin` (sitemaps, canonical
+   links) are not rewritten.
+4. **Byte-level response differences.** A fetch `Headers` object joins
    repeated non-cookie response headers into one line, where RIM-OUTPUT-001
    writes separate lines. `@hono/node-server` adds
-   `Content-Type: text/plain; charset=UTF-8` to any body without a type,
-   such as URLCode's text 405. Status, body and every other compared header
-   match.
-8. **Reverse direction, application side, has no catch-all.** Function
+   `Content-Type: text/plain; charset=UTF-8` to any non-empty body without a
+   type, such as URLCode's text 405. Status, body and every other compared
+   header match.
+5. **Reverse direction, application side, has no catch-all.** Function
    routes accept exact and `{param}` paths only, so a sub-app's routes are
    re-declared in YAML. Use an extension mount when the sub-app's router
    should own a prefix.
+6. **`urlcode review` misreads `app.fetch(request)`** as an outbound network
+   call (above; `packages/core/src/review.ts`).
 
-Express was not evaluated. It would need the same bridge plus a Node
+Express was not evaluated. It would need the same handler plus a Node
 `req`/`res` to `Request`/`Response` conversion, which `@hono/node-server`
 already provides here.

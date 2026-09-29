@@ -168,7 +168,8 @@ export function fetchResponse(prepared: { status: number; headers: readonly Head
   // Bytes, never a string: `new Response(string)` would add a text content type of its own. They sit on a plain
   // ArrayBuffer (an encoder or the platform made them); lib.dom's BodyInit only excludes shared memory.
   const body = typeof prepared.body === 'string' ? new TextEncoder().encode(prepared.body) : prepared.body ?? new Uint8Array(0);
-  return new Response(empty ? null : body as Uint8Array<ArrayBuffer>, { status: prepared.status, headers });
+  // An empty body is no body: a host (@hono/node-server) would otherwise give zero bytes a default content type.
+  return new Response(empty || body.byteLength === 0 ? null : body as Uint8Array<ArrayBuffer>, { status: prepared.status, headers });
 }
 
 /** Prepared header lines as fetch Headers; each Set-Cookie stays its own line. */
