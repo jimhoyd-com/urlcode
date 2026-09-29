@@ -75,8 +75,12 @@ const cases: Record<string, { path: string; method?: string; headers?: Record<st
   // JSON Schema 2020-12 profile (#845): local $defs reference, a nullable type list and anyOf, through the build's standalone validators.
   '2020-12 valid, phone null': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: null }, 'application/json'),
   '2020-12 absent required phone': post('/contacts', { name: 'Ada', email: 'ada@example.com' }, 'application/json'),
-  '2020-12 $defs pattern fails': post('/contacts', { name: 'Ada', email: secret, phone: null }, 'application/json'),
+  '2020-12 $defs format email fails': post('/contacts', { name: 'Ada', email: secret, phone: null }, 'application/json'),
   '2020-12 nullable type fails': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: 5 }, 'application/json'),
+  // Standard formats (#861): the build inlines the runtime's own checks into body-validators.js.
+  'format date-time valid': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: null, callAt: '1998-12-31T15:59:60.5-08:00' }, 'application/json'),
+  'format date-time fails': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: null, callAt: '2026-02-29T09:30:00Z' }, 'application/json'),
+  'format email, 1.9 KB over its cap': post('/contacts', { name: 'Ada', email: `"${'\\'.repeat(1900)}"@x`, phone: null }, 'application/json'),
   '2020-12 anyOf fails': post('/contacts', { name: 'Ada', email: 'ada@example.com', phone: null, channel: secret }, 'application/json'),
   // Per-method body rules (#861): GET and POST on /requests, each with its own policy and validator.
   'per-method GET, no body': { path: '/requests' },
