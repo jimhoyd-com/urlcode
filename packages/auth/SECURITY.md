@@ -17,7 +17,24 @@
   and refuses cross-origin unsafe methods. A database failure while verifying
   the session answers `503 auth_unavailable` with no detail, never a `401`;
   so does a mount endpoint Better Auth fails with a server error (a sign-in
-  whose session cannot be stored on a full disk), with no `Set-Cookie`. The route's own code never receives
+  whose session cannot be stored on a full disk), with no `Set-Cookie`.
+- **Sign-out is confirmed.** Better Auth answers a sign-out whose session
+  delete failed with `200 {"success":true}` and a cleared cookie, leaving the
+  session valid. The mount reads the session back from the database after a
+  successful `/sign-out` and answers `503 auth_unavailable`, with no
+  `Set-Cookie`, unless it is gone. So a client is never told it signed out
+  while its token still works. `/revoke-session(s)` and
+  `/revoke-other-sessions` already fail with Better Auth's `500`, which is a
+  `503`. A `401` from the session endpoints (`/list-sessions`, the revoke
+  endpoints, `/change-password`) is checked the same way, because Better Auth
+  reads a storage failure there as "no session".
+- **One host serves the auth database.** A process that finds another host
+  holding the auth database's host lease answers `503 auth_unavailable` to
+  every auth request until that host is gone. The check runs once per request,
+  before Better Auth, not inside Better Auth's own transactions. The lease rows
+  are ordinary rows in `auth.sqlite`: they detect a misconfiguration, not an
+  adversary who can write the file.
+- **Route code never sees the cookie.** The route's own code never receives
   the session cookie or `Authorization` (core strips them), only the user id,
   which core stamps as the request principal. A client-supplied
   `x-urlcode-context-*` header is always removed before any extension runs.

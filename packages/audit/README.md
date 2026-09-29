@@ -171,9 +171,13 @@ Several serving processes on one host may share `data/audit.sqlite` (WAL, a
 outbox. A database directory on a Linux network filesystem is refused. From
 its first activation until it closes, a serving process keeps a lease row in
 `audit_servers` in `audit.sqlite` (hostname, Linux boot id, pid; renewed every
-5 seconds, live for 20), and activation is refused while a live peer runs on
-another host, with or without the store; processes and containers on one host
-are accepted ([several serving processes][store-several-processes]).
+5 seconds), and activation is refused while a live peer runs on another host,
+with or without the store; processes and containers on one host are accepted
+([several serving processes][store-several-processes]). Another host's row is
+judged by whether its heartbeat advances, never by comparing clocks. A process
+that finds another host serving the database logs it and stores nothing
+(`503 audit_unavailable`) until that host is gone. Producers keep their events
+meanwhile and deliver them once it holds the lease again.
 
 <!-- urlcode-current-version:start -->
 [store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host

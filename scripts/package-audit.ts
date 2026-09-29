@@ -326,12 +326,15 @@ export const budgets: Record<string, Budget> = {
     // #948 pinned docs links in schema descriptions, example and starter YAML comments and llms-full.txt prose on top of
     // #902 item 6: 1043430 packed / 4117481 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #954/#955/#958/#959 on top of #963: 1046837 packed / 4129103 unpacked bytes, 531 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1027 * 1024,
+    // #978/#979/#980 skew-proof host lease that fails closed, and the STORE/OPERATIONS/CAPACITY prose (with its llms-full.txt
+    // copy) on top of #954/#955/#958/#959: 1050683 packed / 4142756 unpacked bytes, 531 entries (Node 26); +800 bytes for
+    // Node 24, ~3 KiB headroom.
+    packed: 1030 * 1024,
     // #960 on top of #965: 1043428 packed / 4114713 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #948 on top of #960: 1043801 packed / 4118710 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #940 on top of #963: 1044524 packed / 4121652 unpacked bytes, 530 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #954/#955/#958/#959 on top of #962: 1047608 packed / 4132045 unpacked bytes, 531 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 4039 * 1024,
+    unpacked: 4049 * 1024,
     entries: 534,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -353,8 +356,10 @@ export const budgets: Record<string, Budget> = {
     // #930 hermetic runs and seeds on top of #946: 19307 packed / 60677 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #960 pack-addons refusal on top of #949 and #967: 19913 packed / 62788 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #902 disk-full: the mount's 503 for a Better Auth 500 or throw, README and SECURITY, on top of #960: 20285 packed / 63870 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #978/#979/#980 the lease check per request, the confirmed sign-out and 401s, released lease on a failed activation,
+    // README and SECURITY, on top of #902: 21639 packed / 68688 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     packed: 24 * 1024,
-    unpacked: 66 * 1024,
+    unpacked: 70 * 1024,
     entries: 20,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

@@ -257,8 +257,11 @@ test('activation refuses while a live peer serves the audit database from anothe
   const { audit: sameHost } = await openAudit(t, { database, probe: { hostname: () => 'web-2', bootId: here.bootId } });
   (await sameHost.registration.activate({}, activation(dir))).close?.();
   await sameHost.close();
-  // A process on another host is refused while the first one's lease is live, and nothing it does becomes active.
-  const { audit: elsewhere } = await openAudit(t, { database, probe: boot('22222222-2222-4222-8222-222222222222') });
+  // A process on another host is refused while the first one's lease is live (its heartbeat advances while the joiner
+  // watches, on the joiner's own monotonic clock), and nothing it does becomes active.
+  const watching = (during: () => void = () => {}) => { let now = 0; return { monotonic: () => now, sleep: async (ms: number) => { now += ms; during(); } }; };
+  const bump = () => { const db = new DatabaseSync(database, { timeout: 2000 }); try { db.exec("UPDATE audit_servers SET heartbeat_at = heartbeat_at + 1 WHERE host = 'web-1'"); } finally { db.close(); } };
+  const { audit: elsewhere } = await openAudit(t, { database, probe: { ...boot('22222222-2222-4222-8222-222222222222'), ...watching(bump) } });
   await assert.rejects(Promise.resolve().then(() => elsewhere.registration.activate({}, activation(dir))), /^Error: Another server on host "web-1" holds a live lease on this audit database: an audit database is served from one host only/);
   assert.equal(elsewhere.exports.active, false);
   // Once the first process closes, its row is gone and the other host activates.
@@ -268,13 +271,34 @@ test('activation refuses while a live peer serves the audit database from anothe
   assert.equal(elsewhere.exports.active, true);
   instance.close?.();
   await elsewhere.close();
-  // A lease left by a host that stopped heartbeating counts only until it expires.
+  // A row left by a host that stopped heartbeating (whatever expiry its clock wrote) is deleted after the TTL of silence.
   const writer = new DatabaseSync(database, { timeout: 2000 });
-  try { writer.prepare("INSERT INTO audit_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('gone', 'gone', 'boot-gone', 1, 0, ?)").run(Date.now() - 1); }
+  try { writer.prepare("INSERT INTO audit_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('gone', 'gone', 'boot-gone', 1, 0, ?)").run(Date.now() + 86_400_000); }
   finally { writer.close(); }
-  const { audit: after } = await openAudit(t, { database, probe: here });
+  const { audit: after } = await openAudit(t, { database, probe: { ...here, ...watching() } });
   (await after.registration.activate({}, activation(dir))).close?.();
   // Every audit here shares the first one's database, whose directory the first openAudit's cleanup removes before the
   // later audits' own cleanup closes them; Windows cannot delete a directory holding an open SQLite handle, so close now.
   await after.close();
+});
+
+test('a process whose audit lease another host took over stores nothing (503) until it holds it again (#978)', async t => {
+  let now = 0;
+  const { audit, database } = await activeAudit(t, { probe: { hostname: () => 'web-1', bootId: async () => 'boot-1', monotonic: () => now } });
+  await audit.exports.record([event()]);
+  const other = new DatabaseSync(database, { timeout: 2000 });
+  try { other.exec("DELETE FROM audit_servers; INSERT INTO audit_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('other', 'web-9', 'boot-9', 1, 1, 1)"); }
+  finally { other.close(); }
+  now += 10_000;
+  await rejectsWith(audit.exports.record([event()]), 503, 'audit_unavailable');
+  assert.equal((await all(audit.exports)).length, 1, 'nothing was stored; reads keep working');
+  const cleared = new DatabaseSync(database, { timeout: 2000 });
+  try { cleared.exec('DELETE FROM audit_servers'); } finally { cleared.close(); }
+  // At its next heartbeat no other host holds a row, so it rejoins and stores again.
+  const deadline = Date.now() + 8000;
+  for (;;) {
+    try { await audit.exports.record([event()]); break; }
+    catch (error) { if (Date.now() > deadline) throw error; await new Promise(resolve => setTimeout(resolve, 100)); }
+  }
+  assert.equal((await all(audit.exports)).length, 2);
 });
