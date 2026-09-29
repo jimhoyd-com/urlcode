@@ -63,8 +63,8 @@ validator (`@jimhoyd/urlcode/body-schema`, the exact code
 the caller sent is echoed back in an issue; only the schema's own declared
 path and keyword are.
 
-**A handler is trusted project code, exactly like a form's `onSubmit` hook or
-a native `function`/`middleware` route.** It is loaded and invoked the same
+**A handler is trusted project code, exactly like another extension's project
+hook or a native `function`/`middleware` route.** It is loaded and invoked the same
 way other extension hooks are (`docs/EXTENSIONS.md#project-level-lifecycle-hooks`):
 unsandboxed, in-process, full Node access, refreshed once per activation.
 `sandbox: true` on a tool handler reference is refused at activation rather
@@ -100,8 +100,8 @@ does not create sign-in sessions, ownership rules or abuse protection, and every
 caller who can reach an unprotected mount can invoke every declared tool on
 it. A tool handler whose external effects are not naturally idempotent needs
 its own idempotency mechanism (for example a nonce or dedupe key it checks
-itself), the same limitation the `forms` extension's `onSubmit` hook
-documents: a client can retry a POST.
+itself), as any function route with side effects does: a client can retry a
+POST.
 
 **Stateless protocol.** The official MCP SDK serves every POST on its own
 (#846): there is no session id, session table or server-initiated stream to

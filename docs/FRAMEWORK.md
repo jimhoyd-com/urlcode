@@ -1,26 +1,23 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the nine workspace packages are, how a
+One page for people and AI agents. It says what the six workspace packages are, how a
 project grows from a handful of redirects into an application with accounts,
-data and forms, and which facts an agent must not guess. Every
+data and tools, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Nine workspace packages, one project shape
+## Six workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
 | `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-ui` | [`packages/ui`](../packages/ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
 | `@jimhoyd/urlcode-audit` | [`packages/audit`](../packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
-| `@jimhoyd/urlcode-abuse` | [`packages/abuse`](../packages/abuse) | Abuse protection for other extensions: keyed budgets and backoff over pseudonymous (HMAC) keys, an optional challenge provider and a honeypot helper | `extensions.abuse`; no route. Consumers declare their budgets in their own configuration |
-| `@jimhoyd/urlcode-mail` | [`packages/mail`](../packages/mail) | Plain-text transactional email: templates contributed by other extensions, translatable copy, one operator transport (a loopback outbox by default, SES or your own) | `extensions.mail`; no route. The transport is chosen in `host.mjs` |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
 | `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API, plus optional list-and-form screens it contributes to `ui`; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount (and an `extension: ui` mount per screen) |
-| `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a confirmation that shows only opted-in fields, by 303 redirect or inline (200/201) in the POST response; per-flow submission budgets through `abuse` and a notification through `mail` | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth`, `abuse` and `mail` |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All nine are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The eight extensions, and the inert `store-schema` artifact in
+All six are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The five extensions, and the inert `store-schema` artifact in
 [`artifacts/store-schema`](../artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
@@ -72,13 +69,15 @@ Each rung's YAML is valid on every rung above it.
    the mount and the empty configuration. Browsers sign in with Better Auth's
    own client. Roles, ownership and approvals stay application data keyed by
    the user id.
-5. **Your own look.** The `ui` extension's kit renders every forms and store
+5. **Your own look.** The `ui` extension's kit renders every store
    screen; its theme, project copy, template and stylesheet overrides restyle
    them together.
-6. **Bounded data and forms.** The `store` extension supplies declared durable
-   collections; the `forms` extension supplies declared browser form flows over
-   the shared UI kit. Both are trusted operator extensions, not core YAML
-   handlers. Add `auth: true` where a flow or collection is per-account.
+6. **Bounded data.** The `store` extension supplies declared durable
+   collections, a trusted operator extension rather than a core YAML handler.
+   Add `auth: true` where a collection is per-account. A form is an ordinary
+   frontend that posts JSON to a store mount, or to a function route whose
+   `request.body.POST.schema` validates it before code runs (the
+   [contact-form recipe](../recipes/contact-form/README.md)).
 7. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
    tool server: the official MCP SDK serves the protocol; each tool's own logic is a trusted project handler module the
    operator writes (`urlcode extensions add mcp` wires the extension but
@@ -108,14 +107,12 @@ above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 7 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
-operator host. Auth, audit and abuse additionally need the Node/SQLite
-runtime their packages document; forms (except a flow with `abuse`), mail and
-mcp declare Node, AWS and Vercel targets (mcp's opt-in streaming transport is
+operator host. Auth and audit additionally need the Node/SQLite
+runtime their packages document; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
 self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](../packages/auth/README.md),
 [ui](../packages/ui/README.md),
-[audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md),
-[mail](../packages/mail/README.md),
-[store](../packages/store/README.md), [forms](../packages/forms/README.md),
+[audit](../packages/audit/README.md),
+[store](../packages/store/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
 
 ## Using npm libraries directly
@@ -225,23 +222,19 @@ through its `identity` capability. Everything about the Better Auth instance
 requiring it: the CRUD screens declared under
 `extensions.store.config.screens` reach ui as generic screen descriptions
 through `contributes.ui.screens`, so ui never reads another extension's
-configuration ([nesting](EXTENSIONS.md#nesting)). Forms contributes its message
-templates to `mail` the same way. Core stamps each contribution with the name
-of the extension that made it, so ui and mail accept a template namespace only
-from the extension of that name ([contributions](EXTENSIONS.md#contributions)).
-Operator options go inside a call, for example `auth({signUp: true})` or
-`mail({transport: sesTransport({region}), from})`.
+configuration ([nesting](EXTENSIONS.md#nesting)). Core stamps each
+contribution with the name of the extension that made it, so ui accepts a
+template namespace only from the extension of that name
+([contributions](EXTENSIONS.md#contributions)). Operator options go inside a
+call, for example `auth({signUp: true})`.
 
 The whole graph, as each extension declares it:
 
 ```
 ui       requires []
 audit    requires []
-abuse    requires []
-mail     requires []
 auth     requires []
 store    requires []                  uses [audit]
-forms    requires [ui]                uses [abuse, mail]
 mcp      requires []
 ```
 
@@ -252,7 +245,8 @@ for `audit: true` when audit is absent).
 Treat that composition as one application with package ownership boundaries,
 not as separate user interfaces. Keep accounts, passwords and sessions in
 Better Auth behind the auth extension, roles and permissions in the
-application's own data, the durable log in audit and delivery in mail.
+application's own data, the durable log in audit and email delivery in the
+application's own function code, through the provider's library.
 Apply product differences through the installed extensions' declared authoring
 surfaces, in this order: configuration and theme, copy, a component or screen
 template, stylesheet, then a supported hook. Create another extension only for
@@ -271,7 +265,7 @@ tool names). See [request context](EXTENSIONS.md#request-context-route-env-and-r
 Activation likewise carries the canonical `origin` and the operator's full
 `origins` list (`--alias-origin`); every same-origin check goes through core's
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
-`isSameOriginRequest`, so mcp, forms, store and auth admit the same
+`isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
@@ -381,7 +375,8 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Write or change routes | [YAML guide](YAML-GUIDE.md), [field reference](YAML-REFERENCE.md), [cookbook](../examples/cookbook/README.md) |
 | Configure an extension: every key it accepts | [extension field references](EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
-| Audit log, abuse budgets, email | [audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md), [mail](../packages/mail/README.md) |
+| Audit log | [audit](../packages/audit/README.md) |
+| Rate limits, email | [`policies.throttle`](POLICIES.md), [contact-form recipe](../recipes/contact-form/README.md) |
 | Restyle every page | [ui README](../packages/ui/README.md), [ui contract](../packages/ui/CONTRACT.md) |
 | Write an extension | [extensions](EXTENSIONS.md), [authoring rules](EXTENSIONS.md#generic-add-on-authoring-rules) |
 | Run it | [operations](OPERATIONS.md), [install](INSTALL.md), [deployment checks](DEPLOYMENT-CHECKS.md) |

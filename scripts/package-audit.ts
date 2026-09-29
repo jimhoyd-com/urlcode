@@ -276,29 +276,14 @@ export const budgets: Record<string, Budget> = {
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
-  // The generic audit log, abuse protection and mail add-ons split out of
-  // auth. Each has no runtime dependency beyond core and Node built-ins. First
-  // measured at 25347/82420/24 (audit), 20510/64820/26 (abuse) and
-  // 22236/72631/20 (mail) packed bytes, unpacked bytes and files.
+  // The generic audit log split out of auth. It has no runtime dependency
+  // beyond core and Node built-ins. First measured at 25347/82420/24 packed
+  // bytes, unpacked bytes and files.
   '@jimhoyd/urlcode-audit': {
     packed: 35 * 1024,
     unpacked: 110 * 1024,
     entries: 32,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
-  },
-  '@jimhoyd/urlcode-abuse': {
-    packed: 30 * 1024,
-    unpacked: 90 * 1024,
-    entries: 32,
-    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
-  },
-  '@jimhoyd/urlcode-mail': {
-    packed: 32 * 1024,
-    unpacked: 100 * 1024,
-    entries: 28,
-    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
-    // The SES transport loads the SDK lazily; it moved here from auth.
-    optionalPeers: ['@aws-sdk/client-sesv2'],
   },
   '@jimhoyd/urlcode-auth': {
     // Rebuilt on Better Auth (#841, #843): the adapter, definition and CLI with their declarations and docs.
@@ -362,17 +347,6 @@ export const budgets: Record<string, Budget> = {
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,
-    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
-  },
-  '@jimhoyd/urlcode-forms': {
-    // #822 generated field reference in the README (measured 49761 packed).
-    packed: 52 * 1024,
-    // Raised from 140 KiB for per-flow abuse budgets and mail notifications
-    // (the contributed template, their declarations and README/SECURITY
-    // contract): 148862 unpacked bytes.
-    // #822 generated field reference in the README (measured 196778 unpacked).
-    unpacked: 200 * 1024,
-    entries: 31,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   // Unpacked raised from 140 KiB for the opt-in streaming transport (#659):

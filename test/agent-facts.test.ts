@@ -14,7 +14,7 @@ test('the agent-facts inventory is derived from the implementation and the prose
  assert.equal(inventory.status,0,inventory.stderr);
  const facts=JSON.parse(inventory.stdout) as {extensionBundles:string[];kitAdopters:string[];scaffoldWithUnordered:boolean;mcpTools:{read:number;hostFile:number;authoring:number};storeShortLinks:boolean};
  assert.deepEqual(facts.mcpTools,{read:mcpToolInventory.read.length,hostFile:1,authoring:mcpToolInventory.authoring.length});
- assert.ok(facts.extensionBundles.includes('forms'));
+ assert.ok(facts.extensionBundles.includes('store'));
  assert.equal(facts.storeShortLinks,storeAuthoring.surfaces.some(surface=>surface.name==='shortLinks'));
  const check=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:30000});
  assert.equal(check.status,0,check.stderr);

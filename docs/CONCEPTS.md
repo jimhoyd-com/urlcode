@@ -24,7 +24,7 @@ set), or a route's own `policies` (an override). Every policy is off until
 declared. See [policies](POLICIES.md).
 
 An **extension** is a trusted, operator-installed module — `auth`,
-`store`, `forms`, `ui` — that a project *references* by logical name under
+`store`, `mcp`, `ui` — that a project *references* by logical name under
 `extensions:` and either mounts directly (`extension: auth`) or requires on
 its own route with the `auth` short form (which names whichever declared
 extension provides the request principal). The project YAML never names an

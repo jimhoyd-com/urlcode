@@ -14,7 +14,7 @@ before promising a deployment. Stored short links have no dedicated package;
 a project declares a collection through the `store` extension instead (see
 [docs/STORE.md](docs/STORE.md)).
 
-Auth, UI, store and forms are optional packages, developed in this
+Auth, UI, audit, store and MCP are optional packages, developed in this
 repository under `packages/` and released independently. Middleware is not a
 package: per-route `middleware:` is native to core. Auth is a thin adapter
 over [Better Auth](https://better-auth.com/) (#841); URLCode's own account
@@ -53,9 +53,9 @@ the GitHub Releases page, not in this page.
    (CI lane measurement and release validation) and
    [issue 202](https://github.com/jimhoyd-com/urlcode/issues/202) (Windows auth
    worker startup timeout) are also still open.
-4. **Choose expansion from evidence.** Bounded collections (`store`) and form
-   flows (`forms`) are implemented; a broader business application suite beyond
-   them is still a proposal, not an available feature. Decide scope before
+4. **Choose expansion from evidence.** Bounded collections (`store`) are
+   implemented; a broader business application suite beyond them is still a
+   proposal, not an available feature. Decide scope before
    implementing further. Per-route Lambda compilation is **decided against**: projects using
    `function` or `middleware` deploy as one trusted Node process, and serverless
    targets keep refusing those routes at activation

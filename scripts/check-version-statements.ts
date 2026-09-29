@@ -12,7 +12,7 @@
 //   "this revision is `X`", "targets URLCode X", "`X` stable release target",
 //   "stable release target is `X`", "`X` release line", "aligned `X` packages",
 //   "aligns all four packages at `X`", installs of the packages pinned as
-//   @jimhoyd/urlcode[-ui|-auth|-admin|-store|-forms]@X, `--version X` /
+//   @jimhoyd/urlcode[-ui|-auth|-admin|-store]@X, `--version X` /
 //   `--branch vX` / `urlcode:X` in install commands, packed archive names
 //   `jimhoyd-urlcode[-name]-X.tgz`, "version X is the current ...", "the X
 //   version label", "additions since X", "implemented in X", "These are X
@@ -43,9 +43,9 @@ const PATTERNS = [
   new RegExp('`' + V + '` release line', 'g'),
   new RegExp('aligned `' + V + '` packages', 'g'),
   new RegExp('aligns all four packages at `' + V + '`', 'g'),
-  new RegExp('@jimhoyd/urlcode(?:-ui|-auth|-admin|-store|-forms)?@' + V, 'g'),
+  new RegExp('@jimhoyd/urlcode(?:-ui|-auth|-admin|-store)?@' + V, 'g'),
   new RegExp('(?:--version |--branch v|urlcode:)' + V, 'g'),
-  new RegExp('jimhoyd-urlcode(?:-ui|-auth|-admin|-store|-forms)?-' + V + '\\.tgz', 'g'),
+  new RegExp('jimhoyd-urlcode(?:-ui|-auth|-admin|-store)?-' + V + '\\.tgz', 'g'),
   new RegExp('[Vv]ersion ' + V + ' is the current', 'g'),
   new RegExp('\\b' + V + ' version label', 'g'),
   new RegExp('additions since ' + V, 'g'),

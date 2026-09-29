@@ -124,7 +124,7 @@ beside it and without changing the exports above:
   `ExtensionInstance`, `ExtensionRequest` and the rest) are core's own, imported
   from `@jimhoyd/urlcode/extensions` rather than copied, so `ui.registration`
   needs no cast in a host file and cannot drift from the runtime's shape.
-- The `./host` HMAC-SHA256 token helpers forms builds CSRF on:
+- The `./host` HMAC-SHA256 token helpers:
   `signHmac(secret, message, encoding?)` and `verifyHmac(secret, message,
   provided, encoding?)` (`'hex'`, the default, or `'base64url'`);
   `createSignedToken(secret, payload, ttlMs)` issues
@@ -158,8 +158,8 @@ beside it and without changing the exports above:
   does not know how the contributing extension declares a screen:
   it never loads the project document or reads another extension's block. The
   scaffold never adds another extension's screen; the owner scaffolds its own
-  (the store adds `/todos` when ui is installed). `requires` on forms makes `composeHost` activate
-  `ui` before it and hand it the kit.
+  (the store adds `/todos` when ui is installed). An extension that lists `ui`
+  in `requires` makes `composeHost` activate `ui` before it and hand it the kit.
 
 - Data screens (`crudScreen`, `crudMarkup`, `crudFields`): a field may be
   `transitionOnly` (shown read-only, never a control and never sent), and the

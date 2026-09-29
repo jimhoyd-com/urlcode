@@ -84,12 +84,12 @@ async function copies(dir: string, name: string): Promise<number> {
 test('every extension installs once, composes, serves, and removes in dependency order', { timeout: 900000 }, async t => {
   const { dir } = await site(t);
   const all = (await addons()).filter(addon => addon.kind === 'extension').map(addon => addon.name);
-  // --example reproduces the demos a new user expects: /api/todos and /todos, and /contact (#711).
+  // --example reproduces the demos a new user expects: /api/todos and /todos (#711).
   const added = await urlcode(t, dir, ['extensions', 'add', ...all, '--example']);
   assert.equal(added.status, 0, added.stderr);
   const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string; examples: string[] };
   assert.deepEqual([...result.added].sort(), [...all].sort());
-  assert.deepEqual([...result.examples].sort(), ['forms', 'store']);
+  assert.deepEqual([...result.examples].sort(), ['store']);
   for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
   const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
@@ -102,8 +102,6 @@ test('every extension installs once, composes, serves, and removes in dependency
   // The store example's JSON mount is signed-in only (core expands `auth: true` into policies.extensions.auth).
   const routes = (await loadDocument(join(dir, 'app'))).routes as Record<string, { policies?: { extensions?: Record<string, unknown> | false } }>;
   assert.deepEqual((routes['/api/todos/*']?.policies?.extensions || {}).auth, {});
-  // abuse's HMAC key is scaffolded with the site; its counters database only appears once a host runs.
-  await access(join(dir, 'data', 'abuse.key'));
 
   // Better Auth's tables are an explicit operator step; auth refuses to activate without them.
   operatorCli(t, dir, 'urlcode-auth', ['migrate'], {});
@@ -127,7 +125,7 @@ test('every extension installs once, composes, serves, and removes in dependency
   // database while the service still holds it open.
   try {
     // /todos is the store's own screen, contributed to ui (#709); signed-in only, so it redirects rather than 404s.
-    for (const path of ['/api/auth/ok', '/api/todos', '/todos', '/contact']) {
+    for (const path of ['/api/auth/ok', '/api/todos', '/todos']) {
       const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
       assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
     }
@@ -146,14 +144,15 @@ test('every extension installs once, composes, serves, and removes in dependency
     const created = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'first' }) });
     assert.equal(created.status, 201, await created.text());
 
-    // Hot reload an edit of the contact form's title: the replacement runtime's store serves the same database
-    // connection, the new title is served, and the records written before the reload are still readable.
+    // Hot reload an edit of the collection's title limit: the replacement runtime's store serves the same database
+    // connection, the new limit is enforced, and the records written before the reload are still readable.
     const yaml = join(dir, 'app', 'urlcode.yaml');
     const text = await readFile(yaml, 'utf8');
-    assert.match(text, /title: Contact us/);
-    await writeFile(yaml, text.replace('title: Contact us', 'title: Changed contact title'));
+    assert.match(text, /maxLength: 200/);
+    await writeFile(yaml, text.replace('maxLength: 200', 'maxLength: 20'));
     assert.equal(await server.reload(), true, 'the generated stateful site reloads');
-    assert.match(await (await send('/contact', { headers: { accept: 'text/html' } })).text(), /Changed contact title/);
+    const tooLong = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'a title longer than twenty characters' }) });
+    assert.equal(tooLong.status, 400, await tooLong.text());
     const kept = await (await send('/api/todos', { headers: { accept: 'application/json' } })).json() as { items: { title: string }[] };
     assert.deepEqual(kept.items.map(item => item.title), ['first']);
     const later = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'after reload' }) });

@@ -109,12 +109,10 @@ In enforce mode only `exceeded` is logged.
   [docs/PLUGINS.md](../PLUGINS.md).
 - No per-user or per-token keys. The partition is address or route, because
   throttle runs before authentication and never sees who is calling.
-- No flow-aware budgets. Form-submission budgets are the `abuse` extension's,
-  which forms (`flows.<name>.abuse`) use when it is installed. Its counters are
-  keyed by an HMAC of the client or account, persist in SQLite on the node
-  target and can escalate to a challenge; see
-  [abuse protection](../EXTENSIONS.md#abuse-protection). The `auth`
-  extension's sign-in attempts are limited by Better Auth's own rate limiter
+- No flow-aware budgets, backoff or challenges. A per-account or
+  per-submission budget that must survive restarts belongs in the application
+  (the route's trusted function and its own storage). The `auth` extension's
+  sign-in attempts are limited by Better Auth's own rate limiter
   ([auth](../../packages/auth/README.md#operator-options)). Keep throttle in
   front of those routes as the per-client flood floor.
 - Counters do not survive a reload: a new snapshot starts empty.

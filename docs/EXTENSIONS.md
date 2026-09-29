@@ -2,7 +2,7 @@
 
 Extensions are trusted operator modules, separate from a project's own
 `function`/`middleware` code. The first-party extensions (`ui`, `audit`,
-`abuse`, `mail`, `auth`, `store`, `forms`, `mcp`) are workspace packages in this repository
+`auth`, `store`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
 a package: the operator's `host.mjs` does that (see
@@ -18,28 +18,20 @@ The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See
 [data store](STORE.md).
 
-Three extensions serve no route and exist for other extensions to use through
-their typed exports:
+The `audit` extension serves no route and exists for other extensions to use
+through its typed exports. It is the durable audit log: a producer (every store
+collection with `audit: true`) writes each event into its own outbox in the
+same transaction as the change it records, and audit drains the outboxes into
+one bounded SQLite log ([audit log](#audit-log)).
 
-- `audit` is the durable audit log. A producer (every store collection with
-  `audit: true`) writes each event into its own outbox in the
-  same transaction as the change it records, and audit drains the outboxes
-  into one bounded SQLite log ([audit log](#audit-log)).
-- `abuse` holds keyed budgets, password-style backoff, an optional challenge
-  provider and a honeypot helper over pseudonymous keys
-  ([abuse protection](#abuse-protection)).
-- `mail` sends plain-text transactional email from templates other
-  extensions contribute, through one transport the operator chooses in
-  `host.mjs` ([mail package](../packages/mail/README.md)).
-
-The `forms` extension is the browser-flow counterpart: it renders bounded
-declared fields through the `ui` kit, validates URL-encoded submissions with
-its host-supplied CSRF secret, and redirects a successful submission to a
-confirmation page that shows only the submitted fields the flow opts in to. It is a trusted operator extension, needs `ui`, and
-may be mounted behind `auth: true` when submissions need a signed-in caller: auth then admits only a
-verified session and a same-origin POST, and forms still verifies its own token. A flow may declare a
-submission budget (`abuse`, when the abuse extension is installed) and a notification (`notify`, through mail). Its optional `onSubmit` hook is trusted
-project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
+No extension renders or processes forms. A form is an ordinary frontend that
+posts JSON to a store mount, or to a route whose `request.body.POST.schema`
+validates it before anything runs and whose `respond` answers it, with an
+optional `signals` notification (the
+[contact-form recipe](../recipes/contact-form/README.md)).
+[`policies.throttle`](policies/throttle.md) limits its request rate. To email
+a submission, a trusted function route calls the provider's own library
+([sending mail from your own code](../recipes/contact-form/README.md#sending-mail-from-your-own-code-instead)).
 
 The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
 server: named tools with a description, a `request.body.<METHOD>.schema`-shaped input
@@ -136,9 +128,8 @@ without a session Better Auth verifies from the request's cookie, and
 `403 {"error":"cross_origin_refused"}` for a `POST`, `PUT`, `PATCH` or `DELETE`
 that core's [same-origin rule](#site-origins-and-same-origin-checks) (with
 `whenAbsent: 'refuse'`) does not admit. There is no token mode and no
-per-route CSRF option: a mount that verifies its own token (forms) or accepts
-JSON only (a store collection) uses the same
-`auth: true`. Identity is not permission: roles, ownership and approvals are
+per-route CSRF option: a mount that accepts JSON only (a store collection)
+uses the same `auth: true`. Identity is not permission: roles, ownership and approvals are
 application data keyed by the user id (see the
 [auth package](../packages/auth/README.md)).
 
@@ -426,7 +417,7 @@ code can call very little: static imports of a package's pure types and
 helpers, and any derived value an extension writes into the
 [reserved header channel](#handing-data-forward-into-a-protected-routes-own-context).
 Everything else an extension exports — a store collection
-scoped to the caller, a declared form flow, a templated email — exists only as
+scoped to the caller or an audit log query — exists only as
 a live object passed between extensions through `HostContext.get`, never
 reachable from a route's own handler. **Request-bound capabilities**
 (`RIM-EXT-CAPABILITY-001` in [runtime implementation](RUNTIME-IMPLEMENTATION.md))
@@ -472,9 +463,9 @@ invocation. The first-party `auth` extension declares one capability,
 `identity`: on a route with `auth: true` the handler reads the verified user
 id as `context.capabilities.auth.identity.userId`, and a `sandbox: true` route
 cannot name `auth`. The core fixture `test/extension-capability.test.ts` proves
-the seam with a synthetic, non-first-party provider; naming the specific store,
-mail, audit and abuse operations an application can reach this way is a later,
-separate decision for each package.
+the seam with a synthetic, non-first-party provider; naming the specific store
+and audit operations an application can reach this way is a later, separate
+decision for each package.
 
 `urlcode explain` and `urlcode report` show the capabilities a registration
 declares on every route that names it (`handler receives
@@ -581,25 +572,10 @@ extensions:
         transformView:
           source: ./hooks/transform-ui-view.mjs
           export: default
-  forms:
-    version: "1"
-    config:
-      hooks:
-        onSubmit: ./hooks/on-submit.mjs
-      flows:
-        contact:
-          mount: /contact
-          title: Contact us
-          submitLabel: Send message
-          confirmation: {title: Thank you, message: We received your message.}
-          fields:
-            message: {label: Message, control: textarea, maxLength: 2000}
 ```
 
 with `transformView` a filter that returns the view model a `ui` template
-renders, and forms' `onSubmit` an action called with the validated
-`{flow, values}` of a submission, after admission and CSRF, for side effects
-such as writing to another system. Hook names and lifecycle timing remain the
+renders. Hook names and lifecycle timing remain the
 extension's domain, while their declaration, loading and discovery are shared.
 
 Hooks are first-party project code and run trusted in-process by default, with
@@ -616,7 +592,7 @@ changes; use this hook for project-specific computed view data that those
 declarative layers cannot express. It also exposes `transformPage`, called
 before the shared layout renders. It receives the editable title, layout,
 navigation, account menu and flash message and returns those page fields. This
-lets a product join extension screens (forms, store lists) to its own shell without replacing their
+lets a product join extension screens (store lists) to its own shell without replacing their
 security or workflow behavior. Both filters are synchronous and trusted.
 
 ## Building an extension
@@ -885,7 +861,7 @@ closes, fall back to the previous live one rather than to nothing, so a failed
 reload's close cannot switch off the runtime that is still serving. No
 first-party extension needs the hand-off today: the store shares one database
 connection among its registration's live activations instead
-([store reload](STORE.md#reload)), and the store's records export, ui and mail
+([store reload](STORE.md#reload)), and the store's records export and ui
 keep their current activation that way.
 
 ### Site origins and same-origin checks
@@ -936,12 +912,11 @@ applies decides:
 6. none of them: `whenAbsent`.
 
 `whenAbsent: 'refuse'` is for an endpoint that takes a form post or relies on
-cookies: `auth` (for unsafe methods on a protected route) and `forms` use it. `whenAbsent: 'admit'` is only for
+cookies: `auth` uses it for unsafe methods on a protected route. `whenAbsent: 'admit'` is only for
 an endpoint that accepts JSON exclusively, which a cross-site browser cannot
 send without a preflight the runtime never grants, while non-browser clients
 (curl, MCP clients, API keys) send no provenance header: `store` and `mcp` use
-it. The rule is admission only: forms still requires its own CSRF token, and
-Better Auth applies its own origin checks on its mount. On a loopback bind the server's
+it. The rule is admission only: Better Auth applies its own origin checks on its mount. On a loopback bind the server's
 [host admission](OPERATIONS.md#host-admission-on-a-loopback-bind) admits each
 alias authority too.
 
@@ -1227,8 +1202,7 @@ check it against core's pin.
 
 The first-party add-ons are:
 
-- Extensions: `ui`, `audit`, `abuse`, `mail`, `auth`, `forms` (requires `ui`),
-  `store`, `mcp`.
+- Extensions: `ui`, `audit`, `auth`, `store`, `mcp`.
 - Artifacts: `store-schema`, the `store` extension's configuration schema and an
   example configuration. Its schema is generated from the store extension's
   definition by `npm run build:addons`, so the two cannot drift.
@@ -1324,8 +1298,7 @@ export default await composeHost(import.meta.url, [
 ```
 
 That is the host after `urlcode extensions add ui auth store`. Operator options
-go inside the call, for example `auth({signUp: true})` or
-`mail({transport: sesTransport({region}), from})`. The
+go inside the call, for example `auth({signUp: true})`. The
 generated npm scripts run from the site directory (`urlcode dev --project app
 --host-file host.mjs`, and the same for `serve`, `validate`, `test`, `routes`
 and `audit`). Run from a site root, CLI commands default `--project` to `app`,
@@ -1391,8 +1364,7 @@ command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
 on `/api/todos` (and, with `ui`, its `/todos` screen; per-user `ownership: owner`
-when `auth` is installed) and forms' `/contact` flow; ui, auth and mcp ship
-none.
+when `auth` is installed); ui, audit, auth and mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
 the `store` example without `auth` would expose public write on its collection. The refusal
@@ -1490,10 +1462,9 @@ Each extension declares what it needs:
 
 | Extension | `requires` | `uses` (optional) | Contributes to |
 |---|---|---|---|
-| `ui`, `audit`, `abuse`, `mail`, `mcp` | none | none | |
+| `ui`, `audit`, `mcp` | none | none | |
 | `auth` | none | none | |
 | `store` | none | `audit` | `ui` |
-| `forms` | `ui` | `abuse`, `mail` | `mail` |
 
 A sibling add-on is an optional exact peer dependency, never a nested
 dependency, so every add-on is installed once at the top level of the site;
@@ -1507,16 +1478,14 @@ throws.
 
 The runtime then activates the declared extensions in that registration order,
 so an extension's activation always runs after the activation of everything it
-requires or uses, and can read `active` (or mail's `available`) on their
-exports. The order the extensions are declared in under `extensions` in YAML
+requires or uses, and can read `active` on their exports. The order the extensions are declared in under `extensions` in YAML
 does not matter. They close in reverse order.
 
 A contribution is an optional edge too: an extension may contribute to one it
 does not require, and the value is simply unused when the target is not
-installed. Forms passes its message templates to `mail` through
-`contributes.mail`, which `mail` collects with `ctx.contributions('mail')`; `ui`
-accepts templates and copy catalogues through `contributes.ui` the same way,
-though no first-party extension contributes templates to it today. The store does not
+installed. `ui` accepts templates and copy catalogues through
+`contributes.ui`, which it collects with `ctx.contributions('ui')`, though no
+first-party extension contributes templates to it today. The store does not
 require `ui`, but contributes `screens`, a source ui calls at activation to
 receive generic descriptions of the CRUD screens declared under
 `extensions.store.config.screens`, so ui never reads the store's
@@ -1540,11 +1509,10 @@ configuration. Its descriptor records the edge (`contributes: ["ui"]`) and its
   prefix) checks it against `from` and refuses a mismatch in `host()`, which
   `composeHost` reports as a `ConfigError` for the receiving extension. `ui`
   accepts a `templates` entry only when its `name` is `from` and every
-  template or view-model key is `<from>/…`; `mail` accepts a contribution only
-  when its `namespace` is `from`. Both errors name the claimed namespace and
-  the contributing extension, for example `Mail namespace "forms" is
-  contributed by extension "notifier": an extension contributes mail templates
-  only under its own name`. ui's contributed screens are keyed by route path,
+  template or view-model key is `<from>/…`. The error names the claimed
+  namespace and the contributing extension, for example `ui template namespace
+  "store" is contributed by extension "notifier": an extension contributes ui
+  templates only under its own name`. ui's contributed screens are keyed by route path,
   not by extension name, so ui uses `from` only to name both contributors when
   two claim one path.
 
@@ -1555,9 +1523,7 @@ exports nothing to other extensions; it reaches them only through the
 | Export | From | Read by |
 |---|---|---|
 | `AuditExports` | `audit` | producers (`attach` an outbox, `validate` an event; the store's audited collections) and readers (`query`, `record`) |
-| `AbuseExports` | `abuse` | forms: `namespace(name)` for budgets, backoff, the challenge and the honeypot |
-| `MailExports` | `mail` | forms: `send()` a contributed template; `available` says whether a transport is set |
-| `FormsExports`, `StoreExports` | `forms`, `store` | no first-party reader: a flow renderer and validator, and an ownership-honouring records API for an operator's own extension |
+| `StoreExports` | `store` | no first-party reader: an ownership-honouring records API for an operator's own extension |
 
 Two copies of one extension cannot exist in a site, so duplicate-instance bugs
 (such as a second `ui` kit that never received another extension's templates)
@@ -1579,22 +1545,12 @@ submitted values or secrets. Operators read the log with `urlcode-audit list`.
 See the [audit package](../packages/audit/README.md)
 and its [security notes](../packages/audit/SECURITY.md).
 
-### Abuse protection
+### Rate limits
 
-Two different tools limit request rates, and they are not interchangeable:
-
-- The core [`throttle` policy](policies/throttle.md) is YAML on any route: a
-  fixed per-client budget on a bounded in-memory table, the same on every
-  target, reset on restart.
-- The `abuse` extension is for other extensions' own flows: today the
-  submission budgets in forms (`flows.<name>.abuse`). Auth does not use it;
-  Better Auth's own rate limiter guards sign-in. Its counters are keyed by an HMAC of the client
-  address or account (`data/abuse.key`), persist in `data/abuse.sqlite`, are
-  bounded by `maxKeys` (503 when full) and can escalate to a challenge
-  provider. It is Node-only.
-
-Losing `data/abuse.key` only resets the counters. See the
-[abuse package](../packages/abuse/README.md).
+The core [`throttle` policy](policies/throttle.md) is YAML on any route,
+including an extension mount: a fixed per-client budget on a bounded in-memory
+table, the same on every target, reset on restart. Better Auth's own rate
+limiter guards sign-in.
 
 ### The extension definition
 
