@@ -61,6 +61,13 @@ export default function me(request, context) {
 }
 ```
 
+Test a protected route with a request fixture that signs in through
+`POST /api/auth/sign-in/email` inside a `steps` fixture, as a browser does,
+with an account `create-user` made for testing; the fixture's cookie jar keeps
+the session, and `"origin":"{{origin}}"` passes the same-origin check. There is
+no test principal that skips the gate. See
+[authenticated routes](../../docs/READINESS.md#authenticated-routes-auth-true).
+
 Identity is not permission. Roles, ownership and approvals are application
 data keyed by that id. A `sandbox: true` route cannot name `auth`: the
 capability is a live object that cannot cross into the sandbox, so the runtime

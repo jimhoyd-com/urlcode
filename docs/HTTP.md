@@ -292,7 +292,8 @@ is accepted but never reached.
 
 On the Cloudflare Worker, which forbids code generation at runtime,
 `urlcode build --target cloudflare` compiles every body schema with the same
-Ajv options into a standalone `body-validators.js` module, one validator per route and method, so the Worker runs
+Ajv options into a standalone `body-validators.js` module, one validator per route and method (one per
+[named schema](#named-schemas), however many routes name it), so the Worker runs
 the same validator as the server. See [Cloudflare](CLOUDFLARE.md#what-has-run-on-workerd)
 for what has run on workerd.
 
@@ -376,6 +377,100 @@ Functions still return their own Response/status/body. YAML header policy does
 not replace function status/body. Asset handlers retain conditional/HEAD/range
 behavior described in [assets](ASSETS.md). Use OPTIONS explicitly if you need a
 declared response; merely adding a header does not implement CORS preflight.
+
+### Named schemas
+
+A schema a route and an MCP tool (or several routes) share is declared once
+under the top-level `schemas:` map of the entry `urlcode.yaml` and named where
+it is used:
+
+```yaml
+version: "1"
+schemas:
+  contact: {file: schemas/contact.json}
+  note:
+    type: object
+    required: [text]
+    additionalProperties: false
+    properties:
+      text: {type: string, minLength: 1, maxLength: 2000}
+routes:
+  /contacts:
+    methods: [POST]
+    request:
+      body:
+        POST: {format: json, required: true, maxBytes: 4096, schema: contact}
+    respond: {status: 201, json: {ok: true}}
+```
+
+**The reference is a string.** `schema: contact` names the schema; a JSON
+Schema is always an object or a boolean, so a name can never be mistaken for
+one. `$ref` keeps its standard meaning inside a schema (a local
+`#/$defs/<name>` only), so no reference is ever resolved against the
+`urlcode.yaml` document itself. An unknown name fails at load, naming the
+route, the method and the closest declared name. Names are a letter followed
+by up to 63 letters, digits or `_`; `Urlcode...` is reserved for the
+runtime's own OpenAPI components. At most 64 schemas, entry file only (an
+include that declares `schemas` is refused).
+
+**Each named schema is admitted exactly like an inline one**: the same
+profile, limits and `Body schema`-style diagnostics (prefixed
+`schemas.<name>`), the same Ajv options, and compiled once when the project
+activates, whether a route, an extension or nothing names it yet. Every route
+that names it gets the same validator and the same 422, and an MCP tool whose
+`inputSchema` names it refuses the same invalid arguments at the same pointer
+with the same line (`/email must be an email`); see
+[packages/mcp](../packages/mcp/README.md#named-schemas).
+
+**A schema file** (`{file: <path>}`, an object whose only key is `file`) is a
+project-relative `.json`, `.yaml` or `.yml` file holding an independently
+authored JSON Schema 2020-12 document. YAML is read with the inert-document
+profile (JSON values only; no aliases, anchors or tags). It is read offline by
+the same bounded resolver `urlcode artifacts inspect` uses: a relative `$ref`
+to another project file (`common/address.json`, or
+`common/address.json#/$defs/zip`) is followed and the files it reaches are
+bundled into one self-contained schema, each contributed location hoisted
+into `$defs` (a whole file as `<stem>`, one of its `$defs` entries as
+`<stem>.<name>`) and the reference rewritten to it. A reference must name a
+whole file or one of its `$defs` entries. These refuse the load, naming the
+file and the pointer of the reference and never echoing its text:
+
+- a remote reference (`https://...`, or anything resolved against an absolute
+  `$id`); nothing is fetched;
+- a path that leaves the project directory, or a file reached through a
+  symlink (or a path whose case differs);
+- a missing file or pointer, a `$anchor` fragment, or a reference cycle;
+- a file over 256 KiB, more than 2 MiB or 64 files in all, more than 512
+  references or a reference chain deeper than 16.
+
+The bundled result must then pass the profile like any schema, so a file's
+`$id`, `default` or `readOnly` is refused as it would be inline. The bytes of
+every schema file read are hashed into the project revision
+(`projectSha256`), with each schema's content: editing a schema file, even by
+whitespace, changes the revision, so an operator's extension pin and binding
+grants need a fresh review.
+
+**What a schema carries, and what it does not.** A named schema describes the
+shape of a JSON value and nothing else. It never carries:
+
+- authorization: who may call a route or a tool stays with `auth:`,
+  `policies.extensions` and the extension's own checks, which run before the
+  body is validated;
+- transport coercion: path, query and header inputs are strings on the wire
+  and keep their own `parameters` schemas (with their own `default`); a named
+  schema is never applied to them;
+- display metadata: labels, placeholders and field order belong to the page or
+  form that renders the value (`title` and `description` are annotations and
+  change nothing);
+- stored defaults: the profile refuses `default` and `readOnly`, and a store
+  collection keeps its own record schema, where those are store facts. A store
+  collection cannot name a project schema yet.
+
+**OpenAPI and Cloudflare.** The OpenAPI export writes each named schema an
+operation uses once, as `components.schemas.<name>` (its `$defs` beside it as
+`<name>_<def>`), and every operation that names it references that component.
+`urlcode build --target cloudflare` compiles one standalone validator per
+named schema, shared by every route and method that names it.
 
 ## Error format
 

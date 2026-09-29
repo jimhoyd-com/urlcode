@@ -11,6 +11,7 @@ import type { RouteMatch } from './conditions.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { CompiledParameter, MatchableRoute, ParameterLocation, ParameterSchema, RedirectSpec, Scalar, ValueRef } from './match.ts';
 import type { HttpRoute, Reply, RequestBodyPolicies, RespondSpec } from './http-policy.ts';
+import type { BodySchema } from './body-validation.ts';
 import type { AgentsConfig, AgentsDescription, AgentsState } from './policies/agents.ts';
 import type { SecurityConfig, SecurityDescription, SecurityState } from './policies/security.ts';
 import type { CacheConfig, CacheDescription, CacheState, CacheStore } from './policies/cache.ts';
@@ -135,6 +136,8 @@ export interface SharedBlock { request?: RouteConfig['request']; response?: Rout
 export interface ProjectDocument {
   version: '1'; extensions?:Record<string,ExtensionDeclaration>; routes: Record<string, RouteConfig>; includes?: string[];
   policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; shared?: Record<string, SharedBlock>; site?: SiteConfig;
+  /** Named JSON Schema 2020-12 documents (inline, or `{file}`) a body policy or an extension references by name. Entry file only. */
+  schemas?: Record<string, BodySchema | { file: string }>;
 }
 /** Where a YAML value was written: the entry or include file as authored, and the 1-based line/column when known. */
 export interface SourceLocation { file: string; line?: number | undefined; column?: number | undefined }
@@ -143,7 +146,11 @@ export interface LoadedDocument { root: string; document: ProjectDocument; route
   /** Where each page/download/static reference and site file convention was written, keyed by its RFC 6901 pointer (for diagnostics). */
   locations?: Record<string, SourceLocation>; /** Routes whose `policies.extensions.<provider>` came from the `auth:` short form, by pattern. */ routeAuth?: Record<string, RouteAuthShortForm>;
   /** Only when loaded with `sources`: the file (`urlcode.yaml` or the include path as written) each route and extension declaration came from. */
-  sources?: { routes: Record<string, string>; extensions: Record<string, string> } }
+  sources?: { routes: Record<string, string>; extensions: Record<string, string> };
+  /** The entry document's named schemas, each admitted against the body profile and self-contained (project-schemas.ts). */
+  schemas?: Record<string, BodySchema>;
+  /** Each schema file those schemas read, by project path, with the sha256 of its bytes: part of the project revision. */
+  schemaFiles?: Record<string, string> }
 
 // ---------------------------------------------------------------------------
 // Compiled routes and assets.
@@ -258,6 +265,8 @@ export interface PlanInventoryEntry {
   sandboxReason?: string;
   /** The route's declared `coveredElsewhere` audit waivers (method to reason), when it has any. */
   coveredElsewhere?: Record<string, string>;
+  /** The principal-providing extensions (`auth: true`) whose `authorize()` gates this route, when any does. */
+  gatedBy?: string[];
 }
 export interface TestPlan {
   inventory: PlanInventoryEntry[]; cases: unknown[]; resolve?(path: string): string | undefined;

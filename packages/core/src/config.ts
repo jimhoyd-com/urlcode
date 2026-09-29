@@ -9,6 +9,8 @@ import { assert, ConfigError } from './errors.ts';
 import type { ErrorDetails } from './errors.ts';
 import { reservedResponseHeaders } from './http-policy.ts';
 import { declaredPrincipalProviders } from './addon-manifest.ts';
+import { loadProjectSchemas } from './project-schemas.ts';
+import type { ProjectSchemas } from './project-schemas.ts';
 import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteAuthShortForm, RouteConfig, SharedBlock, SourceLocation } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message and details. */
@@ -488,6 +490,9 @@ function referenceLocations(document: ProjectDocument, file: string, locate: Yam
     if (route.static) record(`${base}/static`, 'directory');
   }
   for (const key of ['favicon', 'llms', 'notFound'] as const) if (typeof document.site?.[key] === 'string') record('/site', key);
+  for (const name of Object.keys(document.schemas ?? {})) record('/schemas', name);
+  for (const [pattern, route] of Object.entries(document.routes ?? {}))
+    for (const [method, policy] of Object.entries(route.request?.body ?? {})) if (typeof policy?.schema === 'string') record(`/routes/${escapePointer(pattern)}/request/body/${method}`, 'schema');
 }
 export async function loadDocumentInWorker(project: string, {sources=false}: {sources?: boolean}={}): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
@@ -517,6 +522,7 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
     assert(part.shared===undefined, 'shared may only be set in the entry urlcode.yaml');
+    assert(part.schemas===undefined, 'schemas may only be set in the entry urlcode.yaml');
     for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;extensionFiles[name]=include;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');
@@ -526,13 +532,45 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
     }
   }
   if(Object.keys(extensions).length)document.extensions=extensions;
+  const named = document.schemas ? await namedSchemas(root, document.schemas, locations) : undefined;
+  checkSchemaNames(routes, named?.schemas ?? {}, routeFiles, locations);
   // The short form's target is read from static descriptors only when a route uses it. It lands in the normalized
   // routes, so it is part of `version` and of the revision operators pin (policy.ts): a package change that moves
   // the target changes the revision, and every pinned registration and grant refuses it until re-reviewed.
   const shortForm = Object.values(routes).some(route => route.auth !== undefined);
   const routeAuth = normalizeRouteAuth(document, routes, shortForm ? await declaredPrincipalProviders(dirname(root), Object.keys(extensions)) : []);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
-  return { root, document, routes, files, locations, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), ...(sources ? { sources: { routes: routeFiles, extensions: extensionFiles } } : {}), version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
+  // Named schemas enter the version by content and each schema file by the sha256 of its bytes.
+  const hashed = document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes;
+  return { root, document, routes, files, locations, ...(Object.keys(routeAuth).length ? { routeAuth: { ...routeAuth } } : {}), ...(sources ? { sources: { routes: routeFiles, extensions: extensionFiles } } : {}),
+    ...(named ? { schemas: named.schemas, ...(Object.keys(named.files).length ? { schemaFiles: named.files } : {}) } : {}),
+    version: createHash('sha256').update(JSON.stringify(named ? { project: hashed, schemas: named.schemas, schemaFiles: named.files } : hashed)).digest('hex').slice(0, 16) };
+}
+/** Loads the entry document's `schemas:` (project-schemas.ts); a failure names `urlcode.yaml` and the schema's line. */
+async function namedSchemas(root: string, declared: NonNullable<ProjectDocument['schemas']>, locations: Record<string, SourceLocation>): Promise<ProjectSchemas> {
+  try { return await loadProjectSchemas(root, declared); }
+  catch (error) {
+    if (!(error instanceof ConfigError) || error.details.pointer === undefined) throw error;
+    const where = locations[error.details.pointer];
+    if (!where) throw error;
+    const at = where.line === undefined ? where.file : `${where.file}:${where.line}${where.column === undefined ? '' : `:${where.column}`}`;
+    throw new ConfigError(`${at}: ${error.message}`, { ...error.details, file: where.file, line: where.line, column: where.column }, { cause: error });
+  }
+}
+/**
+ * Every `request.body.<METHOD>.schema: <name>` must name a declared schema. Checked at load, so the failure names the
+ * route and its file; the router resolves the name (RIM-SCHEMA-001).
+ */
+function checkSchemaNames(routes: Record<string, RouteConfig>, schemas: Record<string, unknown>, routeFiles: Record<string, string>, locations: Record<string, SourceLocation>): void {
+  for (const [pattern, route] of Object.entries(routes)) {
+    for (const [method, policy] of Object.entries(route.request?.body ?? {})) {
+      if (typeof policy?.schema !== 'string' || Object.hasOwn(schemas, policy.schema)) continue;
+      const declared = Object.keys(schemas), close = closestKey(policy.schema, declared);
+      const hint = close ? `; did you mean ${quoteKey(close)}?` : declared.length ? `; declared: ${declared.slice(0, MAX_LISTED_KEYS).join(', ')}${declared.length > MAX_LISTED_KEYS ? ', ...' : ''}` : '; declare it under the top-level schemas: map';
+      const pointer = `/routes/${escapePointer(pattern)}/request/body/${method}/schema`;
+      throw new ConfigError(`${routeFiles[pattern] ?? 'urlcode.yaml'}: route ${routeLabel(pattern)}, request.body.${method}.schema names schema ${quoteKey(policy.schema)}, which the project does not declare${hint}`, { ...routeDetails(pattern, 'schema', 'unknown-schema'), pointer, file: routeFiles[pattern] ?? 'urlcode.yaml', ...(locations[pointer] ? { line: locations[pointer]!.line, column: locations[pointer]!.column } : {}) });
+    }
+  }
 }
 export async function loadBindings(root: string, local = false, environment: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
   const vars: Record<string, string> = {};

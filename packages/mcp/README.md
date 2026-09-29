@@ -96,7 +96,9 @@ MCP revision `2025-11-25` it answers a tool result with `isError: true` whose
 text lists the failed checks; under earlier revisions it answers a JSON-RPC
 `-32602 Invalid params` error carrying the same checks as a structured
 `issues` list. Both use the wording `request.body.<METHOD>.schema` produces,
-rendered as `pointer`/`message` text — reused, not reimplemented.
+rendered as `pointer`/`message` text — reused, not reimplemented. Either
+schema may instead be the name of one of the project's named schemas, shared
+with the routes that name it ([below](#named-schemas)).
 
 A tool may also declare `outputSchema`. When present, the handler's return
 value must be an object conforming to it; `tools/call` then returns both a
@@ -211,6 +213,56 @@ present) and returns prompt message content for `prompts/get`: a plain
 string (one user-role text message), or an array of `{role, text}` /
 full-shape `{role, content: {type: 'text', text}}` entries. A thrown prompt
 handler error answers `-32603`.
+
+### Named schemas
+
+A tool's `inputSchema` or `outputSchema` may be the name of one of the
+project's named schemas (the top-level `schemas:` map in `urlcode.yaml`,
+inline or loaded from a schema file; see
+[HTTP](../../docs/HTTP.md#named-schemas)), so a POST route and a tool validate
+against one document:
+
+```yaml
+version: "1"
+schemas:
+  contact: {file: schemas/contact.json}
+extensions:
+  mcp:
+    version: "1"
+    config:
+      servers:
+        default:
+          mount: /mcp
+          serverName: contacts
+          serverVersion: "1.0.0"
+          tools:
+            save_contact:
+              description: Saves a contact.
+              inputSchema: contact
+              handler: ./mcp-tools/save-contact.mjs
+routes:
+  /mcp/*:
+    extension: mcp
+    methods: [POST, HEAD]
+  /contacts:
+    methods: [POST]
+    request:
+      body:
+        POST: {format: json, required: true, schema: contact}
+    function: functions/save-contact.mjs
+```
+
+Core hands every activation the project's schemas, already admitted and
+compiled (`ExtensionActivation.schemas`); the tool resolves the name there,
+refuses a name the project does not declare at activation, and still requires
+`type: object`. `tools/list` advertises the resolved schema itself, never the
+name, so a client needs nothing but the listing. The same invalid input fails
+the route with a 422 whose first issue has `pointer: /email` and the tool with
+`Invalid arguments for tool save_contact: /email must be an email`: the same
+pointer and the same words. The schema carries the arguments' shape only: who
+may call the tool stays with the mount's `auth:`/`policies.extensions`, and
+nothing in it is a default a handler can rely on (the profile refuses
+`default`).
 
 ## Activate it in host.mjs
 
@@ -396,8 +448,8 @@ Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema
 | `extensions.mcp.config.servers.*.tools.*.annotations.destructiveHint` | boolean | no | — | Hint that the tool may perform destructive updates. |
 | `extensions.mcp.config.servers.*.tools.*.annotations.idempotentHint` | boolean | no | — | Hint that repeated calls with the same arguments have no additional effect. |
 | `extensions.mcp.config.servers.*.tools.*.annotations.openWorldHint` | boolean | no | — | Hint that the tool interacts with external entities beyond the site. |
-| `extensions.mcp.config.servers.*.tools.*.inputSchema` | object | yes | — | Schema of the arguments object, in the bounded `request.body.<METHOD>.schema` JSON Schema 2020-12 profile (checked and compiled at activation); a call whose arguments fail it never reaches the handler. |
-| `extensions.mcp.config.servers.*.tools.*.outputSchema` | object | no | — | Optional schema, in the same profile, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error. |
+| `extensions.mcp.config.servers.*.tools.*.inputSchema` | object / string | yes | one of: object; string (pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$") | Schema of the arguments object, in the bounded `request.body.<METHOD>.schema` JSON Schema 2020-12 profile (checked and compiled at activation), or the name of one of the project's named schemas (top-level schemas:), which a route's `request.body.<METHOD>.schema` can name too; a call whose arguments fail it never reaches the handler. |
+| `extensions.mcp.config.servers.*.tools.*.outputSchema` | object / string | no | one of: object; string (pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$") | Optional schema, in the same profile or named the same way, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error. |
 | `extensions.mcp.config.servers.*.tools.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
 | `extensions.mcp.config.servers.*.tools.*.handler.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
 | `extensions.mcp.config.servers.*.tools.*.handler.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |

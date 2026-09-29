@@ -45,7 +45,11 @@ Clients connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
 mounted behind a principal-providing extension. Streamed progress replies are an
 operator opt-in, `mcp({ streaming: true })`, off by default; on, the registration
 declares [`streams: true`](#streamed-responses), so aws refuses it. There are no
-sessions. See the [mcp package](../packages/mcp/README.md).
+sessions. A tool's `inputSchema` or `outputSchema` may name one of the
+project's [named schemas](HTTP.md#named-schemas) (`inputSchema: contact`), so a
+POST route and a tool validate against one document and refuse the same input
+at the same pointer; `tools/list` advertises the schema resolved. See the
+[mcp package](../packages/mcp/README.md#named-schemas).
 
 A project declares versioned configuration and exclusive route mounts:
 
@@ -635,7 +639,11 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 10. Describes the endpoints of its mount for `urlcode openapi` with an optional,
    pure [`describe()`](#openapi-description), and validates any JSON a project
    declares for it with core's [body-schema profile](HTTP.md#body-schema-and-input-patterns)
-   (`@jimhoyd/urlcode/body-schema`) rather than a vocabulary of its own.
+   (`@jimhoyd/urlcode/body-schema`) rather than a vocabulary of its own. Where
+   its configuration takes a schema, it accepts the name of one of the
+   project's [named schemas](HTTP.md#named-schemas) too and resolves it against
+   `context.schemas` at activation (each already admitted and compiled by core,
+   self-contained, `RIM-SCHEMA-001`), refusing a name the map does not hold.
 
 ### Request helpers
 

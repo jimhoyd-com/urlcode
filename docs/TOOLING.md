@@ -525,7 +525,11 @@ certain case for, with one `code`: `conditional` (`match`/`conditional`),
 can answer first), `parameter-schema`, `shadowed`, `include-shadowing` (a
 parameterized or wildcard route in a text-mode document with includes), `request-body`,
 `site`, `unknown-path` and `size`. A route in `gaps` or `review` never appears
-in `cases`, so a suggestion never reads as coverage it is not.
+in `cases`, so a suggestion never reads as coverage it is not. An
+`extension-policy` gap for `auth:` is written as a signed-in `steps` fixture
+([authenticated routes](READINESS.md#authenticated-routes-auth-true)); `audit`
+then names anything still missing in `coverageNotes`
+([coverage rules](READINESS.md#coverage-rules)).
 
 ```json
 {"format":1,"scope":"supplied-yaml-only","routeCount":3,
@@ -781,8 +785,14 @@ What it describes:
   published as the author wrote it under `components.schemas`. The one change
   is to local references: in an OpenAPI document `#/$defs/x` would resolve
   against the whole document, so each `$defs` entry becomes its own component
-  and each `$ref` points at it. A GET, HEAD or DELETE entry, which may only set
-  `maxBytes`, is `x-urlcode.body.maxBytes` on the operation.
+  and each `$ref` points at it. A [named schema](HTTP.md#named-schemas)
+  (`schema: contact`) is written once, as `components.schemas.contact` (its
+  `$defs` as `contact_<name>`), the first time an operation uses it, and every
+  operation that names it references that one component; a named schema no
+  operation uses is not written. A component name produced twice (a named
+  schema and an operation's own `<Operation>RequestBody` or `$defs` component)
+  fails the export rather than overwrite one. A GET, HEAD or DELETE entry,
+  which may only set `maxBytes`, is `x-urlcode.body.maxBytes` on the operation.
 - **Responses URLCode knows.** A `redirect` gives its status with a `Location`
   header; a `respond` gives its status and, for a body, a `const` schema of the
   exact value; a `page` or `download` gives 200, 206, 304 and 416 with its media

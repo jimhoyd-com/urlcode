@@ -248,8 +248,14 @@ test('private-requests with Auth.js: an independently owned provider behind the 
   const fixtures = urlcode(t, site, ['test', ...documented], fixtureEnv);
   assert.equal(fixtures.status, 0, fixtures.stdout + fixtures.stderr);
   const audit = urlcode(t, site, ['audit', '--expect-routes', '6', ...documented, '--json'], fixtureEnv);
-  const report = JSON.parse(audit.stdout.trim().split('\n').at(-1)!) as { countMatches: boolean; failed: number; ready: boolean; uncovered: unknown[] };
-  assert.deepEqual([report.ready, report.countMatches, report.failed, report.uncovered], [true, true, 0, []], audit.stdout);
+  const report = JSON.parse(audit.stdout.trim().split('\n').at(-1)!) as { countMatches: boolean; failed: number; ready: boolean; uncovered: unknown[]; ignoredWaivers: unknown[]; coverageNotes: { code: string }[] };
+  assert.deepEqual([report.ready, report.countMatches, report.failed, report.uncovered, report.ignoredWaivers], [true, true, 0, [], []], audit.stdout);
+  // Every auth: true route is covered by the signed-in steps, so no note asks for a sign-in fixture.
+  assert.ok(report.coverageNotes.every(note => note.code === 'unasserted-success'), audit.stdout);
+  // The fixtures name the origin as {{origin}}, never a literal one: the same file is ready under another --origin.
+  const moved = urlcode(t, site, ['audit', '--expect-routes', '6', ...documented.map(value => value === 'http://localhost:4180' ? 'http://127.0.0.1:4181' : value), '--json'], fixtureEnv);
+  const movedReport = JSON.parse(moved.stdout.trim().split('\n').at(-1)!) as { ready: boolean; failed: number };
+  assert.deepEqual([movedReport.ready, movedReport.failed], [true, 0], moved.stdout);
 
   const server = spawn(process.execPath, [join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), 'serve', ...approved, '--port', String(port)], { cwd: site, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';

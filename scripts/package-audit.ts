@@ -290,15 +290,15 @@ export const budgets: Record<string, Budget> = {
     // 958684 packed / 3783392 unpacked bytes, 507 entries; about 3 KiB of headroom on each.
     // With #844's extension contract on top of main after #905, measured on Node 26: 962375 packed / 3796521
     // unpacked bytes, 507 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
-    // #911/#916/#917 on top of main after #906: the official OpenAPI 3.1 schema now ships as
-    // data/openapi/oas-3.1-schema-2025-09-15.json (33 KiB, Apache-2.0, NOTICE) with its README, plus
-    // dist/openapi-check.js and its declaration for `urlcode openapi --check`, and the TOOLING/HTTP/STORE/EXTENSIONS
-    // prose with its llms-full.txt copy. Measured on Node 26: 972207 packed / 3849809 unpacked bytes, 511 entries
-    // (CI's Node 24 packs ~800 bytes larger). Packed raised to 954 KiB, unpacked to 3763 KiB and entries to 516,
-    // keeping about 4.6 KiB (3.8 KiB on Node 24), 3.4 KiB and 5 entries of headroom.
-    packed: 954 * 1024,
-    unpacked: 3763 * 1024,
-    entries: 516,
+    // With #845 named project schemas on top of #906's main, measured on Node 26: 975469 packed / 3839342
+    // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
+    // With #914 authenticated fixtures on top of #907's main, measured on Node 26: 978735 packed / 3850391
+    // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
+    // With the #911/#916/#917 trial fixes (openapi --check ships the OAS 3.1 schema in data/) on top of #918's main,
+    // measured on Node 26: 987655 packed / 3903679 unpacked bytes, 515 entries (Node 24 ~800 bytes larger); ~3 KiB headroom.
+    packed: 969 * 1024,
+    unpacked: 3816 * 1024,
+    entries: 520,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
