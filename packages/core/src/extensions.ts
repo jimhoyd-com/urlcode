@@ -536,6 +536,12 @@ export interface ExtensionDefinition<Options=Record<string,never>> {
    * recipe metadata can refuse an unsupported target without loading a host file.
    */
   targets:readonly ExtensionTarget[];
+  /**
+   * This extension's `authorize()` sets the request principal: `host()` must register `providesPrincipal: true`
+   * exactly when this is true, and the build writes it into `urlcode.json`. The route `auth:` short form expands to
+   * the one declared extension whose descriptor declares it (RIM-CFG-002), whatever that extension is named.
+   */
+  providesPrincipal?:boolean;
   schema:object;
   policySchema?:object;
   hooks?:readonly ExtensionHookContract[];
@@ -569,6 +575,7 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   const uses=definition.uses??[];
   assert(Array.isArray(uses)&&uses.every(name=>typeof name==='string'&&namePattern.test(name)&&name!==definition.name)&&new Set(uses).size===uses.length,`Extension ${definition.name} uses must list other extension names once each`);
   assert(uses.every(name=>!(definition.requires??[]).includes(name)),`Extension ${definition.name} lists ${uses.filter(name=>(definition.requires??[]).includes(name)).join(', ')} in both requires and uses`);
+  assert(definition.providesPrincipal===undefined||typeof definition.providesPrincipal==='boolean',`Extension ${definition.name} providesPrincipal must be a boolean`);
   assert((definition.scaffold===undefined||typeof definition.scaffold==='function')&&(definition.example===undefined||typeof definition.example==='function'),`Extension ${definition.name} scaffold and example must be functions`);
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
@@ -631,7 +638,7 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
     report(extensionPolicyError(name,path,validator?.errors,written));return false;
   };
   for(const [path,route]of Object.entries(routes)){
-    const short=name==='auth'&&routeAuth&&Object.hasOwn(routeAuth,path)?routeAuth[path]:undefined;
+    const short=routeAuth&&Object.hasOwn(routeAuth,path)&&routeAuth[path]!.extension===name?routeAuth[path]:undefined;
     const policy=effectiveExtensionPolicies(document,route)[name];
     if(policy&&check(path,policy,short?.required?'auth':undefined))admitted.set(path,policy);
     if(short&&!short.required&&Object.keys(short.requirement).length)check(path,short.requirement,'auth');
@@ -703,6 +710,13 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
   const principalProviders=new Set([...provided.values()].filter(registration=>registration.providesPrincipal===true).map(registration=>registration.name));
   const preparations:{name:string;registration:RuntimeExtension;config:Readonly<Record<string,unknown>>;policies:Map<string,Readonly<Record<string,unknown>>>;mounts:string[];principalMounts:string[]}[]=[];
   for(const name of Object.keys(declarations))assert(provided.has(name),`Missing operator extension: ${name}`);
+  // The `auth:` short form was expanded from static descriptors (RIM-CFG-002); the registrations must agree
+  // before anything activates, or the expansion would name an extension that cannot set a principal.
+  const shortTarget=Object.values(routeAuth??{})[0]?.extension;
+  if(shortTarget!==undefined){
+    const registered=[...principalProviders].filter(name=>Object.hasOwn(document.extensions??{},name)).sort();
+    assert(registered.length===1&&registered[0]===shortTarget,`The auth: short form expanded to ${shortTarget} from static descriptors, but the declared registrations providing a principal are ${registered.length?registered.join(', '):'none'}; reinstall so the descriptor and host.mjs agree, or name the extension with policies.extensions.<name>`);
+  }
   for(const [name,registration]of provided){
       if(!Object.hasOwn(declarations,name))continue;
       const declaration=declarations[name]!;

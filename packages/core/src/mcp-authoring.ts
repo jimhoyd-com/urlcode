@@ -1,5 +1,5 @@
 import {lstat,readFile,open,rename,rm,mkdtemp} from 'node:fs/promises';
-import {join,extname,isAbsolute} from 'node:path';
+import {join,extname,isAbsolute,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {parseDocument,isMap} from 'yaml';
@@ -12,6 +12,7 @@ import {isRecord as object, isCode} from './object-guards.ts';
 import {addRecipe} from './recipes.ts';
 import {authoringPath} from './authoring-files.ts';
 import {assert} from './errors.ts';
+import {declaredPrincipalProviders} from './addon-manifest.ts';
 import type {LoadedDocument,MiddlewareConfig,RouteConfig} from './types.ts';
 import type {RuntimeExtension} from './extensions.ts';
 
@@ -104,7 +105,7 @@ async function createRoute(root:string,args:Record<string,unknown>,origin?:strin
   const data=validateDocument(parseYaml(String(doc)));
   const added=data.routes[path];assert(added,'Route was not written');
   const routes={...latest.routes,[path]:added};
-  normalizeRouteAuth(latest.document,routes);
+  normalizeRouteAuth(latest.document,routes,added.auth===undefined?[]:await declaredPrincipalProviders(dirname(latest.root),Object.keys(latest.document.extensions??{})));
   const candidate:LoadedDocument={...latest,routes};
   const {present,missing}=await sources(root,added);
   if(!missing.length){

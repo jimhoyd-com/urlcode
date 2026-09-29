@@ -112,6 +112,19 @@ test('uses round-trips from the definition through urlcode.json, the catalog and
   assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', requires: [], targets: ['node'] }, 'artifact'), /declares no targets/);
 });
 
+test('providesPrincipal round-trips from the definition through urlcode.json and the catalog, only as true (#888)', async t => {
+  const root = await checkout(t);
+  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', targets: ['node'], providesPrincipal: true, schema: { type: 'object' } })} };\n`);
+  await syncExpectedFiles(root);
+  const descriptor = JSON.parse(await readFile(join(root, 'packages/alpha/urlcode.json'), 'utf8')) as Record<string, unknown>;
+  assert.equal(descriptor.providesPrincipal, true);
+  const catalog = parseAddonCatalog(JSON.parse(await readFile(join(root, 'dist', 'addon-catalog.json'), 'utf8')), 'catalog');
+  assert.equal(catalog.addons.find(entry => entry.name === 'alpha')!.providesPrincipal, true);
+  assert.equal(catalog.addons.find(entry => entry.name === 'notes')!.providesPrincipal, undefined);
+  assert.throws(() => parseDescriptor({ ...descriptor, providesPrincipal: false }, 'false'), /providesPrincipal is written only as true/);
+  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', requires: [], providesPrincipal: true }, 'artifact'), /provides no principal/);
+});
+
 test('readAddonCatalog reads the catalog file without importing, installing or activating any add-on', async t => {
   const root = await checkout(t);
   await syncExpectedFiles(root);

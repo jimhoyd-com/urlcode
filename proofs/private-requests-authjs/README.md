@@ -9,15 +9,15 @@ framework-neutral `Request`/`Response` handler, a double-submit CSRF token on
 every form post, encrypted JWT session cookies, and no user or password
 storage of its own. It is connected by an **independent extension package**,
 [`../authjs-provider`](../authjs-provider/extension.js)
-(`@example/urlcode-authjs`), installed from a local tarball. Core was not
-edited, and nothing here imports `@jimhoyd/urlcode-auth`, Better Auth or their
-types. It is a proof, not a supported provider or a release claim.
+(`@example/urlcode-authjs`), installed from a local tarball. Core has no
+provider-specific code for it, and nothing here imports
+`@jimhoyd/urlcode-auth`, Better Auth or their types. It is a proof, not a supported provider or a release claim.
 
 ## What is the same
 
 The store declaration (collections, ownership, the `approve` transition, the
 `reviewers` membership, the review mount), the six routes apart from their
-descriptions and how protection is written, the page and its stylesheet are
+descriptions (protection included: `auth: true`), the page and its stylesheet are
 identical to the Better Auth proof;
 `test/authjs-provider.integration.ts` asserts that. The store never learns
 which provider signed the caller in: the provider's `authorize()` sets the
@@ -36,7 +36,6 @@ and error bodies.
 
 | Change | Where | Why |
 |---|---|---|
-| `policies: {extensions: {authjs: {}}}` instead of `auth: true` on the three protected routes | `app/urlcode.yaml` | Core expands the `auth:` short form only into `policies.extensions.auth` ([below](#core-coupling-found)), and an independent package may not name itself `auth` |
 | A handler reads `context.capabilities.authjs.identity.userId`, not `.auth.` | route code (this app has none) | The capability namespace is the extension's name |
 | The mount is `extension: authjs` and carries `policies.throttle` | `app/urlcode.yaml` | Auth.js has no rate limiter; URLCode's declared throttle bounds sign-in attempts per client address (60 requests a minute across the mount) |
 | The operator passes Auth.js's own configuration (the Credentials provider, JWT session lifetime) | `host.mjs`, `operator/auth.mjs` | Provider-specific API, kept as Auth.js defines it; the extension sets only `basePath` (the mount), `secret` and `trustHost` |
@@ -67,29 +66,19 @@ and error bodies.
   and `/signout` and answers 404 for the rest, including Auth.js's built-in
   HTML pages and OAuth callbacks.
 
-## Core coupling found
+## How protection finds the provider
 
-Core never imports a provider, and the principal, `principalMounts`,
-capability and sandbox refusal seams worked unchanged. What is tied to the
-first-party provider is the **name** `auth`:
-
-- The `auth:` route short form expands only to `policies.extensions.auth` and
-  requires `extensions.auth` (`packages/core/src/config.ts`,
-  `normalizeRouteAuth`); policy-error locations follow it
-  (`checkExtensionPolicies` in `packages/core/src/extensions.ts`).
-- `urlcode extensions add` refuses an independent package that names itself
-  `auth`, because that is a first-party catalog name
-  (`packages/core/src/addon-install.ts`, `addAddons`). The test shows the
-  refusal. So an independent provider cannot use the short form at all.
-- `urlcode openapi` describes the `401`/`403` answers and the session
-  security scheme only for a route gated by the extension named `auth`
-  (`packages/core/src/openapi.ts`); a route gated by `authjs` gets neither.
-- `urlcode review`'s hand-built session-cookie finding suggests `auth` only
-  (`packages/core/src/review.ts`).
-
-None of these is a type or import dependency. They are conventions that key on
-a name where the contract already has a generic fact, `providesPrincipal`.
-They were recorded, not changed: core was not edited for this proof.
+The protected routes say `auth: true`, exactly as in the Better Auth proof.
+The short form names a role, not a package: it expands to the one declared
+extension whose `urlcode.json` declares `providesPrincipal: true`, here
+`policies.extensions.authjs: {}`
+([extensions](../../docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form)).
+The expansion is part of the reviewed project revision, so `explain` shows
+`extensions.authjs`, and `urlcode openapi` gives a route it gates the `401` and
+`403` answers and the `urlcodeSession.authjs` scheme. `urlcode review`'s
+session-cookie hint names `authjs`. The first-party name `auth` stays reserved:
+`urlcode extensions add` refuses an independent package that names itself
+`auth` (the test shows the refusal), and nothing here needs it.
 
 ## Run it
 

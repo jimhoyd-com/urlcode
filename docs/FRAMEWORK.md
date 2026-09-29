@@ -324,7 +324,8 @@ These are the facts that keep generated projects valid. The full matrix is in
   docs/FUNCTION-SECURITY.md.
 - **Authentication is host processing.** Do not build login forms, session
   cookies or password checks in functions. With the auth extension declared,
-  use `auth: true` (it expands to `policies.extensions.auth: {}`; there is no
+  use `auth: true` (it expands to `policies.extensions.auth: {}`, because `auth`
+  is the declared extension that provides the principal; there is no
   role or permission key) and read `context.capabilities.auth.identity.userId`;
   keep permissions in application data keyed by that id. The runtime filters
   credential headers passed to application handlers. This is not a security boundary against trusted Node code.

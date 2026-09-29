@@ -73,7 +73,7 @@ function scaffold() {
     files: [{ path: SECRET_FILE, content: `${randomBytes(32).toString('base64url')}\n`, mode: 0o600 }],
     notes: [
       'Configure Auth.js providers in host.mjs: authjs({authjs: {providers: [Credentials({...})]}}). The extension refuses to activate without one.',
-      'Protect a route with policies: {extensions: {authjs: {}}}; its function reads context.capabilities.authjs.identity.userId.',
+      'Protect a route with auth: true (it expands to policies.extensions.authjs); its function reads context.capabilities.authjs.identity.userId.',
       `Keep ${SECRET_FILE} private and backed up; it encrypts every session token.`,
     ],
   };
@@ -84,6 +84,7 @@ export default defineExtension({
   description: 'Auth.js on one mount; routes that name it receive the signed-in user id as their principal and identity capability',
   requires: [],
   targets: ['node'],
+  providesPrincipal: true,
   schema,
   policySchema: schema,
   scaffold,

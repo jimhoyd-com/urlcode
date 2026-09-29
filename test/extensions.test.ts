@@ -238,13 +238,13 @@ test('extension body bounds apply to direct embedding',async t=>{
 test('checked-in extension example runs with an explicit operator registry',async t=>{
   const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
   const demo=await registration(root);
-  const runtime=await createRuntime(root,{origin,extensions:[demo,{...demo,name:'auth',schema:{type:'object',additionalProperties:false}}]});t.after(()=>runtime.close());
+  const runtime=await createRuntime(root,{origin,extensions:[demo,{...demo,name:'auth',providesPrincipal:true,schema:{type:'object',additionalProperties:false}}]});t.after(()=>runtime.close());
   assert.equal((await runtime.handle({target:'/demo',method:'GET'})).status,200);
   assert.equal((await runtime.handle({target:'/private',method:'GET'})).status,401);
   assert.equal((await runtime.handle({target:'/account',method:'GET'})).status,401);
   assert.equal((await runtime.handle({target:'/account',method:'GET',headers:new Headers({cookie:'session=yes'})})).status,200);
 });
-test('route auth short form expands to the canonical policies.extensions.auth requirement',async t=>{
+test('route auth short form expands to the canonical policies.extensions.<principal provider> requirement',async t=>{
   const auth={version:'1',config:{}};
   const short=await loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{role:'member',onDeny:403}},'/b':{respond:{text:'b'},auth:true},'/c':{respond:{text:'c'},auth:{required:false,role:'member'}},'/d':{respond:{text:'d'},auth:{role:'member'},policies:{extensions:{other:{x:1}},cache:false}}},{},{extensions:{auth}}));
   const long=await loadDocument(await project(t,{'/a':{respond:{text:'a'},policies:{extensions:{auth:{role:'member',onDeny:403}}}},'/b':{respond:{text:'b'},policies:{extensions:{auth:{}}}},'/c':{respond:{text:'c'}},'/d':{respond:{text:'d'},policies:{extensions:{other:{x:1},auth:{role:'member'}},cache:false}}},{},{extensions:{auth}}));
@@ -252,13 +252,13 @@ test('route auth short form expands to the canonical policies.extensions.auth re
   for(const path of ['/a','/b','/c','/d'])assert.equal('auth' in short.routes[path]!,false);
   assert.deepEqual({...effectiveExtensionPolicies(short.document,short.routes['/a']!)},{auth:{role:'member',onDeny:403}});
   assert.deepEqual({...effectiveExtensionPolicies(short.document,short.routes['/c']!)},{});
-  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true}})),/Route \/a declares auth but the project declares no extensions\.auth/);
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true}})),/Route \/a declares auth, but no declared extension provides a principal/);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:{auth:{role:'member'}}}}},{},{extensions:{auth}})),/Route \/a declares both auth and policies\.extensions\.auth/);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:false}}},{},{extensions:{auth}})),/Route \/a declares auth alongside policies\.extensions: false/);
   // Core owns only the mapping: the object's keys belong to the auth extension, so loading admits any object and
   // refuses only a value that is neither `true` nor an object, or a non-boolean `required` (#710).
   const loose=await loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{roles:['member']}}},{},{extensions:{auth}}));
-  assert.deepEqual(loose.routeAuth,{'/a':{required:true,requirement:{roles:['member']}}});
+  assert.deepEqual(loose.routeAuth,{'/a':{extension:'auth',required:true,requirement:{roles:['member']}}});
   assert.equal(short.routeAuth?.['/c']?.required,false);assert.equal(long.routeAuth,undefined);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:'yes'}},{},{extensions:{auth}})),/Invalid configuration at route \/a, auth \((const|type)\)/);
   await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{required:'no'}}},{},{extensions:{auth}})),/Invalid configuration at route \/a, auth\.required \(type\)/);
@@ -269,7 +269,7 @@ test('the auth extension policy schema judges the auth short form and errors nam
   const auth={version:'1',config:{label:'hello'}};
   const refuse=async(route:Record<string,unknown>,path:string,message:RegExp,pointer:string)=>{
     const root=await project(t,{'/auth/*':{extension:'auth'},[path]:{respond:{text:'x'},...route}},{},{extensions:{auth}});
-    const extension={...await registration(root),name:'auth',policySchema:authPolicySchema};
+    const extension={...await registration(root),name:'auth',providesPrincipal:true,policySchema:authPolicySchema};
     for(const attempt of [()=>createRuntime(root,{origin,extensions:[extension]}),()=>validateProject(root,{origin,extensions:[extension]})])
       await assert.rejects(attempt,(error:Error&{details?:{pointer?:string;route?:string}})=>{assert.match(error.message,message);assert.equal(error.details?.pointer,pointer);assert.equal(error.details?.route,path);return true;});
   };
@@ -301,10 +301,69 @@ test('core types and schema carry no auth policy vocabulary',async()=>{
 });
 test('runtime protects a short-form auth route with the demo registry',async t=>{
   const root=await project(t,{'/auth/*':{extension:'auth',methods:['GET','HEAD','POST']},'/private':{respond:{text:'private'},auth:{role:'member'}},'/open':{respond:{text:'open'},auth:{required:false}}},{},{extensions:{auth:{version:'1',config:{label:'hello'}}}});
-  const runtime=await createRuntime(root,{origin,extensions:[{...await registration(root),name:'auth'}]});t.after(()=>runtime.close());
+  const runtime=await createRuntime(root,{origin,extensions:[{...await registration(root),name:'auth',providesPrincipal:true}]});t.after(()=>runtime.close());
   assert.equal((await runtime.handle({target:'/private',method:'GET'})).status,401);
   assert.equal((await runtime.handle({target:'/private',method:'GET',headers:new Headers({cookie:'session=yes'})})).status,200);
   assert.equal((await runtime.handle({target:'/open',method:'GET'})).status,200);
+});
+/**
+ * A site whose app/ declares one extension per entry of `providers`, each installed as an independent package
+ * (`@example/urlcode-<name>`) whose urlcode.json declares providesPrincipal when its entry is true (#888).
+ */
+async function principalSite(t:{after(fn:()=>unknown):void},providers:Record<string,boolean>,routes:Record<string,unknown>):Promise<{site:string;app:string;write(routes:Record<string,unknown>):Promise<void>;describe(providers:Record<string,boolean>):Promise<void>}>{
+  const site=await mkdtemp(join(tmpdir(),'urlcode-principal-site-'));t.after(()=>rm(site,{recursive:true,force:true}));
+  const app=join(site,'app');await mkdir(app);
+  const describe=async(current:Record<string,boolean>)=>{for(const [name,provides]of Object.entries(current)){
+    const directory=join(site,'node_modules','@example',`urlcode-${name}`);await mkdir(directory,{recursive:true});
+    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,requires:[],targets:['node','aws','vercel'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
+  }};
+  await describe(providers);
+  await writeFile(join(site,'package.json'),JSON.stringify({private:true,dependencies:Object.fromEntries(Object.keys(providers).map(name=>[`@example/urlcode-${name}`,'1.0.0']))}));
+  const write=(current:Record<string,unknown>)=>writeFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:Object.fromEntries(Object.keys(providers).map(name=>[name,{version:'1',config:{label:'hello'}}])),routes:current}));
+  await write(routes);
+  return {site,app,write,describe};
+}
+test('the auth short form follows providesPrincipal, not the name auth: an independent provider named authjs (#888)',async t=>{
+  const routes={'/signin/*':{extension:'authjs',methods:['GET','HEAD','POST']},'/private':{respond:{text:'private'},auth:true},'/open':{respond:{text:'open'},auth:{required:false}}};
+  const {app,write}=await principalSite(t,{authjs:true},routes);
+  const short=await loadDocument(app);
+  assert.deepEqual({...effectiveExtensionPolicies(short.document,short.routes['/private']!)},{authjs:{}});
+  assert.deepEqual({...effectiveExtensionPolicies(short.document,short.routes['/open']!)},{});
+  assert.deepEqual(short.routeAuth,{'/private':{extension:'authjs',required:true,requirement:{}},'/open':{extension:'authjs',required:false,requirement:{}}});
+  // Static validation reads the same descriptor; no host file is loaded.
+  assert.equal((await validateProject(app)).valid,true);
+  // The expansion target is in the reviewed revision: the short form and the long form it names are one revision.
+  const shortRevision=await inspectExtensionRevision(app);
+  await write({...routes,'/private':{respond:{text:'private'},policies:{extensions:{authjs:{}}}},'/open':{respond:{text:'open'}}});
+  const long=await loadDocument(app);
+  assert.deepEqual(long.routes,short.routes);assert.equal(long.version,short.version);assert.equal(await inspectExtensionRevision(app),shortRevision);
+  await write(routes);
+  const provider=await registration(app,{name:'authjs',providesPrincipal:true,policySchema:{type:'object',additionalProperties:false}});
+  const runtime=await createRuntime(app,{origin,extensions:[provider]});t.after(()=>runtime.close());
+  assert.equal((await runtime.handle({target:'/private',method:'GET'})).status,401);
+  assert.equal((await runtime.handle({target:'/private',method:'GET',headers:new Headers({cookie:'session=yes'})})).status,200);
+  assert.equal((await runtime.handle({target:'/open',method:'GET'})).status,200);
+  // A registration that does not provide a principal cannot be the target the descriptor named.
+  const {providesPrincipal:_provides,...plain}=provider;
+  await assert.rejects(createRuntime(app,{origin,extensions:[plain]}),/The auth: short form expanded to authjs from static descriptors, but the declared registrations providing a principal are none/);
+});
+test('the auth short form refuses no principal provider and more than one, and the explicit form still works (#888)',async t=>{
+  const none=await principalSite(t,{demo:false},{'/private':{respond:{text:'private'},auth:true}});
+  await assert.rejects(loadDocument(none.app),/Route \/private declares auth, but no declared extension provides a principal; declare one under extensions \(its urlcode\.json declares providesPrincipal\), or name the extension with policies\.extensions\.<name>/);
+  const two=await principalSite(t,{authjs:true,passkeys:true},{'/private':{respond:{text:'private'},auth:true}});
+  await assert.rejects(loadDocument(two.app),/Route \/private declares auth, but authjs and passkeys each provide a principal; name one with policies\.extensions\.<name> instead of auth/);
+  await two.write({'/private':{respond:{text:'private'},policies:{extensions:{passkeys:{}}}}});
+  const explicit=await loadDocument(two.app);
+  assert.deepEqual({...effectiveExtensionPolicies(explicit.document,explicit.routes['/private']!)},{passkeys:{}});
+});
+test('a package change that moves the auth short form target changes the reviewed revision (#888)',async t=>{
+  const {app,describe}=await principalSite(t,{authjs:true,passkeys:false},{'/private':{respond:{text:'private'},auth:true}});
+  const before=await loadDocument(app),revision=await inspectExtensionRevision(app);
+  await describe({authjs:false,passkeys:true});
+  const after=await loadDocument(app);
+  assert.deepEqual(Object.keys(effectiveExtensionPolicies(after.document,after.routes['/private']!)),['passkeys']);
+  // Every registration and binding grant pinned to the old revision now refuses it until the operator re-reviews.
+  assert.notEqual(after.version,before.version);assert.notEqual(await inspectExtensionRevision(app),revision);
 });
 test('activation failure closes already activated providers',async t=>{
   const root=await project(t,{'/demo/*':mount},{},{extensions:{...declarations,other:{version:'1',config:{label:'other'}}}});

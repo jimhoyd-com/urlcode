@@ -19,10 +19,11 @@ routes:
 package, database or credential. `/api/auth/*` mounts the extension itself as
 the handler (auth serves Better Auth's sign-in and session endpoints under
 that prefix). `auth: true` on `/private` is the short form for requiring the
-installed `auth` extension on a route that has its own handler; it expands to
-`policies.extensions.auth: {}`, which accepts no keys — write one form or the
-other, never both. Without a signed-in session the route answers `401`.
-Declaring `auth` in a project without `extensions.auth` refuses to load. See
+declared extension that provides the request principal (here `auth`) on a
+route that has its own handler; it expands to `policies.extensions.auth: {}`,
+which accepts no keys — write one form or the other, never both. Without a
+signed-in session the route answers `401`. Declaring `auth` in a project with
+no principal-providing extension, or more than one, refuses to load. See
 [auth](../../packages/auth/README.md#protect-a-route) and
 [extensions](../EXTENSIONS.md) for the full contract, including extension
 middleware and lifecycle hooks.

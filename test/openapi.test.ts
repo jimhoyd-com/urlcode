@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -9,11 +9,11 @@ import {Readable,Writable} from 'node:stream';
 import Ajv2020 from 'ajv/dist/2020.js';
 import {buildOpenApi,renderOpenApi} from '../packages/core/src/openapi.ts';
 import type {OpenApiDocument} from '../packages/core/src/openapi.ts';
+import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {startServer} from '../packages/core/src/server.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
 import {byReplyId,project,request} from './helpers.ts';
 import {inspectExtensionRevision,isSameOriginRequest} from '../packages/core/src/extensions.ts';
-import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import type {Addressed,Response} from './helpers.ts';
 import {pathToFileURL} from 'node:url';
 
@@ -123,14 +123,16 @@ test('handler-defined answers, mounts, auth and operator configuration are state
   const facts=document.paths['/fn']!['x-urlcode'] as Json;
   assert.deepEqual({...facts,targets:undefined},{handler:'function',execution:'trusted',errors:'text',methodNotAllowed:{status:405,allow:'GET, POST',response:'#/components/responses/UrlcodeMethodNotAllowedText'},targets:undefined});
   assert.deepEqual(Object.keys(facts.targets as Json),['self-hosted','cloudflare','aws','vercel','static']);assert.equal((facts.targets as Json)['self-hosted'],true);
-  // auth: true → a generic cookie-session requirement and the extension's 401 on every method; its 403 refuses only
-  // a cross-origin unsafe method, so a GET never declares it. Bodies are extension-defined.
-  assert.deepEqual(op('/me').security,[{urlcodeSession:[]}]);
+  // auth: true → the provider's cookie-session requirement and its 401 on every method; its 403 refuses only a
+  // cross-origin unsafe method, so a GET never declares it. Bodies are extension-defined.
+  assert.deepEqual(op('/me').security,[{'urlcodeSession.auth':[]}]);
   assert.deepEqual(Object.keys(op('/me').responses),['401','default']);
   assert.deepEqual(Object.keys(op('/me','post').responses),['401','403','default']);
   assert.equal(op('/me').responses['401']!.content,undefined);
-  const scheme=document.components.securitySchemes?.urlcodeSession as Json;
+  assert.match(String((op('/me').responses['401'] as Json).description),/refused by the auth extension/);
+  const scheme=document.components.securitySchemes?.['urlcodeSession.auth'] as Json;
   assert.equal(scheme.type,'apiKey');assert.equal(scheme.in,'cookie');assert.equal(scheme.name,'session');
+  assert.deepEqual(scheme['x-urlcode'],{extension:'auth',cookieName:'operator-defined'});
   // Mounts are listed, never enumerated; a disabled route is left out and says so.
   assert.deepEqual(document['x-urlcode'].opaqueMounts,[{path:'/api/auth/*',handler:'extension',extension:'auth'},{path:'/assets/*',handler:'static'},{path:'/old/**',handler:'redirect'}]);
   for(const path of Object.keys(document.paths))assert.ok(!path.includes('*'),path);
@@ -150,6 +152,38 @@ test('handler-defined answers, mounts, auth and operator configuration are state
   // The host file's registrations say whether a mount's provider is registered; nothing else changes.
   const hosted=await buildOpenApi(root,{extensions:[]});
   assert.deepEqual(hosted['x-urlcode'].opaqueMounts[0],{path:'/api/auth/*',handler:'extension',extension:'auth',registered:false});
+});
+
+test('a route gated by any principal-providing extension gets 401/403 and its session scheme, whatever it is named (#888)',async t=>{
+  const site=await mkdtemp(join(tmpdir(),'urlcode-openapi-principal-'));t.after(()=>rm(site,{recursive:true,force:true}));
+  const app=join(site,'app');await mkdir(app);
+  for(const [name,provides] of [['authjs',true],['audit-trail',false]] as const){
+    const directory=join(site,'node_modules','@example',`urlcode-${name}`);await mkdir(directory,{recursive:true});
+    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,requires:[],targets:['node'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
+  }
+  await writeFile(join(site,'package.json'),JSON.stringify({private:true,dependencies:{'@example/urlcode-authjs':'1.0.0','@example/urlcode-audit-trail':'1.0.0'}}));
+  await writeFile(join(app,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{authjs:{version:'1',config:{}},'audit-trail':{version:'1',config:{}}},routes:{
+    '/signin/*':{extension:'authjs'},'/me':{auth:true,respond:{text:'me'}},'/explicit':{respond:{text:'x'},policies:{extensions:{authjs:{}}}},'/logged':{respond:{text:'x'},policies:{extensions:{'audit-trail':{}}}},
+  }}));
+  const document=await buildOpenApi(app);
+  assertValidOpenApi(document);
+  const op=(path:string)=>document.paths[path]!.get as Operation;
+  for(const path of ['/me','/explicit']){
+    assert.deepEqual(op(path).security,[{'urlcodeSession.authjs':[]}],path);
+    assert.deepEqual(Object.keys(op(path).responses),['200','401'],path);
+    assert.match(String((op(path).responses['401'] as Json).description),/refused by the authjs extension/);
+  }
+  // An extension that provides no principal is not a sign-in gate: no security, only the generic may-answer note.
+  assert.equal(op('/logged').security,undefined);
+  assert.deepEqual(op('/logged').responses.default,{description:'May be answered by the audit-trail extension before the handler; not described by URLCode.',headers:{'X-Request-Id':{$ref:'#/components/headers/UrlcodeRequestId'},'X-Content-Type-Options':{$ref:'#/components/headers/UrlcodeNosniff'}}});
+  assert.deepEqual(Object.keys(document.components.securitySchemes??{}),['urlcodeSession.authjs']);
+  assert.deepEqual((document.components.securitySchemes!['urlcodeSession.authjs'] as Json)['x-urlcode'],{extension:'authjs',cookieName:'operator-defined'});
+  assert.ok(!renderOpenApi(document).includes('urlcodeSession.auth"'));
+  // With a host file, a registered extension's own providesPrincipal decides.
+  const registered=(name:string,providesPrincipal:boolean):RuntimeExtension=>({name,version:'1',projectSha256:'0'.repeat(64),targets:['node'],schema:{type:'object'},providesPrincipal,activate:()=>({handle:()=>({status:404,headers:[]})})});
+  const hosted=await buildOpenApi(app,{extensions:[registered('authjs',false),registered('audit-trail',true)]});
+  assert.deepEqual((hosted.paths['/logged']!.get as Operation).security,[{'urlcodeSession.audit-trail':[]}]);
+  assert.equal((hosted.paths['/explicit']!.get as Operation).security,undefined);
 });
 
 test('site.errors entries are matched against templated paths segment by segment, and a partial match is stated',async t=>{
@@ -299,7 +333,7 @@ test('a contract run over an auth: true route and function routes answers only d
     '/echo':{methods:['POST'],function:{source:'functions/fn.mjs'},request:{body:{POST:{format:'json',contentTypes:['application/json'],maxBytes:256,schema:{type:'object',required:['v'],properties:{v:{type:'string',format:'date'}}}}}}},
   },{'functions/me.mjs':'export default () => Response.json({signedIn: true});','functions/fn.mjs':'export default () => new Response("ok");'},{extensions:{auth:{version:'1',config:{}}}});
   // A synthetic stand-in for packages/auth's authorize(): a cross-origin unsafe method is 403, no session is 401.
-  const auth:RuntimeExtension={name:'auth',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node'],
+  const auth:RuntimeExtension={name:'auth',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node'],providesPrincipal:true,
     schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},
     activate(_config,activation){return {
       handle(){return {status:404,headers:[],body:''};},

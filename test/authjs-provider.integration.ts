@@ -94,11 +94,10 @@ test('private-requests with Auth.js: an independently owned provider behind the 
     }
     assert.deepEqual(Object.keys(ours!.routes).sort(), Object.keys(theirs!.routes).sort());
     for (const route of ['/api/requests/*', '/api/approvals/*', '/api/review/*']) {
-      const { auth, description: _a, ...before } = theirs!.routes[route]!, { policies, description: _b, ...after } = ours!.routes[route]!;
-      assert.equal(auth, true);
-      // The one change per protected route: `auth: true` is the short form of policies.extensions.auth: {}, which
-      // core expands only for an extension named auth; the second provider is named in the long form.
-      assert.deepEqual(policies, { extensions: { authjs: {} } });
+      const { description: _a, ...before } = theirs!.routes[route]!, { description: _b, ...after } = ours!.routes[route]!;
+      // Protection is written identically: `auth: true` expands to the one declared extension that provides the
+      // principal (#888), policies.extensions.auth there and policies.extensions.authjs here.
+      assert.equal(after.auth, true);
       assert.deepEqual(after, before);
     }
     for (const file of ['index.html', join('assets', 'style.css')]) assert.equal(await readFile(join(proof, 'app', 'public', file), 'utf8'), await readFile(join(betterAuthProof, 'app', 'public', file), 'utf8'));
@@ -146,7 +145,7 @@ test('private-requests with Auth.js: an independently owned provider behind the 
     assert.equal(checkout(t, fresh, ['extensions', 'remove', 'authjs', '--json']).status, 0);
   });
 
-  await t.test('an independent package cannot take the first-party name auth, which the auth: short form needs', async () => {
+  await t.test('an independent package cannot take the first-party name auth, and the auth: short form does not need it', async () => {
     const renamed = join(root, 'renamed');
     await cp(provider, renamed, { recursive: true });
     const descriptor = JSON.parse(await readFile(join(renamed, 'urlcode.json'), 'utf8')) as { name: string };
@@ -193,6 +192,25 @@ test('private-requests with Auth.js: an independently owned provider behind the 
   const reviewEnv = { PROJECT_SHA256: (JSON.parse(proposal.stdout) as { projectSha256: string }).projectSha256 };
   const protectedRoute = urlcode(t, site, ['explain', '/api/requests', '--project', 'app', '--host-file', 'host.mjs'], reviewEnv);
   assert.match(protectedRoute.stdout, /handler receives context\.capabilities\.authjs: identity/);
+  // `auth: true` expanded to the principal provider, not to an extension named auth (#888).
+  assert.match(protectedRoute.stdout, /extensions\.authjs: requires \{\}/);
+  assert.doesNotMatch(protectedRoute.stdout, /extensions\.auth:/);
+
+  await t.test('OpenAPI describes a route gated by authjs with its 401/403 and session scheme (#888)', async () => {
+    // The protected routes are store mounts, which OpenAPI lists but never enumerates; one ordinary route shows the gate.
+    const yamlFile = join(site, 'app', 'urlcode.yaml'), yaml = await readFile(yamlFile, 'utf8');
+    try {
+      await writeFile(yamlFile, yaml + '  /api/whoami:\n    methods: [GET]\n    auth: true\n    respond: {text: signed in}\n');
+      for (const args of [[], ['--host-file', 'host.mjs']]) {
+        const exported = urlcode(t, site, ['openapi', '--project', 'app', ...args], reviewEnv);
+        assert.equal(exported.status, 0, exported.stdout + exported.stderr);
+        const document = JSON.parse(exported.stdout) as { paths: Record<string, { get: { security?: unknown; responses: Record<string, unknown> } }>; components: { securitySchemes?: Record<string, { 'x-urlcode'?: unknown }> } };
+        assert.deepEqual(document.paths['/api/whoami']!.get.security, [{ 'urlcodeSession.authjs': [] }]);
+        assert.deepEqual(Object.keys(document.paths['/api/whoami']!.get.responses).sort(), ['200', '401']); // 403 is declared only on unsafe methods (#881)
+        assert.deepEqual(document.components.securitySchemes?.['urlcodeSession.authjs']?.['x-urlcode'], { extension: 'authjs', cookieName: 'operator-defined' });
+      }
+    } finally { await writeFile(yamlFile, yaml); }
+  });
 
   await t.test('provider misconfiguration and a sandboxed capability refuse before serving', async () => {
     const empty = join(root, 'empty-data');
@@ -206,7 +224,7 @@ test('private-requests with Auth.js: an independently owned provider behind the 
     try {
       await mkdir(join(site, 'app', 'functions'));
       await writeFile(join(site, 'app', 'functions', 'sandboxed.mjs'), 'export default (_request, context) => Response.json({ capabilities: Object.keys(context.capabilities ?? {}) });\n');
-      await writeFile(yamlFile, yaml + '  /api/sandboxed:\n    methods: [GET]\n    policies: {extensions: {authjs: {}}}\n    sandbox: true\n    function: {source: functions/sandboxed.mjs}\n');
+      await writeFile(yamlFile, yaml + '  /api/sandboxed:\n    methods: [GET]\n    auth: true\n    sandbox: true\n    function: {source: functions/sandboxed.mjs}\n');
       const sandboxProposal = urlcode(t, site, ['permissions', '--project', 'app']);
       assert.equal(sandboxProposal.status, 0, sandboxProposal.stdout + sandboxProposal.stderr);
       await writeFile(policy, sandboxProposal.stdout);

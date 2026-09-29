@@ -186,7 +186,7 @@ test('the middleware recipe serves every pattern and mirrors the cookbook module
 // The registration the authenticated-json-api README host builds: one bearer token, no real authentication. The test
 // stands in for the operator and pins the revision it just copied; the README host takes it from PROJECT_SHA256 or --policy.
 async function authRegistry(root: string,realm: string): Promise<RuntimeExtension> {return {
-  name:'auth',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
+  name:'auth',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],providesPrincipal:true,
   schema:{type:'object',properties:{realm:{type:'string'}},required:['realm'],additionalProperties:false},
   policySchema:{type:'object',properties:{role:{type:'string'}},additionalProperties:false},
   activate(config){assert.equal(config.realm,realm);return {

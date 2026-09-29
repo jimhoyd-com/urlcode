@@ -15,8 +15,8 @@ import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './ex
 import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
 import { isCode, isRecord } from './object-guards.ts';
-import { addonNamePattern, addonPackage, declaredExtensionTargets, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, withRequirements } from './addon-manifest.ts';
-import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin, ArtifactDocument, ExtensionTarget } from './addon-manifest.ts';
+import { addonNamePattern, addonPackage, declaredExtensionTargets, installedProviders, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, readInstalledDescriptor, withRequirements } from './addon-manifest.ts';
+import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin, ArtifactDocument, ExtensionTarget, InstalledProvider } from './addon-manifest.ts';
 
 /**
  * A site is the one project layout: `package.json` (exact core pin plus add-on tarball URLs), `host.mjs` (the
@@ -283,45 +283,6 @@ async function loadDefinition(site: string, name: string, pkg = addonPackage(nam
   const definition = module.default?.definition;
   assert(definition && definition.name === name, `${pkg}/extension must default-export defineExtension({name: '${name}', …})`);
   return definition;
-}
-/**
- * One installed add-on package, found by the `urlcode.json` descriptor at its package root rather than by its name
- * (#844): `catalog` is true for a package core's own manifest pins; any other package is independent, installed by the
- * operator and checked against npm's own lock integrity.
- */
-export interface InstalledProvider { name: string; package: string; descriptor: AddonDescriptor; catalog: boolean }
-/**
- * A problem with one installed descriptor, attributed to the kind of add-on list that reports it (#857): a duplicate
- * provider to the kind of the package that was set aside, an unreadable descriptor to the kind it claims (extension
- * when it claims none), so `extensions list` and `artifacts list` never both report the same problem.
- */
-export interface ProviderProblem { kind: AddonKind; message: string }
-/** Every direct dependency of the site that carries an add-on descriptor, by logical name. Reads data only; imports nothing. */
-export async function installedProviders(site: string, manifest?: AddonManifest): Promise<{ providers: Map<string, InstalledProvider>; problems: ProviderProblem[] }> {
-  const providers = new Map<string, InstalledProvider>(), problems: ProviderProblem[] = [];
-  let pkg: PackageJson;
-  try { pkg = await readJson<PackageJson>(join(site, 'package.json')); } catch (error) { if (isCode(error, 'ENOENT')) return { providers, problems }; throw error; }
-  for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) {
-    const path = join(site, 'node_modules', dependency, 'urlcode.json');
-    let raw: unknown, descriptor: AddonDescriptor;
-    try { raw = await readJson(path); descriptor = parseDescriptor(raw, path); }
-    catch (error) {
-      if (isCode(error, 'ENOENT') || isCode(error, 'ENOTDIR')) continue;
-      problems.push({ kind: isRecord(raw) && raw.kind === 'artifact' ? 'artifact' : 'extension', message: error instanceof Error ? error.message : String(error) });
-      continue;
-    }
-    const other = providers.get(descriptor.name);
-    if (other) { problems.push({ kind: descriptor.kind, message: `${dependency} and ${other.package} both provide ${other.descriptor.kind === descriptor.kind ? `the ${descriptor.kind}` : `an ${other.descriptor.kind} and an ${descriptor.kind} named`} ${descriptor.name}; keep one` }); continue; }
-    providers.set(descriptor.name, { name: descriptor.name, package: dependency, descriptor, catalog: manifest?.addons[descriptor.name]?.package === dependency });
-  }
-  return { providers, problems };
-}
-/** The descriptor of the package providing `name`: a site dependency that carries it, else the first-party install location. */
-export async function readInstalledDescriptor(site: string, name: string): Promise<AddonDescriptor | undefined> {
-  const provided = (await installedProviders(site)).providers.get(name);
-  if (provided) return provided.descriptor;
-  const path = join(site, 'node_modules', addonPackage(name), 'urlcode.json');
-  try { return parseDescriptor(await readJson(path), path); } catch (error) { if (isCode(error, 'ENOENT')) return undefined; throw error; }
 }
 /** An operator's npm package spec (a registry name, `name@version` or a local tarball path) rather than a catalog name. */
 export const isPackageSpec = (value: string): boolean => !addonNamePattern.test(value) && value.length <= 1024 && !/[\s\0]/.test(value) && !value.startsWith('-');

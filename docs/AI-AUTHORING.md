@@ -341,12 +341,14 @@ per-target table in [policies](POLICIES.md) before declaring `throttle`,
 `compression` or `cache` for a serverless or Cloudflare deployment, because an
 unsupported policy refuses activation rather than degrading.
 
-When the project declares `extensions.auth` (an operator-installed extension,
-see [extensions](EXTENSIONS.md)), protect a route with the short form
-`auth: true` rather than writing `policies.extensions.auth: {}` by hand; the
-compiler expands it to that long form and `routes`/`audit` show the expansion.
-Do not use both forms on one route, and do not declare `auth` in a project
-without `extensions.auth`; both refuse to load. The policy accepts no keys:
+When the project declares an extension that provides the request principal
+(`extensions.auth`, or an independent sign-in package; see
+[extensions](EXTENSIONS.md#protecting-a-route-the-auth-short-form)), protect a
+route with the short form `auth: true` rather than writing
+`policies.extensions.<name>: {}` by hand; the compiler expands it to that long
+form for the one declared provider and `routes`/`audit` show the expansion.
+Do not use both forms on one route, and do not write `auth` in a project that
+declares no principal provider, or more than one; each refuses to load. The policy accepts no keys:
 there is no role, permission, verification, CSRF or bearer vocabulary. A
 protected route answers `401` without a verified session and `403` for a
 cross-origin write ([auth](../packages/auth/README.md#protect-a-route)).

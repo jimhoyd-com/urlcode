@@ -38,7 +38,7 @@ export async function expectedFiles(root = repositoryRoot): Promise<Map<string, 
     const targets = extensionTargetNames.filter(target => ((definition.targets ?? []) as string[]).includes(target));
     if (!targets.length) throw new Error(`${addon.packageName}/extension must declare targets (${extensionTargetNames.join(', ')}) in its defineExtension definition`);
     const descriptor = { kind: 'extension', name: definition.name, description: definition.description, requires: definition.requires ?? [], ...(uses.length ? { uses } : {}),
-      targets, schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
+      targets, ...(definition.providesPrincipal === true ? { providesPrincipal: true } : {}), schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
     descriptors.set(addon.name, descriptor);
     files.set(join(addon.directory, 'urlcode.json'), render(descriptor));
   }

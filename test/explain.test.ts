@@ -102,7 +102,7 @@ test('explain describes an extension-protected route, with provider facts when a
 });
 test('explain agrees with the runtime on methods and policies for every route',async t=>{
   for(const [root,options] of [[cookbook,{}],[conditions,{}],[extensions,{origin:'https://extensions.example.test'}]] as const){
-    const registry=root===extensions?[{...await demo(root),activate(){return {handle(){return {status:200,headers:[],body:''};},authorize(){return undefined;}};}},{name:'auth',version:'1' as const,projectSha256:await inspectExtensionRevision(root),targets:['node' as const],schema:{type:'object'},policySchema:{type:'object'},activate(){return {handle(){return {status:200,headers:[],body:''};},authorize(){return undefined;}};}}]:undefined;
+    const registry=root===extensions?[{...await demo(root),activate(){return {handle(){return {status:200,headers:[],body:''};},authorize(){return undefined;}};}},{name:'auth',version:'1' as const,projectSha256:await inspectExtensionRevision(root),targets:['node' as const],providesPrincipal:true,schema:{type:'object'},policySchema:{type:'object'},activate(){return {handle(){return {status:200,headers:[],body:''};},authorize(){return undefined;}};}}]:undefined;
     const runtime=await createRuntime(root,{...options,...(registry?{extensions:registry}:{})});t.after(()=>runtime.close());
     const inventory=runtime.testPlan().inventory;
     const explained=await explainProject(root,{...(registry?{extensions:registry}:{})});
