@@ -358,8 +358,8 @@ export const collectionSchema = {
     membership: { type: 'boolean', description: 'true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, transfers, readers, create, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
     readers: { description: 'With ownership: owner only: named read-only mounts on which others list and read every owner\'s records, each as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>, and each with its own gate and view, for example a members-gated reviewer mount beside a projected directory. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner. With properties, a mount shows only id and those properties, and members becomes optional: a directory every signed-in principal may search without seeing the rest of any record.', type: 'object', minProperties: 1, maxProperties: READER_LIMITS.mounts, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: { type: 'object', additionalProperties: false, required: ['mount'], properties: {
       mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
-      members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read. Required unless properties is given; without it every principal the route admits may read the listed properties.' },
-      showOwner: { type: 'boolean', description: 'true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner\'s mount, transitions and StoreExports never do.' },
+      members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read. Required unless properties is given; without it every principal the route admits may read the listed properties, and showOwner is refused.' },
+      showOwner: { type: 'boolean', description: 'true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Needs members: activation refuses it on a mount without a gate, so only members ever receive it. Only this mount shows it: the owner\'s mount, transitions and StoreExports never do.' },
       properties: { type: 'array', minItems: 1, maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'A projection: the declared properties this mount shows. Each record is answered as id and these properties only (no createdAt, updatedAt or other property); sort and filters take only these; its ETag is of what it shows, so it changes only when a listed property does (it is not the record\'s own ETag, which If-Match takes); may lists only transitions whose from names only these. Use it for a directory (a wallet\'s name, never its balance).' },
     } } },
     create: { description: 'Who may create a record. members: only principals a membership collection lists may POST <mount> (and create through StoreExports or a host transaction); anyone else gets 401 principal_required without a principal, or 403 membership_required inside the write transaction before the Idempotency-Key or anything else is read or written.', type: 'object', additionalProperties: false, required: ['members'], properties: {
@@ -375,11 +375,11 @@ export const collectionSchema = {
       step: { oneOf: [{ type: 'string', pattern: DURATION, maxLength: 40 }, { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }], description: 'The grid the bounds sit on: start and end must each be a whole multiple of step, counted from origin (by default 1970-01-01T00:00:00Z for date-times, so PT1H is on the hour, UTC, and PT15M on the quarter hour; 0 for integers), or the write answers 422 invalid_record. Without length it makes every interval a whole number of steps; with length, length must be a multiple of step.' },
       origin: { oneOf: [{ type: 'string', pattern: OFFSET_INSTANT.source, maxLength: 40 }, { type: 'integer', minimum: -Number.MAX_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }], description: 'With step only: the instant (date-time bounds) or integer (integer bounds) the step grid counts from. A date-time may carry a fixed offset: step PT1H with origin 1970-01-01T00:00:00+05:30 is on the local hour at UTC+05:30, and P1D with it is local midnight there. It is a fixed offset, not a time zone: nothing follows daylight saving, so a daily grid in a zone that changes its offset moves by the change twice a year (an hourly grid does not when the change is a whole hour). Record bounds stay UTC.' },
     } },
-    transfers: { description: 'Declared transfers by name: POST <mount>/transfers/<name> with the JSON body {from, to, amount} (two distinct record ids and a positive whole number) subtracts amount from the from record\'s amount property and adds it to the to record\'s in one transaction, so the sum over the collection never changes (a record is created at 0 and deleted only at 0, else 409 balance_not_zero); a debit that would leave from below min answers 409 insufficient_balance and nothing is written. On an owned collection the caller may debit only its own record and may credit any owned record (a transfer between owners); on a shared collection anyone who reaches the mount may move between any two records, so gate it with members or the route. Honours If-Match (on from) and Idempotency-Key; audited as store.record.transferred on both records. Not on a membership collection.', type: 'object', maxProperties: TRANSFER_LIMITS.transfers, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
+    transfers: { description: 'Declared transfers by name: POST <mount>/transfers/<name> with the JSON body {from, to, amount} (two distinct record ids and a positive whole number) subtracts amount from the from record\'s amount property and adds it to the to record\'s in one transaction, so the sum over the collection never changes (a record is created at 0 and deleted only at 0, else 409 balance_not_zero); a debit that would leave from below min answers 409 insufficient_balance and nothing is written; a credit the to record cannot take (only a row stored outside the declaration) answers one fixed 409 transfer_conflict. On an owned collection the caller may debit only its own record and may credit any owned record (a transfer between owners); on a shared collection anyone who reaches the mount may move between any two records, so gate it with members or the route. Honours If-Match (on from) and Idempotency-Key; audited as store.record.transferred on both records. Not on a membership collection.', type: 'object', maxProperties: TRANSFER_LIMITS.transfers, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['amount'],
       properties: {
-        amount: { type: 'string', pattern: FIELD_NAME, description: 'A required integer property with default 0 (a currency in minor units), listed under readOnlyProperties: the balance moved. Only transfers change it: not an increment, not set or stamped by a transition and not named by intervals. A record still holding a nonzero balance cannot be deleted (409 balance_not_zero).' },
-        min: { type: 'integer', minimum: -Number.MAX_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER, description: 'The lowest value the debited record may be left holding (default 0: no overdraft). A negative min on a members-gated transfer is an issuer: its records may go below zero, which is the supply outstanding, and the sum still never changes.' },
+        amount: { type: 'string', pattern: FIELD_NAME, description: 'A required integer property with default 0 (a currency in minor units), listed under readOnlyProperties: the balance moved. Only transfers change it: not an increment, not set or stamped by a transition and not named by intervals. A record still holding a nonzero balance cannot be deleted (409 balance_not_zero). Its schema bounds a balance from below only (type, minimum, exclusiveMinimum and annotations; no maximum, exclusiveMaximum, multipleOf, enum, const or combinator), and every write measures maxRecordBytes with the amount at its widest, so nothing about the credited record\'s balance decides a transfer\'s answer.' },
+        min: { type: 'integer', minimum: -Number.MAX_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER, description: 'The lowest value the debited record may be left holding (default 0: no overdraft). A negative min on a members-gated transfer is an issuer: its records may go below zero, which is the supply outstanding, and the sum still never changes. On an owned collection a negative min needs members (activation refuses it without, since every signed-in principal could mint); on a shared one the route is the gate. The lowest min times maxRecords must stay within the safe integers, so no balance can leave them.' },
         members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may run the transfer; anyone else gets 403 membership_required before any record is read.' },
       },
     } },
@@ -583,12 +583,14 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (shared !== undefined) throw new Error(`${where}: its mount is also readers ${shared}'s; each readers mount has one gate and one view`);
     // Without a gate every signed-in principal reads the mount, so what it shows must be listed, never the whole record.
     if (declared.members === undefined && declared.properties === undefined) throw new Error(`${where} needs members, or properties listing what every signed-in principal may see`);
+    // _owner is a principal id that links every record to one account; only a membership list may be trusted with it (#972).
+    if (declared.showOwner === true && declared.members === undefined) throw new Error(`${where}: showOwner needs members; without a gate every signed-in principal would receive every owner's principal id`);
     for (const field of declared.properties ?? []) if (!property(field)) throw new Error(`${where}: properties names ${String(field).slice(0, 64)}, which is not a declared property`);
     readers[reader] = { mount: declared.mount, ...(declared.members === undefined ? {} : { members: declared.members }), showOwner: declared.showOwner === true, ...(declared.properties === undefined ? {} : { properties: [...declared.properties] }) };
   }
   if (spec.create !== undefined && spec.readOnly === true) throw new Error(`Collection ${name}: create needs a writable collection; a readOnly one takes no create`);
   const intervals = spec.intervals === undefined ? undefined : intervalsOf(name, spec.intervals, records, ownership, membership, increments);
-  const transfers = transfersOf(name, spec, records, increments, intervals, transitions);
+  const transfers = transfersOf(name, spec, records, ownership, maxRecords, increments, intervals, transitions);
   for (const field of records.readOnly) {
     // A create never carries a readOnly property, so a required one is satisfiable only through its default.
     if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
@@ -654,7 +656,7 @@ export function uniqueIndex(name: string, field: string): { index: string; creat
  * reads it (a transfer does not run the interval check). A delete of a record still holding a balance is refused at
  * write time (`refuseBalance`).
  */
-function transfersOf(name: string, spec: CollectionSpec, records: CompiledRecordSchema, increments: readonly string[], intervals: NormalizedIntervals | undefined, transitions: Record<string, NormalizedTransition>): Record<string, NormalizedTransfer> {
+function transfersOf(name: string, spec: CollectionSpec, records: CompiledRecordSchema, ownership: Ownership, maxRecords: number, increments: readonly string[], intervals: NormalizedIntervals | undefined, transitions: Record<string, NormalizedTransition>): Record<string, NormalizedTransfer> {
   const out: Record<string, NormalizedTransfer> = {};
   const intervalFields = intervals ? [intervals.start, intervals.end, ...intervals.within, ...Object.keys(intervals.when)] : [];
   for (const [transfer, declared] of Object.entries(spec.transfers ?? {})) {
@@ -668,12 +670,25 @@ function transfersOf(name: string, spec: CollectionSpec, records: CompiledRecord
     if (records.defaults[field] !== 0) throw new Error(`${where}: amount property ${field} must default to 0, so a new record adds nothing to the sum; fund records with a transfer from an issuer (a negative min)`);
     const setter = Object.keys(transitions).find(transition => hasOwn(transitions[transition]!.set, field) || hasOwn(transitions[transition]!.stamp, field));
     if (setter !== undefined) throw new Error(`${where}: amount property ${field} is set by transition ${setter}, which would change the sum outside a transfer`);
+    // #973: a credit only raises a balance, so a keyword that can refuse a higher value would let the payer read the
+    // credited record's hidden balance from the refusal. The amount property bounds a balance from below only.
+    const bounding = Object.keys(property).filter(keyword => !AMOUNT_KEYWORDS.has(keyword));
+    if (bounding.length) throw new Error(`${where}: amount property ${field} takes only ${[...AMOUNT_KEYWORDS].join(', ')}, not ${bounding.map(keyword => keyword.slice(0, 64)).join(', ')}; a limit that a credit can break would tell the payer the credited record's balance`);
     const min = declared.min ?? 0;
     if (!Number.isSafeInteger(min)) throw new Error(`${where}: min must be a safe integer`);
+    // #974: on an owned collection every principal the route admits holds records, so an ungated floor below zero lets
+    // each of them mint.
+    if (min < 0 && ownership === 'owner' && declared.members === undefined) throw new Error(`${where}: a negative min is an issuer, so it needs members: <a membership collection> naming who may issue; without it every signed-in principal could take an empty record below zero and credit anyone`);
     out[transfer] = { amount: field, min, ...(declared.members === undefined ? {} : { members: declared.members }) };
   }
+  // #973: the sum stays 0 and no record goes below the lowest min, so no balance can exceed |min| x maxRecords. Kept
+  // within the safe integers, a credit can never overflow, and the credited record's balance never decides the answer.
+  const floor = Math.min(0, ...Object.values(out).map(transfer => transfer.min));
+  if (-floor * maxRecords > Number.MAX_SAFE_INTEGER) throw new Error(`Collection ${name}: transfers: the lowest min (${floor}) times maxRecords (${maxRecords}) exceeds ${Number.MAX_SAFE_INTEGER}, so a balance could leave the safe integers; raise the min or lower maxRecords`);
   return out;
 }
+/** The keywords a transfer's amount property may carry (#973): its type, a lower bound and annotations. */
+const AMOUNT_KEYWORDS: ReadonlySet<string> = new Set(['type', 'minimum', 'exclusiveMinimum', 'title', 'description', '$comment', 'deprecated', 'examples']);
 
 /**
  * Validates an interval constraint and builds its SQL. The bounds are both UTC date-times or both numbers, and they
@@ -1113,7 +1128,16 @@ export class Collection {
     return Object.fromEntries(Object.keys(this.spec.records.properties).filter(field => hasOwn(values, field)).map(field => [field, values[field] as Scalar]));
   }
   private sized(record: StoredRecord): void {
-    if (Buffer.byteLength(JSON.stringify(record)) > this.spec.maxRecordBytes) throw new StoreError(413, 'record_too_large', `Record exceeds ${this.spec.maxRecordBytes} bytes`);
+    if (this.oversized(record)) throw new StoreError(413, 'record_too_large', `Record exceeds ${this.spec.maxRecordBytes} bytes`);
+  }
+  /**
+   * Whether `record` exceeds `maxRecordBytes`, measured with every transfer amount at its widest safe integer (#973):
+   * every write reserves the room a balance can take, so a later credit can never push a record over the limit and
+   * the credited record's size never decides a transfer's answer.
+   */
+  private oversized(record: StoredRecord): boolean {
+    const widest = Object.fromEntries(Object.values(this.spec.transfers).map(transfer => [transfer.amount, -Number.MAX_SAFE_INTEGER]));
+    return Buffer.byteLength(JSON.stringify({ ...record, ...widest })) > this.spec.maxRecordBytes;
   }
   /**
    * The interval check (#902), inside the write's transaction and before its row is written: when the constraint
@@ -1598,10 +1622,14 @@ export class Collection {
    * The transfer step (#902), inside an open transaction (the HTTP API's, or a host transaction's). In order: with
    * `members`, the membership gate (403); the debited record in the caller's scope (404, so another owner's record
    * is a missing one); `If-Match` on it (412); the floor, `min` (409 `insufficient_balance`); the credited record,
-   * any owned record on an owned collection (404); both new values within the amount property's schema and the safe
-   * integers (409 `transfer_limit`); the record size (413). The floor is checked before the credited record is read,
-   * so a caller cannot learn whether an id exists without funds to move. Then both rows, each with a new `updatedAt`,
-   * and one `store.record.transferred` event per record, all in the one transaction: the sum never changes.
+   * any owned record on an owned collection (404); the debited value within the amount property's schema (409
+   * `transfer_limit`) and the debited record's size (413); then one fixed 409 `transfer_conflict` for anything about
+   * the credited record. Activation bounds the amount property from below only and the supply within the safe
+   * integers, and every write reserves the room a balance can take, so under the declaration that last answer never
+   * depends on the credited record's balance (#973); it is left for a row stored outside it. The floor is checked
+   * before the credited record is read, so a caller cannot learn whether an id exists without funds to move. Then
+   * both rows, each with a new `updatedAt`, and one `store.record.transferred` event per record, all in the one
+   * transaction: the sum never changes.
    */
   transferIn(db: StoreDatabase, name: string, input: unknown, expectedEtag: string | undefined, principal: string | undefined, actor: string | undefined): TransferStep {
     this.writable();
@@ -1615,13 +1643,14 @@ export class Collection {
     const debited = (held as number) - body.amount;
     if (debited < transfer.min) throw new StoreError(409, 'insufficient_balance', 'The balance is too low for this transfer');
     const to = this.owned ? this.anyOwned(db, body.to) : this.current(db, body.to, undefined);
-    if (!Number.isSafeInteger(to[field])) throw new StoreError(409, 'transfer_conflict', 'A record does not hold a whole balance to transfer');
-    const credited = (to[field] as number) + body.amount;
-    // No issue list: on an owned collection it would describe another owner's balance.
-    if (!Number.isSafeInteger(credited) || propertyIssue(this.spec.records, field, debited) || propertyIssue(this.spec.records, field, credited)) throw new StoreError(409, 'transfer_limit', 'The transfer would leave a balance its property does not allow');
+    if (propertyIssue(this.spec.records, field, debited)) throw new StoreError(409, 'transfer_limit', 'The transfer would leave a balance its property does not allow');
     const debit: StoredRecord = { ...from, updatedAt: stamp(from.updatedAt as string), [field]: debited };
+    this.sized(debit);
+    // One answer with no detail for every credit-side refusal: on an owned collection the credited record is another
+    // owner's, and a distinct code per limit would read its balance (#973).
+    const credited = Number.isSafeInteger(to[field]) ? (to[field] as number) + body.amount : Number.NaN;
     const credit: StoredRecord = { ...to, updatedAt: stamp(to.updatedAt as string), [field]: credited };
-    this.sized(debit); this.sized(credit);
+    if (!Number.isSafeInteger(credited) || propertyIssue(this.spec.records, field, credited) || this.oversized(credit)) throw new StoreError(409, 'transfer_conflict', 'The credited record cannot take this transfer');
     this.replaceRow(db, debit); this.replaceRow(db, credit);
     const audited = this.audited(db, 'transferred', debit.id as string, [field], actor, { transfer: name, side: 'from', counterpart: credit.id as string });
     this.audited(db, 'transferred', credit.id as string, [field], actor, { transfer: name, side: 'to', counterpart: debit.id as string });
