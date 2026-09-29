@@ -26,6 +26,8 @@ export const localReviewCommands = ['validate','test','routes','audit'] as const
 export const pinFreeReviewCommands = ['explain','context','plan-feature','review','report','openapi'] as const;
 /** The origin a local review uses when none is given: loopback, never a public site. */
 export const localReviewOrigin = 'http://localhost';
+/** What a `local_review` event says (the CLI checks and the MCP server's in-process `run_tests`). */
+export const localReviewNote = 'Pinned to the current project revision for this run only. No operator policy was read, so no binding or egress grant applies, and extensions use a fresh temporary data directory, never the site\'s data/. serve and dev still need the reviewed pin (--policy or PROJECT_SHA256); with it, validate checks the data they will use.';
 // Commands that activate the project locally and so accept the operator's `--alias-origin`.
 export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit','benchmark'] as const;
 

@@ -391,6 +391,71 @@ routes:
   key or an increment property, when it is `required` without a default, and
   when no transition sets or stamps it.
 
+### Edit and delete states
+
+`readOnlyProperties` keeps the state itself out of a body, but the owner could
+still change the rest of the record: after approval, `PATCH` `{"amount":
+99999}` left the record `approved` with its reviewer's stamp, vouching for an
+amount nobody reviewed, and `DELETE` erased the decision
+([#952](https://github.com/jimhoyd-com/urlcode/issues/952)). A collection
+declares the states in which a body may change a record and in which it may be
+deleted:
+
+```yaml
+requests:
+  mount: /api/requests
+  ownership: owner
+  schema:
+    type: object
+    additionalProperties: false
+    required: [title, amount, status]
+    properties:
+      title: {type: string, minLength: 1, maxLength: 120}
+      amount: {type: integer, minimum: 1, maximum: 100000}
+      status: {type: string, enum: [draft, pending, approved, rejected]}
+      reviewedBy: {type: string, maxLength: 128}
+      reviewedAt: {type: string, maxLength: 32}
+  defaults: {status: draft}
+  readOnlyProperties: [status, reviewedBy, reviewedAt]
+  editable: {status: draft}                  # PUT and PATCH only while a draft
+  deletable: {status: [draft, rejected]}     # DELETE only a draft or a rejected request
+  transitions:
+    submit: {from: {status: draft}, set: {status: pending}}
+    withdraw: {from: {status: pending}, set: {status: draft}}
+    approve: {from: {status: pending}, set: {status: approved}, stamp: {reviewedBy: actor, reviewedAt: now}, by: others, mount: /api/approve, members: reviewers}
+    reject: {from: {status: pending}, set: {status: rejected}, stamp: {reviewedBy: actor, reviewedAt: now}, by: others, mount: /api/reject, members: reviewers}
+```
+
+- **The shape** is a transition's `from`: each named property and the value it
+  must hold, or a list of values it may hold (`{status: [draft, rejected]}`);
+  with several properties the record must match every one. Activation
+  requires each property to be listed in `readOnlyProperties`, so only a
+  transition moves a record into or out of the state (a body could otherwise
+  unlock the record, or lock itself), and each value to satisfy its schema.
+  Not on a membership collection or a `readOnly` one.
+- **The refusal.** Outside `editable`, `PUT` and `PATCH` answer
+  `409 record_locked`; outside `deletable`, `DELETE` does. Nothing is written.
+  The check reads the record inside the write's `BEGIN IMMEDIATE`
+  transaction, after the scope (`404`) and `If-Match` (`412`) and before the
+  body, so a transition committing first always wins and the answer names no
+  state. It applies to every path that edits or deletes a record: HTTP,
+  `StoreExports.update`, and a host transaction's `update` and `remove` (which
+  roll the whole transaction back).
+- **What it leaves alone.** A create takes every writable property as before
+  (the state comes from `defaults`), and transitions, increments and transfers
+  have their own rules: a transfer still moves a locked wallet's balance, and
+  `submit`/`withdraw` are how the owner leaves and re-enters `draft`. The
+  operator's `urlcode-store ownerless-delete` is not gated.
+- **The hint.** On a collection declaring either, a record's `GET`/`HEAD` and
+  the answer to its `PUT`/`PATCH` carry `Allow` with the methods it takes now
+  (`GET, HEAD, PUT, PATCH, DELETE` for a draft, `GET, HEAD` once approved), and
+  a list on the collection mount carries `allow: {<id>: [methods]}` beside
+  `may`, so a client hides Edit and Delete for a locked record. Like `may`, it
+  is a hint the write checks again under its lock.
+
+`If-Match` on `approve` protects a reviewer from approving a version they did
+not read; `editable` is what keeps the approved version as it was.
+
 ### Membership gates and cross-owner reads
 
 Identity comes from the principal-providing policy (with `auth`, the Better
@@ -639,6 +704,9 @@ store would accept:
 - **A hint, not a grant.** A membership change or another caller's write can
   make it stale a moment later; the transition still checks everything again
   in its own transaction. Trusted code (`StoreExports`) does not get `may`.
+- **Edits and deletes** are not transitions: with
+  [`editable` or `deletable`](#edit-and-delete-states) a record's `Allow`
+  header and a list's `allow` name the methods it takes now.
 
 ### Result-aware retries
 
@@ -759,8 +827,9 @@ membership check (`403 membership_required`); the retained key (`422` or a
 replay); the record in the caller's scope (`404`, so another owner's record is
 a missing one); for `by: others` the owner check (`403 own_record_refused`);
 `If-Match` (`412`); the transition's `from` values
-(`409 transition_conflict`); the record schema and the interval rules
-(`422 invalid_record`); quotas (`409`); the
+(`409 transition_conflict`), or for `PUT`, `PATCH` and `DELETE` the
+[edit and delete states](#edit-and-delete-states) (`409 record_locked`); the record schema and the interval rules
+(`422 invalid_record`); quotas and [unique values](#a-directory-by-a-unique-handle) (`409`); the
 [interval check](#non-overlapping-intervals) (`409 interval_conflict`); then
 the write, the claim and the audit event.
 
@@ -816,9 +885,9 @@ The #835 counterexamples, and what serves each:
 
 | Contract | Served by | Not built |
 |---|---|---|
-| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `readOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
+| Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `readOnly` state, gated by a membership collection; [`editable` and `deletable`](#edit-and-delete-states) keep the owner from changing or deleting what was approved (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
 | Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a declared [`intervals`](#non-overlapping-intervals) constraint checked through an index, across owners on an owned collection, with `If-Match` and transitions (cancel, reopen); fixed-length, aligned slots with `length` and `step` (and `origin` for a fixed-offset local grid); members-only booking with `create.members`; no application code | recurring intervals, capacity above one per slot |
-| Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); the recipient's id from a [projected readers mount](#membership-gates-and-cross-owner-reads) that shows no balance; no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
+| Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); the recipient's id from a [projected readers mount](#membership-gates-and-cross-owner-reads) that shows no balance, looked up by a [unique handle](#a-directory-by-a-unique-handle); no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
 [#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracked this contract;
@@ -1125,6 +1194,61 @@ and fixtures that fund, pay, refuse an overdraft and close every wallet at `0`.
   the same call on a [host transaction](#host-transactions)'s
   `tx.records(name)`, which commits or rolls back with the transaction's other
   writes. Both return `{from, to?}` with the same visibility rule.
+
+### A directory by a unique handle
+
+A directory by `name` is spoofable: each owner names their own wallet, so
+another user can open a wallet named `bob` and appear in the same lookup
+([#953](https://github.com/jimhoyd-com/urlcode/issues/953)). `unique` keeps a
+string property unique across every record, across owners on an owned
+collection (where `key` is refused), so a lookup by it names exactly one
+wallet:
+
+```yaml
+wallets:
+  mount: /api/wallets
+  ownership: owner
+  schema:
+    type: object
+    additionalProperties: false
+    required: [handle, balance]
+    properties:
+      handle: {type: string, pattern: '^[a-z0-9_]{3,20}$', maxLength: 20}
+      balance: {type: integer}
+  defaults: {balance: 0}
+  readOnlyProperties: [balance]
+  unique: [handle]              # one wallet per handle, whoever owns it
+  filterable: [handle]
+  readers:
+    directory: {mount: /api/directory, properties: [handle]}   # GET /api/directory?handle=bob
+  transfers:
+    pay: {amount: balance}
+```
+
+- **The check.** A create, `PUT`, `PATCH` or host transaction write that would
+  give a unique property a value another record holds answers
+  `409 value_taken`, with one issue naming the property
+  (`{pointer: '/handle', keyword: 'unique'}`), never the value, the other
+  record or its owner, and writes nothing. It runs inside the write's
+  `BEGIN IMMEDIATE` transaction through a partial expression index the
+  declaration builds (dropped by the next activation that no longer declares
+  it), so of two racing creates exactly one commits. A record keeping its own
+  value, and a record without the property, claim nothing new. Activation
+  refuses stored records that already share a value.
+- **The property** is a string with `maxLength` at most 128, no default (a
+  second record would collide with it), not in `readOnlyProperties`, not the
+  collection's `key` and not set or stamped by a transition (a constant cannot
+  be unique twice). Up to four per collection; not on a membership collection.
+- **Exact values.** `Bob` and `bob` are different values. A handle people read
+  should have a `pattern` that makes look-alikes impossible to register, such
+  as lower case only, as above.
+- **Privacy.** Uniqueness across owners leaks existence: anyone who may create
+  (or edit) a record learns, from the `409`, that some record holds a value,
+  and can probe values one request at a time. That is what a public handle
+  is for, and the directory shows the handles anyway. Never declare `unique`
+  on an email, a phone number or anything a user would not publish; bound
+  probing with a throttle policy on the mount. The `409` never says whose
+  record holds the value.
 
 ### Order of checks
 
@@ -1440,9 +1564,10 @@ On an owned collection:
   record in the caller's scope.
 - Activation refuses the collection when its mount's route carries no
   principal-providing policy (for example no `auth: true`), and refuses `key`
-  (and so short links) on it: a collection-wide unique key would tell one
-  owner that another already used a value, and a public short link cannot serve
-  an owned record.
+  (and so short links) on it: a public short link cannot serve an owned
+  record. A value no two owners may share is
+  [`unique`](#a-directory-by-a-unique-handle), which tells one owner that
+  another already uses a value, so it is for public handles only.
 
 Limits that stay true on an owned collection: `maxRecords` still caps the whole
 collection, and `409 collection_full` still tells any caller that it is full
@@ -2135,7 +2260,9 @@ read-only properties and requires only what has no default,
 `Store<Collection>Patch` lets an optional property be `null`, and the list,
 per-mount reader (with `_owner` under `showOwner`, and only the listed
 properties under `properties`) and `StoreError` shapes are named the same way.
-A gated create lists its `401` and `403 membership_required`, and a declared
+A gated create lists its `401` and `403 membership_required`, `editable` and
+`deletable` add `409 record_locked` (naming the states) and the `Allow`
+header and list `allow`, `unique` adds `409 value_taken`, and a declared
 `length`, `step` or `origin` is named in the `422`. Each operation lists the headers it takes (`If-Match`, and
 `Idempotency-Key` where the collection enables it) and answers (`ETag`,
 `Allow-Transitions`, `Location`, `Idempotency-Replayed`), its `requestBody`

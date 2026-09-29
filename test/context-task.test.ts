@@ -67,7 +67,7 @@ test('buildTaskContext reports this project\'s own redirects and stays well unde
   {path:'/users/{id}',status:308,url:'https://example.com/profiles/{id}'},
  ]);
  assert.deepEqual(context.project?.site,['notFound']);
- assert.equal(context.commands?.audit,'urlcode audit --project . --expect-routes 3');
+ assert.equal(context.commands?.audit,'urlcode audit --project . --expect-routes 3 --local-review');
  assert.ok(context.shapes && context.shapes.length>=redirectShapes.length);
  assert.ok(context.shapes!.some(s=>s.support==='gap'));
  const text=renderTaskContext(context);
@@ -119,7 +119,7 @@ test('context prints the npx form for a project whose package.json (or an ancest
  const project=join(root,'app');await mkdir(project);
  await writeFile(join(project,'urlcode.yaml'),'version: "1"\nroutes: {}\n');
  assert.equal(await cliInvocation(project),'urlcode');
- assert.equal((await buildContext(project,{projectFlag:'.'})).commands!.validate,'urlcode validate --local --project .');
+ assert.equal((await buildContext(project,{projectFlag:'.'})).commands!.validate,'urlcode validate --local --project . --local-review');
  await writeFile(join(root,'package.json'),JSON.stringify({devDependencies:{'@jimhoyd/urlcode':'0.5.9'}}));
  assert.equal(await cliInvocation(project),localInvocation);
  const context=await buildContext(project,{projectFlag:'.'});

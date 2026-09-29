@@ -10,7 +10,7 @@ import type {CapabilityName,CapabilitySupport,CapabilityTarget} from './capabili
 import {getCapability} from './capability-query.ts';
 import type {CapabilityUsage} from './capability-query.ts';
 import type {SchemaFragment} from './schema-query.ts';
-import {cliInvocation,prerequisitesFor,shellWord} from './context.ts';
+import {cliInvocation,localReviewFlag,prerequisitesFor,shellWord} from './context.ts';
 import type {Prerequisite} from './context.ts';
 import {HOST_FILE,PROJECT_DIRECTORY} from './addon-install.ts';
 import {readAddonCatalog} from './addon-manifest.ts';
@@ -181,8 +181,8 @@ async function commandsFor(located:Located,hostFile:string|null,origin:string|un
   ...(installNeeded?{install:'npm install'}:{}),
   start:`${cli} serve ${flags}`,
   dev:`${cli} dev ${flags}`,
-  validate:`${cli} validate --local ${flags}`,
-  test:`${cli} test ${flags}`,
+  validate:`${cli} validate --local ${flags}${localReviewFlag}`,
+  test:`${cli} test ${flags}${localReviewFlag}`,
   context:`${cli} context ${flags}`,
  };
 }
