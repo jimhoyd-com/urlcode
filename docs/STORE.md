@@ -790,9 +790,12 @@ The #835 counterexamples, and what serves each:
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
 [#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
-of this contract: sorted lists in SQL, and measuring the plumbing and edit
-effort the scheduling and credit counterexamples save. A `SIGKILL` and a full
-disk have their evidence ([the harness](#what-the-multi-process-harness-proves),
+of this contract: sorted lists in SQL are
+[#951](https://github.com/jimhoyd-com/urlcode/issues/951), and the plumbing the
+declared intervals and transfers save is
+[measured in the framework guide](FRAMEWORK.md#plumbing-removed-by-intervals-and-transfers).
+A `SIGKILL` and a full disk have their evidence
+([the harness](#what-the-multi-process-harness-proves),
 [the disk-full tests](#what-the-disk-full-tests-prove)).
 
 
@@ -2126,7 +2129,7 @@ operations as one database transaction: see
 SQL ordering for sorted lists is not
 built (a [declared transfer](#declared-transfers) moves value between two
 records; holds still need a host transaction)
-([#902](https://github.com/jimhoyd-com/urlcode/issues/902); the
+([#951](https://github.com/jimhoyd-com/urlcode/issues/951); the
 [transition design](#what-is-not-covered) lists what each needs), nor are roles
 beyond a [membership collection](#membership-gates-and-cross-owner-reads). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search. Owned collections
