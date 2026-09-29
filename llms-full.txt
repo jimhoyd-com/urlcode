@@ -176,6 +176,32 @@ self-hosted only), while store (its database is `node:sqlite`), and so form-reco
 [form-records](https://github.com/jimhoyd-com/urlcode/blob/main/packages/form-records/README.md),
 [mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md)) for the exact requirement.
 
+### Using npm libraries directly
+
+A trusted `function` or `middleware` route can import any installed npm
+package through the package's own API. Node resolves it from the site's
+`node_modules`. No adapter, extension descriptor, catalog entry or wrapper is
+involved. The package gets no URLCode authority: bindings, egress grants,
+revision pins and target refusals apply unchanged. Prefer a declarative
+contract where one fits. For example, use `request.body.<METHOD>.schema`
+rather than hand-written validation; `urlcode review` points these cases out.
+Use a library for what the vocabulary cannot express.
+
+- A `sandbox: true` route imports only relative project modules. A package
+  import there is refused before serving (`sandbox-import`); direct use does
+  not waive the sandbox.
+- Review labels the route `execution: trusted (in-process)`. It does not list
+  what the route imports, and the operator approval digest covers only the
+  entry file ([function security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md#granting-selected-bindings)).
+- Functions run only on the self-hosted Node runtime, including a runtime
+  embedded in another Node host
+  ([operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md#hosting-urlcode-inside-another-framework)).
+
+Write an extension only when a library must take part in URLCode's own
+behavior: verified identity, admission, lifecycle, or a mount the operator
+hosts. The [ecosystem fixture](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/ecosystem/README.md) is the
+executable check, with zod.
+
 ### The composition contract
 
 An extended project is a site: core plus the add-ons that core pins.

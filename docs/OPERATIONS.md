@@ -12,8 +12,11 @@ exporters and durable event delivery are not included. For provider adapters see
 
 Install a reviewed URLCode commit with Node 22.13+ and `npm ci --omit=dev`.
 Keep the runtime separate from an application checkout pinned to its own commit.
-Functions support only relative project JavaScript modules; do not install or
-execute an untrusted application’s package scripts as part of serving it. Validate using
+A `sandbox: true` function imports only relative project modules. A trusted
+function resolves packages from the application's `node_modules` like any Node
+module, so install the application's dependencies from its lockfile. Do not
+install or execute an untrusted application’s package scripts as part of
+serving it (`npm ci --ignore-scripts`). Validate using
 the same injected environment as the serving process:
 
 ```sh
@@ -132,6 +135,47 @@ Node packages. The resource values above illustrate
 container limits, not a sizing recommendation; large configuration compilation
 can need more memory. Measure your workload. Tag/redeploy immutable image digests
 in real operation rather than treating a mutable tag as a rollback identity.
+
+## Hosting URLCode inside another framework
+
+A Node application built on another framework can host a URLCode project
+in-process. [proofs/ecosystem](../proofs/ecosystem/README.md) does this with
+Hono; the steps are the same for any framework:
+
+1. Call `createRuntime(project, {origin, extensions, plugins, permissions})`
+   from `@jimhoyd/urlcode` before the host listens. It activates the whole
+   project, or refuses it, first.
+2. Route the paths the project declares to `runtime.handle()`, keeping their
+   full paths. There is no base-path setting: behind a prefix-stripping mount,
+   generated redirects and a function's `request.url` lose the prefix.
+3. Call `runtime.close()` after the host's own server has closed.
+
+There is no exported Request/Response adapter yet. The host turns its request
+into a `RuntimeRequest` and the returned `HandlerResult` into its own
+response. The fixture's `hono/urlcode-fetch.mjs` is a working example, and it
+copies the output rules it cannot import.
+
+Some protections belong to `urlcode serve`, not the runtime, so the host
+provides them or goes without:
+
+- **Client address.** The host passes `client`, applying its own
+  trusted-proxy rule; `--trusted-proxies` does not apply.
+- **Repeated request headers.** Pass `headerCounts` from the raw header
+  lines. A plain fetch `Request` has already joined them, which weakens the
+  duplicate-header refusals.
+- **Server-level guards and operations.** The host has none of these:
+  - the [loopback `Host` check](#host-admission-on-a-loopback-bind);
+  - the `/_urlcode/*` probes and the readiness drain;
+  - the request event log;
+  - in-flight admission and connection timeouts;
+  - [stream limits](#streamed-responses);
+  - hot reload.
+
+The reverse direction also works. A framework application can answer from
+a trusted function route (`return app.fetch(request)`, one declared route per
+path, because function routes have no wildcard), or from an operator
+extension mount when its own router should own a prefix. The fixture's
+README lists each gap with its source location.
 
 ## Domains, HTTPS and exposure
 

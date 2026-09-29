@@ -134,8 +134,13 @@ workspace outputs fail. The same job then runs the embedded Better Auth proof
 it packs core and the add-ons, installs core, `@jimhoyd/urlcode-auth` and
 `@jimhoyd/urlcode-store` at core's pins into a copy of
 [`proofs/private-requests`](../proofs/private-requests/README.md) and exercises
-it over HTTP, so it needs the npm registry like the add-on suite. A change under
-`proofs/` or to that test is high-impact and selects this job.
+it over HTTP, so it needs the npm registry like the add-on suite. It then runs
+the ecosystem conformance fixture (`npm run test:ecosystem`,
+[#841](https://github.com/jimhoyd-com/urlcode/issues/841)): packed core, zod
+and Hono installed into a copy of
+[`proofs/ecosystem`](../proofs/ecosystem/README.md), served by `urlcode serve`
+and by a Hono host side by side. A change under `proofs/` or to either test is
+high-impact and selects this job.
 
 Packaging tests use `npm pack --ignore-scripts` against the already-built core.
 The source `prepare` entry also checks npm's `ignore-scripts` setting because
