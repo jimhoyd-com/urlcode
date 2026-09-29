@@ -70,7 +70,7 @@ test('the example project exports a valid OpenAPI 3.1 document with per-method b
   assert.equal(contacts.$schema,'https://json-schema.org/draft/2020-12/schema');assert.equal(contacts.$defs,undefined);
   assert.deepEqual((contacts.properties as Json).email,{$ref:'#/components/schemas/PostContactsRequestBody_email'});
   assert.deepEqual((contacts.properties as Json).phone,{type:['string','null'],maxLength:32});
-  assert.deepEqual(document.components.schemas.PostContactsRequestBody_email,{type:'string',minLength:3,maxLength:128,pattern:'^[^@\\s]+@[^@\\s]+$'});
+  assert.deepEqual(document.components.schemas.PostContactsRequestBody_email,{type:'string',format:'email'});
   assert.deepEqual(document.paths['/todos/{id}']!.parameters,[{name:'id',in:'path',required:true,schema:{type:'string',format:'uuid'}}]);
   // Deterministic: the same project yields the same bytes.
   assert.equal(renderOpenApi(await buildOpenApi(example,{origin:'https://api.example'})),renderOpenApi(document));
@@ -140,6 +140,9 @@ function sample(schema:Json,document:OpenApiDocument):unknown {
   if(type==='boolean')return true;
   if(type==='array')return [];
   if(schema.format==='uuid')return '123e4567-e89b-42d3-a456-426614174000';
+  if(schema.format==='email')return 'ada@example.test';
+  if(schema.format==='date-time')return '2026-01-02T03:04:05Z';
+  if(schema.format==='date')return '2026-01-02';
   const fits=(value:string)=>value.length>=((schema.minLength as number|undefined)??0)&&value.length<=((schema.maxLength as number|undefined)??Infinity)&&(schema.pattern===undefined||new RegExp(schema.pattern as string,'u').test(value));
   const found=['a','abc','a@example.com','a-1','1'].find(fits);assert.ok(found,`no sample string for ${JSON.stringify(schema)}`);return found;
 }
