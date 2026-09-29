@@ -306,10 +306,20 @@ export async function addonLoadError(site: string, pkg: string, error: unknown, 
   return new ConfigError(`Could not import ${pkg}/extension: ${reason}. ${next}`, { code: 'addon-load' }, { cause: error });
 }
 
+/**
+ * Why `${pkg}/extension` did not resolve. A declared ./extension export whose file is absent resolves to MODULE_NOT_FOUND
+ * naming that file: the add-on was packed without being built (#960), a different fault from declaring no such export.
+ */
+export function extensionEntryError(pkg: string, error: unknown): ConfigError {
+  const missing = (error as { code?: unknown } | undefined)?.code === 'MODULE_NOT_FOUND' ? /Cannot find module '([^']+)'/.exec(String((error as Error).message))?.[1] : undefined;
+  if (missing && missing !== `${pkg}/extension`) return new ConfigError(`${pkg} declares a ./extension export, but its file ${missing} is not installed: the add-on was probably packed without being built. Build it before packing (\`node scripts/workspaces.ts run build\` in a URLCode checkout), or install a released ${pkg}`);
+  return new ConfigError(`${pkg} is installed but has no ./extension export`);
+}
+
 async function loadDefinition(site: string, name: string, pkg = addonPackage(name), manifest?: AddonManifest): Promise<ExtensionDefinition<unknown>> {
   let path: string;
   try { path = createRequire(join(site, 'package.json')).resolve(`${pkg}/extension`); }
-  catch { throw new ConfigError(`${pkg} is installed but has no ./extension entry`); }
+  catch (error) { throw extensionEntryError(pkg, error); }
   let module: { default?: DefinedExtension<unknown> };
   try { module = await import(pathToFileURL(path).href) as { default?: DefinedExtension<unknown> }; }
   catch (error) { throw asConfigError(error) ?? await addonLoadError(site, pkg, error, manifest); }
