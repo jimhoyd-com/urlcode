@@ -7,6 +7,8 @@
 // `install <spec>` saves a directory or tarball as `file:<absolute path>` and a registry spec as its exact version (the
 // newest tarball when the spec names no version). Like npm 7+, it also installs each linked package's
 // peerDependencies (from the registry, marked `peer`) and copies a package's dependency fields into its lock entry.
+// A tarball that carries its own node_modules (bundleDependencies) gets a lock entry for each bundled package, marked
+// `inBundle`, as npm writes one: `node_modules/<name>/node_modules/<bundled>`.
 // `ci` rebuilds node_modules from package-lock.json alone and never writes the lock. It appends each invocation to
 // $FAKE_NPM_LOG so tests can assert what ran. $FAKE_NPM_FAIL fails a matching command before it touches anything;
 // $FAKE_NPM_FAIL_AFTER fails it after it has changed node_modules and the lock, as a real npm can. `view` answers
@@ -46,7 +48,7 @@ if (args[0] === 'ci') {
   rmSync(join(cwd, 'node_modules'), { recursive: true, force: true });
   mkdirSync(join(cwd, 'node_modules', '@jimhoyd'), { recursive: true });
   for (const [key, entry] of Object.entries(lock.packages ?? {})) {
-    if (!key.startsWith('node_modules/')) continue;
+    if (!key.startsWith('node_modules/') || entry.inBundle) continue;
     const name = key.slice('node_modules/'.length);
     const tarball = entry.integrity && entry.resolved?.startsWith('file:') ? entry.resolved.slice(5) : entry.integrity && entry.resolved?.startsWith(tarballBase) ? registryTarball(name, entry.version) : undefined;
     if (tarball) { unpack(tarball, name); continue; }
@@ -102,6 +104,11 @@ for (const [name, spec] of Object.entries(pkg.dependencies ?? {})) {
     unpack(from.tarball, name, previousLock[`node_modules/${name}`]?.integrity);
     manifest = JSON.parse(readFileSync(join(cwd, 'node_modules', name, 'package.json'), 'utf8'));
     packages[`node_modules/${name}`] = { version: manifest.version, resolved: from.resolved, integrity };
+    const bundled = join(cwd, 'node_modules', name, 'node_modules');
+    if (existsSync(bundled)) for (const entry of readdirSync(bundled)) for (const inner of entry.startsWith('@') ? readdirSync(join(bundled, entry)).map(child => `${entry}/${child}`) : [entry]) {
+      const version = JSON.parse(readFileSync(join(bundled, inner, 'package.json'), 'utf8')).version;
+      packages[`node_modules/${name}/node_modules/${inner}`] = { version, inBundle: true };
+    }
   } else {
     link(from.dir, name);
     manifest = JSON.parse(readFileSync(join(from.dir, 'package.json'), 'utf8'));
