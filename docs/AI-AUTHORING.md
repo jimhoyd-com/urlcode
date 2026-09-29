@@ -49,6 +49,15 @@ revision pin: `explain`, `plan-feature`, `context` and `review` read the
 registrations without activating them, while `validate`, `test`, `dev` and
 `serve` still need the reviewed pin
 ([inspection without a revision pin](TOOLING.md#inspection-without-a-revision-pin)).
+A site's `npm run validate`, `npm test` and `npm run audit` pass
+`--local-review`, which pins one local run to the current revision with no
+grants, so the edit loop needs no new pin; serving still does
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). One goal word
+alone ("notify the team") does not require an extension: a surface needs two
+of its goal words, or its extension a matching recipe or noun. Scheduling
+goals find the `store-booking` recipe and credit goals `store-credits`, whose
+plan names the issuer pattern (a transfer with a negative `min` and
+`members`).
 
 The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
 [llms.txt](../llms.txt) index and the generated [llms-full.txt](../llms-full.txt)
@@ -791,4 +800,5 @@ programmatic compatibility analysis and provider verification limits.
 [docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
 [docs/PROVIDER-VERIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROVIDER-VERIFICATION.md
 [docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 <!-- urlcode-current-version:end -->

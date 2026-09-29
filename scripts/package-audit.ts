@@ -313,12 +313,13 @@ export const budgets: Record<string, Budget> = {
     // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #927's test:multiprocess script in package.json on top: 1014165 packed / 4011284 unpacked bytes on Node 26,
     // inside these budgets with about 2.8 KiB of headroom on each once Node 24's ~800 extra packed bytes are counted.
-    // #938 installed strings: llms.txt links become reference definitions pinned to the current version, llms-full.txt
-    // links the release tag, and dist/release.js (CORE_VERSION, docsUrl) is new: measured on Node 26 at 1015754 packed /
-    // 4019243 unpacked bytes, 519 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 996 * 1024,
-    unpacked: 3929 * 1024,
-    entries: 521,
+    // #932 --local-review and the store-booking/store-credits recipes on top of #937 and #946: measured on Node 26 at 1023556 packed / 4051874 unpacked bytes, 525 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    // #938 installed strings (llms.txt pinned reference definitions, llms-full.txt on the release tag, dist/release.js)
+    // on top: measured on Node 26 at 1025210 packed / 4059922 unpacked bytes, 527 entries; ~3 KiB headroom over Node 24.
+    packed: 1006 * 1024,
+    unpacked: 3968 * 1024,
+    entries: 529,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

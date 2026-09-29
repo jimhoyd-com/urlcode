@@ -134,6 +134,10 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   extension check still runs on the reload. This is development only: `serve`
   and every other command refuse a stale pin, so review the edited project and
   pin its revision before serving it ([the revision pin](EXTENSIONS.md#the-revision-pin)).
+  A site's `npm run validate`, `npm test`, `npm run routes` and
+  `npm run audit` pass `--local-review` instead, which pins each run to the
+  edited revision with no grants and never serves
+  ([the local review loop](EXTENSIONS.md#the-local-review-loop)).
   `--policy` grants are not carried forward: when the host is pinned by
   `--policy` and the project requests an env, secret or egress grant, a reload
   is still rejected as described above.

@@ -7,6 +7,8 @@ HOST ?= 127.0.0.1
 PORT ?= 3000
 # app/ is the route project; host.mjs is the trusted operator host that wires installed extensions.
 SITE := --project app --host-file host.mjs
+# The checks review the current revision locally when no reviewed pin is set; dev and serve still need it.
+REVIEW := $(SITE) --local-review
 
 .PHONY: help dev serve validate test doctor
 help:
@@ -22,12 +24,14 @@ dev:
 serve:
 	$(URLCODE) serve $(SITE) --host "$(HOST)" --port "$(PORT)"
 validate:
-	$(URLCODE) validate --local $(SITE)
+	$(URLCODE) validate --local $(REVIEW)
 test:
-	$(URLCODE) test $(SITE)
+	$(URLCODE) test $(REVIEW)
 doctor:
 	$(URLCODE) doctor
 
 .PHONY: routes audit benchmark
-routes audit benchmark:
+routes audit:
+	$(URLCODE) $@ $(REVIEW) $(ARGS)
+benchmark:
 	$(URLCODE) $@ $(SITE) $(ARGS)

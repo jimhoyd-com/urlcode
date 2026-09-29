@@ -616,6 +616,65 @@ export default await composeHost(import.meta.url,[demo]);
   } finally {if(saved!==undefined)process.env.PROJECT_SHA256=saved;}
 });
 
+// #932: the generated validate, test, routes and audit scripts pass --local-review, so an edit needs no new pin; serving
+// still does, an operator pin always wins, and a local review reads no policy, so it holds no grant.
+test('--local-review pins a non-serving run to the current revision, never serves, never outranks an operator pin and grants nothing (#932)',async t=>{
+  const root=await project(t,{'/demo/*':{...mount,methods:['GET','HEAD']}},{'tests/requests.json':JSON.stringify([{path:'/demo/x',status:200,expectBody:'pinned'}])},{extensions:declarations});
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const {activate:_activate,projectSha256:_pin,...data}=await registration(root);
+  const host=join(dir,'host.mjs'),stale=join(dir,'stale.json');
+  await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
+const data=${JSON.stringify(data)};
+const demo={definition:{name:'demo',contract:1,targets:data.targets,schema:data.schema,host(context){
+  return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned'};}};}}};
+}},options:{}};
+export default await composeHost(import.meta.url,[demo]);
+`);
+  await writeFile(stale,JSON.stringify({version:1,projectSha256:'c'.repeat(64),routes:{}}));
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const {PROJECT_SHA256:_unset,URLCODE_ORIGIN:_origin,URLCODE_POLICY:_policy,...base}=process.env;
+  const run=(args:string[],env:Record<string,string>={})=>spawnSync(process.execPath,[cli,...args,'--project',root,'--host-file',host],{encoding:'utf8',timeout:30000,env:{...base,...env}});
+  const lines=(stderr:string)=>stderr.trim().split('\n').filter(line=>line.startsWith('{')).map(line=>JSON.parse(line) as {event:string;message?:string;code?:string;revision?:string;origin?:string});
+  for(const args of [['validate','--local'],['test'],['routes'],['audit','--expect-routes','1']])await t.test(`${args[0]} --local-review needs no pin and no origin`,async()=>{
+    const out=run([...args,'--local-review']);assert.equal(out.status,0,out.stdout+out.stderr);
+    const notice=lines(out.stderr).find(line=>line.event==='local_review');
+    assert.deepEqual({revision:notice?.revision,origin:notice?.origin},{revision:await inspectExtensionRevision(root),origin:'http://localhost'},out.stderr);
+  });
+  await t.test('an edit is reviewed at its new revision with no new pin',async()=>{
+    const before=await inspectExtensionRevision(root);
+    await writeFile(join(root,'urlcode.yaml'),(await readFile(join(root,'urlcode.yaml'),'utf8')).replace('label: hello','label: edited'));
+    const after=await inspectExtensionRevision(root);assert.notEqual(after,before);
+    const out=run(['validate','--local','--local-review']);assert.equal(out.status,0,out.stderr);
+    assert.equal(lines(out.stderr).find(line=>line.event==='local_review')?.revision,after);
+    // Without the flag nothing changed: the run still needs the reviewed pin.
+    assert.equal(lines(run(['validate','--local']).stderr).at(-1)?.code,'revision-pin-required');
+  });
+  for(const args of [['serve','--port','0'],['dev','--port','0'],['benchmark'],['explain']])await t.test(`${args[0]} refuses --local-review`,()=>{
+    const out=run([...args,'--local-review']);assert.equal(out.status,1,out.stdout+out.stderr);
+    const error=lines(out.stderr).at(-1)!;
+    assert.equal(error.code,'local-review-unsupported',out.stderr);
+    assert.match(error.message!,/serve and dev always need the reviewed revision pin/);
+    assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  });
+  await t.test('an operator pin wins: a stale --policy or PROJECT_SHA256 still refuses',()=>{
+    const policy=run(['validate','--local','--local-review','--origin',origin],{URLCODE_POLICY:stale});assert.equal(policy.status,1);
+    assert.equal(lines(policy.stderr).at(-1)?.code,'revision-pin-mismatch',policy.stderr);
+    const pinned=run(['validate','--local','--local-review','--origin',origin],{PROJECT_SHA256:'b'.repeat(64)});assert.equal(pinned.status,1);
+    assert.match(lines(pinned.stderr).at(-1)!.message!,/Extension revision pin mismatch: demo/,pinned.stderr);
+    for(const out of [policy,pinned])assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  });
+  await t.test('a local review holds no grant: egress a policy has not approved is still denied',async()=>{
+    const upstream=await project(t,{'/demo/*':mount,'/up':{proxy:{url:'https://upstream.example.test/'}}},{},{extensions:declarations});
+    const out=spawnSync(process.execPath,[cli,'validate','--local','--local-review','--project',upstream,'--host-file',host],{encoding:'utf8',timeout:30000,env:base});
+    assert.equal(out.status,1);assert.match(lines(out.stderr).at(-1)!.message!,/^Egress denied by revision-pinned operator policy/,out.stderr);
+    // The reviewed policy that grants it is used as given, with its own pin.
+    const granted=join(dir,'granted.json');
+    await writeFile(granted,JSON.stringify({version:1,projectSha256:await inspectExtensionRevision(upstream),routes:{'/up':{env:[],secrets:[],egress:{proxy:['https://upstream.example.test']}}}}));
+    const reviewed=spawnSync(process.execPath,[cli,'validate','--local','--local-review','--project',upstream,'--host-file',host,'--origin',origin,'--policy',granted],{encoding:'utf8',timeout:30000,env:base});
+    assert.equal(reviewed.status,0,reviewed.stderr);assert.equal(lines(reviewed.stderr).some(line=>line.event==='local_review'),false);
+  });
+});
+
 /** A demo registry written as a host file outside the project, matching the in-process registration above. */
 async function hostFile(t:import('node:test').TestContext,root:string):Promise<string>{
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
