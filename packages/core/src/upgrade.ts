@@ -5,6 +5,7 @@ import { ConfigError, assert } from './errors.ts';
 import { assertInertArtifacts, dependencyTree, lockPackages, nestedCopies, openSite, pinProblem, readJson, renderJson, rollBack, snapshot } from './addon-install.ts';
 import type { PackageJson } from './addon-install.ts';
 import { parseAddonManifest } from './addon-manifest.ts';
+import { ADDON_FILES_LOCK, readFilesLock, recordPackage, writeFilesLock } from './package-files.ts';
 import { runNpm } from './npm.ts';
 
 const core = '@jimhoyd/urlcode';
@@ -40,8 +41,10 @@ function run(file: string, args: readonly string[], cwd: string): Promise<string
  * `urlcode upgrade [--to X]`: moves core and every installed add-on to one version together. Core is installed
  * first; its own dist/addons.json then says exactly which add-on bytes belong to it, so the add-ons follow its
  * pins, never a separate lookup. The new runtime validates the project, and the site's workflow moves to the same
- * action release. Every upgraded artifact must still be inert, exactly as `artifacts add` requires. Any failure
- * restores package.json, package-lock.json and the workflows, then reinstalls node_modules from the restored lock with
+ * action release. Every upgraded artifact must still be inert, exactly as `artifacts add` requires, and each moved add-on's
+ * files are recorded again in addon-files.lock.json. An independent package is never moved: its operator's npm spec, not
+ * core's catalog, pins it, and re-running `urlcode extensions|artifacts add <spec>` is its upgrade. Any failure
+ * restores package.json, package-lock.json, addon-files.lock.json and the workflows, then reinstalls node_modules from the restored lock with
  * `npm ci --ignore-scripts`; a reinstall that itself fails is reported with that command, never hidden. The lock is
  * what makes the rollback exact, so a site without one is refused before anything changes.
  */
@@ -54,7 +57,7 @@ export async function upgradeSite(directory: string, options: { to?: string | un
   if (plan.upToDate) return { ...plan, upgraded: false, workflows: [], projectSha256: await revision() };
   const tree = await dependencyTree(site.site);
   assert(tree.hadLock, `${site.site} has no package-lock.json, so a failed upgrade could not put node_modules back exactly; run \`npm install --ignore-scripts\` there first, then upgrade`);
-  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), ...workflows]);
+  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), join(site.site, ADDON_FILES_LOCK), ...workflows]);
   try {
     const pkg = await readJson<PackageJson>(site.packageFile);
     pkg.dependencies = { ...pkg.dependencies, [core]: plan.target };
@@ -71,6 +74,10 @@ export async function upgradeSite(directory: string, options: { to?: string | un
     const nested = nestedCopies(lock);
     assert(!nested.length, `The upgrade produced nested copies (${nested.join(', ')})`);
     await assertInertArtifacts(site.site, lock, manifest, plan.addons.filter(name => manifest.addons[name]!.kind === 'artifact'));
+    // The moved add-ons' files are recorded again at their new pins; independent packages are not moved (#857).
+    const files = await readFilesLock(site.site);
+    for (const name of plan.addons) { const pin = manifest.addons[name]!; files.packages[pin.package] = await recordPackage(site.site, pin.package, lock[`node_modules/${pin.package}`], { name, kind: pin.kind, spec: null }); }
+    await writeFilesLock(site.site, files);
     await run(newCli, ['validate', '--project', 'app'], site.site);
     const changed: string[] = [];
     for (const file of workflows) {

@@ -78,6 +78,21 @@ MCP `run_tests` tool does execute it (trusted functions, middleware and
 extensions, with full Node access), so it exists only when the operator starts
 `urlcode mcp --allow-authoring`.
 
+Add-on packages are trusted by pin, not by review. A released add-on is pinned
+by the sha512 in core's own `addons.json`; an independent package the operator
+adds by npm spec or tarball is pinned by its `package-lock.json` sha512. Every
+install passes `--ignore-scripts`, an extension's `./extension` entry is
+trusted operator code once `host.mjs` imports it, and an artifact must stay
+inert data (its YAML parsed under a bounded profile that refuses tags and
+alias-expansion bombs). `add` records the sha256 of every installed file in
+`addon-files.lock.json`, and `list --strict`, `artifacts inspect` and `verify`
+check the installed files against it offline: that catches a later edit, not a
+package that was already malicious when it was installed. `verify --online`
+re-downloads the locked tarball and compares it only when explicitly asked,
+and an independent package moves only when the operator re-runs its `add`
+(`urlcode upgrade` never moves it). See
+[the installed file record](docs/EXTENSIONS.md#the-installed-file-record).
+
 ## Report a vulnerability privately
 
 Use [GitHub private vulnerability reporting](https://github.com/jimhoyd-com/urlcode/security/advisories/new).

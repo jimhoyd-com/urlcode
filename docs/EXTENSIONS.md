@@ -1276,6 +1276,7 @@ extension always appears in `get_addon_agent_tooling`.
   host.mjs              trusted operator host (outside app/)
   package.json          exact core pin, add-on tarball URLs, npm scripts
   package-lock.json     after npm install
+  addon-files.lock.json sha256 of every installed add-on file, written by add (commit it)
   AGENTS.md  .mcp.json  Makefile  .github/workflows/urlcode.yml
   data/                 operator data, secrets and keys (gitignored)
 ```
@@ -1312,7 +1313,9 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 | `urlcode extensions add <name>… [--example]` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires; for extensions, the capability only unless `--example` also writes each one's demo |
 | `urlcode extensions add <package spec or tarball>…` / `urlcode artifacts add <package spec or tarball>…` | Adds an [independent extension](#independent-extension-packages) or [artifact](#independent-artifact-packages) package the operator chose, outside core's catalog |
 | `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
-| `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins |
+| `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins and its [installed file record](#the-installed-file-record) |
+| `urlcode extensions verify [<name>] [--online]` / `urlcode artifacts verify [<name>] [--online]` | Compares the installed files with the [installed file record](#the-installed-file-record), offline; `--online` also re-downloads each locked tarball and compares file by file |
+| `urlcode extensions outdated` / `urlcode artifacts outdated` | Reports, for each independent package, the newest registry version its spec resolves to; see [upgrading an independent package](#upgrading-an-independent-package) |
 | `urlcode artifacts inspect <name> [--strict]` | Reports, offline, the standard documents an installed, pin-verified artifact lists; see [inspecting artifact documents](#inspecting-artifact-documents) |
 
 `add` resolves transitive `requires` from core's `addons.json` and adds each
@@ -1381,7 +1384,9 @@ yourself.
 `@jimhoyd/urlcode*` package, drift between `package.json`, `app/urlcode.yaml`
 and `host.mjs` (an extension declared but not imported by `host.mjs`, imported
 but not declared, or declared without an installed package), a missing
-requirement, or an artifact that is not inert.
+requirement, installed files that differ from the
+[installed file record](#the-installed-file-record), or an artifact that is not
+inert.
 
 An installed extension package that neither `app/urlcode.yaml` declares nor
 `host.mjs` imports as `<package>/extension` is a library install: another
@@ -1413,9 +1418,84 @@ the site before continuing; it is never silently ignored. The upgrade needs a
 before anything changes: run `npm install --ignore-scripts` first. `urlcode upgrade --check`
 reports the current and target versions and changes nothing. Configuration is
 not migrated: if an extension's schema changed, validation names the field.
+`upgrade` records the moved add-ons' files again. It never moves an
+independent package: the operator's npm spec, not core's catalog, pins it, and
+[re-running its `add`](#upgrading-an-independent-package) is its upgrade.
 
 Add-on command-line tools are ordinary npm bins once installed in the site, for
 example `npx urlcode-auth migrate` or `npx urlcode-store members list ...`.
+
+### The installed file record
+
+npm keeps no tarball for a registry install, only the lock's sha512 and the
+unpacked files, so nothing local could re-hash an installed package against
+its pin. `extensions add` and `artifacts add` therefore write
+`addon-files.lock.json` at the site root: for every add-on package they
+install (released or independent), its add-on name and kind, the npm spec an
+independent package was added with, the version, integrity and resolved URL
+from `package-lock.json`, and the sha256 of every file in its
+`node_modules/<package>` directory (its own nested `node_modules` excluded).
+A linked directory (a development install or a `file:` directory) is recorded
+as linked and not hashed, since its files change with its source. The file
+lives beside `package-lock.json` and is committed and reviewed with it: it is
+outside `node_modules`, which it describes, and outside `app/`, so it is not
+part of the project revision. `remove` deletes the package's entry (and the
+file once it is empty), `upgrade` records the moved add-ons again, and every
+rollback restores it.
+
+`list --strict`, `artifacts inspect` (and MCP `inspect_extension_artifact` and
+`get_extension_artifacts`) and `verify` compare the installed files with the
+record, offline, and report the added, removed and changed paths (up to 20 of
+each, with counts). A package with no record, or whose `package-lock.json`
+entry no longer has the recorded version and integrity (npm moved it outside
+`urlcode … add`), is a problem too. Inspection of a modified artifact is
+refused. To put the published files back, run `npm ci --ignore-scripts`.
+
+```sh
+urlcode artifacts verify                      # offline: files against addon-files.lock.json
+urlcode artifacts verify petstore-docs --online
+```
+
+`verify` exits 1 on any difference. `verify --online` is a network operation
+and runs only when asked: for each package it downloads the tarball from its
+`package-lock.json` `resolved` URL (a `file:` tarball is read from disk),
+refuses it unless its sha512 matches the lock's integrity, and then compares
+it file by file with the installed files and with the record. A private
+registry that needs credentials is not supported; the failure is reported.
+The record is only as trustworthy as the moment it was written: it catches a
+later edit, not a package that was already bad when it was installed. A
+package installed some other way (for example by `npm install` from a committed
+`package.json`) has no record until it is named to `add` again, which records
+its files as they are then, so run `npm ci --ignore-scripts` first.
+
+### Upgrading an independent package
+
+Running `urlcode extensions add <spec>` or `urlcode artifacts add <spec>` again
+for an independent package that is already installed upgrades it in place:
+npm installs what the spec resolves to now (`--ignore-scripts --save-exact`),
+and every check `add` makes runs again: a valid descriptor of the same kind,
+no first-party name, a sha512 lock integrity, an artifact still inert (and on
+a locked site, no other new lock entry). The descriptor may not change the
+add-on's name; remove it and add the new one instead. An upgraded extension
+keeps its `extensions.<name>` block, routes and `host.mjs` line: its new
+`./extension` entry must still define it and its new descriptor must still
+accept the project's declaration and route policies, or the upgrade is
+refused. Its record in `addon-files.lock.json` is rewritten, and any refusal
+rolls everything back exactly like a failed `add`. Re-adding a spec that
+resolves to the version already installed changes nothing.
+
+```sh
+urlcode artifacts outdated                    # asks the registry; changes nothing
+urlcode artifacts add @example/urlcode-petstore-docs@^1.4.0
+```
+
+`outdated` is informational and asks the registry (`npm view <spec> version`,
+a network call this explicit command makes) for the newest version matching
+each independent package's recorded spec, and prints the `add` command that
+would move it. A path, URL or repository spec has no registry version to
+compare, and a registry that cannot be reached is reported, never guessed.
+`urlcode upgrade` never moves an independent package, so every change of what
+the site trusts stays an explicit operator action.
 
 ### Independent extension packages
 
@@ -1616,7 +1696,7 @@ its root (`LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, optionally `.md` or
 `.txt`), and JSON, YAML and Markdown files (`.json`, `.yaml`, `.yml`, `.md`)
 under plain relative paths: no dotfiles, no symlinks, at most 128 files of
 2 MiB each. Every JSON file must parse, and every YAML file must parse under
-the runtime's YAML profile (no anchors, aliases or explicit tags). Its
+the inert-document YAML profile below. Its
 `package.json` may declare only `name`, `version`, `description`, `keywords`,
 `homepage`, `bugs`, `license`, `author`, `contributors`, `repository`,
 `private` and `files`: any other key, including `main`, `exports`, `bin`,
@@ -1626,6 +1706,20 @@ a binary or an install script. Anything else is refused when the artifact is
 installed and whenever it is listed. Artifacts are never imported by `serve`,
 `validate`, `init` or the runtime, and installing `store-schema` does not
 install or activate `store`.
+
+Artifact YAML is third-party data, not project configuration, so it has its own
+bounded profile, the same at install and at inspection; project YAML keeps
+refusing anchors, aliases, merge keys and tags. The inert-document profile
+allows anchors, aliases and `<<` merge keys, as shared OpenAPI fragments use
+them, and refuses explicit tags and directives, more than 1,024 aliases, and an
+alias to a collection that contains it. It measures the document as if every
+alias were expanded, in one pass over the source and before building anything,
+and refuses one that would expand to more than 10 times its own size or 16 MiB,
+or nest deeper than 256 levels; a billion-laughs document is refused without
+being expanded. Mapping keys may be strings, numbers or booleans (a status code
+such as `200:` becomes the string `"200"`); duplicate keys, `__proto__` and
+non-JSON or non-finite values are refused, and messages name a position, never
+document content.
 
 #### Artifact documents
 
@@ -1685,8 +1779,10 @@ independent (`locked by npm integrity`, or `linked, not locked` for a `file:`
 directory), and `remove` takes it out by name. When the package came from a
 local tarball, `list --strict` and `inspect` also re-hash that tarball and
 refuse when it no longer matches the recorded integrity (a replaced tarball or
-a stale lock) or is missing. `urlcode upgrade` never moves an independent
-package.
+a stale lock) or is missing. Like every add-on, its installed files are checked
+against the [installed file record](#the-installed-file-record). `urlcode
+upgrade` never moves an independent package; re-running `artifacts add
+<spec>` is [its upgrade](#upgrading-an-independent-package).
 
 #### Inspecting artifact documents
 
@@ -1731,9 +1827,12 @@ for each one:
 The result also names the artifact's origin: package, version, whether it is
 independent, the lock's `integrity` and `resolved` values and how they were
 verified (`catalog-pin`, `development`, `local-tarball` or `lock-integrity`,
-the last meaning npm's recorded integrity, not re-checked offline). Inspection
-is refused unless the artifact is inert and pin-verified; a `file:` directory
-link is not. `--strict` exits 1 when any document has an error diagnostic.
+the last meaning npm's recorded integrity, not re-checked offline), and `files`,
+the comparison with the [installed file record](#the-installed-file-record)
+(`match`, or `linked` for a development link). Inspection is refused unless the
+artifact is inert, pin-verified and unmodified; a `file:` directory link is not
+pin-verified. `artifacts verify --online` is the explicit way to re-check a
+registry install against its published tarball. `--strict` exits 1 when any document has an error diagnostic.
 
 Inspection never imports package code, runs a lifecycle script, fetches a
 reference, follows a symlink, leaves the package directory or creates a grant.

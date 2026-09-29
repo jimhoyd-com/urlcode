@@ -89,6 +89,9 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
 
   // Auth and the store are first-party catalog extensions, installed at core's pins, declared and hosted; checked
   // statically without host code.
+  // Installed by plain npm, so nothing recorded their files yet: naming them to `extensions add` records them (#857).
+  const recorded = urlcode(t, site, ['extensions', 'add', 'auth', 'store', '--json'], addons);
+  assert.equal(recorded.status, 0, recorded.stdout + recorded.stderr);
   const listed = urlcode(t, site, ['extensions', 'list', '--strict', '--json'], addons);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
   const extensions = JSON.parse(listed.stdout) as { addons: { name: string; package: string; independent?: boolean; pinned: boolean; problems: string[] }[]; problems: string[] };

@@ -277,9 +277,17 @@ export const budgets: Record<string, Budget> = {
     // Earlier: 933787 packed / 3704490 unpacked bytes, 499 entries; about 3 KiB of headroom on each.
     // With #888 and #881 both merged, measured on Node 26: 936548 packed / 3706583 unpacked bytes, 501 entries;
     // about 3 KiB of headroom on each.
-    packed: 918 * 1024,
-    unpacked: 3623 * 1024,
-    entries: 504,
+    // Raised for #857 items 2, 4 and 6: dist/package-files.js (the addon-files.lock.json record, offline checks,
+    // the tarball reader for verify --online) and dist/inert-yaml.js (the bounded inert-document YAML profile) with
+    // their declarations, verify/outdated/upgrade in addon-install and extensions-cli, the EXTENSIONS "installed
+    // file record" and "upgrading an independent package" sections, SECURITY, RIM-ADDON-001/RIM-ARTIFACT-INSPECT-001
+    // and their llms-full.txt copies. Measured on Node 26: 945207 packed bytes (5175 over 918 KiB), 3740438 unpacked
+    // bytes (30486 over 3623 KiB) and 505 entries (1 over 504). Packed raised to 927 KiB, unpacked to 3656 KiB and
+    // entries to 510, keeping about 4 KiB, 3.3 KiB and 5 entries of headroom.
+    packed: 927 * 1024,
+    // Re-measured after merging main (#896-#899): 3747895 unpacked bytes.
+    unpacked: 3664 * 1024,
+    entries: 510,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

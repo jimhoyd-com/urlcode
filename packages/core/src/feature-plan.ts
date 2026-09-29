@@ -18,7 +18,7 @@ export interface FeaturePlanOptions { target?:string; extensions?:readonly Runti
 export interface FeaturePlan {
  format:1; goalTerms:string[]; target:CapabilityTarget; project:{routes:number;extensions:string[]};
  applicable:{capabilities:{name:CapabilityName;support:string;reason:string}[];recipes:{name:string;description:string;matched:string[]}[]};
- extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'installed'|'unpinned'|'invalid'}[];ordering:{status:'operator-resolved';names:string[];note:string}};
+ extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'installed'|'unpinned'|'modified'|'invalid'}[];ordering:{status:'operator-resolved';names:string[];note:string}};
  outline:{kind:string;note:string}[]; applicationCode:{requirement:string;reason:string}[]; unsupported:{requirement:string;reason:string}[]; next:string[]; estimatedTokens:number;
 }
 

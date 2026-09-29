@@ -5,7 +5,8 @@ import { join, posix } from 'node:path';
 import { packageDataPath } from './addon-manifest.ts';
 import type { AddonManifest, ArtifactDocument, ArtifactMediaType } from './addon-manifest.ts';
 import { lockPackages, pinnedArtifact, untrustedContentNotice } from './addon-install.ts';
-import { parseYaml } from './config.ts';
+import { parseInertYaml } from './inert-yaml.ts';
+import type { FileCheck } from './package-files.ts';
 import { isCode, isRecord } from './object-guards.ts';
 
 /**
@@ -69,6 +70,11 @@ export interface ArtifactInspection {
      * npm's lock integrity, recorded when npm fetched it and not re-checked offline.
      */
     verification: 'catalog-pin' | 'development' | 'local-tarball' | 'lock-integrity';
+    /**
+     * The installed files compared, offline, with the sha256 record `artifacts add` wrote to addon-files.lock.json:
+     * `match`, or `linked` for a development link. Anything else refuses the inspection.
+     */
+    files: FileCheck;
   };
   limits: typeof artifactInspectionLimits;
   documents: InspectedFile[];
@@ -262,7 +268,7 @@ export async function inspectArtifactDocuments(directory: string, documents: rea
     if (record.mediaType === 'text/markdown') { record.kind = 'markdown'; return remember(path, record, false); }
     let data: unknown;
     const json = path.endsWith('.json');
-    try { data = json ? JSON.parse(text) : parseYaml(text); }
+    try { data = json ? JSON.parse(text) : parseInertYaml(text); }
     catch (error) {
       // JSON.parse quotes the offending text; only the YAML profile's message is free of document content.
       diagnose(record, { code: 'invalid-document', severity: 'error', message: json ? `${path} is not valid JSON` : `${path}: ${error instanceof Error ? error.message : String(error)}` });
@@ -384,8 +390,9 @@ export async function inspectArtifactDocuments(directory: string, documents: rea
 }
 
 /**
- * Inspects the installed artifact `name` in `site`: refused unless it is inert and pin-verified (core's pin, or for an
- * independent package npm's lock integrity and, from a local tarball, that tarball's current hash).
+ * Inspects the installed artifact `name` in `site`: refused unless it is inert, pin-verified (core's pin, or for an
+ * independent package npm's lock integrity and, from a local tarball, that tarball's current hash) and its files still
+ * match the record `add` wrote to addon-files.lock.json.
  */
 export async function inspectInstalledArtifact(site: string, name: string, options: { manifest?: AddonManifest } = {}): Promise<ArtifactInspection> {
   const artifact = await pinnedArtifact(site, name, options);
@@ -395,7 +402,7 @@ export async function inspectInstalledArtifact(site: string, name: string, optio
   const result = await inspectArtifactDocuments(join(site, 'node_modules', artifact.package), artifact.documents);
   return {
     format: 1, notice: untrustedContentNotice,
-    artifact: { name, package: artifact.package, version: artifact.version, independent: artifact.independent, integrity: entry?.integrity ?? null, resolved: entry?.resolved ?? null, verification },
+    artifact: { name, package: artifact.package, version: artifact.version, independent: artifact.independent, integrity: entry?.integrity ?? null, resolved: entry?.resolved ?? null, verification, files: artifact.fileCheck! },
     limits: artifactInspectionLimits, ...result,
   };
 }

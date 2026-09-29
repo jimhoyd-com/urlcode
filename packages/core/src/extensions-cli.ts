@@ -1,22 +1,24 @@
-import { addAddons, listAddons, removeAddon } from './addon-install.ts';
+import { addAddons, listAddons, outdatedAddons, removeAddon, verifyAddons } from './addon-install.ts';
+import type { OutdatedReport, VerifyReport } from './addon-install.ts';
 import { readAddonManifest } from './addon-manifest.ts';
 import type { AddonKind } from './addon-manifest.ts';
 import { inspectInstalledArtifact } from './artifact-inspect.ts';
 import type { ArtifactInspection, InspectedFile } from './artifact-inspect.ts';
 import { ConfigError } from './errors.ts';
+import { describeDrift } from './package-files.ts';
 import { materializeSourceAssets, stageSourceAssets } from './source-stage.ts';
 import type { MaterializeResult, SourceStageReport } from './source-stage.ts';
 
 type Print = (value: unknown) => boolean;
-interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined; materialize?: boolean | undefined; into?: string | undefined; 'allow-app'?: boolean | undefined }
+interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; online?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined; materialize?: boolean | undefined; into?: string | undefined; 'allow-app'?: boolean | undefined }
 
-export const addonCommands = ['available', 'add', 'remove', 'list', 'inspect', 'stage'] as const;
+export const addonCommands = ['available', 'add', 'remove', 'list', 'verify', 'outdated', 'inspect', 'stage'] as const;
 const artifactOnly = new Set<string>(['inspect', 'stage']);
 
 /**
- * `urlcode extensions|artifacts available|add|remove|list`: the same verbs for both add-on kinds, plus `artifacts
- * inspect`. Returns the process exit code for `list --strict` with problems or `inspect --strict` with an error
- * diagnostic; everything else prints and returns undefined.
+ * `urlcode extensions|artifacts available|add|remove|list|verify|outdated`: the same verbs for both add-on kinds, plus
+ * `artifacts inspect` and `stage`. Returns the process exit code for `list --strict` with problems, `verify` with
+ * problems or `inspect --strict` with an error diagnostic; everything else prints and returns undefined.
  */
 export async function runAddonCommand(command: 'extensions' | 'artifacts', operation: string, names: string[], values: AddonCliOptions, print: Print): Promise<number | undefined> {
   const kind: AddonKind = command === 'extensions' ? 'extension' : 'artifact';
@@ -24,6 +26,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
   if (values.ack?.length && operation !== 'add') throw new ConfigError(`--ack is only supported by ${command} add`);
   if (values.example && (operation !== 'add' || kind !== 'extension')) throw new ConfigError('--example is only supported by extensions add');
   if ((values.materialize || values.into !== undefined || values['allow-app']) && !(operation === 'stage' && kind === 'artifact')) throw new ConfigError('--materialize, --into and --allow-app are only supported by artifacts stage');
+  if (values.online && operation !== 'verify') throw new ConfigError(`--online is only supported by ${command} verify`);
   if (values.strict && operation !== 'list' && !(operation === 'inspect' && kind === 'artifact')) throw new ConfigError(`--strict is only supported by ${command} list${kind === 'artifact' ? ' and inspect' : ''}`);
   switch (operation) {
     case 'available': {
@@ -38,7 +41,9 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       if (!names.length) throw new ConfigError(`Use urlcode ${command} add <name> [<name>…] (a released name, or an npm package spec or local tarball of an independent ${kind})${kind === 'extension' ? ' [--example] [--ack <extension>:<id>]' : ''} [--site directory]`);
       const result = await addAddons(site, kind, names, { acknowledgements: values.ack, example: values.example });
       print(values.json ? { event: `${kind}s-added`, ...result } : [
-        result.added.length ? `Added ${result.added.join(', ')}${result.development ? ' (development install from local sources, not pinned)' : ''}.` : `${names.join(', ')} already installed; nothing to do.`,
+        ...(result.added.length ? [`Added ${result.added.join(', ')}${result.development ? ' (development install from local sources, not pinned)' : ''}.`] : []),
+        ...result.upgraded.map(item => `Upgraded ${item.name} (${item.package}) from ${item.from ?? '?'} to ${item.to ?? '?'}; its declaration, routes and host.mjs line are unchanged. Review the new version before deploying it.`),
+        ...(result.added.length || result.upgraded.length ? [] : [`${names.join(', ')} already installed; nothing to do.`]),
         ...(result.examples.length ? [`Example written for ${result.examples.join(', ')} (--example).`] : kind === 'extension' && result.added.length ? ['Capability only: no sample routes were written. Add --example to a fresh add for a working demo.'] : []),
         ...result.keptFiles.map(file => `Kept existing ${file}.`),
         ...Object.entries(result.env).map(([key, text]) => `Environment: ${key}: ${text}`),
@@ -70,6 +75,18 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       ].join('\n') + '\n');
       return values.strict && report.problems.length ? 1 : undefined;
     }
+    case 'verify': {
+      if (names.length > 1) throw new ConfigError(`Use urlcode ${command} verify [<name>] [--online] [--json] [--site directory]`);
+      const report = await verifyAddons(site, kind, names[0], { online: values.online === true });
+      print(values.json ? report : renderVerify(command, report));
+      return report.problems.length ? 1 : undefined;
+    }
+    case 'outdated': {
+      if (names.length) throw new ConfigError(`Use urlcode ${command} outdated [--json] [--site directory]`);
+      const report = await outdatedAddons(site, kind);
+      print(values.json ? report : renderOutdated(command, report));
+      return undefined;
+    }
     case 'inspect': {
       if (kind !== 'artifact') throw new ConfigError('inspect is only supported by artifacts: urlcode artifacts inspect <name>');
       if (names.length !== 1) throw new ConfigError('Use urlcode artifacts inspect <name> [--strict] [--json] [--site directory]');
@@ -96,6 +113,32 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
   }
 }
 
+/** Text form of `verify`: package paths come from installed package listings, so they are JSON-quoted in drift lists. */
+function renderVerify(command: string, report: VerifyReport): string {
+  const status = (item: VerifyReport['addons'][number]): string => ({ match: 'files match addon-files.lock.json', modified: 'MODIFIED since recorded', stale: 'STALE: package-lock.json moved it', unrecorded: 'NOT RECORDED', linked: 'linked directory, not hashed', missing: 'not installed' })[item.files.status];
+  const online = (item: VerifyReport['addons'][number]): string[] => {
+    if (!item.online) return [];
+    if ('skipped' in item.online) return [`    online: skipped, ${item.online.skipped}`];
+    if ('error' in item.online) return [`    online: failed, ${item.online.error}`];
+    const check = item.online;
+    return [`    online: downloaded ${check.url} (${check.bytes} bytes); sha512 ${check.integrity === 'match' ? 'matches package-lock.json' : 'DOES NOT MATCH package-lock.json'}`,
+      ...(check.installed ? [`    installed vs published: ${describeDrift(check.installed) || 'identical'}`] : []),
+      ...(check.recorded ? [`    recorded vs published: ${describeDrift(check.recorded) || 'identical'}`] : [])];
+  };
+  return [
+    `${command === 'extensions' ? 'Extensions' : 'Artifacts'} in ${report.site}${report.online ? ' (--online: a network operation that downloaded each locked tarball)' : ' (offline: compared with addon-files.lock.json)'}:`,
+    ...(report.addons.length ? report.addons.flatMap(item => [`  ${item.name} ${item.version ?? '(no version)'} ${item.package}: ${status(item)}${item.files.drift ? ` (${describeDrift(item.files.drift)})` : ''}`, ...online(item)]) : ['  none']),
+    ...report.problems.map(problem => `Problem: ${problem}`),
+  ].join('\n') + '\n';
+}
+function renderOutdated(command: string, report: OutdatedReport): string {
+  return [
+    `Independent ${command} in ${report.site} (asked the npm registry: a network operation):`,
+    ...(report.addons.length ? report.addons.map(item => `  ${item.name} ${item.package} locked ${item.locked ?? '?'}${item.spec === null ? '' : `, spec ${JSON.stringify(item.spec)}`}: ${item.status === 'outdated' ? `${item.latest} available; upgrade with: ${item.upgrade}` : item.status === 'current' ? 'current' : item.message ?? item.status}`) : ['  none']),
+    report.note,
+  ].join('\n') + '\n';
+}
+
 const verified: Record<ArtifactInspection['artifact']['verification'], string> = {
   'catalog-pin': 'pinned by this core',
   development: 'development link, not pinned',
@@ -111,7 +154,7 @@ function renderInspection(inspection: ArtifactInspection): string {
     ...item.diagnostics.map(diagnostic => `    ${diagnostic.severity} ${diagnostic.code}${diagnostic.at === undefined ? '' : ` at ${diagnostic.at || '/'}`}${diagnostic.ref === undefined ? '' : ` ${JSON.stringify(diagnostic.ref)}`}: ${diagnostic.message}`),
   ];
   return [
-    `Artifact ${artifact.name}: ${artifact.package} ${artifact.version ?? '(unknown version)'}${artifact.independent ? ', independent' : ''}; ${verified[artifact.verification]}${artifact.integrity ? ` (${artifact.integrity})` : ''}`,
+    `Artifact ${artifact.name}: ${artifact.package} ${artifact.version ?? '(unknown version)'}${artifact.independent ? ', independent' : ''}; ${verified[artifact.verification]}${artifact.integrity ? ` (${artifact.integrity})` : ''}; ${artifact.files.status === 'match' ? `its ${artifact.files.recorded} files match addon-files.lock.json` : 'a linked directory, not hashed'}`,
     inspection.notice,
     'Documents:',
     ...(inspection.documents.length ? inspection.documents.flatMap(file) : ['  none listed in its urlcode.json']),
