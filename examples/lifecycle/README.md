@@ -13,4 +13,8 @@ body) and its `Location` (from a header); later steps use them as `{{id}}` and
 the same project and data directory, so the last request proves the note survived.
 The function keeps notes under `URLCODE_DATA_DIR`, which `urlcode test` points at a
 fresh temporary directory for each run. All data is synthetic. See the
-[fixture reference](../../docs/READINESS.md#multi-step-fixtures).
+[fixture reference][docs/READINESS.md#multi-step-fixtures].
+
+<!-- urlcode-current-version:start -->
+[docs/READINESS.md#multi-step-fixtures]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#multi-step-fixtures
+<!-- urlcode-current-version:end -->

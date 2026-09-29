@@ -85,7 +85,7 @@ into it; only the default for routes that declare neither option has changed.
 - The guest's result is recorded where guest code cannot rewrite it, and the
   host checks its shape before trusting it. A result that states a body length
   for any method other than HEAD is invalid and answers 502; the runtime frames
-  the response by the bytes it sends ([responses](HTTP.md#responses)).
+  the response by the bytes it sends ([responses][docs/HTTP.md#responses]).
 - A sandboxed route always answers with one whole buffered response:
   `stream: true` is refused beside `sandbox: true`, and no `AbortSignal` or
   other host object crosses into the guest's context.
@@ -93,7 +93,7 @@ into it; only the default for routes that declare neither option has changed.
   Operator grants are exact-name, route-scoped and pinned to configuration/source.
 
 The guest API is intentionally narrower than Node or full Fetch; see the
-[implemented contract](SPECIFICATION.md). A function moving from trusted to
+[implemented contract][docs/SPECIFICATION.md]. A function moving from trusted to
 `sandbox: true` that uses Node/network or binary/stream APIs must be rewritten
 for the supported guest profile, or stay trusted. Redirects need none of this
 machinery either way.
@@ -104,7 +104,7 @@ shared by route dispatch and by `@jimhoyd/urlcode/sandbox`'s `SandboxPool`.
 That public HTTP-shaped primitive remains available to extension authors, but
 project extension hooks use arbitrary typed values and contract v1 runs them
 trusted in-process; it rejects `sandbox: true` rather than claiming HTTP sandbox
-semantics apply to them. See [extensions](EXTENSIONS.md#project-level-lifecycle-hooks).
+semantics apply to them. See [extensions][docs/EXTENSIONS.md#project-level-lifecycle-hooks].
 
 ## What the trusted default can and can't do
 
@@ -125,7 +125,7 @@ restrictions above:
 - There is no worker-thread deadline that force-terminates a stuck call. A
   trusted invocation races a configurable timeout, but that race can only
   reject the *call*; it cannot preempt code that blocks the event loop
-  synchronously. See [capacity](CAPACITY.md) for what this means for one slow
+  synchronously. See [capacity][docs/CAPACITY.md] for what this means for one slow
   or hung trusted route's effect on the rest of the process.
 - A snapshot reload re-imports a trusted route's own entry file fresh (each
   reload gets its own cache-busted module registration), so editing the
@@ -140,7 +140,7 @@ restrictions above:
   dependencies. A `sandbox: true` route has no such gap: reload always
   rebuilds its whole snapshot, dependencies included.
 - A trusted route may declare `stream: true` to send its Response body as it
-  is produced ([streamed responses](SPECIFICATION.md#streamed-responses)).
+  is produced ([streamed responses][docs/SPECIFICATION.md#streamed-responses]).
   The operator's stream limits bound delivery (bytes, duration, idle time,
   concurrency) and cancel the producer, but like the call deadline they
   cannot preempt code that blocks the event loop.
@@ -238,7 +238,7 @@ activation exactly as it does on a function route. `secrets` are refused on an
 extension route. Extension code and hooks are trusted in-process code, so this
 grant is an injection convenience, not a restriction: it governs what URLCode
 hands them, not what they can read from `process.env` themselves. See
-[extensions](EXTENSIONS.md#request-context-route-env-and-request-id).
+[extensions][docs/EXTENSIONS.md#request-context-route-env-and-request-id].
 
 ## Next capability work
 
@@ -286,3 +286,12 @@ bug was not reproduced upstream. The repository's test runner passes the flag
 
 Implementation references: [QuickJS/WASM project](https://github.com/justjake/quickjs-emscripten)
 and its [runtime isolation/limits API](https://github.com/justjake/quickjs-emscripten/blob/main/doc/quickjs-emscripten/classes/QuickJSRuntime.md).
+
+<!-- urlcode-current-version:start -->
+[docs/HTTP.md#responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#responses
+[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
+[docs/EXTENSIONS.md#project-level-lifecycle-hooks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#project-level-lifecycle-hooks
+[docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md
+[docs/SPECIFICATION.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md#streamed-responses
+[docs/EXTENSIONS.md#request-context-route-env-and-request-id]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-context-route-env-and-request-id
+<!-- urlcode-current-version:end -->

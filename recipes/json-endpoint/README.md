@@ -14,7 +14,7 @@ no functions:
   type, all before `respond` answers `202 {"accepted":true}`.
 
 The 422 names the first failing field and never echoes what the client sent
-([HTTP](../../docs/HTTP.md#body-schema-and-input-patterns) describes the
+([HTTP][docs/HTTP.md#body-schema-and-input-patterns] describes the
 format). The schema is JSON Schema 2020-12 in a bounded profile: besides
 `type`, `properties`, `required`, `additionalProperties`, `items`, scalar
 `enum`/`const` and the length, count and number bounds, it takes local
@@ -39,13 +39,19 @@ Every runtime error under `/api` then answers
 `{"error":{"code":"METHOD_NOT_ALLOWED","message":"Method not allowed"}}` (405,
 `Allow` kept), `NOT_FOUND` for an undeclared path and so on, and the 422 moves
 into the same envelope with its `issues`. A single route can use
-`errors: {format: json}` instead. See [error format](../../docs/HTTP.md#error-format);
+`errors: {format: json}` instead. See [error format][docs/HTTP.md#error-format];
 static hosting refuses it.
 
 Because every route is native, the project activates on the self-hosted, AWS,
 Vercel and Cloudflare targets. This endpoint accepts the sign-up but keeps
-nothing: add a `signals` entry to notify a hook ([egress](../../docs/EGRESS.md)),
+nothing: add a `signals` entry to notify a hook ([egress][docs/EGRESS.md]),
 mount the store extension to persist records (`store-crud`), or send an email
 from a trusted function (`contact-form`). Reach
 for a `function` only for behavior YAML cannot express, such as the signature
 check in `webhook-receiver`.
+
+<!-- urlcode-current-version:start -->
+[docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
+[docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+<!-- urlcode-current-version:end -->
