@@ -71,6 +71,10 @@ export function transferBody(input: unknown): TransferBody {
 const COLLECTION_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 /** The only date-time an interval bound takes: RFC 3339 in UTC (`Z`) with at most millisecond precision. */
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+/** A grid origin (#945): RFC 3339 with `Z` or a fixed `±hh:mm` offset, at most millisecond precision. */
+const OFFSET_INSTANT = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)(?:Z|([+-])(\d{2}):(\d{2}))$/;
+/** Readers mounts one collection may declare (#944). */
+export const READER_LIMITS = { mounts: 8 } as const;
 const MOUNT = { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 } as const;
 const FIELD_NAME = '^[a-z][A-Za-z0-9_]{0,63}$';
 const SCALAR = { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }, { type: 'boolean' }] } as const;
@@ -114,8 +118,9 @@ export interface TransitionSpec {
   members?: string;
 }
 /**
- * Cross-owner reads on an owned collection: members of the named membership collection list and read every owner's
- * records, read-only, on a separate mount guarded by a principal-providing policy.
+ * One cross-owner read mount on an owned collection: members of the named membership collection (or, on a
+ * projection without `members`, every principal) list and read every owner's records, read-only, on a separate mount
+ * guarded by a principal-providing policy. A collection declares them by name (#944), each with its own gate and view.
  */
 export interface ReadersSpec {
   mount: string;
@@ -130,7 +135,7 @@ export interface ReadersSpec {
    */
   properties?: string[];
 }
-/** A validated readers declaration. */
+/** A validated readers mount. */
 export interface NormalizedReaders { mount: string; members?: string; showOwner: boolean; properties?: string[] }
 /** Who may create a record (#929): with `members`, only principals that membership collection lists. */
 export interface CreateSpec { members?: string }
@@ -181,8 +186,8 @@ export interface CollectionSpec {
    * names it. It has no mount and no HTTP API; the operator maintains it (`addMember`, or `StoreExports`).
    */
   membership?: boolean;
-  /** On an owned collection: who may list and read every owner's records, and where. */
-  readers?: ReadersSpec;
+  /** On an owned collection: the named mounts on which others list and read every owner's records, each with who and what (#944). */
+  readers?: Record<string, ReadersSpec>;
   /** Who may create a record: `{members}` admits only a membership collection's principals (403 before anything is written). */
   create?: CreateSpec;
   /** A non-overlap constraint (#902): no two records in one scope hold overlapping half-open `[start, end)` intervals. */
@@ -232,13 +237,23 @@ export interface IntervalSpec {
    */
   length?: string | number;
   /**
-   * The grid both bounds sit on (#929): each must be a whole multiple of `step` counted from the epoch (date-times) or
-   * zero (integers), so `PT1H` means on the hour, UTC. With `length`, `length` must be a multiple of `step`.
+   * The grid both bounds sit on (#929): each must be a whole multiple of `step` counted from `origin`, so `PT1H` means
+   * on the hour, UTC (by default). With `length`, `length` must be a multiple of `step`.
    */
   step?: string | number;
+  /**
+   * Where the `step` grid counts from (#945): a date-time (`Z` or a fixed offset such as `+05:30`) for date-time bounds,
+   * an integer for integer bounds. Default: 1970-01-01T00:00:00Z, or 0. A fixed offset, never a time zone's rules.
+   */
+  origin?: string | number;
 }
 /** A declared `length` or `step`: what the declaration wrote, and its size in the bounds' units (milliseconds for a date-time). */
 export interface IntervalDuration { declared: string | number; units: number }
+/**
+ * A declared grid origin (#945): what the declaration wrote, and its residue modulo the step in the bounds' units, so
+ * a bound is on the grid when its own residue equals it. Residues keep the arithmetic exact for any safe integer.
+ */
+export interface IntervalOrigin { declared: string | number; residue: number }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
 /**
@@ -326,12 +341,12 @@ export const collectionSchema = {
       },
     } },
     membership: { type: 'boolean', description: 'true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member\'s key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, transfers, readers, create, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded.' },
-    readers: { description: 'With ownership: owner only: members of a membership collection list and read every owner\'s records, read-only, as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner. With properties, the mount shows only id and those properties, and members becomes optional: a directory every signed-in principal may search without seeing the rest of any record.', type: 'object', additionalProperties: false, required: ['mount'], properties: {
+    readers: { description: 'With ownership: owner only: named read-only mounts on which others list and read every owner\'s records, each as GET <mount> (with the collection\'s limit, cursor, sort and filters) and GET <mount>/<id>, and each with its own gate and view, for example a members-gated reviewer mount beside a projected directory. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner. With properties, a mount shows only id and those properties, and members becomes optional: a directory every signed-in principal may search without seeing the rest of any record.', type: 'object', minProperties: 1, maxProperties: READER_LIMITS.mounts, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: { type: 'object', additionalProperties: false, required: ['mount'], properties: {
       mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
       members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read. Required unless properties is given; without it every principal the route admits may read the listed properties.' },
       showOwner: { type: 'boolean', description: 'true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner\'s mount, transitions and StoreExports never do.' },
       properties: { type: 'array', minItems: 1, maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'A projection: the declared properties this mount shows. Each record is answered as id and these properties only (no createdAt, updatedAt or other property); sort and filters take only these; its ETag is of what it shows, so it changes only when a listed property does (it is not the record\'s own ETag, which If-Match takes); may lists only transitions whose from names only these. Use it for a directory (a wallet\'s name, never its balance).' },
-    } },
+    } } },
     create: { description: 'Who may create a record. members: only principals a membership collection lists may POST <mount> (and create through StoreExports or a host transaction); anyone else gets 401 principal_required without a principal, or 403 membership_required inside the write transaction before the Idempotency-Key or anything else is read or written.', type: 'object', additionalProperties: false, required: ['members'], properties: {
       members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection (membership: true): only principals it lists may create.' },
     } },
@@ -342,7 +357,8 @@ export const collectionSchema = {
       scope: { enum: ['collection', 'owner'], description: 'collection (default): every record blocks every other, across owners on an owned collection (another owner\'s conflicting record is never named). owner: with ownership: owner only, each owner\'s records are constrained among themselves.' },
       when: { type: 'object', minProperties: 1, maxProperties: INTERVAL_LIMITS.when, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property\'s schema. Without it every record takes part.' },
       length: { oneOf: [{ type: 'string', pattern: DURATION, maxLength: 40 }, { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }], description: 'The exact length of every interval: an ISO 8601 duration in whole days, hours, minutes and seconds (PT1H, PT30M, P1D) for date-time bounds, a positive integer for integer bounds. A record whose end is not exactly start plus length answers 422 invalid_record. Applies to every record, whatever when says.' },
-      step: { oneOf: [{ type: 'string', pattern: DURATION, maxLength: 40 }, { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }], description: 'The grid the bounds sit on: start and end must each be a whole multiple of step, counted from 1970-01-01T00:00:00Z for date-times (PT1H: on the hour, UTC; PT15M: on the quarter hour) or from 0 for integers, or the write answers 422 invalid_record. Without length it makes every interval a whole number of steps; with length, length must be a multiple of step.' },
+      step: { oneOf: [{ type: 'string', pattern: DURATION, maxLength: 40 }, { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }], description: 'The grid the bounds sit on: start and end must each be a whole multiple of step, counted from origin (by default 1970-01-01T00:00:00Z for date-times, so PT1H is on the hour, UTC, and PT15M on the quarter hour; 0 for integers), or the write answers 422 invalid_record. Without length it makes every interval a whole number of steps; with length, length must be a multiple of step.' },
+      origin: { oneOf: [{ type: 'string', pattern: OFFSET_INSTANT.source, maxLength: 40 }, { type: 'integer', minimum: -Number.MAX_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }], description: 'With step only: the instant (date-time bounds) or integer (integer bounds) the step grid counts from. A date-time may carry a fixed offset: step PT1H with origin 1970-01-01T00:00:00+05:30 is on the local hour at UTC+05:30, and P1D with it is local midnight there. It is a fixed offset, not a time zone: nothing follows daylight saving, so a daily grid in a zone that changes its offset moves by the change twice a year (an hourly grid does not when the change is a whole hour). Record bounds stay UTC.' },
     } },
     transfers: { description: 'Declared transfers by name: POST <mount>/transfers/<name> with the JSON body {from, to, amount} (two distinct record ids and a positive whole number) subtracts amount from the from record\'s amount property and adds it to the to record\'s in one transaction, so the sum over the collection never changes (a record is created at 0 and deleted only at 0, else 409 balance_not_zero); a debit that would leave from below min answers 409 insufficient_balance and nothing is written. On an owned collection the caller may debit only its own record and may credit any owned record (a transfer between owners); on a shared collection anyone who reaches the mount may move between any two records, so gate it with members or the route. Honours If-Match (on from) and Idempotency-Key; audited as store.record.transferred on both records. Not on a membership collection.', type: 'object', maxProperties: TRANSFER_LIMITS.transfers, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['amount'],
@@ -440,7 +456,7 @@ export interface NormalizedSpec {
   mount?: string; records: CompiledRecordSchema; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
-  membership: boolean; readers?: NormalizedReaders; create?: { members: string }; intervals?: NormalizedIntervals; transfers: Record<string, NormalizedTransfer>;
+  membership: boolean; readers: Record<string, NormalizedReaders>; create?: { members: string }; intervals?: NormalizedIntervals; transfers: Record<string, NormalizedTransfer>;
 }
 /**
  * A validated interval constraint and its SQL, built once from the declaration. `kind` says how a bound compares
@@ -451,7 +467,7 @@ export interface NormalizedSpec {
  */
 export interface NormalizedIntervals {
   start: string; end: string; within: string[]; scope: IntervalScope; when: Record<string, Scalar>; kind: 'date-time' | 'number';
-  length?: IntervalDuration; step?: IntervalDuration;
+  length?: IntervalDuration; step?: IntervalDuration; origin?: IntervalOrigin;
   index: string; create: string; latest: string; scan: string;
 }
 /** A validated transition. `by` is `any` on a shared collection, whose records have no owner to compare. */
@@ -538,15 +554,19 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (!['integer', 'number'].includes(declared.type) || typeof records.defaults[field] !== 'number' || records.readOnly.includes(field)) throw new Error(`Collection ${name}: increment property ${field} must be numeric with a numeric default and not readOnly`);
   }
   const transitions = transitionsOf(name, spec, records, ownership, key);
-  const readers = spec.readers;
-  if (readers !== undefined) {
-    // Readers widen an owned collection's view to members; a shared collection's mount already shows every record.
+  const readers: Record<string, NormalizedReaders> = {};
+  for (const [reader, declared] of Object.entries(spec.readers ?? {})) {
+    const where = `Collection ${name}: readers ${reader}`;
+    // Readers widen an owned collection's view; a shared collection's mount already shows every record.
     if (ownership !== 'owner') throw new Error(`Collection ${name}: readers needs ownership: owner`);
-    if (readers.mount === spec.mount) throw new Error(`Collection ${name}: the readers mount must differ from the collection mount`);
-    if (Object.values(transitions).some(transition => transition.mount === readers.mount)) throw new Error(`Collection ${name}: the readers mount must differ from every transition mount`);
+    if (declared.mount === spec.mount) throw new Error(`${where}: its mount must differ from the collection mount`);
+    if (Object.values(transitions).some(transition => transition.mount === declared.mount)) throw new Error(`${where}: its mount must differ from every transition mount`);
+    const shared = Object.keys(readers).find(other => readers[other]!.mount === declared.mount);
+    if (shared !== undefined) throw new Error(`${where}: its mount is also readers ${shared}'s; each readers mount has one gate and one view`);
     // Without a gate every signed-in principal reads the mount, so what it shows must be listed, never the whole record.
-    if (readers.members === undefined && readers.properties === undefined) throw new Error(`Collection ${name}: readers needs members, or properties listing what every signed-in principal may see`);
-    for (const field of readers.properties ?? []) if (!property(field)) throw new Error(`Collection ${name}: readers.properties names ${String(field).slice(0, 64)}, which is not a declared property`);
+    if (declared.members === undefined && declared.properties === undefined) throw new Error(`${where} needs members, or properties listing what every signed-in principal may see`);
+    for (const field of declared.properties ?? []) if (!property(field)) throw new Error(`${where}: properties names ${String(field).slice(0, 64)}, which is not a declared property`);
+    readers[reader] = { mount: declared.mount, ...(declared.members === undefined ? {} : { members: declared.members }), showOwner: declared.showOwner === true, ...(declared.properties === undefined ? {} : { properties: [...declared.properties] }) };
   }
   if (spec.create !== undefined && spec.readOnly === true) throw new Error(`Collection ${name}: create needs a writable collection; a readOnly one takes no create`);
   const intervals = spec.intervals === undefined ? undefined : intervalsOf(name, spec.intervals, records, ownership, membership, increments);
@@ -556,7 +576,7 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
     if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field)) && !Object.values(transfers).some(transfer => transfer.amount === field)) throw new Error(`Collection ${name}: property ${field} is readOnly but no transition sets or stamps it and no transfer moves it`);
   }
-  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, ...(readers.members === undefined ? {} : { members: readers.members }), showOwner: readers.showOwner === true, ...(readers.properties === undefined ? {} : { properties: [...readers.properties] }) } }), ...(spec.create?.members === undefined ? {} : { create: { members: spec.create.members } }), ...(intervals === undefined ? {} : { intervals }), transfers };
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, readers, ...(spec.create?.members === undefined ? {} : { create: { members: spec.create.members } }), ...(intervals === undefined ? {} : { intervals }), transfers };
 }
 
 /**
@@ -633,6 +653,14 @@ function intervalsOf(name: string, declared: IntervalSpec, records: CompiledReco
   };
   const length = duration('length'), step = duration('step');
   if (length && step && length.units % step.units !== 0) throw new Error(`${where}: length must be a whole multiple of step, or no interval could have both`);
+  // The grid's origin (#945) is kept as its residue modulo the step, so the check stays exact for any safe integer bound.
+  let origin: IntervalOrigin | undefined;
+  if (declared.origin !== undefined) {
+    if (!step) throw new Error(`${where}: origin needs step; it is where the step grid counts from`);
+    const units = kind === 'date-time' ? originMs(declared.origin) : typeof declared.origin === 'number' && Number.isSafeInteger(declared.origin) ? declared.origin : undefined;
+    if (units === undefined) throw new Error(kind === 'date-time' ? `${where}: origin must be an RFC 3339 date-time with Z or a fixed offset (+05:30) and at most millisecond precision, for date-time bounds` : `${where}: origin must be an integer for integer bounds`);
+    origin = { declared: declared.origin, residue: residue(units, step.units) };
+  }
   const scope = declared.scope ?? 'collection';
   if (scope === 'owner' && ownership !== 'owner') throw new Error(`${where}: scope: owner needs ownership: owner`);
   const when: Record<string, Scalar> = {};
@@ -652,11 +680,24 @@ function intervalsOf(name: string, declared: IntervalSpec, records: CompiledReco
   const columns = [...scope === 'owner' ? ['owner'] : [], ...within.map(path), instant(start)];
   const index = `store_intervals_${createHash('sha256').update(`${columns.join(', ')} WHERE ${filter}`).digest('hex').slice(0, 24)}`;
   return {
-    start, end, within, scope, when, kind, ...(length === undefined ? {} : { length }), ...(step === undefined ? {} : { step }), index,
+    start, end, within, scope, when, kind, ...(length === undefined ? {} : { length }), ...(step === undefined ? {} : { step }), ...(origin === undefined ? {} : { origin }), index,
     create: `CREATE INDEX IF NOT EXISTS "${index}" ON store_records(${columns.join(', ')}) WHERE ${filter}`,
     latest: `SELECT id, owner, ${instant(end)} AS until FROM store_records WHERE ${filter}${scope === 'owner' ? ' AND owner = ?' : ''}${within.map(field => ` AND ${path(field)} = ?`).join('')} AND ${instant(start)} < ? AND id <> ? ORDER BY ${instant(start)} DESC LIMIT 1`,
     scan: `SELECT id, owner, ${[...within.map((field, at) => `${path(field)} AS w${at}`), `${instant(start)} AS since`, `${instant(end)} AS until`].join(', ')} FROM store_records WHERE ${filter} ORDER BY ${columns.join(', ')}`,
   };
+}
+/** `value` modulo `step`, from 0 up to `step`: exact for any safe integer, whatever its sign. */
+const residue = (value: number, step: number): number => ((value % step) + step) % step;
+/**
+ * A grid origin as epoch milliseconds (#945): RFC 3339 with `Z` or a fixed offset, whose date and time must exist as
+ * written (no 30 February, no hour 24) and whose offset is at most 23:59. Undefined for anything else.
+ */
+function originMs(value: unknown): number | undefined {
+  const match = typeof value === 'string' ? OFFSET_INSTANT.exec(value) : null;
+  if (!match) return undefined;
+  const local = instantOf('date-time', `${match[1]!}Z`), hours = Number(match[3] ?? 0), minutes = Number(match[4] ?? 0);
+  if (local === undefined || hours > 23 || minutes > 59) return undefined;
+  return local - (match[2] === '-' ? -1 : 1) * (hours * 60 + minutes) * 60_000;
 }
 /** An interval bound as the constraint compares it: UTC epoch milliseconds for a date-time, the number itself otherwise. */
 function instantOf(kind: NormalizedIntervals['kind'], value: unknown): number | undefined {
@@ -679,11 +720,13 @@ function intervalIssues(intervals: NormalizedIntervals, values: Readonly<Record<
   if (start !== undefined && end !== undefined && end <= start) issues.push({ pointer: `/${intervals.end}`, keyword: 'intervals', message: `must be after ${intervals.start}` });
   if (issues.length || start === undefined || end === undefined) return issues;
   // The declared length and grid (#929). The messages name the declaration, never the submitted value.
-  const { length, step } = intervals, grid = step && `must be a whole multiple of ${step.declared}${intervals.kind === 'date-time' ? ' from 1970-01-01T00:00:00Z' : ''}`;
-  if (step && grid) for (const [field, value] of [[intervals.start, start], [intervals.end, end]] as const) if (value % step.units !== 0) issues.push({ pointer: `/${field}`, keyword: 'intervals', message: grid });
+  const { length, step } = intervals, grid = step && `must be a whole multiple of ${step.declared}${gridOrigin(intervals)}`;
+  if (step && grid) for (const [field, value] of [[intervals.start, start], [intervals.end, end]] as const) if (residue(value, step.units) !== (intervals.origin?.residue ?? 0)) issues.push({ pointer: `/${field}`, keyword: 'intervals', message: grid });
   if (length && end - start !== length.units) issues.push({ pointer: `/${intervals.end}`, keyword: 'intervals', message: `must be exactly ${length.declared} after ${intervals.start}` });
   return issues;
 }
+/** Where a step grid counts from, as its messages name it: the declared origin, else the epoch for date-times (and nothing for integers, whose grid counts from 0). */
+export const gridOrigin = (intervals: Pick<NormalizedIntervals, 'kind' | 'origin'>): string => intervals.origin ? ` from ${intervals.origin.declared}` : intervals.kind === 'date-time' ? ' from 1970-01-01T00:00:00Z' : '';
 /** A property value as SQLite compares it through `->>`: a boolean is 1 or 0. */
 const bound = (value: Scalar | undefined): string | number | null => value === undefined ? null : typeof value === 'boolean' ? (value ? 1 : 0) : value;
 /**
@@ -1137,33 +1180,33 @@ export class Collection {
       && (transition.members === undefined || admitted(transition.members))).map(([name]) => name)]));
   }
   /**
-   * The readers mount (#863), for a member of `readers.members` (or, on a projection without `members`, any principal):
-   * one page of every owner's records (`total`, sort, filters and cursor over all of them; a record with no owner is
-   * nobody's and is left out). The principal (401) and the membership gate (403) come first, in the same read transaction, before the query is parsed or any
-   * record is read. Read-only.
+   * The readers mount `reader` (#863, #944), for a member of its `members` (or, on a projection without `members`, any
+   * principal): one page of every owner's records (`total`, sort, filters and cursor over all of them; a record with no
+   * owner is nobody's and is left out). The principal (401) and the membership gate (403) come first, in the same read
+   * transaction, before the query is parsed or any record is read. Read-only.
    */
-  listAcross(params: URLSearchParams, principal: string | undefined): Page {
-    // A projection (#929) sorts and filters by the properties it shows only: an order or a match on a hidden one
-    // would disclose it (a sort by balance ranks every wallet).
-    const shown = this.spec.readers?.properties, spec = shown === undefined ? this.spec : { ...this.spec, sortable: this.spec.sortable.filter(field => shown.includes(field)), filterable: this.spec.filterable.filter(field => shown.includes(field)) };
-    return this.across(principal, db => {
+  listAcross(reader: string, params: URLSearchParams, principal: string | undefined): Page {
+    return this.across(reader, principal, (db, shown) => {
+      // A projection (#929) sorts and filters by the properties it shows only: an order or a match on a hidden one
+      // would disclose it (a sort by balance ranks every wallet).
+      const spec = shown === undefined ? this.spec : { ...this.spec, sortable: this.spec.sortable.filter(field => shown.includes(field)), filterable: this.spec.filterable.filter(field => shown.includes(field)) };
       const page = this.listIn(db, parseListQuery(spec, params), null);
       return { ...page, may: this.mayIn(db, page.items, principal, shown) };
     });
   }
-  /** One owned record and its `may` for a member of `readers.members` (the gate as `listAcross`); a missing or malformed id is 404. */
-  getAcross(id: string, principal: string | undefined): Shown {
-    return this.across(principal, db => {
+  /** One owned record and its `may` on the readers mount `reader` (the gate as `listAcross`); a missing or malformed id is 404. */
+  getAcross(reader: string, id: string, principal: string | undefined): Shown {
+    return this.across(reader, principal, (db, shown) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) throw new StoreError(404, 'not_found', 'No such record');
       const record = this.anyOwned(db, id);
-      return { record, may: this.mayIn(db, [record], principal, this.spec.readers?.properties)[record.id as string]! };
+      return { record, may: this.mayIn(db, [record], principal, shown)[record.id as string]! };
     });
   }
-  private across<T>(principal: string | undefined, work: (db: StoreDatabase) => T): T {
-    const readers = this.spec.readers;
+  private across<T>(reader: string, principal: string | undefined, work: (db: StoreDatabase, shown: readonly string[] | undefined) => T): T {
+    const readers = Object.hasOwn(this.spec.readers, reader) ? this.spec.readers[reader] : undefined;
     if (!readers) throw new StoreError(404, 'not_found', 'No such collection');
     const caller = this.principal(principal);
-    return this.read(db => { this.admit(db, readers.members, caller); return work(db); });
+    return this.read(db => { this.admit(db, readers.members, caller); return work(db, readers.properties); });
   }
 
   /**

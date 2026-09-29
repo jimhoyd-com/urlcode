@@ -32,7 +32,7 @@ Two distinctions hold throughout:
 | `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](../packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](../packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](../packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 59 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 60 | [@jimhoyd/urlcode-store](../packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ## Capability to reference
@@ -47,7 +47,7 @@ full definition and a checked example live.
 | Email each submission | core: a trusted `function` route that calls the mail provider's API, SDK or nodemailer directly, with its credentials in granted `secrets` | [sending mail from your own code](../recipes/contact-form/README.md#sending-mail-from-your-own-code-instead) |
 | A JSON CRUD API with no handler code | store: `collections.<name>` and a `<mount>/*` route with `extension: store` | [store field reference](../packages/store/README.md#field-reference), [recipe `store-crud`](../recipes/store-crud/README.md) |
 | Records private to each signed-in user | store: `ownership: owner` on the collection, and a principal-providing policy (`auth: true`) on its route | [per-record ownership](STORE.md#per-record-ownership) |
-| A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {mount, members}`; the operator adds members with `addMember` | [membership gates](STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](../proofs/private-requests/README.md) |
+| A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {<name>: {mount, members}}`; the operator adds members with `addMember` | [membership gates](STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](../proofs/private-requests/README.md) |
 | Sign-in and protected routes | auth: mount Better Auth at `/api/auth/*` with `extension: auth`; `auth: true` on a protected route; the function reads `context.capabilities.auth.identity.userId` | [auth extension guide](../packages/auth/README.md), [private-requests proof](../proofs/private-requests/README.md) |
 | Submission rate limits | core: `policies.throttle` on the route; sign-in is throttled by Better Auth's own limiter, keyed by the admitted client address | [policies](POLICIES.md), [auth security model](../packages/auth/SECURITY.md) |
 | An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](../packages/audit/README.md#field-reference) |

@@ -135,7 +135,7 @@ const wallets = {
   filterable: ['name', 'balance', 'status'], sortable: ['name', 'balance'],
   transfers: { pay: { amount: 'balance' }, issue: { amount: 'balance', min: -1_000_000, members: 'treasurers' } },
   transitions: { freeze: { from: { status: 'open' }, set: { status: 'frozen' } }, rename: { from: { name: 'unnamed' }, set: { name: 'renamed' } } },
-  readers: { mount: '/api/directory', properties: ['name'] },
+  readers: { directory: { mount: '/api/directory', properties: ['name'] } },
 };
 const directory = { collections: { treasurers: { ...members }, wallets } };
 const walletMounts = ['/api/wallets', '/api/directory'];
@@ -176,20 +176,20 @@ test('readers.properties: every signed-in principal finds a wallet id by name, a
 });
 
 test('a projection with members keeps the gate, shows the owner only with showOwner, and activation refuses an ungated whole-record mount', async t => {
-  const gatedDirectory = { collections: { treasurers: { ...members }, wallets: { ...wallets, readers: { mount: '/api/directory', members: 'treasurers', properties: ['name', 'balance'], showOwner: true } } } };
+  const gatedDirectory = { collections: { treasurers: { ...members }, wallets: { ...wallets, readers: { directory: { mount: '/api/directory', members: 'treasurers', properties: ['name', 'balance'], showOwner: true } } } } };
   const store = await direct(t, gatedDirectory, { mounts: walletMounts });
   const id = (await store.call('POST', '/api/wallets', { who: 'ann', body: { name: 'ann' } })).body!.id as string;
   assert.equal((await store.call('GET', '/api/directory', { who: 'bob' })).status, 403);
   await addMember(store.database, { collections: gatedDirectory.collections as unknown as Record<string, CollectionSpec>, collection: 'treasurers', principal: 'tess' });
   assert.deepEqual((await store.call('GET', `/api/directory/${id}`, { who: 'tess' })).body, { id, _owner: 'ann', name: 'ann', balance: 0 });
   assert.equal((await store.call('GET', '/api/directory?sort=-balance', { who: 'tess' })).status, 200, 'a shown property sorts');
-  assert.throws(() => normalize('w', { ...wallets, readers: { mount: '/api/directory' } } as unknown as CollectionSpec), /readers needs members, or properties/);
-  assert.throws(() => normalize('w', { ...wallets, readers: { mount: '/api/directory', properties: ['nope'] } } as unknown as CollectionSpec), /readers.properties names nope, which is not a declared property/);
+  assert.throws(() => normalize('w', { ...wallets, readers: { directory: { mount: '/api/directory' } } } as unknown as CollectionSpec), /readers directory needs members, or properties/);
+  assert.throws(() => normalize('w', { ...wallets, readers: { directory: { mount: '/api/directory', properties: ['nope'] } } } as unknown as CollectionSpec), /readers directory: properties names nope, which is not a declared property/);
 });
 
 test('OpenAPI describes the projection: id and the listed properties, the sorts and filters it takes, and no 403 without members', () => {
   const described = describeStore({ mount: '/api/directory', config: directory, schemas: {} } as unknown as Parameters<typeof describeStore>[0])!;
-  const reader = described.schemas!.StoreWalletsReaderRecord as { properties: Record<string, unknown>; required: string[] };
+  const reader = described.schemas!.StoreWalletsDirectoryReaderRecord as { properties: Record<string, unknown>; required: string[] };
   assert.deepEqual(Object.keys(reader.properties), ['id', 'name']);
   assert.deepEqual(reader.required, ['id', 'name']);
   const get = (described.paths['/api/directory'] as { get: { parameters: { name: string; schema: { enum?: string[] } }[]; responses: Record<string, unknown> } }).get;

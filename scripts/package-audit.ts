@@ -404,7 +404,12 @@ export const budgets: Record<string, Budget> = {
     // README/SECURITY/CHANGELOG contract: 141531 packed / 548781 unpacked bytes, 34 entries (Node 26); +800 bytes for
     // Node 24 and about 3 KiB headroom.
     // #930 seeds on top of #929: 142861 packed / 553427 unpacked bytes, 34 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 144 * 1024,
+    // #944 named readers mounts and #945 intervals.origin on top of #930 (dist/collection.js, dist/store.js,
+    // dist/openapi.js, the config schema again in urlcode.json and the README field reference) with the
+    // README/SECURITY/CHANGELOG contract: 146370 packed / 566386 unpacked bytes, 34 entries (Node 26); after #949 moved the host lease into core,
+    // 144031 packed / 560117 unpacked bytes; +800 bytes for
+    // Node 24 and about 3 KiB headroom.
+    packed: 145 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -435,8 +440,8 @@ export const budgets: Record<string, Budget> = {
     // #902 intervals and host transaction retries, and declared transfers: see the packed note above.
     // #927 several serving processes on one host and #928 transfer balances kept on delete, together: 133206 packed /
     // 514563 unpacked bytes, 34 entries (Node 26), +3 KiB headroom.
-    // #929: see the packed note above.
-    unpacked: 544 * 1024,
+    // #929, #930 and #944/#945: see the packed note above.
+    unpacked: 550 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     // #927 adds dist/topology.js and dist/topology.d.ts: 34 entries.

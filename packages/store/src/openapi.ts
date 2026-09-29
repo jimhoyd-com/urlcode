@@ -5,7 +5,7 @@
 // answer (its always-set headers, Cache-Control: no-store) and what a sign-in gate on the route answers first.
 import type { ExtensionDescribeRequest, ExtensionOpenApi } from '@jimhoyd/urlcode/extensions';
 import { QUERY_LIMITS } from './query.ts';
-import { normalize, transferBodySchema } from './collection.ts';
+import { gridOrigin, normalize, transferBodySchema } from './collection.ts';
 import type { CollectionSpec, NormalizedSpec, PropertySchema } from './collection.ts';
 
 type Json = Record<string, unknown>;
@@ -35,9 +35,9 @@ const replayed = header('true when an Idempotency-Key replayed the first answer 
 const valueSchema = (property: PropertySchema): Json => structuredClone(property) as Json;
 
 /** Every schema of one collection, named `Store<Collection><Kind>`. */
-function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json; names: { record: string; reader: string; create: string; patch: string; list: string; readerList: string; transfer: string; transferred: string } } {
+function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json; names: { record: string; create: string; patch: string; list: string; transfer: string; transferred: string; readers: Record<string, { record: string; list: string }> } } {
   const base = `Store${pascal(name)}`, records = spec.records, properties = records.properties;
-  const names = { record: `${base}Record`, reader: `${base}ReaderRecord`, create: `${base}Create`, patch: `${base}Patch`, list: `${base}List`, readerList: `${base}ReaderList`, transfer: `${base}Transfer`, transferred: `${base}Transferred` };
+  const names = { record: `${base}Record`, create: `${base}Create`, patch: `${base}Patch`, list: `${base}List`, transfer: `${base}Transfer`, transferred: `${base}Transferred`, readers: {} as Record<string, { record: string; list: string }> };
   const stored = {
     id: { type: 'string', format: 'uuid', readOnly: true, description: 'Store-owned: the record id.' },
     createdAt: { type: 'string', format: 'date-time', readOnly: true, description: 'Store-owned: when the record was created.' },
@@ -96,19 +96,20 @@ function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json;
     };
   }
   const owner = { _owner: { type: 'string', readOnly: true, description: 'The owner\'s opaque principal id.' } };
-  const shown = spec.readers?.properties;
-  if (shown) {
+  for (const [reader, readers] of Object.entries(spec.readers)) {
+    const shown = readers.properties;
+    // A mount that shows the whole record without its owner answers the owner mount's own shapes.
+    if (shown === undefined && !readers.showOwner) { names.readers[reader] = { record: names.record, list: names.list }; continue; }
+    const own = { record: `${base}${pascal(reader)}ReaderRecord`, list: `${base}${pascal(reader)}ReaderList` };
+    names.readers[reader] = own;
     // A projection (#929): the id, the listed properties and (with showOwner) the owner, nothing else.
-    schemas[names.reader] = {
-      description: `What the readers mount shows of a ${name} record: its id and ${shown.join(', ')} only.`,
+    schemas[own.record] = shown === undefined ? record(owner, ['_owner']) : {
+      description: `What the ${reader} readers mount shows of a ${name} record: its id and ${shown.join(', ')} only.`,
       type: 'object', additionalProperties: false,
-      required: ['id', ...spec.readers!.showOwner ? ['_owner'] : [], ...records.required.filter(field => shown.includes(field))],
-      properties: { id: stored.id, ...spec.readers!.showOwner ? owner : {}, ...Object.fromEntries(shown.map(field => [field, annotated(field, true)])) },
+      required: ['id', ...readers.showOwner ? ['_owner'] : [], ...records.required.filter(field => shown.includes(field))],
+      properties: { id: stored.id, ...readers.showOwner ? owner : {}, ...Object.fromEntries(shown.map(field => [field, annotated(field, true)])) },
     };
-    schemas[names.readerList] = list(names.reader);
-  } else if (spec.readers?.showOwner) {
-    schemas[names.reader] = record(owner, ['_owner']);
-    schemas[names.readerList] = list(names.reader);
+    schemas[own.list] = list(own.record);
   }
   return { schemas, names };
 }
@@ -136,7 +137,7 @@ const notFound = failure('No such record in the caller\'s scope (another owner\'
 function intervalRules(intervals: NonNullable<NormalizedSpec['intervals']>): string {
   return [
     ...(intervals.length ? [`, an end that is not exactly ${intervals.length.declared} after its start`] : []),
-    ...(intervals.step ? [`, a bound that is not a whole multiple of ${intervals.step.declared}${intervals.kind === 'date-time' ? ' from 1970-01-01T00:00:00Z' : ''}`] : []),
+    ...(intervals.step ? [`, a bound that is not a whole multiple of ${intervals.step.declared}${gridOrigin(intervals)}`] : []),
   ].join('');
 }
 
@@ -246,9 +247,8 @@ export function describeStore(request: ExtensionDescribeRequest): ExtensionOpenA
     const built = collectionSchemas(name, spec);
     const owned = (): ExtensionOpenApi => { Object.assign(schemas, built.schemas); return { paths: {}, schemas }; };
     if (spec.mount === mount) { const out = owned(); out.paths = collectionPaths(mount, name, spec, built.names); return out; }
-    if (spec.readers?.mount === mount) {
-      const readers = spec.readers, shown = readers.properties, special = shown !== undefined || readers.showOwner;
-      const out = owned(), item = special ? built.names.reader : built.names.record, list = special ? built.names.readerList : built.names.list;
+    for (const [reader, readers] of Object.entries(spec.readers)) if (readers.mount === mount) {
+      const shown = readers.properties, out = owned(), { record: item, list } = built.names.readers[reader]!;
       const gate = readers.members === undefined ? {} : { '403': failure('membership_required: the caller is not a member of the readers\' membership collection.') };
       // A projection sorts and filters by what it shows only, and its ETag is of the projection.
       const query = shown === undefined ? spec : { ...spec, sortable: spec.sortable.filter(field => shown.includes(field)), filterable: spec.filterable.filter(field => shown.includes(field)) };
@@ -256,7 +256,7 @@ export function describeStore(request: ExtensionDescribeRequest): ExtensionOpenA
       const listed = { parameters: listParameters(query), responses: { '200': { description: 'One page of every owner\'s records.', content: json(ref(list)) }, '400': failure('invalid_query: an undeclared, repeated or invalid list parameter.'), ...gate, '503': unavailable } };
       const read = { responses: { '200': { description: 'The record.', headers: { ETag: tag, 'Allow-Transitions': allowTransitions }, content: json(ref(item)) }, ...gate, '404': notFound, '503': unavailable } };
       out.paths = {
-        [mount]: { summary: `Every owner's ${name} records, read-only`, get: { summary: `List every owner's ${name}`, ...listed }, head: { summary: `List every owner's ${name} (headers only)`, ...listed } },
+        [mount]: { summary: `Every owner's ${name} records, read-only (readers ${reader})`, get: { summary: `List every owner's ${name}`, ...listed }, head: { summary: `List every owner's ${name} (headers only)`, ...listed } },
         [`${mount}/{id}`]: { parameters: [idParameter], get: { summary: `Read any owner's ${name} record`, ...read }, head: { summary: `Read any owner's ${name} record (headers only)`, ...read } },
       };
       return out;
