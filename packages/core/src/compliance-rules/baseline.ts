@@ -68,7 +68,7 @@ const throttleFunctions: RouteRule = {
   },
 };
 
-export const robots: ProjectRule = {
+const robots: ProjectRule = {
   id: 'rfc9309/robots', title: 'Crawlers are addressed by an agents policy or a robots.txt route', standard: rfc9309, severity: 'low', appliesTo: 'project',
   check({ plan, policies, routes }) {
     const agents = plan.inventory.some(route => active(route) && policies[route.path]?.agents);

@@ -36,7 +36,7 @@ export function originForm(target: string): string {
  * The client a request is attributed to: the peer the host vouches for, unless it is one of the operator's trusted
  * proxies and sent exactly one X-Forwarded-For header, which is then walked from the right (client-address.ts).
  */
-export function requestClient(peer: string | undefined, headers: Headers, headerCounts: HeaderCounts, trusted: Cidr[]): string | undefined {
+function requestClient(peer: string | undefined, headers: Headers, headerCounts: HeaderCounts, trusted: Cidr[]): string | undefined {
   return resolveClient(peer, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') ?? undefined : undefined, trusted);
 }
 
@@ -49,13 +49,13 @@ export function normalizeBasePath(basePath: string | undefined): string {
 }
 
 /** What one host hands the shared pipeline for one request. */
-export interface HostRequest {
+interface HostRequest {
   target: string; method: string; headers: Headers; headerCounts: HeaderCounts; peer: string | undefined;
   /** Reads the whole request body, refusing (413) past `limit` bytes. */
   readBody(limit: number): Promise<Uint8Array>;
   requestId: string; signal: AbortSignal; trace: RequestTrace; origin: string; basePath?: string | undefined;
 }
-export interface HostLimits { maxBodyBytes: number; trustedProxies: Cidr[] }
+interface HostLimits { maxBodyBytes: number; trustedProxies: Cidr[] }
 
 /** Reads the body under the route's own limit, resolves the client and runs the request through `runtime`. */
 export async function handleHostRequest(runtime: Runtime, request: HostRequest, { maxBodyBytes, trustedProxies }: HostLimits): Promise<HandlerResult> {

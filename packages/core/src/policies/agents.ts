@@ -20,7 +20,7 @@ export interface AgentsConfig {
   resolved?: Record<string, AgentEntry[]>;
 }
 type Log = (event: Record<string, unknown>) => void;
-export interface PolicyContext { route: { pattern: string }; shared?: { log?: Log }; target?: string; root?: string }
+interface PolicyContext { route: { pattern: string }; shared?: { log?: Log }; target?: string; root?: string }
 interface CompiledList { label: string; count: number; regexp: RegExp }
 interface ListUse { name: string; patterns: number; source: string; revision: string }
 interface ResolvedList { label: string; entries: AgentEntry[]; source: string; revision: string }
@@ -39,7 +39,7 @@ export const bundledLists = Object.freeze(Object.keys(bundled));
 const MAX_PATTERN_BYTES = 256;
 const MAX_REPEAT = 64;
 /** Only this many leading characters of `User-Agent` are matched; real browser agents fit. */
-export const MAX_AGENT_LENGTH = 512;
+const MAX_AGENT_LENGTH = 512;
 const MAX_UNBOUNDED = 1;
 /** Backtracking-path budget per pattern on a `MAX_AGENT_LENGTH` header (see `backtrackingPaths`). */
 const MAX_MATCH_PATHS = 2048;

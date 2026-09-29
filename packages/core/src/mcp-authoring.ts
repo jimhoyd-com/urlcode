@@ -127,7 +127,7 @@ function bounded(chunks:Buffer[]):{text:string;truncated:boolean} {
  const all=Buffer.concat(chunks);return {text:all.subarray(0,outputLimit).toString('utf8'),truncated:all.length>outputLimit};
 }
 /** What the operator put on the `urlcode mcp` command line; the runners repeat exactly this and nothing a tool argument names. */
-export interface OperatorFlags {hostFile?:string|undefined;origin?:string|undefined;policy?:string|undefined}
+interface OperatorFlags {hostFile?:string|undefined;origin?:string|undefined;policy?:string|undefined}
 async function runCli(root:string,command:'validate'|'test'|'audit',operator:OperatorFlags) {
  const cli=fileURLToPath(new URL('./cli.ts',import.meta.url));
  const args=[cli,command,'--project',root,...(command==='validate'?['--local']:[]),...(operator.origin?['--origin',operator.origin]:[]),...(operator.hostFile===undefined?[]:['--host-file',operator.hostFile]),...(operator.policy===undefined?[]:['--policy',operator.policy])];

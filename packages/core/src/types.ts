@@ -63,7 +63,7 @@ export interface SecurityTxtConfig {
   preferredLanguages?: string[]; canonical?: string[]; encryption?: string[];
 }
 /** `site.errors`: runtime-generated errors on these paths use the JSON envelope (docs/HTTP.md#error-format). Generates no route. */
-export interface SiteErrorsConfig { format: 'json'; paths: string[] }
+interface SiteErrorsConfig { format: 'json'; paths: string[] }
 export interface SiteConfig { robots?: RobotsConfig; sitemap?: true | SitemapConfig; favicon?: string; securityTxt?: SecurityTxtConfig; llms?: string; notFound?: string; errors?: SiteErrorsConfig }
 /** One route as declared in YAML (plus `generated`, which site.ts stamps on the routes it adds). */
 interface ConditionalReply { redirect?: RedirectConfig; respond?: RespondSpec }
