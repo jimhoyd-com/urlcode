@@ -6,7 +6,7 @@ test('signals are bounded, asynchronous, fixed payload and never retried',async(
  assert.equal(broker.emit({url:'https://example.com/hook'},{route:'/items/{id}',status:200,method:'GET'}),true);assert.equal(captured,undefined);
  assert.equal(broker.emit({url:'https://example.com/hook'},{route:'/second',status:200,method:'GET'}),false);
  await Promise.resolve();assert.deepEqual(JSON.parse(Buffer.from(captured!.body!).toString()),{version:1,route:'/items/{id}',status:200,method:'GET'});
- complete!({status:503,headers:{},body:Buffer.alloc(0)});await broker.close();assert.deepEqual(broker.stats,{accepted:1,delivered:0,failed:1,dropped:1});
+ complete!({status:503,headers:{},body:Buffer.alloc(0)});await broker.close();assert.deepEqual(broker.stats,{accepted:1,delivered:0,failed:1,dropped:1,captured:0});
  assert.equal(broker.emit({url:'https://example.com/hook'},{route:'/third',status:200,method:'GET'}),false);
 });
 test('signals redact errors and count failures',async()=>{
@@ -17,5 +17,5 @@ test('signal counter observers receive redacted snapshots and cannot break deliv
  const observations:unknown[]=[];
  const broker=new SignalBroker({request:async()=>({status:204,headers:{},body:Buffer.alloc(0)})},1,stats=>{observations.push(stats);throw new Error('observer failure');});
  assert.equal(broker.emit({url:'https://example.com/secret'},{route:'/x',status:200,method:'GET'}),true);await broker.close();
- assert.deepEqual(observations,[{accepted:1,delivered:0,failed:0,dropped:0},{accepted:1,delivered:1,failed:0,dropped:0}]);
+ assert.deepEqual(observations,[{accepted:1,delivered:0,failed:0,dropped:0,captured:0},{accepted:1,delivered:1,failed:0,dropped:0,captured:0}]);
 });

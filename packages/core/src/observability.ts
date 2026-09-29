@@ -105,7 +105,7 @@ export function createMetrics(): Metrics {
   const watch = { failed: 0 };
   const functionWorkers = { started: 0, restarts: 0 };
   const policies = { throttle: zeroed(outcomes.throttle), agents: zeroed(outcomes.agents), cache: zeroed(outcomes.cache) };
-  const signals = zeroed(['accepted','delivered','failed','dropped']);
+  const signals = zeroed(['accepted','delivered','failed','dropped','captured']);
   let logsDropped = 0, observerErrors = 0;
   const count = (table: Counters, key: unknown): void => { if (typeof key === 'string' && Object.hasOwn(table, key)) table[key]!++; };
   function countRequest(target: RequestCounters, status: unknown, route: unknown): void {

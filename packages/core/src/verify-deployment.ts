@@ -189,6 +189,9 @@ export async function verifyDeployment(project: string, { target, origin, expect
       check(result.pass, { check: 'fixtures', severity: 'high', ...(route === undefined ? {} : { route }), message: result.error ? `${label}: ${result.error} error` : `${label}: response did not match the case`, expected: String(test.status), observed: String(result.status) });
     };
     for (const [i, test] of plan.cases.entries()) { requests++; record(i + 1, 'generated', test, test, await hit(stub, test, agent, destination)); }
+    // A deployment's signals go to their real destinations, which this check cannot observe.
+    const withSignals = fixtures.flatMap((fixture, i) => (isStepsFixture(fixture) ? fixture.steps : [fixture]).some(step => 'expectSignals' in step) ? [i + 1] : []);
+    if (withSignals.length) notes.push(`expectSignals in fixture${withSignals.length === 1 ? '' : 's'} ${withSignals.join(', ')} not checked: a deployment's signals are not observable here (urlcode test checks them locally)`);
     await runFixtures(fixtures, {
       app: stub, agent, target: destination,
       skipped: (fixture, reason) => { notes.push(`fixture ${fixture} ${reason}; none of its requests were sent and it was not verified`); log({ event: 'skipped', check: 'fixtures', fixture, reason: 'restart' }); },

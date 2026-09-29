@@ -29,7 +29,18 @@
     "expectBody": "{\"accepted\":true}",
     "expectHeaders": {
       "cache-control": "no-store"
-    }
+    },
+    "expectSignals": [
+      {
+        "destination": "https://hooks.example.com",
+        "count": 1,
+        "match": {
+          "/route": "/contact",
+          "/method": "POST",
+          "/status": 202
+        }
+      }
+    ]
   },
   {
     "path": "/contact",
@@ -38,7 +49,8 @@
       "content-type": "application/json"
     },
     "body": "{\"name\":\"Ada\",\"email\":\"not-an-address\",\"message\":\"Please send the brochure.\"}",
-    "status": 422
+    "status": 422,
+    "expectSignals": []
   },
   {
     "path": "/contact",
@@ -74,7 +86,8 @@
       "content-type": "application/x-www-form-urlencoded"
     },
     "body": "name=Ada",
-    "status": 415
+    "status": 415,
+    "expectSignals": []
   },
   {
     "path": "/contact",

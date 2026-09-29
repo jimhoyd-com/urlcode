@@ -106,7 +106,8 @@ Draft `tests/requests.json` from `urlcode fixtures suggest --json` (MCP `suggest
 includes, covers only routes the YAML alone determines and lists function, middleware, proxy, extension, pattern and
 binding routes as `gaps` to test by hand. An `auth: true` route is covered by a `steps` fixture that signs in through
 the provider's own endpoint, with `"origin": "{{origin}}"` on unsafe requests; a passing case counts only with
-`expectBody` or `expectHeaders`, a covered GET implies HEAD, and `audit`'s `coverageNotes` names what is missing
+`expectBody` or `expectHeaders`, a covered GET implies HEAD, `expectSignals` asserts the signals a request emits
+(`urlcode test` and `audit` record them and deliver none; `urlcode dev --signal-sink stdout` prints them), and `audit`'s `coverageNotes` names what is missing
 ([authenticated routes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#authenticated-routes-auth-true)). `urlcode diff BEFORE --json` (a YAML file, or a directory to compare includes
 too; MCP `summarize_yaml_change`) names the routes, code seams and operator grants a change adds;
 `urlcode report BEFORE > report.html` renders it, the review findings and each route's request path as a read-only page for a person;

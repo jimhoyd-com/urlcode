@@ -84,15 +84,19 @@ const hostedAi = {
 // Documentation search coverage (#759): what search_docs / urlcode docs search reads, from docs-search.ts.
 const docsSearch = { core: [...docsSearchScope.core], installedAddonGuides: docsSearchScope.installed.length > 0, maxResults: docsSearchScope.maxResults };
 
-// Signal suppression (#793): the runtime skips a route's signals only for HEAD and for its own health/readiness
-// probes (`trace.probe`, set by server.ts). `urlcode test` and `urlcode audit` send ordinary requests, so their
-// fixtures fire a granted signal like any visitor's request.
+// Signal delivery in tests (#793, #917): the runtime skips a route's signals only for HEAD and for its own
+// health/readiness probes (`trace.probe`, set by server.ts), and `urlcode test` and `urlcode audit` give it a
+// SignalRecorder, so their fixtures' signals are captured in process and never delivered.
 const runtimeSource = await read('packages/core/src/runtime.ts');
 const signalsSkipOnlyHeadAndProbes = /if\(method!=='HEAD'&&!trace\.probe\)for\(const signal of route\.compiledSignals/.test(runtimeSource);
 if (!signalsSkipOnlyHeadAndProbes) sourceProblems.push('packages/core/src/runtime.ts: signal suppression (HEAD and trace.probe only) not found; update this check with the new rule');
+const signalsRecordedInTests = /signalRecorder: signals/.test(await read('packages/core/src/project-tests.ts'))
+  && /command==='audit'\?new SignalRecorder\(\)/.test(await read('packages/core/src/cli.ts'));
+if (!signalsRecordedInTests) sourceProblems.push('packages/core/src/project-tests.ts / cli.ts: test and audit signal recorder not found; update this check with the new rule');
 
 const inventory = {
   signalsSkipOnlyHeadAndProbes,
+  signalsRecordedInTests,
   docsSearch,
   extensionBundles: builtBundles,
   scaffoldWithUnordered: withIsUnordered,
@@ -222,12 +226,13 @@ claims.push({
 
 // A sentence (or its paragraph) is about signals when it names them or the webhook/egress they perform.
 const SIGNALS = /\bsignals?\b|\bwebhooks?\b|\begress\b|\bnotification\s+hooks?\b/i;
-const TEST_OR_AUDIT_SKIPS = new RegExp(String.raw`\b(?:urlcode\s+)?(?:tests?|audits?|fixtures?)\b${CLAUSE}{0,60}\b(?:(?:do|does|will|would|should)\s*n[o']t|never|cannot|can't)\s+(?:\w+\s+)?(?:fire|emit|call|trigger|send|reach|perform|deliver)`, 'i');
-if (signalsSkipOnlyHeadAndProbes) {
+const TEST_OR_AUDIT_DELIVERS = new RegExp(String.raw`\b(?:urlcode\s+)?(?:tests?|audits?|fixtures?)\b${CLAUSE}{0,80}\b(?:calls?|delivers?|reach(?:es)?|sends?|fires?|posts?)\b${CLAUSE}{0,40}\b(?:destinations?|webhooks?|hooks?|receivers?|endpoints?)\b`, 'i');
+const NEGATED = /\b(?:never|not|cannot|instead\s+of|without|nothing|no)\b|n't\b/i;
+if (signalsSkipOnlyHeadAndProbes && signalsRecordedInTests) {
   claims.push({
-    fact: 'signalsSkipOnlyHeadAndProbes',
-    test: (sentence, context) => (SIGNALS.test(sentence) || SIGNALS.test(context)) && TEST_OR_AUDIT_SKIPS.test(sentence)
-      ? 'says test or audit requests do not fire signals, but runtime.ts skips a signal only for HEAD and the runtime\'s own health probes; a fixture that reaches the route calls the granted destination' : undefined,
+    fact: 'signalsRecordedInTests',
+    test: (sentence, context) => (SIGNALS.test(sentence) || SIGNALS.test(context)) && TEST_OR_AUDIT_DELIVERS.test(sentence) && !NEGATED.test(sentence)
+      ? 'says test or audit fixtures deliver signals, but `urlcode test` and `urlcode audit` record them in process (outcome captured) and deliver none; `dev --signal-sink` does the same while developing' : undefined,
   });
 }
 

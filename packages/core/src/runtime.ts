@@ -4,6 +4,7 @@ import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
 import { executeProxy } from './proxy.ts';
 import { SignalBroker } from './signals.ts';
+import type { SignalRecorder } from './signal-recorder.ts';
 import { matchesRoute } from './conditions.ts';
 import { analyzeProjectCapabilities, assertTargetCompatibility } from './capabilities.ts';
 import { projectPlan, hasRedirect } from './readiness.ts';
@@ -41,6 +42,9 @@ export interface RuntimeOptions {
   extensions?: RuntimeExtension[] | undefined;
   /** Trusted host transport injection; never supplied by project YAML or guest code. */
   egressDependencies?: EgressDependencies;
+  /** Test and dev tooling only (`urlcode test`/`audit`, `urlcode dev --signal-sink`): record each signal as `captured`
+   * instead of delivering it, so no signal reaches the network. Never supplied by project YAML; `serve` refuses it. */
+  signalRecorder?: SignalRecorder | undefined;
   observers?: Observer[] | undefined; log?: LogFn | undefined; origin?: string | undefined; local?: boolean | undefined;
   /** Operator-set additional origins the site is also served from (at most 16, `https:` or loopback `http:`).
    * Extensions' same-origin checks admit them beside `origin`; generated absolute URLs keep using `origin`.
@@ -190,8 +194,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   catch(error){await pool.close();throw error;}
   const proxyClient=new EgressClient({grantOrigins:egressGrants.proxy},options.egressDependencies);
   const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
-  let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
-  const signalBroker=new SignalBroker(signalClient,8,stats=>{for(const outcome of ['accepted','delivered','failed','dropped'] as const){const count=stats[outcome]-lastSignals[outcome];if(count)sink({event:'signal',outcome,count});}lastSignals=stats;});
+  let lastSignals={accepted:0,delivered:0,failed:0,dropped:0,captured:0};
+  const signalBroker=new SignalBroker(signalClient,8,stats=>{for(const outcome of ['accepted','delivered','failed','dropped','captured'] as const){const count=stats[outcome]-lastSignals[outcome];if(count)sink({event:'signal',outcome,count});}lastSignals=stats;},options.signalRecorder);
   let extensionRegistry:ExtensionRegistry;
   try{
     const serving=options.replacing===undefined?undefined:extensionRegistries.get(options.replacing);
