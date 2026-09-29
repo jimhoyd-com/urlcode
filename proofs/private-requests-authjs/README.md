@@ -95,7 +95,7 @@ npm install /tmp/urlcode-pack/jimhoyd-urlcode-0*.tgz /tmp/urlcode-pack/jimhoyd-u
 npm run build     # copies client/main.js to app/public/assets/app.js
 npm run setup     # data/: authjs.secret, users.json (three synthetic accounts), store.sqlite with rita as a reviewer
 npm run -s proposal > operator/policy.json   # review, then approve the revision yourself
-npm run validate && npm test && npm run audit
+npm run validate && npm test && npm run audit   # audit is ready: the auth: true routes are covered by signed-in steps
 npm start         # http://localhost:4180
 ```
 

@@ -525,7 +525,11 @@ certain case for, with one `code`: `conditional` (`match`/`conditional`),
 can answer first), `parameter-schema`, `shadowed`, `include-shadowing` (a
 parameterized or wildcard route in a text-mode document with includes), `request-body`,
 `site`, `unknown-path` and `size`. A route in `gaps` or `review` never appears
-in `cases`, so a suggestion never reads as coverage it is not.
+in `cases`, so a suggestion never reads as coverage it is not. An
+`extension-policy` gap for `auth:` is written as a signed-in `steps` fixture
+([authenticated routes](READINESS.md#authenticated-routes-auth-true)); `audit`
+then names anything still missing in `coverageNotes`
+([coverage rules](READINESS.md#coverage-rules)).
 
 ```json
 {"format":1,"scope":"supplied-yaml-only","routeCount":3,

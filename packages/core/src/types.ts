@@ -265,6 +265,8 @@ export interface PlanInventoryEntry {
   sandboxReason?: string;
   /** The route's declared `coveredElsewhere` audit waivers (method to reason), when it has any. */
   coveredElsewhere?: Record<string, string>;
+  /** The principal-providing extensions (`auth: true`) whose `authorize()` gates this route, when any does. */
+  gatedBy?: string[];
 }
 export interface TestPlan {
   inventory: PlanInventoryEntry[]; cases: unknown[]; resolve?(path: string): string | undefined;

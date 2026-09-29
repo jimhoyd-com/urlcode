@@ -292,10 +292,12 @@ export const budgets: Record<string, Budget> = {
     // unpacked bytes, 507 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
     // With #845 named project schemas on top of #906's main, measured on Node 26: 975469 packed / 3839342
     // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
-    // With #912/#915 (mount ownership, 405 before extension gates) on top of #907's main, measured on Node 26:
-    // 978234 packed / 3847730 unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 960 * 1024,
-    unpacked: 3761 * 1024,
+    // With #914 authenticated fixtures on top of #907's main, measured on Node 26: 978735 packed / 3850391
+    // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
+    // With #912/#915 on top of #918's main: measured on Node 26 at 981421 packed / 3858779 unpacked bytes, 511 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 963 * 1024,
+    unpacked: 3772 * 1024,
     entries: 515,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
