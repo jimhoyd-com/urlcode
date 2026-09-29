@@ -159,6 +159,27 @@ export function writeResponse(res: ResponseWriter, result: HandlerResult, option
 }
 
 /**
+ * A prepared answer (prepareResponse, or errorResponse) as a fetch Response: every header line kept, each Set-Cookie
+ * its own line, and no body where the method or status forbids one. Used by every fetch-shaped host.
+ */
+export function fetchResponse(prepared: { status: number; headers: readonly HeaderPair[]; cookies?: readonly string[]; body: ResponseBody }, method: string): Response {
+  const headers = fetchHeaders(prepared);
+  const empty = method === 'HEAD' || [204,205,304].includes(prepared.status);
+  // Bytes, never a string: `new Response(string)` would add a text content type of its own. They sit on a plain
+  // ArrayBuffer (an encoder or the platform made them); lib.dom's BodyInit only excludes shared memory.
+  const body = typeof prepared.body === 'string' ? new TextEncoder().encode(prepared.body) : prepared.body ?? new Uint8Array(0);
+  return new Response(empty ? null : body as Uint8Array<ArrayBuffer>, { status: prepared.status, headers });
+}
+
+/** Prepared header lines as fetch Headers; each Set-Cookie stays its own line. */
+export function fetchHeaders(prepared: { headers: readonly HeaderPair[]; cookies?: readonly string[] | undefined }): Headers {
+  const headers = new Headers();
+  for (const [key, value] of prepared.headers) headers.append(key, value);
+  for (const cookie of prepared.cookies ?? []) headers.append('set-cookie', cookie);
+  return headers;
+}
+
+/**
  * How a runtime-generated error is written (route `errors.format`, or `site.errors` for a path scope): `text` is the
  * plain-text line every host has always sent; `json` is the fixed envelope below (docs/HTTP.md#error-format).
  */

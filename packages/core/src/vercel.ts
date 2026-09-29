@@ -8,6 +8,7 @@ import { writeResponse, writeError } from './http-response.ts';
 import { StreamHost } from './http-stream.ts';
 import type { StreamLimits } from './http-stream.ts';
 import { contentLengthEnforcementIsSafe } from './server.ts';
+import { readHeaderLines } from './host-request.ts';
 import { assert, HttpError } from './errors.ts';
 
 // See server.ts's contentLengthEnforcementIsSafe: this handler also writes
@@ -67,11 +68,7 @@ export function createVercelHandler({ project = process.cwd(), origin, aliasOrig
     res.once('close', () => { if (!res.writableFinished && !controller.signal.aborted) controller.abort('client-closed'); });
     try {
       runtime = await ready();
-      const headers = new Headers(), headerCounts: Record<string, number> = Object.create(null) as Record<string, number>;
-      for (let i = 0; i < req.rawHeaders.length; i += 2) {
-        const key = (req.rawHeaders[i] ?? '').toLowerCase();
-        headers.append(key,req.rawHeaders[i+1] ?? ''); headerCounts[key] = (headerCounts[key] || 0) + 1;
-      }
+      const { headers, headerCounts } = readHeaderLines(req.rawHeaders);
       const limit = Math.min(maxBodyBytes, runtime.requestLimit(target, method) ?? maxBodyBytes);
       const body = await readBody(req,limit);
       const forwarded = forwardedClient(headers, headerCounts);
