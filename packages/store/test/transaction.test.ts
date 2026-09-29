@@ -18,13 +18,13 @@ import { counts, execute, outbox, records } from './rows.ts';
 
 const accounts = {
   mount: '/api/accounts', audit: true, maxRecords: 100,
-  schema: { type: 'object', additionalProperties: false, required: ['name'], properties: { name: { type: 'string', maxLength: 20 }, available: { type: 'integer', default: 0, minimum: 0 }, held: { type: 'integer', default: 0, minimum: 0 } } },
+  schema: { type: 'object', additionalProperties: false, required: ['name'], properties: { name: { type: 'string', maxLength: 20 }, available: { type: 'integer', minimum: 0 }, held: { type: 'integer', minimum: 0 } } }, defaults: { available: 0, held: 0 },
 };
 const bookings = {
   mount: '/api/bookings', ownership: 'owner', maxRecords: 1000, pageSize: 200,
   schema: { type: 'object', additionalProperties: false, required: ['calendar', 'start', 'end'], properties: { calendar: { type: 'string', maxLength: 40 }, start: { type: 'integer', minimum: 0 }, end: { type: 'integer', minimum: 1 } } },
 };
-const tickets = { mount: '/api/tickets', audit: true, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, open: { type: 'boolean', default: true } } }, transitions: { close: { from: { open: true }, set: { open: false } } } };
+const tickets = { mount: '/api/tickets', audit: true, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, open: { type: 'boolean' } } }, defaults: { open: true }, transitions: { close: { from: { open: true }, set: { open: false } } } };
 const config = { collections: { accounts, bookings, tickets } };
 const mounts = ['/api/accounts', '/api/bookings', '/api/tickets'];
 

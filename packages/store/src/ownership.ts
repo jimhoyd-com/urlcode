@@ -41,6 +41,8 @@ export type OwnerlessReport = { collection: string; records: number; ownerless: 
 export interface OwnerlessOptions {
   /** The project's declared store collections (`extensions.store.config.collections`). */
   collections: Record<string, CollectionSpec>;
+  /** The project's named schemas (`loadDocument(project).schemas`), which a collection's `schema: <name>` resolves against. */
+  schemas?: Readonly<Record<string, unknown>>;
   /** A declared collection with `ownership: owner`. */
   collection: string;
   /** The audit actor recorded on an `audit: true` collection (a principal id; default `operator`). Operator-asserted, not authenticated. */
@@ -80,7 +82,7 @@ async function ownedCollection(options: OwnerlessOptions): Promise<{ collection:
   if (!options?.collections || typeof options.collections !== 'object') throw new Error('The project declares no store collections');
   const collection = named(options.collection), actor = operatorActor(options.actor);
   if (!Object.hasOwn(options.collections, collection)) throw new Error(`Collection ${collection} is not declared`);
-  const spec = normalize(collection, options.collections[collection]!);
+  const spec = normalize(collection, options.collections[collection]!, options.schemas);
   if (spec.ownership !== 'owner') throw new Error(`Collection ${collection} is not declared with ownership: owner`);
   return { collection, validate: spec.audit ? await auditValidator(collection) : undefined, actor };
 }
@@ -137,6 +139,8 @@ export interface ReassignOptions {
   to: string;
   /** The project's declared store collections (`extensions.store.config.collections`); only `ownership: owner` and `membership: true` ones are touched. */
   collections: Record<string, CollectionSpec>;
+  /** The project's named schemas (`loadDocument(project).schemas`), which a collection's `schema: <name>` resolves against. */
+  schemas?: Readonly<Record<string, unknown>>;
   /** Limit the move to one owned or membership collection. */
   collection?: string;
   /** Report what would move and change nothing. */
@@ -162,7 +166,7 @@ export async function reassignOwner(database: string, options: ReassignOptions):
   if (from === to) throw new Error('--from and --to name the same principal');
   const actor = operatorActor(options.actor);
   if (!options.collections || typeof options.collections !== 'object') throw new Error('The project declares no store collections');
-  const touched: { name: string; spec: NormalizedSpec }[] = Object.entries(options.collections).map(([name, spec]) => ({ name, spec: normalize(name, spec) })).filter(entry => entry.spec.ownership === 'owner' || entry.spec.membership);
+  const touched: { name: string; spec: NormalizedSpec }[] = Object.entries(options.collections).map(([name, spec]) => ({ name, spec: normalize(name, spec, options.schemas) })).filter(entry => entry.spec.ownership === 'owner' || entry.spec.membership);
   let selected = touched;
   if (options.collection !== undefined) {
     if (!Object.hasOwn(options.collections, options.collection)) throw new Error(`Collection ${options.collection} is not declared`);

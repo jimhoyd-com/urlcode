@@ -25,99 +25,122 @@
             "description": "URL path of the collection's JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). Required, except on a membership collection, which has none."
           },
           "schema": {
-            "description": "The record schema: a JSON Schema 2020-12 object schema in the same bounded profile as request.body.<METHOD>.schema, validated by the same validator, with a flat set of scalar properties. A body that breaks it answers 422 invalid_record with the same issue list a body-schema route answers. id, createdAt and updatedAt are reserved and store-owned.",
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "type",
-              "properties",
-              "additionalProperties"
-            ],
-            "properties": {
-              "$schema": {
-                "const": "https://json-schema.org/draft/2020-12/schema",
-                "description": "Optional; only the JSON Schema 2020-12 dialect."
-              },
-              "$comment": {
+            "anyOf": [
+              {
                 "type": "string",
-                "maxLength": 4096,
-                "description": "A note for readers; not validated."
+                "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+                "description": "The name of one of the project's named schemas (top-level schemas:), which a route body and an MCP tool can name too. It must satisfy the same restrictions as an inline record schema, or activation refuses it."
               },
-              "title": {
-                "type": "string",
-                "maxLength": 4096,
-                "description": "A short name for the record type."
-              },
-              "description": {
-                "type": "string",
-                "maxLength": 4096,
-                "description": "What a record of this collection is."
-              },
-              "type": {
-                "const": "object",
-                "description": "Always object: a record is a JSON object."
-              },
-              "additionalProperties": {
-                "const": false,
-                "description": "Always false, written out: a body naming a property the schema does not declare is refused."
-              },
-              "required": {
-                "type": "array",
-                "maxItems": 64,
-                "uniqueItems": true,
-                "items": {
-                  "type": "string",
-                  "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                },
-                "description": "Properties every record must carry: a create or PUT without one (and without a default) answers 422, and PATCH cannot clear one."
-              },
-              "properties": {
+              {
+                "description": "The record schema: a JSON Schema 2020-12 object schema in the same bounded profile as request.body.<METHOD>.schema, validated by the same validator, with a flat set of scalar properties. A body that breaks it answers 422 invalid_record with the same issue list a body-schema route answers. id, createdAt and updatedAt are reserved and store-owned.",
                 "type": "object",
-                "minProperties": 1,
-                "maxProperties": 64,
-                "propertyNames": {
-                  "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
-                },
-                "additionalProperties": {
-                  "type": "object",
-                  "required": [
-                    "type"
-                  ],
-                  "description": "One record property: a JSON Schema 2020-12 schema in the request body profile with one scalar type. Besides type, enum, const, minLength, maxLength, pattern, format, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, allOf, anyOf, oneOf, not, title, description, $comment, examples, deprecated, the store acts on the standard annotations default and readOnly.",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "properties",
+                  "additionalProperties"
+                ],
+                "properties": {
+                  "$schema": {
+                    "const": "https://json-schema.org/draft/2020-12/schema",
+                    "description": "Optional; only the JSON Schema 2020-12 dialect."
+                  },
+                  "$comment": {
+                    "type": "string",
+                    "maxLength": 4096,
+                    "description": "A note for readers; not validated."
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 4096,
+                    "description": "A short name for the record type."
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 4096,
+                    "description": "What a record of this collection is."
+                  },
+                  "type": {
+                    "const": "object",
+                    "description": "Always object: a record is a JSON object."
+                  },
+                  "additionalProperties": {
+                    "const": false,
+                    "description": "Always false, written out: a body naming a property the schema does not declare is refused."
+                  },
+                  "required": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                    },
+                    "description": "Properties every record must carry: a create or PUT without one (and without a default) answers 422, and PATCH cannot clear one."
+                  },
                   "properties": {
-                    "type": {
-                      "enum": [
-                        "string",
-                        "integer",
-                        "number",
-                        "boolean"
-                      ],
-                      "description": "The one scalar type the property holds; records hold scalars only."
+                    "type": "object",
+                    "minProperties": 1,
+                    "maxProperties": 64,
+                    "propertyNames": {
+                      "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
                     },
-                    "default": {
-                      "oneOf": [
-                        {
-                          "type": "string",
-                          "maxLength": 65536
-                        },
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "boolean"
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "description": "One record property: a JSON Schema 2020-12 schema in the request body profile with one scalar type, using type, enum, const, minLength, maxLength, pattern, format, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, allOf, anyOf, oneOf, not, title, description, $comment, examples, deprecated. Its default and transition-only marking are the collection's defaults and readOnlyProperties, not keywords here.",
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "string",
+                            "integer",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The one scalar type the property holds; records hold scalars only."
                         }
-                      ],
-                      "description": "Stored on create when the body omits the property; it must satisfy the property's own schema."
+                      }
                     },
-                    "readOnly": {
-                      "type": "boolean",
-                      "description": "true: only a declared transition (its set or stamp) changes the property. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 422. A required readOnly property needs a default. Not the key or an increment."
-                    }
+                    "description": "The record properties by name, each a scalar schema. A string property needs maxLength (or an enum) to be sortable or filterable."
                   }
-                },
-                "description": "The record properties by name, each a scalar schema. A string property needs maxLength (or an enum) to be sortable or filterable."
+                }
               }
-            }
+            ],
+            "description": "The record schema, inline or by the name of a project named schema (top-level schemas:). Either way it is a request body schema restricted to a flat record: the collection's defaults and readOnlyProperties carry what the store does beyond value shape."
+          },
+          "defaults": {
+            "type": "object",
+            "maxProperties": 64,
+            "propertyNames": {
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            },
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Declared properties and the value stored on create (and on PUT) when the body omits them; each value must satisfy its property's schema. A required property with a default may be omitted from a create."
+          },
+          "readOnlyProperties": {
+            "type": "array",
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            },
+            "description": "Declared properties only a declared transition (its set or stamp) changes. A create stores the default (or leaves them unset), PUT keeps the stored value, and a POST, PUT or PATCH body naming one answers 422. A required one needs a default, and some transition must set or stamp it. Not the key or an increment. The OpenAPI record marks them readOnly."
           },
           "maxRecords": {
             "type": "integer",

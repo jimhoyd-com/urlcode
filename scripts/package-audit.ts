@@ -300,8 +300,11 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #910/#913 on top of #921's main: measured on Node 26 at 1000001 packed / 3946963 unpacked bytes, 515 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 981 * 1024,
-    unpacked: 3858 * 1024,
+    // With #908 (store collections naming a project schema; extension OpenAPI contributions referencing named schemas)
+    // on top of #920/#922's main: measured on Node 26 at 1001988 packed / 3953235 unpacked bytes, 515 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 983 * 1024,
+    unpacked: 3864 * 1024,
     entries: 519,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -354,7 +357,9 @@ export const budgets: Record<string, Budget> = {
     // Raised to 100 KiB packed and 375 KiB unpacked for #916/#917: the README's list and error response shapes, its
     // release-pinned reference links and the find-user pointer measure 98949 packed / 379791 unpacked bytes, 32
     // entries (Node 26), keeping about 3.4 KiB and 4.2 KiB of headroom.
-    packed: 100 * 1024,
+    // #908 named record schemas, the collection's defaults/readOnlyProperties and the README "Named schemas" section,
+    // on top of #920's main: 103298 packed / 399594 unpacked bytes, 32 entries (Node 26); ~3 KiB headroom on each.
+    packed: 104 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -381,7 +386,8 @@ export const budgets: Record<string, Budget> = {
     // #866 membership follow-ups: see the packed note above.
     // #861/#881 record schema and OpenAPI description: see the packed note above.
     // With #913 authoring goals and #916 README responses together: 386402 unpacked bytes (Node 26).
-    unpacked: 381 * 1024,
+    // #908 named record schemas: see the packed note above.
+    unpacked: 394 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

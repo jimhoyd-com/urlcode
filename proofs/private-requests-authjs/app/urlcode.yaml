@@ -20,16 +20,19 @@ extensions:
         requests:
           mount: /api/requests
           ownership: owner
-          # A JSON Schema 2020-12 record schema; readOnly properties change only through a transition.
+          # A JSON Schema 2020-12 record schema: value shape only, exactly as a request body schema.
           schema:
             type: object
             additionalProperties: false
             required: [title]
             properties:
               title: {type: string, minLength: 1, maxLength: 120}
-              details: {type: string, maxLength: 2000, default: ""}
-              status: {type: string, enum: [pending, approved], default: pending, readOnly: true}
-              reviewedAt: {type: string, maxLength: 32, readOnly: true}
+              details: {type: string, maxLength: 2000}
+              status: {type: string, enum: [pending, approved]}
+              reviewedAt: {type: string, maxLength: 32}
+          # The store's own layer: what a create stores, and the properties only a transition changes.
+          defaults: {details: "", status: pending}
+          readOnlyProperties: [status, reviewedAt]
           filterable: [status]
           transitions:
             # The one business transition: a reviewer moves another user's pending request to approved.

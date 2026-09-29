@@ -9,7 +9,7 @@ import { counts, records } from './rows.ts';
 
 const requests = {
   mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 50 },
-  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved', 'withdrawn'], default: 'pending', readOnly: true }, reviewedBy: { type: 'string', maxLength: 128, readOnly: true }, reviewedAt: { type: 'string', maxLength: 32, readOnly: true } } },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved', 'withdrawn'] }, reviewedBy: { type: 'string', maxLength: 128 }, reviewedAt: { type: 'string', maxLength: 32 } } }, defaults: { status: 'pending' }, readOnlyProperties: ['status', 'reviewedBy', 'reviewedAt'],
   transitions: {
     approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { reviewedBy: 'actor', reviewedAt: 'now' }, by: 'others', mount: '/api/approvals' },
     withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' } },

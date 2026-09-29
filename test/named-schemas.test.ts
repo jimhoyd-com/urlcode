@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadDocument } from '../packages/core/src/config.ts';
 import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
+import type { RuntimeExtension } from '../packages/core/src/extensions.ts';
 import { startServer } from '../packages/core/src/server.ts';
 import { buildOpenApi } from '../packages/core/src/openapi.ts';
 import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
@@ -144,6 +145,24 @@ test('the OpenAPI export emits a named schema once as a component and references
   // Only schemas an operation uses are written; a named schema's $defs are components beside it, like an inline one's.
   assert.deepEqual(names, ['PostNotesRequestBody', 'contact', 'contact_address']);
   assert.deepEqual((document.components.schemas.contact as Json).properties, { ...contact.properties, address: { $ref: '#/components/schemas/contact_address' } });
+});
+
+test('an extension contribution may reference a named schema or one of its root properties; core writes it once (#908)', async t => {
+  const root = await project(t, { '/api/notes/*': { extension: 'notes', methods: ['GET', 'POST'] } }, {},
+    { extensions: { notes: { version: '1', config: {} } }, schemas: { contact: { ...contact, properties: { ...contact.properties, address: { $ref: '#/$defs/address' } }, $defs: { address: { type: 'object', maxProperties: 4 } } } } });
+  const seen: unknown[] = [];
+  const describe: RuntimeExtension['describe'] = request => {
+    seen.push(request.schemas);
+    return { paths: { [request.mount]: {
+      get: { responses: { '200': { description: 'One email.', content: { 'application/json': { schema: { $ref: '#/components/schemas/contact/properties/email' } } } } } },
+      post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/contact' } } } }, responses: { '201': { description: 'Created.' } } },
+    } } };
+  };
+  const notes: RuntimeExtension = { name: 'notes', version: '1', projectSha256: await inspectExtensionRevision(root), targets: ['node'], schema: { type: 'object' }, describe, activate() { return { handle() { return { status: 404, headers: [], body: '' }; } }; } };
+  const document = await buildOpenApi(root, { extensions: [notes] });
+  assertValidOpenApi(document);
+  assert.deepEqual(seen, [(await loadDocument(root)).schemas], 'describe() gets the project\'s named schemas');
+  assert.deepEqual(Object.keys(document.components.schemas).filter(name => !name.startsWith('Urlcode')).sort(), ['contact', 'contact_address']);
 });
 
 test('the built Worker artifact validates a named schema with one standalone validator shared by its routes', async t => {

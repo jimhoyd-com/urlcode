@@ -31,16 +31,16 @@ const CONFIG_PATH = '`extensions.store.config.shortLinks`';
 
 const entrySchema = storeConfigSchema.properties.shortLinks.additionalProperties;
 const ENTRY_FIELDS = Object.keys(entrySchema.properties).sort();
-const recordSchema = collectionSchema.properties.schema;
+const recordSchema = collectionSchema.properties.schema.anyOf[1];
 /**
  * Every key a short-link passage may write inline: the entry, the collection it names, its record schema's root and
  * the JSON Schema keywords a destination property uses.
  */
 const KEYS = new Set([...ENTRY_FIELDS, ...Object.keys(collectionSchema.properties), ...Object.keys(recordSchema.properties), ...Object.keys(recordSchema.properties.properties.additionalProperties.properties), 'format', 'maxLength']);
 
-type Config = { collections: Record<string, { mount: string; key?: string; increments?: string[]; schema: { type: string; additionalProperties: boolean; required: string[]; properties: Record<string, Record<string, unknown>> } }>; shortLinks: Record<string, Record<string, string>> };
+type Config = { collections: Record<string, { mount: string; key?: string; increments?: string[]; defaults?: Record<string, unknown>; schema: { type: string; additionalProperties: boolean; required: string[]; properties: Record<string, Record<string, unknown>> } }>; shortLinks: Record<string, Record<string, string>> };
 const minimal = (): Config => ({
-  collections: { links: { mount: '/api/links', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri' }, clicks: { type: 'integer', default: 0, minimum: 0 } } } } },
+  collections: { links: { mount: '/api/links', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri' }, clicks: { type: 'integer', minimum: 0 } } }, defaults: { clicks: 0 } } },
   shortLinks: { public: { mount: '/go', collection: 'links', destination: 'destination', clicks: 'clicks' } },
 });
 const MOUNTS = ['/api/links', '/go'];

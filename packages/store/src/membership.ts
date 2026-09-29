@@ -45,6 +45,8 @@ export async function auditValidator(collection: string): Promise<(value: unknow
 export interface MembershipOptions {
   /** The project's declared store collections (`extensions.store.config.collections`). */
   collections: Record<string, CollectionSpec>;
+  /** The project's named schemas (`loadDocument(project).schemas`), which a collection's `schema: <name>` resolves against. */
+  schemas?: Readonly<Record<string, unknown>>;
   /** A declared collection with `membership: true`. */
   collection: string;
   /** The audit actor recorded for the change (a principal id; default `operator`). Operator-asserted, not authenticated. */
@@ -64,7 +66,7 @@ async function membershipCollection(options: MembershipOptions): Promise<Collect
   if (spec?.membership !== true) throw new Error(`Collection ${options.collection} is not a membership collection (membership: true)`);
   // No drain runs here to wake: the serving process's drain polls the outbox.
   const auditor: CollectionAuditor | undefined = spec.audit === true ? { validate: await auditValidator(options.collection), notify() {} } : undefined;
-  return new Collection(options.collection, spec, auditor);
+  return new Collection(options.collection, spec, auditor, [], options.schemas);
 }
 /** Opens the store database (creating it when `create`), validates the collection's stored rows and runs `work`. */
 async function withCollection<T>(database: string, options: MembershipOptions, create: boolean, work: (collection: Collection) => T): Promise<T> {

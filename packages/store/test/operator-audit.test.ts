@@ -18,7 +18,7 @@ import { counts, execute, outbox, records, seed, seedOutbox } from './rows.ts';
 const reviewers = { membership: true, key: 'userId', audit: true, schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
 const requests = {
   mount: '/api/requests', ownership: 'owner', audit: true, filterable: ['status', 'priority', 'score', 'code', 'site'],
-  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved'], default: 'pending' }, priority: { type: 'integer', minimum: 1, maximum: 5 }, score: { type: 'number', minimum: -1.5, maximum: 1.5 }, code: { type: 'string', minLength: 2, maxLength: 4 }, site: { type: 'string', maxLength: 200, format: 'uri' } } },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved'] }, priority: { type: 'integer', minimum: 1, maximum: 5 }, score: { type: 'number', minimum: -1.5, maximum: 1.5 }, code: { type: 'string', minLength: 2, maxLength: 4 }, site: { type: 'string', maxLength: 200, format: 'uri' } } }, defaults: { status: 'pending' },
   readers: { mount: '/api/review', members: 'reviewers' },
 };
 const collections = { reviewers, requests };

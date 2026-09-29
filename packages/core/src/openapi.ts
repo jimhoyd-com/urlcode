@@ -11,6 +11,7 @@ import {principalProvidersOf} from './addon-manifest.ts';
 import {bodyPolicy,bodylessMethods} from './http-policy.ts';
 import type {RequestBodyPolicy} from './http-policy.ts';
 import {bodySchemaDialect} from './body-validation.ts';
+import type {BodySchema} from './body-validation.ts';
 import {errorCodes} from './http-response.ts';
 import type {ErrorFormat} from './http-response.ts';
 import {runningCoreVersion} from './version.ts';
@@ -152,6 +153,19 @@ function relocate(schema:unknown,defsBase:string):unknown {
   }
   return out;
 }
+/** Writes `schema` as the component `component`, each `$defs` entry beside it as `<component>_<name>`. */
+function writeComponent(component:string,schema:unknown,schemas:Record<string,unknown>):void {
+  const {$defs,...root}=schema as Json,add=(key:string,value:unknown):void=>{
+    if(Object.hasOwn(schemas,key))throw new ConfigError(`OpenAPI component ${key} would be written twice: rename the named schema (top-level schemas:) or the $defs entry that produces it`,{code:'openapi-component-clash'});
+    schemas[key]=value;
+  };
+  for(const [def,value] of Object.entries(($defs??{}) as Json))add(`${component}_${def}`,relocate(value,`${component}_`));
+  add(component,relocate(root,`${component}_`));
+}
+/** A project named schema (RIM-SCHEMA-001) as one component under its own name, written the first time anything uses it. */
+function namedComponent(name:string,schema:unknown,schemas:Record<string,unknown>):void {
+  if(!Object.hasOwn(schemas,name))writeComponent(name,schema,schemas);
+}
 /**
  * The request body a method's policy describes, registering its schema as a component. An OpenAPI `$ref` of
  * `#/$defs/x` would resolve against the whole document, so each `$defs` entry becomes its own component
@@ -167,14 +181,8 @@ function requestBody(policy:RequestBodyPolicy,name:string,schemas:Record<string,
     // A named schema (RIM-SCHEMA-001) is one component under its own name, written the first time an operation uses
     // it and referenced by every operation that does; an inline schema is its operation's own component.
     const component=policy.schemaName??`${name}RequestBody`;
-    if(policy.schemaName===undefined||!Object.hasOwn(schemas,component)){
-      const {$defs,...root}=policy.schema as Json,add=(key:string,value:unknown):void=>{
-        if(Object.hasOwn(schemas,key))throw new ConfigError(`OpenAPI component ${key} would be written twice: rename the named schema (top-level schemas:) or the $defs entry that produces it`,{code:'openapi-component-clash'});
-        schemas[key]=value;
-      };
-      for(const [def,value] of Object.entries(($defs??{}) as Json))add(`${component}_${def}`,relocate(value,`${component}_`));
-      add(component,relocate(root,`${component}_`));
-    }
+    if(policy.schemaName===undefined)writeComponent(component,policy.schema,schemas);
+    else namedComponent(component,policy.schema,schemas);
     schema={$ref:`#/components/schemas/${component}`};
   }else if(policy.format==='text')schema={type:'string'};
   const content:Json={};
@@ -272,11 +280,11 @@ const templatedPath=new RegExp(`^(?:/${segment})+$`);
  * always-set headers and `Cache-Control: no-store`) and what a gate or policy on the route answers first; an
  * extension's own answer for the same status wins. `undefined` when the extension leaves the mount opaque.
  */
-function describedMount(route:CompiledRoute,registration:RuntimeExtension,config:Record<string,unknown>,context:{signIn:string[];gates:string[];chain:PolicyChain|undefined;taken:Set<string>;paths:Record<string,Json>;schemas:Record<string,unknown>}):Record<string,Json>|undefined {
+function describedMount(route:CompiledRoute,registration:RuntimeExtension,config:Record<string,unknown>,context:{signIn:string[];gates:string[];chain:PolicyChain|undefined;taken:Set<string>;paths:Record<string,Json>;schemas:Record<string,unknown>;named:Readonly<Record<string,BodySchema>>}):Record<string,Json>|undefined {
   const name=registration.name,mount=route.pattern.endsWith('/*')?route.pattern.slice(0,-2):route.pattern;
   const fail=(problem:string):never=>{throw new ConfigError(`Extension ${JSON.stringify(name)} described mount ${mount} outside the OpenAPI contribution contract: ${problem}`,{extension:name,code:'extension-registration'});};
   let raw:unknown;
-  try{raw=registration.describe!({mount,methods:[...route.methods],config:structuredClone(config)});}
+  try{raw=registration.describe!({mount,methods:[...route.methods],config:structuredClone(config),schemas:structuredClone(context.named)});}
   catch(error){throw extensionError(error,name,'describe');}
   if(raw===undefined)return undefined;
   let text:string|undefined;
@@ -290,16 +298,23 @@ function describedMount(route:CompiledRoute,registration:RuntimeExtension,config
   const prefix=pascal(name),own=new Set(Object.keys(schemas as object));
   for(const [schemaName,schema] of Object.entries(schemas as Record<string,unknown>)){
     if(!new RegExp(`^${prefix}[A-Za-z0-9_]{0,63}$`).test(schemaName))fail(`schema ${schemaName.slice(0,64)} must be named ${prefix}<Name>`);
+    if(Object.hasOwn(context.named,schemaName))fail(`schema ${schemaName} is also a project named schema (top-level schemas:); one of them must be renamed`);
     if(Object.hasOwn(context.schemas,schemaName)&&JSON.stringify(context.schemas[schemaName])!==JSON.stringify(schema))fail(`schema ${schemaName} differs from the one another mount contributed`);
   }
-  // Every reference resolves inside the document: this contribution's schemas or core's own components.
+  // Every reference resolves inside the document: this contribution's schemas, core's own components, or a project
+  // named schema (RIM-SCHEMA-001) or one of its root properties, which core writes as a route naming it would.
+  const used=new Set<string>();
   const refs=(value:unknown):void=>{
     if(Array.isArray(value)){value.forEach(refs);return;}
     if(!isRecord(value))return;
     for(const [key,child] of Object.entries(value)){
       if(key==='$ref'){
-        const target=typeof child==='string'?/^#\/components\/schemas\/([A-Za-z0-9_]+)$/.exec(child)?.[1]:undefined;
-        if(target===undefined||!(own.has(target)||Object.hasOwn(components,target)))fail('every $ref must name one of its schemas or a core Urlcode component');
+        const match=typeof child==='string'?/^#\/components\/schemas\/([A-Za-z0-9_]+)(?:\/properties\/([A-Za-z0-9_]+))?$/.exec(child):null,target=match?.[1],property=match?.[2];
+        if(target!==undefined&&property===undefined&&(own.has(target)||Object.hasOwn(components,target)))continue;
+        const named=target!==undefined&&!own.has(target)&&Object.hasOwn(context.named,target)?context.named[target] as Json:undefined;
+        const properties=named&&isRecord(named.properties)?named.properties:undefined;
+        if(!named||(property!==undefined&&!(properties&&Object.hasOwn(properties,property))))fail('every $ref must name one of its schemas, a core Urlcode component, or a project named schema (or one of its root properties)');
+        used.add(target!);
       }else refs(child);
     }
   };
@@ -336,6 +351,7 @@ function describedMount(route:CompiledRoute,registration:RuntimeExtension,config
     out[path]=pathItem;
   }
   for(const [schemaName,schema] of Object.entries(schemas as Record<string,unknown>))context.schemas[schemaName]=schema;
+  for(const target of [...used].sort(compare))namedComponent(target,context.named[target],context.schemas);
   return out;
 }
 
@@ -354,7 +370,7 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
       const registration=route.extension?options.extensions?.find(entry=>entry.name===route.extension):undefined;
       if(registration?.describe){
         const gates=Object.keys(effectiveExtensionPolicies(loaded.document,route)).sort(compare),signIn=gates.filter(name=>providers.includes(name));
-        const described=describedMount(route,registration,(loaded.document.extensions?.[registration.name]?.config??{}) as Record<string,unknown>,{signIn,gates,chain:chains.get(route.pattern),taken,paths,schemas});
+        const described=describedMount(route,registration,(loaded.document.extensions?.[registration.name]?.config??{}) as Record<string,unknown>,{signIn,gates,chain:chains.get(route.pattern),taken,paths,schemas,named:loaded.schemas??{}});
         if(described){
           Object.assign(paths,described);
           if(Object.keys(described).length)for(const name of signIn)secured.add(name);

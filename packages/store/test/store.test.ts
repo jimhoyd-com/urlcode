@@ -13,7 +13,7 @@ import { cleanup } from './cleanup.ts';
 import { records, seed } from './rows.ts';
 
 const origin = 'https://store.example.test';
-const todos = { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 20 }, done: { type: 'boolean', default: false }, priority: { type: 'integer', minimum: 1, maximum: 5 }, kind: { type: 'string', enum: ['a', 'b'] } } }, maxRecords: 3, maxRecordBytes: 512 };
+const todos = { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 20 }, done: { type: 'boolean' }, priority: { type: 'integer', minimum: 1, maximum: 5 }, kind: { type: 'string', enum: ['a', 'b'] } } }, defaults: { done: false }, maxRecords: 3, maxRecordBytes: 512 };
 const json = { 'content-type': 'application/json' };
 
 async function boot(t: TestContext, collection: object = todos, extraRoutes: Record<string, unknown> = {}, extraConfig: Record<string, unknown> = {}, aliasOrigins?: string[]) {
@@ -57,7 +57,7 @@ test('creates, lists, reads, replaces, patches and deletes records with server-o
 });
 
 test('PATCH with null removes an optional property, refuses a required one with a schema issue, and PUT keeps refusing null (#738)', async t => {
-  const { call, database } = await boot(t, { ...todos, increments: ['count'], schema: { ...todos.schema, properties: { ...todos.schema.properties, count: { type: 'integer', default: 0 } } } });
+  const { call, database } = await boot(t, { ...todos, increments: ['count'], schema: { ...todos.schema, properties: { ...todos.schema.properties, count: { type: 'integer' } } }, defaults: { ...todos.defaults, count: 0 } });
   const record = await (await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'one', priority: 3, kind: 'a' }) })).json() as Record<string, unknown>;
   const path = `/api/todos/${record.id as string}`;
   const etag = (await call(path)).headers.get('etag')!;
@@ -110,7 +110,7 @@ test('rejects invalid records with the body-schema issue shape and never echoes 
 });
 
 test('enforces per-collection record quota and byte limits', async t => {
-  const { call, database } = await boot(t, { ...todos, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string' }, note: { type: 'string' } } }, maxRecordBytes: 256 });
+  const { call, database } = await boot(t, { ...todos, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string' }, note: { type: 'string' } } }, defaults: {}, maxRecordBytes: 256 });
   for (const n of [1, 2, 3]) assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: `t${n}` }) })).status, 201);
   const full = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'four' }) });
   assert.equal(full.status, 409); assert.equal(((await full.json()) as { error: { code: string } }).error.code, 'collection_full');
@@ -179,7 +179,7 @@ test('admits writes from an operator alias origin and still refuses an unlisted 
 test('keeps declared keys, increments and idempotency claims durable for short links and webhook-style mutations', async t => {
   const links = {
     mount: '/api/todos', key: 'code', increments: ['clicks'], idempotency: { maxKeys: 2 },
-    schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', minLength: 1, maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 }, delivered: { type: 'boolean', default: false } } },
+    schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', minLength: 1, maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', minimum: 0 }, delivered: { type: 'boolean' } } }, defaults: { clicks: 0, delivered: false },
   };
   const { call, restart, stop } = await boot(t, links, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
   const badDestination = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'bad', destination: 'javascript:alert(1)' }) });
@@ -253,9 +253,9 @@ test('refuses a file that is not a store database, or a store schema newer than 
 });
 
 test('short-link destination must be required at config time, and legacy data missing it 404s without counting a click (#469)', async t => {
-  const badLinks = { mount: '/api/todos', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } } };
+  const badLinks = { mount: '/api/todos', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', minimum: 0 } } }, defaults: { clicks: 0 } };
   await assert.rejects(boot(t, badLinks, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } }), /must name a required string property with format: uri/, 'declaring a non-required destination property is refused at activation');
-  const okLinks = { mount: '/api/todos', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } } };
+  const okLinks = { mount: '/api/todos', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', minimum: 0 } } }, defaults: { clicks: 0 } };
   const env = await boot(t, okLinks, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
   await env.stop();
   // Activation does not retroactively enforce a field that became required after data was written,
@@ -272,7 +272,7 @@ test('short-link destination must be required at config time, and legacy data mi
 });
 
 test('short-link HEAD resolves the destination without counting a click; GET counts exactly one (#469)', async t => {
-  const links = { mount: '/api/todos', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } } };
+  const links = { mount: '/api/todos', key: 'code', increments: ['clicks'], schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', minimum: 0 } } }, defaults: { clicks: 0 } };
   const { call } = await boot(t, links, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
   const created = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'head-test', destination: 'https://example.test/x' }) });
   const { id } = await created.json() as { id: string };
@@ -285,7 +285,7 @@ test('short-link HEAD resolves the destination without counting a click; GET cou
 });
 
 test('readOnly still counts short-link clicks but keeps refusing every public record write (#552)', async t => {
-  const links = { mount: '/api/todos', key: 'code', increments: ['clicks'], readOnly: true, schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } } };
+  const links = { mount: '/api/todos', key: 'code', increments: ['clicks'], readOnly: true, schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 512 }, clicks: { type: 'integer', minimum: 0 } } }, defaults: { clicks: 0 } };
   const env = await boot(t, links, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
   await env.stop();
   // The collection is readOnly from the start, so its record cannot be created through the public
@@ -363,11 +363,11 @@ test('the record schema is core\'s body profile: its keywords, formats and filte
         code: { type: 'string', pattern: '^[A-Z]{2}-[0-9]+$', maxLength: 12 },
         due: { type: 'string', format: 'date', maxLength: 10 },
         email: { type: 'string', format: 'email' },
-        priority: { type: 'integer', minimum: 1, maximum: 3, default: 2 },
+        priority: { type: 'integer', minimum: 1, maximum: 3 },
         ratio: { type: 'number', exclusiveMaximum: 1, multipleOf: 0.25 },
         channel: { type: 'string', anyOf: [{ const: 'web' }, { const: 'mail' }] },
       },
-    },
+    }, defaults: { priority: 2 },
   };
   const { call, database, stop, restart } = await boot(t, tickets);
   const post = async (body: unknown) => { const answer = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify(body) }); return { status: answer.status, body: await answer.json() as { id?: string; priority?: number; error?: { issues: { pointer: string; keyword: string }[] } } }; };
@@ -406,8 +406,14 @@ test('rejects declarations the schema or cross-field rules forbid', async t => {
     ['keyword', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'string', writeOnly: true } } } }, /\/properties\/n\/writeOnly: keyword "writeOnly" is not in the supported JSON Schema 2020-12 profile/],
     ['not scalar', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'object' } } } }, /Invalid extension configuration/],
     ['open', { ...todos, schema: { type: 'object', properties: { n: { type: 'string' } } } }, /Invalid extension configuration/],
-    ['default', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'integer', default: 'x' } } } }, /\/properties\/n\/default must be an integer/],
-    ['readOnly without a transition', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'integer', readOnly: true } } } }, /n is readOnly but no transition sets or stamps it/],
+    ['default', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'integer' } } }, defaults: { n: 'x' } }, /Collection todos: defaults.n must be an integer/],
+    ['readOnly without a transition', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'integer' } } }, defaults: {}, readOnlyProperties: ['n'] }, /n is readOnly but no transition sets or stamps it/],
+    // The store's annotations are the collection's, never keywords of the record schema (#908).
+    ['inline default', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'integer', default: 1 } } }, defaults: {} }, /Collection todos: schema \/properties\/n\/default: a record schema carries value shape only; write the default under the collection's defaults \(defaults: \{n: \.\.\.\}\)/],
+    ['inline readOnly', { ...todos, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'integer', readOnly: true } } }, defaults: {} }, /Collection todos: schema \/properties\/n\/readOnly: a record schema carries value shape only; list the property under the collection's readOnlyProperties/],
+    ['default of an undeclared property', { ...todos, defaults: { gone: 1 } }, /Collection todos: defaults\.gone: gone is not a declared property/],
+    ['readOnly of an undeclared property', { ...todos, readOnlyProperties: ['gone'] }, /Collection todos: readOnlyProperties names gone, which is not a declared property/],
+    ['an undeclared named schema', { ...todos, schema: 'Todo' }, /Collection todos: schema names Todo, which the project does not declare under schemas/],
     ['huge', { ...todos, maxRecords: 10_000_000 }, /Invalid extension configuration/],
   ] as const) {
     await assert.rejects(boot(t, bad), pattern, name);

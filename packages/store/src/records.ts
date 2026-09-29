@@ -56,8 +56,12 @@ export interface StoreRecords {
   readonly name: string;
   readonly ownership: Ownership;
   readonly readOnly: boolean;
-  /** The declared record schema (a deep-frozen copy), so a consumer can check its own mapping at activation. */
+  /** The record schema (a deep-frozen copy; a named one resolved), so a consumer can check its own mapping at activation. */
   readonly schema: Readonly<RecordSchema>;
+  /** The collection's `defaults`: the value a create stores for each property it omits. */
+  readonly defaults: Readonly<Record<string, Scalar>>;
+  /** The collection's `readOnlyProperties`: only a declared transition changes them, and a create or update naming one is refused. */
+  readonly readOnlyProperties: readonly string[];
   /** Creates a record, stamping the principal as its owner on an owned collection. */
   create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>): Promise<StoreRecordResult>;
   /** One record in the principal's scope. */
@@ -162,7 +166,7 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
 
 function records(collection: Collection): StoreRecords {
   return Object.freeze({
-    name: collection.name, ownership: collection.spec.ownership, readOnly: collection.spec.readOnly, schema: collection.spec.records.schema,
+    name: collection.name, ownership: collection.spec.ownership, readOnly: collection.spec.readOnly, schema: collection.spec.records.schema, defaults: collection.spec.records.defaults, readOnlyProperties: collection.spec.records.readOnly,
     async create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { return result(collection.create({ ...values }, undefined, ownerOf(principal), actorOf(principal)).record!); },
     get(principal: StorePrincipal, id: string) { return result(collection.get(known(id), ownerOf(principal))); },
     async update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) {

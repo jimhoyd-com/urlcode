@@ -1,6 +1,7 @@
 // The store's OpenAPI 3.1 contribution (core's `RuntimeExtension.describe`, RIM-OPENAPI-001): each store mount of a
 // project described from its declaration alone, with every record, request and query schema built from the
-// collection's own record schema. Pure: no database is opened. Core adds what the runtime does on every extension
+// collection's own record schema. A collection whose schema is a project named schema (`schema: <name>`) references
+// that component (core writes it once, as for a route body naming it) instead of copying it. Pure: no database is opened. Core adds what the runtime does on every extension
 // answer (its always-set headers, Cache-Control: no-store) and what a sign-in gate on the route answers first.
 import type { ExtensionDescribeRequest, ExtensionOpenApi } from '@jimhoyd/urlcode/extensions';
 import { QUERY_LIMITS } from './query.ts';
@@ -29,11 +30,8 @@ const etag = header('The record\'s strong ETag; send it back in If-Match.', { ty
 const allowTransitions = header('The comma-separated names of the declared transitions the caller may run on this record now (empty when none).', { type: 'string' });
 const replayed = header('true when an Idempotency-Key replayed the first answer instead of running the request again.', { const: 'true' }, false);
 
-/** A property's schema as a parameter or PATCH value takes it: without the store's `default`/`readOnly` annotations. */
-function valueSchema(property: PropertySchema): Json {
-  const { default: _default, readOnly: _readOnly, ...rest } = property;
-  return structuredClone(rest);
-}
+/** A property's schema as a query parameter takes it: a copy, since a parameter is not validated through a component. */
+const valueSchema = (property: PropertySchema): Json => structuredClone(property) as Json;
 
 /** Every schema of one collection, named `Store<Collection><Kind>`. */
 function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json; names: { record: string; reader: string; create: string; patch: string; list: string; readerList: string } } {
@@ -44,24 +42,39 @@ function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json;
     createdAt: { type: 'string', format: 'date-time', readOnly: true, description: 'Store-owned: when the record was created.' },
     updatedAt: { type: 'string', format: 'date-time', readOnly: true, description: 'Store-owned: changes on every write, and with it the ETag.' },
   };
+  // A named record schema is referenced, never copied: each property is its component's property, and the store's own
+  // layer (a default, readOnly) sits beside the reference as an annotation.
+  const named = records.schemaName;
+  const value = (field: string): Json => named === undefined ? structuredClone(properties[field]!) as Json : ref(`${named}/properties/${field}`);
+  const annotated = (field: string, marks: boolean): Json => ({
+    ...value(field),
+    ...(Object.hasOwn(records.defaults, field) ? { default: records.defaults[field] } : {}),
+    ...(marks && records.readOnly.includes(field) ? { readOnly: true } : {}),
+  });
   const record = (extra: Json = {}, extraRequired: string[] = []): Json => ({
     ...(records.schema.title === undefined ? {} : { title: records.schema.title }), ...(records.schema.description === undefined ? {} : { description: records.schema.description }),
     type: 'object', additionalProperties: false,
     // Stored rows are judged without `required`, so a record written before a property became required may lack it.
     required: ['id', 'createdAt', 'updatedAt', ...extraRequired, ...records.required],
-    properties: { ...stored, ...extra, ...structuredClone(properties) as Json },
+    properties: { ...stored, ...extra, ...Object.fromEntries(Object.keys(properties).map(field => [field, annotated(field, true)])) },
   });
   const writable = Object.keys(properties).filter(field => !records.readOnly.includes(field));
-  const create: Json = {
-    description: 'A create (POST) or replace (PUT) body. Omitted properties take their default; readOnly properties are changed only by a transition and refused here.',
-    type: 'object', additionalProperties: false,
-    required: records.required.filter(field => writable.includes(field) && !Object.hasOwn(records.defaults, field)),
-    properties: Object.fromEntries(writable.map(field => [field, structuredClone(properties[field]!)])),
-  };
+  const createRequired = records.required.filter(field => writable.includes(field) && !Object.hasOwn(records.defaults, field));
+  const createDescription = 'A create (POST) or replace (PUT) body. Omitted properties take their default; readOnly properties are changed only by a transition and refused here.';
+  // When the store takes exactly the named schema as a create body, it is that component: a client sees one type
+  // for the store's POST, a route body and an MCP tool naming the same schema.
+  const create: Json = named !== undefined && writable.length === Object.keys(properties).length && createRequired.length === records.required.length
+    ? { ...ref(named), description: createDescription }
+    : {
+      description: createDescription,
+      type: 'object', additionalProperties: false,
+      required: createRequired,
+      properties: Object.fromEntries(writable.map(field => [field, annotated(field, false)])),
+    };
   const patch: Json = {
     description: 'A partial update (PATCH): only the named properties change, and null removes an optional one. The result must satisfy the record schema.',
     type: 'object', additionalProperties: false, minProperties: 1,
-    properties: Object.fromEntries(writable.map(field => [field, records.required.includes(field) || spec.increments.includes(field) ? valueSchema(properties[field]!) : { anyOf: [valueSchema(properties[field]!), { type: 'null' }] }])),
+    properties: Object.fromEntries(writable.map(field => [field, records.required.includes(field) || spec.increments.includes(field) ? value(field) : { anyOf: [value(field), { type: 'null' }] }])),
   };
   const list = (item: string): Json => ({
     type: 'object', required: ['items', 'total', 'etags', 'may'], additionalProperties: false,
@@ -176,7 +189,7 @@ function transitionOperation(name: string, transition: string, declared: Normali
  */
 export function describeStore(request: ExtensionDescribeRequest): ExtensionOpenApi | undefined {
   const config = request.config as { collections?: Record<string, CollectionSpec>; shortLinks?: Record<string, { mount: string; collection: string; destination: string }> };
-  const collections = Object.entries(config.collections ?? {}).map(([name, spec]) => ({ name, spec: normalize(name, spec) }));
+  const collections = Object.entries(config.collections ?? {}).map(([name, spec]) => ({ name, spec: normalize(name, spec, request.schemas) }));
   const mount = request.mount, schemas: Json = { StoreError: errorSchema };
   for (const { name, spec } of collections) {
     const built = collectionSchemas(name, spec);

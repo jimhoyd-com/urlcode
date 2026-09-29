@@ -52,8 +52,8 @@ function example(request: ScaffoldRequest): ScaffoldResult {
       mount: '/api/todos',
       schema: {
         type: 'object', additionalProperties: false, required: ['title'],
-        properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, done: { type: 'boolean', default: false } },
-      },
+        properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, done: { type: 'boolean' } },
+      }, defaults: { done: false },
       maxRecords: 1000, maxRecordBytes: 4096,
       ...(withAuth ? { ownership: 'owner' } : {}),
       ...(withAudit ? { audit: true } : {}),

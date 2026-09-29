@@ -36,16 +36,17 @@ const MOUNT = { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', 
 const FIELD_NAME = '^[a-z][A-Za-z0-9_]{0,63}$';
 const SCALAR = { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }, { type: 'boolean' }] } as const;
 /**
- * One record property: a JSON Schema 2020-12 schema in core's request body profile with exactly one scalar `type`,
- * plus the two standard annotations the store acts on. `default` is stored on create when the body omits the
- * property. `readOnly: true` means only a declared transition changes it: a create takes its default, PUT keeps its
- * value, and a body naming it is refused.
+ * One record property: a JSON Schema 2020-12 schema in core's request body profile with exactly one scalar `type`.
+ * What the store does with a property beyond its value shape (a default, transition-only) is the collection's
+ * `defaults` and `readOnlyProperties`, never a keyword here.
  */
-export interface PropertySchema { type: PropertyType; default?: Scalar; readOnly?: boolean; [keyword: string]: unknown }
+export interface PropertySchema { type: PropertyType; [keyword: string]: unknown }
 /**
  * A collection's record schema: a JSON Schema 2020-12 object schema in core's request body profile (the same
  * profile, validator and 422 issue shape as `request.body.<METHOD>.schema`), restricted to a flat object of scalar
  * properties. `additionalProperties: false` is required and written out, so the schema says what the store enforces.
+ * It is exactly a request body schema, so the same schema can be a project named schema (top-level `schemas:`)
+ * that a route body and an MCP tool name too.
  */
 export interface RecordSchema {
   $schema?: string; $comment?: string; title?: string; description?: string;
@@ -85,8 +86,19 @@ export interface ReadersSpec {
 export interface CollectionSpec {
   /** Required, except on a membership collection, which has none. */
   mount?: string;
-  /** The record schema (`RecordSchema`); the store-owned facts below name its properties. */
-  schema: RecordSchema;
+  /**
+   * The record schema: a `RecordSchema` written inline, or the name of one of the project's named schemas (top-level
+   * `schemas:`, `ExtensionActivation.schemas`) that satisfies the same restrictions. The store-owned facts below name
+   * its properties.
+   */
+  schema: RecordSchema | string;
+  /** Values stored on create (and on PUT) for properties the body omits; each must satisfy its property's schema. */
+  defaults?: Record<string, Scalar>;
+  /**
+   * Properties only a declared transition changes (its `set` or `stamp`): a create stores the default (or leaves them
+   * unset), PUT keeps the stored value, and a body naming one answers 422. The OpenAPI record marks them readOnly.
+   */
+  readOnlyProperties?: string[];
   maxRecords?: number; maxRecordBytes?: number; pageSize?: number; readOnly?: boolean;
   /** One required bounded string property that callers choose and the collection keeps unique. */
   key?: string;
@@ -139,14 +151,12 @@ export class StoreError extends Error {
 export const invalidRecord = (issues: readonly BodySchemaIssue[]): StoreError => new StoreError(422, 'invalid_record', 'Record does not match the collection schema', { issues });
 
 const describedKeywords = 'type, enum, const, minLength, maxLength, pattern, format, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, allOf, anyOf, oneOf, not, title, description, $comment, examples, deprecated';
-/** JSON Schema for the store-owned part of one property (`type`, `default`, `readOnly`); every other profile keyword is checked by core's profile. */
+/** JSON Schema for the store-owned part of one property (its one scalar `type`); every other profile keyword is checked by core's profile. */
 const propertySchema = {
   type: 'object', required: ['type'],
-  description: `One record property: a JSON Schema 2020-12 schema in the request body profile with one scalar type. Besides ${describedKeywords}, the store acts on the standard annotations default and readOnly.`,
+  description: `One record property: a JSON Schema 2020-12 schema in the request body profile with one scalar type, using ${describedKeywords}. Its default and transition-only marking are the collection's defaults and readOnlyProperties, not keywords here.`,
   properties: {
     type: { enum: PROPERTY_TYPES, description: 'The one scalar type the property holds; records hold scalars only.' },
-    default: { oneOf: [{ type: 'string', maxLength: 65_536 }, { type: 'number' }, { type: 'boolean' }], description: 'Stored on create when the body omits the property; it must satisfy the property\'s own schema.' },
-    readOnly: { type: 'boolean', description: 'true: only a declared transition (its set or stamp) changes the property. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 422. A required readOnly property needs a default. Not the key or an increment.' },
   },
 } as const;
 
@@ -155,7 +165,7 @@ export const collectionSchema = {
   type: 'object', additionalProperties: false, required: ['schema'],
   properties: {
     mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256, description: 'URL path of the collection\'s JSON API; it needs a route <mount>/* with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). Required, except on a membership collection, which has none.' },
-    schema: {
+    schema: { anyOf: [{ type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_]{0,63}$', description: 'The name of one of the project\'s named schemas (top-level schemas:), which a route body and an MCP tool can name too. It must satisfy the same restrictions as an inline record schema, or activation refuses it.' }, {
       description: 'The record schema: a JSON Schema 2020-12 object schema in the same bounded profile as request.body.<METHOD>.schema, validated by the same validator, with a flat set of scalar properties. A body that breaks it answers 422 invalid_record with the same issue list a body-schema route answers. id, createdAt and updatedAt are reserved and store-owned.',
       type: 'object', additionalProperties: false, required: ['type', 'properties', 'additionalProperties'],
       properties: {
@@ -168,7 +178,9 @@ export const collectionSchema = {
         required: { type: 'array', maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Properties every record must carry: a create or PUT without one (and without a default) answers 422, and PATCH cannot clear one.' },
         properties: { type: 'object', minProperties: 1, maxProperties: LIMITS.properties, propertyNames: { pattern: FIELD_NAME }, additionalProperties: propertySchema, description: 'The record properties by name, each a scalar schema. A string property needs maxLength (or an enum) to be sortable or filterable.' },
       },
-    },
+    }], description: 'The record schema, inline or by the name of a project named schema (top-level schemas:). Either way it is a request body schema restricted to a flat record: the collection\'s defaults and readOnlyProperties carry what the store does beyond value shape.' },
+    defaults: { type: 'object', maxProperties: LIMITS.properties, propertyNames: { pattern: FIELD_NAME }, additionalProperties: { oneOf: [{ type: 'string', maxLength: 65_536 }, { type: 'number' }, { type: 'boolean' }] }, description: 'Declared properties and the value stored on create (and on PUT) when the body omits them; each value must satisfy its property\'s schema. A required property with a default may be omitted from a create.' },
+    readOnlyProperties: { type: 'array', maxItems: LIMITS.properties, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties only a declared transition (its set or stamp) changes. A create stores the default (or leaves them unset), PUT keeps the stored value, and a POST, PUT or PATCH body naming one answers 422. A required one needs a default, and some transition must set or stamp it. Not the key or an increment. The OpenAPI record marks them readOnly.' },
     maxRecords: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'Records the collection may hold (default 1000); a create beyond it answers 409 collection_full.' },
     maxRecordBytes: { type: 'integer', minimum: 256, maximum: LIMITS.recordBytes, description: 'Largest serialized record in bytes (default 4096); larger answers 413.' },
     pageSize: { type: 'integer', minimum: 1, maximum: LIMITS.pageSize, description: 'Records per list page, and the cap on a list request\'s limit (default 50).' },
@@ -216,56 +228,66 @@ const ROOT_KEYWORDS = new Set(['$schema', '$comment', 'title', 'description', 't
 const CONSTRAINING = ['enum', 'const', 'pattern', 'format', 'allOf', 'anyOf', 'oneOf', 'not', 'multipleOf'];
 
 /**
- * A record schema checked and compiled: the declared schema (deep-frozen), its properties, and two validators built
- * by core's body-schema compiler from the declared schema without the `default`/`readOnly` annotations (which core's
- * request profile refuses because the runtime does not act on them; the store does). `record` is the schema as
- * declared; `partial` drops `required` and judges one property at a time (a filter value, a transition value, a
- * default, an increment) and every stored row.
+ * A record schema checked and compiled with the collection's store layer: the schema (deep-frozen; a named one
+ * resolved), its properties, the name it was referenced by (when it is a project named schema), the collection's
+ * `defaults` and `readOnlyProperties`, and two validators built by core's body-schema compiler from the schema as it
+ * is. `record` is the whole schema; `partial` drops `required` and judges one property at a time (a filter value, a
+ * transition value, a default, an increment) and every stored row.
  */
 export interface CompiledRecordSchema {
-  schema: Readonly<RecordSchema>; properties: Readonly<Record<string, PropertySchema>>; required: readonly string[];
+  schema: Readonly<RecordSchema>; schemaName?: string; properties: Readonly<Record<string, PropertySchema>>; required: readonly string[];
   defaults: Readonly<StoredRecord>; readOnly: readonly string[];
   record: CompiledBodySchema; partial: CompiledBodySchema;
 }
+/** What a collection carries beside its record schema about the properties the store acts on. */
+export interface RecordLayer { defaults?: Readonly<Record<string, unknown>>; readOnlyProperties?: readonly string[] }
 function deepFreeze<T>(value: T): T { if (value && typeof value === 'object') { for (const child of Object.values(value)) deepFreeze(child); Object.freeze(value); } return value; }
-/** Checks and compiles a collection's record schema; throws plain Errors naming the collection for the operator. */
-export function compileRecordSchema(name: string, schema: unknown): CompiledRecordSchema {
-  const where = `Collection ${name}: schema`;
+/**
+ * Checks and compiles a collection's record schema (inline, or a name resolved against the project's named
+ * `schemas`) with its store layer; throws plain Errors naming the collection (and the named schema) for the operator.
+ */
+export function compileRecordSchema(name: string, declared: unknown, layer: RecordLayer = {}, schemas: Readonly<Record<string, unknown>> = {}): CompiledRecordSchema {
+  let where = `Collection ${name}: schema`, schemaName: string | undefined, schema = declared;
+  if (typeof declared === 'string') {
+    if (!hasOwn(schemas, declared)) throw new Error(`${where} names ${declared.slice(0, 64)}, which the project does not declare under schemas`);
+    schemaName = declared; schema = schemas[declared];
+    where = `Collection ${name}: schema ${declared} (top-level schemas:) cannot be a record schema:`;
+  }
   if (!isRecord(schema)) throw new Error(`${where} must be a JSON Schema object`);
-  for (const key of Object.keys(schema)) if (!ROOT_KEYWORDS.has(key)) throw new Error(`${where} /${key.slice(0, 64)}: a record schema takes only ${[...ROOT_KEYWORDS].join(', ')} at its root`);
+  for (const key of Object.keys(schema)) if (!ROOT_KEYWORDS.has(key)) throw new Error(`${where} /${key.slice(0, 64)}: a record schema takes only ${[...ROOT_KEYWORDS].join(', ')} at its root${key === '$defs' ? ' (a flat record has no subschemas to share; a schema file that references another file is bundled into $defs)' : ''}`);
   if (schema.type !== 'object') throw new Error(`${where} /type must be object`);
   if (schema.additionalProperties !== false) throw new Error(`${where} /additionalProperties must be false, written out: the store refuses a property the schema does not declare`);
   const properties = schema.properties;
   if (!isRecord(properties) || Object.keys(properties).length < 1 || Object.keys(properties).length > LIMITS.properties) throw new Error(`${where} /properties must declare 1 to ${LIMITS.properties} properties`);
-  const stripped: Record<string, Record<string, unknown>> = {}, defaults: StoredRecord = {}, readOnly: string[] = [];
-  for (const [property, declared] of Object.entries(properties)) {
+  for (const [property, value] of Object.entries(properties)) {
     const at = `${where} /properties/${property.slice(0, 64)}`;
     if (!new RegExp(FIELD_NAME).test(property)) throw new Error(`${at}: a property name is a letter a-z then up to 63 letters, digits or _`);
     if (reserved(property)) throw new Error(`${at}: ${property} is reserved and store-owned`);
-    if (!isRecord(declared) || typeof declared.type !== 'string' || !(PROPERTY_TYPES as readonly string[]).includes(declared.type)) throw new Error(`${at}/type must be one of ${PROPERTY_TYPES.join(', ')}: a record holds scalars only`);
-    const { default: fallback, readOnly: fixed, ...rest } = declared;
-    if (fixed !== undefined && typeof fixed !== 'boolean') throw new Error(`${at}/readOnly must be true or false`);
-    if (fixed === true) readOnly.push(property);
-    if (fallback !== undefined) {
-      if (!['string', 'number', 'boolean'].includes(typeof fallback)) throw new Error(`${at}/default must be a string, number or boolean`);
-      defaults[property] = fallback as Scalar;
-    }
-    stripped[property] = rest;
+    if (!isRecord(value) || typeof value.type !== 'string' || !(PROPERTY_TYPES as readonly string[]).includes(value.type)) throw new Error(`${at}/type must be one of ${PROPERTY_TYPES.join(', ')}: a record holds scalars only`);
+    // The store's own annotations live in the collection's layer, so a record schema is exactly a request body schema.
+    if (hasOwn(value, 'default')) throw new Error(`${at}/default: a record schema carries value shape only; write the default under the collection's defaults (defaults: {${property}: ...})`);
+    if (hasOwn(value, 'readOnly')) throw new Error(`${at}/readOnly: a record schema carries value shape only; list the property under the collection's readOnlyProperties`);
   }
   const required = schema.required === undefined ? [] : schema.required;
   if (!Array.isArray(required) || !required.every(entry => typeof entry === 'string')) throw new Error(`${where} /required must list property names`);
-  const validated: BodySchema = { ...schema, properties: stripped } as BodySchema;
-  const { required: _required, ...partialSchema } = validated;
-  const compile = (value: BodySchema): CompiledBodySchema => {
+  const { required: _required, ...partialSchema } = schema;
+  const compile = (value: unknown): CompiledBodySchema => {
     // Core's diagnostics name the pointer as `Body schema <pointer>`; here it is the collection's schema.
-    try { return compileBodySchema(value); } catch (error) { throw new Error(`${where} ${(error as Error).message.replace(/^Body schema /, '')}`, { cause: error }); }
+    try { return compileBodySchema(value as BodySchema); } catch (error) { throw new Error(`${where} ${(error as Error).message.replace(/^Body schema /, '')}`, { cause: error }); }
   };
-  const record = compile(validated), partial = compile(partialSchema as BodySchema);
-  for (const [property, value] of Object.entries(defaults)) {
+  const record = compile(schema), partial = compile(partialSchema);
+  const defaults: StoredRecord = {};
+  for (const [property, value] of Object.entries(layer.defaults ?? {})) {
+    const at = `Collection ${name}: defaults.${property.slice(0, 64)}`;
+    if (!hasOwn(properties, property)) throw new Error(`${at}: ${property.slice(0, 64)} is not a declared property`);
+    if (!['string', 'number', 'boolean'].includes(typeof value)) throw new Error(`${at} must be a string, number or boolean`);
     const issue = bodyIssues(partial, { [property]: value }, 1)[0];
-    if (issue) throw new Error(`${where} /properties/${property}/default ${issue.message}`);
+    if (issue) throw new Error(`${at} ${issue.message}`);
+    defaults[property] = value as Scalar;
   }
-  return { schema: deepFreeze(structuredClone(schema) as unknown as RecordSchema), properties: deepFreeze(structuredClone(properties) as Record<string, PropertySchema>), required: Object.freeze([...required as string[]]), defaults: Object.freeze(defaults), readOnly: Object.freeze(readOnly), record, partial };
+  const readOnly = [...layer.readOnlyProperties ?? []];
+  for (const property of readOnly) if (!hasOwn(properties, property)) throw new Error(`Collection ${name}: readOnlyProperties names ${property.slice(0, 64)}, which is not a declared property`);
+  return { schema: deepFreeze(structuredClone(schema) as unknown as RecordSchema), ...(schemaName === undefined ? {} : { schemaName }), properties: deepFreeze(structuredClone(properties) as Record<string, PropertySchema>), required: Object.freeze([...required as string[]]), defaults: Object.freeze(defaults), readOnly: Object.freeze(readOnly), record, partial };
 }
 /** The first issue of one property value against its schema (a filter, a transition value, an increment), or undefined. */
 export function propertyIssue(compiled: CompiledRecordSchema, property: string, value: unknown): BodySchemaIssue | undefined {
@@ -314,9 +336,12 @@ function transitionsOf(name: string, spec: CollectionSpec, records: CompiledReco
   }
   return out;
 }
-/** Validates a declaration beyond JSON Schema; throws plain Errors for the operator. */
-export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
-  const records = compileRecordSchema(name, spec.schema);
+/**
+ * Validates a declaration beyond JSON Schema; throws plain Errors for the operator. `schemas` is the project's named
+ * schemas (`ExtensionActivation.schemas`), which a collection's `schema: <name>` resolves against.
+ */
+export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<Record<string, unknown>> = {}): NormalizedSpec {
+  const records = compileRecordSchema(name, spec.schema, spec, schemas);
   const property = (field: string): PropertySchema | undefined => hasOwn(records.properties, field) ? records.properties[field] : undefined;
   const queryable = (key: 'sortable' | 'filterable'): string[] => {
     const names = spec[key] ?? [];
@@ -473,7 +498,7 @@ export class Collection {
   private get owned(): boolean { return this.spec.ownership === 'owner'; }
   /** Properties a short link redirects to (store.ts): every write also requires `redirectable` values there. */
   private readonly destinations: readonly string[];
-  constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor, destinations: readonly string[] = []) { this.name = name; this.spec = normalize(name, spec); this.auditor = auditor; this.destinations = destinations; }
+  constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor, destinations: readonly string[] = [], schemas: Readonly<Record<string, unknown>> = {}) { this.name = name; this.spec = normalize(name, spec, schemas); this.auditor = auditor; this.destinations = destinations; }
 
   /**
    * Binds this view to the open database after validating every stored row against this declaration: a row that

@@ -182,7 +182,8 @@ extensions:
             required: [title]
             properties:
               title: { type: string, minLength: 1, maxLength: 200 }
-              done: { type: boolean, default: false }
+              done: { type: boolean }
+          defaults: { done: false }
 routes:
   /api/auth/*:  { extension: auth, methods: [GET, POST] }
   /api/todos/*:

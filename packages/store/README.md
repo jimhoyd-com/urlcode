@@ -23,17 +23,65 @@ todos:
     required: [title]
     properties:
       title: {type: string, minLength: 1, maxLength: 200}
-      done: {type: boolean, default: false}
+      done: {type: boolean}
+  defaults: {done: false}
 ```
 
-The store acts on two standard annotations: `default` is stored on create when
-the body omits the property, and `readOnly: true` means only a declared
-transition changes it. A record that breaks the schema answers
-`422 invalid_record` with the `issues` list a body-schema route answers. The
-store-owned facts (`key`, `increments`, `ownership`, `transitions`, `readers`,
-`membership`, `sortable`, `filterable`) sit beside the schema and name its
-properties. With the host file loaded, `urlcode openapi` describes every store
-mount from this schema (see [OpenAPI][store-openapi]).
+The schema carries value shape only, exactly as a request body schema does.
+What the store does beyond it sits beside it on the collection and names its
+properties: `defaults` (stored on create, and on `PUT`, when the body omits the
+property) and `readOnlyProperties` (only a declared transition changes them),
+with the other store-owned facts (`key`, `increments`, `ownership`,
+`transitions`, `readers`, `membership`, `sortable`, `filterable`). A record
+that breaks the schema answers `422 invalid_record` with the `issues` list a
+body-schema route answers. With the host file loaded, `urlcode openapi`
+describes every store mount from this schema (see [OpenAPI][store-openapi]).
+
+### Named schemas
+
+`schema` may instead name one of the project's
+[named schemas][http-named-schemas] (the top-level `schemas:` map), so one
+schema is a collection's record shape, a route's request body and an MCP
+tool's arguments at once, and all three refuse the same invalid input at the
+same pointer:
+
+```yaml
+version: "1"
+schemas:
+  Ticket:
+    type: object
+    additionalProperties: false
+    required: [title]
+    properties:
+      title: {type: string, minLength: 1, maxLength: 80}
+      status: {type: string, enum: [open, closed]}
+extensions:
+  store:
+    version: "1"
+    config:
+      collections:
+        tickets:
+          mount: /api/tickets
+          schema: Ticket
+          defaults: {status: open}
+          readOnlyProperties: [status]
+          transitions:
+            close: {from: {status: open}, set: {status: closed}}
+routes:
+  /api/tickets/*: {extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true}
+  /tickets:
+    methods: [POST]
+    request:
+      body:
+        POST: {format: json, required: true, schema: Ticket}
+    respond: {status: 201, json: {ok: true}}
+```
+
+The named schema must satisfy the same restrictions as an inline one (a flat
+object of scalar properties with `additionalProperties: false` and no
+`$defs`), or activation refuses it naming the collection, the schema and the
+pointer. The OpenAPI export references the named component from the store's
+schemas instead of copying it.
 
 ## Responses
 
@@ -199,7 +247,7 @@ moves one record from the exact `from` values to the constant `set` values
 `If-Match` and `Idempotency-Key`, or answers `409 transition_conflict` and
 writes nothing. On an owned collection `by: others` lets any principal except
 the owner run it, on a separate mount whose route policy decides who may; a
-`readOnly` property can only change through a transition.
+property in `readOnlyProperties` can only change through a transition.
 Transitions are not an expression language: interval constraints and
 multi-record transfers use a host transaction. See
 [conditional transitions and result-aware retries][store-conditional-transitions-and-result-aware-retries].
@@ -263,7 +311,8 @@ extensions:
             properties:
               code: {type: string, minLength: 1, maxLength: 32}
               destination: {type: string, format: uri}
-              clicks: {type: integer, default: 0, minimum: 0}
+              clicks: {type: integer, minimum: 0}
+          defaults: {clicks: 0}
       shortLinks:
         public: {mount: /go, collection: links, destination: destination, clicks: clicks}
 routes:
@@ -292,6 +341,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [store-http-contract]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#http-contract
 [store-openapi]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#openapi
 [http-error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
+[http-named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
 [tooling-openapi-export]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#openapi-export
 [add-ons]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
 [store-durability]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#durability
@@ -326,7 +376,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 |---|---|---|---|---|
 | `extensions.store.config.collections` | object | yes | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | Collections by name, each stored as rows of the site's store database (data/store.sqlite outside app/, chosen by the operator) and served as a bounded CRUD API at its mount. |
 | `extensions.store.config.collections.*.mount` | string | no | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the collection's JSON API; it needs a route `<mount>/*` with extension: store (GET, HEAD, POST, PUT, PATCH, DELETE). Required, except on a membership collection, which has none. |
-| `extensions.store.config.collections.*.schema` | object | yes | unknown keys rejected | The record schema: a JSON Schema 2020-12 object schema in the same bounded profile as `request.body.<METHOD>.schema`, validated by the same validator, with a flat set of scalar properties. A body that breaks it answers 422 invalid_record with the same issue list a body-schema route answers. id, createdAt and updatedAt are reserved and store-owned. |
+| `extensions.store.config.collections.*.schema` | string / object | yes | one of: string (pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"); object (fields below) | The record schema, inline or by the name of a project named schema (top-level schemas:). Either way it is a request body schema restricted to a flat record: the collection's defaults and readOnlyProperties carry what the store does beyond value shape. |
 | `extensions.store.config.collections.*.schema.$schema` | constant | no | const: "https://json-schema.org/draft/2020-12/schema" | Optional; only the JSON Schema 2020-12 dialect. |
 | `extensions.store.config.collections.*.schema.$comment` | string | no | maxLength: 4096 | A note for readers; not validated. |
 | `extensions.store.config.collections.*.schema.title` | string | no | maxLength: 4096 | A short name for the record type. |
@@ -336,8 +386,8 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.schema.required` | array | no | maxItems: 64; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Properties every record must carry: a create or PUT without one (and without a default) answers 422, and PATCH cannot clear one. |
 | `extensions.store.config.collections.*.schema.properties` | object | yes | minProperties: 1; maxProperties: 64; keys: "^[a-z][A-Za-z0-9_]{0,63}$" | The record properties by name, each a scalar schema. A string property needs maxLength (or an enum) to be sortable or filterable. |
 | `extensions.store.config.collections.*.schema.properties.*.type` | string | yes | enum: ["string","integer","number","boolean"] | The one scalar type the property holds; records hold scalars only. |
-| `extensions.store.config.collections.*.schema.properties.*.default` | string / number / boolean | no | one of: string (maxLength: 65536); number; boolean | Stored on create when the body omits the property; it must satisfy the property's own schema. |
-| `extensions.store.config.collections.*.schema.properties.*.readOnly` | boolean | no | — | true: only a declared transition (its set or stamp) changes the property. A create stores its default (or leaves it unset), PUT keeps its value, and a POST, PUT or PATCH body naming it answers 422. A required readOnly property needs a default. Not the key or an increment. |
+| `extensions.store.config.collections.*.defaults` | object | no | maxProperties: 64; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 65536); number; boolean) | Declared properties and the value stored on create (and on PUT) when the body omits them; each value must satisfy its property's schema. A required property with a default may be omitted from a create. |
+| `extensions.store.config.collections.*.readOnlyProperties` | array | no | maxItems: 64; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared properties only a declared transition (its set or stamp) changes. A create stores the default (or leaves them unset), PUT keeps the stored value, and a POST, PUT or PATCH body naming one answers 422. A required one needs a default, and some transition must set or stamp it. Not the key or an increment. The OpenAPI record marks them readOnly. |
 | `extensions.store.config.collections.*.maxRecords` | integer | no | minimum: 1; maximum: 10000 | Records the collection may hold (default 1000); a create beyond it answers 409 collection_full. |
 | `extensions.store.config.collections.*.maxRecordBytes` | integer | no | minimum: 256; maximum: 65536 | Largest serialized record in bytes (default 4096); larger answers 413. |
 | `extensions.store.config.collections.*.pageSize` | integer | no | minimum: 1; maximum: 200 | Records per list page, and the cap on a list request's limit (default 50). |
@@ -373,7 +423,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 
 Declare collections under extensions.store.config.collections and mount each on a route with `extension: store`. Bounded unique keys, numeric increments, idempotency retention, per-owner records, declared transitions, membership lists, readers and short-link redirects remain store-owned; no handler code is needed.
 
-- **collections** (configuration, `urlcode.yaml`): Per-collection mount, a record `schema` (a JSON Schema 2020-12 object schema in the request body profile: flat scalar properties, `additionalProperties: false`, the store acting on `default` and on `readOnly` as transition-only; a record that breaks it answers `422 invalid_record` with the body-schema issue list), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` property lists, and `audit: true` (every write recorded in the audit log with property names and the principal, never values; needs the audit extension, and writes answer `503 audit_backlog` while 1000 events wait to drain). Create, list, read, replace, update and delete need no handler.
+- **collections** (configuration, `urlcode.yaml`): Per-collection mount, a record `schema` (a JSON Schema 2020-12 object schema in the request body profile: flat scalar properties, `additionalProperties: false`; inline, or the name of a project schema under top-level `schemas:` shared with route bodies and MCP tools; a record that breaks it answers `422 invalid_record` with the body-schema issue list), `defaults` (values a create stores for omitted properties) and `readOnlyProperties` (changed only by a transition), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` property lists, and `audit: true` (every write recorded in the audit log with property names and the principal, never values; needs the audit extension, and writes answer `503 audit_backlog` while 1000 events wait to drain). Create, list, read, replace, update and delete need no handler.
 - **ownership** (configuration, `urlcode.yaml`): `ownership: owner` on a collection: each signed-in principal creates, lists, reads, changes and deletes only its own records: every read and write is scoped to the principal that created the record. Not combined with a unique `key`. The mount must be guarded by a principal-providing policy such as `auth: true`. An optional `maxRecordsPerOwner` (at most maxRecords) answers `409 owner_quota_exceeded` at the limit.
 - **transitions** (configuration, `urlcode.yaml`): Declared `transitions` move one record from exact `from` values to constant `set` values (with `stamp: {property: actor\|now}`) in one transaction as `POST <mount>/<id>/<name>`; a record not in the `from` state answers `409 transition_conflict`. On an owned collection `by: others` serves the transition on its own `mount` to any principal except the owner (an approval or review step), and `members: <membership collection>` admits only that list's members. Not an expression language.
 - **membership** (configuration, `urlcode.yaml`): Permissions as data keyed by the principal id, never roles in auth: a `membership: true` collection with a `key` lists principal ids and has no mount (the operator maintains it with `urlcode-store members` or `addMember`/`removeMember`). A transition's `members` and a collection's `readers.members` name it.

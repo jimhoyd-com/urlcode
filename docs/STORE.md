@@ -48,7 +48,8 @@ extensions:
             required: [title]
             properties:
               title: {type: string, minLength: 1, maxLength: 200}
-              done: {type: boolean, default: false}
+              done: {type: boolean}
+          defaults: {done: false}
           maxRecords: 1000
           maxRecordBytes: 4096
 ```
@@ -169,7 +170,8 @@ extensions:
             properties:
               code: {type: string, minLength: 1, maxLength: 32}
               destination: {type: string, format: uri}
-              clicks: {type: integer, default: 0, minimum: 0}
+              clicks: {type: integer, minimum: 0}
+          defaults: {clicks: 0}
       shortLinks:
         public:
           mount: /go
@@ -182,7 +184,7 @@ routes:
 ```
 
 - `key` names one required string property whose schema caps it at 128
-  characters (`maxLength`), with no default and not `readOnly`. A create
+  characters (`maxLength`), with no default and not in `readOnlyProperties`. A create
   atomically claims that caller-supplied value; a duplicate is `409 key_exists`.
   Updating a key is allowed only when the replacement is unused. Keys remain
   collection-local; they are not routing or authorization principals.
@@ -325,9 +327,11 @@ collections:
       required: [title]
       properties:
         title: {type: string, maxLength: 120}
-        status: {type: string, enum: [pending, approved, withdrawn], default: pending, readOnly: true}
-        reviewedBy: {type: string, maxLength: 128, readOnly: true}
-        reviewedAt: {type: string, maxLength: 32, readOnly: true}
+        status: {type: string, enum: [pending, approved, withdrawn]}
+        reviewedBy: {type: string, maxLength: 128}
+        reviewedAt: {type: string, maxLength: 32}
+    defaults: {status: pending}
+    readOnlyProperties: [status, reviewedBy, reviewedAt]
     transitions:
       approve:                     # POST /api/approvals/<id>
         from: {status: pending}
@@ -374,15 +378,15 @@ routes:
   shared collection `by` is refused, since records have no owner to compare,
   and anyone who can reach the mount may run the transition unless it names
   `members`.
-- A property the schema declares `readOnly: true` (the standard JSON Schema
-  annotation: the value is managed by the store) changes only through a
-  transition's `set` or `stamp`: a create stores its default (or leaves it
-  unset), `PUT` keeps its current value, and any body naming it is
-  `422 invalid_record` with the issue `is changed only by a transition`
-  (keyword `readOnly`). Without it, the owner in the example could `PATCH`
-  `status: approved` and skip the review. Activation refuses it on the key or
-  an increment property, when it is `required` without a `default`, and when no
-  transition sets or stamps it.
+- A property the collection lists in `readOnlyProperties` (published as the
+  standard JSON Schema `readOnly` annotation: the value is managed by the
+  store) changes only through a transition's `set` or `stamp`: a create stores
+  its default (or leaves it unset), `PUT` keeps its current value, and any body
+  naming it is `422 invalid_record` with the issue `is changed only by a
+  transition` (keyword `readOnly`). Without it, the owner in the example could
+  `PATCH` `status: approved` and skip the review. Activation refuses it on the
+  key or an increment property, when it is `required` without a default, and
+  when no transition sets or stamps it.
 
 ### Membership gates and cross-owner reads
 
@@ -682,7 +686,7 @@ same bounded issue list in a refusal. There is no second, store-private value
 checker.
 
 ```yaml
-# snippet: partial -- one collection's schema
+# snippet: partial -- one collection's schema and its store layer
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema   # optional
   title: Ticket
@@ -692,9 +696,11 @@ schema:
   properties:
     code: {type: string, pattern: "^[A-Z]{2}-[0-9]+$", maxLength: 12}
     due: {type: string, format: date}
-    priority: {type: integer, minimum: 1, maximum: 3, default: 2}
+    priority: {type: integer, minimum: 1, maximum: 3}
     channel: {type: string, anyOf: [{const: web}, {const: mail}]}
-    state: {type: string, enum: [open, closed], default: open, readOnly: true}
+    state: {type: string, enum: [open, closed]}
+defaults: {priority: 2, state: open}
+readOnlyProperties: [state]
 ```
 
 What the store adds to the profile, and why:
@@ -711,25 +717,92 @@ What the store adds to the profile, and why:
   counters compare scalar values. `id`, `createdAt` and `updatedAt` are
   reserved and store-owned; a body may carry them (a record read back) and
   they are ignored.
-- **Two standard annotations it acts on.** `default` is stored on create when
-  the body omits the property (and on `PUT`), and must satisfy the property's
-  own schema. `readOnly: true` means only a declared
-  [transition](#declared-transitions) changes the property. Core's request
-  profile refuses both keywords, because the runtime does not act on them for
-  a request body; the store removes them before compiling and acts on them
-  itself. Anywhere else than directly on a property they are refused as in
-  the request profile.
+- **Value shape only.** The schema is exactly a request body schema, so the
+  profile's refusal of `default` and `readOnly` holds here too: a property
+  carrying either is refused at activation with a message naming the
+  collection key to use instead.
 - **Store-owned facts stay beside the schema** and name its properties:
-  `key`, `increments`, `sortable`, `filterable`, `transitions`, `ownership`,
-  `readers`, `membership`, and the short link's destination. They are
-  behavior over records (uniqueness, atomic counters, scoping, state
-  changes), not value constraints, so they are not JSON Schema keywords.
+  `defaults` (stored on create when the body omits the property, and on
+  `PUT`; each value must satisfy the property's own schema),
+  `readOnlyProperties` (only a declared [transition](#declared-transitions)
+  changes them), `key`, `increments`, `sortable`, `filterable`,
+  `transitions`, `ownership`, `readers`, `membership`, and the short link's
+  destination. They are behavior over records (stored values, uniqueness,
+  atomic counters, scoping, state changes), not value constraints, so they are
+  not JSON Schema keywords. A name one of them gives that the schema does not
+  declare is refused at activation.
+
+*Why one place for defaults and read-only markers.* The store used to read
+`default` and `readOnly` from the record schema's properties and strip them
+before compiling. That made a record schema a dialect of the request profile:
+it could not be a [named schema](HTTP.md#named-schemas) that a route body or
+an MCP tool also names, since the profile refuses both keywords there, and a
+collection naming a shared schema would have needed a second place for them
+anyway. With both on the collection, for an inline and a named schema alike,
+a record schema is one thing everywhere, and a default is always something the
+store does rather than a claim about the value.
+
+### A named schema as the record schema
+
+`schema` may name one of the project's [named schemas](HTTP.md#named-schemas)
+(the top-level `schemas:` map) instead of writing one inline. One schema is
+then the collection's record shape, a route's request body and an MCP tool's
+arguments, compiled once by core, and all three refuse the same invalid input
+with the same issue at the same pointer (the store as `422 invalid_record`
+with `issues`, the route as its body-validation `422`, the tool as an
+`Invalid arguments` result):
+
+```yaml
+version: "1"
+schemas:
+  Ticket:
+    type: object
+    additionalProperties: false
+    required: [title]
+    properties:
+      title: {type: string, minLength: 1, maxLength: 80}
+      email: {type: string, format: email}
+      status: {type: string, enum: [open, closed]}
+extensions:
+  store:
+    version: "1"
+    config:
+      collections:
+        tickets:
+          mount: /api/tickets
+          schema: Ticket
+          defaults: {status: open}
+          readOnlyProperties: [status]
+          transitions:
+            close: {from: {status: open}, set: {status: closed}}
+routes:
+  /api/tickets/*: {extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE], auth: true}
+  /tickets:
+    methods: [POST]
+    request:
+      body:
+        POST: {format: json, required: true, schema: Ticket}
+    respond: {status: 201, json: {ok: true}}
+```
+
+The named schema must satisfy every restriction above: a flat object of
+scalar properties with `additionalProperties: false` written out, and only the
+root keywords listed. A schema file that references another file is bundled
+with `$defs`, which a flat record has no use for, so it is refused. Activation
+refuses a schema the store cannot hold, naming the collection, the schema and
+the pointer (`Collection tickets: schema Ticket (top-level schemas:) cannot be
+a record schema: /properties/address/type must be one of string, integer,
+number, boolean`), and an unknown name (`Collection tickets: schema names
+Tikcet, which the project does not declare under schemas`). The store's
+[OpenAPI](#openapi) description references the named component rather than
+copying it. `packages/store/test/named-schema.test.ts` runs one schema through
+a collection, a route and an MCP tool.
 
 A write is judged as the record it would leave: a create is the defaults plus
-the body, a `PUT` the defaults, the body and the stored `readOnly` values, a
+the body, a `PUT` the defaults, the body and the stored read-only values, a
 `PATCH` the stored record with the named properties set or removed. The
 first failure is `422 invalid_record` with `issues` in the body-schema shape;
-the store's own rules on a named property (a `readOnly` property in a body, an
+the store's own rules on a named property (a read-only property in a body, an
 increment cleared, a membership key that is not a principal id, a short-link
 destination that is not an HTTP(S) URL) are issues in the same shape. Stored
 rows are judged without `required` when they are read and at activation, so
@@ -746,7 +819,7 @@ document and translate, every profile keyword is available to a record without
 the store naming it, and the schema a reader writes is the one `urlcode
 openapi` publishes and a generated client uses. What it costs is a little
 verbosity (`type: object` and `additionalProperties: false` are written out)
-and the store's layer of annotations described above.
+and the store's layer (`defaults`, `readOnlyProperties`) beside it.
 
 Limits per collection: up to 64 properties, `maxRecords` up to 10,000 (default
 1,000), on an owned collection `maxRecordsPerOwner` up to `maxRecords`
@@ -1326,7 +1399,7 @@ What such a client reads from the HTTP contract:
   [transitions the caller may run now](#what-the-caller-may-run), so the page
   offers only those. They are a hint, not a grant; the transition still checks
   everything in its own transaction.
-- **`readOnly` properties** never go in a create or update body (`422`); only
+- **`readOnlyProperties`** never go in a create or update body (`422`); only
   a [declared transition](#declared-transitions) changes them. A client
   generated from [`urlcode openapi`](#openapi) leaves them out of its request
   types.
@@ -1357,9 +1430,10 @@ the project's declaration alone, without opening the database.
 | Short link | `GET`/`HEAD <mount>/{key}`, a `302` with `Location` |
 
 The schemas come from the record schema: `Store<Collection>Record` is it with
-`id`, `createdAt` and `updatedAt` added (`readOnly` and `default` stay as
-declared), `Store<Collection>Create` (for `POST` and `PUT`) leaves out the
-`readOnly` properties and requires only what has no default,
+`id`, `createdAt` and `updatedAt` added and the collection's `defaults` and
+`readOnlyProperties` written as the standard `default` and `readOnly`
+annotations, `Store<Collection>Create` (for `POST` and `PUT`) leaves out the
+read-only properties and requires only what has no default,
 `Store<Collection>Patch` lets an optional property be `null`, and the list,
 reader (with `_owner` under `showOwner`) and `StoreError` shapes are named the
 same way. Each operation lists the headers it takes (`If-Match`, and
@@ -1374,6 +1448,16 @@ validates the output against the official OpenAPI 3.1 schema and runs the
 host file the mounts stay opaque: core never loads extension code to describe
 a project.
 
+A collection whose `schema` names a [project schema](#a-named-schema-as-the-record-schema)
+references it instead of copying it: core writes the schema once as
+`components.schemas.<name>`, as for a route body naming it, and each record,
+create and patch property is `{$ref: '#/components/schemas/<name>/properties/<property>'}`
+with the collection's `default` and `readOnly` beside the reference. When the
+collection takes the schema exactly as a create body (no read-only property,
+and no default on a required one), `Store<Collection>Create` is the component
+itself, so a generated client has one type for the store's `POST`, a route
+body and an MCP tool naming that schema.
+
 ## Using a collection from another extension
 
 An extension that `requires: [store]` reaches declared collections through the
@@ -1381,7 +1465,8 @@ store's typed export, `ctx.get('store')` in its definition's `host()`
 (`StoreExports`, contract version 1, #529), never by reading
 `extensions.store.config`. Once the store is active (declare it first under
 `extensions`), `records('<collection>')` returns the collection's `ownership`,
-`readOnly` and declared record `schema` (a deep-frozen copy), and four calls that take the request
+`readOnly`, record `schema` (a deep-frozen copy; a named one resolved), `defaults` and
+`readOnlyProperties`, and four calls that take the request
 principal (`request.principal`):
 
 - `create(principal, values)` stamps the principal as owner on an owned

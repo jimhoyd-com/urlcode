@@ -495,13 +495,20 @@ export interface ExtensionDescribeRequest {
   readonly methods:readonly string[];
   /** `extensions.<name>.config` as the project declares it (not yet validated against the registration's schema). */
   readonly config:Readonly<Record<string,unknown>>;
+  /**
+   * The project's named schemas (top-level `schemas:`), as `ExtensionActivation.schemas` holds them (empty when none).
+   * A contribution may reference one as `#/components/schemas/<name>`, or one of its root properties as
+   * `#/components/schemas/<name>/properties/<property>`; core writes the component once, as a route naming it would.
+   */
+  readonly schemas:Readonly<Record<string,BodySchema>>;
 }
 /**
  * An extension's OpenAPI 3.1 contribution for one mount: JSON data only. `paths` are OpenAPI path items keyed by the
  * mount itself or a path below it (`{name}` templating), at most `extensionOpenApiLimits.paths`, holding only the
  * `summary`, `description`, `parameters` and operation keys. `schemas` are Schema Objects added to
  * `components.schemas`, named with the extension's name in PascalCase as prefix (`store` → `Store...`), at most
- * `extensionOpenApiLimits.schemas`. Every `$ref` must name one of those or a core `Urlcode...` component. The whole
+ * `extensionOpenApiLimits.schemas`. Every `$ref` must name one of those, a core `Urlcode...` component, or a project
+ * named schema (`ExtensionDescribeRequest.schemas`) or one of its root properties. The whole
  * contribution serializes to at most `extensionOpenApiLimits.bytes`.
  */
 export interface ExtensionOpenApi {
