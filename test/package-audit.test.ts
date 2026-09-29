@@ -84,3 +84,28 @@ test('packedStringProblems names docs pages a packed script prints but the packa
   ]);
   assert.deepEqual(['dist/cli.js', 'recipes/x/functions/a.mjs', 'dist/types/index.d.ts', 'README.md'].filter(isPackedCode), ['dist/cli.js', 'recipes/x/functions/a.mjs']);
 });
+
+test('packedTextProblems names docs pages and main-branch links in packed text the package does not ship (#948)', async () => {
+  const { packedTextProblems, isPackedText } = await import('../scripts/package-audit.ts');
+  const packed = new Set(['schemas/urlcode.schema.json', 'docs/TOOLING.md']);
+  const schema = [
+    '{"description": "Rules (docs/ROUTING.md) and docs/TOOLING.md."},',
+    '{"description": "Pinned https://github.com/jimhoyd-com/urlcode/blob/v1.2.3/docs/HTTP.md#named-schemas."},',
+    '{"description": "Main https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md"}',
+  ].join('\n');
+  assert.deepEqual(packedTextProblems('schemas/urlcode.schema.json', schema, packed), [
+    'schemas/urlcode.schema.json:1 names `docs/ROUTING.md`, which the package does not ship',
+    "schemas/urlcode.schema.json:3 names `https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md`, this repository's main branch; link blob/v<current version>/... instead",
+  ]);
+  // Every line counts, fenced or in a code span; link labels and references are the link check's.
+  const index = '```\ncat docs/STORE.md\n```\n`docs/CAPACITY.md` [docs/HTTP.md][docs/HTTP.md] [`docs/SITE.md`](https://x.y/z)\n[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v1.2.3/docs/HTTP.md';
+  assert.deepEqual(packedTextProblems('llms-full.txt', index, packed), [
+    'llms-full.txt:2 names `docs/STORE.md`, which the package does not ship',
+    'llms-full.txt:4 names `docs/CAPACITY.md`, which the package does not ship',
+  ]);
+  // A manifest's homepage may name main; a binary file is not read.
+  assert.deepEqual(packedTextProblems('package.json', '"homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/audit#readme"', packed), []);
+  assert.deepEqual(packedTextProblems('examples/a.png', 'docs/X.md\0', packed), []);
+  assert.deepEqual(['schemas/urlcode.schema.json', 'examples/a/urlcode.yaml', 'llms.txt', 'README.md', 'dist/cli.js', 'dist/types/index.d.ts', 'starters/default/Makefile'].filter(isPackedText),
+    ['schemas/urlcode.schema.json', 'examples/a/urlcode.yaml', 'llms.txt', 'starters/default/Makefile']);
+});
