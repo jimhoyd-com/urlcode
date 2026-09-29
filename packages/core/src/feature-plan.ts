@@ -89,6 +89,8 @@ const recipeTerms:Record<string,readonly string[]>={
  'store-crud':['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions',...listQueryTerms],
  'store-booking':['book','booking','bookings','schedule','scheduling','reservation','reservations','reserve','appointment','appointments','slot','slots','calendar','availability','overlap','overlapping','interval','intervals'],
  'store-credits':['credit','credits','wallet','wallets','balance','balances','transfer','transfers','ledger','points','issuer','issuers','mint','payment','payments'],
+ // Not "request" or "own": a list of one's own requests is store-crud's; the review is what makes it an approval.
+ 'store-approval':['approval','approvals','approve','approves','approved','approver','approvers','reject','rejects','rejected','review','reviews','reviewed','reviewer','reviewers','submit','submits','submitted','withdraw','sign-off','signoff'],
 };
 const extensionReason:Record<string,string>={
  auth:'Authentication is an operator-installed extension; its registration and revision pin, not project YAML, select the executable package and grants.',
@@ -101,6 +103,7 @@ const outline:Record<string,{kind:string;note:string}>={
  'authenticated-json-api':{kind:'protected endpoint',note:'The bundled recipe protects a function route with auth: true; Better Auth (the auth extension) owns sign-in and sessions, and the function reads context.capabilities.auth.identity.userId.'},
  'store-crud':{kind:'durable collection',note:'The bundled recipe declares a collection and an extension mount; CRUD behavior belongs to the registered store extension, not a generated handler.'},
  'store-booking':{kind:'declarative booking',note:'The bundled recipe declares an owned bookings collection behind auth: true: intervals {start, end, within: [room], when: {status: booked}} answers 409 interval_conflict for an overlapping booking across owners, a cancel transition frees the slot, and status is readOnly; no handler.'},
+ 'store-approval':{kind:'declarative approval',note:'The bundled recipe declares owned requests behind auth: true with status, reviewedBy and reviewedAt in readOnlyProperties. submit and withdraw are owner transitions; approve and reject are by: others transitions on their own mounts with members: reviewers (a membership collection the operator fills with urlcode-store members add), stamping reviewedBy: actor and reviewedAt: now. editable: {status: draft} and deletable: {status: [draft, rejected]} answer 409 record_locked, so an approved request stays as approved; readers: {queue: {mount, members: reviewers, showOwner: true}} with filterable: [status] is the review queue. No handler.'},
  'store-credits':{kind:'declarative credits',note:'The bundled recipe declares owned wallets behind auth: true with a balance that defaults to 0, is in readOnlyProperties and is never set by a transition. pay moves whole credits and never overdraws; funding comes from the issuer pattern: an issue transfer with a negative min (the credit outstanding) and members: <membership collection>, so only a listed issuer mints and the sum stays 0. The operator adds issuers with urlcode-store members add; no handler.'},
 };
 const listQueryOutline={kind:'declarative list query',note:'Declare the query instead of parsing it. A store collection lists the properties a GET may filter by equality in filterable (?status=pending) and sort by in sortable (?sort=<property>, ?sort=-<property> descending; one sort property, id breaks ties); a list answers pages bounded by pageSize and continued with ?limit= and the opaque ?cursor=, and a value the property schema refuses answers 400 invalid_query. A string property needs maxLength or an enum to be filterable or sortable. ownership: owner behind auth: true scopes every list to the signed-in principal. A route that lists something the store does not hold declares its query parameters (parameters: [{name: status, in: query, schema: {type: string, enum: [...]}}]) so the runtime answers 400 before anything runs. get_schema routes.*.parameters and the store README list the exact fields.'};
@@ -123,8 +126,9 @@ function recipeExtensions(recipe:Recipe):string[] {
  * The recipes an extension fallback may offer on words the goal shares only with that extension's surfaces (#957).
  * Those words are inherited by every recipe built on the extension, so they are not distinctive: they select only the
  * extension's general recipe (the one needing the fewest services, as store-crud needs the store alone), for the
- * extension whose surfaces the goal named most. A specialised recipe (store-booking, store-credits need the store and
- * auth) is offered only on its own terms, so an approval goal's "submit", "approve" or "reviewers" never selects it.
+ * extension whose surfaces the goal named most. A specialised recipe (store-booking, store-credits and store-approval
+ * need the store and auth) is offered only on its own terms: an approval goal's "submit", "approve" or "reviewers" are
+ * store-approval's own terms, so they select it and never booking or credits.
  */
 function generalExtensionRecipes(recipes:Recipe[],surfaceTerms:ReadonlyMap<string,readonly string[]>):Recipe[] {
  const most=Math.max(0,...[...surfaceTerms.values()].map(words=>words.length));
@@ -155,7 +159,8 @@ function selectedRecipes(goalTerms:string[], recipes:Recipe[], surfaceTerms:Read
  });
  // Declarative first (docs/PROJECT-DIRECTION.md): a recipe that runs no project code outranks one that does, then more
  // of the goal's words in the recipe's own terms, then the recipe needing fewer services (a goal that names none of a
- // specialised recipe's words gets the general one: approvals get store-crud, not store-booking), then more words overall.
+ // specialised recipe's words gets the general one: an owner's own notes get store-crud, not store-booking), then more
+ // words overall.
  return candidates.map((recipe,index)=>({recipe,index,code:runsProjectCode(recipe),own:matchedTerms(goalTerms,recipe).length,services:(recipe.services??[]).length,matched:new Set([...matchedTerms(goalTerms,recipe),...extensionTerms(recipe,surfaceTerms)]).size}))
   .sort((a,b)=>Number(a.code)-Number(b.code)||b.own-a.own||a.services-b.services||b.matched-a.matched||a.index-b.index).map(item=>item.recipe).slice(0,4);
 }

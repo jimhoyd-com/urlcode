@@ -406,9 +406,11 @@ whose surfaces the goal named most is offered: among the recipes whose
 `services` name `<extension> extension`, the one needing the fewest services
 (`store-crud` for the store). Surface words are shared by every recipe built on
 that extension, so they are not distinctive: a specialised recipe such as
-`store-booking` or `store-credits` is offered only on its own terms (booking,
-slot, interval; credit, wallet, transfer, balance), never on an approval goal's
-submit, approve, reject or reviewers
+`store-booking`, `store-credits` or `store-approval` is offered only on its own
+terms (booking, slot, interval; credit, wallet, transfer, balance; approve,
+reject, review, reviewers, submit, withdraw). An approval goal's workflow words
+are `store-approval`'s own, so that goal gets the approval recipe and never
+booking or credits
 ([#957](https://github.com/jimhoyd-com/urlcode/issues/957)).
 
 The goal is a 1–512 character string reduced to at most sixteen normalized

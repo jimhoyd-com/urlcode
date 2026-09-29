@@ -9,10 +9,22 @@ extensions:
     version: "1"
     config:
       collections:
+        # Who may book, as in the recipe.
+        staff:
+          membership: true
+          key: userId
+          schema:
+            type: object
+            additionalProperties: false
+            required: [userId]
+            properties:
+              userId: {type: string, maxLength: 128}
         bookings:
           # A host transaction on an owned collection sees only one principal's records, so the overlap check could not
           # see other owners' bookings. The collection is shared, and the extension keeps and enforces the owner.
           mount: /internal/bookings
+          # The members gate is the recipe's, not the interval plumbing measured here: the extension creates as the caller.
+          create: {members: staff}
           schema:
             type: object
             additionalProperties: false
@@ -38,7 +50,7 @@ routes:
     methods: [GET]
     enabled: false
   /api/bookings/*:
-    description: Signed-in users book rooms by the hour; the bookings extension refuses an overlapping booking of the same room with 409.
+    description: Staff book rooms one hour at a time; the bookings extension refuses an overlapping booking of the same room with 409.
     extension: bookings
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
     auth: true

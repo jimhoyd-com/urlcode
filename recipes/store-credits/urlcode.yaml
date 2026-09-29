@@ -26,14 +26,21 @@ extensions:
           schema:
             type: object
             additionalProperties: false
-            required: [name, balance]
+            required: [handle, balance]
             properties:
-              name: {type: string, minLength: 1, maxLength: 40}
+              # A public handle: lower case only, so no look-alike of another handle can be registered.
+              handle: {type: string, pattern: "^[a-z0-9_]{3,20}$", maxLength: 20}
               # Whole credits only: a transfer never rounds.
               balance: {type: integer}
           # A wallet opens at 0, no body sets the balance and only a transfer changes it, so the sum never changes.
           defaults: {balance: 0}
           readOnlyProperties: [balance]
+          # One wallet per handle, whoever owns it: a second `bob` is 409 value_taken, so a lookup cannot be spoofed.
+          unique: [handle]
+          filterable: [handle]
+          readers:
+            # GET /api/directory?handle=bob -> {items: [{id, handle}]}: every signed-in user finds a wallet id, no balance.
+            directory: {mount: /api/directory, properties: [handle]}
           transfers:
             # POST /api/wallets/transfers/pay: from the caller's own wallet to anyone's, never below 0.
             pay: {amount: balance}
@@ -47,4 +54,9 @@ routes:
     description: Signed-in users hold credit wallets, pay each other and receive credits from an issuer; every transfer keeps the total.
     extension: store
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true
+  /api/directory/*:
+    description: Every signed-in user looks a wallet up by its unique handle and sees only its id and handle, never a balance.
+    extension: store
+    methods: [GET, HEAD]
     auth: true

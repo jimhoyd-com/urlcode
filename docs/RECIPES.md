@@ -35,8 +35,9 @@ urlcode validate --local --project ./orders-hook
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | `store` extension (`urlcode extensions add store`), `--host-file`, `--origin`; or initialize with `urlcode init DIR --with auth,store --example` |
-| `store-booking` | advanced | Room booking by the hour: `intervals` refuses an overlapping booking of a room across owners (`409`), a `cancel` transition frees the slot, no handler code ([intervals](STORE.md#non-overlapping-intervals)) | `store` and a principal behind `auth: true`, `--host-file` |
-| `store-credits` | advanced | Credit wallets: a members-only issuer transfer (a negative `min` plus `members`) funds them, `pay` never overdraws and the total never changes, no handler code ([transfers](STORE.md#declared-transfers)) | `store` and a principal behind `auth: true`, an issuer added with `urlcode-store members add`, `--host-file` |
+| `store-booking` | advanced | Staff-only room booking in one-hour slots: `intervals` with `length` and `step` refuses an overlapping booking of a room across owners (`409`) and a wrong length or off-grid start (`422`), `create: {members}` refuses a non-member, a `cancel` transition frees the slot, no handler code ([intervals](STORE.md#non-overlapping-intervals)) | `store` and a principal behind `auth: true`, staff added with `urlcode-store members add`, `--host-file` |
+| `store-credits` | advanced | Credit wallets: a members-only issuer transfer (a negative `min` plus `members`) funds them, a projected directory finds a wallet by its `unique` handle without showing a balance, `pay` never overdraws and the total never changes, no handler code ([transfers](STORE.md#declared-transfers)) | `store` and a principal behind `auth: true`, an issuer added with `urlcode-store members add`, `--host-file` |
+| `store-approval` | advanced | Approval workflow, YAML only: owners `submit` and `withdraw`, `by: others` `approve`/`reject` for a reviewers list stamp the reviewer, a readers queue shows pending requests, and `editable`/`deletable` lock an approved request (`409 record_locked`) ([edit and delete states](STORE.md#edit-and-delete-states)) | `store` and a principal behind `auth: true`, reviewers added with `urlcode-store members add`, `--host-file` |
 | `spa-shell` | advanced | Single-page app: native page, assets and JSON API, plus an operator plugin that answers client routes at any depth with `index.html` (no native SPA fallback, [#809](https://github.com/jimhoyd-com/urlcode/issues/809)) | operator plugin in `--host-file`, self-hosted runtime |
 
 Each recipe contains a README, `tests/requests.json` and editable files.
@@ -44,10 +45,13 @@ Replace example destinations and review the resulting files before use. The
 authenticated recipes declare `extensions.auth` and protect their route with
 the short form described in [extensions](EXTENSIONS.md); their README shows the
 minimal host-file fixture that reproduces the bundled tests. The
-`store-booking` and `store-credits` commands pass `--local-review`, so their
-fixtures run on each edit with no revision pin
+`store-booking`, `store-credits` and `store-approval` commands pass
+`--local-review`, so their fixtures run on each edit with no revision pin
 ([the local review loop](EXTENSIONS.md#the-local-review-loop)); serving them
-still needs the reviewed pin.
+still needs the reviewed pin. Their fixtures name callers with a stand-in bearer principal
+that only the README's host accepts, not the auth extension a site installs,
+and seed their membership lists from `tests/seed.json`; each README says how to
+rewrite them as sign-in `steps` for a real site.
 
 Recipes are declarative first ([project direction](PROJECT-DIRECTION.md)): a
 field check is `request.body.<METHOD>.schema` or a parameter `pattern`, a fixed answer is
