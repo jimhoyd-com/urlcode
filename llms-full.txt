@@ -706,6 +706,96 @@ The remaining findings were tooling and docs:
 - It is still one run by one agent, not a benchmark. The frontend and the
   served (non-test) path were not exercised.
 
+#### Fourth run
+
+On 2026-09-29 the third run's method ran again on main `7454d3f2`. That main
+had the fixes for #952–#960: the hermetic local review and the one route count
+in `app/tests/audit.json` (#970), `editable`, `deletable` and `unique` (#984),
+SQL sorting (#986), and the new store recipes (#992). The open pull requests
+[#987](https://github.com/jimhoyd-com/urlcode/pull/987),
+[#996](https://github.com/jimhoyd-com/urlcode/pull/996) and
+[#998](https://github.com/jimhoyd-com/urlcode/pull/998) were not included.
+
+One thing changed: each app started from its recipe. `plan-feature` named
+exactly one recipe for each goal (`store-booking`, `store-credits`,
+`store-approval`). The agent copied that recipe's YAML into the site and
+rewrote its fixtures to sign in through the auth extension.
+
+| Task | CLI runs (validate / test / audit) | Correction rounds (third run) | YAML lines (third run) | Fixture lines (requests + seed) | Code lines | Audit ready | `openapi --check` |
+|---|---:|---:|---:|---:|---:|---|---|
+| Room booking | 19 (2 / 4 / 3) | 3 (3) | 53 (52) | 29 + 8 | 0 | yes | passes |
+| Credits | 9 (1 / 2 / 1) | 0 (2) | 54 (53) | 43 + 9 | 0 | yes | passes |
+| Request approval | 9 (1 / 2 / 1) | 0 (2) | 70 (77) | 54 + 8 | 0 | yes | passes |
+
+The booking count includes one audit that was a deliberate probe for #959.
+All three projects were valid on their first edit. Their fixtures passed on
+the first run, and again on a second run. No round came from the YAML. The
+three booking rounds:
+
+- `plan-feature` refused to run before a site existed (`no-project`), though
+  its help shows `--project` as optional
+  ([#1000](https://github.com/jimhoyd-com/urlcode/issues/1000)).
+- `init --with` refused the version skew and named its fix, as in the second
+  and third runs. The cause is the trial's packing, not the site: the core
+  tarball `pack-addons.ts` packs carries the build's development manifest
+  ([#1002](https://github.com/jimhoyd-com/urlcode/issues/1002)).
+- The first audit was not ready. The sign-in steps passed but asserted
+  nothing, so the auth mount's own `GET` and `POST` were uncovered. An
+  `expectJson` on each sign-in and one `GET /api/auth/get-session` fixed it.
+
+Credits and approval needed no rounds. They reused what booking had
+taught.
+
+The third run's findings held fixed:
+
+- **#952.** Once approved, a request's `PATCH`, `PUT` and `DELETE` answer
+  `409 record_locked`, and its `Allow` header is `GET, HEAD`.
+- **#953.** A second user's `bob` wallet answers `409 value_taken`, and `Bob`
+  answers `422`. The directory lookup returns the one `bob` wallet.
+- **#954.** `npm run validate` passed on each fresh site with no
+  `urlcode-auth migrate`.
+- **#955.** The route count is one number in `app/tests/audit.json`, and
+  `extensions add` moves it. The agent still edits it for each route it
+  adds, but no audit reported a mismatch.
+- **#956 and #957.** Each recipe's YAML was used unchanged, apart from
+  comments and descriptions.
+- **#958.** `openapi --local-review --check` passes.
+- **#959.** With booking's only `PATCH` success case removed, the audit named
+  the method in a `method-without-success` note, not a sign-in note.
+- **#960.** Not observed: the add-ons were built before packing.
+
+The open store bugs could not be reached from these recipes:
+
+- The approval recipe declares no `increments` (#989).
+- Its queue is gated by `reviewers` (#972).
+- The credits `issue` transfer names `members` (#974).
+
+#973 was not probed.
+
+The new findings were tooling and docs:
+
+- The recipes' fixtures sign in with a `Bearer` stand-in. Adopting a recipe
+  into a site with the auth extension meant rewriting every case: 22, 34 and
+  38 of them. The recipes do not say that the auth mount then needs coverage
+  too ([#1001](https://github.com/jimhoyd-com/urlcode/issues/1001)).
+- After `extensions add`, the site's `AGENTS.md`, `README.md` and workflow
+  still describe an empty project, with `no-active-routes` and
+  `allow-empty-project: true`
+  ([#1003](https://github.com/jimhoyd-com/urlcode/issues/1003)).
+
+**Caveats.**
+
+- The agent knows this repository, and this was its fourth pass at the same
+  three apps. It read no repository source while building the sites. It
+  looked at the packed core's `dist/addons.json` to diagnose #1002.
+- The first site was created without `URLCODE_ADDONS`. It installed the
+  add-ons from the checkout's source directories, so it was discarded. Its
+  `init` and `plan-feature` runs are not counted.
+- Starting from a recipe is what cut the rounds. The YAML was copied, not
+  written, so this run measures adoption more than authoring.
+- It is still one run by one agent, not a benchmark. The frontend and the
+  served (non-test) path were not exercised.
+
 #### Plumbing removed by intervals and transfers
 
 For [#902](https://github.com/jimhoyd-com/urlcode/issues/902) item 6, both
