@@ -124,7 +124,7 @@ no principal is `401`. Writes need `Content-Type:
 application/json` (`415` otherwise); an `Origin` header on a write that is
 neither `--origin` nor an operator
 [alias origin](EXTENSIONS.md#site-origins-and-same-origin-checks) is refused
-(`403`). Errors are `{error: {code, message, issues?, fields?}}`; submitted
+(`403`). Errors are `{error: {code, message, issues?, fields?, conflict?}}`; submitted
 values are never echoed. A route's own body-schema `422` has the same
 `{error: {code, message, issues}}` shape only when the site sets
 `errors: {format: json}` for its path (code `UNPROCESSABLE_CONTENT`); otherwise
@@ -138,8 +138,9 @@ mapping each offending parameter to a fixed message.
 Status codes: `400` malformed JSON, header or query, `403` `own_record_refused` (a
 `by: others` transition on the caller's own record), `404`, `405` with
 `Allow`, `409` `collection_full` (or `owner_quota_exceeded` on an
-[owned collection with a per-owner limit](#per-owner-record-limit), or
-`transition_conflict`), `412` stale `If-Match`, `413` body or record too
+[owned collection with a per-owner limit](#per-owner-record-limit),
+`transition_conflict`, or `interval_conflict` with
+[declared intervals](#non-overlapping-intervals)), `412` stale `If-Match`, `413` body or record too
 large, `415`, `422` `invalid_record` or `idempotency_key_reused`, `503`
 `storage_unavailable` when the database write failed or another process held its
 lock past the busy timeout (nothing is written), `500` for anything unexpected
@@ -602,8 +603,43 @@ store.transaction(tx => {
   that requires the store, never from a route `function`, `middleware` or a
   `sandbox: true` route. `work` runs unsandboxed with full Node access, and the
   principals it passes are taken as given.
-- It takes no `Idempotency-Key`: a host extension that serves retries keeps its
-  own key, or uses a declared transition.
+- **Retries** ([#902](https://github.com/jimhoyd-com/urlcode/issues/902)).
+  `transaction(work, {idempotencyKey, fingerprint})` makes it retry-safe, the
+  way `Idempotency-Key` makes an HTTP write retry-safe:
+
+  ```js
+  // POST /transfers with an Idempotency-Key header, served by a host extension.
+  let ran = false;
+  const result = store.transaction(tx => { ran = true; /* the transfer, as above */ return { from: fromId, to: toId, amount }; },
+    { idempotencyKey: `transfers:${principal.id}:${headerKey}`, fingerprint: canonicalBody });
+  // ran === false: a replay; answer it with Idempotency-Replayed: true.
+  ```
+
+  - The claim is read under the transaction's write lock, so of racing calls
+    with one key exactly one runs `work`, in one process and across
+    connections to the same file.
+  - A committed call keeps, in the same transaction, the SHA-256 of the key,
+    the SHA-256 of the fingerprint (absent is the empty string) and `work`'s
+    return value as JSON. A later call with the key and the same fingerprint
+    returns a copy of that value without running `work` or writing anything
+    (no record, no audit event); a different fingerprint is
+    `422 idempotency_key_reused`.
+  - The value is a **snapshot**, unlike the HTTP replay's current record: a
+    host transaction can return anything, so there is no one record to read
+    again. It must be a JSON value (or `undefined`) that JSON keeps exactly (a
+    `Date`, a `Map`, `NaN` or a class instance is refused) and at most 16 KiB
+    serialized (`TRANSACTION_RETRIES.resultBytes`); otherwise the call throws
+    and nothing it did is committed. Return ids and the values the caller
+    must see again, not whole records: a kept result outlives a later change
+    or delete of the records it names.
+  - A call that throws (a `StoreError`, the caller's own error, a `503`)
+    keeps nothing, so its retry runs again.
+  - Keys are one namespace for the whole store database, not per collection:
+    prefix a key with the caller's own scope (the extension, the principal),
+    as the HTTP API scopes a header value to the principal. The newest 1000
+    keys are kept (`TRANSACTION_RETRIES.keys`), evicted by count; an evicted
+    key's retry runs again. Claims survive a restart and are carried by a
+    backup (schema version 4, table `store_transaction_results`).
 
 ### Design decisions
 
@@ -619,7 +655,9 @@ membership check (`403 membership_required`); the retained key (`422` or a
 replay); the record in the caller's scope (`404`, so another owner's record is
 a missing one); for `by: others` the owner check (`403 own_record_refused`);
 `If-Match` (`412`); the transition's `from` values
-(`409 transition_conflict`); the record schema (`422 invalid_record`); quotas (`409`); then
+(`409 transition_conflict`); the record schema and the interval rules
+(`422 invalid_record`); quotas (`409`); the
+[interval check](#non-overlapping-intervals) (`409 interval_conflict`); then
 the write, the claim and the audit event.
 
 **Conflict and no-mutation behavior.** Every refusal is thrown inside the
@@ -670,10 +708,112 @@ The #835 counterexamples, and what serves each:
 | Contract | Served by | Not built |
 |---|---|---|
 | Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `readOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
-| Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a host transaction (list, check overlap, create or `update` with `ifMatch`) | a declarative non-overlap constraint; an interval index (the check reads the caller's records, at most `maxRecords`) |
-| Simulated credits: hold, commit, cancel across records, conserving the total | a host transaction (`minimum: 0` refuses an overdraft and rolls the whole transfer back) | a declarative transfer; `Idempotency-Key` on host transactions |
+| Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a declared [`intervals`](#non-overlapping-intervals) constraint checked through an index, across owners on an owned collection, with `If-Match` and transitions (cancel, reopen); no application code | recurring intervals, capacity above one per slot |
+| Simulated credits: hold, commit, cancel across records, conserving the total | a host transaction (`minimum: 0` refuses an overdraft and rolls the whole transfer back), retry-safe with an [idempotency key](#host-transactions) | a declarative transfer |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
+[#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
+of this contract: a declarative transfer between records, supported
+multi-process serving (with crash and disk-full evidence beyond injected
+failures), sorted lists in SQL, and measuring the plumbing and edit effort the
+scheduling and credit counterexamples save.
+
+
+## Non-overlapping intervals
+
+A collection may declare that its records hold intervals that must not overlap
+([#902](https://github.com/jimhoyd-com/urlcode/issues/902)): room bookings,
+appointment slots, shifts. The store checks it inside every write's
+transaction, through an index, with no application code. It replaces the host
+transaction the scheduling counterexample of #835 needed, which could only
+see the caller's own records.
+
+```yaml
+collections:
+  bookings:
+    mount: /api/bookings
+    ownership: owner
+    schema:
+      type: object
+      additionalProperties: false
+      required: [room, start, end]
+      properties:
+        room: {type: string, maxLength: 40}
+        start: {type: string, format: date-time}
+        end: {type: string, format: date-time}
+        status: {type: string, enum: [booked, cancelled]}
+    defaults: {status: booked}
+    readOnlyProperties: [status]
+    intervals:
+      start: start
+      end: end
+      within: [room]            # a room's bookings conflict with each other only
+      when: {status: booked}    # a cancelled booking frees its slot
+    transitions:
+      cancel: {from: {status: booked}, set: {status: cancelled}}
+      reopen: {from: {status: cancelled}, set: {status: booked}}
+```
+
+- **The rule.** Among the records holding every `when` value (all records
+  without `when`), no two in the same scope with equal `within` values may
+  hold overlapping half-open intervals `[start, end)`. An interval that ends
+  exactly where another starts does not overlap it. A create, `PUT`, `PATCH`
+  or transition that would break it answers `409 interval_conflict` and writes
+  nothing, no `Idempotency-Key` claim or audit event either. A move that would
+  overlap therefore keeps the record where it was, and a record may move over
+  its own old interval. A transition is checked like any write, so `reopen`
+  above is refused while another booking holds the slot.
+- **Scope.** `scope: collection` (the default) constrains every record against
+  every other, **across owners** on an owned collection: another owner's
+  booking blocks the slot. `scope: owner` (owned collections only) constrains
+  each owner's records among themselves, such as a personal calendar.
+- **Privacy.** The `409` body is `{error: {code: "interval_conflict", message,
+  conflict?: {id}}}`. `conflict.id` names the conflicting record only when the
+  caller may read it: any record on a shared collection, and on an owned one
+  only the caller's own. Another owner's booking is never named, and nothing
+  about it (its owner, its interval, its other fields) is returned. The caller
+  still learns that the slot is taken, which is the point of the constraint;
+  on an owned collection with `scope: collection`, that is what one owner learns
+  about another's records. The same rule applies to `StoreExports`, by the
+  principal the caller passes.
+- **Bounds.** `start` and `end` are required properties, both
+  `type: string` with `format: date-time` or both `integer`/`number`; the
+  `within` properties are required too, and none of them may be an increment.
+  A date-time bound must be UTC, written with `Z`, with at most millisecond
+  precision (`2026-10-01T09:00:00Z`, `2026-10-01T09:00:00.250Z`), and bounds
+  compare as instants, so `10:00:00Z` and `10:00:00.000Z` are the same.
+  Anything else (an offset such as `+01:00`, a lower-case `z`, microseconds)
+  and an `end` not after its `start` are `422 invalid_record` with the keyword
+  `intervals`. *Why require `Z` rather than normalize:* the store never
+  rewrites a value the caller sent, and a UTC-only bound sorts and filters
+  the same way everywhere; converting a local time is the client's job, where
+  the time zone is known.
+- **Cost.** The declaration builds one partial SQLite index over the records
+  it applies to, keyed by owner (with `scope: owner`), the `within` values and
+  the start instant. Because stored intervals in one scope never overlap, the
+  only record that can conflict with a new interval is the one in its scope
+  that starts last before the new one ends, so the check is one descending
+  step of that index (`ORDER BY start DESC LIMIT 1`), not a scan. Measured with
+  `npm run bench:store -- --intervals` (Apple M4 Pro, Node 26.10, SQLite
+  3.53.4, 20 rooms of back-to-back bookings owned by 50 principals): at 10,000
+  records the check query takes 2.4 µs at the median (1.8 µs at 1,000), the
+  same query without the index 3.2 ms, and reading one room's records to
+  compare them in JavaScript, as the host transaction did, 197 µs. A whole
+  accepted create with `synchronous=FULL` took 184 µs with the constraint and
+  180 µs without it; the check is not what a write pays for.
+- **Activation and operator commands.** Activation refuses stored records that
+  break the rules or overlap, naming the two record ids, rather than serving
+  them. With `scope: owner`, `urlcode-store ownerless-assign` and
+  `urlcode-store reassign` (dry runs included) refuse, before anything is
+  written, a move that would give the target principal overlapping intervals.
+  Changing the declaration changes the index: activation builds the new one
+  and drops the one nobody declares any more.
+- **Races.** The check reads committed state under the write lock, so of
+  concurrent bookings of one slot exactly one commits, in one process and
+  across connections to the same file (the tests race both).
+- **Not covered.** One booking per slot (no capacity above one), no recurring
+  intervals, no open-ended interval (both bounds are required), and no
+  suggestion of a free slot. Not on a membership collection.
 
 ## Record schema
 
@@ -1232,10 +1372,15 @@ operator says made the change, not proof of it. Commands that change nothing
   `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
   the request fingerprint, the status and the record id, never record values) and
   `store_audit_outbox` (undelivered audit events), plus the one-row
-  `store_audit_drain` (when the audit drain last kept up; schema version 3).
+  `store_audit_drain` (when the audit drain last kept up; schema version 3)
+  and `store_transaction_results` (retained
+  [host transaction](#host-transactions) keys and results; schema version 4).
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
-  schema; the rows of a collection that is no longer declared stay untouched.
+  tables; the rows of a collection that is no longer declared stay untouched.
+  The one derived object is the partial index a declared
+  [`intervals`](#non-overlapping-intervals) reads through: activation builds
+  it, and drops an interval index no live activation declares any more.
 - The schema only moves forward. An empty file is initialized in one
   transaction; opening an up-to-date database changes nothing; a later release
   that changes the schema adds a step, and each step runs in its own
@@ -1253,8 +1398,8 @@ operator says made the change, not proof of it. Commands that change nothing
   and writes everything it changes: the record, its unique key, the
   `Idempotency-Key` claim and eviction, and the audit event. Any failure rolls
   all of it back. `If-Match`, key uniqueness, `maxRecords`,
-  `maxRecordsPerOwner`, increment bounds, retained keys and the audit backlog
-  are therefore checked against committed state and cannot be overshot by
+  `maxRecordsPerOwner`, increment bounds, declared intervals, retained keys
+  and the audit backlog are therefore checked against committed state and cannot be overshot by
   concurrent requests. Statements are synchronous: within the process no other
   request runs between a transaction's checks and its commit, and each commit's
   fsync blocks the event loop while it runs. [Capacity](CAPACITY.md#measured-the-sqlite-store)
@@ -1502,11 +1647,11 @@ operations as one database transaction: see
 
 ## Not built yet
 
-SQL ordering for sorted lists, a declarative interval (non-overlap)
-constraint, a declarative multi-record transfer and roles beyond a
-[membership collection](#membership-gates-and-cross-owner-reads) are not built
-([#835](https://github.com/jimhoyd-com/urlcode/issues/835); the
-[transition design](#what-is-not-covered) lists what each needs). Recorded in
+SQL ordering for sorted lists, a declarative multi-record transfer and
+supported multi-process serving are not built
+([#902](https://github.com/jimhoyd-com/urlcode/issues/902); the
+[transition design](#what-is-not-covered) lists what each needs), nor are roles
+beyond a [membership collection](#membership-gates-and-cross-owner-reads). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search. Owned collections
 ([#331](https://github.com/jimhoyd-com/urlcode/issues/331)) are owner-only apart from
 [readers mounts](#membership-gates-and-cross-owner-reads): sharing one record with chosen principals and write access for managers or support are not

@@ -1,6 +1,6 @@
-// The store's one SQLite database per site (#835): every collection's records, retained Idempotency-Key claims and
-// undelivered audit events are rows in three shared tables, so a record write, its claim and its audit event commit
-// in one transaction. Direct parameterized SQL through node:sqlite; no query builder. The schema only ever moves
+// The store's one SQLite database per site (#835): every collection's records, retained Idempotency-Key claims
+// (of HTTP writes and of host transactions) and undelivered audit events are rows in shared tables, so a record
+// write, its claim and its audit event commit in one transaction. Direct parameterized SQL through node:sqlite; no query builder. The schema only ever moves
 // forward: an empty file is initialized to the newest version, an older store schema is upgraded step by step in
 // one transaction each, and a newer or foreign one is refused before anything is served.
 import { lstat, mkdir, open, realpath } from 'node:fs/promises';
@@ -42,6 +42,11 @@ const MIGRATIONS: readonly string[] = [
   // milliseconds of its last ack or empty peek. An operator command reads it to warn that the events it just wrote
   // wait for a drain that is not running. A database no drain has touched has no row.
   `CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER NOT NULL);`,
+  // 3 -> 4. Retries for host transactions (#902): one row per retained `StoreExports.transaction` idempotency key, the
+  // SHA-256 of the key and of the caller's fingerprint, and the transaction's JSON result (NULL for `undefined`),
+  // written in the transaction it records. Keys are store-wide, not per collection: a transaction spans collections.
+  `CREATE TABLE store_transaction_results(seq INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE,
+     fingerprint TEXT NOT NULL, result TEXT CHECK (result IS NULL OR json_valid(result)), claimed_at INTEGER NOT NULL);`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /**

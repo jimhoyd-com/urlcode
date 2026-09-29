@@ -32,6 +32,11 @@ export type PropertyType = 'string' | 'integer' | 'number' | 'boolean';
 export type Scalar = string | number | boolean;
 const PROPERTY_TYPES: readonly PropertyType[] = ['string', 'integer', 'number', 'boolean'];
 const TRANSITION_LIMITS = { transitions: 16, fields: 8, stamps: 4 } as const;
+const INTERVAL_LIMITS = { within: 4, when: 8 } as const;
+/** A collection name, as the store's configuration schema admits it; an interval constraint embeds it in its index. */
+const COLLECTION_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
+/** The only date-time an interval bound takes: RFC 3339 in UTC (`Z`) with at most millisecond precision. */
+const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const MOUNT = { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 } as const;
 const FIELD_NAME = '^[a-z][A-Za-z0-9_]{0,63}$';
 const SCALAR = { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }, { type: 'boolean' }] } as const;
@@ -132,11 +137,35 @@ export interface CollectionSpec {
   membership?: boolean;
   /** On an owned collection: who may list and read every owner's records, and where. */
   readers?: ReadersSpec;
+  /** A non-overlap constraint (#902): no two records in one scope hold overlapping half-open `[start, end)` intervals. */
+  intervals?: IntervalSpec;
+}
+/** Where an interval constraint applies: every record of the collection, or each owner's records on their own. */
+export type IntervalScope = 'collection' | 'owner';
+/**
+ * A declared non-overlap constraint (#902): among the records it applies to (those holding every `when` value), no two
+ * in the same scope with equal `within` values may hold overlapping half-open `[start, end)` intervals. Checked inside
+ * every write's transaction against an index, so the check never reads the whole collection.
+ */
+export interface IntervalSpec {
+  /** A required property holding the interval's start: a UTC date-time string (`format: date-time`) or a number. */
+  start: string;
+  /** A required property of the same kind holding its end, which must be after `start`. */
+  end: string;
+  /** Required properties that partition the constraint (a room, a calendar): intervals conflict only when all are equal. */
+  within?: string[];
+  /** `collection` (default): every record blocks every other, across owners. `owner`: each owner's records only. */
+  scope?: IntervalScope;
+  /** Only records holding exactly these values take part (for example `{status: booked}`, so a cancelled one frees its slot). */
+  when?: Record<string, Scalar>;
 }
 export type StoredRecord = Record<string, Scalar>;
 type FieldErrors = Record<string, string>;
-/** What a refusal carries besides its code: query parameter names with fixed messages, or record schema issues. */
-export interface StoreErrorDetails { fields?: FieldErrors; issues?: readonly BodySchemaIssue[] }
+/**
+ * What a refusal carries besides its code: query parameter names with fixed messages, record schema issues, or (on a
+ * 409 `interval_conflict`) the conflicting record's id, only when the caller may read that record.
+ */
+export interface StoreErrorDetails { fields?: FieldErrors; issues?: readonly BodySchemaIssue[]; conflict?: { id: string } }
 
 /**
  * Thrown for caller mistakes; carries names and fixed messages only, never a submitted value. A record that breaks
@@ -144,8 +173,8 @@ export interface StoreErrorDetails { fields?: FieldErrors; issues?: readonly Bod
  * 400 `invalid_query` with `fields` naming the offending parameters.
  */
 export class StoreError extends Error {
-  readonly status: number; readonly code: string; readonly fields: FieldErrors | undefined; readonly issues: readonly BodySchemaIssue[] | undefined;
-  constructor(status: number, code: string, message: string, details: StoreErrorDetails = {}) { super(message); this.status = status; this.code = code; this.fields = details.fields; this.issues = details.issues; }
+  readonly status: number; readonly code: string; readonly fields: FieldErrors | undefined; readonly issues: readonly BodySchemaIssue[] | undefined; readonly conflict: { id: string } | undefined;
+  constructor(status: number, code: string, message: string, details: StoreErrorDetails = {}) { super(message); this.status = status; this.code = code; this.fields = details.fields; this.issues = details.issues; this.conflict = details.conflict; }
 }
 /** The 422 for a record that breaks the collection schema (or a store rule on a named property). */
 export const invalidRecord = (issues: readonly BodySchemaIssue[]): StoreError => new StoreError(422, 'invalid_record', 'Record does not match the collection schema', { issues });
@@ -209,6 +238,13 @@ export const collectionSchema = {
       mount: { ...MOUNT, description: 'A separate mount: a route <mount>/* with extension: store (GET, HEAD) and a principal-providing policy.' },
       members: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$', description: 'A membership collection: anyone it does not list gets 403 membership_required before any record is read.' },
       showOwner: { type: 'boolean', description: 'true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner\'s mount, transitions and StoreExports never do.' },
+    } },
+    intervals: { description: 'A non-overlap constraint for scheduling: among the records it applies to, no two in the same scope (and with equal within values) may hold overlapping half-open [start, end) intervals, so an interval ending where another starts is allowed. Checked inside the write transaction of every create, PUT, PATCH and transition against an index, never a scan of the collection; an overlap answers 409 interval_conflict and nothing is written, so a move that would overlap keeps the record where it was. Activation refuses stored records that already overlap. Not on a membership collection.', type: 'object', additionalProperties: false, required: ['start', 'end'], properties: {
+      start: { type: 'string', pattern: FIELD_NAME, description: 'A required property holding the start: a string with format: date-time, whose values must be UTC (ending in Z) with at most millisecond precision and compare as instants, or an integer or number.' },
+      end: { type: 'string', pattern: FIELD_NAME, description: 'A required property of the same kind as start holding the end; a record whose end is not after its start answers 422 invalid_record.' },
+      within: { type: 'array', maxItems: INTERVAL_LIMITS.within, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Required properties that partition the constraint (a room, a resource): two intervals conflict only when every one of these is equal.' },
+      scope: { enum: ['collection', 'owner'], description: 'collection (default): every record blocks every other, across owners on an owned collection (another owner\'s conflicting record is never named). owner: with ownership: owner only, each owner\'s records are constrained among themselves.' },
+      when: { type: 'object', minProperties: 1, maxProperties: INTERVAL_LIMITS.when, propertyNames: { pattern: FIELD_NAME }, additionalProperties: SCALAR, description: 'Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property\'s schema. Without it every record takes part.' },
     } },
   },
 } as const;
@@ -298,7 +334,18 @@ export interface NormalizedSpec {
   mount?: string; records: CompiledRecordSchema; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
   key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[]; ownership: Ownership;
   maxRecordsPerOwner?: number; audit: boolean; transitions: Record<string, NormalizedTransition>;
-  membership: boolean; readers?: Required<ReadersSpec>;
+  membership: boolean; readers?: Required<ReadersSpec>; intervals?: NormalizedIntervals;
+}
+/**
+ * A validated interval constraint and its SQL, built once from the declaration. `kind` says how a bound compares
+ * (`date-time` as UTC epoch milliseconds, `number` as itself). `create` builds the partial expression index `index`
+ * over the records the constraint applies to; `latest` finds, through it, the record in the same scope whose interval
+ * starts last before a given end; `scan` reads every constrained interval in index order (activation, operator
+ * commands). Every name embedded in the SQL passed FIELD_NAME or COLLECTION_NAME; every `when` value is a quoted literal.
+ */
+export interface NormalizedIntervals {
+  start: string; end: string; within: string[]; scope: IntervalScope; when: Record<string, Scalar>; kind: 'date-time' | 'number';
+  index: string; create: string; latest: string; scan: string;
 }
 /** A validated transition. `by` is `any` on a shared collection, whose records have no owner to compare. */
 export interface NormalizedTransition { from: Record<string, Scalar>; set: Record<string, Scalar>; stamp: Record<string, 'actor' | 'now'>; by: TransitionActor | 'any'; mount?: string; members?: string }
@@ -391,12 +438,119 @@ export function normalize(name: string, spec: CollectionSpec, schemas: Readonly<
     if (readers.mount === spec.mount) throw new Error(`Collection ${name}: the readers mount must differ from the collection mount`);
     if (Object.values(transitions).some(transition => transition.mount === readers.mount)) throw new Error(`Collection ${name}: the readers mount must differ from every transition mount`);
   }
+  const intervals = spec.intervals === undefined ? undefined : intervalsOf(name, spec.intervals, records, ownership, membership, increments);
   for (const field of records.readOnly) {
     // A create never carries a readOnly property, so a required one is satisfiable only through its default.
     if (records.required.includes(field) && !hasOwn(records.defaults, field)) throw new Error(`Collection ${name}: property ${field} is required and readOnly, so it needs a default`);
     if (!Object.values(transitions).some(transition => hasOwn(transition.set, field) || hasOwn(transition.stamp, field))) throw new Error(`Collection ${name}: property ${field} is readOnly but no transition sets or stamps it`);
   }
-  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }) };
+  return { ...(spec.mount === undefined ? {} : { mount: spec.mount }), records, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), ownership, ...(perOwner === undefined ? {} : { maxRecordsPerOwner: perOwner }), maxRecords, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false, audit: spec.audit ?? false, transitions, membership, ...(readers === undefined ? {} : { readers: { mount: readers.mount, members: readers.members, showOwner: readers.showOwner === true } }), ...(intervals === undefined ? {} : { intervals }) };
+}
+
+/**
+ * Validates an interval constraint and builds its SQL. The bounds are both UTC date-times or both numbers, and they
+ * and the `within` properties are required, so every record the constraint applies to has an interval to compare.
+ * No property it names may be an increment, which would change an interval without the check.
+ */
+function intervalsOf(name: string, declared: IntervalSpec, records: CompiledRecordSchema, ownership: Ownership, membership: boolean, increments: readonly string[]): NormalizedIntervals {
+  const where = `Collection ${name}: intervals`;
+  if (!COLLECTION_NAME.test(name)) throw new Error(`${where}: the collection name is not valid`);
+  if (membership) throw new Error(`${where}: a membership collection takes no intervals`);
+  const property = (field: string): PropertySchema => {
+    if (typeof field !== 'string' || !new RegExp(FIELD_NAME).test(field) || !hasOwn(records.properties, field)) throw new Error(`${where}: ${String(field).slice(0, 64)} is not a declared property`);
+    if (increments.includes(field)) throw new Error(`${where}: ${field} is an increment property, which would change an interval without the check`);
+    return records.properties[field]!;
+  };
+  const kindOf = (field: string): 'date-time' | 'number' => {
+    const schema = property(field);
+    if (!records.required.includes(field)) throw new Error(`${where}: ${field} must be required`);
+    if (schema.type === 'integer' || schema.type === 'number') return 'number';
+    if (schema.type === 'string' && schema.format === 'date-time') return 'date-time';
+    throw new Error(`${where}: ${field} must be a string with format: date-time, an integer or a number`);
+  };
+  const { start, end } = declared, kind = kindOf(start);
+  if (start === end) throw new Error(`${where}: start and end must be different properties`);
+  if (kindOf(end) !== kind) throw new Error(`${where}: start and end must both be date-times or both be numbers`);
+  const within = [...declared.within ?? []];
+  for (const field of within) {
+    property(field);
+    if (field === start || field === end) throw new Error(`${where}: within cannot name start or end`);
+    if (!records.required.includes(field)) throw new Error(`${where}: within property ${field} must be required`);
+  }
+  const scope = declared.scope ?? 'collection';
+  if (scope === 'owner' && ownership !== 'owner') throw new Error(`${where}: scope: owner needs ownership: owner`);
+  const when: Record<string, Scalar> = {};
+  for (const [field, value] of Object.entries(declared.when ?? {})) {
+    property(field);
+    const issue = propertyIssue(records, field, value);
+    if (issue) throw new Error(`${where}: when value for ${field} ${issue.message}`);
+    if (typeof value === 'string' && value.includes('\u0000')) throw new Error(`${where}: when value for ${field} cannot contain NUL`);
+    when[field] = value;
+  }
+  // `->>` yields SQL text for a JSON string, the number for a number and 1 or 0 for a boolean.
+  const path = (field: string): string => `(data ->> '$.${field}')`;
+  const instant = (field: string): string => kind === 'date-time' ? `CAST(round(unixepoch(${path(field)}, 'subsec') * 1000) AS INTEGER)` : path(field);
+  const literal = (value: Scalar): string => typeof value === 'boolean' ? (value ? '1' : '0') : typeof value === 'number' ? String(value) : `'${value.replaceAll("'", "''")}'`;
+  // The collection and the `when` terms are literals, so SQLite can prove that a query repeating them may use the partial index.
+  const filter = [`collection = '${name}'`, ...Object.entries(when).map(([field, value]) => `${path(field)} = ${literal(value)}`)].join(' AND ');
+  const columns = [...scope === 'owner' ? ['owner'] : [], ...within.map(path), instant(start)];
+  const index = `store_intervals_${createHash('sha256').update(`${columns.join(', ')} WHERE ${filter}`).digest('hex').slice(0, 24)}`;
+  return {
+    start, end, within, scope, when, kind, index,
+    create: `CREATE INDEX IF NOT EXISTS "${index}" ON store_records(${columns.join(', ')}) WHERE ${filter}`,
+    latest: `SELECT id, owner, ${instant(end)} AS until FROM store_records WHERE ${filter}${scope === 'owner' ? ' AND owner = ?' : ''}${within.map(field => ` AND ${path(field)} = ?`).join('')} AND ${instant(start)} < ? AND id <> ? ORDER BY ${instant(start)} DESC LIMIT 1`,
+    scan: `SELECT id, owner, ${[...within.map((field, at) => `${path(field)} AS w${at}`), `${instant(start)} AS since`, `${instant(end)} AS until`].join(', ')} FROM store_records WHERE ${filter} ORDER BY ${columns.join(', ')}`,
+  };
+}
+/** An interval bound as the constraint compares it: UTC epoch milliseconds for a date-time, the number itself otherwise. */
+function instantOf(kind: NormalizedIntervals['kind'], value: unknown): number | undefined {
+  if (kind === 'number') return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  if (typeof value !== 'string' || !UTC_INSTANT.test(value)) return undefined;
+  const ms = Date.parse(value);
+  // The round trip refuses what Date.parse would roll over or reject (a 30 February, a leap second).
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 19) === value.slice(0, 19) ? ms : undefined;
+}
+/** Whether the constraint applies to `record`: it holds every `when` value. */
+const constrained = (intervals: NormalizedIntervals, record: Readonly<Record<string, unknown>>): boolean => Object.entries(intervals.when).every(([field, value]) => record[field] === value);
+/** The record-level interval rules, as schema issues: each present bound is a comparable value, and `end` is after `start`. */
+function intervalIssues(intervals: NormalizedIntervals, values: Readonly<Record<string, unknown>>): BodySchemaIssue[] {
+  const start = instantOf(intervals.kind, values[intervals.start]), end = instantOf(intervals.kind, values[intervals.end]);
+  const utc = 'must be a UTC date-time ending in Z, with at most millisecond precision';
+  const issues: BodySchemaIssue[] = [];
+  // A missing bound is the schema's own `required` issue.
+  if (start === undefined && values[intervals.start] !== undefined) issues.push({ pointer: `/${intervals.start}`, keyword: 'intervals', message: utc });
+  if (end === undefined && values[intervals.end] !== undefined) issues.push({ pointer: `/${intervals.end}`, keyword: 'intervals', message: utc });
+  if (start !== undefined && end !== undefined && end <= start) issues.push({ pointer: `/${intervals.end}`, keyword: 'intervals', message: `must be after ${intervals.start}` });
+  return issues;
+}
+/** A property value as SQLite compares it through `->>`: a boolean is 1 or 0. */
+const bound = (value: Scalar | undefined): string | number | null => value === undefined ? null : typeof value === 'boolean' ? (value ? 1 : 0) : value;
+/**
+ * The first pair of constrained records in one scope whose intervals overlap, or `undefined`: one pass in index order
+ * (scope, then start), keeping the latest end seen in the current scope. Records with no owner are nobody's under
+ * `scope: owner` and are skipped there, as the write check never matches them. With `moving` (an operator command about
+ * to give `from`'s records to `to`, or with `from` null the ownerless ones), only the two principals' records are
+ * judged, as if the move had happened, before anything is written.
+ */
+export function overlapping(db: StoreDatabase, intervals: NormalizedIntervals, moving?: { from: string | null; to: string }): [string, string] | undefined {
+  type Row = { id: string; group: string; since: number | null; until: number | null };
+  let rows: Row[] = db.all<Record<string, string | number | null>>(intervals.scan).flatMap(row => {
+    let owner = intervals.scope === 'owner' ? row.owner as string | null : null;
+    if (moving && intervals.scope === 'owner') {
+      if (owner !== moving.from && owner !== moving.to) return [];
+      owner = moving.to;
+    }
+    if (intervals.scope === 'owner' && owner === null) return [];
+    return [{ id: row.id as string, group: JSON.stringify([owner, ...intervals.within.map((_, at) => row[`w${at}`])]), since: row.since as number | null, until: row.until as number | null }];
+  });
+  // The scan is in index order already; merging two owners' records needs ordering again.
+  if (moving) rows = rows.sort((a, b) => a.group < b.group ? -1 : a.group > b.group ? 1 : (a.since ?? 0) - (b.since ?? 0));
+  let previous: { id: string; group: string; until: number } | undefined;
+  for (const row of rows) {
+    if (previous?.group === row.group && row.since !== null && previous.until > row.since) return [previous.id, row.id];
+    if (row.until !== null && (previous?.group !== row.group || row.until > previous.until)) previous = { id: row.id, group: row.group, until: row.until };
+  }
+  return undefined;
 }
 
 /**
@@ -487,7 +641,7 @@ function fieldsOf(record: StoredRecord): StoredRecord {
 /**
  * One collection: a view of its rows in the store database (`store_records` where `collection` is its name). Nothing
  * is cached in memory: every read queries the database and every write is one BEGIN IMMEDIATE transaction that reads
- * what it checks (the ETag, the key, the quotas, the retained Idempotency-Keys, the audit backlog) and writes the
+ * what it checks (the ETag, the key, the quotas, the declared intervals, the retained Idempotency-Keys, the audit backlog) and writes the
  * record, the key claim and the audit event together, or rolls all of it back. Statements are synchronous, so within
  * this process no other request runs between a transaction's check and its write.
  */
@@ -512,6 +666,7 @@ export class Collection {
     for (const row of rows) {
       let record: StoredRecord;
       try { record = this.parse(row); } catch (error) { throw new Error(error instanceof RowError ? error.message : `Collection ${this.name}: the store holds an invalid record`, { cause: error }); }
+      if (this.spec.intervals && intervalIssues(this.spec.intervals, record).length) throw new Error(`Collection ${this.name}: record ${row.id} holds an interval that intervals refuses (an end not after its start, or a date-time that is not UTC with at most millisecond precision)`);
       const key = this.spec.key === undefined ? null : record[this.spec.key];
       if (key !== null && (typeof key !== 'string' || keys.has(key))) throw new Error(`Collection ${this.name}: the store holds an invalid record key`);
       if (key !== null) keys.add(key);
@@ -522,8 +677,17 @@ export class Collection {
       db.run('UPDATE store_records SET key = NULL WHERE collection = ?', this.name);
       for (const [id, key] of derived) if (key !== null) db.run('UPDATE store_records SET key = ? WHERE collection = ? AND id = ?', key, this.name, id);
     });
+    const intervals = this.spec.intervals;
+    if (intervals) {
+      // The index is derived from the declaration and built once; the check below and every write's check read through it.
+      db.run(intervals.create);
+      const pair = overlapping(db, intervals);
+      if (pair) throw new Error(`Collection ${this.name}: records ${pair[0]} and ${pair[1]} hold overlapping intervals, which intervals refuses; move or delete one of them first`);
+    }
     this.db = db;
   }
+  /** The name of the interval index this declaration reads through, if it declares `intervals` (store.ts drops stale ones). */
+  get intervalIndex(): string | undefined { return this.spec.intervals?.index; }
   /** Stops serving from the database; the registration closes it with its last activation. Idempotent. */
   close(): void { this.db = undefined; }
 
@@ -598,7 +762,9 @@ export class Collection {
    * short link's destination is `redirectable`. Returned in declaration order.
    */
   private validated(values: Record<string, unknown>): StoredRecord {
-    const issues = bodyIssues(this.spec.records.record, values);
+    // The interval rules judge a record the schema accepts, so a bound is already of its declared type.
+    const issues = [...bodyIssues(this.spec.records.record, values)];
+    if (!issues.length && this.spec.intervals) issues.push(...intervalIssues(this.spec.intervals, values));
     if (issues.length) throw invalidRecord(issues);
     const key = this.spec.key;
     if (this.spec.membership && key !== undefined && !principalIdPattern.test(values[key] as string)) throw invalidRecord([{ pointer: `/${key}`, keyword: 'membership', message: 'must be a principal id' }]);
@@ -607,6 +773,26 @@ export class Collection {
   }
   private sized(record: StoredRecord): void {
     if (Buffer.byteLength(JSON.stringify(record)) > this.spec.maxRecordBytes) throw new StoreError(413, 'record_too_large', `Record exceeds ${this.spec.maxRecordBytes} bytes`);
+  }
+  /**
+   * The interval check (#902), inside the write's transaction and before its row is written: when the constraint
+   * applies to `record`, the record in its scope whose interval starts last before `record` ends (the record itself
+   * excluded, so a move is judged against the others) must end by the time `record` starts. Since the stored intervals
+   * of a scope never overlap, that one record is the only candidate, found by one descending step of the index.
+   * Otherwise 409 `interval_conflict`, naming the conflicting record only when `reader` may read it: on a shared
+   * collection anyone who reaches the mount may; on an owned one only its owner, so another owner's booking blocks
+   * the slot without being disclosed.
+   */
+  private fits(db: StoreDatabase, record: StoredRecord, reader: string | undefined): void {
+    const intervals = this.spec.intervals;
+    if (!intervals || !constrained(intervals, record)) return;
+    const start = instantOf(intervals.kind, record[intervals.start])!, end = instantOf(intervals.kind, record[intervals.end])!;
+    const scope = intervals.scope === 'owner' ? [(record[OWNER_FIELD] as string | undefined) ?? null] : [];
+    const latest = db.get<{ id: string; owner: string | null; until: number | null }>(intervals.latest, ...scope, ...intervals.within.map(field => bound(record[field])), end, record.id as string);
+    if (latest && latest.until !== null && latest.until > start) {
+      const visible = !this.owned || (reader !== undefined && latest.owner === reader);
+      throw new StoreError(409, 'interval_conflict', 'The interval overlaps another record', visible ? { conflict: { id: latest.id } } : {});
+    }
   }
   private keyOf(record: StoredRecord): string | null { return this.spec.key === undefined ? null : record[this.spec.key] as string; }
   private insert(db: StoreDatabase, record: StoredRecord): void {
@@ -903,6 +1089,7 @@ export class Collection {
     if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ?', this.name)!.n >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
     const now = stamp(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...(scope === undefined ? {} : { [OWNER_FIELD]: scope }), ...clean };
     this.sized(record);
+    this.fits(db, record, scope);
     this.insert(db, record);
     return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, undefined, record) };
   }
@@ -938,6 +1125,7 @@ export class Collection {
       if (this.keyTaken(db, record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
     }
     this.sized(record);
+    this.fits(db, record, scope);
     this.replaceRow(db, record);
     return { record, audited: this.audited(db, replace ? 'replaced' : 'updated', id, this.changed(current, record), actor) };
   }
@@ -971,6 +1159,12 @@ export class Collection {
     const stamped = Object.fromEntries(Object.entries(transition.stamp).map(([field, source]) => [field, source === 'now' ? updatedAt : actor ?? 'anonymous']));
     const record: StoredRecord = { ...current, updatedAt, ...transition.set, ...stamped };
     this.sized(record);
+    // A transition can bring a record under the constraint (a `reopen` back to `when`), so it is checked like any write.
+    if (this.spec.intervals) {
+      const issues = intervalIssues(this.spec.intervals, record);
+      if (issues.length) throw invalidRecord(issues);
+      this.fits(db, record, caller);
+    }
     this.replaceRow(db, record);
     return { record, audited: this.audited(db, 'transitioned', id, this.changed(current, record), actor, name) };
   }

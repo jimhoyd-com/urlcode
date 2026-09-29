@@ -237,7 +237,11 @@ partial `update` (which clears a property given `null`, like `PATCH`) and a
 paginated `list`, each scoped to the request principal exactly as the JSON API
 is, a declared `transition`, and `transaction(work)`, which runs several of those
 operations synchronously as one database transaction (trusted host code only,
-never sandboxed). See [using a collection from another extension][store-using-a-collection-from-another-extension].
+never sandboxed). `transaction(work, {idempotencyKey, fingerprint})` is
+retry-safe: the key, the fingerprint and `work`'s JSON result (at most 16 KiB)
+are kept in the same transaction, a retry with the same fingerprint returns
+that result without running `work`, and a different one is
+`422 idempotency_key_reused`. See [using a collection from another extension][store-using-a-collection-from-another-extension].
 
 ## Transitions
 
@@ -248,9 +252,21 @@ moves one record from the exact `from` values to the constant `set` values
 writes nothing. On an owned collection `by: others` lets any principal except
 the owner run it, on a separate mount whose route policy decides who may; a
 property in `readOnlyProperties` can only change through a transition.
-Transitions are not an expression language: interval constraints and
-multi-record transfers use a host transaction. See
+Transitions are not an expression language: multi-record transfers use a host
+transaction. See
 [conditional transitions and result-aware retries][store-conditional-transitions-and-result-aware-retries].
+
+A scheduling collection declares `intervals: {start, end, within?, scope?,
+when?}` (#902): among the records holding the `when` values, no two in one
+scope with equal `within` values (a room) may hold overlapping half-open
+`[start, end)` intervals. Every create, `PUT`, `PATCH` and transition is
+checked in its own transaction through a partial index (one index step, not a
+scan) and an overlap answers `409 interval_conflict`, writing nothing, so a
+refused move keeps its slot. On an owned collection the default
+`scope: collection` lets another owner's booking block a slot without naming
+it: `error.conflict.id` appears only for a record the caller may read. Bounds
+are both numbers or both UTC date-times (`Z`, at most millisecond precision).
+See [non-overlapping intervals][store-non-overlapping-intervals].
 A list carries each listed record's `ETag` in `etags` and the transitions the
 caller may run on it now in `may`, both keyed by id (one record's answer has
 them as the `ETag` and `Allow-Transitions` headers), so a client sends
@@ -356,6 +372,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [store-what-the-caller-may-run]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#what-the-caller-may-run
 [store-membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads
 [store-bounded-keyed-transitions]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#bounded-keyed-transitions
+[store-non-overlapping-intervals]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#non-overlapping-intervals
 [extensions-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
 <!-- urlcode-current-version:end -->
 
@@ -413,6 +430,12 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.readers.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | A separate mount: a route `<mount>/*` with extension: store (GET, HEAD) and a principal-providing policy. |
 | `extensions.store.config.collections.*.readers.members` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A membership collection: anyone it does not list gets 403 membership_required before any record is read. |
 | `extensions.store.config.collections.*.readers.showOwner` | boolean | no | — | true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner's mount, transitions and StoreExports never do. |
+| `extensions.store.config.collections.*.intervals` | object | no | unknown keys rejected | A non-overlap constraint for scheduling: among the records it applies to, no two in the same scope (and with equal within values) may hold overlapping half-open [start, end) intervals, so an interval ending where another starts is allowed. Checked inside the write transaction of every create, PUT, PATCH and transition against an index, never a scan of the collection; an overlap answers 409 interval_conflict and nothing is written, so a move that would overlap keeps the record where it was. Activation refuses stored records that already overlap. Not on a membership collection. |
+| `extensions.store.config.collections.*.intervals.start` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A required property holding the start: a string with format: date-time, whose values must be UTC (ending in Z) with at most millisecond precision and compare as instants, or an integer or number. |
+| `extensions.store.config.collections.*.intervals.end` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A required property of the same kind as start holding the end; a record whose end is not after its start answers 422 invalid_record. |
+| `extensions.store.config.collections.*.intervals.within` | array | no | maxItems: 4; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Required properties that partition the constraint (a room, a resource): two intervals conflict only when every one of these is equal. |
+| `extensions.store.config.collections.*.intervals.scope` | string | no | enum: ["collection","owner"] | collection (default): every record blocks every other, across owners on an owned collection (another owner's conflicting record is never named). owner: with ownership: owner only, each owner's records are constrained among themselves. |
+| `extensions.store.config.collections.*.intervals.when` | object | no | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property's schema. Without it every record takes part. |
 | `extensions.store.config.shortLinks` | object | no | maxProperties: 32; keys: "^[a-z][a-z0-9_-]{0,63}$" | Public redirect mounts by name: GET `<mount>/<key>` atomically increments a counter and answers 302 to the record's stored destination; HEAD answers the same 302 without counting; an unknown key is 404. Each needs a route `<mount>/*` with extension: store (GET, HEAD). |
 | `extensions.store.config.shortLinks.*.mount` | string | yes | maxLength: 256; pattern: "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$" | URL path of the redirect mount, separate from the collection's CRUD mount. |
 | `extensions.store.config.shortLinks.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A declared shared collection with a key; the key value is the path segment after the mount. |
@@ -426,6 +449,7 @@ Declare collections under extensions.store.config.collections and mount each on 
 - **collections** (configuration, `urlcode.yaml`): Per-collection mount, a record `schema` (a JSON Schema 2020-12 object schema in the request body profile: flat scalar properties, `additionalProperties: false`; inline, or the name of a project schema under top-level `schemas:` shared with route bodies and MCP tools; a record that breaks it answers `422 invalid_record` with the body-schema issue list), `defaults` (values a create stores for omitted properties) and `readOnlyProperties` (changed only by a transition), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` property lists, and `audit: true` (every write recorded in the audit log with property names and the principal, never values; needs the audit extension, and writes answer `503 audit_backlog` while 1000 events wait to drain). Create, list, read, replace, update and delete need no handler.
 - **ownership** (configuration, `urlcode.yaml`): `ownership: owner` on a collection: each signed-in principal creates, lists, reads, changes and deletes only its own records: every read and write is scoped to the principal that created the record. Not combined with a unique `key`. The mount must be guarded by a principal-providing policy such as `auth: true`. An optional `maxRecordsPerOwner` (at most maxRecords) answers `409 owner_quota_exceeded` at the limit.
 - **transitions** (configuration, `urlcode.yaml`): Declared `transitions` move one record from exact `from` values to constant `set` values (with `stamp: {property: actor\|now}`) in one transaction as `POST <mount>/<id>/<name>`; a record not in the `from` state answers `409 transition_conflict`. On an owned collection `by: others` serves the transition on its own `mount` to any principal except the owner (an approval or review step), and `members: <membership collection>` admits only that list's members. Not an expression language.
+- **intervals** (configuration, `urlcode.yaml`): `intervals: {start, end, within?, scope?, when?}` on a collection: no two records it applies to (those holding the `when` values, such as `{status: booked}`) in one scope with equal `within` values (a room) may hold overlapping half-open `[start, end)` intervals; any create, PUT, PATCH or transition that would answers `409 interval_conflict` and writes nothing. Checked through an index in the write transaction, across owners on an owned collection without naming another owner's record. Bounds are both numbers or both `format: date-time` strings in UTC (`Z`).
 - **membership** (configuration, `urlcode.yaml`): Permissions as data keyed by the principal id, never roles in auth: a `membership: true` collection with a `key` lists principal ids and has no mount (the operator maintains it with `urlcode-store members` or `addMember`/`removeMember`). A transition's `members` and a collection's `readers.members` name it.
 - **readers** (configuration, `urlcode.yaml`): An owned collection's `readers: {mount, members, showOwner?}` lets the members of a membership collection list (with the collection's limit, cursor, sort and filters) and read every owner's records read-only on a separate mount; owners keep their own view on the collection mount.
 - **shortLinks** (configuration, `urlcode.yaml`): Optional public GET redirect mounts that look up a collection key, use a declared `format: uri` destination property that takes only HTTP(S) URLs, and atomically increment a declared counter.

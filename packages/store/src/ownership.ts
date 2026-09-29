@@ -28,7 +28,7 @@
 import { isAbsolute } from 'node:path';
 import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
-import { AUDIT_BACKLOG, StoreError, membershipEvent, normalize, stamp, writeAuditEvent } from './collection.ts';
+import { AUDIT_BACKLOG, StoreError, membershipEvent, normalize, overlapping, stamp, writeAuditEvent } from './collection.ts';
 import type { CollectionSpec, NormalizedSpec } from './collection.ts';
 import { auditValidator, operatorActor } from './membership.ts';
 import { auditDelivery, openStoreDatabase } from './database.ts';
@@ -62,6 +62,16 @@ const ownedIds = (db: StoreDatabase, collection: string, owner: string): string[
 
 type Validate = (value: unknown) => AuditEvent;
 /**
+ * Refuses, before anything is written, giving `from`'s records (the ownerless ones when `from` is null) to `to` on a
+ * collection whose `intervals` constrain each owner's records (`scope: owner`) when that would leave `to` holding two
+ * overlapping intervals (#902). A `scope: collection` constraint does not depend on the owner, so a move keeps it.
+ */
+function refuseOverlap(db: StoreDatabase, collection: string, spec: NormalizedSpec, from: string | null, to: string): void {
+  if (spec.intervals?.scope !== 'owner') return;
+  const pair = overlapping(db, spec.intervals, { from, to });
+  if (pair) throw new Error(`Nothing was moved: collection ${collection} would give ${to} records ${pair[0]} and ${pair[1]}, whose intervals overlap, which its intervals refuse. Move or delete one of them first.`);
+}
+/**
  * Refuses, before anything is written, a change that would record `planned` events in a collection past its backlog:
  * the same 503 `audit_backlog` a write at the cap answers, by the same count `writeAuditEvent` checks per event.
  */
@@ -78,13 +88,13 @@ const reassignedEvent = (collection: string, id: string, from: string | undefine
   ({ action: 'store.record.reassigned', actor, subject: `${collection}/${id}`, metadata: { collection, ...(from === undefined ? {} : { from }), to } });
 
 /** The declared `ownership: owner` collection an ownerless command names, and audit's validator when it is audited. */
-async function ownedCollection(options: OwnerlessOptions): Promise<{ collection: string; validate: Validate | undefined; actor: string }> {
+async function ownedCollection(options: OwnerlessOptions): Promise<{ collection: string; spec: NormalizedSpec; validate: Validate | undefined; actor: string }> {
   if (!options?.collections || typeof options.collections !== 'object') throw new Error('The project declares no store collections');
   const collection = named(options.collection), actor = operatorActor(options.actor);
   if (!Object.hasOwn(options.collections, collection)) throw new Error(`Collection ${collection} is not declared`);
   const spec = normalize(collection, options.collections[collection]!, options.schemas);
   if (spec.ownership !== 'owner') throw new Error(`Collection ${collection} is not declared with ownership: owner`);
-  return { collection, validate: spec.audit ? await auditValidator(collection) : undefined, actor };
+  return { collection, spec, validate: spec.audit ? await auditValidator(collection) : undefined, actor };
 }
 
 /** Counts (and lists the ids of) a collection's records that carry no owner. Changes nothing. */
@@ -99,10 +109,11 @@ export async function reportOwnerless(database: string, collection: string): Pro
 export async function assignOwnerless(database: string, options: OwnerlessOptions & { owner: string }): Promise<OwnerlessReport> {
   const owner = options?.owner;
   if (typeof owner !== 'string' || !principalIdPattern.test(owner)) throw new Error('Owner must be a principal id: 1 to 128 ASCII letters, digits, ".", "_", ":" or "-", starting with a letter or digit');
-  const { collection, validate, actor } = await ownedCollection(options);
+  const { collection, spec, validate, actor } = await ownedCollection(options);
   return transaction(database, db => {
     const ids = ownerlessIds(db, collection);
     if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
+    refuseOverlap(db, collection, spec, null, owner);
     db.run('UPDATE store_records SET owner = ? WHERE collection = ? AND owner IS NULL', owner, collection);
     if (validate) for (const id of ids) writeAuditEvent(db, collection, validate, reassignedEvent(collection, id, undefined, owner, actor));
     return { collection, records: total(db, collection), ownerless: 0, ids, ...(validate ? auditDelivery(db, [collection], Date.now()) : {}) };
@@ -188,6 +199,7 @@ export async function reassignOwner(database: string, options: ReassignOptions):
       return { collection: name, moved, toBefore, toAfter: toBefore + moved, maxRecordsPerOwner: spec.maxRecordsPerOwner ?? null };
     });
     const over = collections.filter(report => report.moved > 0 && report.maxRecordsPerOwner !== null && report.toAfter > report.maxRecordsPerOwner);
+    for (const report of collections) if (report.moved > 0) refuseOverlap(db, report.collection, specOf(report.collection), from, to);
     if (over.length) throw new Error(`Nothing was moved: ${over.map(report => `collection ${report.collection} would give ${to} ${report.toAfter} records, over its maxRecordsPerOwner of ${report.maxRecordsPerOwner}`).join('; ')}. Delete or reassign some of its records first, or raise the limit.`);
     // Every audit event the move records, per collection, is counted before anything is written.
     const planned = new Map<string, number>();
