@@ -542,6 +542,64 @@ every method of an `auth: true` mount is uncovered. The audit also ignores
 The measured defects and gaps were drafted as GitHub issues. This is a single
 run by one agent, not a benchmark.
 
+#### Second run
+
+On 2026-09-29 the same method ran again on main `036e86d8`, after the fixes
+for #910–#917 and the store's `intervals` and `transfers`
+([#902](https://github.com/jimhoyd-com/urlcode/issues/902)). It repeated the
+three tasks and added two for #902 item 6. Each site pinned the packed core
+before `extensions add`, as the `init --with` refusal instructs. Every
+validate, test, audit and openapi run was given `PROJECT_SHA256` and
+`URLCODE_ORIGIN`. Two runs were deliberate probes of suspected gaps and
+are counted. First-run values are in parentheses.
+
+| Task | CLI runs (validate / test / audit) | Correction rounds | YAML lines | Code lines (server + frontend) | New gaps | Audit ready | `openapi --check` |
+|---|---:|---:|---:|---:|---:|---|---|
+| Private notes | 20 (5 / 1 / 2) | 5 (8) | 36 (44) | 0 + 45 | 3 | yes (no) | passes |
+| Request approval | 10 (1 / 1 / 1) | 0 (3) | 74 (67) | 0 + 0 | 0 | yes (no) | passes |
+| Public contact endpoint, now with a throttle | 15 (1 / 2 / 2) | 1 (0) | 41 (28) | 0 + 0 | 1 | yes (yes) | passes |
+| Room booking: `intervals`, a `cancel` transition, a readers mount | 14 (1 / 3 / 1) | 0 | 56 | 0 + 0 | 2 | yes | passes |
+| Credits: `transfers` with an issuer and a no-overdraft `send` | 17 (1 / 8 / 1) | 1 | 44 | 0 + 0, plus a 5-line test-data reset script | 3 | yes | passes |
+
+Compared with the first run:
+
+- All three repeated tasks now reach audit readiness. Sign-in `steps`
+  fixtures cover `auth: true` mounts.
+- Every refusal named its fix: the `init --with` version skew, the revision
+  pin, the origin, uninitialized auth tables and unasserted cases.
+- The notes correction rounds fell from 8 to 5. Four of the five were still
+  setup. The generated npm scripts still refuse after `extensions add`, and
+  the revision changes on every edit.
+- Approval was valid on the first edit and needed no corrections.
+
+For #902 item 6, both counterexamples were declared with no handler code:
+
+- **Scheduling.** 7 lines: the `intervals` line, the `cancel` transition,
+  `defaults` and `readOnlyProperties`. Overlaps across owners answer `409`.
+  A slot freed by `cancel` can be booked again.
+- **Credits.** 13 lines: two `transfers` and an 8-line `issuers` membership.
+  Overdraft, fractions and non-issuers are refused, and an `Idempotency-Key`
+  retry replays.
+
+The edit effort was one validate per task. The run did not write the
+host-transaction version, so the plumbing these features remove is still
+unmeasured.
+
+Nine gaps were found. The main five:
+
+- A 12-hour booking was accepted. Fixed-length slots can't be declared, and
+  hour alignment needed a `pattern`.
+- A non-member could create a booking. Creates can't be limited to a
+  membership list.
+- `DELETE` of a wallet holding credits succeeded, which breaks the
+  sum-never-changes guarantee.
+- Fixtures run against the site's own `data/` databases. Accounts and members
+  are created out of band, and a rerun of the credits fixtures failed.
+- `READINESS.md` and the store's interval and transfer sections are not
+  installed, so `docs search` cannot find them.
+
+Each gap was drafted as an issue.
+
 ### Where to read next
 
 | Need | Read |
