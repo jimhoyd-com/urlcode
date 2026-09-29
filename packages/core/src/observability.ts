@@ -24,8 +24,11 @@ export const events = Object.freeze({
   throttle: Object.freeze(['event', 'route', 'outcome', 'remaining']),
   agents: Object.freeze(['event', 'route', 'list', 'outcome']),
   cache: Object.freeze(['event', 'route', 'outcome']),
-  listening: Object.freeze(['event', 'address', 'port', 'mode', 'origin']),
+  listening: Object.freeze(['event', 'address', 'port', 'mode', 'origin', 'url', 'opened']),
+  local_review: Object.freeze(['event', 'revision', 'origin', 'note']),
   extension_warning: Object.freeze(['event', 'extension', 'message']),
+  extension_pin_followed: Object.freeze(['event', 'extensions', 'from', 'to']),
+  site: Object.freeze(['event', 'key', 'path', 'status', 'severity', 'list', 'skipped', 'message']),
 });
 
 /** One log record: a flat object whose `event` key names the kind (see `events`). */

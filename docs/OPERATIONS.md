@@ -375,12 +375,14 @@ retries, sender and recipients are the application's code
   memory still needs deployment-level limits; do not equate guest budget with RSS.
 
 `urlcode serve`/`dev` and the JavaScript server API both configure workers,
-deadlines and byte limits: `--workers`, `--function-timeout-ms`,
-`--max-response-bytes`, `--max-body-bytes`, `--max-in-flight` and
-`--max-in-flight-health`. Set them on the container command line; these are
-deployment controls, not portable route behavior. Horizontal replicas
+deadlines, byte limits and admission; [capacity](CAPACITY.md#enforced-limits-and-defaults)
+lists the flags, their ranges and defaults. Set them on the container command
+line; these are deployment controls, not portable route behavior. Horizontal replicas
 must use identical application/config versions and secret bindings. In-memory
-function state is reset after every invocation, not durable/shared application state.
+function state is not durable or shared application state: a trusted route's
+module state persists for the life of its process (a `sandbox: true` route's
+lasts one invocation), and neither is shared across replicas or kept across a
+restart ([what persists](FUNCTION-SECURITY.md#what-the-trusted-default-can-and-cant-do)).
 General application storage needs a future explicit capability broker; no
 storage/network access is exposed to the guest. Core no longer has a native
 link store, and the `urlcode-dynamic-link` extension package that replaced it
