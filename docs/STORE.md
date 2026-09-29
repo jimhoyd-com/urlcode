@@ -465,6 +465,11 @@ requests:
 `If-Match` on `approve` protects a reviewer from approving a version they did
 not read; `editable` is what keeps the approved version as it was.
 
+The [`store-approval` recipe](../recipes/store-approval/README.md)
+(`urlcode recipes add store-approval`) is this collection with a reviewers
+queue on a readers mount (`showOwner: true`) and fixtures for the whole
+workflow, YAML only.
+
 ### Membership gates and cross-owner reads
 
 Identity comes from the principal-providing policy (with `auth`, the Better
@@ -918,7 +923,8 @@ transaction, through an index, with no application code. It replaces the host
 transaction the scheduling counterexample of #835 needed, which could only
 see the caller's own records.
 The [`store-booking` recipe](../recipes/store-booking/README.md)
-(`urlcode recipes add store-booking`) is this declaration with fixtures.
+(`urlcode recipes add store-booking`) is this declaration with one-hour
+`length` and `step`, a staff-only `create: {members: …}` and fixtures.
 
 ```yaml
 collections:
@@ -1167,8 +1173,10 @@ Idempotency-Key: 5f0c...
   off by deleting it.
 
 The [`store-credits` recipe](../recipes/store-credits/README.md)
-(`urlcode recipes add store-credits`) declares these wallets with an issuer
-and fixtures that fund, pay, refuse an overdraft and close every wallet at `0`.
+(`urlcode recipes add store-credits`) declares these wallets with an issuer,
+[a directory by a unique handle](#a-directory-by-a-unique-handle), and
+fixtures that fund, look a recipient up, pay, refuse an overdraft and close
+wallets at `0`.
 
 ### Who may debit whom
 
@@ -2291,7 +2299,10 @@ operator pin. The mount responses are `no-store`.
 
 `urlcode recipes search "crud store persist"` finds `store-crud`
 ([recipes](RECIPES.md)), the same collection as above with ordered fixtures for
-the whole create, read, update, delete lifecycle. It does not install anything:
+the whole create, read, update, delete lifecycle. `store-booking`
+([intervals](#non-overlapping-intervals)), `store-credits`
+([transfers](#declared-transfers)) and `store-approval`
+([edit and delete states](#edit-and-delete-states)) are the specialised ones. It does not install anything:
 `urlcode extensions add store` (or `init --with auth,store`) installs the
 extension and wires `host.mjs`; add `--example` for the `todos` collection.
 Without `auth` the example needs `--ack store:public-write`.

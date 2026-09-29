@@ -1,0 +1,45 @@
+[
+  {"path": "/api/requests", "status": 401},
+  {"path": "/api/review", "status": 401},
+  {"steps": [
+    {"path": "/api/requests", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"title\":\"Laptop\",\"amount\":1200}", "status": 201, "expectJson": {"/status": "draft", "/amount": 1200}, "capture": {"r": {"json": "id"}}},
+    {"path": "/api/requests/{{r}}", "method": "PATCH", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"amount\":1500}", "status": 200, "expectJson": {"/status": "draft", "/amount": 1500}},
+    {"path": "/api/requests/{{r}}", "method": "PATCH", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"status\":\"approved\"}", "status": 422},
+    {"path": "/api/requests/{{r}}/submit", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "pending"}},
+    {"path": "/api/requests/{{r}}", "method": "PATCH", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"amount\":99999}", "status": 409, "expectJson": {"/error/code": "record_locked"}},
+    {"path": "/api/requests/{{r}}/withdraw", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "draft"}},
+    {"path": "/api/requests/{{r}}", "method": "PUT", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"title\":\"Laptop and dock\",\"amount\":1400}", "status": 200, "expectJson": {"/title": "Laptop and dock", "/status": "draft"}},
+    {"path": "/api/requests/{{r}}/submit", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "pending"}},
+    {"path": "/api/requests/{{r}}", "headers": {"authorization": "Bearer bob"}, "status": 404},
+    {"path": "/api/approve/{{r}}", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 403, "expectJson": {"/error/code": "membership_required"}},
+    {"path": "/api/review?status=pending", "headers": {"authorization": "Bearer bob"}, "status": 403},
+    {"path": "/api/review?status=pending", "headers": {"authorization": "Bearer rita"}, "status": 200, "expectJson": {"/total": 1, "/items/0/id": "{{r}}", "/items/0/_owner": "alice", "/items/0/amount": 1400}},
+    {"path": "/api/review/{{r}}", "headers": {"authorization": "Bearer rita"}, "status": 200, "expectJson": {"/status": "pending", "/_owner": "alice"}},
+    {"path": "/api/review/{{r}}", "method": "HEAD", "headers": {"authorization": "Bearer rita"}, "status": 200, "expectBody": ""},
+    {"path": "/api/approve/{{r}}", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "approved", "/reviewedBy": "rita"}},
+    {"path": "/api/reject/{{r}}", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}"}, "status": 409},
+    {"path": "/api/requests/{{r}}", "method": "PATCH", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"amount\":99999}", "status": 409, "expectJson": {"/error/code": "record_locked"}},
+    {"path": "/api/requests/{{r}}", "method": "PUT", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"title\":\"Laptop\",\"amount\":99999}", "status": 409, "expectJson": {"/error/code": "record_locked"}},
+    {"path": "/api/requests/{{r}}", "method": "DELETE", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 409, "expectJson": {"/error/code": "record_locked"}},
+    {"path": "/api/requests/{{r}}/withdraw", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 409},
+    {"path": "/api/requests/{{r}}", "headers": {"authorization": "Bearer alice"}, "status": 200, "expectHeaders": {"allow": "GET, HEAD"}, "expectJson": {"/status": "approved", "/amount": 1400, "/reviewedBy": "rita"}},
+    {"path": "/api/requests/{{r}}", "method": "HEAD", "headers": {"authorization": "Bearer alice"}, "status": 200, "expectBody": ""}
+  ]},
+  {"steps": [
+    {"path": "/api/requests", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"title\":\"Conference\",\"amount\":900}", "status": 201, "expectJson": {"/status": "draft"}, "capture": {"r": {"json": "id"}}},
+    {"path": "/api/requests/{{r}}/submit", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "pending"}},
+    {"path": "/api/reject/{{r}}", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "rejected", "/reviewedBy": "rita"}},
+    {"path": "/api/requests?status=rejected", "headers": {"authorization": "Bearer bob"}, "status": 200, "expectJson": {"/total": 1, "/items/0/id": "{{r}}"}},
+    {"path": "/api/requests/{{r}}", "method": "DELETE", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}"}, "status": 204, "expectBody": ""}
+  ]},
+  {"steps": [
+    {"path": "/api/requests", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"title\":\"Monitor\",\"amount\":300}", "status": 201, "capture": {"r": {"json": "id"}}, "expectJson": {"/status": "draft"}},
+    {"path": "/api/requests/{{r}}/submit", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "pending"}},
+    {"path": "/api/approve/{{r}}", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}"}, "status": 403, "expectJson": {"/error/code": "own_record_refused"}},
+    {"path": "/api/requests/{{r}}/withdraw", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}"}, "status": 200, "expectJson": {"/status": "draft"}},
+    {"path": "/api/requests/{{r}}", "method": "DELETE", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}"}, "status": 204, "expectBody": ""}
+  ]},
+  {"path": "/api/requests", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"title\":\"Pre-approved\",\"amount\":10,\"status\":\"approved\"}", "status": 422},
+  {"path": "/api/requests", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "https://elsewhere.example", "content-type": "application/json"}, "body": "{\"title\":\"Laptop\",\"amount\":1200}", "status": 403},
+  {"path": "/api/review", "method": "POST", "headers": {"authorization": "Bearer rita", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{}", "status": 405}
+]
