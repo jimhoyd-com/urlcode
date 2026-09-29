@@ -38,6 +38,10 @@ const MIGRATIONS: readonly string[] = [
    CREATE TABLE store_idempotency(seq INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, key TEXT NOT NULL,
      fingerprint TEXT NOT NULL, status INTEGER NOT NULL, record_id TEXT, claimed_at INTEGER NOT NULL, UNIQUE(collection, key));
    CREATE INDEX store_idempotency_order ON store_idempotency(collection, seq);`,
+  // 2 -> 3. When the serving process's audit drain last kept up with the outbox (#875): one row, the epoch
+  // milliseconds of its last ack or empty peek. An operator command reads it to warn that the events it just wrote
+  // wait for a drain that is not running. A database no drain has touched has no row.
+  `CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER NOT NULL);`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /** How long one statement waits for a lock another process holds before failing (it blocks this process meanwhile). */
@@ -136,4 +140,30 @@ export async function openStoreDatabase(path: string, options: { create?: boolea
     }
   } catch (error) { db.close(); throw error; }
   return new StoreDatabase(db);
+}
+
+/** Records that the audit drain kept up with the outbox at `now` (epoch ms): after an ack, or a peek that found it empty. */
+export function markAuditDrained(db: StoreDatabase, now: number): void {
+  db.run('INSERT INTO store_audit_drain(id, drained_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET drained_at = max(drained_at, excluded.drained_at)', now);
+}
+/** How old the last drain may be before an operator command warns that its events are not being delivered. */
+export const AUDIT_DRAIN_STALE_MS = 60_000;
+/**
+ * What an operator command reports after writing audit events (#875): the events still undelivered in each collection
+ * it touched, when the drain last kept up (`null`: never), and a `warning` when some wait and no drain has kept up
+ * within `AUDIT_DRAIN_STALE_MS`, so they are delivered only once a server with the audit extension serves again.
+ */
+export interface AuditDelivery { undeliveredEvents: Record<string, number>; lastAuditDrain: string | null; warning?: string }
+export function auditDelivery(db: StoreDatabase, collections: readonly string[], now: number): AuditDelivery {
+  const undeliveredEvents: Record<string, number> = {};
+  for (const collection of [...new Set(collections)].sort())
+    undeliveredEvents[collection] = db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', collection)!.n;
+  const drainedAt = db.get<{ drained_at: number }>('SELECT drained_at FROM store_audit_drain WHERE id = 1')?.drained_at;
+  const report: AuditDelivery = { undeliveredEvents, lastAuditDrain: drainedAt === undefined ? null : new Date(drainedAt).toISOString() };
+  const waiting = Object.values(undeliveredEvents).reduce((sum, n) => sum + n, 0);
+  if (waiting && (drainedAt === undefined || now - drainedAt > AUDIT_DRAIN_STALE_MS)) {
+    const since = drainedAt === undefined ? 'No audit drain has run against this database' : `The audit drain last kept up ${Math.round((now - drainedAt) / 1000)} s ago`;
+    report.warning = `${since}: ${waiting} audit event${waiting === 1 ? '' : 's'} wait in the outbox and are delivered only while a server with the audit extension serves this project. Start it, or check that it is running.`;
+  }
+  return report;
 }

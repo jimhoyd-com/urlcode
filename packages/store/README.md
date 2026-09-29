@@ -70,7 +70,8 @@ until `urlcode-store ownerless-assign` or `ownerless-delete` handles them,
 `urlcode-store reassign --from <principal> --to <principal>` moves one
 principal's records to another in one transaction (on an `audit: true`
 collection every moved or deleted record is recorded, with the operator's
-optional `--actor`), and
+optional `--actor`, and the report shows the undelivered events and warns when
+no server's audit drain has kept up in the last 60 seconds), and
 `maxRecordsPerOwner` caps each user's records with `409 owner_quota_exceeded`; see
 [per-record ownership](../../docs/STORE.md#per-record-ownership)). A collection may declare
 `sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`

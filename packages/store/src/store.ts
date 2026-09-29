@@ -6,11 +6,14 @@ import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerR
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
-import { openStoreDatabase } from './database.ts';
+import { markAuditDrained, openStoreDatabase } from './database.ts';
 import type { StoreDatabase } from './database.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
 import type { StoreExports } from './records.ts';
+
+/** At most how often the drain's last-kept-up time is written (well inside the CLI's AUDIT_DRAIN_STALE_MS). */
+const AUDIT_DRAIN_MARK_MS = 10_000;
 
 export interface StoreExtensionOptions {
   /**
@@ -125,17 +128,29 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
     } };
   };
   const current = (): StoreDatabase | undefined => live.length && connection?.db?.open ? connection.db : undefined;
+  // When the drain last kept up (an ack, or a peek that found the outbox empty) is written to the database at most
+  // every AUDIT_DRAIN_MARK_MS, so the operator CLI can tell a live drain from none (#875) without a write per poll.
+  let marked = 0;
+  const drained = (db: StoreDatabase): void => {
+    const now = Date.now();
+    if (now - marked < AUDIT_DRAIN_MARK_MS) return;
+    marked = now;
+    try { markAuditDrained(db, now); } catch { marked = 0; } // Only a hint for the CLI; a busy lock retries next time.
+  };
   const attachment: AuditAttachment | undefined = audit?.attach({
     source: 'store',
     // The oldest pending events across every collection: audit's flush settles once a peek holds only newer events,
     // so an older event left behind would be missed.
     async peek(limit) {
       const db = current();
-      return db ? db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent) : [];
+      if (!db) return [];
+      const events = db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent);
+      if (!events.length) drained(db);
+      return events;
     },
     async ack(ids) {
       const db = current();
-      if (db && ids.length) db.transaction(() => { db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids)); });
+      if (db && ids.length) { db.transaction(() => { db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids)); }); drained(db); }
     },
   });
   const auditor: CollectionAuditor | undefined = audit && attachment ? { validate: value => audit.validate(value), notify: () => attachment.notify() } : undefined;
