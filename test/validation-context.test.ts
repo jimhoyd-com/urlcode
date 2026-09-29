@@ -46,12 +46,14 @@ test('bootstrap repeats the reviewed policy in its commands and keeps operator d
   assert.deepEqual(without.prerequisites?.map(item => item.flag), ['--policy']);
   const withPolicy = await buildBootstrap(root, { policy });
   assert.equal(withPolicy.prerequisites, undefined);
-  for (const name of ['start', 'dev', 'validate', 'test', 'context']) assert.match(withPolicy.commands![name]!, / --policy operator\/policy\.json$/, name);
+  for (const name of ['start', 'dev', 'context']) assert.match(withPolicy.commands![name]!, / --policy operator\/policy\.json$/, name);
+  // The checks also pass --local-review, which changes nothing once the policy pins the run (#964).
+  for (const name of ['validate', 'test']) assert.match(withPolicy.commands![name]!, / --policy operator\/policy\.json --local-review$/, name);
   // data/ is operator state and is never offered for serving; other directories never invite copying operator code.
   assert.deepEqual(withPolicy.paths!.outsideProject.map(item => item.path), ['operator']);
   assert.match(withPolicy.paths!.outsideProject[0]!.note, /operator code, credentials and data stay outside the project/);
   // The emitted command runs as printed from the site root.
-  const validate = spawnSync(process.execPath, [cli, 'validate', '--local', '--project', 'app', '--host-file', 'host.mjs', '--policy', 'operator/policy.json'], { cwd: root, encoding: 'utf8', env: { ...process.env, GREETING: 'hello' } });
+  const validate = spawnSync(process.execPath, [cli, 'validate', '--local', '--project', 'app', '--host-file', 'host.mjs', '--policy', 'operator/policy.json', '--local-review'], { cwd: root, encoding: 'utf8', env: { ...process.env, GREETING: 'hello' } });
   assert.equal(validate.status, 0, validate.stdout + validate.stderr);
 });
 
@@ -64,7 +66,7 @@ test('context and explain load a pinned host from the policy instead of a PROJEC
   await assert.rejects(buildContext(app, { hostFile: join(root, 'unpinned-host.mjs') }), /without a reviewed revision/);
   const context = await buildContext(app, { hostFile, policy });
   assert.equal(context.prerequisites, undefined);
-  assert.ok(context.commands!.validate!.endsWith(` --host-file ${hostFile} --policy ${policy}`));
+  assert.ok(context.commands!.validate!.endsWith(` --host-file ${hostFile} --policy ${policy} --local-review`));
   const explained = spawnSync(process.execPath, [cli, 'explain', '/greet', '--project', app, '--host-file', hostFile, '--policy', policy], { encoding: 'utf8', env: { ...process.env, PROJECT_SHA256: '' } });
   assert.equal(explained.status, 0, explained.stderr);
 });

@@ -25,7 +25,7 @@ test('context summarizes the cookbook from the compiled project and the capabili
  assert.deepEqual(context.targets!['self-hosted']!.refused,[]);
  assert.ok(context.targets!.cloudflare!.refused.includes('function'));assert.ok(context.targets!.aws!.conditional.includes('policies.throttle'));
  assert.ok(context.targets!.static!.refused.includes('function'));
- assert.equal(context.commands?.audit,'urlcode audit --project examples/cookbook --expect-routes 40');
+ assert.equal(context.commands?.audit,'urlcode audit --project examples/cookbook --expect-routes 40 --local-review');
  assert.equal(Object.keys(context.constraints).length,9);assert.deepEqual(context.constraints.guestNetwork,{value:true,note:(context.constraints.guestNetwork as {note:string}).note});
  const one=await buildContext(cookbook,{target:'cloudflare'});assert.deepEqual(Object.keys(one.targets!),['cloudflare']);assert.equal(one.commands?.capabilities,'urlcode capabilities --target cloudflare');
 });
@@ -72,7 +72,7 @@ test('MCP get_context returns the same object read-only',async()=>{
 test('the CLI emits YAML by default, JSON on request and estimates on stderr',()=>{
  const run=(...args:string[])=>spawnSync(process.execPath,[cli,'context','--project','starters/default/app',...args],{encoding:'utf8',timeout:20000,cwd:fileURLToPath(new URL('..',import.meta.url))});
  const yaml=run();assert.equal(yaml.status,0,yaml.stderr);const parsed=parse(yaml.stdout) as {project:{routes:number};commands:{audit:string}};
- assert.equal(parsed.project.routes,0);assert.equal(parsed.commands.audit,'urlcode audit --project starters/default/app','the starter commits its count in tests/audit.json (#955)');
+ assert.equal(parsed.project.routes,0);assert.equal(parsed.commands.audit,'urlcode audit --project starters/default/app --local-review','the starter commits its count in tests/audit.json (#955)');
  const json=run('--json','--stats','--budget','300');assert.equal(json.status,0,json.stderr);
  const object=JSON.parse(json.stdout) as {omitted:string[]};assert.ok(object.omitted.includes('targets'));
  const stats=JSON.parse(json.stderr) as {event:string;estimate:string;documentationTokens:number;contextTokens:number};
