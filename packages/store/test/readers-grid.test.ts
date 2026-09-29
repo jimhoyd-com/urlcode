@@ -154,3 +154,19 @@ test('activation refuses an origin it cannot count from, and the declaration fin
   const invalid = ((describe('/api/slots', grids).paths['/api/slots'] as { post: { responses: Record<string, { description: string }> } }).post.responses['422']!).description;
   assert.match(invalid, /whole multiple of PT1H from 1970-01-01T00:00:00\+05:30/);
 });
+
+test('#972: showOwner needs members on every named readers mount, so only members ever receive an owner\'s principal id', async t => {
+  const readers = (directory: Record<string, unknown>) => ({ ...wallets, readers: { ...wallets.readers, directory: { mount: '/api/directory', properties: ['name'], ...directory } } }) as unknown as CollectionSpec;
+  // The review's reproduction: a projected directory without a gate. A gated sibling mount does not lend it one.
+  assert.throws(() => normalize('wallets', readers({ showOwner: true })), /readers directory: showOwner needs members; without a gate every signed-in principal would receive every owner's principal id/);
+  assert.throws(() => normalize('wallets', { ...wallets, readers: { directory: { mount: '/api/directory', properties: ['name'], showOwner: true } } } as unknown as CollectionSpec), /showOwner needs members/);
+  await assert.rejects(direct(t, { collections: { treasurers: { ...members }, wallets: readers({ showOwner: true }) } }, { mounts }), /showOwner needs members/);
+  // showOwner: false is the default and stays accepted; with members the mount may show owners.
+  assert.equal(normalize('wallets', readers({ showOwner: false })).readers.directory!.showOwner, false);
+  assert.equal(normalize('wallets', readers({ showOwner: true, members: 'treasurers' })).readers.directory!.showOwner, true);
+  // Every accepted mount that shows owners is gated.
+  const store = await direct(t, config, { mounts });
+  const id = (await store.call('POST', '/api/wallets', { who: 'bob', body: { name: 'bob' } })).body!.id as string;
+  assert.equal(JSON.stringify((await store.call('GET', '/api/directory', { who: 'eve' })).body).includes('_owner'), false);
+  assert.equal((await store.call('GET', `/api/audit/${id}`, { who: 'eve' })).status, 403);
+});
