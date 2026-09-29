@@ -1166,8 +1166,10 @@ operator says made the change, not proof of it. Commands that change nothing
   imported. Version 2 replaced the claim table for result-aware retries: claims
   a version 1 database retained carry no fingerprint and are dropped by the
   upgrade, so a retry of a request made before it runs again.
-- Write-ahead log with `synchronous=FULL`: a write is answered only after a
-  durable commit, and a crash leaves the last committed transaction.
+- Write-ahead log with `synchronous=FULL` by default: a write is answered
+  only after a durable commit, and a crash, power loss included, leaves the
+  last committed transaction. See [durability](#durability) for the one
+  operator setting that trades that for faster commits.
 - Every write is one `BEGIN IMMEDIATE` transaction that reads what it checks
   and writes everything it changes: the record, its unique key, the
   `Idempotency-Key` claim and eviction, and the audit event. Any failure rolls
@@ -1225,6 +1227,33 @@ operator says made the change, not proof of it. Commands that change nothing
   server runs is not a consistent backup.
 
 Errors never contain record values, SQL or filesystem paths.
+
+### Durability
+
+How long a commit waits for the disk is an operator choice per site, in
+`host.mjs` (never project YAML): `store({durability: 'full'})`, the default,
+or `store({durability: 'normal'})`. Without the option the store reads
+`STORE_DURABILITY`, then uses `full`. Any other value, SQLite's `off` and
+`extra` included, refuses to start.
+
+| `durability` | SQLite | A committed write survives |
+|---|---|---|
+| `full` (default) | `synchronous=FULL`: the write-ahead log is fsynced on every commit | a process crash, an OS crash and a power loss |
+| `normal` | `synchronous=NORMAL`: fsynced only at checkpoints | a process crash; the last commits before an OS crash or power loss can be lost |
+
+With `normal` the database still never corrupts, and every guarantee in this
+section about what one transaction checks and writes together still holds: a
+lost commit is lost whole, record, key claim and audit event alike. What it
+gives up is durability of the most recent writes, which may already have been
+answered `2xx`. An activation with `normal` writes one `extension_warning` to
+the operator log saying so. The `urlcode-store` operator commands (`members`,
+`reassign`, `ownerless-*`) always commit with `full`, whatever the serving
+process uses; `backup` reads the live database and writes a checked copy.
+
+Choose `normal` only after measuring that the fsync bounds your writes. On the
+machine [Capacity](CAPACITY.md#measured-the-sqlite-store) measured it did not
+(macOS `fsync` does not flush the drive's cache); on Linux, where `fsync`
+does flush, the difference depends on the disk.
 
 ### Reload
 

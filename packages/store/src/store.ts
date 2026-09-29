@@ -6,8 +6,8 @@ import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerR
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf, redirectable } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
-import { markAuditDrained, openStoreDatabase } from './database.ts';
-import type { StoreDatabase } from './database.ts';
+import { markAuditDrained, openStoreDatabase, storeDurability } from './database.ts';
+import type { StoreDatabase, StoreDurability } from './database.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
 import { describeStore } from './openapi.ts';
@@ -22,6 +22,12 @@ export interface StoreExtensionOptions {
    * must be outside the route project. Every collection, retained Idempotency-Key and undelivered audit event lives in it.
    */
   database: string;
+  /**
+   * How much each commit waits for the disk (#859; docs/STORE.md, durability): `full` (default, SQLite
+   * `synchronous=FULL`) or `normal` (`synchronous=NORMAL`: faster commits, but the last ones before a power loss or OS
+   * crash can be lost). Anything else is refused. An operator choice, never project YAML.
+   */
+  durability?: StoreDurability | undefined;
   /** Exact project revision the operator reviewed (`inspectExtensionRevision`). */
   projectSha256: string;
   /**
@@ -94,7 +100,8 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
 }
 /**
  * The registration and its `StoreExports` (#529), the typed records API an extension that `requires: [store]`
- * reads through `ctx.get('store')`; usable once the runtime has activated this registration.
+ * reads through `ctx.get('store')`; usable once the runtime has activated this registration. `durability` is the resolved
+ * commit durability its connection uses.
  *
  * The registration owns one connection to the database, opened by its first activation and closed with its last. A
  * dev reload activates the replacement while the serving activation is still live (core RIM-EXT-HANDOFF-001); both
@@ -104,16 +111,16 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
  * `store_audit_outbox` table, which audit drains (peek, then ack in a transaction). `close` detaches it; the host
  * calls it before the store's database is released.
  */
-export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; close(): Promise<void> } {
+export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; durability: StoreDurability; close(): Promise<void> } {
   if (typeof options.database !== 'string' || !isAbsolute(options.database)) throw new Error('Store database must be an absolute path');
-  const database = resolve(options.database);
+  const database = resolve(options.database), durability = storeDurability(options.durability);
   const shared = storeExports(), audit = options.audit;
   // The live activations, oldest first. The newest is the one being served; the producer drains only while one is live.
   const live: symbol[] = [];
   // The one connection and how many live activations hold it.
   let connection: Connection | undefined;
   const acquire = async (): Promise<{ db: StoreDatabase; release(): Promise<void> }> => {
-    const held: Connection = connection ?? opener(database);
+    const held: Connection = connection ?? opener(database, durability);
     connection = held;
     held.refs++;
     let db: StoreDatabase;
@@ -231,6 +238,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       for (const collection of served) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
       for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount) && !transitionByMount.has(mount) && !readersByMount.has(mount)) throw new Error(`Mount ${mount} has no collection, transition, readers or short link declared`);
       const held = await acquire();
+      if (durability === 'normal') context.warn?.('durability is normal (SQLite synchronous=NORMAL): the last committed writes can be lost on power loss or an OS crash; a process crash loses nothing');
       let pending: number;
       try {
         pending = checkOutbox(held.db, auditor);
@@ -255,13 +263,13 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       };
     },
   };
-  return { registration, exports: shared.exports, close: async () => { await attachment?.close(); } };
+  return { registration, exports: shared.exports, durability, close: async () => { await attachment?.close(); } };
 }
 
 /** The registration's one connection while any activation holds it. */
 interface Connection { readonly opening: Promise<StoreDatabase>; db?: StoreDatabase; refs: number }
-function opener(database: string): Connection {
-  const connection: Connection = { opening: openStoreDatabase(database), refs: 0 };
+function opener(database: string, durability: StoreDurability): Connection {
+  const connection: Connection = { opening: openStoreDatabase(database, { durability }), refs: 0 };
   connection.opening.then(db => { connection.db = db; }, () => undefined);
   return connection;
 }
