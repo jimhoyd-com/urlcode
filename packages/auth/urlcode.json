@@ -71,7 +71,7 @@
     ],
     "fastChecks": [
       "urlcode validate --project app",
-      "urlcode validate --local --project app --host-file host.mjs --origin <origin>"
+      "urlcode validate --local --project app --host-file host.mjs --local-review"
     ]
   },
   "agent": {

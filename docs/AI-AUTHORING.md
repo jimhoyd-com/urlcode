@@ -49,12 +49,8 @@ revision pin: `explain`, `plan-feature`, `context` and `review` read the
 registrations without activating them, while `validate`, `test`, `dev` and
 `serve` still need the reviewed pin
 ([inspection without a revision pin](TOOLING.md#inspection-without-a-revision-pin)).
-A site's `npm run validate`, `npm test` and `npm run audit` pass
-`--local-review`, which pins one local run to the current revision with no
-grants on throwaway data, so the edit loop needs no new pin and no
-`urlcode-auth migrate`; serving still does, and the read-only commands above
-accept the flag and ignore it
-([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). One goal word
+A site's check scripts review each edit without a new pin; serving still needs
+one ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). One goal word
 alone ("notify the team") does not require an extension: a surface needs two
 of its goal words, or its extension a matching recipe or noun. Scheduling
 goals find the `store-booking` recipe, credit goals `store-credits`, whose
@@ -249,7 +245,7 @@ The benchmark operates locally; it is not a load test of an external deployment.
 ### Request fixtures: `tests/requests.json`
 
 `urlcode test` and `urlcode audit` replay `tests/requests.json`, a JSON array of
-request cases. Its contract is the shipped
+request cases and ordered `steps` fixtures. Its contract is the shipped
 [`schemas/requests.schema.json`](../schemas/requests.schema.json); unknown keys
 are rejected, so a misspelled assertion cannot pass silently. A case has these
 keys and no others:
@@ -263,10 +259,15 @@ keys and no others:
 | `body` | Request body as text; a JSON body is its serialized text |
 | `expectHeaders` | Expected response headers, each value compared exactly |
 | `expectBody` | Expected response body, compared exactly as UTF-8 text |
+| `expectJson` | JSON Pointers into the JSON response body and the value each must equal, such as `{"/items/0/done": false}`; what it does not name (generated ids, timestamps) is not checked |
+| `expectSignals` | Signals the request must emit, recorded in process and never delivered; see the schema |
 
-There is no `json` or `expectJson` key: send JSON as `body` with a
-`content-type` header, and assert a JSON answer with its exact text in
-`expectBody`.
+There is no `json` request key: send JSON as `body` with a `content-type`
+header. Assert a JSON answer with its exact text in `expectBody`, or only the
+values that matter with `expectJson`. An item with `steps` is an ordered
+fixture instead of a case: each step is a case that may `capture` values for
+later steps, or the restart step `{"restart": true}` (see
+[multi-step fixtures](READINESS.md#multi-step-fixtures)).
 
 ```json
 [
@@ -693,11 +694,9 @@ tools (`run_validate`, `run_test`, `run_audit`, `run_tests`) that execute the
 project's trusted code and, when the operator gave the server `--host-file`,
 that operator-supplied host module. The runners and `get_context`'s commands
 repeat only the operator's own `--host-file` and `--origin`; a flag the operator
-did not supply is listed under `prerequisites`, never guessed. `run_validate`,
-`run_test` and `run_audit` also pass `--local-review`, the in-process
-`run_tests` applies the same rule, and `get_context`'s check commands carry the
-flag, so after an edit they check the current revision with no pin and no grant
-unless the operator gave the server a pin, which always wins
+did not supply is listed under `prerequisites`, never guessed. The runners and
+`get_context`'s check commands review the current revision after an edit, as
+the npm scripts do
 ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 The CLI and the server read an absent `--origin` or `--policy` from
 `URLCODE_ORIGIN` or `URLCODE_POLICY`, so a site's generated npm scripts run

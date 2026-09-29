@@ -167,7 +167,7 @@ function authoringContract(name: string): Record<string, unknown> {
       { kind: 'configuration', name: 'mounts', description: 'TODO: describe the real declared configuration surface.', path: `urlcode.yaml#extensions.${name}.config.mounts` },
       { kind: 'extension', name: 'mount', description: 'Mount each declared entry with GET and HEAD.', path: 'urlcode.yaml' },
     ],
-    fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
+    fastChecks: ['urlcode validate --local --project app --host-file host.mjs --local-review', 'urlcode test --project app --host-file host.mjs --local-review'],
   };
 }
 

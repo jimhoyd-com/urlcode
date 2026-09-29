@@ -65,7 +65,7 @@ export const authAuthoring: ExtensionAuthoringContract = {
     { kind: 'configuration', name: 'route protection', description: '`auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.', path: 'urlcode.yaml#routes',
       goals: ['auth', 'authenticated', 'authentication', 'signed-in', 'logged-in', 'user', 'users', 'private', 'protected', 'own', 'owner', 'owners', 'their', 'mine', 'per-user', 'member', 'members', 'reviewer', 'reviewers', 'approver', 'approvers'] },
   ],
-  fastChecks: ['urlcode validate --project app', 'urlcode validate --local --project app --host-file host.mjs --origin <origin>'],
+  fastChecks: ['urlcode validate --project app', 'urlcode validate --local --project app --host-file host.mjs --local-review'],
 };
 
 /**

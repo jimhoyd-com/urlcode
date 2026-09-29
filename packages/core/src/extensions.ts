@@ -584,13 +584,13 @@ export interface HostContext {
   site:string;
   /**
    * Absolute directory for the operator data this extension keeps (databases, generated keys): `<site>/data` for
-   * `dev`, `serve`, `validate`, `routes` and every inspection command; a fresh, empty temporary directory, removed when the host closes,
-   * when `hermetic` is true (RIM-EXT-HERMETIC-001).
+   * `dev`, `serve`, every inspection command, and `validate` and `routes` under an operator pin; a fresh, empty
+   * temporary directory, removed when the host closes, when `hermetic` is true (RIM-EXT-HERMETIC-001).
    */
   data:string;
   /**
-   * True for a run that replays requests: `test`, `audit` and `benchmark`, and the MCP server's `run_tests`
-   * (RIM-EXT-HERMETIC-001). The run must never read or write the site's live data, and must start from nothing on
+   * True for a run that replays requests: `test`, `audit` and `benchmark`, and the MCP server's `run_tests`, and for
+   * a local review: `validate` or `routes` with `--local-review` and no operator pin (RIM-EXT-HERMETIC-001). The run must never read or write the site's live data, and must start from nothing on
    * every run: keep every file under `data` whatever the operator's options or environment name (a `database` path,
    * an environment variable), create what serving would expect an operator to have created (a schema, a signing
    * secret that lives only as long as the host), and only then offer a `seedSchema`, so a declared test seed
