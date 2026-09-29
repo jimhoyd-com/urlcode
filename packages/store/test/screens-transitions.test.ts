@@ -1,7 +1,9 @@
 // Screens over collections with transitionOnly fields (#863 item 2), end to end: the store contributes an owner's
 // screen and a reviewers' screen (bound to the readers mount) to ui, a synthetic principal provider signs each
 // "browser" in, and ui's served crud script runs against a small fake DOM whose fetch goes to the real server with
-// the page's Origin, as a same-origin browser request would. Every write below is the script's own request.
+// the page's Origin, as a same-origin browser request would. Every write below is the script's own request. Buttons
+// follow the store's `may` (#873 item 2): a reviewer who is not a lead sees no escalate, and nobody sees approve on
+// their own request.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -23,16 +25,18 @@ import { records } from './rows.ts';
 const origin = 'https://requests.example.test';
 const collections = {
   reviewers: { membership: true, key: 'userId', fields: { userId: { type: 'string', required: true, maxLength: 128 } } },
+  leads: { membership: true, key: 'userId', fields: { userId: { type: 'string', required: true, maxLength: 128 } } },
   requests: {
     mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 100 }, filterable: ['status'],
     fields: {
       title: { type: 'string', required: true, maxLength: 120 },
-      status: { type: 'string', enum: ['pending', 'approved', 'withdrawn'], default: 'pending', transitionOnly: true },
+      status: { type: 'string', enum: ['pending', 'approved', 'withdrawn', 'escalated'], default: 'pending', transitionOnly: true },
       reviewedBy: { type: 'string', maxLength: 128, transitionOnly: true },
     },
     transitions: {
       withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' } },
       approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { reviewedBy: 'actor' }, by: 'others', members: 'reviewers', mount: '/api/approvals' },
+      escalate: { from: { status: 'pending' }, set: { status: 'escalated' }, by: 'others', members: 'leads', mount: '/api/escalations' },
     },
     readers: { mount: '/api/review', members: 'reviewers' },
   },
@@ -77,6 +81,7 @@ async function serve(t: test.TestContext) {
       '/review/*': { extension: 'ui', methods: ['GET', 'HEAD'] },
       '/api/requests/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...signedIn },
       '/api/approvals/*': { extension: 'store', methods: ['POST'], ...signedIn },
+      '/api/escalations/*': { extension: 'store', methods: ['POST'], ...signedIn },
       '/api/review/*': { extension: 'store', methods: ['GET', 'HEAD'], ...signedIn },
     },
   }));
@@ -90,7 +95,8 @@ async function serve(t: test.TestContext) {
   cleanup(t, () => app.close());
   const base = `http://127.0.0.1:${app.address.port}`;
   await addMember(database, { collections: collections as unknown as Record<string, CollectionSpec>, collection: 'reviewers', principal: 'rita' });
-  return { base, database };
+  const grant = (collection: string, principal: string) => addMember(database, { collections: collections as unknown as Record<string, CollectionSpec>, collection, principal });
+  return { base, database, grant };
 }
 
 interface Sent { method: string; url: string; headers: Record<string, string>; status: number }
@@ -140,7 +146,7 @@ async function open(site: { base: string }, path: string, who: string, options: 
   return { root, sent, idle, row, click, create, message, offered, reload: async () => { root.button('Refresh').dispatch('click'); await idle(); } };
 }
 
-test('an owner withdraws and a reviewer approves through the served screens; a stale page is 412, a conflict 409, a refusal 403', async t => {
+test('an owner withdraws and a reviewer approves through the served screens; a stale page is 412, a conflict 409; buttons follow may', async t => {
   const site = await serve(t);
   const stored = (title: string) => records(site.database, 'requests').find(record => record.title === title)!;
 
@@ -152,10 +158,14 @@ test('an owner withdraws and a reviewer approves through the served screens; a s
   assert.match(ann.row('laptop').textContent, /pending/);
   assert.deepEqual(ann.offered('laptop'), ['withdraw'], 'the owner is offered only the transition the owner runs');
 
-  // The reviewer's screen lists every owner's records through the readers mount and offers only approve.
+  // The reviewer's screen lists every owner's records through the readers mount and offers the by: others
+  // transitions she may run: approve, and not escalate, whose leads gate she is not in.
   const rita = await open(site, '/review', 'rita');
   assert.equal(rita.root.findAll(element => element.tagName === 'FORM').length, 0, 'the readers screen is read-only');
-  assert.deepEqual(rita.offered('laptop'), ['approve']);
+  assert.deepEqual(rita.offered('laptop'), ['approve'], 'no escalate button for a non-lead');
+  await site.grant('leads', 'rita');
+  await rita.reload();
+  assert.deepEqual(rita.offered('laptop'), ['approve', 'escalate'], 'the next list reflects her new membership');
   await rita.click('laptop', 'Approve');
   const approval = rita.sent.at(-1)!;
   assert.deepEqual([approval.method, approval.url, approval.status], ['POST', `/api/approvals/${stored('laptop').id as string}`, 200]);
@@ -195,13 +205,14 @@ test('an owner withdraws and a reviewer approves through the served screens; a s
   assert.match(unconditioned.message(), /no longer applies/);
   assert.equal(stored('chair').status, 'approved');
 
-  // A reviewer's own request is listed with approve (its state allows it), and the store refuses it: a 403 message.
+  // A reviewer's own request is listed, pending, but offers neither approve nor escalate (by: others excludes her),
+  // while her own screen offers her withdraw on it.
   const own = await open(site, '/requests', 'rita');
   await own.create('monitor');
+  assert.deepEqual(own.offered('monitor'), ['withdraw']);
   await rita.reload();
-  await rita.click('monitor', 'Approve');
-  assert.equal(rita.sent.at(-1)!.status, 403);
-  assert.match(rita.message(), /not allowed/);
+  assert.match(rita.row('monitor').textContent, /pending/);
+  assert.deepEqual(rita.offered('monitor'), [], 'no button on her own request');
   assert.equal(stored('monitor').status, 'pending');
 
   // A signed-in non-member gets the readers mount's 403: the list does not load, and nothing is offered.

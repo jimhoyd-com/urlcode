@@ -19,9 +19,11 @@
  * transition) sends `If-Match` with the ETag the record was listed (or last
  * written) with, so a stale page gets 412 and a page message and nothing is
  * changed. A field marked `ro` (transitionOnly) is shown but never edited or
- * sent. Each declared transition is a button on the rows that hold its `from`
- * values; a click posts no body, plus a fresh `Idempotency-Key` when the API
- * retains keys, and a refusal (409, 412, 403, anything else) is a page message.
+ * sent. Each declared transition is a button on the rows the API's `may` (a
+ * list's `may[id]`, a write's `Allow-Transitions`) names it for, or without
+ * `may` on the rows that hold its `from` values; a click posts no body, plus a
+ * fresh `Idempotency-Key` when the API retains keys, and a refusal (409, 412,
+ * 403, anything else) is a page message.
  */
 export const crudScript: string = `(function(){
 'use strict';
@@ -35,7 +37,7 @@ var idem=root.getAttribute('data-idempotency')==='true';
 var editable=fields.filter(function(f){return f.ro!==true;});
 if(query&&(!Array.isArray(query.s)||!Array.isArray(query.f)))query=null;
 var readOnly=root.getAttribute('data-readonly')==='true';
-var items=[],tags={},next=null,applied='',sortBox=null,filterBoxes={},drafts=new Map(),pending=new Set(),keys={},serial=0;
+var items=[],tags={},mays={},next=null,applied='',sortBox=null,filterBoxes={},drafts=new Map(),pending=new Set(),keys={},serial=0;
 var status=make('div','ui-crud-status');status.setAttribute('role','status');
 var form=make('form','ui-form ui-crud-form');form.setAttribute('novalidate','');
 var list=make('ul','ui-crud-list');list.setAttribute('data-slot','crud-list');
@@ -50,12 +52,13 @@ var init={method:method,credentials:'same-origin',headers:{accept:'application/j
 if(body!==undefined){init.headers['content-type']='application/json';init.body=JSON.stringify(body);}
 if(extra)for(var h in extra)init.headers[h]=extra[h];
 return fetch(url,init).then(function(res){
-var tag=res.headers&&res.headers.get?res.headers.get('etag'):null;
-if(res.status===204)return {ok:true,status:204,data:null,tag:null};
-return res.json().then(function(data){return {ok:res.ok,status:res.status,data:data,tag:tag};},function(){return {ok:res.ok,status:res.status,data:null,tag:tag};});
-},function(){return {ok:false,status:0,data:null,tag:null};});
+var tag=res.headers.get('etag'),may=res.headers.get('allow-transitions');
+if(may!==null)may=may.split(',').map(function(n){return n.trim();});
+if(res.status===204)return {ok:true,status:204,data:null};
+return res.json().then(function(data){return {ok:res.ok,status:res.status,data:data,tag:tag,may:may};},function(){return {ok:res.ok,status:res.status,data:null};});
+},function(){return {ok:false,status:0,data:null};});
 }
-function remember(id,tag){if(typeof tag==='string'&&tag)tags[id]=tag;else delete tags[id];}
+function remember(id,tag,may){if(typeof tag==='string'&&tag)tags[id]=tag;else delete tags[id];if(Array.isArray(may))mays[id]=may;else delete mays[id];}
 function freshKey(){var c=typeof crypto!=='undefined'?crypto:null;if(!c||!c.getRandomValues)return null;var b=c.getRandomValues(new Uint8Array(16)),out='';for(var i=0;i<b.length;i++)out+=('0'+b[i].toString(16)).slice(-2);return out;}
 function fieldErrors(res){var out={};var f=res&&res.data&&res.data.error&&res.data.error.fields;if(f&&typeof f==='object')for(var k in f)if(typeof f[k]==='string')out[k]=f[k];return out;}
 function urlOf(id){return api+'/'+encodeURIComponent(id);}
@@ -111,7 +114,7 @@ var body={};editable.forEach(function(f){var v=typed(f,raw(f,createInputs[f.n]))
 submit.disabled=true;
 call('POST',api,body).then(function(res){
 submit.disabled=false;
-if(res.ok&&res.data&&typeof res.data.id==='string'){items.push(res.data);remember(res.data.id,res.tag);showCreateErrors({});say('info','');editable.forEach(function(f){var i=createInputs[f.n];if(f.k==='checkbox')i.checked=initial(f)===true;else i.value=String(initial(f));});render();return;}
+if(res.ok&&res.data&&typeof res.data.id==='string'){items.push(res.data);remember(res.data.id,res.tag,res.may);showCreateErrors({});say('info','');editable.forEach(function(f){var i=createInputs[f.n];if(f.k==='checkbox')i.checked=initial(f)===true;else i.value=String(initial(f));});render();return;}
 var errors=fieldErrors(res);showCreateErrors(errors);
 say('error',Object.keys(errors).length?copy.invalid:copy.saveFailed);
 });
@@ -122,7 +125,7 @@ var tag=tags[item.id];if(tag)headers['if-match']=tag;
 pending.add(item.id);say('info','');render();
 call(method,url,body,headers).then(function(res){
 pending.delete(item.id);
-if(res.ok&&(method==='DELETE'||res.data&&res.data.id===item.id)){if(method!=='DELETE'){replace(res.data);remember(item.id,res.tag);}if(done)done();}
+if(res.ok&&(method==='DELETE'||res.data&&res.data.id===item.id)){if(method!=='DELETE'){replace(res.data);remember(item.id,res.tag,res.may);}if(done)done();}
 else{var m=fail(res);say('error',res.status===412?copy.stale:m);}
 render();
 });
@@ -140,7 +143,7 @@ write(item,'PATCH',urlOf(item.id),body,{},function(res){draft.errors=fieldErrors
 function remove(item){
 write(item,'DELETE',urlOf(item.id),undefined,{},function(){return copy.deleteFailed;},function(){items=items.filter(function(i){return i.id!==item.id;});drafts.delete(item.id);delete tags[item.id];});
 }
-function applies(item,t){for(var k in t.f)if(Object.prototype.hasOwnProperty.call(t.f,k)&&item[k]!==t.f[k])return false;return true;}
+function applies(item,t){var m=mays[item.id];if(m)return m.indexOf(t.n)>=0;for(var k in t.f)if(Object.prototype.hasOwnProperty.call(t.f,k)&&item[k]!==t.f[k])return false;return true;}
 function run(item,t){
 var headers={};
 if(idem){var key=freshKey();if(key)headers['idempotency-key']=key;}
@@ -215,9 +218,9 @@ refresh.disabled=false;more.disabled=false;
 if(!res.ok||!res.data||!Array.isArray(res.data.items)){say('error',copy.loadFailed);return;}
 var got=res.data.items.filter(function(r){return r&&typeof r==='object'&&typeof r.id==='string';});
 items=append?items.concat(got):got;
-if(!append)tags={};
-var listed=res.data.etags&&typeof res.data.etags==='object'?res.data.etags:{};
-got.forEach(function(r){remember(r.id,Object.prototype.hasOwnProperty.call(listed,r.id)?listed[r.id]:null);});
+if(!append){tags={};mays={};}
+function by(o,id){return o&&typeof o==='object'&&Object.prototype.hasOwnProperty.call(o,id)?o[id]:null;}
+got.forEach(function(r){remember(r.id,by(res.data.etags,r.id),by(res.data.may,r.id));});
 next=res.data.next===undefined||res.data.next===null?null:String(res.data.next);
 say('info','');
 render();

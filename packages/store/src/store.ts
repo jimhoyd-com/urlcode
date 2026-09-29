@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, collectionSchema, etagOf } from './collection.ts';
-import type { CollectionAuditor, CollectionSpec, Retry, StoredRecord, Written } from './collection.ts';
+import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
 import { openStoreDatabase } from './database.ts';
 import type { StoreDatabase } from './database.ts';
@@ -37,10 +37,17 @@ const failure = (error: StoreError, extra: [string, string][] = []): HandlerResu
 /** What a caller sees of a record: everything but the stored owner, which only a readers mount with `showOwner` shows. */
 const view = (record: StoredRecord): StoredRecord => { if (!Object.hasOwn(record, OWNER_FIELD)) return record; const { [OWNER_FIELD]: _owner, ...rest } = record; return rest; };
 /**
- * A list page as the HTTP API answers it: the records, plus `etags`, each listed record's current ETag by id, so a
- * client (the ui screen's transition buttons) can send `If-Match` for the version it listed without a read per record.
+ * A list page as the HTTP API answers it: the records, `may` (each listed record's transitions the caller may run
+ * now, by id; #873), and `etags`, each listed record's current ETag by id, so a client (the ui screen's transition
+ * buttons) can offer only what will be accepted and send `If-Match` for the version it listed, without a read per record.
  */
-const listView = (page: { items: StoredRecord[]; total: number; next?: string | number }, project: (record: StoredRecord) => StoredRecord = view) => ({ ...page, items: page.items.map(project), etags: Object.fromEntries(page.items.map(record => [record.id as string, etagOf(record)])) });
+const listView = (page: Page, project: (record: StoredRecord) => StoredRecord = view) => ({ ...page, items: page.items.map(project), etags: Object.fromEntries(page.items.map(record => [record.id as string, etagOf(record)])) });
+/**
+ * One record's own headers: its `ETag`, and `Allow-Transitions`, the comma-separated names of the transitions the
+ * caller may run on it now (empty when none), the single-record form of a list's `may`.
+ */
+const recordHeaders = (record: StoredRecord, may: string[] | undefined): [string, string][] => [['etag', etagOf(record)], ...(may === undefined ? [] : [['allow-transitions', may.join(', ')] as [string, string]])];
+const shownAnswer = (shown: Shown, project: (record: StoredRecord) => StoredRecord = view): HandlerResult => json(200, project(shown.record), recordHeaders(shown.record, shown.may));
 
 /** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created path compares correctly. */
 async function realTarget(path: string): Promise<string> {
@@ -302,7 +309,7 @@ function written(outcome: Written, location?: string): HandlerResult {
   const replayed: [string, string][] = outcome.replayed ? [['idempotency-replayed', 'true']] : [];
   if (outcome.record === undefined) return { status: outcome.status, headers: [['cache-control', 'no-store'], ...replayed] };
   const record = outcome.record;
-  return json(outcome.status, view(record), [...(location === undefined ? [] : [['location', `${location}/${record.id as string}`] as [string, string]]), ['etag', etagOf(record)], ...replayed]);
+  return json(outcome.status, view(record), [...(location === undefined ? [] : [['location', `${location}/${record.id as string}`] as [string, string]]), ...recordHeaders(record, outcome.may), ...replayed]);
 }
 /** A transition takes no body: its effect is declared, and the caller supplies only the record, `If-Match` and the key. */
 function noBody(request: ExtensionRequest): void {
@@ -319,7 +326,7 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
   const rest = request.path.slice(request.mount.length).replace(/^\/+/, '');
   const method = request.method.toUpperCase(), write = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
   const allowed = (methods: string): [string, string][] => [['allow', methods]];
-  const principal = request.principal?.id, actor = principal ?? 'anonymous';
+  const principal = request.principal?.id, actor = principal ?? 'anonymous', viewer = { principal };
   // An owned collection is scoped to the request principal (core's RIM-EXT-PRINCIPAL-001, set by the route's
   // principal-providing policy). Without one, nothing is served: never a fallback to the shared view.
   const owner = collection.spec.ownership === 'owner' ? principal : undefined;
@@ -334,32 +341,32 @@ async function dispatch(mounts: Mounts, site: Pick<ExtensionActivation, 'origin'
       if (method !== 'POST') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('POST'));
       noBody(request);
       const match = ifMatch(request);
-      return written(collection.transition(rest, transition.name, retryOf(request, retryKey(request, collection)), match, principal, actor));
+      return written(collection.transition(rest, transition.name, retryOf(request, retryKey(request, collection)), match, principal, actor, viewer));
     }
     if (rest === '') {
-      if (method === 'GET' || method === 'HEAD') return json(200, listView(collection.list(request.query, owner)));
+      if (method === 'GET' || method === 'HEAD') return json(200, listView(collection.list(request.query, owner, viewer)));
       if (method === 'POST') {
         const key = retryKey(request, collection), body = bodyOf(request, collection);
-        return written(collection.create(body, retryOf(request, key, body), owner, actor), request.mount);
+        return written(collection.create(body, retryOf(request, key, body), owner, actor, viewer), request.mount);
       }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
     }
     const increment = rest.match(/^([0-9a-f-]{36})\/increment\/([a-z][A-Za-z0-9_]*)$/);
-    if (increment && method === 'POST') return written(collection.increment(increment[1]!, increment[2]!, retryOf(request, retryKey(request, collection)), owner, actor));
+    if (increment && method === 'POST') return written(collection.increment(increment[1]!, increment[2]!, retryOf(request, retryKey(request, collection)), owner, actor, viewer));
     const named = rest.match(/^([0-9a-f-]{36})\/([a-z][a-z0-9_-]{0,63})$/);
     // Only transitions served on the collection mount; a `by: others` one answers only on its own mount.
     if (named && UUID.test(named[1]!) && Object.hasOwn(collection.spec.transitions, named[2]!) && collection.spec.transitions[named[2]!]!.mount === undefined) {
       if (method !== 'POST') return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('POST'));
       noBody(request);
       const match = ifMatch(request);
-      return written(collection.transition(named[1]!, named[2]!, retryOf(request, retryKey(request, collection)), match, principal, actor));
+      return written(collection.transition(named[1]!, named[2]!, retryOf(request, retryKey(request, collection)), match, principal, actor, viewer));
     }
     if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
-    if (method === 'GET' || method === 'HEAD') { const record = collection.get(rest, owner); return json(200, view(record), [['etag', etagOf(record)]]); }
+    if (method === 'GET' || method === 'HEAD') return shownAnswer(collection.show(rest, owner, principal));
     const match = ifMatch(request);
     if (method === 'PUT' || method === 'PATCH') {
       const key = retryKey(request, collection), body = bodyOf(request, collection);
-      return written(collection.update(rest, body, method === 'PUT', retryOf(request, key, body), match, owner, actor));
+      return written(collection.update(rest, body, method === 'PUT', retryOf(request, key, body), match, owner, actor, viewer));
     }
     if (method === 'DELETE') return written(collection.remove(rest, retryOf(request, retryKey(request, collection)), match, owner, actor));
     return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, PUT, PATCH, DELETE'));
@@ -382,8 +389,7 @@ async function dispatchReaders(collection: Collection, request: ExtensionRequest
     // With showOwner, and only here, a member sees each record's owner: the opaque principal id, nothing more.
     const shown = (record: StoredRecord): StoredRecord => collection.spec.readers?.showOwner ? record : view(record);
     if (rest === '') return json(200, listView(collection.listAcross(request.query, principal), shown));
-    const record = collection.getAcross(rest, principal);
-    return json(200, shown(record), [['etag', etagOf(record)]]);
+    return shownAnswer(collection.getAcross(rest, principal), shown);
   } catch (error) {
     if (error instanceof StoreError) return failure(error);
     return failure(new StoreError(500, 'internal_error', 'The store failed to handle this request'));

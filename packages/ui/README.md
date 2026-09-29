@@ -166,7 +166,9 @@ mount?}]` (the store contributes its
 `transitionOnly` is shown read-only: it is never a control in the create form
 or an edit row and never part of a request body (a boolean one is a disabled
 checkbox). Each transition is a button, labelled from its name, on the rows
-that hold every `from` value, including on a `readOnly` screen. A click sends
+the API's `may` names it for (a list's `may: {<id>: [names]}`, a write's
+`Allow-Transitions` header), or without `may` on the rows that hold every
+`from` value, including on a `readOnly` screen. A click sends
 `POST <mount>/<id>` when the transition has a `mount`, else `POST <collection
 mount>/<id>/<name>`, with no body, `credentials: 'same-origin'`, `If-Match`
 set to the ETag the list returned for the record in `etags` (or the `ETag` of
@@ -180,8 +182,7 @@ activation (at most 16 transitions, names `^[a-z][a-z0-9_-]{0,63}$`, 1 to 8
 declared `from` fields with scalar values, a mount path); it reaches the page
 as an escaped data attribute and the script writes names, labels and values
 only as text. A screen without transitions renders the same shell as before.
-The screen cannot know who may run a transition beyond the declaration and the
-record's values; the API decides, and its `403` is the message.
+The API still decides: `may` can go stale, and its `403` is the message.
 
 A plain project (no host file) can still `import` this package from a trusted
 function and render static, kit-styled markup, but the kit assets, nonce CSP and
