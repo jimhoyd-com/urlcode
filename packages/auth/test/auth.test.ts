@@ -125,6 +125,23 @@ test('activation refuses while a live peer serves the auth database from another
   at.defer(() => elsewhere.close());
 });
 
+test('a hermetic host ignores the site database and secret, creates the tables and seeds accounts with their ids (#930)', async t => {
+  const at = await project(t);
+  const data = await mkdtemp(join(tmpdir(), 'urlcode-auth-hermetic-')); at.defer(() => rm(data, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
+  const hosted = await extension.definition.host({ projectSha256: at.projectSha256, site: at.root, data, hermetic: true, get: () => undefined as never }, { database: at.database, secretFile: 'missing.secret' });
+  assert.ok(hosted.registration.seedSchema, 'a hermetic registration accepts a seed');
+  const seed = { auth: { users: [{ id: 'ann', email: 'Ann@Example.test', password: 'ann-local-password' }] } };
+  const server = await startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [hosted.registration], seed });
+  at.defer(() => server.close());
+  const base = `http://127.0.0.1:${server.address.port}`;
+  const signedIn = await signIn(base, 'ann-local-password');
+  assert.equal(signedIn.status, 200, await signedIn.clone().text());
+  const cookie = signedIn.headers.getSetCookie().map(line => line.split(';')[0]).join('; ');
+  assert.deepEqual((await (await fetch(`${base}/me`, { headers: { cookie } })).json() as { identity: unknown }).identity, { userId: 'ann' });
+  assert.equal(await stat(at.database).then(() => true, () => false), false, 'the site database is never created');
+  await assert.rejects(startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [hosted.registration], seed: { auth: { users: [{ id: 'not an id', email: 'x@example.test', password: 'long enough' }] } } }), /tests\/seed\.json auth\.users\.0\.id: must match pattern/);
+});
+
 test('a protected route sees the verified user id, never the session cookie, and sign-out ends it', async t => {
   const at = await project(t), userId = await withUser(at);
   const { call, jar } = await serve(at);
@@ -218,12 +235,13 @@ test('the scaffold writes the mount and a private secret; host() reads it; the C
   const file = scaffold.files![0]!;
   assert.equal(file.path, 'data/auth.secret');
   assert.equal(file.mode, 0o600);
-  await assert.rejects(async () => extension.definition.host({ projectSha256: 'a'.repeat(64), site, get: () => undefined } as never, {}), /auth secret data\/auth\.secret is missing/);
+  await assert.rejects(async () => extension.definition.host({ projectSha256: 'a'.repeat(64), site, data: join(site, 'data'), hermetic: false, get: () => undefined as never }, {}), /auth secret data\/auth\.secret is missing/);
   await mkdir(join(site, 'data'), { recursive: true });
   await writeFile(join(site, file.path), file.content, { mode: 0o600 });
-  const hosted = await extension.definition.host({ projectSha256: 'a'.repeat(64), site, get: () => undefined } as never, {});
+  const hosted = await extension.definition.host({ projectSha256: 'a'.repeat(64), site, data: join(site, 'data'), hermetic: false, get: () => undefined as never }, {});
   assert.equal(hosted.registration.name, 'auth');
-  const run = (args: string[], input?: string) => spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--site', site], { encoding: 'utf8', input, env: { ...process.env, BETTER_AUTH_SECRET: '' } });
+  assert.equal(hosted.registration.seedSchema, undefined, 'only a hermetic host accepts a test seed');
+  const run =(args: string[], input?: string) => spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--site', site], { encoding: 'utf8', input, env: { ...process.env, BETTER_AUTH_SECRET: '' } });
   assert.equal(run(['migrate']).status, 0);
   const database = join(site, 'data', 'auth.sqlite');
   if (process.platform !== 'win32') assert.equal((await stat(database)).mode & 0o777, 0o600);

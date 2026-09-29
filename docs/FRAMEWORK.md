@@ -299,10 +299,17 @@ its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
 and rolling everything back when two fragments collide (the contract is
 documented under [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 For auth, `npx urlcode-auth migrate` then creates Better Auth's tables and
-`npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id). `extensions add` prints the project revision the host must be pinned to
+`npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id).
+Neither is needed for tests: `urlcode test`, `audit` and `benchmark` compose the
+host on a fresh data directory every run (`HostContext.data` and `hermetic`) and
+seed accounts and memberships from `app/tests/seed.json`
+([test data and seeds](READINESS.md#test-data-and-seeds)). `extensions add` prints the project revision the host must be pinned to
 (the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
 [the revision pin](EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
-needs an explicit operator reapproval.
+needs an explicit operator reapproval before serving. The site's check scripts
+(`npm run validate`, `npm test`, `npm run audit`) pass `--local-review` and
+review each edit locally without one
+([the local review loop](EXTENSIONS.md#the-local-review-loop)).
 
 ## Rules an agent must follow
 
@@ -540,9 +547,11 @@ unmeasured.
 Nine gaps were found. The main five:
 
 - A 12-hour booking was accepted. Fixed-length slots can't be declared, and
-  hour alignment needed a `pattern`.
+  hour alignment needed a `pattern`. Since fixed
+  ([#929](https://github.com/jimhoyd-com/urlcode/issues/929)):
+  `intervals.length` and `step` answer `422`.
 - A non-member could create a booking. Creates can't be limited to a
-  membership list.
+  membership list. Since fixed (#929): `create: {members}` answers `403`.
 - `DELETE` of a wallet holding credits succeeded, which breaks the
   sum-never-changes guarantee. Since fixed
   ([#928](https://github.com/jimhoyd-com/urlcode/issues/928)): it answers

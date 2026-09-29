@@ -27,6 +27,7 @@ import {isRecord as object} from './object-guards.ts';
 import {describeInstalledAgentTooling,describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 import {inspectInstalledArtifact} from './artifact-inspect.ts';
 import {stageSiteSourceAssets} from './source-stage.ts';
+import {CORE_VERSION} from './release.ts';
 // The largest message the transport buffers and the largest tool result the server returns.
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
@@ -143,7 +144,11 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
    // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
-   case 'run_tests':{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:host.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,events};}
+   // Each run composes its own host on a fresh, empty data directory, as `urlcode test` does (RIM-EXT-HERMETIC-001):
+   // never the site's live data, and never what an earlier run wrote.
+   case 'run_tests':{const runHost=options.hostFile===undefined?undefined:await loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256,hermetic:true});
+    try{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:runHost?.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,events};}
+    finally{await runHost?.close?.();}}
    case 'list_capabilities':return getCapabilities(deployTargetOf(args));
    case 'get_capability':return getCapability(args.name as string);
    case 'get_schema':return getSchemaFragment(args.path as string);
@@ -182,7 +187,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  };
  // The official SDK owns the protocol: framing, lifecycle and version negotiation, ping and JSON-RPC errors (#846).
  // URLCode owns the tool list, the argument checks, the calls and the 1 MiB result bound.
- const server=new Server({name:'urlcode',version:'0.6.5'},{capabilities:{tools:{}}});
+ const server=new Server({name:'urlcode',version:CORE_VERSION},{capabilities:{tools:{}}});
  const inFlight=new Set<Promise<unknown>>();
  const tracked=<T>(work:Promise<T>):Promise<T>=>{inFlight.add(work);void work.finally(()=>inFlight.delete(work)).catch(()=>undefined);return work;};
  server.setRequestHandler('tools/list',()=>tracked(Promise.resolve({tools})));

@@ -39,21 +39,30 @@ extension it requires; auth requires no other extension. `--example` also writes
 extension's demo, such as store's `/api/todos` JSON collection (per-user when auth
 is installed).
 
-Once a site has an extension, the npm scripts also need the public origin and
-the operator's reviewed policy (the output of `npx urlcode permissions --project
-app`, reviewed and saved outside `app/`, for example as `operator/policy.json`).
-The scripts stay unchanged; the CLI reads both from the environment:
+Once a site has an extension, the host is pinned to a reviewed project
+revision, and every edit changes the revision. `npm run validate`, `npm test`,
+`npm run routes` and `npm run audit` pass `--local-review`. With no reviewed
+pin, each run is pinned to the current revision for that run only, on
+`http://localhost`, and reads no policy, so it grants no binding. Edit and
+rerun them without re-pinning.
+
+Serving needs your approval. `npm run dev` and `npm start` need the public
+origin and the operator's reviewed policy: the output of
+`npx urlcode permissions --project app`, reviewed and saved outside `app/`,
+for example as `operator/policy.json`. The CLI reads both from the
+environment:
 
 ```sh
-URLCODE_ORIGIN=https://your.site URLCODE_POLICY=operator/policy.json npm run validate
+URLCODE_ORIGIN=https://your.site URLCODE_POLICY=operator/policy.json npm start
 ```
 
 Without them the command refuses and prints the complete command to run.
-Nothing writes or updates the policy for you; re-review it after a project change.
+With them, the check scripts use that policy and pin as given. Nothing writes
+or updates the policy for you; re-review it after a project change.
 
 The frontend is your own code calling those JSON routes with `fetch`; URLCode
 ships no component kit. The
-[private-requests client](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests/client/main.js)
+[private-requests client][proofs/private-requests/client/main.js]
 is the reference pattern.
 
 Start with the local MCP `get_context` tool (or `npx urlcode context --project
@@ -64,6 +73,12 @@ tooling at https://urlcode.ai/llms.txt.
 Keep this site in your own Git repository. Secrets stay in ignored `.env.local`,
 `data/` or provider environment values, with external operator policy for
 function grants. See
-[security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)
-and [readiness](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md).
+[security][docs/FUNCTION-SECURITY.md]
+and [readiness][docs/READINESS.md].
 URLCode is licensed under the Apache License 2.0.
+
+<!-- urlcode-current-version:start -->
+[proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
+[docs/FUNCTION-SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md
+[docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
+<!-- urlcode-current-version:end -->

@@ -107,6 +107,14 @@ export interface ExtensionActivation {
    * takes its own reference to what the value names; it never becomes the only owner. See `ExtensionHandoff`.
    */
   handoff?:ExtensionHandoff;
+  /**
+   * The declared test seed for this extension (RIM-EXT-HERMETIC-001): the project's `tests/seed.json` entry under
+   * this extension's name, already validated against the registration's `seedSchema`. Present only on the first
+   * activation of a `urlcode test` or `urlcode audit` run (never after a fixture `restart`, never on `dev`, `serve`
+   * or a reload), and only for a registration that declares `seedSchema`. The activation writes it (accounts,
+   * memberships) before it returns, so every fixture starts from exactly the seed.
+   */
+  seed?:unknown;
 }
 /**
  * What the serving runtime's instance of a registration offers the same registration's activation in the replacement
@@ -491,6 +499,13 @@ export interface RuntimeExtension {
    * named as this extension's `describe` failure.
    */
   describe?(request:ExtensionDescribeRequest):ExtensionOpenApi|undefined;
+  /**
+   * The JSON Schema of the test seed this registration accepts as `ExtensionActivation.seed` (RIM-EXT-HERMETIC-001).
+   * Declare it only on a registration built from a hermetic host (`HostContext.hermetic`): core refuses a
+   * `tests/seed.json` entry for an extension whose registration has none, so a seed can only ever reach a
+   * throwaway data directory.
+   */
+  seedSchema?:object;
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
 /** What the OpenAPI export asks an extension's `describe()` about: one mount and the declared configuration. */
@@ -567,6 +582,21 @@ export interface HostContext {
   projectSha256:string;
   /** Absolute site directory: the directory of host.mjs. */
   site:string;
+  /**
+   * Absolute directory for the operator data this extension keeps (databases, generated keys): `<site>/data` for
+   * `dev`, `serve`, `validate`, `routes` and every inspection command; a fresh, empty temporary directory, removed when the host closes,
+   * when `hermetic` is true (RIM-EXT-HERMETIC-001).
+   */
+  data:string;
+  /**
+   * True for a run that replays requests: `test`, `audit` and `benchmark`, and the MCP server's `run_tests`
+   * (RIM-EXT-HERMETIC-001). The run must never read or write the site's live data, and must start from nothing on
+   * every run: keep every file under `data` whatever the operator's options or environment name (a `database` path,
+   * an environment variable), create what serving would expect an operator to have created (a schema, a signing
+   * secret that lives only as long as the host), and only then offer a `seedSchema`, so a declared test seed
+   * (`tests/seed.json`) can never reach live data.
+   */
+  hermetic:boolean;
   /**
    * The exports of a `requires` extension, or of an installed `uses` extension; `undefined` for a `uses` extension
    * that is not installed. Throws for any name outside `requires` and `uses`.
@@ -657,6 +687,8 @@ export interface ActiveExtension {
 }
 export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; credentialHeaders:string[]; close():Promise<void> }
 const namePattern=/^[a-z][a-z0-9-]{0,63}$/;
+/** The project-relative file holding the declared test seed (RIM-EXT-HERMETIC-001). */
+export const seedFile='tests/seed.json';
 /** The runtime targets that deliver a streamed response incrementally; every other target refuses streaming before serving. */
 export const streamingTargets:readonly TargetName[]=Object.freeze(['node','vercel']);
 const hookNamePattern=/^[a-z][A-Za-z0-9]{0,63}$/;
@@ -734,8 +766,12 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
  * `replacing`): each extension whose serving instance was activated from the very same registration object and
  * implements `handoff()` is asked for its offer just before its replacement activates, and the offer reaches that
  * activation as `context.handoff` (RIM-EXT-HANDOFF-001). The serving registry is never closed or changed here.
+ *
+ * `seeds` is the project's parsed `tests/seed.json`, given only by the first runtime of a `urlcode test` or
+ * `urlcode audit` run (RIM-EXT-HERMETIC-001). Each entry must name a declared extension whose registration declares a
+ * `seedSchema` and must satisfy it; that extension's activation then receives it as `context.seed`.
  */
-export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'|'handoff'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string}): {readonly followed:readonly string[];activate(serving?:ExtensionRegistry):Promise<ExtensionRegistry>} {
+export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'|'handoff'|'seed'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string},seeds?:Readonly<Record<string,unknown>>): {readonly followed:readonly string[];activate(serving?:ExtensionRegistry):Promise<ExtensionRegistry>} {
   assert(acceptedPin===undefined||typeof acceptedPin.from==='string'&&/^[a-f0-9]{64}$/.test(acceptedPin.from),'Invalid accepted extension revision pin');
   const followed:string[]=[];
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
@@ -747,6 +783,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(registration.providesPrincipal===undefined||typeof registration.providesPrincipal==='boolean','Invalid extension providesPrincipal');
     assert(registration.streams===undefined||typeof registration.streams==='boolean','Invalid extension streams');
     assert(registration.describe===undefined||typeof registration.describe==='function','Invalid extension describe hook');
+    assert(registration.seedSchema===undefined||(registration.seedSchema!==null&&typeof registration.seedSchema==='object'&&!Array.isArray(registration.seedSchema)),'Invalid extension seed schema');
     assert(registration.capabilities===undefined||(Array.isArray(registration.capabilities)&&registration.capabilities.length<=32&&registration.capabilities.every(name=>typeof name==='string'&&namePattern.test(name))&&new Set(registration.capabilities).size===registration.capabilities.length),'Invalid extension capabilities');
     assert(Array.isArray(registration.targets)&&registration.targets.every(target=>['node','aws','vercel'].includes(target)),'Extension targets must be node, aws or vercel');
     // A host composed for read-only inspection without a pin (#910) never activates, whatever else agrees.
@@ -825,6 +862,19 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       const principalMounts=mountRoutes.filter(([,route])=>Object.keys(effectiveExtensionPolicies(document,route)).some(policy=>principalProviders.has(policy))).map(([path])=>mountOf(path));
       preparations.push({name,registration,config:frozen(config),policies,mounts,principalMounts});
   }
+  const seeded=new Map<string,unknown>();
+  for(const [name,value]of Object.entries(seeds??{})){
+    const details={code:'invalid-seed',file:seedFile,pointer:`/${name}`,extension:name};
+    const registration=preparations.find(preparation=>preparation.name===name)?.registration;
+    if(!registration)throw new ConfigError(`${seedFile} seeds ${name}, which is not a declared extension this host registers`,details);
+    if(!registration.seedSchema)throw new ConfigError(`${seedFile} seeds ${name}, whose registration accepts no seed. An extension accepts one only from a host composed for a hermetic run (urlcode test or urlcode audit with --host-file), so a seed never reaches live data`,details);
+    let validate:ReturnType<InstanceType<typeof Ajv.default>['compile']>;
+    try{validate=new Ajv.default({strict:true,allErrors:false}).compile(registration.seedSchema);}
+    catch(error){throw extensionError(error,name,'prepare');}
+    const copy=structuredClone(value);
+    if(!validate(copy)){const error=validate.errors?.[0];throw new ConfigError(`${seedFile} ${name}${error?.instancePath?error.instancePath.split('/').join('.'):''}: ${error?.message??'is invalid'}`,{...details,pointer:`/${name}${error?.instancePath??''}`});}
+    seeded.set(name,frozen(copy));
+  }
   return {followed:Object.freeze([...followed]),async activate(serving?:ExtensionRegistry){
     try{for(const {name,registration,config,policies,mounts,principalMounts}of preparations){
       // Offered only by the serving instance of this very registration: never across names or registration objects.
@@ -842,7 +892,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       let instance:ExtensionInstance;
       // warn() reaches the same operator log; it is closed once activate() settles (RIM-EXT-WARN-001).
       const warnings=activationWarnings(name,log);
-      try{instance=await registration.activate(config,Object.freeze({...frozen({...context,mounts,principalMounts,warn:warnings.warn}),...(handoff?{handoff}:{})}));}
+      try{instance=await registration.activate(config,Object.freeze({...frozen({...context,mounts,principalMounts,warn:warnings.warn}),...(handoff?{handoff}:{}),...(seeded.has(name)?{seed:seeded.get(name)}:{})}));}
       catch(error){throw extensionError(error,name,'activate');}
       finally{warnings.close();}
       const providesPrincipal=registration.providesPrincipal===true,streams=registration.streams===true;

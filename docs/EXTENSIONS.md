@@ -902,6 +902,48 @@ connection among its registration's live activations instead
 ([store reload](STORE.md#reload)), and the store's records export keeps its
 current activation that way.
 
+### Hermetic runs and test seeds
+
+`urlcode test`, `urlcode audit`, `urlcode benchmark` and the MCP server's
+`run_tests` never touch the site's live data (`RIM-EXT-HERMETIC-001`). Each run
+imports `host.mjs` anew with a fresh, empty temporary directory set, and
+`composeHost` hands every `host(ctx, options)` two more fields:
+
+```ts
+interface HostContext {
+  // <site>/data, or the run's temporary directory (removed when the host closes).
+  data: string;
+  // true for test, audit, benchmark and MCP run_tests.
+  hermetic: boolean;
+  // projectSha256, site, get as before
+}
+interface RuntimeExtension {
+  // Declare only on a registration built for a hermetic host.
+  seedSchema?: object;
+  // name, schema, activate ... as before
+}
+interface ExtensionActivation {
+  // This extension's tests/seed.json entry, validated against seedSchema.
+  seed?: unknown;
+  // origin, mounts, root, warn ... as before
+}
+```
+
+A hermetic host keeps every file under `ctx.data`, whatever the operator's
+options or environment name for serving (a `database` path, an environment
+variable), creates what serving expects an operator to have created (a schema,
+a signing secret that lives only as long as the host) and starts from nothing
+on every run. Only such a registration declares `seedSchema`. Core reads the
+project's `tests/seed.json` (an object keyed by extension name, at most 1 MiB),
+validates each entry against the named registration's `seedSchema` and passes
+it as `context.seed` to that extension's first activation of the run only:
+never after a fixture `restart`, on a reload, `dev`, `serve` or `validate`. An
+entry naming an extension that is not registered, or one that declares no
+`seedSchema`, is refused before anything is served, so a seed cannot reach live
+data even when a caller hands the harness registrations of its own. The
+activation writes the seed (accounts, memberships) before it returns. The
+first-party entries are in [test data and seeds](READINESS.md#test-data-and-seeds).
+
 ### Site origins and same-origin checks
 
 A site can be served from more than one origin: an apex and a `www` host, or a
@@ -1741,8 +1783,10 @@ above its routes. A scaffold may generate key material as `Uint8Array` file
 contents; core zeroes it after writing or on failure.
 
 `host(ctx, options)` builds the runtime registration from the operator's
-`host.mjs`. `ctx` is `{projectSha256, site, get}`: the reviewed
-revision pin, the site directory and the exports of a required or used
+`host.mjs`. `ctx` is `{projectSha256, site, data, hermetic, get}`: the reviewed
+revision pin, the site directory, the directory to keep operator data in and
+whether this is a [hermetic run](#hermetic-runs-and-test-seeds), and the
+exports of a required or used
 extension (`undefined` for a used one that is not installed). It returns `{registration,
 exports?, close?}`; `registration` is the `RuntimeExtension` described above,
 and `close` runs in reverse activation order. `composeHost` reads the
@@ -1799,6 +1843,54 @@ hosted adapters keep the strict check. What `dev` ran is not reviewed: review
 the edited project and pin its revision before `serve` runs it. `--policy`
 grants are not followed; see
 [local development](LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
+
+#### The local review loop
+
+A pin names one revision, so every edit changes it. Checking an edit should
+not need a new approval, but serving it must. `--local-review` separates the
+two ([#932](https://github.com/jimhoyd-com/urlcode/issues/932)). The
+generated `npm run validate`, `npm test`, `npm run routes` and
+`npm run audit` scripts pass it; `npm run dev` and `npm start` do not.
+
+```sh
+npm run validate   # urlcode validate --local --project app --host-file host.mjs --local-review
+npm test           # urlcode test --project app --host-file host.mjs --local-review
+npm run audit      # urlcode audit --expect-routes N --project app --host-file host.mjs --local-review
+```
+
+With the flag and no operator pin (no `--policy`, `URLCODE_POLICY` or
+`PROJECT_SHA256`), the CLI computes the project's current revision and pins
+the host to it for that one run. `--origin` defaults to `http://localhost`. It
+prints one `{"event":"local_review","revision":"…","origin":"…"}` line on
+stderr, so the output shows the run was not a reviewed one. Edit, run the
+three scripts, and repeat. When the change is ready, review it, pin the
+revision (`urlcode permissions --project app`), then serve.
+
+The boundary holds for these reasons:
+
+- **Serving refuses it.** Only `validate`, `test`, `routes` and `audit` accept
+  the flag. `serve`, `dev`, `benchmark` and every other command refuse it
+  (`code` `local-review-unsupported`), so a served runtime is always pinned by
+  the operator.
+- **Nothing is persisted.** The derived pin exists only in the process for
+  that run. It writes no policy, sets no environment variable and changes no
+  file, so the next `serve` still refuses until the operator pins a revision.
+- **An operator pin wins.** When `--policy`, `URLCODE_POLICY` or
+  `PROJECT_SHA256` is given, the flag does nothing: that pin and its policy
+  apply exactly as without it. A stale pin still refuses.
+- **No grant.** A local review reads no policy, so it holds no env, secret or
+  egress grant. A binding or egress destination that needs one is refused,
+  exactly as without a policy. (The test harness's own `URLCODE_DATA_DIR`
+  grant is the same as without the flag.)
+- **No new code.** The host activates the extensions the operator's
+  `host.mjs` already composes, the same ones `PROJECT_SHA256=<current
+  revision>` would activate. The project's trusted functions run with full
+  Node access either way.
+
+`urlcode dev` keeps its narrower rule: its first start needs the reviewed pin,
+then hot reloads follow it (above). The MCP runners (`run_validate`,
+`run_test`, `run_audit`) do not pass the flag; they forward only what the
+operator gave `urlcode mcp` ([#940](https://github.com/jimhoyd-com/urlcode/issues/940)).
 
 The types are exported from `@jimhoyd/urlcode/extensions`
 (`packages/core/src/extensions.ts` is the authoritative definition) and
@@ -2063,11 +2155,15 @@ materializes.
 extensions, checks each `extensions.<name>.config` and each route's
 `policies.extensions.<name>` statically against the installed packages'
 `urlcode.json` schemas. No extension code runs. Pass `--host-file host.mjs` to
-activate the extensions and validate the whole runtime.
+activate the extensions and validate the whole runtime against the site's own
+data, as `serve` will use it.
 
 The [GitHub Action](CI.md#what-it-runs) installs the site with `npm ci
 --ignore-scripts` (a committed `package-lock.json` is required), runs `urlcode
 extensions list --strict` and `urlcode artifacts list --strict`, then validates
-the project. Without a `host-file` input it validates declared extensions
-statically and skips `test` and `audit` when the project declares extensions;
-with one it computes `PROJECT_SHA256` for that CI run only.
+the project statically. Without a `host-file` input it skips `test` and
+`audit` when the project declares extensions; with one it computes
+`PROJECT_SHA256` for that CI run only, and `test` and `audit` activate the
+extensions [hermetically](#hermetic-runs-and-test-seeds), seeded from
+`tests/seed.json`, so CI provisions no account, membership, migration or
+signing secret.

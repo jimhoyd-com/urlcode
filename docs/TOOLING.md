@@ -108,14 +108,18 @@ An explicit flag always wins and an empty variable counts as unset. A relative
 `URLCODE_POLICY` resolves against the working directory, which for an npm
 script is the site root. The npm scripts `urlcode init` writes (`dev`, `start`,
 `validate`, `test`, `routes`, `audit`) carry `--project app --host-file host.mjs`
-and nothing else beyond the audit's `--expect-routes N`: npm runs them under `sh` on POSIX and `cmd` on Windows, so no
+and nothing else beyond the audit's `--expect-routes N` and, on `validate`,
+`test`, `routes` and `audit`, `--local-review`. npm runs them under `sh` on POSIX and `cmd` on Windows, so no
 variable syntax in a script is portable, and neither value is the runtime's to
-choose. The CLI reads the variables itself, so after the operator has reviewed
-the project and saved the output of `urlcode permissions --project app` (say as
-`operator/policy.json`), the unchanged scripts run with:
+choose. With neither value set, the check scripts review the current revision
+locally ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]); `dev`
+and `start` refuse. The CLI reads the variables itself, so after the operator
+has reviewed the project and saved the output of
+`urlcode permissions --project app` (say as `operator/policy.json`), the
+unchanged scripts serve, and check against that policy, with:
 
 ```sh
-URLCODE_ORIGIN=https://your.site URLCODE_POLICY=operator/policy.json npm run validate
+URLCODE_ORIGIN=https://your.site URLCODE_POLICY=operator/policy.json npm start
 ```
 
 When either value is missing, the refusal prints one complete command: the
@@ -123,7 +127,7 @@ actual invocation with an explicit placeholder appended for each missing value,
 also in the error's `command` field. For a fresh `init --with auth` site:
 
 ```text
-... Run: npx --no --package @jimhoyd/urlcode urlcode validate --local --project app --host-file host.mjs --origin <https://your.site> --policy <operator/policy.json> where ...
+... Run: npx --no --package @jimhoyd/urlcode urlcode serve --project app --host-file host.mjs --origin <https://your.site> --policy <operator/policy.json> where ...
 ```
 
 The origin placeholder appears for commands that activate extensions (`dev`,
@@ -158,7 +162,11 @@ note in `extensions`), and every activation refuses it with
 `serve`, `dev`, `validate` (with or without `--local`), `test`, `routes`,
 `audit`, `benchmark` and the MCP `run_tests` runner still need the reviewed pin.
 With a pin, the inspection commands compose pinned registrations exactly as
-before.
+before. `validate`, `test`, `routes` and `audit` alone also accept
+`--local-review`, which the generated npm scripts pass: with no operator pin,
+it pins that one run to the current revision, reads no policy and defaults the
+origin to `http://localhost`, and `serve` and `dev` refuse it
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 
 ## Project context
 
@@ -1435,4 +1443,5 @@ and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/
 [docs/EXTENSIONS.md#inspecting-artifact-documents]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#inspecting-artifact-documents
 [docs/EXTENSIONS.md#staging-source-assets]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#staging-source-assets
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 <!-- urlcode-current-version:end -->

@@ -56,5 +56,31 @@ test('packedLinkProblems names every relative link a packed document cannot foll
     'docs/AI-AUTHORING.md:4 links `../ROADMAP.md`, but `ROADMAP.md` is not in the package',
   ]);
   assert.deepEqual(packedLinkProblems('llms.txt', '[docs](docs/STORE.md) [ok](docs/TOOLING.md)', packed), ['llms.txt:1 links `docs/STORE.md`, but `docs/STORE.md` is not in the package']);
-  assert.deepEqual(['README.md', 'llms.txt', 'llms-full.txt', 'dist/cli.js'].filter(isPackedDocument), ['README.md', 'llms.txt']);
+  assert.deepEqual(['README.md', 'llms.txt', 'llms-full.txt', 'dist/cli.js'].filter(isPackedDocument), ['README.md', 'llms.txt', 'llms-full.txt']);
+  // This repository's main branch is refused anywhere outside a fence, as a link or a bare `Source:` line (#938).
+  assert.deepEqual(packedLinkProblems('llms-full.txt', 'Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md\n[x](https://github.com/jimhoyd-com/urlcode/tree/main/packages/store) [y](https://github.com/jimhoyd-com/urlcode/blob/v1.2.3/docs/HTTP.md) [z](https://github.com/other/repo/blob/main/x.md)', packed), [
+    "llms-full.txt:1 names `https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md`, this repository's main branch; link blob/v<current version>/... instead",
+    "llms-full.txt:2 names `https://github.com/jimhoyd-com/urlcode/tree/main/packages/store`, this repository's main branch; link blob/v<current version>/... instead",
+  ]);
+});
+
+test('packedStringProblems names docs pages a packed script prints but the package does not ship (#938)', async () => {
+  const { packedStringProblems, isPackedCode } = await import('../scripts/package-audit.ts');
+  const packed = new Set(['dist/cli.js', 'docs/TOOLING.md']);
+  const source = [
+    '// See docs/HTTP.md: a comment addresses maintainers and is not read.',
+    "/** docs/ASSETS.md */ const shipped = 'docs/TOOLING.md';",
+    "const pinned = 'https://github.com/jimhoyd-com/urlcode/blob/v1.2.3/docs/HTTP.md#error-format';",
+    "const reason = 'See docs/POLICIES.md#portability.';",
+    'const help = `run it, see docs/STATIC.md`;',
+    'const mixed = `${shipped} and docs/yaml/functions.md ${pinned} docs/OPERATIONS.md`;',
+    "const other = 'mydocs/X.md packages/docs/Y.md';",
+  ].join('\n');
+  assert.deepEqual(packedStringProblems('dist/cli.js', source, packed), [
+    'dist/cli.js:4 names `docs/POLICIES.md`, which the package does not ship',
+    'dist/cli.js:5 names `docs/STATIC.md`, which the package does not ship',
+    'dist/cli.js:6 names `docs/yaml/functions.md`, which the package does not ship',
+    'dist/cli.js:6 names `docs/OPERATIONS.md`, which the package does not ship',
+  ]);
+  assert.deepEqual(['dist/cli.js', 'recipes/x/functions/a.mjs', 'dist/types/index.d.ts', 'README.md'].filter(isPackedCode), ['dist/cli.js', 'recipes/x/functions/a.mjs']);
 });

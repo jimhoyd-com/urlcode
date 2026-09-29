@@ -435,6 +435,12 @@ still has no roles, and `auth` gains none.
   echoed. For an auth user, `npx urlcode-auth find-user --email <email>` in the
   site prints that id (`{"event":"user-found","id",…}`), including for a user
   who signed themselves up.
+- **In tests** the members come from the project's `tests/seed.json`, written
+  as `members add` writes them before the first fixture of every `urlcode test`
+  and `audit` run, on that run's own fresh database:
+  `{"store": {"members": {"reviewers": ["alice"]}}}` (principal ids by
+  membership collection; a collection that is not `membership: true` is
+  refused). See [test data and seeds](READINESS.md#test-data-and-seeds).
 - **Membership changes are evidence** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
   A membership collection may declare `audit: true`. Then every added member
   is recorded as `store.membership.added` and every removed one as
@@ -465,6 +471,28 @@ still has no roles, and `auth` gains none.
   one, and a removed member's retry is refused rather than replayed.
   `by: others` still refuses the owner, member or not (`403
   own_record_refused`). Host transactions pass the same gate.
+- **A gated create** ([#929](https://github.com/jimhoyd-com/urlcode/issues/929))
+  declares `create: {members: <membership collection>}` on the collection.
+  `POST <mount>` then needs a principal (`401 principal_required`, a shared
+  collection included) and a member: the membership check is the first
+  statement of the write transaction, before the body is judged, the retained
+  `Idempotency-Key` is read or any record is counted, so a non-member's `403
+  membership_required` is the same whatever the body, and a removed member's
+  retry is refused rather than replayed. `StoreExports` (`records(name).create`)
+  and a host transaction's `create` pass the same gate with the principal they
+  are given. It gates creating only: reading, updating and deleting stay what
+  ownership and the route's policy make them. Not on a membership collection
+  or a `readOnly` one.
+
+  ```yaml
+  collections:
+    staff: {membership: true, key: userId, schema: {type: object, additionalProperties: false, required: [userId], properties: {userId: {type: string, maxLength: 128}}}}
+    bookings:
+      mount: /api/bookings
+      ownership: owner
+      create: {members: staff}   # a signed-in non-member gets 403 and nothing is written
+      schema: {type: object, additionalProperties: false, required: [title], properties: {title: {type: string, maxLength: 80}}}
+  ```
 - **Cross-owner reads.** An owned collection may declare
   `readers: {mount, members}`. Members then list and read **every** owner's
   records, read-only, on that separate mount: `GET <mount>` takes the
@@ -488,15 +516,54 @@ still has no roles, and `auth` gains none.
   adds a stable cross-record link to one account. To show something a reviewer
   can act on (a display name, a team), keep it in an ordinary declared property
   that the owner writes; see [the store's security notes](../packages/store/SECURITY.md).
+- **A projection, and a directory.** `readers.properties: [<property>, ...]`
+  ([#929](https://github.com/jimhoyd-com/urlcode/issues/929)) narrows the
+  readers mount to what it lists. Each record is answered as `id`, the listed
+  properties and (with `showOwner`) `_owner`: no `createdAt`, `updatedAt` or
+  unlisted property. Sort and filters take only listed properties; any other is
+  `400 invalid_query`, even when the collection declares it `sortable` or
+  `filterable`, because an order or a match would disclose it. `may` lists only
+  transitions whose `from` names listed properties only. The `ETag` (and each
+  `etags` entry) is the hash of what the mount shows, so it changes only when a
+  shown property does; it is not the record's own `ETag`, which moves on every
+  write, a transfer included, and would tell every reader when a hidden
+  balance moved. With `properties`, `members` may be left out: then every
+  principal the mount's route admits reads the projection (`401` without one).
+  That is the directory a transfer needs:
+
+  ```yaml
+  # snippet: partial -- one collection, the rest as in declared transfers
+  wallets:
+    mount: /api/wallets
+    ownership: owner
+    filterable: [name]
+    # ...schema, defaults, readOnlyProperties and transfers as in declared transfers below
+    readers: {mount: /api/directory, properties: [name]}   # GET /api/directory?name=bob -> {items: [{id, name}]}
+  # and the route: /api/directory/*: {extension: store, methods: [GET, HEAD], auth: true}
+  ```
+
+  A sender finds the recipient's wallet id by name and pays it; no balance,
+  timestamp or other property of anyone's wallet is shown, and a balance moving
+  does not change the directory's answer. It still shows the listed values, how
+  many owned records exist (`total`) and which ids exist, to every signed-in
+  principal; list only what every user may know, and add `members` when that
+  is too much. *Why this shape:* it reuses the readers mount (one read path,
+  one gate, the same query rules) rather than adding a second kind of mount,
+  and it keeps transfers addressed by record id, so a transfer never has to
+  resolve an owner or a handle inside its transaction. A readers declaration
+  with neither `members` nor `properties` is refused: an ungated mount must say
+  what it shows. One collection has one readers mount, so a collection that
+  needs both a full reviewer view and a directory needs one of them elsewhere.
 - **Changes apply immediately.** Membership is read inside each gated
   request's transaction, so an addition or removal committed before a request
   begins applies to it; there is no cache. Of concurrent approvals by members
   exactly one commits, as for any transition.
-- **Activation** refuses a `members` naming a collection that is not declared
-  or is not a membership collection, and `readers` on a shared collection or
-  on a mount that another store mount already uses.
-- **Why this shape.** Only `members` on a transition, `readers` on a
-  collection and `membership: true` are new. Richer rules (roles with
+- **Activation** refuses a `members` (on a transition, a transfer, `create` or
+  `readers`) naming a collection that is not declared or is not a membership
+  collection, `readers` on a shared collection or on a mount that another store
+  mount already uses, and `readers.properties` naming an undeclared property.
+- **Why this shape.** Only `members` on a transition, a transfer and `create`,
+  `readers` on a collection and `membership: true` are new. Richer rules (roles with
   hierarchies, per-record sharing, a reader scope narrower than "every
   owner") would be an authorization language; this is one named set per gate.
   [`urlcode-store reassign`](#moving-records-to-another-principal) moves a
@@ -524,6 +591,8 @@ store would accept:
   caller in that membership collection; a `readOnly` collection runs none.
   The names are the collection's whole set, whichever mount serves each one, so
   a member's own record on a readers mount lists its `by: owner` transitions.
+  A [projected](#membership-gates-and-cross-owner-reads) readers mount leaves out
+  a transition whose `from` names a property it does not show.
 - **Bounded.** The caller's membership is looked up at most once per distinct
   gate per answer, and only when some listed record could take a gated
   transition, never once per record. The answer grows with the page (at most
@@ -648,12 +717,12 @@ store.transaction(tx => {
 
 **Authorization ordering.** The route's policies run first (for example
 `auth: true` sets the principal). Then the store answers, in order: `401` on an
-owned collection, a `by: others` transition or a gated one without a
-principal; `403` for a
+owned collection, a `by: others` transition, a gated one or a gated create
+without a principal; `403` for a
 cross-origin write; `400` for a malformed `Idempotency-Key` or `If-Match`, a
 key on a collection without `idempotency`, or a body problem it can see before
 the database (JSON syntax, a body on a transition); `405` on a `readOnly`
-collection. Inside the write transaction: for a gated transition the
+collection. Inside the write transaction: for a gated transition or create the
 membership check (`403 membership_required`); the retained key (`422` or a
 replay); the record in the caller's scope (`404`, so another owner's record is
 a missing one); for `by: others` the owner check (`403 own_record_refused`);
@@ -714,8 +783,8 @@ The #835 counterexamples, and what serves each:
 | Contract | Served by | Not built |
 |---|---|---|
 | Approval of another owner's pending request ([#843](https://github.com/jimhoyd-com/urlcode/issues/843)) | a `by: others` transition with `readOnly` state, gated by a membership collection (maintained with `urlcode-store members`, audited with `audit: true`); a readers mount for the pending list across owners, showing the requester's id with `showOwner` ([the proof](../proofs/private-requests/README.md) has no application code) | a requester reference other than the opaque principal id (a display name stays an application field) |
-| Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a declared [`intervals`](#non-overlapping-intervals) constraint checked through an index, across owners on an owned collection, with `If-Match` and transitions (cancel, reopen); no application code | recurring intervals, capacity above one per slot |
-| Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
+| Scheduling: exclusive half-open intervals, expected revision, rejected move keeps its slot | a declared [`intervals`](#non-overlapping-intervals) constraint checked through an index, across owners on an owned collection, with `If-Match` and transitions (cancel, reopen); fixed-length, aligned slots with `length` and `step`; members-only booking with `create.members`; no application code | recurring intervals, capacity above one per slot |
+| Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); the recipient's id from a [projected readers mount](#membership-gates-and-cross-owner-reads) that shows no balance; no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
 [#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
@@ -733,6 +802,8 @@ appointment slots, shifts. The store checks it inside every write's
 transaction, through an index, with no application code. It replaces the host
 transaction the scheduling counterexample of #835 needed, which could only
 see the caller's own records.
+The [`store-booking` recipe](../recipes/store-booking/README.md)
+(`urlcode recipes add store-booking`) is this declaration with fixtures.
 
 ```yaml
 collections:
@@ -755,6 +826,8 @@ collections:
       end: end
       within: [room]            # a room's bookings conflict with each other only
       when: {status: booked}    # a cancelled booking frees its slot
+      length: PT1H              # every booking is exactly one hour...
+      step: PT1H                # ...and starts on the hour, UTC
     transitions:
       cancel: {from: {status: booked}, set: {status: cancelled}}
       reopen: {from: {status: cancelled}, set: {status: booked}}
@@ -794,6 +867,26 @@ collections:
   rewrites a value the caller sent, and a UTC-only bound sorts and filters
   the same way everywhere; converting a local time is the client's job, where
   the time zone is known.
+- **Length and step** ([#929](https://github.com/jimhoyd-com/urlcode/issues/929)).
+  `length` fixes every interval's length: `end` must be exactly `start` plus
+  `length`. `step` puts both bounds on a grid: each must be a whole multiple of
+  `step`, counted from 1970-01-01T00:00:00Z for date-times, so `PT1H` is on
+  the hour and `PT15M` on the quarter hour, in UTC. Alone, `step` makes every
+  interval a whole number of steps (one-hour slots booked one or more at a
+  time); with both, `length` must be a multiple of `step`, or activation
+  refuses the declaration. For date-time bounds each is an ISO 8601 duration
+  in whole days, hours, minutes and seconds (`PT1H`, `PT30M`, `P1DT12H`; a day
+  is 24 hours, since bounds are UTC; no years, months or fractions); for
+  `integer` bounds, a positive integer in the bounds' own units. A `number`
+  bound takes neither, since a fraction has no exact multiple. A write that
+  breaks either is `422 invalid_record` with keyword `intervals` and a message
+  naming the declaration (`must be exactly PT1H after start`, `must be a whole
+  multiple of PT1H from 1970-01-01T00:00:00Z`), never the submitted value. The
+  rule applies to every record, whatever `when` says, on every write path
+  (create, `PUT`, `PATCH`, a transition, `StoreExports` and host
+  transactions), and activation refuses stored records that break it. A grid
+  in local time (a clinic's 09:00 in a zone with daylight saving) is not
+  expressible: convert on the client, or use integer bounds.
 - **Cost.** The declaration builds one partial SQLite index over the records
   it applies to, keyed by owner (with `scope: owner`), the `within` values and
   the start instant. Because stored intervals in one scope never overlap, the
@@ -818,8 +911,9 @@ collections:
   concurrent bookings of one slot exactly one commits, in one process and
   across connections to the same file (the tests race both).
 - **Not covered.** One booking per slot (no capacity above one), no recurring
-  intervals, no open-ended interval (both bounds are required), and no
-  suggestion of a free slot. Not on a membership collection.
+  intervals, no open-ended interval (both bounds are required), no grid in
+  local time or with an offset from the epoch, and no suggestion of a free
+  slot. Not on a membership collection.
 
 ## Declared transfers
 
@@ -924,6 +1018,10 @@ Idempotency-Key: 5f0c...
   deletion like any nonzero one, so the outstanding supply cannot be written
   off by deleting it.
 
+The [`store-credits` recipe](../recipes/store-credits/README.md)
+(`urlcode recipes add store-credits`) declares these wallets with an issuer
+and fixtures that fund, pay, refuse an overdraft and close every wallet at `0`.
+
 ### Who may debit whom
 
 | Collection | Debit (`from`) | Credit (`to`) |
@@ -935,7 +1033,11 @@ Idempotency-Key: 5f0c...
 - **Owned.** Paying someone is the point, so the credited record may be
   anyone's; spending is not, so the debited record must be the caller's. The
   caller needs the recipient's record id, which the recipient shares, like an
-  account number: ids are random UUIDs and never listed to other owners. The
+  account number, or which a
+  [projected readers mount](#membership-gates-and-cross-owner-reads) lists
+  (`readers: {mount: /api/directory, properties: [name]}`: every signed-in
+  principal finds a wallet's id by its name, and sees no balance). Ids are
+  random UUIDs and never listed on the collection mount to other owners. The
   store checks the floor before it looks up the credited record, so a caller
   cannot learn whether an id exists without the funds to move; a transfer that
   goes through tells the payer the id exists and nothing else about it.
@@ -1529,7 +1631,9 @@ operator says made the change, not proof of it. Commands that change nothing
 
 - One SQLite database per site, through Node's built-in `node:sqlite`:
   `store({database})` in `host.mjs`, else `STORE_DATABASE`, else
-  `data/store.sqlite` beside `host.mjs`. It must be outside the project
+  `data/store.sqlite` beside `host.mjs`. `urlcode test`, `audit` and
+  `benchmark` ignore all three and use a fresh database of their own per run
+  ([test data and seeds](READINESS.md#test-data-and-seeds)). It must be outside the project
   (checked after symlink resolution). Its directory is created `0700` and the
   file `0600`; a symlinked, hard-linked or group- or other-readable file is
   refused. The store requires a SQLite with the fixes audit requires
@@ -1881,7 +1985,7 @@ the project's declaration alone, without opening the database.
 | Mount | Paths |
 |---|---|
 | Collection | `GET`/`HEAD <mount>` (the list: `limit`, `cursor`, `sort` as an enum of the sortable properties, each filter with its property's schema), `POST <mount>`; `GET`/`HEAD`/`PUT`/`PATCH`/`DELETE <mount>/{id}`; `POST <mount>/{id}/increment/{field}`; `POST <mount>/{id}/<transition>` per transition on the mount; `POST <mount>/transfers/<transfer>` per transfer, taking `Store<Collection>Transfer` and answering `Store<Collection>Transferred` |
-| Readers | `GET`/`HEAD <mount>` and `<mount>/{id}` |
+| Readers | `GET`/`HEAD <mount>` and `<mount>/{id}`; with `properties`, `Store<Collection>ReaderRecord` holds `id` and the listed properties only, `sort` and the filters are the listed ones, and there is no `403` without `members` |
 | `by: others` transition | `POST <mount>/{id}` |
 | Short link | `GET`/`HEAD <mount>/{key}`, a `302` with `Location` |
 
@@ -1891,8 +1995,10 @@ The schemas come from the record schema: `Store<Collection>Record` is it with
 annotations, `Store<Collection>Create` (for `POST` and `PUT`) leaves out the
 read-only properties and requires only what has no default,
 `Store<Collection>Patch` lets an optional property be `null`, and the list,
-reader (with `_owner` under `showOwner`) and `StoreError` shapes are named the
-same way. Each operation lists the headers it takes (`If-Match`, and
+reader (with `_owner` under `showOwner`, and only the listed properties under
+`readers.properties`) and `StoreError` shapes are named the same way. A gated
+create lists its `401` and `403 membership_required`, and a declared `length`
+or `step` is named in the `422`. Each operation lists the headers it takes (`If-Match`, and
 `Idempotency-Key` where the collection enables it) and answers (`ETag`,
 `Allow-Transitions`, `Location`, `Idempotency-Replayed`), its `requestBody`
 bound (`x-urlcode.maxBytes`: `maxRecordBytes` plus 4 KiB), and its refusals,

@@ -144,10 +144,14 @@ export async function cliInvocation(project:string):Promise<string> {
  * portable, and neither value is the runtime's to invent. The CLI itself reads URLCODE_ORIGIN and URLCODE_POLICY when
  * the flags are absent (#834), and a refusal for either prints the complete command with placeholders.
  */
-/** The npm scripts of a site: `app/` is the route project and `host.mjs` the explicitly named operator host. */
+/**
+ * The npm scripts of a site: `app/` is the route project and `host.mjs` the explicitly named operator host. validate,
+ * test, routes and audit pass `--local-review` (#932), so the edit loop needs no new pin after every edit; dev and start
+ * never do, so serving still needs the reviewed pin.
+ */
 export function projectScripts(routes:number):Record<string,string> {
- const site='--project app --host-file host.mjs';
- return {dev:`urlcode dev ${site}`,start:`urlcode serve ${site}`,validate:`urlcode validate --local ${site}`,test:`urlcode test ${site}`,routes:`urlcode routes ${site}`,audit:`urlcode audit --expect-routes ${routes} ${site}`};
+ const site='--project app --host-file host.mjs',review=`${site} --local-review`;
+ return {dev:`urlcode dev ${site}`,start:`urlcode serve ${site}`,validate:`urlcode validate --local ${review}`,test:`urlcode test ${review}`,routes:`urlcode routes ${review}`,audit:`urlcode audit --expect-routes ${routes} ${review}`};
 }
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
 export async function buildContext(project:string,options:ContextOptions={}):Promise<ProjectContext> {

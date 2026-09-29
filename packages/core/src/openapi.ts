@@ -15,6 +15,7 @@ import type {BodySchema} from './body-validation.ts';
 import {errorCodes} from './http-response.ts';
 import type {ErrorFormat} from './http-response.ts';
 import {runningCoreVersion} from './version.ts';
+import {docsUrl} from './release.ts';
 import type {CompiledRoute,PolicyChain} from './types.ts';
 
 // An OpenAPI 3.1 description of the HTTP operations a project declares, derived from the compiled IR (config → router
@@ -59,7 +60,7 @@ function operationName(method:string,pattern:string,taken:Set<string>):string {
 const handlerDefined='Handler-defined; not described by URLCode.';
 const components={
   UrlcodeErrorEnvelope:{
-    description:'The fixed JSON error envelope URLCode writes for its own errors under `errors.format: json` (docs/HTTP.md#error-format). `issues` and `truncated` appear only on a body-schema 422.',
+    description:'The fixed JSON error envelope URLCode writes for its own errors under `errors.format: json` ('+docsUrl('HTTP.md#error-format')+'). `issues` and `truncated` appear only on a body-schema 422.',
     type:'object',required:['error'],additionalProperties:false,
     properties:{error:{type:'object',required:['code','message'],additionalProperties:false,properties:{
       code:{type:'string',enum:[...new Set([...Object.values(errorCodes),'ERROR'])]},message:{type:'string'},
@@ -67,7 +68,7 @@ const components={
     }}},
   },
   UrlcodeBodyValidationError:{
-    description:'The JSON 422 a route with a request body schema answers when the body breaks it (docs/HTTP.md#body-schema-and-input-patterns). Capped at 4096 bytes.',
+    description:`The JSON 422 a route with a request body schema answers when the body breaks it (${docsUrl('HTTP.md#body-schema-and-input-patterns')}). Capped at 4096 bytes.`,
     type:'object',required:['error','message','issues'],additionalProperties:false,
     properties:{error:{const:'body_validation_failed'},message:{type:'string'},truncated:{type:'boolean'},issues:{type:'array',items:{$ref:'#/components/schemas/UrlcodeBodyValidationIssue'}}},
   },
@@ -89,7 +90,7 @@ const headerRef=(name:string):Json=>({$ref:`#/components/headers/${name}`});
  * error the runtime writes, since elsewhere a handler, declared header or cache policy may set its own.
  */
 const headerComponents={
-  UrlcodeRequestId:{description:'Set by the runtime on every response: a fresh UUID, or the inbound X-Request-Id when the operator trusts one (docs/OPERATIONS.md). A handler cannot set or replace it.',required:true,schema:{type:'string'}},
+  UrlcodeRequestId:{description:`Set by the runtime on every response: a fresh UUID, or the inbound X-Request-Id when the operator trusts one (${docsUrl('OPERATIONS.md')}). A handler cannot set or replace it.`,required:true,schema:{type:'string'}},
   UrlcodeNosniff:{description:'Set by the runtime on every response; a handler cannot set or replace it.',required:true,schema:{const:'nosniff'}},
   UrlcodeNoStore:{description:'Fixed on an error the runtime writes itself and on every answer from an extension mount; neither a declared header nor a policy changes it.',required:true,schema:{const:'no-store'}},
   UrlcodeAllow:{description:'The methods the route declares, in declared order and comma-separated: the path item\'s x-urlcode.methodNotAllowed.allow.',required:true,schema:{type:'string'}},
@@ -205,7 +206,7 @@ function assetResponses(route:CompiledRoute):Record<string,Json> {
   const type=essence(String(mime.contentType(config.contentType||mime.lookup(config.file)||'application/octet-stream')));
   return {
     '200':{description:'The declared file.',...(route.download?{headers:{'Content-Disposition':{schema:{type:'string'}}}}:{}),content:{[type]:{}}},
-    '206':{description:'One satisfiable byte range of the file (docs/ASSETS.md).',content:{[type]:{}}},
+    '206':{description:`One satisfiable byte range of the file (${docsUrl('ASSETS.md')}).`,content:{[type]:{}}},
     '304':{description:'Not modified: a conditional request matched the current validator.'},
     '416':{description:'Range not satisfiable.'},
   };

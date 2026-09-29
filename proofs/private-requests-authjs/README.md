@@ -101,7 +101,11 @@ npm start         # http://localhost:4180
 
 The accounts are the Better Auth proof's: `ann@example.test`,
 `bob@example.test` and the reviewer `rita@example.test`, with passwords
-`<name>-local-demo-password`. In a new site the provider installs with
+`<name>-local-demo-password`. `npm test` and `npm run audit` give the store a
+fresh database each run, holding rita's reviewer membership from
+`app/tests/seed.json`; this Auth.js provider is not a first-party extension, so
+it still checks passwords against the `data/users.json` that `setup` writes
+(read only, with the fixed ids `ann`, `bob` and `rita` the seed names). In a new site the provider installs with
 `urlcode extensions add ./example-urlcode-authjs-0.1.0.tgz`, which locks it by
 integrity, writes `extensions.authjs`, the `/api/auth/*` mount and
 `data/authjs.secret`, and adds it to `host.mjs`; activation then refuses until

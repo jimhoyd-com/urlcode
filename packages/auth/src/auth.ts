@@ -9,7 +9,7 @@ import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { mkdir } from 'node:fs/promises';
-import { clientKey, isSameOriginRequest, joinHostLease, jsonResponse, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
+import { clientKey, isSameOriginRequest, joinHostLease, jsonResponse, principalIdPattern, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, HostLease, HostProbe, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 
 /** The Better Auth paths a mount serves by default: sign-in, sign-out and the session endpoints. */
@@ -30,6 +30,28 @@ const pathPattern = /^\/[a-z0-9/-]+$/;
 
 export const authConfigSchema = { type: 'object', additionalProperties: false, properties: {} } as const;
 export const authPolicySchema = { type: 'object', additionalProperties: false, properties: {} } as const;
+/**
+ * The test seed a hermetic run accepts (`tests/seed.json` under `auth`, RIM-EXT-HERMETIC-001): accounts created with
+ * the id a store membership or fixture can name, and a password a fixture signs in with. Never accepted on `serve`.
+ */
+export const authSeedSchema = {
+  type: 'object', additionalProperties: false, required: ['users'],
+  properties: {
+    users: {
+      type: 'array', minItems: 1, maxItems: 100,
+      items: {
+        type: 'object', additionalProperties: false, required: ['id', 'email', 'password'],
+        properties: {
+          id: { type: 'string', pattern: principalIdPattern.source, description: 'The user id, which is the request principal id (a store membership names it).' },
+          email: { type: 'string', maxLength: 254, pattern: '^[^@\\s]+@[^@\\s]+$' },
+          password: { type: 'string', minLength: 8, maxLength: 128 },
+          name: { type: 'string', minLength: 1, maxLength: 200 },
+        },
+      },
+    },
+  },
+} as const;
+interface AuthSeed { users: { id: string; email: string; password: string; name?: string }[] }
 export const authAuthoring: ExtensionAuthoringContract = {
   description: 'Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions are data keyed by that id, never roles in auth: per-user records and membership lists are store declarations (ownership: owner, membership).',
   surfaces: [
@@ -100,6 +122,11 @@ export interface AuthSettings {
   paths?: readonly string[] | undefined;
   /** Extra Better Auth options (plugins, session lifetimes). Trusted operator code; merged last, but it cannot turn telemetry or rate limiting off. */
   betterAuth?: Partial<BetterAuthOptions> | undefined;
+  /**
+   * A hermetic run's throwaway instance (`HostContext.hermetic`): activation creates Better Auth's tables instead of
+   * refusing, and the registration accepts a test seed (`authSeedSchema`). Never set for `serve`.
+   */
+  hermetic?: boolean | undefined;
 }
 
 /** The Better Auth options for one instance at `origin`, served at `basePath`. `bootstrap` lets the server API create accounts. */
@@ -134,6 +161,20 @@ export async function migrate(options: BetterAuthOptions): Promise<void> {
   await (await getMigrations(options)).runMigrations();
 }
 
+/**
+ * Creates the seeded accounts through Better Auth's own adapter and password hashing, as its email sign-up does (a
+ * user, then its `credential` account), except that the user id is the seed's.
+ */
+async function seedUsers(auth: ReturnType<typeof betterAuth>, seed: AuthSeed): Promise<void> {
+  const context = await auth.$context;
+  for (const user of seed.users) {
+    const password = await context.password.hash(user.password), now = new Date();
+    const created = await context.adapter.create<Record<string, unknown>, { id: string }>({ model: 'user', data: { id: user.id, email: user.email.toLowerCase(), name: user.name ?? user.email, emailVerified: false, createdAt: now, updatedAt: now }, forceAllowId: true });
+    if (created.id !== user.id) throw new Error(`auth: seeded user ${user.id} was stored as ${created.id}; this Better Auth configuration generates its own ids`);
+    await context.internalAdapter.linkAccount({ userId: created.id, providerId: 'credential', accountId: created.id, password });
+  }
+}
+
 /** Better Auth's APIError for a 4xx: the request's own session is missing or invalid. */
 function isClientError(error: unknown): boolean {
   const status = error !== null && typeof error === 'object' && 'statusCode' in error ? error.statusCode : undefined;
@@ -154,6 +195,7 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
     schema: authConfigSchema, policySchema: authPolicySchema, authoring: authAuthoring,
     providesPrincipal: true,
     capabilities: ['identity'],
+    ...(settings.hermetic === true ? { seedSchema: authSeedSchema } : {}),
     async activate(_config, activation): Promise<ExtensionInstance> {
       if (activation.mounts.length !== 1) throw new Error(`auth serves exactly one mount (a route with extension: auth); found ${activation.mounts.length}`);
       const [mount] = activation.mounts as [string];
@@ -161,14 +203,18 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
       const options = betterAuthOptions(settings, activation.origin, mount);
       const database = databaseOf(options);
       let lease: HostLease | undefined;
+      let auth: ReturnType<typeof betterAuth>;
       try {
+        // A hermetic run starts from an empty database, so it creates the tables an operator creates with migrate.
+        if (settings.hermetic === true) await migrate(options);
         const pending = await pendingMigrations(options);
         if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate`);
         // The host lease (#941): `auth_servers` in the auth database, one row per activation. A live peer serving this
         // database from another host refuses activation; processes on one host do not refuse each other.
         if (database) lease = await joinHostLease(database, { table: 'auth_servers', what: 'auth', probe: settings.probe });
+        auth = betterAuth(options);
+        if (activation.seed !== undefined) await seedUsers(auth, activation.seed as AuthSeed);
       } catch (error) { database?.close(); throw error; }
-      const auth = betterAuth(options);
       return {
         // Better Auth's own handler, origin checks and cookies, for the listed paths only. The URL is rebuilt from the
         // path the allowlist checked, never from the raw request target.

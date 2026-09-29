@@ -15,7 +15,7 @@ export { auditConfigSchema };
 
 /** What the operator may pass as `audit({...})` in host.mjs. Every field is optional. */
 export interface AuditHostOptions {
-  /** Absolute path; default <site>/data/audit.sqlite. Must be outside app/. */
+  /** Absolute path; default <site>/data/audit.sqlite. Must be outside app/. Ignored by a hermetic run, which uses a fresh database (RIM-EXT-HERMETIC-001). */
   database?: string;
   /** Best effort, called after a commit that pruned rows past `retention`. Never affects the store. */
   onPruned?: (removed: number) => void;
@@ -56,10 +56,11 @@ export default defineExtension<AuditHostOptions>({
   },
   scaffold,
   async host(ctx, options) {
-    const database = options.database ?? join(ctx.site, 'data', 'audit.sqlite');
+    // A hermetic run (test, audit, benchmark) records into a fresh database in the run's data directory, never the site's.
+    const database = ctx.hermetic ? join(ctx.data, 'audit.sqlite') : options.database ?? join(ctx.data, 'audit.sqlite');
     if (!isAbsolute(database)) throw new Error('audit({database}) must be an absolute path');
     if (inside(join(ctx.site, 'app'), database)) throw new Error('The audit database must be outside app/');
-    if (options.database === undefined) await mkdir(join(ctx.site, 'data'), { recursive: true, mode: 0o700 });
+    if (ctx.hermetic || options.database === undefined) await mkdir(ctx.data, { recursive: true, mode: 0o700 });
     const onDeliveryError = options.onDeliveryError ?? ((source: string, error: unknown) => {
       process.stderr.write(`audit: delivery from ${source} failed (${error instanceof Error ? error.message.split('\n')[0]!.slice(0, 200) : 'unknown error'}); retrying\n`);
     });

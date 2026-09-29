@@ -62,6 +62,7 @@ need fixtures in `tests/requests.json`:
 [
   {"path":"/hello/Ada","status":200,"expectBody":"{\"message\":\"Hello, Ada!\"}"},
   {"path":"/hello/Ada","method":"HEAD","status":200,"expectBody":""},
+  {"path":"/api/accounts/acct-1","status":200,"expectJson":{"/balance":100,"/owner/name":"Ada"}},
   {"path":"/go","status":302,"expectHeaders":{"location":"https://example.com/"}},
   {"path":"/go","method":"POST","status":405,"expectHeaders":{"allow":"GET, HEAD"}},
   {"path":"/missing","status":404}
@@ -69,16 +70,26 @@ need fixtures in `tests/requests.json`:
 ```
 
 Each case may supply `method`, string-valued `headers`, a text `body`, expected
-`status`, string-valued `expectHeaders`, exact UTF-8 `expectBody`, and
-`expectSignals`, the signals the request must emit
+`status`, string-valued `expectHeaders`, exact UTF-8 `expectBody`, `expectJson`
+and `expectSignals`, the signals the request must emit
 ([checking signals locally](EGRESS.md#checking-signals-locally)). `test` and
 `audit` record signals without delivering them. `verify-deployment` cannot
 observe signals and notes `expectSignals` as not checked. Status is
 required. The file is checked against the shipped
 [`schemas/requests.schema.json`](../schemas/requests.schema.json) before any
-request is sent: any other key (a `json`, `expectJson` or misspelled
+request is sent: any other key (a `json`, `expectStatus` or misspelled
 `expectBdy`) is refused with the fixture number and what to write instead,
-rather than ignored. A passing case needs at least one body/header assertion to count toward
+rather than ignored.
+
+`expectJson` asserts values inside a JSON body without its exact text, so a
+body that also carries generated ids and timestamps can still be checked: it
+maps [JSON Pointers](https://www.rfc-editor.org/rfc/rfc6901) to the value each
+must equal (`{"/balance": 100, "/items/0/done": false}`; `""` is the whole
+body, `~1` is `/` and `~0` is `~` in a key). Objects compare regardless of key
+order, arrays in order, and nothing the map does not name is checked. At most
+16 pointers of at most 8 segments; a body that is not JSON, or over 1 MiB,
+fails every pointer. Strings may hold `{{name}}` references (see
+[multi-step fixtures](#multi-step-fixtures)). A passing case needs at least one body/header assertion to count toward
 coverage (see [coverage rules](#coverage-rules)); status-only successes appear in `unassertedCases`. Choose assertions
 that verify your intended business result, not just a generic header. Fixtures
 are limited to 10,000 cases/16 MiB; checked response bodies to 16 MiB. Requests have
@@ -87,18 +98,21 @@ means a transport/response-limit failure.
 
 `audit` output reports case numbers and statuses, not response bodies, header
 values or fixture URLs that may contain private data. `urlcode test` is the
-author's own debugging loop, so a failing case there also prints the fixture's
-`method` and `path` as written and a `failures` list: for each failed assertion
-its `check` (`status`, `header`, `body` or `signals`), the header `name` (or
-the unmet `expectSignals.N` entry), and the
+author's own debugging loop, so a failing case there also prints its `method`
+and `path` as sent (captured values filled in, `/notes/n-8f2c/100`), the path
+as written as `fixturePath` when that differs (`/notes/{{id}}/{{count}}`), and a
+`failures` list: for each failed assertion
+its `check` (`status`, `header`, `body`, `json` or `signals`), the header `name`
+or JSON Pointer (or the unmet `expectSignals.N` entry), and the
 `expected` and `actual` values, each cut to about 200 characters from just
 before the first difference (`firstDifference`). A `status` failure also
 carries the start of the response `body` (at most 1 KiB read, shown cut the same
 way), so a refusal names its reason: a `403` without an `Origin` shows
 `{"error":"cross_origin_refused"}`, a missing session
-`{"error":"authentication_required"}`. A value a `steps` fixture
-captured is printed as its `{{name}}`, never as the value, and a cookie value a
-response set is printed as `<cookie NAME>` (see [cookies](#cookies)). Keep
+`{"error":"authentication_required"}`. A value a `steps` fixture captured
+from a JSON body or a header is printed as the value; one captured with
+`"secret": true`, and any cookie capture, is printed as its `{{name}}`, and a
+cookie value a response set as `<cookie NAME>` (see [cookies](#cookies)). Keep
 secrets out of fixtures and test responses you would not want in a CI log.
 
 `urlcode test` with no cases (no `tests/requests.json`, or an empty array)
@@ -118,7 +132,7 @@ covered by a case (generated check, single fixture or step) that:
 3. **answered below 400**: a negative fixture alone cannot prove a route works
    normally (a generated check of an intentionally error-valued native
    `respond` is the one exception: it covers its declared outcome); and
-4. **asserts the response** with `expectBody` or `expectHeaders`. A status
+4. **asserts the response** with `expectBody`, `expectJson` or `expectHeaders`. A status
    alone does not count: a catch-all page, a wrong handler or a generic `200`
    from somewhere else all pass a status check. Such passing cases appear in
    `unassertedCases`, and a `coverageNotes` entry `unasserted-success` names
@@ -187,8 +201,8 @@ waived pair's `basis` says how:
   [coverage rules](#coverage-rules).
 - `gate-refusal`: the route is behind a sign-in gate (its `gatedBy` in the
   inventory names a principal-providing extension, such as `auth: true`) and a
-  passing fixture asserts that gate's anonymous `401` on it, with `expectBody`
-  or `expectHeaders`. This is for a fully gated route no fixture can sign in
+  passing fixture asserts that gate's anonymous `401` on it, with `expectBody`,
+  `expectJson` or `expectHeaders`. This is for a fully gated route no fixture can sign in
   to, for example one whose provider signs in only through an external
   identity provider. The asserted refusal proves the route is mounted and gated;
   the waiver's reason says where the signed-in behavior is tested. Prefer a
@@ -225,11 +239,11 @@ nothing in a project can grant itself an identity.
 ]}
 ```
 
-- **Accounts.** The operator creates synthetic test accounts in the provider's
-  database, for Better Auth with `npx urlcode-auth create-user` (sign-up stays
-  off). Fixtures are project files: use synthetic local accounts only, never a
-  real user's password. `urlcode test` and `audit` use the provider database
-  `host.mjs` configures, not the temporary `URLCODE_DATA_DIR`.
+- **Accounts.** Declare them in the [test seed](#test-data-and-seeds),
+  `tests/seed.json`, with the ids a membership names; each `urlcode test` and
+  `audit` run creates them in its own fresh database, so nothing is provisioned
+  by hand and a rerun starts from the same state. Fixtures and the seed are
+  project files: use synthetic accounts and passwords only, never a real user's.
 - **Origin.** `auth: true` refuses a `POST`, `PUT`, `PATCH` or `DELETE`
   without a same-origin `Origin` (`403 {"error":"cross_origin_refused"}`)
   before it checks the session, so an unsafe fixture request sends
@@ -279,7 +293,10 @@ restart step `{"restart": true}`:
   underscores, at most 32; at most 16 per step. A step captures only when it
   passes; a value that is missing or unacceptable fails the step.
 - **Substitution.** `{{name}}` is replaced in a step's `path`, `body`, `headers`,
-  `expectHeaders` and `expectBody`, and nowhere else. The value goes in as written,
+  `expectHeaders`, `expectBody` and the strings of `expectJson`, and nowhere else.
+  In `expectJson`, a string that is exactly one `{{name}}` of a number or boolean
+  a `json` capture kept stands for that number or boolean, so
+  `{"/balance": "{{bal}}"}` matches `100`. The value goes in as written,
   with no encoding, so capture URL-safe values (or a whole `location`) for a path.
   A name must be captured by an earlier step of the same fixture, or be the one
   built-in reference `{{origin}}` (the site origin, see
@@ -304,9 +321,14 @@ restart step `{"restart": true}`:
 - **Bounds.** At most 50 steps per fixture, 5 restarts per fixture and 20 per file;
   10000 entries and 10000 requests per file; the 16 MiB file limit applies. A
   restart costs a runtime start, so use it sparingly.
-- **Output.** Reports carry case numbers and statuses only. Captured values never
-  appear in a report, log line or error, and a failure names the fixture as written
-  (`{{id}}`), never as sent. Cookie values are redacted the same way (below).
+- **Output.** Reports carry case numbers and statuses only. `urlcode test` prints a
+  failing step's path as sent, with json and header captures filled in, so the
+  failure shows the request that failed. A capture that holds a credential (a
+  bearer token in a JSON body) declares `"secret": true`
+  (`{"token": {"json": "token", "secret": true}}`) and is then printed as
+  `{{token}}` wherever it appears; cookie values are always redacted (below).
+  `verify-deployment` names the fixture as written, never as sent, since a live
+  deployment's values can be real.
 
 **Counting.** Each request step is one case: it adds one to `checks` and to `passed`
 or `failed`, and gets the next case number after the generated cases (a restart is
@@ -381,6 +403,49 @@ tests a whole cookie-session lifecycle this way: Better Auth sign-in, signed-in
 reads and writes, a permission the user lacks refused, sign-out and the old
 session cookie replayed and refused, and another user refused the first
 user's record.
+
+## Test data and seeds
+
+`urlcode test`, `audit` and `benchmark` (and the MCP server's `run_tests`)
+never use the site's live data. With `--host-file`, each run composes the
+operator host on a fresh, empty temporary directory and removes it when the run
+ends: every first-party extension keeps its database there (whatever
+`database` option or `STORE_DATABASE` the host names), auth creates Better
+Auth's tables itself and signs sessions with a secret that lives only as long
+as the run, so no `urlcode-auth migrate`, `data/auth.secret` or cleanup is
+needed, and a rerun starts from nothing. `dev`, `serve`, `validate` and
+`routes` use the site's own `data/` (`validate` checks what `serve` will use).
+
+What fixtures cannot create over HTTP is declared in `tests/seed.json` beside
+`tests/requests.json`: an object keyed by extension name, handed to that
+extension when the run's runtime first starts (never again after a `restart`
+step). Each extension defines its entry and refuses anything else:
+
+```json
+{
+  "auth": {"users": [
+    {"id": "alice", "email": "alice@example.test", "password": "alice-local-demo-password", "name": "Alice"},
+    {"id": "bob", "email": "bob@example.test", "password": "bob-local-demo-password"}
+  ]},
+  "store": {"members": {"reviewers": ["alice"]}}
+}
+```
+
+- **auth** `users`: 1 to 100 accounts, each with the user `id` (the request
+  principal id, so a membership can name it), `email`, a `password` of 8 to 128
+  characters and an optional `name`. A fixture signs in with them.
+- **store** `members`: principal ids by
+  [membership collection](STORE.md#membership-gates-and-cross-owner-reads),
+  written as `urlcode-store members add` writes them (actor `operator`). Records
+  a route can create are written by the fixtures themselves.
+
+A seed only reaches an extension composed for such a run: an entry for an
+extension that is not registered, or that accepts no seed, is refused before
+anything is served, as is one that does not match the extension's shape. A
+third-party extension accepts a seed by declaring a `seedSchema` on the
+registration it builds for a hermetic host
+([extension contract](EXTENSIONS.md#hermetic-runs-and-test-seeds)). The
+project's own `URLCODE_DATA_DIR` ([restart](#multi-step-fixtures)) is a separate directory.
 
 ## Benchmark your actual project
 

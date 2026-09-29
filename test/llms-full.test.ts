@@ -4,10 +4,12 @@ import {readFile,mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {absolutizeLinks,demoteHeadings,slug,DOCUMENTS,GITHUB_BLOB} from '../scripts/build-llms-full.ts';
+import {readFileSync} from 'node:fs';
+import {absolutizeLinks,demoteHeadings,slug,DOCUMENTS,githubBlob} from '../scripts/build-llms-full.ts';
 
 const root=resolve(import.meta.dirname,'..');
 const script=join(root,'scripts','build-llms-full.ts');
+const GITHUB_BLOB=githubBlob((JSON.parse(readFileSync(join(root,'package.json'),'utf8')) as {version:string}).version);
 
 test('llms-full build is deterministic and its contents match the section headings',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'llms-full-'));
@@ -25,7 +27,9 @@ test('llms-full build is deterministic and its contents match the section headin
   assert.deepEqual(toc.map(e=>e.title),headings);
   for(const entry of toc)assert.equal(entry.anchor,slug(entry.title));
   assert.doesNotMatch(output,/\]\((?:\.\.\/)?(?:docs|schemas|examples)\//,'relative repository links are rewritten');
-  assert.ok(output.includes(`${GITHUB_BLOB}docs/AI-AUTHORING.md`));
+  assert.ok(output.includes(`Source: ${GITHUB_BLOB}docs/AI-AUTHORING.md`));
+  // An installed copy reads the docs of its own version (#938).
+  assert.doesNotMatch(output,/jimhoyd-com\/urlcode\/(?:blob|tree)\/main\//);
 });
 
 test('llms-full --check rejects a stale copy',async()=>{
@@ -38,7 +42,7 @@ test('llms-full --check rejects a stale copy',async()=>{
 });
 
 test('link rewriting and heading demotion are conservative',()=>{
-  assert.equal(absolutizeLinks('[a](YAML-GUIDE.md#x) [b](../schemas/s.json) [c](#top) [d](https://x.y/z) [e](mailto:a@b)','docs/AI-AUTHORING.md'),
+  assert.equal(absolutizeLinks('[a](YAML-GUIDE.md#x) [b](../schemas/s.json) [c](#top) [d](https://x.y/z) [e](mailto:a@b)','docs/AI-AUTHORING.md',GITHUB_BLOB),
     `[a](${GITHUB_BLOB}docs/YAML-GUIDE.md#x) [b](${GITHUB_BLOB}schemas/s.json) [c](#top) [d](https://x.y/z) [e](mailto:a@b)`);
   assert.equal(demoteHeadings('# A\n```md\n# not a heading\n```\n## B'),'## A\n```md\n# not a heading\n```\n### B');
 });

@@ -91,6 +91,7 @@ test('every recipe is found first by the words someone would search for',async()
     'cors-api':'cors preflight',                   'webhook-receiver':'webhook',
     'contact-form':'contact form',                 'authenticated-json-api':'signed-in json api',
     'protected-download':'protected download attachment','store-crud':'crud store persist',
+    'store-booking':'booking',                     'store-credits':'credits',
     'streaming-progress':'stream progress lines',
     'spa-shell':'single-page app deep link',
   };
@@ -202,9 +203,9 @@ test('every recipe validates, passes its fixtures and audits with its declared r
   const previousSecret=process.env.WEBHOOK_SIGNING_SECRET;process.env.WEBHOOK_SIGNING_SECRET='recipe-test-secret';
   t.after(()=>{if(previousSecret===undefined)delete process.env.WEBHOOK_SIGNING_SECRET;else process.env.WEBHOOK_SIGNING_SECRET=previousSecret;});
   for(const recipe of await listRecipes()){
-    // store-crud needs the operator-installed @jimhoyd/urlcode-store; core cannot import it, so
-    // packages/store/test/store.test.ts runs its fixtures against the real extension.
-    if(recipe.id==='store-crud')continue;
+    // The store recipes need the operator-installed @jimhoyd/urlcode-store; core cannot import it, so
+    // packages/store/test/store.test.ts and recipes.test.ts run their fixtures against the real extension.
+    if(recipe.services?.some(service=>service.name==='store extension'))continue;
     let out=join(root,recipe.id);await addRecipe(recipe.id,out);
     if(recipe.id==='typescript'){await buildTypeScriptProject(out,join(root,'typescript-built'));out=join(root,'typescript-built');}
     const options: Parameters<typeof runProjectTests>[1]={};

@@ -19,9 +19,9 @@ export interface AuthHostOptions {
   paths?: readonly string[];
   /** Extra Better Auth options, such as plugins. Trusted operator code. */
   betterAuth?: Partial<BetterAuthOptions>;
-  /** Default `<site>/data/auth.sqlite`. */
+  /** Default `<site>/data/auth.sqlite`. Ignored by a hermetic run, which uses a fresh database (RIM-EXT-HERMETIC-001). */
   database?: string;
-  /** Default `data/auth.secret`, relative to the site. */
+  /** Default `data/auth.secret`, relative to the site. Ignored by a hermetic run, which signs with a secret of its own. */
   secretFile?: string;
 }
 
@@ -68,9 +68,11 @@ export default defineExtension<AuthHostOptions>({
   },
   scaffold,
   async host(context, options) {
-    const database = options.database ?? join(context.site, DATABASE);
+    // A hermetic run (test, audit, benchmark) never touches the site's accounts: a fresh database in the run's data
+    // directory and a signing secret that lives only as long as this host, whatever the operator's options name.
+    const database = context.hermetic ? join(context.data, 'auth.sqlite') : options.database ?? join(context.data, 'auth.sqlite');
     await mkdir(dirname(database), { recursive: true, mode: 0o700 });
-    const secret = await readSecret(context.site, options.secretFile);
-    return { registration: createAuthExtension({ projectSha256: context.projectSha256, database, secret, signUp: options.signUp, paths: options.paths, betterAuth: options.betterAuth }) };
+    const secret = context.hermetic ? randomBytes(32).toString('base64url') : await readSecret(context.site, options.secretFile);
+    return { registration: createAuthExtension({ projectSha256: context.projectSha256, database, secret, signUp: options.signUp, paths: options.paths, betterAuth: options.betterAuth, hermetic: context.hermetic }) };
   },
 });
