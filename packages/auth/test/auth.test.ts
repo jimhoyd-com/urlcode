@@ -122,6 +122,23 @@ test('the scaffold writes the mount and a private secret; host() reads it; the C
   const created = run(['create-user'], JSON.stringify({ email: 'rita@example.test', password: 'rita-local-password', name: 'Rita' }));
   assert.equal(created.status, 0, created.stderr);
   assert.match(created.stdout, /"event":"user-created"/);
+  // find-user (#917) answers the id create-user printed, for the same email in any case, without raw SQL.
+  const createdId = (JSON.parse(created.stdout) as { id: string }).id;
+  const found = run(['find-user', '--email', 'RITA@example.test']);
+  assert.equal(found.status, 0, found.stderr);
+  const user = JSON.parse(found.stdout) as { event: string; id: string; email: string; name: string; createdAt: string };
+  assert.deepEqual({ event: user.event, id: user.id, email: user.email, name: user.name }, { event: 'user-found', id: createdId, email: 'rita@example.test', name: 'Rita' });
+  assert.ok(Math.abs(Date.parse(user.createdAt) - Date.now()) < 60_000, user.createdAt);
+  const missing = run(['find-user', '--email', 'nobody@example.test']);
+  assert.equal(missing.status, 1);
+  assert.deepEqual(JSON.parse(missing.stdout), { event: 'user-not-found', email: 'nobody@example.test' });
+  assert.equal(run(['find-user']).status, 2);
+  const empty = await mkdtemp(join(tmpdir(), 'urlcode-auth-empty-'));
+  t.after(() => rm(empty, { recursive: true, force: true }));
+  const unmigrated = spawnSync(process.execPath, ['--conditions=development', cli, 'find-user', '--email', 'rita@example.test', '--site', empty], { encoding: 'utf8' });
+  assert.equal(unmigrated.status, 1);
+  assert.match(unmigrated.stderr, /No auth database at .*run urlcode-auth migrate/);
+  await assert.rejects(stat(join(empty, 'data', 'auth.sqlite')), 'find-user never creates the database');
   assert.equal(run(['nonsense']).status, 2);
   assert.match(await readFile(join(site, file.path), 'utf8'), /^[A-Za-z0-9_-]{43}\n$/);
 });

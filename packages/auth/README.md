@@ -17,6 +17,12 @@ npx urlcode-auth migrate
 echo '{"email":"you@example.com","password":"a long local password","name":"You"}' | npx urlcode-auth create-user
 ```
 
+`npx urlcode-auth find-user --email you@example.com` prints that user's id,
+email, name and `createdAt` as one JSON line (exit `1` when no user has the
+email), through Better Auth's own lookup rather than SQL. The id is the
+principal a protected route receives and what `urlcode-store members add
+--principal` takes. It only reads: it never migrates or creates the database.
+
 `add` writes `extensions.auth` (empty config), a `/api/auth/*` mount route and
 a private `data/auth.secret`, and adds `auth()` to `host.mjs`. `migrate`
 creates Better Auth's tables in `data/auth.sqlite`; the extension refuses to

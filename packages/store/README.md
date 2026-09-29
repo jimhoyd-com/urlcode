@@ -218,7 +218,9 @@ per member, keyed by principal id. It has no mount and no HTTP API: the
 operator maintains it with `urlcode-store members add|remove|list --database
 <absolute store.sqlite> --project <absolute app> --collection <name>
 [--principal <id>]` (or `addMember`, `removeMember` and `listMembers` from this
-package), and trusted extension code through `StoreExports`. With
+package), and trusted extension code through `StoreExports`. With auth, the
+principal id is the Better Auth user id: `npx urlcode-auth find-user --email
+<email>` prints it. With
 `audit: true` every added and removed member is recorded
 (`store.membership.added`/`.removed`, subject `<collection>/<principal id>`)
 in the same transaction as the change, and `urlcode-store reassign` moves a
