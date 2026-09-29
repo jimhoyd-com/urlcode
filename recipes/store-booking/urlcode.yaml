@@ -8,19 +8,31 @@ extensions:
     version: "1"
     config:
       collections:
+        # Who may book: principal ids, maintained by the operator (`urlcode-store members add`); no mount.
+        staff:
+          membership: true
+          key: userId
+          schema:
+            type: object
+            additionalProperties: false
+            required: [userId]
+            properties:
+              userId: {type: string, maxLength: 128}
         bookings:
           mount: /api/bookings
-          # Each signed-in user creates, lists, changes and deletes only their own bookings.
+          # Each signed-in user lists, changes and deletes only their own bookings.
           ownership: owner
+          # Only staff book: a signed-in non-member's create is 403 membership_required.
+          create: {members: staff}
           schema:
             type: object
             additionalProperties: false
             required: [room, start, end, status]
             properties:
               room: {type: string, enum: [atlas, borealis]}
-              # UTC date-times on the hour: a booking is whole hours.
-              start: {type: string, format: date-time, maxLength: 20, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00:00Z$"}
-              end: {type: string, format: date-time, maxLength: 20, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00:00Z$"}
+              # UTC date-times written with Z; the intervals below keep them on the hour.
+              start: {type: string, format: date-time, maxLength: 24}
+              end: {type: string, format: date-time, maxLength: 24}
               status: {type: string, enum: [booked, cancelled]}
           defaults: {status: booked}
           # Only the cancel transition changes the status.
@@ -31,13 +43,16 @@ extensions:
             end: end
             within: [room]
             when: {status: booked}
+            # Every booking is one hour and starts on the hour, UTC (`origin` moves the grid to a local offset).
+            length: PT1H
+            step: PT1H
           transitions:
             cancel: {from: {status: booked}, set: {status: cancelled}}
           maxRecords: 10000
           maxRecordsPerOwner: 100
 routes:
   /api/bookings/*:
-    description: Signed-in users book rooms by the hour; the store refuses an overlapping booking of the same room with 409.
+    description: Staff book rooms one hour at a time; the store refuses an overlapping booking of the same room with 409.
     extension: store
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
     auth: true

@@ -92,6 +92,7 @@ test('every recipe is found first by the words someone would search for',async()
     'contact-form':'contact form',                 'authenticated-json-api':'signed-in json api',
     'protected-download':'protected download attachment','store-crud':'crud store persist',
     'store-booking':'booking',                     'store-credits':'credits',
+    'store-approval':'approval',
     'streaming-progress':'stream progress lines',
     'spa-shell':'single-page app deep link',
   };

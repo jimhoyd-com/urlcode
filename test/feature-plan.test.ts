@@ -127,7 +127,7 @@ test('feature planning maps an approval goal to store transitions, membership an
  assert.ok(plan.extensions.surfaces.find(item=>item.surface==='transitions')!.matched.includes('approve'));
  assert.match(plan.outline.find(item=>item.kind==='store transitions')!.note,/by: others/);
  assert.match(plan.outline.find(item=>item.kind==='store readers')!.note,/readers: \{<name>: \{mount, members/);
- assert.equal(plan.applicable.recipes[0]?.name,'store-crud');
+ assert.equal(plan.applicable.recipes[0]?.name,'store-approval');
  assert.ok(!plan.applicable.recipes.some(recipe=>recipe.name==='contact-form'),'one generic word is not a contact form');
 });
 
@@ -166,22 +166,29 @@ test('feature planning does not require an extension for one incidental word, an
  assert.deepEqual(credits.applicationCode,[]);
 });
 
-// #957: an approval goal shares "own", "submit", "approve" or "reviewers" only with the store and auth surfaces, and every
-// recipe built on those extensions inherits them. Those words select the store's general recipe, never the booking or
-// credits recipe, which are offered only on their own distinctive terms.
-test('feature planning offers the booking and credits recipes only on their own terms, not on an approval goal\'s workflow words (#957)',async t=>{
+// #957: an approval goal shares "own", "submit", "approve" or "reviewers" with the store and auth surfaces, and every
+// recipe built on those extensions inherits them. The workflow words are the store-approval recipe's own terms, so an
+// approval goal gets that recipe, never the booking or credits recipe, which are offered only on their own terms.
+test('feature planning offers the approval recipe for an approval goal, and booking and credits only on their own terms (#957)',async t=>{
  const root=await project(t,{});
  for(const goal of ['employees submit requests; reviewers approve or reject them; requesters see only their own','Owners submit requests; reviewers approve or reject pending requests']){
   const plan=await planFeature(root,goal,{extensions:[extension('store'),extension('auth')]});
-  assert.deepEqual(plan.applicable.recipes.map(recipe=>recipe.name),['store-crud'],`${goal}: ${JSON.stringify(plan.applicable.recipes)}`);
+  assert.deepEqual(plan.applicable.recipes.map(recipe=>recipe.name),['store-approval'],`${goal}: ${JSON.stringify(plan.applicable.recipes)}`);
   assert.ok(!plan.outline.some(item=>item.kind==='declarative booking'||item.kind==='declarative credits'),goal);
+  const note=plan.outline.find(item=>item.kind==='declarative approval')!.note;
+  for(const phrase of [/by: others/,/members: reviewers/,/editable: \{status: draft\}/,/record_locked/,/showOwner: true/])assert.match(note,phrase,goal);
+  assert.deepEqual(plan.applicationCode,[],goal);
   assert.deepEqual(plan.extensions.required.map(item=>item.name),['auth','store'],goal);
   assert.ok(plan.extensions.surfaces.some(item=>item.surface==='transitions'),goal);
+ }
+ // Without the registrations too: the recipe's own terms select it, not the extensions' surfaces.
+ for(const goal of ['a manager approves expense claims','submit a document for review']){
+  assert.equal((await planFeature(root,goal)).applicable.recipes[0]?.name,'store-approval',goal);
  }
  for(const [goal,recipe] of [['Let users reserve a time slot','store-booking'],['schedule appointments without overlapping intervals','store-booking'],['Transfer a balance between wallets','store-credits'],['issue credits to users','store-credits']] as const){
   const plan=await planFeature(root,goal);
   assert.equal(plan.applicable.recipes[0]?.name,recipe,`${goal}: ${JSON.stringify(plan.applicable.recipes)}`);
  }
  // Tags shared across the catalog ("store", "auth", "extension") are not a tag match on their own.
- assert.ok(!(await planFeature(root,'a store auth extension')).applicable.recipes.some(recipe=>recipe.name==='store-booking'||recipe.name==='store-credits'));
+ assert.ok(!(await planFeature(root,'a store auth extension')).applicable.recipes.some(recipe=>['store-booking','store-credits','store-approval'].includes(recipe.name)));
 });

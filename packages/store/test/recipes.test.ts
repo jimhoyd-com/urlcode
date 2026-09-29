@@ -1,16 +1,17 @@
-// The catalog recipes store-booking and store-credits (#932) are core artifacts that need this package to activate, so
-// their fixtures run here: through the CLI's own validate, test and audit with --local-review, exactly as the recipes'
-// commands list them, against the real store and the README's stand-in bearer principal, with no revision pin and no
-// origin given and the database outside the project.
+// The catalog recipes store-booking, store-credits (#932) and store-approval (#957) are core artifacts that need this
+// package to activate, so their fixtures run here: through the CLI's own validate, test and audit with --local-review,
+// exactly as the recipes' commands list them, against the real store and the README's stand-in bearer principal, with
+// no revision pin and no origin given, the members each recipe's tests/seed.json names, and the database outside the
+// project.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { addRecipe } from '@jimhoyd/urlcode';
+import { addRecipe, showRecipe } from '@jimhoyd/urlcode';
 import { cleanup } from './cleanup.ts';
 
 const cli = fileURLToPath(new URL('../../core/src/cli.ts', import.meta.url));
@@ -41,7 +42,7 @@ export default await composeHost(import.meta.url, [standIn, store({ database: ${
 `;
 }
 
-async function site(t: Parameters<typeof cleanup>[0], name: 'store-booking' | 'store-credits') {
+async function site(t: Parameters<typeof cleanup>[0], name: 'store-booking' | 'store-credits' | 'store-approval') {
   const root = await mkdtemp(join(tmpdir(), 'store-recipe-'));
   cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'), database = join(root, 'data', 'store.sqlite');
@@ -50,11 +51,13 @@ async function site(t: Parameters<typeof cleanup>[0], name: 'store-booking' | 's
   await writeFile(join(root, 'host.mjs'), hostFile(database));
   const { PROJECT_SHA256: _pin, URLCODE_ORIGIN: _origin, URLCODE_POLICY: _policy, ...env } = process.env;
   const run = (...args: string[]) => spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--project', project, '--host-file', join(root, 'host.mjs'), '--local-review'], { cwd: root, encoding: 'utf8', timeout: 120000, env });
-  return { project, database, run };
+  return { project, database, run, routes: (await showRecipe(name)).routes! };
 }
-/** Each recipe command, as recipe.yaml lists it; the fixtures leave nothing behind, so they run twice. */
-type Run = Awaited<ReturnType<typeof site>>['run'];
-function commands(run: Run) {
+/** Each recipe command, as recipe.yaml lists it; every run starts from a fresh seeded database, so they run twice. */
+type Site = Awaited<ReturnType<typeof site>>;
+function commands({ run, routes, project }: Site) {
+  const listed = readFileSync(join(project, 'tests', 'seed.json'), 'utf8');
+  assert.ok(JSON.parse(listed).store.members, 'every store recipe seeds the members its fixtures sign in as');
   const validated = run('validate', '--local');
   assert.equal(validated.status, 0, validated.stdout + validated.stderr);
   for (const round of [1, 2]) {
@@ -62,20 +65,32 @@ function commands(run: Run) {
     assert.equal(tested.status, 0, `round ${round}: ${tested.stdout}${tested.stderr}`);
     assert.match(tested.stdout, /"failed":0/);
   }
-  const audited = run('audit', '--expect-routes', '1');
+  const audited = run('audit', '--expect-routes', String(routes));
   assert.equal(audited.status, 0, audited.stdout + audited.stderr);
   assert.match(audited.stdout, /"ready":true/, audited.stdout);
 }
 
-test('the store-booking recipe refuses overlapping bookings of a room and frees a cancelled slot, with no pin given', async t => {
-  const { database, run } = await site(t, 'store-booking');
-  commands(run);
+test('the store-booking recipe books one-hour slots for staff only, refuses overlaps and frees a cancelled slot, with no pin given', async t => {
+  const booking = await site(t, 'store-booking');
+  const { database } = booking;
+  commands(booking);
   assert.equal(existsSync(database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
 });
 
-test('the store-credits recipe funds wallets from a members-only issuer and keeps the total, with no pin given', async t => {
-  const { database, run } = await site(t, 'store-credits');
+test('the store-credits recipe funds wallets from a members-only issuer, pays by a unique handle and keeps the total, with no pin given', async t => {
+  const credits = await site(t, 'store-credits');
+  const { database } = credits;
   // Who may issue is data: tests/seed.json seeds the issuer the fixtures sign in as into each run's throwaway database.
-  commands(run);
+  commands(credits);
   assert.equal(existsSync(database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
+});
+
+test('the store-approval recipe locks an approved request and serves reviewers a queue, with no handler code and no pin given', async t => {
+  const approval = await site(t, 'store-approval');
+  commands(approval);
+  assert.equal(existsSync(approval.database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
+  // YAML only: the recipe copies no module a route could run.
+  const { files } = await showRecipe('store-approval');
+  assert.deepEqual(files.filter(file => !/\.(ya?ml|json|md)$/.test(file)), []);
+  assert.doesNotMatch(await readFile(join(approval.project, 'urlcode.yaml'), 'utf8'), /\b(function|middleware|module):/);
 });

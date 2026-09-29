@@ -31,7 +31,7 @@ const project = {
       notes: { mount: '/api/notes', audit: true, idempotency: { maxKeys: 1000 }, maxRecords: 10000, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 2000 } } } },
       accounts: {
         mount: '/api/accounts', audit: true, idempotency: { maxKeys: 1000 }, defaults: { balance: 0 }, readOnlyProperties: ['balance'],
-        schema: { type: 'object', additionalProperties: false, required: ['name', 'balance'], properties: { name: { type: 'string', maxLength: 20 }, balance: { type: 'integer', minimum: -1_000_000, maximum: 1_000_000 } } },
+        schema: { type: 'object', additionalProperties: false, required: ['name', 'balance'], properties: { name: { type: 'string', maxLength: 20 }, balance: { type: 'integer', minimum: -1_000_000 } } },
         transfers: { move: { amount: 'balance' }, fund: { amount: 'balance', min: -1_000_000 } },
       },
     } } },

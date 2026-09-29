@@ -6,6 +6,8 @@ import { defineExtension, isSameOriginRequest, jsonResponse, readBody } from '@j
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_PER_OWNER = 100;
 const WRITABLE = ['room', 'start', 'end'];
+// Every booking is one hour; the pattern in urlcode.yaml keeps both bounds on the hour.
+const LENGTH = 3600000;
 
 class Refusal extends Error {
   constructor(status, code, message, headers = []) {
@@ -56,11 +58,12 @@ function* everyBooking(bookings) {
   } while (cursor !== undefined);
 }
 
-// The interval rules: end after start, and no overlap with another booked booking of the same room, whoever owns it.
+// The interval rules: exactly one hour, and no overlap with another booked booking of the same room, whoever owns it.
 function checkInterval(bookings, record) {
   const start = Date.parse(record.start);
   const end = Date.parse(record.end);
   if (!(end > start)) throw new Refusal(422, 'invalid_record', 'end must be after start');
+  if (end - start !== LENGTH) throw new Refusal(422, 'invalid_record', 'end must be exactly PT1H after start');
   if (record.status !== 'booked') return;
   for (const other of everyBooking(bookings)) {
     if (other.id === record.id || other.room !== record.room || other.status !== 'booked') continue;
@@ -91,7 +94,8 @@ function serve(tx, request, principal) {
     const body = values(request, false);
     const held = [...everyBooking(bookings)].filter(record => record.owner === principal).length;
     if (held >= MAX_PER_OWNER) throw new Refusal(409, 'owner_quota_exceeded', 'You hold the most records this collection allows each user');
-    const created = bookings.create(null, { ...body, owner: principal });
+    // Created as the caller, so the declared create gate refuses a non-member (403 membership_required).
+    const created = bookings.create({ id: principal }, { ...body, owner: principal });
     checkInterval(bookings, created.record);
     return answer(201, created, [['location', `${request.mount}/${created.record.id}`]]);
   }

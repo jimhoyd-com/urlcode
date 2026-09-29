@@ -27,12 +27,15 @@ extensions:
           schema:
             type: object
             additionalProperties: false
-            required: [name, balance, owner]
+            required: [handle, balance, owner]
             properties:
-              name: {type: string, minLength: 1, maxLength: 40}
+              handle: {type: string, pattern: "^[a-z0-9_]{3,20}$", maxLength: 20}
               balance: {type: integer}
               owner: {type: string, maxLength: 128}
           defaults: {balance: 0}
+          # Uniqueness is the recipe's, not the transfer plumbing measured here; the extension serves the directory.
+          unique: [handle]
+          filterable: [handle]
           maxRecords: 10000
   wallets:
     version: "1"
@@ -47,4 +50,9 @@ routes:
     description: Signed-in users hold credit wallets, pay each other and receive credits from an issuer; every transfer keeps the total.
     extension: wallets
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    auth: true
+  /api/directory/*:
+    description: Every signed-in user looks a wallet up by its unique handle and sees only its id and handle, never a balance.
+    extension: wallets
+    methods: [GET, HEAD]
     auth: true
