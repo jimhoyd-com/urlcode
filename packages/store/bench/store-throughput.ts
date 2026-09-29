@@ -4,7 +4,7 @@
 //   npm run bench:store -- --quick      # smaller counts, for checking the script itself
 //   npm run bench:store -- --json out.json
 //
-// Four parts, each printed as a table (`--intervals` runs only the fourth):
+// Four parts, each printed as a table (`--intervals` runs only the fourth, `--lists` only the list parts of 1 and 3):
 //   1. HTTP: a real server (a child process running startServer with the store, audit and a header principal) driven
 //      by a bounded keep-alive node:http client at fixed concurrency. Creates (Idempotency-Key), PATCH with If-Match
 //      and declared transitions on an owned collection with audit off and on, then list latency at page sizes 20 and
@@ -12,8 +12,9 @@
 //      (monitorEventLoopDelay) during every phase.
 //   2. Commit micro-benchmark: single-row WAL transactions under synchronous=FULL, NORMAL and FULL with fullfsync,
 //      on a private database. The store's own setting is not changed; this only measures the difference.
-//   3. List micro-benchmark: the store's sorted/filtered list path (projection query, JS ordering via runList, page
-//      fetch) at 1k/10k/50k records, beside an ORDER BY ... LIMIT in SQL with and without an expression index. 50k is
+//   3. List micro-benchmark: the store's sorted/filtered list path (#951: a keyset page through its declared list
+//      indexes, listing.ts) and the in-memory path it replaced (projection query, JS ordering via runList, page fetch)
+//      at 1k/10k/50k records, beside a plain ORDER BY ... LIMIT in SQL with and without an expression index. 50k is
 //      above the configurable maxRecords and is measured only to show the curve.
 //   4. Interval micro-benchmark (#902): the declared non-overlap check's query through its index at 1k and 10k
 //      records, beside the same query without the index and the host-transaction scan it replaces, and whole creates
@@ -231,12 +232,14 @@ function commitBench(dir: string, mode: string, pragmas: string): CommitResult {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// List micro-benchmark: the store's own sorted/filtered path against SQL ORDER BY, at sizes up to 50k.
+// List micro-benchmark: the store's own sorted/filtered path, the in-memory path it replaced and a plain SQL ORDER BY,
+// at sizes up to 50k.
 interface ListMicro { size: number; shape: string; p50ms: number; p95ms: number }
 async function listMicro(dir: string, size: number): Promise<ListMicro[]> {
   const { openStoreDatabase } = await import('../src/database.ts');
-  await import('../src/collection.ts'); // collection.ts and query.ts import each other; collection.ts must load first
-  const { runList } = await import('../src/query.ts');
+  const { Collection } = await import('../src/collection.ts'); // collection.ts and query.ts import each other; collection.ts must load first
+  const { parseListQuery, runList } = await import('../src/query.ts');
+  const { listInSql, listPlan } = await import('../src/listing.ts');
   const db = await openStoreDatabase(join(dir, `list-${size}.sqlite`));
   const now = new Date().toISOString();
   db.transaction(() => {
@@ -248,7 +251,10 @@ async function listMicro(dir: string, size: number): Promise<ListMicro[]> {
   const COLUMNS = 'id, owner, key, created_at, updated_at, data';
   const where = 'collection = ? AND owner = ?', scope = ['items', 'bench'];
   const parsePage = (rows: Record<string, unknown>[]) => rows.map(row => ({ id: row.id, ...JSON.parse(String(row.data)) as object }));
-  // The store's path (collection.ts listIn): project id + named fields in creation order, order in JS, fetch the page.
+  // The store's path (collection.ts listIn, #951): a counted keyset page through the declared list indexes.
+  const items = new Collection('items', collections.items as never), plan = listPlan('items', items.spec)!;
+  const storePath = (limit: number, filter?: string) => () => db.transaction(() => listInSql(db, plan, parseListQuery(items.spec, new URLSearchParams({ limit: String(limit), sort: 'title', ...filter ? { kind: filter } : {} })), 'bench', COLUMNS, row => ({ id: row.id, ...JSON.parse(row.data) as object }) as never), 'DEFERRED');
+  // The in-memory path before #951 (still the fallback): project id + named fields in creation order, order in JS, fetch the page.
   const jsPath = (limit: number, filter?: string) => () => {
     const names = filter ? ['kind', 'title'] : ['title'];
     const rows = db.all<Record<string, string | null>>(`SELECT id, ${names.map((_, n) => `data -> ? AS v${n}`).join(', ')} FROM store_records WHERE ${where} ORDER BY seq`, ...names.map(f => `$.${f}`), ...scope);
@@ -273,9 +279,35 @@ async function listMicro(dir: string, size: number): Promise<ListMicro[]> {
   const out: ListMicro[] = [];
   for (const limit of [20, 100]) {
     out.push(time(`unsorted, limit=${limit}`, unsorted(limit)));
-    out.push(time(`sort=title (store: JS order), limit=${limit}`, jsPath(limit)));
-    out.push(time(`kind=b&sort=title (store: JS order), limit=${limit}`, jsPath(limit, 'b')));
+    out.push(time(`sort=title (in memory, before #951), limit=${limit}`, jsPath(limit)));
+    out.push(time(`kind=b&sort=title (in memory, before #951), limit=${limit}`, jsPath(limit, 'b')));
     out.push(time(`sort=title (SQL ORDER BY, no index), limit=${limit}`, sqlPath(limit)));
+  }
+  db.transaction(() => { for (const create of plan.indexes.values()) db.run(create); });
+  for (const limit of [20, 100]) {
+    out.push(time(`sort=title (store: SQL, #951), limit=${limit}`, storePath(limit)));
+    out.push(time(`kind=b&sort=title (store: SQL, #951), limit=${limit}`, storePath(limit, 'b')));
+  }
+  if (size <= 10_000) {
+    // What the list indexes cost a write (#951): whole creates (one synchronous=FULL commit each) with the declaration's
+    // four list indexes (title, priority, kind and the anomaly index), then with them dropped and nothing to sort by.
+    // The newest seeded records make room under maxRecords first.
+    const writes = quick ? 50 : 300, room = () => db.run('DELETE FROM store_records WHERE seq IN (SELECT seq FROM store_records WHERE collection = ? ORDER BY seq DESC LIMIT ?)', 'items', writes + 10);
+    const creates = (shape: string, collection: InstanceType<typeof Collection>): ListMicro => {
+      room();
+      let n = 0;
+      const times: number[] = [];
+      for (let i = 0; i < writes; i++) { const t0 = performance.now(); collection.create({ title: `new-${n++}`, priority: 1, kind: 'a' }, undefined, 'bench', 'bench'); times.push(performance.now() - t0); }
+      times.sort((a, b) => a - b);
+      return { size, shape, p50ms: round(pct(times, 50)), p95ms: round(pct(times, 95)) };
+    };
+    items.open(db);
+    out.push(creates('create, sortable and filterable (list indexes)', items));
+    db.transaction(() => { for (const index of plan.indexes.keys()) db.run(`DROP INDEX "${index}"`); });
+    const plain = new Collection('items', { ...collections.items, sortable: undefined, filterable: undefined } as never);
+    plain.open(db);
+    out.push(creates('create, nothing sortable or filterable (no list index)', plain));
+    db.transaction(() => { for (const create of plan.indexes.values()) db.run(create); });
   }
   db.run(`CREATE INDEX bench_title ON store_records(collection, owner, (data ->> '$.title'), id)`);
   for (const limit of [20, 100]) {
@@ -295,6 +327,32 @@ function table(rows: Record<string, unknown>[]): void {
   console.log();
 }
 const flat = (r: PhaseResult) => ({ phase: r.phase, ok: `${r.ok}/${r.requests}`, 'ok/s': r.perSecond, 'p50 ms': r.p50, 'p95 ms': r.p95, 'p99 ms': r.p99, 'loop p50/p99/max ms': r.loop ? `${r.loop.p50}/${r.loop.p99}/${r.loop.max}` : '', statuses: r.statuses });
+
+async function httpLists(root: string, report: Record<string, unknown>): Promise<void> {
+  console.log('## HTTP lists (owned collection, one owner holding every record)\n');
+  const lists: PhaseResult[] = [];
+  for (const size of [1000, 10_000]) {
+    const server = new Server();
+    await server.start(join(root, `list-${size}`), size);
+    lists.push(...await listPhases(server, size));
+    await server.close();
+  }
+  table(lists.map(flat));
+  report.lists = lists;
+}
+async function micros(dir: string, report: Record<string, unknown>): Promise<void> {
+  console.log('## List micro-benchmark (in process, no HTTP)\n');
+  const micro: ListMicro[] = [];
+  for (const size of [1000, 10_000, 50_000]) micro.push(...await listMicro(dir, size));
+  table(micro as unknown as Record<string, unknown>[]);
+  report.listMicro = micro;
+}
+async function listPart(root: string, report: Record<string, unknown>): Promise<void> {
+  await httpLists(root, report);
+  const dir = join(root, 'micro');
+  await mkdir(dir);
+  await micros(dir, report);
+}
 
 async function main(): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'store-bench-'));
@@ -316,16 +374,7 @@ async function main(): Promise<void> {
     table(writes.map(flat));
     report.writes = writes;
 
-    console.log('## HTTP lists (owned collection, one owner holding every record)\n');
-    const lists: PhaseResult[] = [];
-    for (const size of [1000, 10_000]) {
-      const server = new Server();
-      await server.start(join(root, `list-${size}`), size);
-      lists.push(...await listPhases(server, size));
-      await server.close();
-    }
-    table(lists.map(flat));
-    report.lists = lists;
+    await httpLists(root, report);
 
     console.log('## Commit micro-benchmark (WAL, one row per BEGIN IMMEDIATE transaction)\n');
     const dir = join(root, 'micro');
@@ -338,11 +387,7 @@ async function main(): Promise<void> {
     table(commits as unknown as Record<string, unknown>[]);
     report.commits = commits;
 
-    console.log('## List micro-benchmark (in process, no HTTP)\n');
-    const micro: ListMicro[] = [];
-    for (const size of [1000, 10_000, 50_000]) micro.push(...await listMicro(dir, size));
-    table(micro as unknown as Record<string, unknown>[]);
-    report.listMicro = micro;
+    await micros(dir, report);
     await intervalPart(root, report);
     if (jsonOut) await writeFile(jsonOut, JSON.stringify(report, null, 2));
   } finally {
@@ -426,6 +471,13 @@ else if (args.includes('--intervals')) {
   const root = await mkdtemp(join(tmpdir(), 'store-bench-'));
   const report: Record<string, unknown> = { machine: { cpu: cpus()[0]?.model, cores: cpus().length, platform: `${platform()} ${release()}` }, node: process.version, sqlite: process.versions.sqlite, quick };
   try { await intervalPart(root, report); if (jsonOut) await writeFile(jsonOut, JSON.stringify(report, null, 2)); }
+  finally { await rm(root, { recursive: true, force: true }); }
+}
+else if (args.includes('--lists')) {
+  // Only the list parts: npm run bench:store -- --lists
+  const root = await mkdtemp(join(tmpdir(), 'store-bench-'));
+  const report: Record<string, unknown> = { machine: { cpu: cpus()[0]?.model, cores: cpus().length, platform: `${platform()} ${release()}` }, node: process.version, sqlite: process.versions.sqlite, quick };
+  try { await listPart(root, report); if (jsonOut) await writeFile(jsonOut, JSON.stringify(report, null, 2)); }
   finally { await rm(root, { recursive: true, force: true }); }
 }
 else await main();

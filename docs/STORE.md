@@ -895,8 +895,8 @@ The #835 counterexamples, and what serves each:
 | Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); the recipient's id from a [projected readers mount](#membership-gates-and-cross-owner-reads) that shows no balance, looked up by a [unique handle](#a-directory-by-a-unique-handle); no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
-[#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
-of this contract: sorted lists in SQL are
+[#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracked this contract;
+sorted lists are ordered in SQL since
 [#951](https://github.com/jimhoyd-com/urlcode/issues/951), and the plumbing the
 declared intervals and transfers save is
 [measured in the framework guide](FRAMEWORK.md#plumbing-removed-by-intervals-and-transfers).
@@ -1494,14 +1494,28 @@ filterable: [kind, done]         # <property>=<value>, equality only
   order, filtered or not; there a delete between pages can shift later records
   up by one.
 - An unsorted, unfiltered page is one counted `LIMIT`/`OFFSET` query. A sorted
-  or filtered page reads the `id` and only the named properties of every record in
-  scope (bounded by `maxRecords`, at most 10,000), orders and filters those in
-  memory by the rules above, and then reads the page's records. On a shared
+  or filtered page is one counted keyset query in SQL
+  ([#951](https://github.com/jimhoyd-com/urlcode/issues/951)): the page after
+  the cursor's position, read in order through an index. On a shared
   collection sorting and filtering apply to every record; on an
   [owned](#per-record-ownership) one they apply to the caller's own records
   only, and `total` and cursors count only those. At the 10,000-record maximum such
-  a page took about 9 ms of synchronous work in
-  [one local measurement](CAPACITY.md#measured-the-sqlite-store).
+  a page took about 0.6 ms, as long as an unsorted one, in
+  [one local measurement](CAPACITY.md#measured-sorted-lists-in-sql-951).
+- Each `sortable` or `filterable` property gets an index, derived from the
+  declaration and built when it activates (on an owned collection, one on the
+  owner and the property, and with readers mounts a second on the property
+  alone); an index nobody declares any more is dropped. Every write updates each
+  one, so declare only the properties requests use. The index keys a string so
+  that SQLite's byte order is the UTF-16 code unit order above (UTF-8 byte order
+  differs from it only between U+E000–U+FFFF and the code points above U+FFFF),
+  and a number, integer or boolean as a double, compared exactly as
+  JavaScript compares them. A stored value that key cannot order exactly, a
+  string holding a lone surrogate or a value of another type than declared (a
+  row written under another declaration), is found through one more index that
+  holds only such rows; while the collection holds one, its sorted and filtered
+  pages are ordered in memory instead, with the same results and cursors, and
+  cost what they did before #951.
 
 ## Per-record ownership
 
@@ -1982,14 +1996,40 @@ audit extensions refuse the same list for `auth.sqlite` and `audit.sqlite`.
 A serving process also
 joins `store_servers`: a lease row with its instance id, hostname, Linux boot
 id (`/proc/sys/kernel/random/boot_id`, when readable) and pid, renewed every
-5 seconds and live for 20. Activation is refused while a live peer reports a
-different boot id (or, when either side has none, a different hostname), that
-is another host sharing the file. Containers on one host have their own
-hostnames and share the boot id, so they are accepted. A lease left by a host
-that is gone expires 20 seconds after its last heartbeat. When an activation
-finds a live peer, it logs one `extension_warning`: throttle policies and
-origin caches are per process, so each process applies its own limits and
-keeps its own cache.
+5 seconds. A peer on another host is one that reports a different boot id
+(or, when either side has none, a different hostname). Containers on one host
+have their own hostnames and share the boot id, so they are accepted. When an
+activation finds a live peer on this host, it logs one `extension_warning`:
+throttle policies and origin caches are per process, so each process applies
+its own limits and keeps its own cache.
+
+The lease never compares two hosts' clocks
+([#978](https://github.com/jimhoyd-com/urlcode/issues/978)). Each renewal
+writes a larger `heartbeat_at` than the last, and a process judges another
+row by whether that value changes, timed on its own monotonic clock:
+
+- **Joining.** A row of another host makes activation wait and watch it, for
+  up to 20 seconds, and log one line saying so. If its heartbeat advances,
+  activation is refused. If it stays unchanged for 20 seconds, the process
+  deletes it and joins. So a crashed host blocks a restart for 20 seconds
+  whatever its clock said, and a joiner whose clock runs ahead never evicts a
+  live holder. A row of this host (one kernel, one clock) is also dropped once
+  its `expires_at` has passed.
+- **Serving.** Every heartbeat reads the table again. If it finds a row of
+  another host, whether or not its own row is still there, the lease is lost:
+  the process deletes its row, logs a line naming that host, and does not
+  re-insert it. Every store write checks the lease first, inside its own
+  transaction. While the lease is lost, or not renewed for 10 seconds and its
+  row cannot be confirmed under the write lock, the write answers
+  `503 storage_unavailable` and writes nothing. Reads keep working.
+- **Recovering.** A process that lost the lease keeps watching. Once no
+  other host holds a row (that host closed, or its row stayed unchanged for
+  20 seconds), it rejoins at its next heartbeat and writes again.
+
+So a holder that stalled for longer than the TTL (a suspended VM, `SIGSTOP`,
+a blocked event loop) and resumes after another host took over refuses its
+writes. It does not rejoin beside that host. A failed heartbeat is logged once
+and retried every 5 seconds.
 
 **One audit drainer.** With the audit extension every process has a drain
 loop, but only the holder of the drain lease (`holder` and `lease_until` in
@@ -2011,12 +2051,39 @@ and each extension keeps its lease in its own database: the store in
 activation), and audit in `audit_servers` in `audit.sqlite` (from its first
 activation until the audit host closes). The rules above apply to each: a live
 peer on another host refuses activation, processes on one host never refuse
-each other, and a lease expires 20 seconds after its last heartbeat. So a site
-that runs auth or audit without the store is refused on a second host too
-([#941](https://github.com/jimhoyd-com/urlcode/issues/941)). Each lease guards
-only its own file: the check cannot see a second host that shares none of
-them, and on macOS and Windows a network filesystem is noticed only through
-the lease, when both hosts serve at once.
+each other, a row of another host is judged by whether its heartbeat advances,
+and a process that loses the lease stops writing until it holds it again. So a
+site that runs auth or audit without the store is refused on a second host too
+([#941](https://github.com/jimhoyd-com/urlcode/issues/941)). A process that
+lost the lease answers `503 auth_unavailable` on every auth request, and
+stores no audit event, so audit's producers keep their events and deliver them
+once it rejoins. Auth checks the lease once per request, before Better Auth
+runs, because Better Auth's own statements cannot be wrapped. Store and audit
+check it inside each write transaction. Each extension releases its lease
+when an activation fails after joining
+([#979](https://github.com/jimhoyd-com/urlcode/issues/979)).
+
+What the lease does not do:
+
+- Each lease guards only its own file. It cannot see a second host that
+  shares none of them. On macOS and Windows a network filesystem is noticed
+  only through the lease, once both hosts serve at once.
+- It detects a second host within one heartbeat or one write, but it does not
+  prevent the two from opening the file together. Over a network filesystem
+  SQLite's locks and write-ahead log are unreliable, so the lease's own
+  statements can fail there too. It is a check for a misconfiguration, not a
+  way to run on two hosts.
+- A process judges peers by its own monotonic clock. A clock that runs slow
+  by a large factor (not an offset), or a stall inside a single write
+  transaction, is not covered.
+- A process that lost its lease keeps its connection and keeps reading. It
+  also keeps watching the lease table, which takes the write lock once per
+  heartbeat.
+- A row that stays after a crash is watched for 20 seconds by the next
+  process to start, then deleted. An operator never needs to clear it by
+  hand. To clear it anyway, stop every server first, then run
+  `DELETE FROM store_servers` (`auth_servers`, `audit_servers`) on the stopped
+  database.
 
 **Per process, not per host.** Throttle counters, origin caches and metrics
 stay per process: a `throttle` quota across N processes allows up to N times
@@ -2118,8 +2185,11 @@ disk is untested), a filesystem with reserved blocks or quotas (ext4, XFS), a
 power loss, or a disk that fills during a WAL checkpoint under sustained load.
 `max_page_count` caps the database file, not its `-wal` or `-shm`; only the
 filesystem test fills those. Neither test is a soak test. A heartbeat that
-cannot write is skipped, so a disk full for longer than a host lease's 20
-seconds lets that lease expire until space frees.
+cannot write is logged and retried. A write then confirms the lease under its
+own lock, so writes are not refused only because the heartbeat failed. After
+20 seconds without a heartbeat, another process may treat the row as dead: a
+peer on this host deletes it, and this process rejoins at its next heartbeat
+once space frees.
 
 ### Durability
 
@@ -2329,10 +2399,8 @@ operations as one database transaction: see
 
 ## Not built yet
 
-SQL ordering for sorted lists is not
-built (a [declared transfer](#declared-transfers) moves value between two
-records; holds still need a host transaction)
-([#951](https://github.com/jimhoyd-com/urlcode/issues/951); the
+Holds are not built (a [declared transfer](#declared-transfers) moves value
+between two records; a hold still needs a host transaction; the
 [transition design](#what-is-not-covered) lists what each needs), nor are roles
 beyond a [membership collection](#membership-gates-and-cross-owner-reads). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search. Owned collections

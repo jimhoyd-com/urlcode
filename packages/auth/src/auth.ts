@@ -26,6 +26,11 @@ export const defaultBasePath = '/api/auth';
 /** How long one statement waits for a lock another process holds before failing: the store's and audit's bound. */
 const BUSY_TIMEOUT_MS = 2000;
 const unsafe = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+/**
+ * Default paths whose 401 means "no valid session" (Better Auth's session middleware). That middleware reads the session
+ * through `getSessionFromCtx`, which turns a storage failure into "no session" (#980), so the mount checks such a 401.
+ */
+const sessionPaths = new Set(['/list-sessions', '/revoke-session', '/revoke-sessions', '/revoke-other-sessions', '/change-password']);
 const pathPattern = /^\/[a-z0-9/-]+$/;
 
 export const authConfigSchema = { type: 'object', additionalProperties: false, properties: {} } as const;
@@ -214,12 +219,33 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         if (database) lease = await joinHostLease(database, { table: 'auth_servers', what: 'auth', probe: settings.probe });
         auth = betterAuth(options);
         if (activation.seed !== undefined) await seedUsers(auth, activation.seed as AuthSeed);
-      } catch (error) { database?.close(); throw error; }
+      } catch (error) {
+        // Release the lease before its connection closes (#979): its row would block another host until it expired, and
+        // its heartbeat would keep firing against the closed connection.
+        lease?.close(); database?.close();
+        throw error;
+      }
+      // The storage failure answer: Better Auth's own 500 or a throw carries no detail worth passing on, and nothing it
+      // would set (a session cookie, a cleared one) is sent.
+      const failed = (): HandlerResult => jsonResponse(503, { error: 'auth_unavailable' }, [['retry-after', '1']]);
+      // A process that lost the auth database's host lease to another host serves nothing until it holds it again (#978).
+      // Better Auth's own statements cannot be wrapped, so the lease is checked once per request, before it runs.
+      const serving = (): boolean => lease === undefined || lease.renew();
+      /**
+       * Whether the session the request's cookie names is gone, read from the database (never the cookie cache) without
+       * refreshing it: `true` when there is none, `false` when it is still valid, `undefined` when storage failed.
+       */
+      const sessionGone = async (headers: Headers): Promise<boolean | undefined> => {
+        try { return await auth.api.getSession({ headers, query: { disableCookieCache: true, disableRefresh: true } }) === null; }
+        catch (error) { return isClientError(error) ? true : undefined; }
+      };
       return {
         // Better Auth's own handler, origin checks and cookies, for the listed paths only. The URL is rebuilt from the
         // path the allowlist checked, never from the raw request target.
         async handle(request: ExtensionRequest): Promise<HandlerResult> {
-          if (!served.has(request.path.slice(mount.length))) return jsonResponse(404, { error: 'not_found' });
+          const path = request.path.slice(mount.length);
+          if (!served.has(path)) return jsonResponse(404, { error: 'not_found' });
+          if (!serving()) return failed();
           const headers = new Headers(request.headers);
           headers.delete(clientAddressHeader);
           const address = clientKey(request.client ?? undefined);
@@ -228,12 +254,16 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
           url.search = request.query.toString();
           const init: RequestInit = { method: request.method, headers, ...(request.signal ? { signal: request.signal } : {}) };
           if (request.method !== 'GET' && request.method !== 'HEAD') init.body = Buffer.from(request.body);
-          // A storage failure (a full disk, a lock held past the busy timeout) is Better Auth's own 500 or a throw, with no
-          // detail worth passing on. Nothing it would set (a session cookie) is sent: the gate's bounded 503 instead.
-          const failed = (): HandlerResult => jsonResponse(503, { error: 'auth_unavailable' }, [['retry-after', '1']]);
+          // A storage failure (a full disk, a lock held past the busy timeout) is Better Auth's own 500 or a throw.
           let response: Response;
           try { response = await auth.handler(new Request(url, init)); } catch { return failed(); }
           if (response.status >= 500) { await response.body?.cancel(); return failed(); }
+          // Better Auth's sign-out logs a failed session delete and still answers success with a cleared cookie (#980),
+          // and its session middleware answers 401 when reading the session failed. Neither is passed on unless the
+          // database confirms it: a sign-out whose session survives, or a 401 for a session that exists (or could not be
+          // read), is the 503 instead, and the client keeps its cookie to retry.
+          const confirm = path === '/sign-out' ? response.status < 400 :response.status === 401 && sessionPaths.has(path);
+          if (confirm && await sessionGone(headers) !== true) { await response.body?.cancel(); return failed(); }
           const answer: [string, string][] = [...response.headers].filter(([name]) => name !== 'set-cookie');
           for (const cookie of response.headers.getSetCookie()) answer.push(['set-cookie', cookie]);
           return { status: response.status, headers: answer, body: new Uint8Array(await response.arrayBuffer()) };
@@ -241,13 +271,14 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         // Identity only: what the signed-in user may do is the application's decision.
         async authorize(_requirement, request: ExtensionRequest): Promise<HandlerResult | undefined> {
           if (unsafe.has(request.method) && !isSameOriginRequest(request, activation, { whenAbsent: 'refuse' })) return jsonResponse(403, { error: 'cross_origin_refused' });
+          if (!serving()) return failed();
           let session;
           try { session = await auth.api.getSession({ headers: request.headers }); }
           catch (error) {
             // A missing, expired or malformed session is null or a 4xx from Better Auth. A storage failure (a lock held
             // past the busy timeout, an I/O error) is its 500: the session may well be valid, so answer 503 without
             // detail rather than a 401 that tells the client it is signed out.
-            if (!isClientError(error)) return jsonResponse(503, { error: 'auth_unavailable' }, [['retry-after', '1']]);
+            if (!isClientError(error)) return failed();
             session = null;
           }
           if (!session) return jsonResponse(401, { error: 'authentication_required' });
