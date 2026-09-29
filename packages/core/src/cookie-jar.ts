@@ -4,7 +4,7 @@ import { isLoopbackAddress } from './client-address.ts';
  * The client a `steps` fixture plays: the host name its cookies are scoped to, and whether that origin is a secure
  * context (https, or loopback, which browsers also treat as secure), so `Secure` cookies are kept and sent.
  */
-export interface JarScope { host: string; secure: boolean }
+interface JarScope { host: string; secure: boolean }
 
 /** The scope of a client of `origin` (an absolute http(s) URL). */
 export function jarScope(origin: string): JarScope {

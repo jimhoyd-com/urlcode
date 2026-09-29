@@ -78,10 +78,10 @@ Review findings, recorded as the test asserts them:
   alternative to the zod code (`manual-body-validation`). That fits the
   declarative-first rule: where a JSON Schema body contract expresses the
   rule, it is the better choice, and zod is for what it cannot express.
-- `urlcode review` reports Hono's in-process `app.fetch(request)` as an
-  outbound network call (`outbound-network-call`, low confidence). This is a
-  false positive: the pattern `\bfetch\s*\(` in
-  `packages/core/src/review.ts:106` also matches a member call.
+- `urlcode review` does not report Hono's in-process `app.fetch(request)` as
+  an outbound network call: `app` is built from an imported `Hono`, so the
+  member call is recognised as in-process. (It used to be a false positive;
+  see [the review rule](../../docs/TOOLING.md#project-review).)
 - Neither `explain` nor `review` names the npm packages a trusted route
   imports. The route is labelled trusted, and its dependency surface is
   opaque to review. The operator approval digest also covers only the entry
@@ -168,8 +168,6 @@ base path.
    routes accept exact and `{param}` paths only, so a sub-app's routes are
    re-declared in YAML. Use an extension mount when the sub-app's router
    should own a prefix.
-6. **`urlcode review` misreads `app.fetch(request)`** as an outbound network
-   call (above; `packages/core/src/review.ts`).
 
 Express was not evaluated. It would need the same handler plus a Node
 `req`/`res` to `Request`/`Response` conversion, which `@hono/node-server`

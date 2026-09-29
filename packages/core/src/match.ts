@@ -23,9 +23,9 @@ export interface MatchableRoute {
   env: Record<string, string>; secrets: Record<string, string>; redirect?: RedirectSpec;
 }
 export interface CompiledRoutes<R extends MatchableRoute = MatchableRoute> { exact: Map<string, R>; byLength: Map<number, R[]>; mounts: R[] }
-export interface Target { path: string; parts: string[]; query: URLSearchParams }
-export interface Match<R extends MatchableRoute = MatchableRoute> { route: R; path: Record<string, string> }
-export interface Inputs { path: Record<string, string>; query: Record<string, ParameterValue>; header: Record<string, ParameterValue> }
+interface Target { path: string; parts: string[]; query: URLSearchParams }
+interface Match<R extends MatchableRoute = MatchableRoute> { route: R; path: Record<string, string> }
+interface Inputs { path: Record<string, string>; query: Record<string, ParameterValue>; header: Record<string, ParameterValue> }
 export interface RequestContext { inputs: Inputs; env: Record<string, string>; secrets: Record<string, string> }
 /** The subset of Headers both a node:http-derived map and the Fetch Headers class provide. */
 export interface HeadersLike { has(name: string): boolean; get(name: string): string | null | undefined }

@@ -41,14 +41,14 @@ export function resolveStreamLimits(given: Partial<StreamLimits> = {}): StreamLi
 /** Why a stream ended; `complete` is the only reason that ends the chunked body normally. */
 export type StreamEndReason = 'complete' | 'client-closed' | 'idle-timeout' | 'max-duration' | 'max-bytes' | 'error' | 'shutdown';
 const endReasons: readonly string[] = ['complete', 'client-closed', 'idle-timeout', 'max-duration', 'max-bytes', 'error', 'shutdown'];
-export interface StreamOutcome {
+interface StreamOutcome {
   status: number; bytes: number; durationMs: number; reason: StreamEndReason;
   /** What the producer threw, for operator diagnostics only; never written to the client or the event log. */
   error?: unknown;
 }
 /** A stream whose status and headers are on the wire; `finished` settles (never rejects) when it ends. */
-export interface StreamStart { status: number; finished: Promise<StreamOutcome> }
-export interface StreamStartOptions {
+interface StreamStart { status: number; finished: Promise<StreamOutcome> }
+interface StreamStartOptions {
   requestId: string; method: string;
   /** The request's controller: its signal is the one handed to the producer; ending the stream aborts it with the end reason. */
   controller: AbortController;

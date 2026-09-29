@@ -8,7 +8,7 @@ export const profile = 'strict';
 // bounds its own static headers at half of that so the handler keeps room.
 const headerBudgetBytes = 8192;
 
-export const csp: RouteRule = {
+const csp: RouteRule = {
   id: 'oshp/csp', title: 'Every active route emits a Content-Security-Policy', standard: { ...oshp, section: 'Content-Security-Policy' }, severity: 'medium', appliesTo: 'route',
   check({ route, config, effective, policy }) {
     if (!active(route) || emittedSecurityHeaders(effective, policy).has('content-security-policy') || yamlHeader(config, 'content-security-policy') !== undefined) return [];

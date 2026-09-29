@@ -18,7 +18,7 @@ import { createAudit } from '@jimhoyd/urlcode-audit';
 import type { AuditExports, AuditProducer, AuditStoredEvent } from '@jimhoyd/urlcode-audit';
 import store from '../src/extension.ts';
 import { AUDIT_BACKLOG, StoreError, createStore } from '../src/index.ts';
-import { counts, execute, outbox, records, seedOutbox } from './rows.ts';
+import { counts, execute, lastDrain, outbox, records, seedOutbox } from './rows.ts';
 
 const origin = 'https://store-audit.example.test', pin = 'a'.repeat(64);
 const notes = {
@@ -139,6 +139,9 @@ test('every write kind emits one event naming the changed fields only; an idempo
   const text = JSON.stringify(events);
   for (const value of [secret, 'example.test', 'first']) assert.ok(!text.includes(value), `no value reaches the log: ${value}`);
   assert.deepEqual(outbox(databaseOf(root)), [], 'the drained outbox is acked out of the database');
+  // The drain leaves when it last kept up, for the operator CLI's delivery warning (#875).
+  const drainedAt = lastDrain(databaseOf(root));
+  assert.ok(drainedAt !== undefined && Date.now() - drainedAt < 60_000, 'the drain marks when it last kept up');
 });
 
 /** A store over a real (active) audit whose drain never runs for the store: what a process killed before draining leaves. */

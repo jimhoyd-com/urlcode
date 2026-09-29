@@ -48,6 +48,10 @@ export async function seedOutbox(path: string, collection: string, events: reado
 
 /** Runs raw SQL (a fault-injection trigger, a hand edit) against the database. */
 export function execute(path: string, sql: string): void { withDatabase(path, db => { db.exec(sql); }); }
+/** When the audit drain last kept up with the outbox (epoch ms), or undefined when no drain has marked it. */
+export function lastDrain(path: string): number | undefined {
+  return withDatabase(path, db => db.prepare('SELECT drained_at FROM store_audit_drain WHERE id = 1').get()?.drained_at as number | undefined);
+}
 
 /** Row counts of the three tables, for "nothing was written" assertions. */
 export function counts(path: string): { records: number; idempotency: number; outbox: number } {

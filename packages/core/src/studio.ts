@@ -12,7 +12,7 @@ import {buildProjectReport,renderProjectReport,renderReportError,reportContentSe
 import {readChangeInput} from './yaml-change.ts';
 import type {RuntimeExtension} from './extensions.ts';
 
-export interface StudioPageOptions {
+interface StudioPageOptions {
   project:string;
   /** An earlier version, as `urlcode report` takes it: a project directory or a YAML file. */
   before?:string|undefined;
@@ -21,8 +21,8 @@ export interface StudioPageOptions {
   /** Registrations from the operator host file (`--host-file`). */
   extensions?:RuntimeExtension[]|undefined;
 }
-export interface StudioOptions extends StudioPageOptions { host:string; port:number }
-export interface Studio { url:string; close():Promise<void> }
+interface StudioOptions extends StudioPageOptions { host:string; port:number }
+interface Studio { url:string; close():Promise<void> }
 
 // The page describes the project to whoever can load it, so it is served to this machine only. Checking the Host
 // header as well keeps a web page that rebinds its own name to 127.0.0.1 from reading it.
@@ -30,7 +30,7 @@ const loopback=new Set(['127.0.0.1','::1','[::1]','localhost']);
 const hostname=(header:string|undefined):string=>header===undefined?'':header.startsWith('[')?header.slice(0,header.indexOf(']')+1):header.split(':')[0]!;
 
 /** One page, fresh from disk. A project that does not load renders its error instead of stopping the studio. */
-export async function renderStudioPage(options:StudioPageOptions):Promise<{status:number;html:string}> {
+async function renderStudioPage(options:StudioPageOptions):Promise<{status:number;html:string}> {
   try{
     const policy=await loadOperatorPolicy(options.policyFile,options.project);
     const before=options.before===undefined?undefined:{input:await readChangeInput(options.before),label:options.before};

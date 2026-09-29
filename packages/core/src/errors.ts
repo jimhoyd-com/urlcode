@@ -37,7 +37,7 @@ export function asConfigError(error: unknown): ConfigError | undefined {
   if (given && typeof given === 'object') for (const [key, value] of Object.entries(given)) if (['code', 'route', 'file', 'pointer', 'key', 'extension'].includes(key) ? typeof value === 'string' : ['line', 'column'].includes(key) && typeof value === 'number') (details as Record<string, unknown>)[key] = value;
   return new ConfigError(error.message, details, { cause: error });
 }
-export interface HttpErrorAnswer { contentType: string; text: string; envelope?: string }
+interface HttpErrorAnswer { contentType: string; text: string; envelope?: string }
 export class HttpError extends Error {
   readonly status: number;
   /**
@@ -69,7 +69,7 @@ const MAX_REPORTED_MESSAGE = 500;
  * An operator-authored error message made safe to print on one line: control characters and runs of whitespace
  * collapse to a single space and the text is cut to a bounded length. Never includes a stack.
  */
-export function boundedMessage(error: unknown, max = MAX_REPORTED_MESSAGE): string {
+function boundedMessage(error: unknown, max = MAX_REPORTED_MESSAGE): string {
   const text = boundedLine(error instanceof Error ? error.message : typeof error === 'string' ? error : '', max);
   if (!text) return error instanceof Error ? `${error.name || 'Error'} with no message` : 'a non-Error value was thrown';
   return text;

@@ -1112,6 +1112,17 @@ records and who gained them.
   audit drain of a server running with audit delivers the events on its next
   poll. While no such server runs, they wait in the outbox (and count toward
   the backlog).
+- **Reported, with a warning when nothing is draining.** A command that
+  records events adds three fields to its JSON report: `undeliveredEvents`,
+  the events waiting in each audited collection it touched (its own
+  included); `lastAuditDrain`, when a serving process's drain last kept up
+  with the outbox (it acked events or found none waiting), or `null` if no
+  drain ever has; and `warning` when events are waiting and no drain has kept
+  up in the last 60 seconds. The drain records that time in the database at
+  most every 10 seconds, so a live server never trips the warning. A dry run,
+  and a collection without `audit: true`, add none of them. The warning is a
+  hint for the operator, not a delivery guarantee: start the server (or check
+  it is running) and its drain delivers the events.
 
 ### Operator attribution
 
@@ -1141,7 +1152,9 @@ operator says made the change, not proof of it. Commands that change nothing
   one JSON object, beside the `id`, timestamps, owner and unique key columns),
   `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
   the request fingerprint, the status and the record id, never record values) and
-  `store_audit_outbox` (undelivered audit events). Collections are rows, not
+  `store_audit_outbox` (undelivered audit events), plus the one-row
+  `store_audit_drain` (when the audit drain last kept up; schema version 3).
+  Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   schema; the rows of a collection that is no longer declared stay untouched.
 - The schema only moves forward. An empty file is initialized in one

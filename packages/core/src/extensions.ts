@@ -415,8 +415,8 @@ export interface RuntimeExtension {
    * routes (never for an `extension:` mount, which is always treated as
    * sensitive). Omitted or `true`: the current, safe default — the runtime
    * forces `Cache-Control: no-store`, disables compression and applies the
-   * extension response's header/size caps, exactly like `authorize`-gating
-   * auth/admin extensions. `false` is an explicit, reviewed opt-in a generic,
+   * extension response's header/size caps, exactly like an `authorize`-gating
+   * extension such as auth. `false` is an explicit, reviewed opt-in a generic,
    * cache-transparent extension (pure request/response middleware with no
    * gating semantics of its own) makes to say its
    * `middleware()` hook never depends on withholding the response from

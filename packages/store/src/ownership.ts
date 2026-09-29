@@ -31,12 +31,13 @@ import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
 import { AUDIT_BACKLOG, StoreError, membershipEvent, normalize, stamp, writeAuditEvent } from './collection.ts';
 import type { CollectionSpec, NormalizedSpec } from './collection.ts';
 import { auditValidator, operatorActor } from './membership.ts';
-import { openStoreDatabase } from './database.ts';
-import type { StoreDatabase } from './database.ts';
+import { auditDelivery, openStoreDatabase } from './database.ts';
+import type { AuditDelivery, StoreDatabase } from './database.ts';
 
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 
-export interface OwnerlessReport { collection: string; records: number; ownerless: number; ids: string[] }
+/** On an `audit: true` collection, assigning and deleting also report the outbox delivery status (`AuditDelivery`). */
+export type OwnerlessReport = { collection: string; records: number; ownerless: number; ids: string[] } & Partial<AuditDelivery>;
 export interface OwnerlessOptions {
   /** The project's declared store collections (`extensions.store.config.collections`). */
   collections: Record<string, CollectionSpec>;
@@ -102,7 +103,7 @@ export async function assignOwnerless(database: string, options: OwnerlessOption
     if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
     db.run('UPDATE store_records SET owner = ? WHERE collection = ? AND owner IS NULL', owner, collection);
     if (validate) for (const id of ids) writeAuditEvent(db, collection, validate, reassignedEvent(collection, id, undefined, owner, actor));
-    return { collection, records: total(db, collection), ownerless: 0, ids };
+    return { collection, records: total(db, collection), ownerless: 0, ids, ...(validate ? auditDelivery(db, [collection], Date.now()) : {}) };
   });
 }
 /** Deletes every record that has no owner. Records that have one are untouched. */
@@ -113,7 +114,7 @@ export async function deleteOwnerless(database: string, options: OwnerlessOption
     if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
     db.run('DELETE FROM store_records WHERE collection = ? AND owner IS NULL', collection);
     if (validate) for (const id of ids) writeAuditEvent(db, collection, validate, { action: 'store.record.deleted', actor, subject: `${collection}/${id}`, metadata: { collection, ownerless: true } });
-    return { collection, records: total(db, collection), ownerless: 0, ids };
+    return { collection, records: total(db, collection), ownerless: 0, ids, ...(validate ? auditDelivery(db, [collection], Date.now()) : {}) };
   });
 }
 
@@ -124,8 +125,11 @@ export interface ReassignCollectionReport { collection: string; moved: number; t
  * (`toWasMember`), `from`'s entry is just removed.
  */
 export interface ReassignMembershipReport { collection: string; toWasMember: boolean }
-/** `auditEvents`: how many audit events the move records (or, on a dry run, would record) across the audited collections. */
-export interface ReassignReport { from: string; to: string; dryRun: boolean; moved: number; auditEvents: number; collections: ReassignCollectionReport[]; memberships: ReassignMembershipReport[] }
+/**
+ * `auditEvents`: how many audit events the move records (or, on a dry run, would record) across the audited collections.
+ * When it records any (not on a dry run), the report also carries the outbox delivery status of those collections.
+ */
+export type ReassignReport = { from: string; to: string; dryRun: boolean; moved: number; auditEvents: number; collections: ReassignCollectionReport[]; memberships: ReassignMembershipReport[] } & Partial<AuditDelivery>;
 export interface ReassignOptions {
   /** The principal id the records belong to now, exactly as stored (`apikey:<key id>`, a user id, ...). */
   from: string;
@@ -206,6 +210,7 @@ export async function reassignOwner(database: string, options: ReassignOptions):
       db.run('UPDATE store_records SET owner = ? WHERE collection = ? AND owner = ?', to, item.collection, from);
       for (const id of ids) writeAuditEvent(db, item.collection, validate!, reassignedEvent(item.collection, id, from, to, actor));
     }
-    return report;
+    const recorded = [...planned].filter(([, events]) => events > 0).map(([collection]) => collection);
+    return recorded.length ? { ...report, ...auditDelivery(db, recorded, Date.now()) } : report;
   });
 }

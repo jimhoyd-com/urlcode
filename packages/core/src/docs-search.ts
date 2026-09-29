@@ -98,7 +98,7 @@ function score(candidate: Candidate, query: Query): Scored | undefined {
   return { candidate, matched, score: value };
 }
 
-export interface Heading { title: string; index: number }
+interface Heading { title: string; index: number }
 /**
  * The ATX headings of a Markdown document, in order, found once per document. A `#` line inside a fenced code block
  * (a shell or YAML comment) is not a heading (#826). Fences follow CommonMark: a run of at least three backticks or

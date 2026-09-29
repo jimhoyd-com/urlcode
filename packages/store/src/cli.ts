@@ -23,6 +23,8 @@ const usage = 'urlcode-store ownerless --database /absolute/data/store.sqlite --
   + 'On an audit: true collection, ownerless-assign, ownerless-delete and reassign record every record they change too,\n'
   + 'and refuse as a whole (audit_backlog) when that would pass the outbox backlog. The event actor is operator, or the\n'
   + '--actor principal id: operator-asserted, not authenticated. Events are delivered by the serving process\'s audit drain.\n'
+  + 'A command that records events reports undeliveredEvents for the collections it touched and lastAuditDrain, and adds a\n'
+  + 'warning when events wait and no drain has kept up with the outbox in the last 60 seconds (or ever).\n'
   + 'backup writes a consistent online copy (SQLite\'s backup API) to a new 0600 file, refusing an existing destination,\n'
   + 'and checks it opens as a store database before it appears. To restore, stop the server and put the copy in place.\n'
   + 'Every other command is one transaction on the store database. All of them may run while the server is serving.\n';

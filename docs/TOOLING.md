@@ -377,6 +377,15 @@ confidence level and a plain-language reason:
 - Manually assembled `Set-Cookie`/session construction (`manual-cookie-session`).
 - Module-scope mutable state later mutated in the same file (`global-mutable-state`).
 - A direct outbound call, `fetch`/`http(s).request`/`http(s).get` (`outbound-network-call`).
+  The global `fetch(...)`, in any spelling (`globalThis.fetch`, `window.fetch`,
+  `self.fetch`), always counts, as does a member `.fetch(...)` whose first
+  argument is a URL (a string or template literal, or `new URL(...)`). A member
+  call on a receiver the module imports, or builds with `new X(...)`/`X(...)`
+  from an imported `X` (Hono's `app.fetch(request)`, itty-router's
+  `router.fetch(request)`), is an in-process framework app and is not reported.
+  Any other member `.fetch(...)` (`env.API.fetch(request)`, `client.fetch(request)`)
+  is still reported, with a note that it may be in-process. A method or
+  function named `fetch` is a definition, not a call, and comments are ignored.
 - Hand-rolled request counting paired with a `429`/`Retry-After` response
   (`manual-rate-limit`). Reported as `native-alternative` (pointing at
   `get_capability("policies.throttle")`) when `policies.throttle` is not
@@ -778,7 +787,8 @@ What it describes:
   The store describes every collection, readers, transition and short-link
   mount from each collection's record schema
   ([store OpenAPI](STORE.md#openapi)); the other first-party extensions leave
-  their mounts opaque, so their provider and admin APIs stay absent. A disabled
+  their mounts opaque, so their endpoints (Better Auth's, for example) and every
+  provider admin API stay absent. A disabled
   route is left out and listed under `x-urlcode.omitted`.
 - **Authentication.** A route gated by an extension that provides the request
   principal (`providesPrincipal`: the host file's registration, else the

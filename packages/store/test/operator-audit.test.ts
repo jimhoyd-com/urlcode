@@ -144,6 +144,46 @@ test('--actor attributes every writing operator command, is validated like a pri
   assert.deepEqual(counts(store.database), before, 'no refused command wrote anything');
 });
 
+test('a writing operator command reports its undelivered audit events and warns when no drain has kept up recently', async t => {
+  const store = await site(t);
+  const app = await project(store.root);
+  const base = ['--database', store.database, '--project', app];
+  interface Delivery { undeliveredEvents?: Record<string, number>; lastAuditDrain?: string | null; warning?: string }
+  const run = async (...args: string[]): Promise<Delivery> => { const result = await cli(...args); assert.equal(result.code, 0, result.stderr); return JSON.parse(result.stdout) as Delivery; };
+
+  // No drain has ever run against this database (the held audit never drains).
+  const added = await run('members', 'add', ...base, '--collection', 'reviewers', '--principal', 'rita');
+  assert.deepEqual(added.undeliveredEvents, { reviewers: 1 });
+  assert.equal(added.lastAuditDrain, null);
+  assert.match(added.warning!, /^No audit drain has run against this database: 1 audit event wait in the outbox/);
+
+  // A drain that kept up a moment ago: the events are reported, without a warning.
+  const recent = Date.now() - 5_000;
+  execute(store.database, `INSERT INTO store_audit_drain(id, drained_at) VALUES (1, ${recent})`);
+  const removed = await run('members', 'remove', ...base, '--collection', 'reviewers', '--principal', 'rita');
+  assert.deepEqual([removed.undeliveredEvents, removed.lastAuditDrain, removed.warning], [{ reviewers: 2 }, new Date(recent).toISOString(), undefined]);
+
+  // One that last kept up two minutes ago: the warning names how long.
+  execute(store.database, `UPDATE store_audit_drain SET drained_at = ${Date.now() - 120_000}`);
+  await store.create('apikey:old', 'laptop');
+  const moved = await run('reassign', ...base, '--from', 'apikey:old', '--to', 'ann');
+  assert.deepEqual(moved.undeliveredEvents, { requests: 2 }, 'the create and the move, in the one collection the move touched');
+  assert.match(moved.warning!, /^The audit drain last kept up 12\d s ago: 2 audit events wait/);
+  const dry = await run('reassign', ...base, '--from', 'ann', '--to', 'bob', '--dry-run');
+  assert.equal(dry.undeliveredEvents, undefined, 'a dry run records nothing, so it reports nothing');
+
+  const at = new Date().toISOString(), id = randomUUID();
+  await seed(store.database, 'requests', [{ id, createdAt: at, updatedAt: at, title: 'a', status: 'pending' }]);
+  const assigned = await run('ownerless-assign', ...base, '--collection', 'requests', '--owner', 'ann');
+  assert.deepEqual(assigned.undeliveredEvents, { requests: 3 });
+  assert.match(assigned.warning!, /3 audit events wait/);
+  // A collection without audit: true reports no delivery status.
+  const unaudited = { ...collections, requests: { ...requests, audit: false } } as unknown as Record<string, CollectionSpec>;
+  await seed(store.database, 'requests', [{ id: randomUUID(), createdAt: at, updatedAt: at, title: 'b', status: 'pending' }]);
+  const plain = await deleteOwnerless(store.database, { collections: unaudited, collection: 'requests' });
+  assert.equal(plain.undeliveredEvents, undefined);
+});
+
 test('a filter value outside the property\'s bounds, lengths or format is a 400 on the owner mount and the readers mount', async t => {
   const store = await site(t);
   await addMember(store.database, { collections: typed, collection: 'reviewers', principal: 'rita' });

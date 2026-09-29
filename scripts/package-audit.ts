@@ -327,7 +327,7 @@ export const budgets: Record<string, Budget> = {
     // measured on Node 26: 89093 packed / 354706 unpacked bytes, 32 entries.
     // Raised to 96 KiB packed and 372 KiB unpacked for #861/#881: the JSON Schema 2020-12 record schema (its config
     // schema again in urlcode.json and the README field reference) and the OpenAPI description (dist/openapi.js and
-    // its declarations) measure 93231 packed and 365388 unpacked bytes (npm pack --dry-run, Node 26).
+    // its declarations), merged with #897's audit drain status, measure 95170 packed and 371009 unpacked bytes (Node 26).
     packed: 96 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator

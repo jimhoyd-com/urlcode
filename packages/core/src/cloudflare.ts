@@ -7,6 +7,7 @@ import type { BodyValidator, CompiledBodySchema } from './body-validation.ts';
 import { fetchResponse, prepareResponse, errorResponse, errorScope, resolveErrorFormat, methodNotAllowed } from './http-response.ts';
 import type { ErrorFormat, HandlerResult, HeaderPair } from './http-response.ts';
 import { HttpError } from './errors.ts';
+import { joinedHeaderCounts } from './header-counts.ts';
 // Only the two policies a Worker can carry. Both modules must stay free of
 // Node imports; the build refuses every other policy with the route named.
 import * as agents from './policies/agents.ts';
@@ -156,8 +157,12 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators, 
       if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
       // Same request shape and order as the Node runtime; the client identity
       // is the platform's connecting address, never a client-supplied header.
+      // The platform joins repeated request headers before this runs, so the original lines are gone. The same
+      // conservative rule as a fetch-only self-hosted host: a joined value containing a comma counts as two lines,
+      // so every refusal of a repeated header still fires (docs/CLOUDFLARE.md).
+      const headerCounts = joinedHeaderCounts(request.headers);
       const policyReq: PolicyRequest | null = route.policy ? { method, target: url.pathname + url.search, path: parsed.path, query: parsed.query, headers: request.headers,
-        headerCounts: {}, params: path, client: request.headers.get('cf-connecting-ip') ?? null, origin: url.origin, route: route.pattern, secrets: false } : null;
+        headerCounts, params: path, client: request.headers.get('cf-connecting-ip') ?? null, origin: url.origin, route: route.pattern, secrets: false } : null;
       const finish = async (result: HandlerResult, producer?: PolicyModule): Promise<HandlerResult> => {
         let out = result;
         for (const [module, state] of route.policy?.response || []) { if (module === producer || !policyReq) continue; out = await module.onResponse?.(state, policyReq, out) ?? out; }
@@ -176,11 +181,8 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators, 
       }
       const policy = bodyPolicy(route, method);
       const body = policy ? await readCappedBody(request, policy.maxBytes ?? 1048576) : new Uint8Array(0);
-      // Duplicate request headers are joined by the platform before this runs,
-      // so per-header counts are unavailable and the duplicate-scalar check
-      // cannot fire here. docs/CLOUDFLARE.md records the difference.
-      checkRequest(route, method, body, request.headers, {});
-      const context = contextFor(route, path, parsed.query, request.headers, {});
+      checkRequest(route, method, body, request.headers, headerCounts);
+      const context = contextFor(route, path, parsed.query, request.headers, headerCounts);
       let native: HandlerResult;
       if (redirecting(route)) native = { status: route.redirect.status || 302, headers:[['location',redirectLocation(route, context, parsed.query)]], body: new Uint8Array(0) };
       else if (route.reply) native = { ...route.reply, ...(fallback ? { status: 404 } : {}) };
