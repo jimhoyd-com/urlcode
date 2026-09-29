@@ -97,7 +97,10 @@ installed and pin-verified in the site, reports which sources it did and did not
 config path to read next; no match means no match in those sources, not an unsupported feature.
 Draft `tests/requests.json` from `urlcode fixtures suggest --json` (MCP `suggest_fixtures`): it reads urlcode.yaml and its
 includes, covers only routes the YAML alone determines and lists function, middleware, proxy, extension, pattern and
-binding routes as `gaps` to test by hand. `urlcode diff BEFORE --json` (a YAML file, or a directory to compare includes
+binding routes as `gaps` to test by hand. An `auth: true` route is covered by a `steps` fixture that signs in through
+the provider's own endpoint, with `"origin": "{{origin}}"` on unsafe requests; a passing case counts only with
+`expectBody` or `expectHeaders`, a covered GET implies HEAD, and `audit`'s `coverageNotes` names what is missing
+([authenticated routes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md#authenticated-routes-auth-true)). `urlcode diff BEFORE --json` (a YAML file, or a directory to compare includes
 too; MCP `summarize_yaml_change`) names the routes, code seams and operator grants a change adds;
 `urlcode report BEFORE > report.html` renders it, the review findings and each route's request path as a read-only page for a person;
 `urlcode studio BEFORE` serves that page on localhost and rebuilds it on every reload.

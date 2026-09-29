@@ -288,8 +288,13 @@ export const budgets: Record<string, Budget> = {
     // 3768213 unpacked bytes, 507 entries; CI (Node 24) packed 954811. About 3 KiB of headroom on each.
     // With #834's context fallbacks and plan_feature list vocabulary on top of #903's main, measured on Node 26:
     // 958684 packed / 3783392 unpacked bytes, 507 entries; about 3 KiB of headroom on each.
-    packed: 939 * 1024,
-    unpacked: 3698 * 1024,
+    // Raised for #914 (authenticated fixtures: {{origin}}, gate-refusal waivers, HEAD implied by GET, coverageNotes
+    // and status-mismatch bodies in dist/readiness.js, the READINESS "coverage rules" and "authenticated routes"
+    // sections, the agents guide and their llms-full.txt copies). Measured on Node 26: 963047 packed bytes (1511 over
+    // 939 KiB) and 3797419 unpacked bytes (10667 over 3698 KiB), 507 entries. Packed raised to 943 KiB and unpacked to
+    // 3712 KiB, keeping about 2.5 KiB and 3.6 KiB of headroom.
+    packed: 943 * 1024,
+    unpacked: 3712 * 1024,
     entries: 510,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

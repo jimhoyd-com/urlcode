@@ -156,7 +156,7 @@ test('a failing case prints expected and actual per assertion, and zero cases fa
     { check: 'body', expected: '{"ok":false}', actual: '{"ok":true}', firstDifference: 6 },
   ]);
   assert.deepEqual([tests[0]?.method, tests[0]?.path], ['GET', '/api/status']);
-  assert.deepEqual(tests[1]?.failures, [{ check: 'status', expected: 201, actual: 200 }]);
+  assert.deepEqual(tests[1]?.failures, [{ check: 'status', expected: 201, actual: 200, body: '{"ok":true}' }]);
   const [body] = tests[2]?.failures as { expected: string; actual: string; firstDifference: number }[];
   assert.equal(body?.firstDifference, 300);
   assert.ok(body?.expected.startsWith('...') && body.expected.endsWith('xb') && body.actual.endsWith('xa'));

@@ -265,7 +265,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     return Object.fromEntries(routes.flatMap(route => route.policy && Object.keys(route.policy.describe).length ? [[route.pattern, route.policy.describe] as const] : []));
   }
   const workers = () => ({ healthy: pool.slots.filter(slot => slot?.ready).length, slots: pool.size });
-  const testPlan = (): TestPlan => ({...projectPlan(compiled),policies:policyInventory()});
+  const testPlan = (): TestPlan => ({...projectPlan(compiled,new Set([...extensionRegistry.entries].filter(([,entry])=>entry.providesPrincipal).map(([name])=>name))),policies:policyInventory()});
   try{await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });}
   catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
   // Reported only once the edited revision fully activated, so a rejected reload never claims a followed pin.
