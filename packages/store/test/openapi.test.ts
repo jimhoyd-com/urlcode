@@ -175,7 +175,7 @@ test('a declared transfer is described with its generated body, its answer and i
   const pay = document.paths['/api/wallets/transfers/pay']!.post as Operation & { parameters: Json[] };
   assert.deepEqual(pay.parameters.map(parameter => parameter.name), ['If-Match', 'Idempotency-Key']);
   assert.deepEqual(Object.keys(pay.responses), ['200', '400', '401', '403', '404', '409', '412', '413', '415', '422', '503']);
-  assert.match(String((pay.responses['409'] as Json).description), /insufficient_balance.*transfer_limit/);
+  assert.match(String((pay.responses['409'] as Json).description), /insufficient_balance.*transfer_limit: the from record.*transfer_conflict.*never depends on its balance/);
   assert.match(String(((document.paths['/api/wallets/transfers/issue']!.post as Operation).responses['403'] as Json).description), /membership_required/);
   // #928: a record still holding a balance is not deleted.
   assert.match(String(((document.paths['/api/wallets/{id}']!.delete as Operation).responses['409'] as Json).description), /balance_not_zero/);

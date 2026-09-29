@@ -20,7 +20,7 @@ import { direct, pin, race } from './direct.ts';
 import type { Answer } from './direct.ts';
 import { counts, execute, outbox, records, seed } from './rows.ts';
 
-const balanceSchema = (minimum: number) => ({ type: 'object', additionalProperties: false, required: ['name', 'balance'], properties: { name: { type: 'string', maxLength: 20 }, balance: { type: 'integer', minimum, maximum: 1_000_000 } } });
+const balanceSchema = (minimum: number) => ({ type: 'object', additionalProperties: false, required: ['name', 'balance'], properties: { name: { type: 'string', maxLength: 20 }, balance: { type: 'integer', minimum } } });
 /**
  * Shared accounts: every account opens at 0 (#928) and only transfers change a balance. fund is the issuer the tests
  * open each account with, from a bank record that may go down to -1,000,000, so the sum over the collection stays 0.
@@ -137,12 +137,11 @@ test('owned wallets: the caller debits only its own record, may credit anyone\'s
   // The credited record's owner is not the caller's to read afterwards either.
   assert.equal((await store.call('GET', `/api/wallets/${bob}`, { who: 'ann' })).status, 404);
   assert.deepEqual(balances(store.database, 'wallets'), { mint: -50, ann: 20, 'ann-savings': 10, bob: 20 });
-  // The credited balance keeps its property's schema (maximum 1,000,000); the refusal names no balance.
+  // #973: the credited record's balance never decides the answer; no amount is too large for the recipient to take.
   const reserve = await wallet('tess', 'reserve');
   assert.equal((await pay('tess', { from: reserve, to: bob, amount: 999_980 }, 'issue')).status, 200);
-  const over = await pay('tess', { from: mint, to: bob, amount: 1 }, 'issue');
-  assert.equal(over.status, 409); assert.equal(code(over), 'transfer_limit'); assert.deepEqual(Object.keys(over.body!.error as object), ['code', 'message']);
-  assert.equal((balances(store.database, 'wallets') as Record<string, number>).bob, 1_000_000);
+  assert.equal((await pay('tess', { from: mint, to: bob, amount: 1 }, 'issue')).status, 200);
+  assert.equal((balances(store.database, 'wallets') as Record<string, number>).bob, 1_000_001);
   // No principal on an owned collection is a 401 before anything is read.
   assert.equal((await pay(null, { from: ann, to: bob, amount: 1 })).status, 401);
   assert.equal(sum(store.database, 'wallets'), 0);
@@ -347,6 +346,64 @@ test('activation refuses a transfer it could not keep whole', () => {
   refuses(spec({}, { defaults: { balance: 100 } }), /amount property balance must default to 0/);
   const reset = { from: { name: 'x' }, set: { balance: 0 } };
   refuses(spec({}, { transitions: { reset } }), /amount property balance is set by transition reset/);
+});
+
+test('#973: activation keeps the credited record\'s balance out of every answer: a lower bound only, and a supply within the safe integers', () => {
+  const owned = (balance: Record<string, unknown>, extra: Record<string, unknown> = {}): CollectionSpec => ({ ...wallets, ...extra, schema: { ...balanceSchema(0), properties: { ...balanceSchema(0).properties, balance: { type: 'integer', ...balance } } } }) as unknown as CollectionSpec;
+  // Every keyword that can refuse a higher value would tell a payer the credited record's balance.
+  for (const keyword of [{ maximum: 1000 }, { exclusiveMaximum: 1000 }, { multipleOf: 5 }, { enum: [0, 1, 2] }, { const: 0 }, { not: { type: 'string' } }, { anyOf: [{ minimum: -5 }] }])
+    assert.throws(() => normalize('wallets', owned({ minimum: -1_000_000, ...keyword })), new RegExp(`amount property balance takes only type, minimum, exclusiveMinimum, title, description, \\$comment, deprecated, examples, not ${Object.keys(keyword)[0]}; a limit that a credit can break`));
+  // The same rule on a shared collection: one declaration contract for the amount property.
+  assert.throws(() => normalize('accounts', { ...accounts, schema: { ...balanceSchema(-1_000_000), properties: { ...balanceSchema(0).properties, balance: { type: 'integer', minimum: -1_000_000, maximum: 1_000_000 } } } } as unknown as CollectionSpec), /not maximum/);
+  assert.doesNotThrow(() => normalize('wallets', owned({ minimum: -1_000_000, title: 'Balance', description: 'minor units', exclusiveMinimum: -1_000_001 })));
+  // The sum is 0 and no balance goes below the lowest min, so |min| x maxRecords bounds every balance.
+  assert.throws(() => normalize('wallets', owned({}, { maxRecords: 10_000, transfers: { pay: { amount: 'balance' }, issue: { amount: 'balance', min: -1_000_000_000_000, members: 'treasurers' } } })), /the lowest min \(-1000000000000\) times maxRecords \(10000\) exceeds 9007199254740991/);
+  assert.doesNotThrow(() => normalize('wallets', owned({}, { maxRecords: 9007, transfers: { pay: { amount: 'balance' }, issue: { amount: 'balance', min: -1_000_000_000_000, members: 'treasurers' } } })));
+});
+
+test('#973: a transfer answers the same whatever the recipient holds; every write reserves the room a balance can take', async t => {
+  const tight = { ...wallets, maxRecordBytes: 220, schema: { ...balanceSchema(-1_000_000), properties: { ...balanceSchema(-1_000_000).properties, name: { type: 'string', maxLength: 120 } } } };
+  const store = await direct(t, { collections: { treasurers, wallets: tight } }, { mounts: ['/api/wallets'] });
+  store.first.records('treasurers').create(null, { userId: 'tess' });
+  const wallet = async (who: string, name: string) => store.call('POST', '/api/wallets', { who, body: { name } });
+  const size = (name: string) => Buffer.byteLength(JSON.stringify({ id: '00000000-0000-4000-8000-000000000000', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', _owner: 'bob', name, balance: -Number.MAX_SAFE_INTEGER }));
+  // A create is measured with the balance at its widest: a name that fits at 0 but not at 17 digits is refused.
+  let name = 'b';
+  while (size(`${name}b`) <= 220) name += 'b';
+  const tooLong = await wallet('bob', `${name}bbbbbbbbbbbbbbbb`);
+  assert.equal(tooLong.status, 413); assert.equal(code(tooLong), 'record_too_large');
+  const bob = (await wallet('bob', name)).body!.id as string;
+  const mint = (await wallet('tess', 'mint')).body!.id as string, ann = (await wallet('ann', 'ann')).body!.id as string;
+  const pay = (who: string, body: unknown, transfer = 'pay') => store.call('POST', `/api/wallets/transfers/${transfer}`, { who, body });
+  assert.equal((await pay('tess', { from: mint, to: ann, amount: 1_000_000 }, 'issue')).status, 200);
+  // The probes of the review: any amount the payer holds is credited, one digit or seven, at any recipient balance.
+  for (const amount of [1, 9, 263, 264, 100_000]) {
+    const paid = await pay('ann', { from: ann, to: bob, amount });
+    assert.equal(paid.status, 200, `amount ${amount}`);
+  }
+  assert.equal((balances(store.database, 'wallets') as Record<string, number>)[name], 100_537);
+  assert.equal(sum(store.database, 'wallets'), 0);
+});
+
+test('#973: a credit a row stored outside the declaration cannot take answers one fixed transfer_conflict, with no detail', async t => {
+  const store = await direct(t, config, { mounts, principalMounts: ['/api/wallets'] });
+  store.first.records('treasurers').create(null, { userId: 'tess' });
+  const wallet = async (who: string, name: string) => (await store.call('POST', '/api/wallets', { who, body: { name } })).body!.id as string;
+  const mint = await wallet('tess', 'mint'), ann = await wallet('ann', 'ann'), bob = await wallet('bob', 'bob');
+  assert.equal((await store.call('POST', '/api/wallets/transfers/issue', { who: 'tess', body: { from: mint, to: ann, amount: 100 } })).status, 200);
+  // A balance written by hand near the top of the safe integers, which no transfer under the declaration can reach.
+  execute(store.database, `UPDATE store_records SET data = json_set(data, '$.balance', ${Number.MAX_SAFE_INTEGER - 5}) WHERE id = '${bob}'`);
+  const before = records(store.database, 'wallets');
+  const refused = await store.call('POST', '/api/wallets/transfers/pay', { who: 'ann', body: { from: ann, to: bob, amount: 10 } });
+  assert.equal(refused.status, 409); assert.equal(code(refused), 'transfer_conflict');
+  assert.deepEqual(refused.body!.error, { code: 'transfer_conflict', message: 'The credited record cannot take this transfer' });
+  assert.deepEqual(records(store.database, 'wallets'), before, 'nothing moved');
+});
+
+test('#974: an owned collection refuses a negative min without members; a shared one leaves the gate to its route', () => {
+  assert.throws(() => normalize('wallets', { ...wallets, transfers: { pay: { amount: 'balance', min: -500 } } } as unknown as CollectionSpec), /transfer pay: a negative min is an issuer, so it needs members: <a membership collection> naming who may issue; without it every signed-in principal could take an empty record below zero and credit anyone/);
+  assert.deepEqual(normalize('wallets', wallets as unknown as CollectionSpec).transfers.issue, { amount: 'balance', min: -1_000_000, members: 'treasurers' });
+  assert.deepEqual(normalize('accounts', accounts as unknown as CollectionSpec).transfers.fund, { amount: 'balance', min: -1_000_000 });
 });
 
 test('activation refuses members naming a collection that is not a membership collection', async t => {
