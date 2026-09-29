@@ -4,6 +4,7 @@ import { bodyIssues, bodySchemaDialect, compileBodySchema } from '@jimhoyd/urlco
 import type { BodySchema, BodySchemaIssue, CompiledBodySchema } from '@jimhoyd/urlcode/body-schema';
 import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
+import { STORE_SCHEMA_VERSION, declarationOf, liveServer } from './database.ts';
 import type { StoreDatabase } from './database.ts';
 
 /** Reserved names the store owns on every record. */
@@ -713,6 +714,35 @@ export function storageFailure(error: unknown, rethrowOthers: boolean): never {
   throw new StoreError(503, 'storage_unavailable', 'The store could not save this change');
 }
 
+/** A JSON value with object keys sorted at every depth: two values that differ only in key order serialize alike. */
+export function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().filter(key => (value as Record<string, unknown>)[key] !== undefined).map(key => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+/**
+ * The declaration fingerprint (#927): the SHA-256 of the normalized declaration, which is everything a write checks
+ * (the record schema with a named schema resolved, defaults, readOnly properties, key, increments, limits, ownership,
+ * audit, transitions, membership, readers, intervals, transfers, idempotency, mounts). Two processes that normalize the
+ * same declaration get the same fingerprint, however it was written.
+ */
+export function declarationFingerprint(spec: NormalizedSpec): string {
+  const { records, ...rest } = spec;
+  return createHash('sha256').update(canonical({ ...rest, records: { schema: records.schema, required: records.required, defaults: records.defaults, readOnly: records.readOnly } })).digest('hex');
+}
+/** The 503 a write answers when the declaration fence refuses it: bounded, naming nothing. */
+export const REDECLARED = 'The collection was redeclared by another process';
+/**
+ * The operator commands' fence (#927): they carry the project's declaration, which may differ from the one served. A
+ * command is refused when a live server has recorded a different declaration of `collection` (or runs another store
+ * schema): its writes would break rules the server enforces. With no live server, or nothing recorded, it proceeds.
+ */
+export function operatorFence(db: StoreDatabase, collection: string, fingerprint: string): void {
+  const recorded = declarationOf(db, collection);
+  if (recorded === undefined || (recorded.fingerprint === fingerprint && recorded.schema_version === STORE_SCHEMA_VERSION)) return;
+  if (liveServer(db, Date.now())) throw new StoreError(503, 'storage_unavailable', `Collection ${collection}: the serving process declares it differently from this project (or runs another store release); run the command with the project it serves, or stop it first`);
+}
+
 /** A record read for a viewer, with the transitions it may run on it (`Viewer`). */
 export interface Shown { record: StoredRecord; may: string[] }
 /** Whether `principal` is listed in the membership collection `members`: one lookup on its unique key index. */
@@ -752,7 +782,26 @@ export class Collection {
   private get owned(): boolean { return this.spec.ownership === 'owner'; }
   /** Properties a short link redirects to (store.ts): every write also requires `redirectable` values there. */
   private readonly destinations: readonly string[];
-  constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor, destinations: readonly string[] = [], schemas: Readonly<Record<string, unknown>> = {}) { this.name = name; this.spec = normalize(name, spec, schemas); this.auditor = auditor; this.destinations = destinations; }
+  /** The declaration fingerprint (`declarationFingerprint`) the fence compares. */
+  readonly fingerprint: string;
+  /**
+   * Which fence a write passes (#927). `serving` (set by the store's activation once it recorded its declarations): the
+   * recorded fingerprint, schema version and `user_version` must all equal this view's, or the write is a 503 and writes
+   * nothing. `operator` (the default, for the operator commands): `operatorFence`.
+   */
+  fence: 'serving' | 'operator' = 'operator';
+  constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor, destinations: readonly string[] = [], schemas: Readonly<Record<string, unknown>> = {}) { this.name = name; this.spec = normalize(name, spec, schemas); this.fingerprint = declarationFingerprint(this.spec); this.auditor = auditor; this.destinations = destinations; }
+  /**
+   * The declaration fence, first inside every write transaction, under the write lock: one indexed read of the recorded
+   * declaration and the file's `user_version`. A newer activation (a reload here, or another process: a blue/green
+   * candidate, a newer release that migrated the file) recorded its own, so this view's writes would enforce rules
+   * nobody declares any more. Reads are not fenced.
+   */
+  fenced(db: StoreDatabase): void {
+    if (this.fence === 'operator') return operatorFence(db, this.name, this.fingerprint);
+    const recorded = declarationOf(db, this.name);
+    if (recorded?.fingerprint !== this.fingerprint || recorded.schema_version !== STORE_SCHEMA_VERSION || recorded.version !== STORE_SCHEMA_VERSION) throw new StoreError(503, 'storage_unavailable', REDECLARED);
+  }
 
   /**
    * Binds this view to the open database after validating every stored row against this declaration: a row that
@@ -823,7 +872,7 @@ export class Collection {
     }
   }
   /**
-   * One write transaction. `work` returns its answer and whether it inserted an audit event; the audit drain is woken
+   * One write transaction, fenced first (`fenced`). `work` returns its answer and whether it inserted an audit event; the audit drain is woken
    * only after the commit. A StoreError from `work` rolls back and is rethrown; anything else (a full disk, a lock
    * another process held past the busy timeout) rolls back and is a 503 with no detail.
    */
@@ -832,6 +881,7 @@ export class Collection {
     let outcome: { result: Written; audited: boolean };
     try {
       outcome = db.transaction(() => {
+        this.fenced(db);
         const done = work(db), record = done.result.record;
         // Computed after the write, in its transaction: what the viewer may run on the record as it now stands.
         if (viewer && record) done.result.may = this.mayIn(db, [record], viewer.principal)[record.id as string]!;
@@ -1171,6 +1221,7 @@ export class Collection {
     let outcome: { result: Transferred; audited: boolean };
     try {
       outcome = db.transaction(() => {
+        this.fenced(db);
         if (caller !== undefined) this.admit(db, transfer.members, caller);
         const done = this.idempotent(db, retry, 200, id => this.current(db, id, this.transferScope(caller)), () => this.transferIn(db, name, body, expectedEtag, principal, actor));
         return { result: { status: done.result.status, from: done.result.record, to: this.readable(db, body.to, caller), replayed: done.result.replayed }, audited: done.audited };

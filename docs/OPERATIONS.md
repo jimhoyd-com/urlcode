@@ -453,6 +453,21 @@ application commit, dependency locks and image digest in your deployment system.
 5. If checks or observed behavior fail, route traffic back to the retained previous
    instance/image and its compatible secret bindings.
 
+With the store extension the candidate and the previous instance share
+`data/store.sqlite` on the same host, which is supported
+([several serving processes](STORE.md#several-serving-processes-on-one-host)).
+This procedure relies on the store's declaration fence: once the candidate has
+activated, the previous instance's writes to every collection whose
+declaration changed (and to every collection, when the candidate's release
+migrated the store schema) answer `503 storage_unavailable` and write nothing,
+while its reads keep working. Switch traffic promptly after the candidate
+activates. Rolling back to the previous instance therefore means restarting
+it (its activation records its declaration again), not only routing traffic
+back to it; a candidate that migrated the schema can only be rolled back by
+restoring a backup taken before it started. The two instances must run on one
+host with the database on local disk: the store refuses a live peer on another
+host and a database on a network filesystem.
+
 This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's
 state automatically. Plan those independently. Keep Git definitions backed up;

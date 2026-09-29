@@ -184,9 +184,11 @@ rate limiting, abuse protection or multi-tenant isolation).
 
 The full guide, HTTP contract, limits and the honest list of concurrency
 guarantees is [docs/STORE.md][store-guide].
-Short version: one server process per database (supported and tested, not
-enforced: SQLite's locks keep another process from corrupting it, and a write
-blocked past the 2-second busy timeout answers `503`); every write is one SQLite
+Short version: several serving processes on one host, on one release, with the
+database on local disk (a process on an older declaration or store schema has
+its writes refused with `503` by the declaration fence; a network filesystem or
+a live peer on another host refuses activation; a write blocked past the
+2-second busy timeout answers `503`); every write is one SQLite
 transaction that commits the record, its key, its `Idempotency-Key` claim and
 its audit event together or not at all; a retried `Idempotency-Key` replays the
 first status with the current record (a different request under it is `422`);

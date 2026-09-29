@@ -180,6 +180,10 @@ test('a writing operator command reports its undelivered audit events and warns 
   // A collection without audit: true reports no delivery status.
   const unaudited = { ...collections, requests: { ...requests, audit: false } } as unknown as Record<string, CollectionSpec>;
   await seed(store.database, 'requests', [{ id: randomUUID(), createdAt: at, updatedAt: at, title: 'b', status: 'pending' }]);
+  // The serving process declares the collection audited, so a command carrying another declaration is refused (#927)...
+  await assert.rejects(deleteOwnerless(store.database, { collections: unaudited, collection: 'requests' }), { status: 503, code: 'storage_unavailable', message: /the serving process declares it differently/ });
+  // ...and proceeds once no server holds a live lease on the database.
+  execute(store.database, 'DELETE FROM store_servers');
   const plain = await deleteOwnerless(store.database, { collections: unaudited, collection: 'requests' });
   assert.equal(plain.undeliveredEvents, undefined);
 });
