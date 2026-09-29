@@ -14,6 +14,15 @@ route needs no hand-written validation code.
   `GET: {maxBytes: 0}` refuses a GET body with 413, while POST requires a JSON
   body that matches its schema. See
   [per-method body rules](../../docs/HTTP.md#per-method-body-rules).
+- `/leads` and `/referrals` name one schema, `lead`, declared under the
+  top-level `schemas:` map as `{file: schemas/lead.json}`. That file is an
+  ordinary JSON Schema 2020-12 document with relative `$ref`s to
+  `contact-point.yaml` (the whole file, and its `$defs/source` entry); they are
+  read offline and bundled when the project loads, and a remote or escaping
+  reference would refuse the load. Both routes run one validator and answer the
+  same 422, and the OpenAPI export writes `lead` once as a component. An mcp
+  tool can name the same schema. See
+  [named schemas](../../docs/HTTP.md#named-schemas).
 - Parameter `format: uuid` and `pattern` reject bad path and query values with 400.
 - `pattern` must set `maxLength` (at most 128) and is refused when it repeats a
   group, uses lookaround or a backreference, has more than three unbounded

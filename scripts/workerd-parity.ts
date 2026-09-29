@@ -6,7 +6,7 @@
 // `dist/` always matches the sources it covers (#868: a stale build once passed every case on both sides); a direct
 // `node scripts/workerd-parity.ts` therefore SKIPs, naming the reason, rather than comparing a possibly stale dist/.
 // A run that compared no request never passes (scripts/workerd-parity-verdict.ts).
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -90,6 +90,10 @@ const cases: Record<string, { path: string; method?: string; headers?: Record<st
   'per-method POST valid': post('/requests', { title: 'Ship it' }, 'application/json'),
   'per-method POST, no body': { path: '/requests', method: 'POST', headers: json },
   'per-method POST invalid': post('/requests', { title: '', extra: secret }, 'application/json'),
+  // A named schema loaded from a file with relative $refs, shared by two routes (RIM-SCHEMA-001): one standalone validator.
+  'named schema valid': post('/leads', { name: 'Ada', contact: { email: 'ada@example.com', phone: null }, source: 'web' }, 'application/json'),
+  'named schema, bundled file fails': post('/leads', { name: 'Ada', contact: { email: secret } }, 'application/json'),
+  'named schema, second route, bundled $defs fails': post('/referrals', { name: 'Ada', contact: { email: 'ada@example.com' }, source: secret }, 'application/json'),
   // Parameter formats (#881): validators.js inlines the same checks body-validators.js does.
   'query format date-time valid': { path: `/when?at=${encodeURIComponent('2024-02-29T08:30:06+01:00')}` },
   'query format date-time fails': { path: '/when?at=2023-02-29T08:30:06Z' },
@@ -157,6 +161,8 @@ try {
   const project = join(scratch, 'project'), work = join(scratch, 'worker');
   const base = await readFile(join(repo, 'examples/body-validation/urlcode.yaml'), 'utf8');
   await mkdir(project); await mkdir(work);
+  // The example's named schema file and the file it references (RIM-SCHEMA-001), bundled by the build.
+  await cp(join(repo, 'examples/body-validation/schemas'), join(project, 'schemas'), { recursive: true });
   await writeFile(join(project, 'urlcode.yaml'), base + extra);
   run(process.execPath, [join(repo, 'dist/cli.js'), 'validate', '--project', project], repo);
   const tarball = (JSON.parse(run(process.execPath, [npm, 'pack', '--ignore-scripts', '--json', '--pack-destination', scratch], repo)) as { filename: string }[])[0]!.filename;

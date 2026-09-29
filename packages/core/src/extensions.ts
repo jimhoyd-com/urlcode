@@ -7,6 +7,7 @@ import { prepareFunctionSnapshot } from './policy.ts';
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import type { HandlerResult } from './http-response.ts';
 import type { LogFn, ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
+import type { BodySchema } from './body-validation.ts';
 import { contractProblem, extensionContract, extensionTargetNames } from './addon-manifest.ts';
 import type { AddonAgentTooling, ExtensionTarget } from './addon-manifest.ts';
 /**
@@ -64,6 +65,14 @@ export interface ExtensionActivation {
    */
   origins?:readonly string[];
   target:TargetName; projectSha256:string; mounts:readonly string[]; root:string;
+  /**
+   * The project's named schemas (the entry urlcode.yaml's top-level `schemas:`), by name (RIM-SCHEMA-001): each already
+   * admitted against the request body profile, self-contained (only local `#/$defs/<name>` references) and compiled
+   * by core, so `compileBodySchema` from `@jimhoyd/urlcode/body-schema` accepts it. An extension whose configuration
+   * takes a schema resolves a name the author wrote against this map and refuses one it does not hold. The runtime
+   * always sets it (empty when the project declares none); treat an absent value as empty.
+   */
+  schemas?:Readonly<Record<string,BodySchema>>;
   /**
    * The subset of `mounts` whose route carries an effective `policies.extensions` entry for at least one extension
    * whose registration declares `providesPrincipal: true` (RIM-EXT-PRINCIPAL-001): the mounts where a request can

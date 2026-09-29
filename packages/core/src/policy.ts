@@ -63,9 +63,10 @@ export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<F
   // Generated site routes carry no bindings and depend on the origin, so they
   // stay out of the hash that operator grants are pinned to. Declared site and
   // inherited policy/profile behavior are included: changing a pre-egress
-  // restriction must require a fresh operator review even if routes are unchanged.
+  // restriction must require a fresh operator review even if routes are unchanged. Named schemas enter by content and
+  // every schema file by the sha256 of its bytes, so an edited schema file needs a fresh review too (RIM-SCHEMA-001).
   const declared = Object.fromEntries(Object.entries(loaded.routes).filter(([,route])=>!route.generated));
-  const snapshot: FunctionSnapshot = { ...collected, projectSha256: createHash('sha256').update(JSON.stringify({...(loaded.document.extensions?{extensions:loaded.document.extensions}:{}),routes:declared,...(loaded.document.policies?{policies:loaded.document.policies}:{}),...(loaded.document.profiles?{profiles:loaded.document.profiles}:{}),...(loaded.document.site?{site:loaded.document.site}:{}),sources})).digest('hex') };
+  const snapshot: FunctionSnapshot = { ...collected, projectSha256: createHash('sha256').update(JSON.stringify({...(loaded.document.extensions?{extensions:loaded.document.extensions}:{}),routes:declared,...(loaded.document.policies?{policies:loaded.document.policies}:{}),...(loaded.document.profiles?{profiles:loaded.document.profiles}:{}),...(loaded.document.site?{site:loaded.document.site}:{}),...(loaded.schemas?{schemas:loaded.schemas}:{}),...(loaded.schemaFiles?{schemaFiles:loaded.schemaFiles}:{}),sources})).digest('hex') };
   return snapshot;
 }
 export function validatePolicy(value: unknown): OperatorPolicy {
