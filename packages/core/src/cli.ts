@@ -38,11 +38,12 @@ import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
 import { cliInvocation, shellWord } from './context.ts';
 import { SignalRecorder } from './signal-recorder.ts';
+import { CORE_VERSION, docsUrl } from './release.ts';
 
 // Stamped by scripts/release-bump.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
 // the starter's schema pin and CI action); `release-bump.ts --check` asserts this literal, not a read of
 // package.json, equals the core version, so keep it a plain string literal here.
-const VERSION = '0.6.5';
+const VERSION = CORE_VERSION;
 async function defaultProject(): Promise<string> {
   const has = (path: string): Promise<boolean> => access(path).then(() => true, () => false);
   return !(await has('urlcode.yaml')) && await has('app/urlcode.yaml') ? 'app' : '.';
@@ -160,7 +161,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'build', group:'Deploy', text:
 `  urlcode build --target cloudflare|static [--project directory] [--out dist/cloudflare|dist/static] [--origin https://links.example]
-    # static: redirect/respond/page/static/download only, compiled for S3 + CloudFront; no server, see docs/STATIC.md
+    # static: redirect/respond/page/static/download only, compiled for S3 + CloudFront; no server, see ${docsUrl('STATIC.md')}
 ` },
   { name:'extensions', group:'Extensions', text:
 `  urlcode extensions available [--json]

@@ -10,14 +10,15 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import semver from 'semver';
+import { buildLlmsFull } from './build-llms-full.ts';
 import { addons, repositoryRoot } from './workspaces.ts';
 
 const versionPattern = /^\d+\.\d+\.\d+(?:-alpha\.\d+)?$/;
 const core = '@jimhoyd/urlcode';
 /** Runtime declarations of the version: exactly one match each. The starter lines are what `urlcode init` stamps over for a fresh site. */
 const runtimePatterns: Record<string, RegExp> = {
-  'packages/core/src/cli.ts': /(?<=const VERSION = ')[^']+/g,
-  'packages/core/src/mcp.ts': /(?<=new Server\(\{name:'urlcode',version:')[^']+/g,
+  // The CLI, the MCP server and every installed docs link (`docsUrl`, #938) read the version from here.
+  'packages/core/src/release.ts': /(?<=export const CORE_VERSION = ')[^']+/g,
   'starters/default/app/urlcode.yaml': /(?<=jimhoyd-com\/urlcode\/v)[^/\s]+(?=\/schemas\/urlcode\.schema\.json)/g,
   'starters/default/.github/workflows/urlcode.yml': /(?<=jimhoyd-com\/urlcode\/action@v)[^\s#]+/g,
 };
@@ -33,10 +34,17 @@ interface Lock { version: string; packages: Record<string, { version?: string; p
 const readJson = async <T>(root: string, path: string): Promise<T> => JSON.parse(await readFile(join(root, path), 'utf8')) as T;
 const render = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
 
+const tracked = (root: string): string[] => execFileSync('git', ['-c', `safe.directory=${root}`, 'ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n');
+/**
+ * Authored documentation, whose current version lives in urlcode-current-version blocks. llms-full.txt is not
+ * authored: it is generated, and its `Source:` lines and rewritten links name the current release tag (#938), so the
+ * bump regenerates it and the check compares it with a fresh build.
+ */
 function documentation(root: string): string[] {
-  return execFileSync('git', ['-c', `safe.directory=${root}`, 'ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n')
-    .filter(path => (path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt') && !path.endsWith('/CHANGELOG.md'));
+  return tracked(root).filter(path => (path.endsWith('.md') || path === 'llms.txt') && !path.endsWith('/CHANGELOG.md'));
 }
+const LLMS_FULL = 'llms-full.txt';
+const hasLlmsFull = (root: string): boolean => tracked(root).includes(LLMS_FULL);
 /** Every version outside the marker blocks is history; every block names the current version. */
 function markedVersions(text: string, path: string, version: string): number {
   assert.equal(text.split(markerStart).length, text.split(markerEnd).length, `${path}: current-version markers are unbalanced`);
@@ -111,6 +119,7 @@ export async function check(root = repositoryRoot): Promise<string> {
   let blocks = 0;
   for (const path of documentation(root)) blocks += markedVersions(await readFile(join(root, path), 'utf8'), path, version);
   assert(blocks > 0, 'No urlcode-current-version blocks found');
+  if (hasLlmsFull(root)) assert(await readFile(join(root, LLMS_FULL), 'utf8') === await buildLlmsFull(root), `${LLMS_FULL} is not built for ${version}; run npm run docs:llms`);
   return version;
 }
 
@@ -148,6 +157,7 @@ export async function bump(version: string, root = repositoryRoot): Promise<stri
     const next = text.replace(markerBlock, (whole, marked: string) => whole.replace(marked, marked.replaceAll(previous, version)));
     if (next !== text) await write(path, next);
   }
+  if (hasLlmsFull(root)) await write(LLMS_FULL, await buildLlmsFull(root));
   await check(root);
   return changed;
 }
