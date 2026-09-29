@@ -213,7 +213,10 @@ no server's audit drain has kept up in the last 60 seconds), and
 `?sort=-<property>` and `?<property>=<value>` list queries (one sort property,
 equality filters, `id` tie-break, opaque cursor; undeclared names, unparseable
 values and values the property's own schema refuses are `400`s); they apply to
-the whole collection, or on an owned collection to the caller's own records. A
+the whole collection, or on an owned collection to the caller's own records.
+Each declared property gets an index, built at activation and updated by every
+write, so a sorted or filtered page is one indexed query rather than a sort of
+every record in scope. A
 `PATCH` that sets a property to `null` removes it; the result must still satisfy
 the schema, so a required property refuses that with a `422` issue, and `PUT`
 still takes only values (see [clearing a property][store-clearing-a-property]).
