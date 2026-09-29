@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `urlcode-auth find-user --email <email>` prints a user's id, email, name and `createdAt` through Better Auth's own
+  lookup (#917), so `urlcode-store members add --principal` no longer needs a SQL query for a self-registered user.
+
 The definition declares its deployment targets (node), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
 
 - Rebuilt on Better Auth 1.7.6 (#841, #843). Accounts, passwords, sessions and their SQLite tables are Better Auth's;

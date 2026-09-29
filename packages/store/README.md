@@ -33,7 +33,52 @@ transition changes it. A record that breaks the schema answers
 store-owned facts (`key`, `increments`, `ownership`, `transitions`, `readers`,
 `membership`, `sortable`, `filterable`) sit beside the schema and name its
 properties. With the host file loaded, `urlcode openapi` describes every store
-mount from this schema (see [OpenAPI](../../docs/STORE.md#openapi)).
+mount from this schema (see [OpenAPI][store-openapi]).
+
+## Responses
+
+A record is its schema's properties plus the store-owned `id`, `createdAt` and
+`updatedAt`. `GET <mount>` answers one page of records as `{items, total,
+next?, may, etags}` (the list is `items`, not `records`):
+
+```json
+{
+  "items": [
+    {"id": "4b3f5c2e-8a51-4f0e-9d7a-2c6e1f0b9a13", "title": "Buy milk", "done": false,
+     "createdAt": "2026-09-29T10:00:00.000Z", "updatedAt": "2026-09-29T10:00:00.000Z"}
+  ],
+  "total": 21,
+  "next": 20,
+  "may": {"4b3f5c2e-8a51-4f0e-9d7a-2c6e1f0b9a13": []},
+  "etags": {"4b3f5c2e-8a51-4f0e-9d7a-2c6e1f0b9a13": "\"9f2c4e1a7b3d5f60a8c2e4b6d8f01a3c\""}
+}
+```
+
+`total` counts every record the caller may see (or every match of the filters);
+`next` is present only when there is another page: send it back as
+`?cursor=` (a number for creation order, an opaque string for a sorted list).
+`may` maps each listed id to the declared transitions the caller may run on it
+now, and `etags` to the record's current `ETag` for `If-Match`. One record
+(`GET`, `POST`, `PUT`, `PATCH`, a transition) answers the record itself.
+
+Every refusal the store writes is one envelope, with `issues` on a `422
+invalid_record` (the bounded issue list a body-schema route answers) and
+`fields` on a `400 invalid_query`. Submitted values are never echoed:
+
+```json
+{"error": {"code": "invalid_record", "message": "Record does not match the collection schema",
+  "issues": [{"pointer": "", "keyword": "required", "message": "is missing required property title", "property": "title"}]}}
+{"error": {"code": "invalid_query", "message": "The query is not valid",
+  "fields": {"limit": "must be a non-negative integer"}}}
+```
+
+The codes and statuses are in the [HTTP contract][store-http-contract]. The
+runtime's own refusals on other routes (a body-schema `422`, an unmatched `404`)
+are a different body unless the site sets `errors: {format: json}`; see
+[error format][http-error-format]. For the exact schema of every mount, run
+`npx urlcode openapi --project app --host-file host.mjs` in the site: with the
+host file loaded, the export describes each collection's paths, record, create,
+patch, list and `StoreError` shapes ([OpenAPI export][tooling-openapi-export]).
 
 ## Install
 
@@ -51,7 +96,7 @@ Declare your own collection and its `extension: store` route there.
 `store` is released as a tarball on core's GitHub Release, at core's version,
 and pinned by sha512 in core's `dist/addons.json`; `urlcode extensions add`
 installs it into the site and checks that pin. See
-[add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
+[add-ons][add-ons] for the
 site layout and commands.
 
 `--example` declares a `todos` collection in `app/urlcode.yaml` and mounts it at
@@ -76,10 +121,10 @@ Host options, all optional:
 | Option | Default | Meaning |
 |---|---|---|
 | `database` | `STORE_DATABASE`, else `data/store.sqlite` beside `host.mjs` | Absolute path of the SQLite database, outside `app/`. |
-| `durability` | `STORE_DURABILITY`, else `'full'` | `'full'` (SQLite `synchronous=FULL`: a committed write survives power loss) or `'normal'` (`synchronous=NORMAL`: faster commits; the last ones before a power loss or OS crash can be lost, and the activation logs a warning). Anything else refuses to start. The `urlcode-store` operator commands always commit with `full`. See [durability](../../docs/STORE.md#durability). |
+| `durability` | `STORE_DURABILITY`, else `'full'` | `'full'` (SQLite `synchronous=FULL`: a committed write survives power loss) or `'normal'` (`synchronous=NORMAL`: faster commits; the last ones before a power loss or OS crash can be lost, and the activation logs a warning). Anything else refuses to start. The `urlcode-store` operator commands always commit with `full`. See [durability][store-durability]. |
 
 The example is API only: a frontend calls the JSON mount with `fetch`, as
-[the reference proof's client](../../proofs/private-requests/client) does.
+[the reference proof's client][reference-client] does.
 
 When `auth` is installed the example puts `auth: true` on the API mount (a
 signed-in session, and same-origin provenance for writes) and declares the
@@ -90,7 +135,7 @@ declares `audit: true`. Without `auth` the example refuses; the refusal prints t
 rate limiting, abuse protection or multi-tenant isolation).
 
 The full guide, HTTP contract, limits and the honest list of concurrency
-guarantees is [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
+guarantees is [docs/STORE.md][store-guide].
 Short version: one server process per database (supported and tested, not
 enforced: SQLite's locks keep another process from corrupting it, and a write
 blocked past the 2-second busy timeout answers `503`); every write is one SQLite
@@ -99,7 +144,7 @@ its audit event together or not at all; a retried `Idempotency-Key` replays the
 first status with the current record (a different request under it is `422`);
 per-collection record and byte quotas; last write wins unless a caller sends
 `If-Match`; each HTTP request changes one record. A `urlcode dev` hot reload shares the database connection with the
-replacement runtime (see [reload](../../docs/STORE.md#reload)). A collection is shared by default; one that holds
+replacement runtime (see [reload][store-reload]). A collection is shared by default; one that holds
 per-user data declares `ownership: owner`, and every request is then scoped to
 the principal a policy such as `auth: true` on its mount sets (another user's
 record is a `404`, records written before it became owned are served to nobody
@@ -110,7 +155,7 @@ collection every moved or deleted record is recorded, with the operator's
 optional `--actor`, and the report shows the undelivered events and warns when
 no server's audit drain has kept up in the last 60 seconds), and
 `maxRecordsPerOwner` caps each user's records with `409 owner_quota_exceeded`; see
-[per-record ownership](../../docs/STORE.md#per-record-ownership)). A collection may declare
+[per-record ownership][store-per-record-ownership]). A collection may declare
 `sortable` and `filterable` property lists for `?sort=<property>` /
 `?sort=-<property>` and `?<property>=<value>` list queries (one sort property,
 equality filters, `id` tie-break, opaque cursor; undeclared names, unparseable
@@ -118,7 +163,7 @@ values and values the property's own schema refuses are `400`s); they apply to
 the whole collection, or on an owned collection to the caller's own records. A
 `PATCH` that sets a property to `null` removes it; the result must still satisfy
 the schema, so a required property refuses that with a `422` issue, and `PUT`
-still takes only values (see [clearing a property](../../docs/STORE.md#clearing-a-property)).
+still takes only values (see [clearing a property][store-clearing-a-property]).
 
 A collection that declares `audit: true` records every write in the audit
 log (the store `uses` the `audit` extension; activation refuses such a
@@ -129,14 +174,14 @@ short-link click) is an event (`store.record.created`, `.replaced`, `.updated`,
 or `anonymous` as actor, and the changed property names, never values. The event
 is inserted into the store database's outbox table in the same transaction as
 the record and drained by audit while the host runs; when 1000 events wait
-undelivered the next write answers `503 audit_backlog` and changes nothing. See [audited writes](../../docs/STORE.md#audited-writes).
+undelivered the next write answers `503 audit_backlog` and changes nothing. See [audited writes][store-audited-writes].
 
 Back the database up while the server serves with
 `urlcode-store backup --database <absolute store.sqlite> --destination <absolute new file>`:
 an online copy through SQLite's backup API (Node 22.16 or newer) that refuses an
 existing destination, is written `0600` and is checked as a store database of the
 same schema version before it appears. To restore, stop the server and put the
-copy in place. See [backups](../../docs/STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee).
+copy in place. See [backups][store-backups].
 
 Another extension that requires the store reaches declared collections through
 its typed export, `StoreExports` (`ctx.get('store')`): `create`, `get`, a
@@ -144,7 +189,7 @@ partial `update` (which clears a property given `null`, like `PATCH`) and a
 paginated `list`, each scoped to the request principal exactly as the JSON API
 is, a declared `transition`, and `transaction(work)`, which runs several of those
 operations synchronously as one database transaction (trusted host code only,
-never sandboxed). See [using a collection from another extension](../../docs/STORE.md#using-a-collection-from-another-extension).
+never sandboxed). See [using a collection from another extension][store-using-a-collection-from-another-extension].
 
 ## Transitions
 
@@ -157,13 +202,13 @@ the owner run it, on a separate mount whose route policy decides who may; a
 `readOnly` property can only change through a transition.
 Transitions are not an expression language: interval constraints and
 multi-record transfers use a host transaction. See
-[conditional transitions and result-aware retries](../../docs/STORE.md#conditional-transitions-and-result-aware-retries).
+[conditional transitions and result-aware retries][store-conditional-transitions-and-result-aware-retries].
 A list carries each listed record's `ETag` in `etags` and the transitions the
 caller may run on it now in `may`, both keyed by id (one record's answer has
 them as the `ETag` and `Allow-Transitions` headers), so a client sends
 `If-Match` for the version it listed and offers only what the store would
 accept. `may` reads only the caller's own membership, once per gate; see
-[what the caller may run](../../docs/STORE.md#what-the-caller-may-run).
+[what the caller may run][store-what-the-caller-may-run].
 
 ## Membership gates
 
@@ -173,7 +218,9 @@ per member, keyed by principal id. It has no mount and no HTTP API: the
 operator maintains it with `urlcode-store members add|remove|list --database
 <absolute store.sqlite> --project <absolute app> --collection <name>
 [--principal <id>]` (or `addMember`, `removeMember` and `listMembers` from this
-package), and trusted extension code through `StoreExports`. With
+package), and trusted extension code through `StoreExports`. With auth, the
+principal id is the Better Auth user id: `npx urlcode-auth find-user --email
+<email>` prints it. With
 `audit: true` every added and removed member is recorded
 (`store.membership.added`/`.removed`, subject `<collection>/<principal id>`)
 in the same transaction as the change, and `urlcode-store reassign` moves a
@@ -185,7 +232,7 @@ list (with the declared filters and sort) and read every owner's records,
 read-only, on a separate mount; `showOwner: true` adds each record's owner id
 (`_owner`) to that mount's answers only. Membership is read inside each request's
 transaction, so a change applies to the next request. See
-[membership gates and cross-owner reads](../../docs/STORE.md#membership-gates-and-cross-owner-reads).
+[membership gates and cross-owner reads][store-membership-gates-and-cross-owner-reads].
 
 ## Short links
 
@@ -225,7 +272,7 @@ routes:
 ```
 
 Protect the CRUD mount according to who may create links (`auth: true` above
-needs the auth extension). [Bounded keyed transitions](../../docs/STORE.md#bounded-keyed-transitions)
+needs the auth extension). [Bounded keyed transitions][store-bounded-keyed-transitions]
 has the full rules for `key`, `increments` and `idempotency`; the
 [field reference](#field-reference) below lists every `shortLinks` key.
 
@@ -234,9 +281,33 @@ has the full rules for `key`, `increments` and `idempotency`; the
 The `store-schema` artifact (`urlcode artifacts add store-schema`) carries this
 extension's configuration schema and an example configuration as inert JSON
 for authoring tools; it does not register `store` or grant access to a data
-directory. See [artifacts](../../docs/EXTENSIONS.md#artifacts).
+directory. See [artifacts][extensions-artifacts].
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
+
+<!-- The links below are pinned to this release, so an installed copy of this README reads the docs of the
+version it describes; `npm run release:bump` moves them and scripts/check-local-links.ts checks their targets. -->
+<!-- urlcode-current-version:start -->
+[store-guide]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
+[store-http-contract]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#http-contract
+[store-openapi]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#openapi
+[http-error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
+[tooling-openapi-export]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#openapi-export
+[add-ons]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
+[store-durability]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#durability
+[reference-client]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/proofs/private-requests/client
+[store-reload]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#reload
+[store-per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership
+[store-clearing-a-property]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#clearing-a-property
+[store-audited-writes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes
+[store-backups]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee
+[store-using-a-collection-from-another-extension]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#using-a-collection-from-another-extension
+[store-conditional-transitions-and-result-aware-retries]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#conditional-transitions-and-result-aware-retries
+[store-what-the-caller-may-run]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#what-the-caller-may-run
+[store-membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads
+[store-bounded-keyed-transitions]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#bounded-keyed-transitions
+[extensions-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
+<!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
 <!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->

@@ -296,11 +296,13 @@ export const budgets: Record<string, Budget> = {
     // unpacked bytes, 511 entries (CI's Node 24 packs ~800 bytes larger); about 3 KiB of headroom on each.
     // With #912/#915 on top of #918's main: measured on Node 26 at 981421 packed / 3858779 unpacked bytes, 511 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    // With #910/#913 on top of #919's main: measured on Node 26 at 990455 packed / 3893675 unpacked bytes, 511 entries
+    // With the #911/#916/#917 trial fixes on top of #919's main: measured on Node 26 at 990298 packed / 3912067 unpacked bytes, 515 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 972 * 1024,
-    unpacked: 3806 * 1024,
-    entries: 515,
+    // With #910/#913 on top of #921's main: measured on Node 26 at 1000001 packed / 3946963 unpacked bytes, 515 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 981 * 1024,
+    unpacked: 3858 * 1024,
+    entries: 519,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
@@ -349,9 +351,9 @@ export const budgets: Record<string, Budget> = {
     // Raised to 96 KiB packed and 372 KiB unpacked for #861/#881: the JSON Schema 2020-12 record schema (its config
     // schema again in urlcode.json and the README field reference) and the OpenAPI description (dist/openapi.js and
     // its declarations), merged with #897's audit drain status, measure 95170 packed and 371009 unpacked bytes (Node 26).
-    // Raised to 100 KiB packed and 376 KiB unpacked for #913: the authoring contract split into ownership,
-    // transitions, membership and readers surfaces with planner goals (dist/authoring.js, urlcode.json and the README
-    // surface list), on top of #904's durability setting, measure 98901 packed and 381898 unpacked bytes (Node 26).
+    // Raised to 100 KiB packed and 375 KiB unpacked for #916/#917: the README's list and error response shapes, its
+    // release-pinned reference links and the find-user pointer measure 98949 packed / 379791 unpacked bytes, 32
+    // entries (Node 26), keeping about 3.4 KiB and 4.2 KiB of headroom.
     packed: 100 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator

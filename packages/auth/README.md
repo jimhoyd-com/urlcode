@@ -17,6 +17,12 @@ npx urlcode-auth migrate
 echo '{"email":"you@example.com","password":"a long local password","name":"You"}' | npx urlcode-auth create-user
 ```
 
+`npx urlcode-auth find-user --email you@example.com` prints that user's id,
+email, name and `createdAt` as one JSON line (exit `1` when no user has the
+email), through Better Auth's own lookup rather than SQL. The id is the
+principal a protected route receives and what `urlcode-store members add
+--principal` takes. It only reads: it never migrates or creates the database.
+
 `add` writes `extensions.auth` (empty config), a `/api/auth/*` mount route and
 a private `data/auth.secret`, and adds `auth()` to `host.mjs`. `migrate`
 creates Better Auth's tables in `data/auth.sqlite`; the extension refuses to
@@ -62,7 +68,7 @@ Test a protected route with a request fixture that signs in through
 with an account `create-user` made for testing; the fixture's cookie jar keeps
 the session, and `"origin":"{{origin}}"` passes the same-origin check. There is
 no test principal that skips the gate. See
-[authenticated routes](../../docs/READINESS.md#authenticated-routes-auth-true).
+[authenticated routes][readiness-authenticated-routes].
 
 Identity is not permission. Roles, ownership and approvals are application
 data keyed by that id. A `sandbox: true` route cannot name `auth`: the
@@ -157,3 +163,7 @@ Accounts and sessions served by Better Auth on one extension mount. Protect a ro
 
 Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --origin <origin>`.
 <!-- extension-reference:end -->
+
+<!-- urlcode-current-version:start -->
+[readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
+<!-- urlcode-current-version:end -->

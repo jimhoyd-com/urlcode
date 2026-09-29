@@ -27,4 +27,4 @@
   broadcast beyond the shared database.
 
 Report vulnerabilities through the repository's private reporting path; see the
-root [SECURITY.md](../../SECURITY.md).
+root [security policy](https://github.com/jimhoyd-com/urlcode/security/policy).

@@ -124,7 +124,11 @@ application/json` (`415` otherwise); an `Origin` header on a write that is
 neither `--origin` nor an operator
 [alias origin](EXTENSIONS.md#site-origins-and-same-origin-checks) is refused
 (`403`). Errors are `{error: {code, message, issues?, fields?}}`; submitted
-values are never echoed. A record that breaks the [record schema](#record-schema)
+values are never echoed. A route's own body-schema `422` has the same
+`{error: {code, message, issues}}` shape only when the site sets
+`errors: {format: json}` for its path (code `UNPROCESSABLE_CONTENT`); otherwise
+it is `{error: "body_validation_failed", message, issues}`. See
+[one parser for runtime and store errors](HTTP.md#error-format). A record that breaks the [record schema](#record-schema)
 is `422 invalid_record` with `issues`, the same bounded issue list (pointer,
 keyword, message, `expected`, `property`) a route's body schema answers
 ([body schema](HTTP.md#body-schema-and-input-patterns)); like it, the validator
@@ -422,7 +426,9 @@ still has no roles, and `auth` gains none.
   `{collection, members}` in the order they were added. `--principal` must be
   a principal id exactly as the principal provider sets it (for auth, the user
   id; for a bearer key, `apikey:<key id>`); anything else is refused and not
-  echoed.
+  echoed. For an auth user, `npx urlcode-auth find-user --email <email>` in the
+  site prints that id (`{"event":"user-found","id",…}`), including for a user
+  who signed themselves up.
 - **Membership changes are evidence** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
   A membership collection may declare `audit: true`. Then every added member
   is recorded as `store.membership.added` and every removed one as

@@ -17,7 +17,7 @@
 // and nothing noticed.
 //
 // Both failures are invisible to lint, typecheck and the test suites, which is
-// why this is a check rather than a review habit. It FAILS (exit 1); four rules:
+// why this is a check rather than a review habit. It FAILS (exit 1); five rules:
 //
 //   1. retired-repository  A link to `jimhoyd-com/urlcode-<name>` where
 //                          `packages/<name>/` exists in this checkout. Derived
@@ -36,6 +36,19 @@
 //                          repeated heading suffixed `-1`, `-2`, ...) plus any
 //                          explicit `<a id="...">` / `<a name="...">`.
 //                          Headings inside fenced code blocks are not anchors.
+//   5. shipped-link        A Markdown file a package ships (its README.md and
+//                          any root .md its package.json `files` names) links
+//                          a relative path outside the package, which an
+//                          installed copy cannot follow, or this repository's
+//                          `blob/main` or `tree/main`, which is not the version
+//                          installed (#916). Link this repository's
+//                          `blob/v<current version>/...` instead, inside a
+//                          `urlcode-current-version` block so the release bump
+//                          moves it.
+//
+// A `blob/v<current version>/<path>` or `tree/v<current version>/<path>` link
+// to this repository is checked like a relative link against the checkout:
+// the path must exist and a Markdown fragment must name an anchor.
 //
 // What it scans: every authored Markdown file in the checkout. Build output,
 // dependencies and dotted directories are skipped -- the latter also keeps the
@@ -169,6 +182,42 @@ const REFERENCE_LINK = /^\s*\[[^\]]+\]:\s+(\S+)/;
 
 const exists = async (path: URL): Promise<boolean> => stat(path).then(() => true, () => false);
 
+const REPOSITORY = 'https://github.com/jimhoyd-com/urlcode/';
+/**
+ * The repository path (with any `#fragment`) a link to this repository pinned at `version` names, or undefined for any
+ * other target. `https://github.com/jimhoyd-com/urlcode/blob/v1.2.3/docs/STORE.md#openapi` is `docs/STORE.md#openapi`.
+ */
+export function pinnedRepositoryPath(target: string, version: string): string | undefined {
+  for (const kind of ['blob', 'tree']) {
+    const prefix = `${REPOSITORY}${kind}/v${version}/`;
+    if (target.startsWith(prefix) && target.length > prefix.length) return target.slice(prefix.length);
+  }
+  return undefined;
+}
+/**
+ * Why `target`, linked from `file` (a repository path such as `packages/store/README.md`) that its package ships,
+ * cannot be followed from an installed copy; undefined when it can.
+ */
+export function shippedLinkProblem(file: string, target: string): string | undefined {
+  if (/^https:\/\/github\.com\/jimhoyd-com\/urlcode\/(?:blob|tree)\/main(?:\/|$)/.test(target)) return `links \`${target}\`, this repository's main branch, from a file the package ships; an installed copy should read the docs of its own version: link \`blob/v<current version>/...\` inside a urlcode-current-version block.`;
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(target)) return undefined;
+  const directory = file.slice(0, file.lastIndexOf('/') + 1), packageRoot = /^packages\/[^/]+\//.exec(file)?.[0];
+  if (!packageRoot) return undefined;
+  const resolved = new URL(target.replace(/[#?].*$/, ''), `file:///${directory}`).pathname.slice(1);
+  return resolved.startsWith(packageRoot) ? undefined : `links \`${target}\`, outside ${packageRoot}, from a file the package ships; an installed copy has no such file: link this repository's \`blob/v<current version>/...\` inside a urlcode-current-version block.`;
+}
+/** The Markdown files each package ships: README.md and every root-level .md its package.json `files` names. */
+async function shippedMarkdown(packages: readonly string[]): Promise<Set<string>> {
+  const shipped = new Set<string>();
+  for (const name of packages) {
+    const manifest = await readFile(new URL(`packages/${name}/package.json`, root), 'utf8').then(text => JSON.parse(text) as { files?: unknown }, () => undefined);
+    if (!manifest) continue;
+    shipped.add(`packages/${name}/README.md`);
+    if (Array.isArray(manifest.files)) for (const entry of manifest.files) if (typeof entry === 'string' && /^[^/]+\.md$/.test(entry)) shipped.add(`packages/${name}/${entry}`);
+  }
+  return shipped;
+}
+
 interface Failure { file: string; line: number; rule: string; detail: string }
 
 async function main(): Promise<void> {
@@ -177,6 +226,8 @@ async function main(): Promise<void> {
     .filter(entry => entry.isDirectory())
     .map(entry => entry.name);
   const RETIRED = new RegExp(`jimhoyd-com/urlcode-(${packageDirectories.join('|')})\\b`, 'g');
+  const shipped = await shippedMarkdown(packageDirectories);
+  const version = (JSON.parse(await readFile(new URL('package.json', root), 'utf8')) as { version: string }).version;
 
   const anchorCache = new Map<string, Set<string>>();
   const anchorsOf = async (target: URL): Promise<Set<string>> => {
@@ -244,20 +295,27 @@ async function main(): Promise<void> {
       const targets = [...line.matchAll(INLINE_LINK)].map(match => match[1] ?? '');
       const reference = REFERENCE_LINK.exec(line);
       if (reference?.[1]) targets.push(reference[1]);
-      for (const target of targets) {
-        // Absolute URLs, protocol-relative URLs and mail links are somebody
+      for (const rawTarget of targets) {
+        if (shipped.has(file)) {
+          const problem = shippedLinkProblem(file, rawTarget);
+          if (problem) { failures.push({ ...where, rule: 'shipped-link', detail: problem }); continue; }
+        }
+        // A link to this repository at the current version is checked against the checkout.
+        const pinned = pinnedRepositoryPath(rawTarget, version);
+        const target = pinned ?? rawTarget;
+        // Other absolute URLs, protocol-relative URLs and mail links are somebody
         // else's to resolve. A bare `#fragment` names this file.
-        if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(target)) continue;
+        if (pinned === undefined && /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(target)) continue;
         const path = target.replace(/[#?].*$/, '');
         let resolved = self;
         if (path !== '') {
           links += 1;
-          resolved = new URL(path, directory);
+          resolved = new URL(path, pinned === undefined ? directory : root);
           if (!(await exists(resolved))) {
             failures.push({
               ...where,
               rule: 'dead-relative-link',
-              detail: `links \`${target}\`, which does not exist relative to this file.`,
+              detail: pinned === undefined ? `links \`${target}\`, which does not exist relative to this file.` : `links \`${rawTarget}\`, but \`${path}\` does not exist in this checkout.`,
             });
             continue;
           }
