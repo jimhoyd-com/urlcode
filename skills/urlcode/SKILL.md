@@ -80,7 +80,7 @@ field inventory in `llms-full.txt`; search only for the key you need.
    caching, throttling and authentication wherever the runtime or a supported
    extension provides them. Use custom code only for the unmet requirement.
    Where a short form exists, it is the highest-level form: `auth: true` on a
-   route whose project declares an `auth` extension, and `cache: { … }` for `policies.cache`. Each expands to the long
+   route whose project declares one extension that provides the request principal (such as `auth`), and `cache: { … }` for `policies.cache`. Each expands to the long
    form; declaring both is refused.
 
 Keep every route you were not asked to change. Match the file organization the

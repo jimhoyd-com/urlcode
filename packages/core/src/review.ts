@@ -1,5 +1,5 @@
 import {readFile} from 'node:fs/promises';
-import {relative, sep} from 'node:path';
+import {dirname, relative, sep} from 'node:path';
 import {functionFile} from './config.ts';
 import {routeFunctions, MODULE_BYTE_LIMIT} from './function-sources.ts';
 import {prepare} from './tooling.ts';
@@ -8,6 +8,7 @@ import {effectivePolicies} from './policies.ts';
 import type {RuntimeExtension} from './extensions.ts';
 import {normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityTarget} from './capabilities.ts';
+import {principalProvidersOf} from './addon-manifest.ts';
 
 // Read-only static review; see docs/TOOLING.md#project-review.
 export type ReviewCategory = 'native-alternative' | 'extension-alternative' | 'gap' | 'manual-review';
@@ -144,6 +145,8 @@ export async function reviewProject(project: string, options: InspectOptions = {
   };
   const refusedNote = (name: string, refused: CapabilityTarget): string => `${name} is declared but does not run on ${refused} (its declared targets), so it is no alternative there. `;
   const declaredExtensions = new Set(Object.keys(loaded.document.extensions ?? {}));
+  // The session hint follows the contract, not a name: the declared extensions that provide a principal.
+  const principalProviders = await principalProvidersOf(dirname(loaded.root), [...declaredExtensions], options.extensions);
   interface ModuleInfo { source: string; routes: Set<string>; routesMissingSchema: Set<string>; routesWithThrottle: Set<string>; routesWithSecurity: Set<string>; handlerRoutes: Set<string>; middleware: boolean; boundArgs: boolean }
   const modules = new Map<string, ModuleInfo>();
   for (const route of routes) {
@@ -194,21 +197,27 @@ export async function reviewProject(project: string, options: InspectOptions = {
 
     const cookieSession = detectCookieSession(source);
     if (cookieSession) {
-      const authRefused = declaredExtensions.has('auth') ? refusedOn('auth') : undefined;
-      const authDeclared = declaredExtensions.has('auth') && authRefused === undefined;
-      const authStatus = authDeclared ? extensionStatus('auth', options.extensions, projectSha256) : undefined;
+      // Providers that do not run on the requested target are no alternative there (#875).
+      const usable = principalProviders.filter(name => refusedOn(name) === undefined);
+      const refusedProvider = principalProviders.find(name => refusedOn(name) !== undefined);
+      const refused = usable.length ? undefined : refusedProvider === undefined ? undefined : refusedOn(refusedProvider);
+      const [provider, ...others] = usable;
+      const providerStatus = provider !== undefined && !others.length ? extensionStatus(provider, options.extensions, projectSha256) : undefined;
+      const gate = `protect the route with auth: true (it expands to policies.extensions.${provider}) and read the signed-in user from the capability ${provider} documents`;
       push(cookieSession, {
-        category: authDeclared ? 'extension-alternative' : 'manual-review', signal: 'manual-cookie-session', routes: routesList, confidence: 'medium',
+        category: provider !== undefined ? 'extension-alternative' : 'manual-review', signal: 'manual-cookie-session', routes: routesList, confidence: 'medium',
         reason: 'Hand-built Set-Cookie with session values (id, token, expiry, HttpOnly).',
-        ...(authDeclared ? {extension: 'auth'} : {}), ...(authRefused ? {refusedOn: authRefused} : {}),
-        ...(authStatus?.registered ? {registered: true, revisionPinned: authStatus.revisionPinned} : {}),
-        note: authDeclared
-          ? authStatus?.registered
-            ? authStatus.revisionPinned
-              ? 'auth is registered and revision-pinned to this project: Better Auth owns sessions and cookies, so protect the route with auth: true and read context.capabilities.auth.identity.userId; hand-built cookies still need a human decision.'
-              : 'auth is registered but not revision-pinned to this project\'s current revision; once it is, Better Auth owns sessions and the route reads context.capabilities.auth.identity.userId behind auth: true. Hand-built cookies still need a human decision.'
-            : 'auth owns sessions through Better Auth once registered; protect the route with auth: true and read context.capabilities.auth.identity.userId. Hand-built cookies still need a human decision.'
-          : `${authRefused ? refusedNote('auth', authRefused) : 'No session extension declared; '}needs human review (rotation, invalidation).`,
+        ...(provider !== undefined && !others.length ? {extension: provider} : {}), ...(refused ? {refusedOn: refused} : {}),
+        ...(providerStatus?.registered ? {registered: true, revisionPinned: providerStatus.revisionPinned} : {}),
+        note: provider === undefined
+          ? `${refused ? refusedNote(refusedProvider!, refused) : 'No declared extension provides a principal; '}needs human review (rotation, invalidation).`
+          : others.length
+            ? `${usable.join(' and ')} each provide a principal and own their sessions; protect the route with policies.extensions.<name> for the one it uses. Hand-built cookies still need a human decision.`
+            : providerStatus?.registered
+              ? providerStatus.revisionPinned
+                ? `${provider} is registered and revision-pinned to this project and provides the request principal, owning sessions and cookies: ${gate}. Hand-built cookies still need a human decision.`
+                : `${provider} is registered but not revision-pinned to this project's current revision; once it is, it owns sessions: ${gate}. Hand-built cookies still need a human decision.`
+              : `${provider} provides the request principal and owns sessions once registered: ${gate}. Hand-built cookies still need a human decision.`,
       });
     }
 

@@ -77,6 +77,17 @@ test('an extension registers exactly the targets its definition declares, which 
   for (const targets of [[], ['node', 'node'], ['cloudflare']]) assert.throws(() => defineExtension({ ...base, name: 'bad', targets: targets as never }), /targets must list node, aws, vercel once each/);
 });
 
+test('an extension registers providesPrincipal exactly when its definition declares it, which urlcode.json carries (#888)', async t => {
+  const registration = (ctx: { projectSha256: string }, providesPrincipal?: boolean) => ({ registration: { name: 'gate', version: '1' as const, projectSha256: ctx.projectSha256, targets: ['node' as const], schema, ...(providesPrincipal === undefined ? {} : { providesPrincipal }), activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } });
+  const undeclared = defineExtension({ name: 'gate', description: 'Synthetic gate', targets: ['node'], schema, host: ctx => registration(ctx, true) });
+  await assert.rejects(composed(t, [undeclared()]), /gate registers providesPrincipal true, which differs from its definition's/);
+  const declared = defineExtension({ name: 'gate', description: 'Synthetic gate', targets: ['node'], providesPrincipal: true, schema, host: ctx => registration(ctx) });
+  await assert.rejects(composed(t, [declared()]), /gate registers providesPrincipal false, which differs from its definition's/);
+  const agreed = defineExtension({ name: 'gate', description: 'Synthetic gate', targets: ['node'], providesPrincipal: true, schema, host: ctx => registration(ctx, true) });
+  assert.equal((await composed(t, [agreed()])).extensions![0]!.providesPrincipal, true);
+  assert.throws(() => defineExtension({ name: 'gate', description: 'Synthetic gate', targets: ['node'], providesPrincipal: 'yes' as never, schema, host: ctx => registration(ctx) }), /providesPrincipal must be a boolean/);
+});
+
 test('get returns the producer exports when present and undefined when absent', async t => {
   let saw: unknown = 'unset';
   const consumer = synthetic('consumer', { uses: ['producer'] }, ctx => { saw = ctx.get('producer'); return saw; });

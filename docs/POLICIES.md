@@ -40,15 +40,18 @@ routes:
 
 `policies` at the top level sets project defaults; `routes.<path>.policies`
 adjusts them for one route. Two route-level short forms exist. `auth`
-expands to `policies.extensions.auth` when the project declares an auth
-[extension](EXTENSIONS.md), carrying the same keys minus `required`;
+expands to `policies.extensions.<provider>`, where the provider is the one
+declared [extension](EXTENSIONS.md#protecting-a-route-the-auth-short-form)
+whose descriptor declares `providesPrincipal` (whatever its name), carrying the
+same keys minus `required`;
 `required: false` documents the intent and emits no policy. The installed
 extension's policy schema decides which other keys are accepted: the
 first-party `auth` accepts none, so write `auth: true`
 ([auth](../packages/auth/README.md#protect-a-route)). Like
 `cache` below, it is refused rather than silently ignored in three cases: when
-the project declares no `extensions.auth`, when the route also sets
-`policies.extensions.auth` (use one form), and when the route sets
+no declared extension provides a principal or more than one does (name it with
+`policies.extensions.<name>`), when the route also sets
+`policies.extensions.<provider>` (use one form), and when the route sets
 `policies.extensions: false`. `cache: {strategy, maxAge, ...}` expands to
 `policies.cache` the same way — the compiler merges it into that route's
 `policies` before anything else reads the project, so `routes`, `audit` and

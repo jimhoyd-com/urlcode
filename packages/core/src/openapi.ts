@@ -1,9 +1,10 @@
-import {basename} from 'node:path';
+import {basename,dirname} from 'node:path';
 import mime from 'mime-types';
 import {prepare} from './tooling.ts';
 import type {InspectOptions} from './tooling.ts';
 import {explainCompiledRoute} from './explain.ts';
 import {effectiveExtensionPolicies} from './extensions.ts';
+import {principalProvidersOf} from './addon-manifest.ts';
 import {bodyPolicy,bodylessMethods} from './http-policy.ts';
 import type {RequestBodyPolicy} from './http-policy.ts';
 import {bodySchemaDialect} from './body-validation.ts';
@@ -69,7 +70,9 @@ const components={
     properties:{pointer:{type:'string',description:'RFC 6901 pointer into the body; array positions are /[] and undeclared keys /*.'},keyword:{type:'string'},message:{type:'string'},expected:{description:'The type, bound, format or declared values the schema states, when it states one.'},property:{type:'string'}},
   },
 } as const;
-const sessionScheme='urlcodeSession';
+/** The security scheme for routes a principal-providing extension gates, one per provider: `urlcodeSession.<name>`. */
+const sessionScheme=(provider:string):string=>`urlcodeSession.${provider}`;
+const extensionList=(names:readonly string[]):string=>names.length===1?`the ${names[0]} extension`:`the ${names.slice(0,-1).join(', ')} and ${names.at(-1)} extensions`;
 
 /** A runtime-written error answer in the route's error format. */
 function runtimeError(format:ErrorFormat,description:string):Json {
@@ -132,7 +135,8 @@ function assetResponses(route:CompiledRoute):Record<string,Json> {
   };
 }
 /** The responses URLCode itself knows for one method of a route. */
-function responses(route:CompiledRoute,method:string,format:ErrorFormat,chain:PolicyChain|undefined,gates:string[],body:RequestBodyPolicy|undefined):Record<string,Json> {
+/** `signIn` are the gates that provide the request principal (`providesPrincipal`): a sign-in gate, whatever it is named. */
+function responses(route:CompiledRoute,method:string,format:ErrorFormat,chain:PolicyChain|undefined,gates:string[],signIn:string[],body:RequestBodyPolicy|undefined):Record<string,Json> {
   const out:Record<string,Json>={};
   const kind=route.redirect?'redirect':route.respond?'respond':route.conditional?'conditional':route.page||route.download?'asset':route.proxy?'proxy':'handler';
   if(kind==='redirect'||kind==='respond'){const {status,response}=reply(route);out[String(status)]=response;}
@@ -164,14 +168,14 @@ function responses(route:CompiledRoute,method:string,format:ErrorFormat,chain:Po
       ?{description:'The body failed the declared schema.',content:{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeErrorEnvelope'}}}}
       :{description:'The body failed the declared schema.',content:{'application/json':{schema:{$ref:'#/components/schemas/UrlcodeBodyValidationError'}}}};
   }
-  if(gates.includes('auth')){
-    out['401']={description:'No verified session: refused by the auth extension before the handler runs. The body is extension-defined.'};
-    out['403']={description:'Refused by the auth extension before the handler runs (for example a cross-origin unsafe request). The body is extension-defined.'};
+  if(signIn.length){
+    out['401']={description:`No verified session: refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
+    out['403']={description:`Refused by ${extensionList(signIn)} before the handler runs (for example a cross-origin unsafe request). The body is extension-defined.`};
   }
   const throttle=chain?.describe.throttle,agents=chain?.describe.agents;
   if(throttle?.mode==='enforce'&&throttle.status!==undefined)out[String(throttle.status)]={description:'Refused by the throttle policy.',headers:{'Retry-After':{schema:{type:'integer'}}},content:{'text/plain':{schema:{type:'string'}}}};
   if(agents?.mode==='enforce'&&agents.status!==undefined)out[String(agents.status)]??={description:'Refused by the agents policy.',content:{'text/plain':{schema:{type:'string'}}}};
-  const unknown=[...(route.middleware.length?['middleware']:[]),...gates.filter(name=>name!=='auth').map(name=>`the ${name} extension`)];
+  const unknown=[...(route.middleware.length?['middleware']:[]),...gates.filter(name=>!signIn.includes(name)).map(name=>`the ${name} extension`)];
   if(unknown.length&&!out.default)out.default={description:`May be answered by ${unknown.join(' or ')} before the handler; not described by URLCode.`};
   if(method==='HEAD')for(const [key,value] of Object.entries(out)){const {content:_content,...rest}=value;out[key]=rest;}
   return Object.fromEntries(Object.entries(out).sort(([a],[b])=>compare(a,b)));
@@ -183,7 +187,9 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
   const scope=errorScope(loaded.document.site?.errors?.paths),taken=new Set<string>();
   const paths:Record<string,Json>={},schemas:Record<string,unknown>={},facts:OpenApiFacts={urlcode:await runningCoreVersion(),revision:projectSha256,opaqueMounts:[],omitted:[],
     note:'Generated from the compiled configuration. Handler-defined responses have no schema; paths below opaque mounts are served by their provider and not enumerated. Binding names and values, egress targets, module paths and operator policy are never included.'};
-  let secured=false;
+  // Sign-in gates follow the contract, not a name: the declared registrations that provide a principal when a host
+  // file is loaded, else the installed descriptors (RIM-EXT-PRINCIPAL-001).
+  const providers=await principalProvidersOf(dirname(loaded.root),Object.keys(loaded.document.extensions??{}),options.extensions),secured=new Set<string>();
   for(const route of [...routes].sort((a,b)=>compare(a.pattern,b.pattern))){
     if(route.enabled===false){facts.omitted.push({path:route.pattern,reason:'disabled'});continue;}
     if(route.prefix!==undefined){
@@ -193,7 +199,7 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
       continue;
     }
     const chain=chains.get(route.pattern),explanation=explainCompiledRoute(loaded,route,chain,{extensions:options.extensions,projectSha256,now:0});
-    const gates=Object.keys(effectiveExtensionPolicies(loaded.document,route)).sort(compare);
+    const gates=Object.keys(effectiveExtensionPolicies(loaded.document,route)).sort(compare),signIn=gates.filter(name=>providers.includes(name));
     const format=resolveErrorFormat(route.errors?.format,scope,route.pattern);
     const item:Json={};
     if(route.description)item.description=route.description;
@@ -204,8 +210,8 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
       const body=policy&&!bodylessMethods.includes(method)?requestBody(policy,name[0]!.toUpperCase()+name.slice(1),schemas):undefined;
       if(body)operation.requestBody=body;
       else if(policy?.maxBytes!==undefined)operation['x-urlcode']={body:{maxBytes:policy.maxBytes}};
-      operation.responses=responses(route,method,format,chain,gates,policy);
-      if(gates.includes('auth')){operation.security=[{[sessionScheme]:[]}];secured=true;}
+      operation.responses=responses(route,method,format,chain,gates,signIn,policy);
+      if(signIn.length){operation.security=[Object.fromEntries(signIn.map(name=>[sessionScheme(name),[]]))];for(const name of signIn)secured.add(name);}
       item[method.toLowerCase()]=operation;
     }
     const code=Boolean(route.function)||route.middleware.length>0,policies=explanation.policies.names.filter(name=>!name.startsWith('extensions.'));
@@ -231,9 +237,9 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
     paths,
     components:{
       schemas:{...structuredClone(components) as Record<string,unknown>,...Object.fromEntries(Object.entries(schemas).sort(([a],[b])=>compare(a,b)))},
-      ...(secured?{securitySchemes:{[sessionScheme]:{type:'apiKey',in:'cookie',name:'session',
-        description:'A session cookie set by the auth extension at sign-in and sent by the browser. Its real name is the operator\'s auth configuration and is not published here: `session` is a placeholder.',
-        'x-urlcode':{extension:'auth',cookieName:'operator-defined'}}}}:{}),
+      ...(secured.size?{securitySchemes:Object.fromEntries([...secured].sort(compare).map(name=>[sessionScheme(name),{type:'apiKey',in:'cookie',name:'session',
+        description:`A session credential the ${name} extension issues at sign-in and verifies before the handler runs; it provides the request principal. Its real cookie name is the operator's ${name} configuration and is not published here: \`session\` is a placeholder.`,
+        'x-urlcode':{extension:name,cookieName:'operator-defined'}}]))}:{}),
     },
     'x-urlcode':facts,
   };

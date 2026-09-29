@@ -6,6 +6,7 @@
   "targets": [
     "node"
   ],
+  "providesPrincipal": true,
   "schema": {
     "type": "object",
     "additionalProperties": false,

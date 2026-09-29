@@ -257,8 +257,14 @@ export const budgets: Record<string, Budget> = {
     // Unpacked raised from 3576 to 3584 KiB for #875 (descriptor targets in explain/manifest/context/review, the
     // manifest's per-target `refused` count, and the STORE/TOOLING/CAPABILITIES operator-audit sections): measured
     // on Node 26 at 3664264 unpacked bytes, 2440 over the old budget.
-    packed: 902 * 1024,
-    unpacked: 3584 * 1024,
+    // Raised for #888: the auth: short form, OpenAPI security and review follow providesPrincipal rather than the
+    // name auth (principal-provider resolution in addon-manifest.ts, the EXTENSIONS/POLICIES/TOOLING/
+    // RUNTIME-IMPLEMENTATION prose and schema descriptions with their llms-full.txt and YAML-REFERENCE.md copies).
+    // Measured on Node 26 against main with #875, #886 and #890 merged: 927468 packed bytes (3820 over 902 KiB)
+    // and 3681030 unpacked bytes (11014 over 3584 KiB), so packed is raised to 909 KiB and unpacked to 3598 KiB,
+    // about 3 KiB of headroom on each.
+    packed: 909 * 1024,
+    unpacked: 3598 * 1024,
     entries: 500,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

@@ -41,9 +41,10 @@ const policySchema = {type: 'object', properties: {}, additionalProperties: fals
 const token = process.env.API_DEMO_TOKEN; // "demo-token" reproduces tests/requests.json
 const demoAuth = defineExtension({
   name: 'auth', description: 'Demo bearer-token check; a protocol example, not authentication.', targets: ['node', 'aws', 'vercel'], schema, policySchema,
+  providesPrincipal: true, // auth: true expands to the one declared extension that provides the principal
   host({projectSha256}) { // the reviewed revision, never recomputed from the project
     return {registration: {
-      name: 'auth', version: '1', projectSha256, targets: ['node', 'aws', 'vercel'], schema, policySchema,
+      name: 'auth', version: '1', projectSha256, targets: ['node', 'aws', 'vercel'], schema, policySchema, providesPrincipal: true,
       activate(config) {
         return {
           handle() { return {status: 404, headers: [], body: 'no auth mount declared'}; },

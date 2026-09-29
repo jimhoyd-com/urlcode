@@ -15,6 +15,7 @@
 import {Ajv} from 'ajv';
 import {loadDocument,parseYaml,validateDocument,normalizeRouteAuth} from './config.ts';
 import {ConfigError} from './errors.ts';
+import {releasePrincipalProviders} from './addon-manifest.ts';
 import {bodyPolicy} from './http-policy.ts';
 import {contextFor,matchRoute,parameterName,parseTarget,redirectLocation} from './match.ts';
 import type {CompiledParameter,CompiledRoutes,MatchableRoute,ParameterSchema,RedirectSpec} from './match.ts';
@@ -63,7 +64,11 @@ const scalarKeywords=new Set(['type','enum','default','minLength','maxLength','m
 const runnerHeaders=new Set(['host','user-agent','connection','content-length','transfer-encoding']);
 const unmatchedCandidates=['/__urlcode-fixture-unmatched','/__urlcode-fixture/unmatched/path'];
 
-/** Parsed and schema-validated document with the `auth:` short form expanded, as every runtime consumer sees it. Throws on invalid YAML. */
+/**
+ * Parsed and schema-validated document with the `auth:` short form expanded, as every runtime consumer sees it.
+ * Text mode has no installed descriptors, so the short form resolves against this core's release catalog
+ * (`releasePrincipalProviders`): an independent principal provider resolves in project mode only. Throws on invalid YAML.
+ */
 export function readProjectYaml(text:string, label='YAML'):{document:ProjectDocument; routes:Record<string,RouteConfig>} {
   if(typeof text!=='string')throw new TypeError(`${label} must be a string`);
   if(Buffer.byteLength(text)>MAX_YAML_BYTES)throw new ConfigError(`${label} exceeds 1 MiB`);
@@ -71,7 +76,7 @@ export function readProjectYaml(text:string, label='YAML'):{document:ProjectDocu
   try{document=validateDocument(parseYaml(text));}
   catch(error){throw new ConfigError(`Invalid URLCode ${label}: ${error instanceof Error?error.message:'invalid document'}`);}
   const routes=Object.assign(Object.create(null) as Record<string,RouteConfig>,document.routes);
-  try{normalizeRouteAuth(document,routes);}
+  try{normalizeRouteAuth(document,routes,Object.values(routes).some(route=>route.auth!==undefined)?releasePrincipalProviders():[]);}
   catch(error){throw new ConfigError(`Invalid URLCode ${label}: ${error instanceof Error?error.message:'invalid auth short form'}`);}
   return {document,routes};
 }

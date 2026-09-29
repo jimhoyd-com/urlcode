@@ -51,14 +51,14 @@ routes:
     description: The signed-in user's own requests. GET lists them (status=pending or approved filters) or reads one; POST creates a pending one.
     extension: store
     methods: [GET, POST]
-    policies: {extensions: {authjs: {}}}
+    auth: true
   /api/approvals/*:
     description: POST /api/approvals/<id> approves another user's pending request; reviewers only.
     extension: store
     methods: [POST]
-    policies: {extensions: {authjs: {}}}
+    auth: true
   /api/review/*:
     description: Every owner's requests, read-only, for reviewers only; GET /api/review?status=pending is the review queue.
     extension: store
     methods: [GET]
-    policies: {extensions: {authjs: {}}}
+    auth: true
