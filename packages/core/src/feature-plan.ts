@@ -113,17 +113,46 @@ function matchedTerms(goalTerms:string[],recipe:Recipe):string[] {
 }
 /** A recipe that needs `<name> extension` as a service answers the goal terms that extension's matched surfaces named. */
 function extensionTerms(recipe:Recipe,surfaceTerms:ReadonlyMap<string,readonly string[]>):string[] {
- return (recipe.services??[]).flatMap(service=>{const match=/\b([a-z][a-z0-9-]*) extension\b/i.exec(service.name);return match?surfaceTerms.get(match[1]!.toLowerCase())??[]:[];});
+ return recipeExtensions(recipe).flatMap(name=>surfaceTerms.get(name)??[]);
 }
+/** The extensions a recipe's `services` name as `<name> extension`. */
+function recipeExtensions(recipe:Recipe):string[] {
+ return (recipe.services??[]).flatMap(service=>{const match=/\b([a-z][a-z0-9-]*) extension\b/i.exec(service.name);return match?[match[1]!.toLowerCase()]:[];});
+}
+/**
+ * The recipes an extension fallback may offer on words the goal shares only with that extension's surfaces (#957).
+ * Those words are inherited by every recipe built on the extension, so they are not distinctive: they select only the
+ * extension's general recipe (the one needing the fewest services, as store-crud needs the store alone), for the
+ * extension whose surfaces the goal named most. A specialised recipe (store-booking, store-credits need the store and
+ * auth) is offered only on its own terms, so an approval goal's "submit", "approve" or "reviewers" never selects it.
+ */
+function generalExtensionRecipes(recipes:Recipe[],surfaceTerms:ReadonlyMap<string,readonly string[]>):Recipe[] {
+ const most=Math.max(0,...[...surfaceTerms.values()].map(words=>words.length));
+ return [...surfaceTerms].filter(([,words])=>words.length>0&&words.length===most).flatMap(([name])=>{
+  const built=recipes.filter(recipe=>recipeExtensions(recipe).includes(name));
+  const fewest=Math.min(...built.map(recipe=>(recipe.services??[]).length));
+  return built.filter(recipe=>(recipe.services??[]).length===fewest);
+ }).filter((recipe,index,all)=>all.indexOf(recipe)===index);
+}
+/**
+ * Most tags are generic across the catalog ("json" is on ten recipes, "store" and "auth" on the booking and credits
+ * recipes alike). A tag is distinctive when at most this many recipes carry it, IDF-style: the tag fallback needs one.
+ */
+const distinctiveTagMaximum=2;
 function selectedRecipes(goalTerms:string[], recipes:Recipe[], surfaceTerms:ReadonlyMap<string,readonly string[]>=new Map()) {
  const mapped=recipes.filter(recipe=>{
   const known=recipeTerms[recipe.name]??[];
   return known.some(term=>goalTerms.includes(term));
  });
- // With no recipe of its own terms, the recipes built on an extension whose surfaces the goal named come next (#913).
- const viaExtensions=mapped.length?mapped:recipes.filter(recipe=>extensionTerms(recipe,surfaceTerms).length>0);
- // The tag fallback needs several shared terms: a single generic word ("status", "list") never selects a recipe.
- const candidates=viaExtensions.length?viaExtensions:recipes.filter(recipe=>new Set(recipe.tags.map(tag=>tag.toLowerCase()).filter(tag=>goalTerms.includes(tag))).size>=tagFallbackMinimum);
+ // With no recipe of its own terms, the general recipe of the extension whose surfaces the goal named comes next (#913, #957).
+ const viaExtensions=mapped.length?mapped:generalExtensionRecipes(recipes,surfaceTerms);
+ // The tag fallback needs several shared terms, one of them distinctive: generic words ("status", "json api") never select a recipe.
+ const frequency=new Map<string,number>();
+ for(const recipe of recipes)for(const tag of new Set(recipe.tags.map(tag=>tag.toLowerCase())))frequency.set(tag,(frequency.get(tag)??0)+1);
+ const candidates=viaExtensions.length?viaExtensions:recipes.filter(recipe=>{
+  const shared=new Set(recipe.tags.map(tag=>tag.toLowerCase()).filter(tag=>goalTerms.includes(tag)));
+  return shared.size>=tagFallbackMinimum&&[...shared].some(tag=>(frequency.get(tag)??0)<=distinctiveTagMaximum);
+ });
  // Declarative first (docs/PROJECT-DIRECTION.md): a recipe that runs no project code outranks one that does, then more
  // of the goal's words in the recipe's own terms, then the recipe needing fewer services (a goal that names none of a
  // specialised recipe's words gets the general one: approvals get store-crud, not store-booking), then more words overall.
