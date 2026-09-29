@@ -4429,6 +4429,27 @@ principal, and the store scopes, gates and stamps its records with that
 principal. The proof lists the provider's served endpoints with its own probe, outside URLCode's
 review facts.
 
+The same application runs with a second, independently owned provider behind
+the same boundary: [Auth.js](https://github.com/jimhoyd-com/urlcode/blob/main/proofs/private-requests-authjs/README.md)
+(`@auth/core`), connected by an independent package
+(`@example/urlcode-authjs`, installed from a local tarball with
+`urlcode extensions add`) that imports only Auth.js and
+`@jimhoyd/urlcode/extensions`. Its `authorize()` sets the principal from Auth.js's
+own session answer and it provides the same `identity` capability, so the store
+declaration and every owner, reviewer, approval and cross-origin result are
+unchanged, with no core edit. What differs is provider-specific and stays
+visible: the client's sign-in calls, operator-owned password checking, the
+mount's declared `throttle` in place of a provider limiter, and no server-side
+revocation (Auth.js's Credentials sign-in forces JWT sessions, so a copied
+token outlives sign-out until it expires). Two things key on the first-party
+**name** rather than on `providesPrincipal`: the
+[`auth` short form](#protecting-a-route-the-auth-short-form) expands only to
+`policies.extensions.auth`, and an independent package cannot name itself
+`auth`, so a second provider is named in the long form
+(`policies: {extensions: {authjs: {}}}`) and its handlers read
+`context.capabilities.<its name>.identity`. `urlcode openapi` likewise
+describes the `401`/`403` answers and the session scheme only for `auth`.
+
 #### Request context: route env and request id
 
 Every `ExtensionRequest` carries two more generic fields, whether it reaches an

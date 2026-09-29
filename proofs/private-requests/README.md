@@ -136,6 +136,15 @@ directory and exercises every success and failure case over HTTP:
   admitted in a header it always overwrites; sign-in allows 10 attempts per
   address a minute.
 
+## A second provider
+
+[`../private-requests-authjs`](../private-requests-authjs/README.md) runs this
+application with Auth.js, an independently owned library, in place of Better
+Auth, through an independent extension package and no core change. It records
+what stayed identical, what the client and operator had to change, what Auth.js
+cannot do here (no server-side revocation) and where core keys on the name
+`auth`.
+
 ## Limits
 
 - `npm test` and `npm run audit` sign in and create records in the same

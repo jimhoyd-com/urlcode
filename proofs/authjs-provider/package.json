@@ -1,0 +1,24 @@
+{
+  "name": "@example/urlcode-authjs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Proof (#841): Auth.js behind URLCode's principal and identity boundary, as an independent extension package",
+  "license": "Apache-2.0",
+  "exports": {
+    "./extension": "./extension.js"
+  },
+  "files": [
+    "extension.js",
+    "urlcode.json"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@auth/core": "0.41.3"
+  },
+  "peerDependencies": {
+    "@jimhoyd/urlcode": "*"
+  }
+}
