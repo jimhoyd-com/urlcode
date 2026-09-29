@@ -428,7 +428,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 
 Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
 
-**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --local --project app --host-file host.mjs --local-review` (`npm run validate`), which activates it.
 
 **Peers.** none.
 
@@ -490,5 +490,5 @@ Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: name
 - **prompt handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler`): Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.
 - **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller.
 
-Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, `urlcode test --project . --host-file <host.mjs> --origin <origin>`.
+Fast checks: `urlcode validate --local --project app --host-file host.mjs --local-review`, `urlcode test --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->

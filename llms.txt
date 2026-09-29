@@ -31,11 +31,7 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
    transitions, membership and readers; auth route protection), from installed or catalog descriptors. With `--host-file`,
    `explain`, `plan-feature`, `context` and `review` read the registrations without a revision pin; anything that
    activates (`validate`, `test`, `dev`, `serve`) still needs the reviewed pin, which `urlcode permissions --project app` prints.
-   The site's `npm run validate`, `npm test` and `npm run audit` pass `--local-review`: with no reviewed pin they pin that
-   one run to the current revision, grant nothing, use `http://localhost` and throwaway data, so an edit needs no new pin
-   and no migration; the read-only commands accept the flag and ignore it, `serve` and `dev` refuse it; the authoring MCP
-   runners `run_validate`, `run_test` and `run_audit` pass it too, the in-process `run_tests` applies the same rule and
-   `get_context`'s check commands carry it, and an operator pin always wins
+   The site's check scripts and the authoring MCP runners review each edit without a new pin; serving still needs one
    ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). The audit's expected route count is committed once
    in `app/tests/audit.json`.
 2. After installing `@jimhoyd/urlcode`, run `npx --no --package @jimhoyd/urlcode urlcode init .` (it works in a directory holding only `package.json`, `package-lock.json`, `node_modules`, `.git` or a pre-registered `.mcp.json` (see next paragraph), and preserves existing package metadata). It writes a bare agent-ready site: the route project `app/` (`urlcode.yaml` with no routes), `host.mjs` (the operator host), `package.json` with an exact runtime pin and npm scripts, `AGENTS.md`, local `.mcp.json` (kept as-is if one is already there), and project CI. Then run `npx --no --package @jimhoyd/urlcode urlcode validate --local` and `npx --no --package @jimhoyd/urlcode urlcode test` from the site; `--project` defaults to `app` there. `--no` refuses a registry fetch, so it always uses the installed scoped runtime.

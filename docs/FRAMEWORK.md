@@ -307,9 +307,8 @@ seed accounts and memberships from `app/tests/seed.json`
 (the reviewed `--policy` file's `projectSha256`, or `PROJECT_SHA256`; see
 [the revision pin](EXTENSIONS.md#the-revision-pin)); changing extension YAML, policies or mounts changes the revision and
 needs an explicit operator reapproval before serving. The site's check scripts
-(`npm run validate`, `npm test`, `npm run audit`) pass `--local-review` and
-review each edit locally without one, on throwaway data, so no migration is
-needed before them either
+review each edit without one, on throwaway data, so no migration is needed
+before them either
 ([the local review loop](EXTENSIONS.md#the-local-review-loop)).
 
 ## Rules an agent must follow
@@ -586,24 +585,32 @@ directory, since #929 made them declarable.
 | Request approval: `submit`/`withdraw`, `by: others` approve/reject, a reviewers queue | 23 (3 / 6 / 2) | 2 (0) | 77 (74) | 38 + 10 | 0 | yes | passes |
 
 The table counts one more booking round, not shown in it: `openapi --local-review` was refused
-([#958](https://github.com/jimhoyd-com/urlcode/issues/958)). Two approval test runs were
+([#958](https://github.com/jimhoyd-com/urlcode/issues/958), since fixed in
+[#970](https://github.com/jimhoyd-com/urlcode/pull/970): the pin-free commands
+accept the flag and ignore it). Two approval test runs were
 deliberate probes and are included in its count.
 
 No correction round came from the YAML. All three projects were valid on
 their first edit. The credits and approval fixtures passed on their first
 run. The booking fixtures passed too; the audit then asked for one more
-success case. Every round was one of these:
+success case. Every round was one of these, and each is fixed now:
 
 - `npm run validate` refused on each new site until `npx urlcode-auth migrate`
   was run, though `test` and `audit` no longer read the site's database
-  ([#954](https://github.com/jimhoyd-com/urlcode/issues/954)).
+  ([#954](https://github.com/jimhoyd-com/urlcode/issues/954)). Fixed in
+  [#970](https://github.com/jimhoyd-com/urlcode/pull/970): a local review
+  activates on throwaway data.
 - `npm run audit` answered `route-count-mismatch` on each site until
   `--expect-routes` was edited in `package.json`, `AGENTS.md` and the
-  workflow ([#955](https://github.com/jimhoyd-com/urlcode/issues/955)).
+  workflow ([#955](https://github.com/jimhoyd-com/urlcode/issues/955)). Fixed
+  in [#970](https://github.com/jimhoyd-com/urlcode/pull/970): the count is
+  committed once, in `app/tests/audit.json`.
 - Booking only: `init --with` refused the version skew and named its fix,
   and a `PATCH` with only a `422` case left that method uncovered. The
   audit's note for it pointed at sign-in instead
-  ([#959](https://github.com/jimhoyd-com/urlcode/issues/959)).
+  ([#959](https://github.com/jimhoyd-com/urlcode/issues/959)). Fixed in
+  [#970](https://github.com/jimhoyd-com/urlcode/pull/970): the coverage note
+  names the uncovered method.
 
 The rounds went up, from 0/1/0 to 3/2/2. That is mostly the method. The
 second run gave the pin, origin and route count on the command line, not
@@ -631,16 +638,21 @@ edits and deletes outside named states with `409 record_locked`
 keeps a handle unique across owners with `409 value_taken`
 ([a directory by a unique handle](STORE.md#a-directory-by-a-unique-handle)).
 
-The remaining findings were tooling and docs:
+The remaining findings were tooling and docs, all fixed since:
 
 - The booking and credits recipes predate #929 and #930
-  ([#956](https://github.com/jimhoyd-com/urlcode/issues/956)).
+  ([#956](https://github.com/jimhoyd-com/urlcode/issues/956)). Fixed in
+  [#992](https://github.com/jimhoyd-com/urlcode/pull/992), which rewrote both.
 - There is no approval recipe, and `plan-feature` lists the booking and
   credits recipes for an approval goal
-  ([#957](https://github.com/jimhoyd-com/urlcode/issues/957)).
+  ([#957](https://github.com/jimhoyd-com/urlcode/issues/957)). Fixed in
+  [#992](https://github.com/jimhoyd-com/urlcode/pull/992), which added
+  `store-approval`.
 - Before any site existed, the add-ons packed without a build, and install
   reported them as having "no ./extension entry"
-  ([#960](https://github.com/jimhoyd-com/urlcode/issues/960)).
+  ([#960](https://github.com/jimhoyd-com/urlcode/issues/960)). Fixed in
+  [#969](https://github.com/jimhoyd-com/urlcode/pull/969): packing refuses an
+  unbuilt add-on.
 
 **Caveats.**
 

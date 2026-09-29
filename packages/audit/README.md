@@ -191,7 +191,7 @@ Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 
 Every key `audit` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
 
-**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --local --project app --host-file host.mjs --local-review` (`npm run validate`), which activates it.
 
 **Peers.** none.
 
@@ -207,5 +207,5 @@ Durable, bounded audit log. It serves no routes: other extensions record into it
 
 - **retention** (configuration, `urlcode.yaml#extensions.audit.config.retention`): Newest events kept (1000..10000000, default 100000); older ones are pruned as new ones arrive.
 
-Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`.
+Fast checks: `urlcode validate --local --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->

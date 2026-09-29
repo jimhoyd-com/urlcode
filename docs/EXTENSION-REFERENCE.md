@@ -14,7 +14,8 @@ Two distinctions hold throughout:
 - **Schema-valid is not activatable.** A document can pass the schema and still
   refuse to start: a mount without its route, a collection a short link names
   but does not declare, a peer that is not installed. Activation checks those;
-  `urlcode validate --project . --host-file <host.mjs> --origin <origin>`
+  a site's `npm run validate`
+  (`urlcode validate --local --project app --host-file host.mjs --local-review`)
   activates the project and reports them.
 - **Available is not installed.** This page, the release catalog (MCP
   `get_release_addon_catalog`) and the list below describe what this release

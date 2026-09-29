@@ -61,9 +61,12 @@ without extensions needs. Once `urlcode extensions add` wires an extension into
 
 There is one starter, and it starts with no routes. Initialization never overwrites
 an existing directory. Once created, edits belong to your app repository; upgrading
-the runtime does not regenerate them. Each site has a Makefile and npm scripts
-for its own `dev`, `serve`, `validate`, `test` and `doctor` commands; both pass
-`--project app --host-file host.mjs`, so install the site before using them:
+the runtime does not regenerate them. Each site has npm scripts (`dev`,
+`start`, `validate`, `test`, `routes`, `audit`) and a Makefile (`dev`, `serve`,
+the same four checks, `benchmark` and `doctor`). Both pass `--project app --host-file
+host.mjs`, and their `validate`, `test`, `routes` and `audit` also pass
+`--local-review` ([the local review loop](EXTENSIONS.md#the-local-review-loop)),
+so install the site before using them:
 
 ```sh
 cd ../my-links
@@ -134,9 +137,8 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
   extension check still runs on the reload. This is development only: `serve`
   and every other command refuse a stale pin, so review the edited project and
   pin its revision before serving it ([the revision pin](EXTENSIONS.md#the-revision-pin)).
-  A site's `npm run validate`, `npm test`, `npm run routes` and
-  `npm run audit` pass `--local-review` instead, which pins each run to the
-  edited revision with no grants and never serves
+  A site's check scripts review the edited revision without a pin instead
+  and never serve
   ([the local review loop](EXTENSIONS.md#the-local-review-loop)).
   `--policy` grants are not carried forward: when the host is pinned by
   `--policy` and the project requests an env, secret or egress grant, a reload
