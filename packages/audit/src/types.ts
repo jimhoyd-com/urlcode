@@ -1,4 +1,4 @@
-import type { RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { HostProbe, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 
 /** Plain JSON a producer may attach as metadata. Never secrets or submitted values. */
 export type AuditValue = string | number | boolean | null | readonly AuditValue[] | { readonly [key: string]: AuditValue };
@@ -107,5 +107,7 @@ export interface AuditOptions {
   /** Best effort, called when a drain round fails (it retries) or stops a producer that broke the contract. */
   onDeliveryError?: (source: string, error: unknown) => void;
   now?: () => number;
+  /** What the network filesystem check and the host lease read from the machine: a test seam, never set by an operator. */
+  probe?: Partial<HostProbe> | undefined;
 }
 export interface Audit { registration: RuntimeExtension; exports: AuditExports; close(): Promise<void> }
