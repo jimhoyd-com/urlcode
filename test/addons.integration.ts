@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -230,6 +230,63 @@ test('the order extensions are named in never changes the site', { timeout: 6000
   assert.equal(first.status, 0, first.stderr); assert.equal(second.status, 0, second.stderr);
   assert.equal(await readFile(join(one.dir, 'host.mjs'), 'utf8'), await readFile(join(two.dir, 'host.mjs'), 'utf8'));
   assert.equal(await readFile(join(one.dir, 'app', 'urlcode.yaml'), 'utf8'), await readFile(join(two.dir, 'app', 'urlcode.yaml'), 'utf8'));
+});
+
+// #834: the generated npm scripts of an auth site reach validation with operator context and no source searching.
+// `init --with auth` is init followed by `extensions add auth` in the new site; the two steps are run apart here only
+// so the site's core is the packed checkout rather than the registry release of the same version.
+test('an auth site\'s generated validate script names one complete command when context is missing, and passes with it', { timeout: 900000 }, async t => {
+  const { dir } = await site(t);
+  const added = await urlcode(t, dir, ['extensions', 'add', 'auth']);
+  assert.equal(added.status, 0, added.stderr);
+  operatorCli(t, dir, 'urlcode-auth', ['migrate'], {});
+  const { PROJECT_SHA256: _pin, URLCODE_ORIGIN: _origin, URLCODE_POLICY: _policy, ...ambient } = process.env;
+  const npmScript = (script: string, env: Record<string, string>) => process.env.npm_execpath
+    ? spawnSync(process.execPath, [process.env.npm_execpath, 'run', '--silent', script], { cwd: dir, encoding: 'utf8', timeout: 300000, env: { ...ambient, ...env } })
+    : spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', '--silent', script], { cwd: dir, encoding: 'utf8', timeout: 300000, env: { ...ambient, ...env }, shell: process.platform === 'win32' });
+  const refusal = (stderr: string) => JSON.parse(stderr.trim().split('\n').filter(line => line.startsWith('{')).at(-1)!) as { message: string; code: string; command: string };
+
+  // No context at all: one command, the actual invocation plus a placeholder for each missing value.
+  const bare = npmScript('validate', {});
+  assert.notEqual(bare.status, 0);
+  const missing = refusal(bare.stderr);
+  assert.equal(missing.code, 'revision-pin-required', bare.stderr);
+  assert.match(missing.command, / validate --local --project app --host-file host\.mjs --origin <https:\/\/your\.site> --policy <operator\/policy\.json>$/);
+  assert.equal(missing.message.split('Run: ').length, 2, 'exactly one command');
+  assert.ok(missing.message.includes(`Run: ${missing.command} where`), missing.message);
+  assert.match(missing.message, /URLCODE_ORIGIN and URLCODE_POLICY/);
+
+  // The operator reviews the proposal and saves it outside app/; nothing wrote a policy before this.
+  await assert.rejects(access(join(dir, 'operator', 'policy.json')));
+  const proposal = await urlcode(t, dir, ['permissions', '--project', 'app']);
+  assert.equal(proposal.status, 0, proposal.stderr);
+  await mkdir(join(dir, 'operator'));
+  await writeFile(join(dir, 'operator', 'policy.json'), proposal.stdout);
+
+  // The policy alone: the origin is what is left, and the command names only it.
+  const noOrigin = npmScript('validate', { URLCODE_POLICY: 'operator/policy.json' });
+  assert.notEqual(noOrigin.status, 0);
+  const origin = refusal(noOrigin.stderr);
+  assert.equal(origin.code, 'origin-required', noOrigin.stderr);
+  assert.match(origin.command, / validate --local --project app --host-file host\.mjs --origin <https:\/\/your\.site>$/);
+
+  // Both, from the environment the unchanged scripts inherit: validation passes.
+  const context = { URLCODE_ORIGIN: 'https://site.example', URLCODE_POLICY: 'operator/policy.json' };
+  const valid = npmScript('validate', context);
+  assert.equal(valid.status, 0, valid.stdout + valid.stderr);
+  assert.match(valid.stdout, /"event":"valid"/);
+
+  // The authoring MCP server started with the same context forwards it to run_validate's child as flags.
+  const messages = [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'context', version: '1' } } },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'run_validate', arguments: {} } },
+  ];
+  const mcp = spawnSync(process.execPath, [join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), 'mcp', '--allow-authoring', '--project', 'app', '--host-file', 'host.mjs'], { cwd: dir, input: messages.map(message => JSON.stringify(message)).join('\n') + '\n', encoding: 'utf8', timeout: 300000, env: { ...ambient, ...context } });
+  const reply = mcp.stdout.trim().split('\n').map(line => JSON.parse(line) as { id?: number; result?: { content: { text: string }[] } }).find(message => message.id === 2);
+  assert.ok(reply?.result, mcp.stdout + mcp.stderr);
+  const result = JSON.parse(reply.result.content[0]!.text) as { exitCode: number; stdout: string; stderr: string };
+  assert.equal(result.exitCode, 0, result.stdout + result.stderr);
 });
 
 // #844: an extension package outside @jimhoyd, packed to a local tarball, installs through the same command as a

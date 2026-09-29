@@ -33,7 +33,8 @@ import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, aliasOriginCommands, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
-import { addressInUseMessage, argumentError, systemErrorMessages } from './cli-errors.ts';
+import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
+import { cliInvocation, shellWord } from './context.ts';
 
 // Stamped by scripts/release-bump.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
 // the starter's schema pin and CI action); `release-bump.ts --check` asserts this literal, not a read of
@@ -254,6 +255,7 @@ const helpEntries: HelpEntry[] = [
 ];
 const helpFooter = `${hostFileCommands.join('/')}: --host-file /absolute/operator/host.mjs (trusted code outside project)
 ${policyCommands.join('/')}: --policy /absolute/policy.mjs (external bindings; outside the project)
+An absent --origin or --policy is read from URLCODE_ORIGIN or URLCODE_POLICY, so the generated npm scripts take operator context from the environment.
 Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation.
 Run \`urlcode <command> --help\` for one command's usage, or \`urlcode --version\`/\`-v\` for the runtime version.
 `;
@@ -340,11 +342,17 @@ process.on('unhandledRejection', reason => {
 let operatorHost: OperatorHost = {};
 let verifiedPolicy: OperatorPolicy | undefined;
 let serving = false;
+/** The operator context the command ran with, for a refusal that has to name what is still missing (#834). */
+let supplied: { project: string; origin?: string | undefined; policy?: string | undefined } | undefined;
 try {
   const { values: parsed, positionals } = parseArgs({ allowPositionals:true, options });
-  // A site keeps its route project in app/: from the site directory, commands default to it.
-  const values = { ...parsed, project: parsed.project ?? await defaultProject() };
   const [command, arg, ...extra] = positionals;
+  // A site keeps its route project in app/: from the site directory, commands default to it. An absent --origin or
+  // --policy falls back to URLCODE_ORIGIN / URLCODE_POLICY, which a generated npm script cannot expand portably (#834).
+  const origin = parsed.origin ?? contextFromEnv('origin');
+  const policy = parsed.policy ?? ((policyCommands as readonly string[]).includes(command ?? '') ? contextFromEnv('policy') : undefined);
+  const values = { ...parsed, project: parsed.project ?? await defaultProject(), ...(origin === undefined ? {} : { origin }), ...(policy === undefined ? {} : { policy }) };
+  supplied = { project: values.project, origin: values.origin, policy: values.policy };
   // PORT follows the common container convention (Heroku/Cloud Run/Docker
   // `-e PORT=`) so an operator can change the listen port without editing the
   // image's CMD; --port still wins when given explicitly.
@@ -595,7 +603,7 @@ try {
             break;
           }
           const { leftAlone, ...created } = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [], example: values.example ?? false, adopt, mcp });
-          const review = `Review ${created.site}/app and pin its revision explicitly: projectSha256 ${created.projectSha256} in the reviewed --policy file, or PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
+          const review = `Review ${created.site}/app and pin its revision explicitly: projectSha256 ${created.projectSha256} in the reviewed --policy file, or PROJECT_SHA256=${created.projectSha256}; re-review after any project change. The npm scripts then need URLCODE_ORIGIN (the public https origin) and URLCODE_POLICY (that reviewed policy file) set, or the same --origin and --policy flags`;
           if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...keptLine(leftAlone), ...skippedLine, ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
           else print({ event:'created', ...created, ...kept(leftAlone), ...skipped, review });
           break;
@@ -683,8 +691,16 @@ try {
   const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
   const parsed = code !== undefined && error instanceof Error ? argumentError(code, error.message, Object.keys(options)) : undefined;
   const message = parsed?.message ?? (code === 'EADDRINUSE' ? addressInUseMessage(error) : (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? systemErrorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options'));
-  const details = parsed?.details ?? (error instanceof ConfigError ? errorFields(error.details) : {});
-  process.stderr.write(JSON.stringify({ event:'error', message, ...details }) + '\n'); process.exitCode = 1;
+  const details: Record<string, unknown> = { ...(parsed?.details ?? (error instanceof ConfigError ? errorFields(error.details) : {})) };
+  let text = message;
+  // A refusal for missing operator context prints one complete command, built from this invocation (#834).
+  const reason = typeof details.code === 'string' ? details.code : undefined;
+  if (reason !== undefined && missingContextCodes.has(reason) && supplied !== undefined) {
+    const cli = await cliInvocation(supplied.project).catch(() => 'urlcode');
+    const { command, missing } = missingContextCommand(cli, process.argv.slice(2), { ...supplied, revision: /^[a-f0-9]{64}$/.test(process.env.PROJECT_SHA256 ?? '') ? process.env.PROJECT_SHA256 : undefined }, word => shellWord(word));
+    if (missing.length) { text = missingContextMessage(message, command, missing); details.command = command; }
+  }
+  process.stderr.write(JSON.stringify({ event:'error', message:text, ...details }) + '\n'); process.exitCode = 1;
 } finally {
   if (!serving) {
     try { await operatorHost.close?.(); } catch { process.stderr.write('Operator host cleanup failed\n'); process.exitCode = 1; }

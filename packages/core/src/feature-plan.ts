@@ -29,12 +29,20 @@ function terms(goal:string):string[] {
  return [...new Set(words)].slice(0,16);
 }
 const signatureTerms=['hmac','signature','signatures','signing','webhook','webhooks'];
+/**
+ * List, filter, sort and paging vocabulary (#834). These goals are declarations: a store collection's `filterable` and
+ * `sortable` properties with limit/cursor paging, or query `parameters` on a route, never a handler that parses the
+ * query string itself.
+ */
+const listQueryTerms=['list','lists','listing','filter','filters','filtered','filtering','sort','sorts','sorted','sorting','order','ordered','ordering','paginate','paginated','pagination','paging','query','queries','cursor','limit','newest','oldest'];
+/** The fewest distinct goal terms a recipe's tags must share before the tag fallback offers it: one generic word ("status", "json") is not a match. */
+const tagFallbackMinimum=2;
 const recipeTerms:Record<string,readonly string[]>={
  'json-endpoint':['json','endpoint','api','validate','validates','validated','validation','schema','signup','register','registration','202','422','body','post','field','fields'],
  'webhook-receiver':['webhook','webhooks','hmac','signature','signatures','signing','callback'],
  'contact-form':['contact','form','message','submit','submission','email'],
  'authenticated-json-api':['auth','authenticated','account','accounts','sign','signed','signin','login','logout','session','sessions','password','private','protected'],
- 'store-crud':['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'],
+ 'store-crud':['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions',...listQueryTerms],
 };
 const extensionReason:Record<string,string>={
  auth:'Authentication is an operator-installed extension; its registration and revision pin, not project YAML, select the executable package and grants.',
@@ -47,6 +55,7 @@ const outline:Record<string,{kind:string;note:string}>={
  'authenticated-json-api':{kind:'protected endpoint',note:'The bundled recipe protects a function route with auth: true; Better Auth (the auth extension) owns sign-in and sessions, and the function reads context.capabilities.auth.identity.userId.'},
  'store-crud':{kind:'durable collection',note:'The bundled recipe declares a collection and an extension mount; CRUD behavior belongs to the registered store extension, not a generated handler.'},
 };
+const listQueryOutline={kind:'declarative list query',note:'Declare the query instead of parsing it. A store collection lists the properties a GET may filter by equality in filterable (?status=pending) and sort by in sortable (?sort=<property>, ?sort=-<property> descending; one sort property, id breaks ties); a list answers pages bounded by pageSize and continued with ?limit= and the opaque ?cursor=, and a value the property schema refuses answers 400 invalid_query. A string property needs maxLength or an enum to be filterable or sortable. ownership: owner behind auth: true scopes every list to the signed-in principal. A route that lists something the store does not hold declares its query parameters (parameters: [{name: status, in: query, schema: {type: string, enum: [...]}}]) so the runtime answers 400 before anything runs. get_schema routes.*.parameters and the store README list the exact fields.'};
 type Recipe=Awaited<ReturnType<typeof listRecipes>>[number];
 /** Goal terms a recipe answers: its planner terms, then whole tags, capabilities and id parts (the same fields search_recipes reads). */
 function matchedTerms(goalTerms:string[],recipe:Recipe):string[] {
@@ -59,7 +68,8 @@ function selectedRecipes(goalTerms:string[], recipes:Recipe[]) {
   const known=recipeTerms[recipe.name]??[];
   return known.some(term=>goalTerms.includes(term));
  });
- const candidates=mapped.length?mapped:recipes.filter(recipe=>recipe.tags.some(tag=>goalTerms.includes(tag.toLowerCase())));
+ // The tag fallback needs several shared terms: a single generic word ("status", "list") never selects a recipe.
+ const candidates=mapped.length?mapped:recipes.filter(recipe=>new Set(recipe.tags.map(tag=>tag.toLowerCase()).filter(tag=>goalTerms.includes(tag))).size>=tagFallbackMinimum);
  // Declarative first (docs/PROJECT-DIRECTION.md): a recipe that runs no project code outranks one that does, then more matched terms win.
  return candidates.map((recipe,index)=>({recipe,index,code:runsProjectCode(recipe),matched:matchedTerms(goalTerms,recipe).length}))
   .sort((a,b)=>Number(a.code)-Number(b.code)||b.matched-a.matched||a.index-b.index).map(item=>item.recipe).slice(0,4);
@@ -78,7 +88,8 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  const signatureGoal=goalTerms.some(term=>signatureTerms.includes(term)),signupGoal=goalTerms.includes('sign-up');
  const recipeGoalTerms=signatureGoal||signupGoal?goalTerms.filter(term=>term!=='sign'&&term!=='signed'):goalTerms;
  const context=await buildContext(project,{target,projectFlag:'.',origin:options.origin}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes());
- const capabilities=[...new Set(recipes.flatMap(recipe=>recipe.capabilities??[]).filter((name):name is CapabilityName=>typeof name==='string'))].sort();
+ const listQuery=recipeGoalTerms.some(term=>listQueryTerms.includes(term));
+ const capabilities=[...new Set([...recipes.flatMap(recipe=>recipe.capabilities??[]),...(listQuery?['parameters']:[])].filter((name):name is CapabilityName=>typeof name==='string'))].sort();
  const catalog=getCapabilities(target), rows=new Map(catalog.capabilities.map(row=>[row.capability,row]));
  const registrations=new Map((options.extensions??[]).map(extension=>[extension.name,extension]));
  const wanted=new Set<string>();
@@ -87,7 +98,9 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  }
  // These nouns request composition, not a project-controlled package choice.
  if(recipeGoalTerms.some(term=>['auth','authenticated','account','sign','signed','private','protected'].includes(term)))wanted.add('auth');
- if(goalTerms.some(term=>['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'].includes(term)))wanted.add('store');
+ // Per-owner records (store ownership: owner) sit behind a principal-providing policy such as auth: true.
+ if(listQuery&&goalTerms.some(term=>['owner','owners','owned','ownership'].includes(term)))wanted.add('auth');
+ if(goalTerms.some(term=>['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'].includes(term))||listQuery)wanted.add('store');
  let declaredTargets=new Map<string,string[]>();
  try {declaredTargets=declaredExtensionTargets(await readAddonCatalog());} catch {/* a core without its catalog (an unbuilt checkout) plans from registrations alone */}
  let artifacts:Awaited<ReturnType<typeof describeInstalledArtifacts>>['artifacts']=[];
@@ -114,7 +127,7 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
   format:1,goalTerms,target,project:{routes:context.project.routes,extensions:context.project.extensions},
   applicable:{capabilities:capabilities.map(name=>{const decision=rows.get(name)?.targets[target];return {name,support:decision?.support??'unknown',reason:decision?.reason??'Not in this revision\'s capability catalog'};}),recipes:recipes.map(recipe=>({name:recipe.name,description:recipe.description,matched:matchedTerms(recipeGoalTerms,recipe).slice(0,8)}))},
   extensions:{required,ordering:{status:'operator-resolved',names:[...wanted].sort(),note:'Extension package selection, prerequisites, and canonical activation order are resolved by the operator-approved init/host composition. Add one with `urlcode extensions add <name>`; this read-only plan installs nothing and never turns project YAML into an operator decision.'}},
-  outline:recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description}),applicationCode,unsupported,
+  outline:[...(listQuery?[listQueryOutline]:[]),...recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description})],applicationCode,unsupported,
   // get_extensions exists only when an operator host file was loaded (extensions passed, even empty).
   next:['get_context','search_recipes','get_capability',...(options.extensions===undefined?[]:['get_extensions']),'get_extension_artifacts'],
  };
