@@ -2,6 +2,8 @@
 // checks. This module only connects one Better Auth instance to URLCode's extension contract: one mount forwarding
 // an exact allowlist of Better Auth paths, an authorize() that turns a verified Better Auth session into the request
 // principal, and the request-bound `identity` capability for application routes.
+import { closeSync, lstatSync, mkdirSync, openSync, realpathSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
@@ -20,6 +22,8 @@ export const signUpPath = '/sign-up/email';
 export const clientAddressHeader = 'x-urlcode-client-address';
 /** The mount Better Auth serves when the operator's tooling needs one before activation (the CLI). */
 export const defaultBasePath = '/api/auth';
+/** How long one statement waits for a lock another process holds before failing: the store's and audit's bound. */
+const BUSY_TIMEOUT_MS = 2000;
 const unsafe = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const pathPattern = /^\/[a-z0-9/-]+$/;
 
@@ -35,6 +39,42 @@ export const authAuthoring: ExtensionAuthoringContract = {
   ],
   fastChecks: ['urlcode validate --project app', 'urlcode validate --local --project app --host-file host.mjs --origin <origin>'],
 };
+
+/**
+ * Better Auth's node:sqlite dialect opens every transaction with a bare `begin` (DEFERRED). Its sign-up reads the email,
+ * hashes the password, then inserts: under WAL, a commit by another process during the hash makes that insert fail at
+ * once with SQLITE_BUSY_SNAPSHOT, which no busy timeout retries. Taking the write lock at `begin` (IMMEDIATE) waits up to
+ * the busy timeout instead, so the transaction's reads are still current when it writes. Only that exact statement
+ * changes; Better Auth still sees a DatabaseSync and keeps its own dialect.
+ */
+class AuthDatabase extends DatabaseSync {
+  override prepare(...args: Parameters<DatabaseSync['prepare']>): ReturnType<DatabaseSync['prepare']> {
+    const [sql, ...rest] = args;
+    return super.prepare(sql === 'begin' ? 'BEGIN IMMEDIATE' : sql, ...rest);
+  }
+}
+
+/**
+ * Opens Better Auth's SQLite file for one process of several: creates it 0600 (its directory 0700) when absent and
+ * refuses anything but a private regular file with one link, as the store and audit do; then WAL with FULL
+ * synchronous commits and a busy timeout, so a serving process and `urlcode-auth create-user` (or a second serving
+ * process) wait for each other's commits instead of failing with "database is locked". SQLite creates the `-wal` and
+ * `-shm` files with the database file's permissions.
+ */
+export function openAuthDatabase(path: string): DatabaseSync {
+  const requested = resolve(path);
+  mkdirSync(dirname(requested), { recursive: true, mode: 0o700 });
+  const database = join(realpathSync(dirname(requested)), basename(requested));
+  try { closeSync(openSync(database, 'wx', 0o600)); }
+  catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error; }
+  const info = lstatSync(database);
+  if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (process.platform !== 'win32' && (info.mode & 0o077) !== 0))
+    throw new Error(`auth: ${database} must be a private regular file (mode 0600, one link); chmod 600 it`);
+  const db = new AuthDatabase(database, { allowExtension: false, timeout: BUSY_TIMEOUT_MS });
+  try { db.exec('PRAGMA trusted_schema=OFF; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;'); }
+  catch (error) { db.close(); throw error; }
+  return db;
+}
 
 /** Everything the operator decides about the Better Auth instance. None of it is project YAML. */
 export interface AuthSettings {
@@ -60,11 +100,13 @@ export function betterAuthOptions(settings: AuthSettings, origin: string, basePa
     baseURL: origin,
     basePath,
     secret: settings.secret,
-    database: new DatabaseSync(settings.database),
+    database: openAuthDatabase(settings.database),
     emailAndPassword: { ...extra.emailAndPassword, enabled: true, disableSignUp: !(bootstrap || settings.signUp === true) },
     // Better Auth enables its limiter only under NODE_ENV=production, and without an address every client shares one
-    // bucket; here it is always on and keyed by the address the mount supplies.
-    rateLimit: { window: 60, max: 100, customRules: { '/sign-in/email': { window: 60, max: 10 }, [signUpPath]: { window: 60, max: 5 } }, ...extra.rateLimit, enabled: true },
+    // bucket; here it is always on and keyed by the address the mount supplies. Its counters live in the auth database
+    // (the `rateLimit` table `urlcode-auth migrate` creates), so every process serving this database shares one limit;
+    // Better Auth's default keeps them in memory, per process.
+    rateLimit: { window: 60, max: 100, customRules: { '/sign-in/email': { window: 60, max: 10 }, [signUpPath]: { window: 60, max: 5 } }, storage: 'database', ...extra.rateLimit, enabled: true },
     advanced: { ...extra.advanced, ipAddress: { ...extra.advanced?.ipAddress, ipAddressHeaders: [clientAddressHeader] } },
     telemetry: { enabled: false },
   };
@@ -78,6 +120,12 @@ export async function pendingMigrations(options: BetterAuthOptions): Promise<str
 /** Forward-initializes Better Auth's schema. An explicit operator step, never a side effect of serving. */
 export async function migrate(options: BetterAuthOptions): Promise<void> {
   await (await getMigrations(options)).runMigrations();
+}
+
+/** Better Auth's APIError for a 4xx: the request's own session is missing or invalid. */
+function isClientError(error: unknown): boolean {
+  const status = error !== null && typeof error === 'object' && 'statusCode' in error ? error.statusCode : undefined;
+  return typeof status === 'number' && status >= 400 && status < 500;
 }
 
 function databaseOf(options: BetterAuthOptions): DatabaseSync | undefined {
@@ -125,7 +173,15 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         // Identity only: what the signed-in user may do is the application's decision.
         async authorize(_requirement, request: ExtensionRequest): Promise<HandlerResult | undefined> {
           if (unsafe.has(request.method) && !isSameOriginRequest(request, activation, { whenAbsent: 'refuse' })) return jsonResponse(403, { error: 'cross_origin_refused' });
-          const session = await auth.api.getSession({ headers: request.headers }).catch(() => null);
+          let session;
+          try { session = await auth.api.getSession({ headers: request.headers }); }
+          catch (error) {
+            // A missing, expired or malformed session is null or a 4xx from Better Auth. A storage failure (a lock held
+            // past the busy timeout, an I/O error) is its 500: the session may well be valid, so answer 503 without
+            // detail rather than a 401 that tells the client it is signed out.
+            if (!isClientError(error)) return jsonResponse(503, { error: 'auth_unavailable' }, [['retry-after', '1']]);
+            session = null;
+          }
           if (!session) return jsonResponse(401, { error: 'authentication_required' });
           request.setPrincipal!({ id: session.user.id });
           return undefined;

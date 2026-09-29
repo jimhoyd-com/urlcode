@@ -11,15 +11,21 @@
 - **Throttling cannot be bypassed by headers.** Better Auth's limiter is always
   on and reads the client address only from a header the mount overwrites with
   the address URLCode admitted (see `--trusted-proxies`). It keeps its counters
-  in memory, per process.
+  in the auth database's `rateLimit` table, so every process serving that
+  database on one host shares one limit; each check is one atomic SQL update.
 - **Protected routes.** `auth: true` requires a session Better Auth verifies
-  and refuses cross-origin unsafe methods. The route's own code never receives
+  and refuses cross-origin unsafe methods. A database failure while verifying
+  the session answers `503 auth_unavailable` with no detail, never a `401`. The route's own code never receives
   the session cookie or `Authorization` (core strips them), only the user id,
   which core stamps as the request principal. A client-supplied
   `x-urlcode-context-*` header is always removed before any extension runs.
 - **Operator responsibilities.** `data/auth.secret` signs every session: keep
   it private (mode 0600), out of the route project and backed up with
-  `data/auth.sqlite`. Serve over HTTPS in production so Better Auth sets
+  `data/auth.sqlite`. The extension creates `data/auth.sqlite` 0600 and refuses
+  one that is group- or world-accessible, a link or not a regular file. It runs
+  in WAL mode: back it up with SQLite's online backup, or stop every serving
+  process and copy it; its `-wal` and `-shm` files hold recent commits while it
+  is open. Serve over HTTPS in production so Better Auth sets
   `Secure` cookies. Accounts are created with `urlcode-auth create-user` unless
   `signUp` is enabled.
 - **Not provided.** No brute-force lockout beyond the rate limiter, no account

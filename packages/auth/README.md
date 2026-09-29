@@ -25,9 +25,19 @@ principal a protected route receives and what `urlcode-store members add
 
 `add` writes `extensions.auth` (empty config), a `/api/auth/*` mount route and
 a private `data/auth.secret`, and adds `auth()` to `host.mjs`. `migrate`
-creates Better Auth's tables in `data/auth.sqlite`; the extension refuses to
-activate until they exist. Both files stay out of the route project; keep them
-private and backed up.
+creates Better Auth's tables in `data/auth.sqlite`, including the `rateLimit`
+table its limiter counts in; the extension refuses to activate until they all
+exist. Both files stay out of the route project; keep them private and backed
+up.
+
+`data/auth.sqlite` is created `0600` and must stay a private regular file. It
+runs in WAL mode with `synchronous=FULL`, so while any process has it open,
+recent commits are in `data/auth.sqlite-wal` (with `data/auth.sqlite-shm`
+beside it). To back it up, stop every process that serves it (the last one to
+close folds the log into `auth.sqlite`) and copy the file, or take an online
+copy with SQLite's backup API, for example `sqlite3 data/auth.sqlite ".backup
+/srv/backups/auth.sqlite"`. A plain copy of `auth.sqlite` alone while a server
+runs can miss committed sign-ins and accounts.
 
 ```yaml
 version: "1"
@@ -50,6 +60,11 @@ session Better Auth verifies from the request's own cookie. Without one the
 route answers `401 {"error":"authentication_required"}`. A `POST`, `PUT`,
 `PATCH` or `DELETE` must also come from the site's own origin (`Origin`,
 `Sec-Fetch-Site` or `Referer`), or it answers `403 {"error":"cross_origin_refused"}`.
+When the session cannot be checked because the auth database is unavailable
+(another process held its write lock past the 2-second busy timeout, or an I/O
+error), the route answers `503 {"error":"auth_unavailable"}` with
+`Retry-After: 1` rather than a `401` that would tell the client it is signed
+out.
 Both checks apply only to a method the route declares: core answers any other
 method `405` with `Allow` before this extension runs.
 
@@ -115,7 +130,20 @@ auth({
 `BETTER_AUTH_SECRET` overrides the secret file. The extension always keeps
 Better Auth's rate limiter on (10 sign-in attempts per client address a
 minute), keyed by the client address URLCode admitted, and telemetry off; the
-`betterAuth` option cannot change either. Better Auth's base URL is the
+`betterAuth` option cannot change either. The limiter counts in the auth
+database (`rateLimit.storage: 'database'`), so several server processes on one
+host serving the same `data/auth.sqlite` share one limit rather than each
+allowing 10; `betterAuth.rateLimit.storage` can choose Better Auth's
+per-process `memory` instead.
+
+Several processes may open the database at once: a serving process,
+`urlcode-auth create-user` beside it, or more than one server behind a proxy on
+the same host and local disk. A statement that finds another process holding
+the write lock waits up to 2 seconds (blocking that process's event loop
+meanwhile) before failing, and Better Auth's transactions (sign-up, account
+creation) take the write lock when they begin, so one that reads and then
+writes cannot fail on a commit another process made in between. Network
+filesystems and several hosts are unsupported. Better Auth's base URL is the
 operator's `--origin` and its base path is the mount.
 
 ## Not included
