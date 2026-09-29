@@ -6,6 +6,8 @@ import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
 import { STORE_SCHEMA_VERSION, declarationOf, liveServer } from './database.ts';
 import type { StoreDatabase } from './database.ts';
+import { listInSql, listPlan } from './listing.ts';
+import type { ListPlan } from './listing.ts';
 
 /** Reserved names the store owns on every record. */
 export const RESERVED_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;
@@ -943,8 +945,16 @@ export class Collection {
       const pair = overlapping(db, intervals);
       if (pair) throw new Error(`Collection ${this.name}: records ${pair[0]} and ${pair[1]} hold overlapping intervals, which intervals refuses; move or delete one of them first`);
     }
+    // The list indexes (#951) are derived from the declaration like the interval index, built before it is served.
+    const listing = this.listing;
+    if (listing) db.transaction(() => { for (const create of listing.indexes.values()) db.run(create); });
     this.db = db;
   }
+  /** What sorted and filtered lists read through (listing.ts), derived from the declaration once. */
+  private get listing(): ListPlan | undefined { return (this.plan ??= [listPlan(this.name, this.spec)])[0]; }
+  private plan: [ListPlan | undefined] | undefined;
+  /** The names of the list indexes this declaration reads through (store.ts drops stale ones). */
+  get listIndexes(): string[] { return [...this.listing?.indexes.keys() ?? []]; }
   /** The name of the interval index this declaration reads through, if it declares `intervals` (store.ts drops stale ones). */
   get intervalIndex(): string | undefined { return this.spec.intervals?.index; }
   /** Stops serving from the database; the registration closes it with its last activation. Idempotent. */
@@ -1227,10 +1237,11 @@ export class Collection {
   }
   /**
    * One page inside an open transaction. An unsorted, unfiltered page is a counted `LIMIT`/`OFFSET` query in creation
-   * order. A sorted or filtered one reads only the id and the named fields of every record in scope (each field as its
-   * exact JSON text, so numbers and strings compare exactly as the declared-type rules in query.ts say), orders and
-   * filters those in memory, and then reads the page's records by id: bounded by `maxRecords`, never a scan of the
-   * full record bodies.
+   * order. A sorted or filtered one is a counted keyset query through the declared list indexes (listing.ts, #951). When
+   * a row or value is one the SQL key cannot order exactly (listing.ts `anomaly`), the in-memory path answers instead:
+   * it reads only the id and the named fields of every record in scope (each field as its exact JSON text, so numbers
+   * and strings compare exactly as the declared-type rules in query.ts say), orders and filters those in memory, and
+   * then reads the page's records by id. Both answer the same page, `total` and cursors.
    */
   private listIn(db: StoreDatabase, query: ReturnType<typeof parseListQuery>, scope: string | undefined | null): Page {
     const where = this.where(scope);
@@ -1240,6 +1251,9 @@ export class Collection {
       const end = query.offset + items.length;
       return { items, total, ...(end < total ? { next: end } : {}) };
     }
+    // In SQL through the declared indexes (#951), unless a row or value is one its key cannot order exactly.
+    const listed = this.listing && listInSql(db, this.listing, query, scope, COLUMNS, row => this.parse(row));
+    if (listed) return listed;
     const fields = [...new Set([...query.filters.map(([field]) => field), ...(query.sort ? [query.sort.field] : [])])];
     const rows = db.all<Record<string, string | null>>(`SELECT id, ${fields.map((_, index) => `data -> ? AS v${index}`).join(', ')} FROM store_records WHERE ${where.sql} ORDER BY seq`, ...fields.map(field => `$.${field}`), ...where.values);
     const projected = rows.map(row => {

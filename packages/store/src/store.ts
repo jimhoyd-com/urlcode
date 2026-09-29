@@ -172,8 +172,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   const live: { token: symbol; collections: readonly Collection[] }[] = [];
   // Whether this registration already warned that throttles and caches are per process (once, on seeing a live peer).
   let warnedPeers = false;
-  // The interval indexes each live activation reads through (#902), so a reload drops only indexes nobody declares.
-  const intervalIndexes = new Map<symbol, string[]>();
+  // The derived indexes (interval, #902; list, #951) each live activation reads through, so a reload drops only indexes nobody declares.
+  const derivedIndexes = new Map<symbol, string[]>();
   // The one connection and how many live activations hold it.
   let connection: Connection | undefined;
   const acquire = async (): Promise<{ db: StoreDatabase; lease: ServerLease; release(): Promise<void> }> => {
@@ -326,8 +326,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       }
       const exported = shared.attach(collections);
       live.push({ token: exported, collections });
-      intervalIndexes.set(exported, collections.flatMap(collection => collection.intervalIndex ?? []));
-      dropStaleIntervalIndexes(held.db, new Set([...intervalIndexes.values()].flat()));
+      derivedIndexes.set(exported, collections.flatMap(collection => [collection.intervalIndex ?? [], collection.listIndexes].flat()));
+      dropStaleIndexes(held.db, new Set([...derivedIndexes.values()].flat()));
       // Events a previous run left in the outbox drain now rather than at the next write or poll.
       if (pending > 0) attachment?.notify();
       let closed = false;
@@ -337,7 +337,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
           if (closed) return;
           closed = true;
           shared.detach(exported);
-          intervalIndexes.delete(exported);
+          derivedIndexes.delete(exported);
           const index = live.findIndex(entry => entry.token === exported);
           if (index >= 0) live.splice(index, 1);
           // A failed reload closes the newest activation: the one still serving is current again, and its declaration
@@ -354,14 +354,17 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
 }
 
 /**
- * Drops the interval indexes (#902) that no live activation declares: a changed or removed `intervals` would otherwise
- * leave an index every write keeps paying for. Housekeeping only: an index is never needed for a check to be correct,
- * so a lock another process holds just leaves the drop to the next activation.
+ * Drops the derived indexes, interval (#902) and list (#951), that no live activation declares: a changed or removed
+ * `intervals`, `sortable` or `filterable` would otherwise leave an index every write keeps paying for. Housekeeping
+ * only: an index is never needed for a check or a page to be correct, so a lock another process holds just leaves the
+ * drop to the next activation. The drops are one write transaction.
  */
-function dropStaleIntervalIndexes(db: StoreDatabase, wanted: ReadonlySet<string>): void {
+function dropStaleIndexes(db: StoreDatabase, wanted: ReadonlySet<string>): void {
   try {
-    for (const { name } of db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND name GLOB 'store_intervals_*'"))
-      if (!wanted.has(name) && /^store_intervals_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
+    db.transaction(() => {
+      for (const { name } of db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND (name GLOB 'store_intervals_*' OR name GLOB 'store_list_*')"))
+        if (!wanted.has(name) && /^store_(?:intervals|list)_[0-9a-f]{24}$/.test(name)) db.run(`DROP INDEX IF EXISTS "${name}"`);
+    });
   } catch { /* Retried by the next activation. */ }
 }
 /** Records `collections`' declarations as the ones served (the fence, #927) and switches their writes to check it. */

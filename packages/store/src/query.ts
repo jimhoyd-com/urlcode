@@ -5,7 +5,7 @@ import type { NormalizedSpec, PropertySchema, Scalar, StoredRecord } from './col
 export const QUERY_LIMITS = { declared: 8, filters: 3, parameters: 16, valueLength: 256, cursorLength: 4096, numberLength: 32 } as const;
 
 interface SortKey { field: string; descending: boolean }
-interface ListQuery {
+export interface ListQuery {
   limit: number;
   /** Numeric offset for the unsorted order. */
   offset: number;
@@ -48,7 +48,7 @@ function filterValue(spec: PropertySchema, raw: string): Scalar | undefined {
 const sameType = (spec: PropertySchema, value: unknown): value is Scalar =>
   spec.type === 'string' ? typeof value === 'string' && value.length <= QUERY_LIMITS.valueLength : spec.type === 'boolean' ? typeof value === 'boolean' : typeof value === 'number' && Number.isFinite(value) && (spec.type !== 'integer' || Number.isSafeInteger(value));
 
-function encodeCursor(sort: SortKey, record: StoredRecord): string {
+export function encodeCursor(sort: SortKey, record: StoredRecord): string {
   const value = record[sort.field];
   return Buffer.from(JSON.stringify([sort.field, sort.descending, value === undefined ? null : value, record.id])).toString('base64url');
 }
