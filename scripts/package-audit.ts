@@ -312,9 +312,11 @@ export const budgets: Record<string, Budget> = {
     // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #927's test:multiprocess script in package.json on top: 1014165 packed / 4011284 unpacked bytes on Node 26,
     // inside these budgets with about 2.8 KiB of headroom on each once Node 24's ~800 extra packed bytes are counted.
-    packed: 994 * 1024,
-    unpacked: 3920 * 1024,
-    entries: 521,
+    // #932 --local-review and the store-booking/store-credits recipes on top of #937 and #946: measured on Node 26 at 1023556 packed / 4051874 unpacked bytes, 525 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 1004 * 1024,
+    unpacked: 3960 * 1024,
+    entries: 529,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

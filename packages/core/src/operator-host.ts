@@ -30,7 +30,7 @@ export const inspectionHostKey = Symbol.for('urlcode.host.inspection');
  */
 export const unpinnedInspectionRevision = createHash('sha256').update('urlcode:unpinned-inspection').digest('hex');
 /** Where the reviewed revision comes from, named with a command that prints it; shared by every pin refusal. */
-export const revisionPinGuidance = 'pass the reviewed operator policy with --policy (or URLCODE_POLICY), or set PROJECT_SHA256 to the reviewed revision (`urlcode permissions --project app` prints it as projectSha256). Read-only explain, plan-feature, context and review need no pin';
+export const revisionPinGuidance = 'pass the reviewed operator policy with --policy (or URLCODE_POLICY), or set PROJECT_SHA256 to the reviewed revision (`urlcode permissions --project app` prints it as projectSha256). Read-only explain, plan-feature, context and review need no pin, and a local validate, test, routes or audit run may pass --local-review to pin the current revision for that run only (serve and dev never accept it)';
 /**
  * The pin `composeHost` uses: the verified policy revision when the CLI supplied one, otherwise `PROJECT_SHA256`; both
  * set and different refuses. With neither, an inspection load gets `unpinnedInspectionRevision`.

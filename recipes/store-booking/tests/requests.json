@@ -1,0 +1,26 @@
+[
+  {"path": "/api/bookings", "status": 401},
+  {"steps": [
+    {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"atlas\",\"start\":\"2030-01-07T10:00:00Z\",\"end\":\"2030-01-07T11:00:00Z\"}", "status": 201, "expectHeaders": {"cache-control": "no-store"}, "capture": {"a": {"json": "id"}}},
+    {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"atlas\",\"start\":\"2030-01-07T10:00:00Z\",\"end\":\"2030-01-07T12:00:00Z\"}", "status": 409},
+    {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"atlas\",\"start\":\"2030-01-07T11:00:00Z\",\"end\":\"2030-01-07T12:00:00Z\"}", "status": 201, "expectHeaders": {"cache-control": "no-store"}, "capture": {"b": {"json": "id"}}},
+    {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"borealis\",\"start\":\"2030-01-07T10:00:00Z\",\"end\":\"2030-01-07T11:00:00Z\"}", "status": 201, "expectHeaders": {"cache-control": "no-store"}, "capture": {"c": {"json": "id"}}},
+    {"path": "/api/bookings/{{a}}", "headers": {"authorization": "Bearer bob"}, "status": 404},
+    {"path": "/api/bookings/{{a}}", "headers": {"authorization": "Bearer alice"}, "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/bookings/{{a}}", "method": "HEAD", "headers": {"authorization": "Bearer alice"}, "status": 200, "expectBody": ""},
+    {"path": "/api/bookings/{{a}}", "method": "PATCH", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"status\":\"cancelled\"}", "status": 422},
+    {"path": "/api/bookings/{{a}}/cancel", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"atlas\",\"start\":\"2030-01-07T10:00:00Z\",\"end\":\"2030-01-07T11:00:00Z\"}", "status": 201, "expectHeaders": {"cache-control": "no-store"}, "capture": {"d": {"json": "id"}}},
+    {"path": "/api/bookings/{{c}}", "method": "PATCH", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"atlas\"}", "status": 409},
+    {"path": "/api/bookings/{{c}}", "method": "PATCH", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"end\":\"2030-01-07T12:00:00Z\"}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/bookings/{{c}}", "method": "PUT", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"borealis\",\"start\":\"2030-01-07T13:00:00Z\",\"end\":\"2030-01-07T15:00:00Z\"}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/bookings", "headers": {"authorization": "Bearer bob"}, "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/bookings/{{a}}", "method": "DELETE", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}"}, "status": 204, "expectBody": ""},
+    {"path": "/api/bookings/{{b}}", "method": "DELETE", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}"}, "status": 204, "expectBody": ""},
+    {"path": "/api/bookings/{{c}}", "method": "DELETE", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}"}, "status": 204, "expectBody": ""},
+    {"path": "/api/bookings/{{d}}", "method": "DELETE", "headers": {"authorization": "Bearer bob", "origin": "{{origin}}"}, "status": 204, "expectBody": ""}
+  ]},
+  {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"atlas\",\"start\":\"2030-01-07T10:30:00Z\",\"end\":\"2030-01-07T11:00:00Z\"}", "status": 422},
+  {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"room\":\"atlas\",\"start\":\"2030-01-07T11:00:00Z\",\"end\":\"2030-01-07T10:00:00Z\"}", "status": 422},
+  {"path": "/api/bookings", "method": "POST", "headers": {"authorization": "Bearer alice", "origin": "https://elsewhere.example", "content-type": "application/json"}, "body": "{\"room\":\"atlas\",\"start\":\"2030-01-07T10:00:00Z\",\"end\":\"2030-01-07T11:00:00Z\"}", "status": 403}
+]
