@@ -1,7 +1,7 @@
 // The host-transaction counterexample of recipes/store-credits (#902 item 6): trusted operator code that serves
-// /api/wallets/* through StoreExports.transaction, with the transfers, the issuer gate, conservation, retries, the owner
-// and its authorization written by hand. A measurement fixture for docs/FRAMEWORK.md, not a recipe: the declared
-// `transfers` replace it.
+// /api/wallets/* and /api/directory/* through StoreExports.transaction, with the transfers, the issuer gate,
+// conservation, retries, the directory, the owner and its authorization written by hand. A measurement fixture for
+// docs/FRAMEWORK.md, not a recipe: the declared `transfers` and `readers` replace it.
 import { defineExtension, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -51,7 +51,7 @@ function values(request, complete) {
     if (Object.hasOwn(body, name)) throw new Refusal(422, 'invalid_record', `${name} cannot be set`);
   }
   // PUT replaces the wallet, but tx.update merges, so a PUT must name every writable property.
-  if (complete && !Object.hasOwn(body, 'name')) throw new Refusal(422, 'invalid_record', 'PUT needs name');
+  if (complete && !Object.hasOwn(body, 'handle')) throw new Refusal(422, 'invalid_record', 'PUT needs handle');
   return body;
 }
 function transferBody(request) {
@@ -103,9 +103,27 @@ function transfer(tx, request, principal, name, ifMatch) {
   return { status: 200, body, headers: [['etag', after.etag]] };
 }
 
+// The directory: every owner's wallets, each shown only as its id and handle, found by ?handle=.
+function directory(wallets, request, id) {
+  const shown = record => ({ id: record.id, handle: record.handle });
+  if (id !== undefined) {
+    const found = UUID.test(id) ? [...every(wallets)].find(record => record.id === id) : undefined;
+    if (found === undefined) throw new Refusal(404, 'not_found', 'No such record');
+    return { status: 200, body: shown(found) };
+  }
+  const handle = request.query.get('handle');
+  const items = [...every(wallets)].filter(record => handle === null || record.handle === handle).map(shown);
+  return { status: 200, body: { items, total: items.length } };
+}
+
 function serve(tx, request, principal) {
   const wallets = tx.records('wallets');
   const method = request.method.toUpperCase();
+  if (request.mount === '/api/directory') {
+    const [id, ...rest] = request.path.slice(request.mount.length).split('/').filter(Boolean);
+    if (rest.length > 0) throw new Refusal(404, 'not_found', 'No such record');
+    return directory(wallets, request, id);
+  }
   const ifMatch = request.headers.get('if-match') ?? undefined;
   const [id, action, ...extra] = request.path.slice(request.mount.length).split('/').filter(Boolean);
   if (id === undefined) {

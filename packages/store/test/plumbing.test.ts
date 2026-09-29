@@ -86,7 +86,7 @@ test('the credits counterexample passes the store-credits recipe fixtures, and b
   const retries = JSON.parse(await readFile(plumbing('credits-retries.json'), 'utf8')) as unknown[];
   for (const version of ['declared', 'host'] as const) {
     const current = await site(t, 'credits', version);
-    if (version === 'host') commands(current, 2);
+    if (version === 'host') commands(current, 3);
     // Idempotency is part of the contract the recipe declares, and its fixtures send no Idempotency-Key: run the
     // same retry cases against both versions.
     const fixtures = join(current.project, 'tests', 'requests.json');
