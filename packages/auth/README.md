@@ -64,7 +64,9 @@ When the session cannot be checked because the auth database is unavailable
 (another process held its write lock past the 2-second busy timeout, or an I/O
 error), the route answers `503 {"error":"auth_unavailable"}` with
 `Retry-After: 1` rather than a `401` that would tell the client it is signed
-out.
+out. The mount answers the same `503` (and sets no cookie) when Better Auth
+itself fails on the database, for example a sign-in that cannot store its
+session because the disk is full, instead of Better Auth's bare `500`.
 Both checks apply only to a method the route declares: core answers any other
 method `405` with `Allow` before this extension runs.
 

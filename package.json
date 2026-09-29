@@ -158,6 +158,7 @@
     "test:proof:authjs": "node --test test/authjs-provider.integration.ts",
     "test:ecosystem": "node --test test/ecosystem.integration.ts",
     "test:multiprocess": "node --test test/multiprocess.integration.ts",
+    "test:disk-full": "node --test test/disk-full.integration.ts",
     "verify:addons": "npm run build && node scripts/workspaces.ts run build && npm run audit:packages && npm run test:addons"
   },
   "repository": {

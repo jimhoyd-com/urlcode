@@ -15,7 +15,9 @@
   database on one host shares one limit; each check is one atomic SQL update.
 - **Protected routes.** `auth: true` requires a session Better Auth verifies
   and refuses cross-origin unsafe methods. A database failure while verifying
-  the session answers `503 auth_unavailable` with no detail, never a `401`. The route's own code never receives
+  the session answers `503 auth_unavailable` with no detail, never a `401`;
+  so does a mount endpoint Better Auth fails with a server error (a sign-in
+  whose session cannot be stored on a full disk), with no `Set-Cookie`. The route's own code never receives
   the session cookie or `Authorization` (core strips them), only the user id,
   which core stamps as the request principal. A client-supplied
   `x-urlcode-context-*` header is always removed before any extension runs.

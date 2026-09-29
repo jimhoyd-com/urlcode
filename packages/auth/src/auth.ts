@@ -165,7 +165,12 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
           url.search = request.query.toString();
           const init: RequestInit = { method: request.method, headers, ...(request.signal ? { signal: request.signal } : {}) };
           if (request.method !== 'GET' && request.method !== 'HEAD') init.body = Buffer.from(request.body);
-          const response = await auth.handler(new Request(url, init));
+          // A storage failure (a full disk, a lock held past the busy timeout) is Better Auth's own 500 or a throw, with no
+          // detail worth passing on. Nothing it would set (a session cookie) is sent: the gate's bounded 503 instead.
+          const failed = (): HandlerResult => jsonResponse(503, { error: 'auth_unavailable' }, [['retry-after', '1']]);
+          let response: Response;
+          try { response = await auth.handler(new Request(url, init)); } catch { return failed(); }
+          if (response.status >= 500) { await response.body?.cancel(); return failed(); }
           const answer: [string, string][] = [...response.headers].filter(([name]) => name !== 'set-cookie');
           for (const cookie of response.headers.getSetCookie()) answer.push(['set-cookie', cookie]);
           return { status: response.status, headers: answer, body: new Uint8Array(await response.arrayBuffer()) };

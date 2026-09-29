@@ -147,6 +147,23 @@ test('a storage failure while verifying a session answers 503, not a false 401; 
   assert.deepEqual(await (await call('/me')).json(), { error: 'authentication_required' });
 });
 
+test('a storage failure during sign-in answers 503 auth_unavailable and sets no cookie, never Better Auth\'s 500', async t => {
+  const at = await project(t); await withUser(at);
+  const { call, jar } = await serve(at, { betterAuth: { logger: { disabled: true } } });
+  // Another connection holds the write lock past the busy timeout, so the session insert fails (test/disk-full.test.ts
+  // fails it with a full database instead).
+  const lock = new DatabaseSync(at.database); at.defer(() => { if (lock.isOpen) lock.close(); });
+  lock.exec('BEGIN IMMEDIATE');
+  const refused = await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } });
+  assert.equal(refused.status, 503);
+  assert.equal(refused.headers.get('retry-after'), '1');
+  assert.deepEqual(refused.headers.getSetCookie(), []);
+  assert.deepEqual(await refused.json(), { error: 'auth_unavailable' });
+  assert.equal(jar.size, 0);
+  lock.exec('ROLLBACK'); lock.close();
+  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+});
+
 test('the sign-in limit is one budget across every process serving the database', async t => {
   const at = await project(t); await withUser(at);
   const [first, second] = await Promise.all([serveProcess(at), serveProcess(at)]);
