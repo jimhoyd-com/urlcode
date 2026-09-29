@@ -66,11 +66,6 @@ export interface AddonDescriptor {
    */
   uses?: string[];
   /**
-   * Extensions this one hands a value through `contributes` (for example `["ui"]`), sorted. An optional edge in the
-   * add-on graph: unlike `requires`, the target need not be installed.
-   */
-  contributes?: string[];
-  /**
    * An extension's declared deployment targets (`ExtensionDefinition.targets`), in `extensionTargetNames` order. Its
    * registration refuses every other target at activation, so the capability preflight reads them to refuse a
    * project that uses the extension on such a target before any host file is loaded. Absent for an artifact.
@@ -179,10 +174,9 @@ export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   assert(isRecord(raw) && (raw.kind === 'extension' || raw.kind === 'artifact') && typeof raw.name === 'string' && addonNamePattern.test(raw.name) && typeof raw.description === 'string', `${source} is not an add-on descriptor`);
   assert(Array.isArray(raw.requires) && raw.requires.every(item => typeof item === 'string'), `${source}: requires must be a list of names`);
   assert(raw.uses === undefined || Array.isArray(raw.uses) && raw.uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== raw.name && !(raw.requires as unknown[]).includes(item)) && new Set(raw.uses).size === raw.uses.length, `${source}: uses must be a list of other extension names, disjoint from requires`);
-  assert(raw.contributes === undefined || Array.isArray(raw.contributes) && raw.contributes.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== raw.name), `${source}: contributes must be a list of other extension names`);
   if (raw.agent !== undefined) assertAgentTooling(raw.agent, source);
   if (raw.kind === 'artifact') {
-    assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.contributes === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension contract`);
+    assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension contract`);
     assert(raw.targets === undefined && raw.providesPrincipal === undefined, `${source}: an artifact descriptor declares no targets and provides no principal`);
     if (raw.documents !== undefined) assertDocuments(raw.documents, source);
   } else {

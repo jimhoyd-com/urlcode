@@ -795,8 +795,8 @@ the document; the auth route's 401 and 403 are matched by number, not through
 `default`.
 
 Not yet described: response bodies of `function` routes (there is no response
-schema field) and extension contributions (an extension cannot describe its
-mount through the extension contract yet).
+schema field) and extension mounts (an extension cannot describe its mount
+through the extension contract yet).
 
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its canonical, verb-first tools, in the order

@@ -297,22 +297,6 @@ point, including the rest of the authorize-gated pipeline. A route naming an
 extension via `policies.extensions` only requires that extension to
 implement `authorize`, `middleware`, or both — never both unconditionally.
 
-One exception exists for content-hashed assets. A registration may declare
-`immutableAssets: {prefix: '/static'}`, a normalized literal path under each
-of its mounts (no `.` or `..` segments, no trailing slash). The runtime then
-answers `Cache-Control: public, max-age=31536000, immutable` instead of
-no-store only when every condition holds: the request path lies under
-`<mount><prefix>/`, the method is GET or HEAD, the status is 200 or 304, the
-response carries exactly one strong ETag, sets no Set-Cookie, and does not
-vary on Cookie, Authorization or `*`. A stricter Cache-Control the extension
-set (no-store, no-cache, private or a shorter max-age) is preserved; other CDN
-cache headers are still stripped and compression stays disabled. Anything
-that fails a condition, including a cookie added by a later response hook,
-stays no-store. The extension owns the content-hashed filename: a file under
-the prefix must change its name when its bytes change, because clients never
-revalidate it. The prefix belongs to the operator registration, not to the
-pinned project revision. A mount that serves nothing but these files can say
-so for `urlcode audit` ([extension asset mounts](#extension-asset-mounts)).
 While any extension is active, the runtime withholds
 Cookie and Authorization plus every extension's declared credential headers
 from all application guest requests and mapped parameters, on every route,
@@ -596,7 +580,7 @@ version, exporting `.` and `./extension`), `README.md`/`SECURITY.md`/
 `host`), its `urlcode.json` descriptor (exactly what `build:addons` writes from
 that definition, so the root install's prepare step accepts the new package)
 and a real integration test, all as placeholders to replace. `--from <existing-package>` forks an existing package's file
-*shape* (which optional docs it carries, which siblings it requires) as a
+*shape* (which siblings it requires, whether it carries a `.gitignore`) as a
 starting point -- never its source code. The tool only creates files; run
 `npm install` and `npm run build:addons` afterwards so the workspace and its
 `urlcode.json` exist.
@@ -654,15 +638,12 @@ from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 `@jimhoyd/urlcode/extensions` exports one bounded implementation of the request
 chores every extension has (`RIM-EXT-HTTP-001` in
 [runtime implementation](RUNTIME-IMPLEMENTATION.md)). Do not hand-roll body
-parsing, JSON responses, cookie parsing or origin checks; use these:
+parsing, JSON responses or origin checks; use these:
 
 | Helper | What it does |
 |---|---|
-| `readBody(request, {accept, maxBytes, maxDepth?})` | Reads a JSON or `application/x-www-form-urlencoded` body. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), another media type (415), invalid UTF-8 (400) and, for JSON, nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
-| `readFields(request, {fields, patterns?, accept?, maxBytes?, maxFields?, maxValueLength?, limits?})` | A flat set of string fields through `readBody`: only names in `fields` or matching an anchored `patterns` entry, each once, each a string within its length limit. List `csrf` and any challenge token field yourself. The result is frozen. |
+| `readBody(request, {maxBytes, maxDepth?})` | Reads a JSON body and returns the parsed value. Refuses a repeated `Content-Type` (400, checked first), then more than `maxBytes` (413), any media type but `application/json` (415), invalid UTF-8 (400), and nesting deeper than `maxDepth` (default 32) or a repeated key (400) before `JSON.parse`. |
 | `jsonResponse(status, value, headers?)` | A JSON answer with `no-store`, `nosniff`, a deny-all CSP and a `strict-origin` referrer policy; a header you pass replaces the default of the same name. |
-| `wantsJson(request)` | Whether `Accept` lists `application/json` or the body is JSON. |
-| `readCookie(request, name, shape)` | One cookie value. Refuses (400) a repeated `Cookie` header, one over 8192 bytes, or the name twice; a value that does not match `shape` reads as absent. |
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
 | `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
@@ -703,7 +684,7 @@ const registration: RuntimeExtension = {
   another stream on a route that does not declare streaming is refused the
   same way.
 - The runtime's floor still applies: `Cache-Control: no-store`, the header
-  caps, no compression, and immutable-asset caching never applies to a stream.
+  caps and no compression.
 - `request.signal` aborts when the client disconnects, a stream limit ends
   the stream, or the server shuts down; its `reason` is the end reason. It
   also aborts, with reason `bodyless`, when the response carries no body
@@ -726,29 +707,6 @@ const registration: RuntimeExtension = {
   operator option that leaves `streams` unset for AWS. On Vercel delivery is
   `delegated`: the adapter writes each chunk, the provider's function
   streaming and duration limit decide the rest.
-
-### Extension asset mounts
-
-A registration that declares `immutableAssets: {prefix}` (see [the cache
-exception](#wrapping-a-route-extension-middleware)) may also say which of its
-mounts serve nothing else. The activated instance returns
-`assetMounts: ['/assets/example']`: entries of `context.mounts` whose route serves
-only content-hashed files under `<mount><prefix>/`, and 404 for any other path.
-No first-party extension declares one today.
-
-- Activation is refused, naming the extension, when an instance declares
-  `assetMounts` without `immutableAssets`, or names anything but distinct
-  mounts of its own routes.
-- It changes nothing at request time: the caching rules above apply the same
-  with or without it.
-- `urlcode audit` counts `GET` and `HEAD` on such a mount as covered by the
-  extension's own contract, labelled `extension-assets`, after checking that an
-  unknown name under the prefix answers 404 with no cookie. A mount left out
-  keeps the ordinary fixture coverage rules
-  ([extension asset mounts](READINESS.md#extension-asset-mounts)).
-
-Declare a mount only when the promise holds for every path under it: the probe
-checks one unknown name, not the extension's routing.
 
 ### Activation warnings
 
@@ -924,16 +882,14 @@ keep add-ons composable without core, or any other add-on, learning one's
 internals. An add-on **must** follow them:
 
 1. **Own only your declared surface.** An extension owns its declared
-   configuration, mounts, policies and exported or contributed contract, and
+   configuration, mounts, policies and exported contract, and
    nothing else. It must not read, parse or depend on another extension's
    private YAML or configuration layout. Pattern: an owned store collection
    reads only the generic request principal `auth` sets, never auth's
    configuration (see [nesting](#nesting)).
 2. **Make every cross-extension dependency explicit.** Use `requires`, or a
-   `uses` entry for an optional one, a typed, versioned export read with `ctx.get`, or a typed, versioned
-   contribution (`contributes` on the giver, `ctx.contributions` on the
-   receiver, which checks any name-keyed claim against the core-stamped
-   `from`; see [contributions](#contributions)); see [the extension definition](#the-extension-definition). Core
+   `uses` entry for an optional one, and a typed, versioned export read with
+   `ctx.get`; see [the extension definition](#the-extension-definition). Core
    stays unaware of first-party extension names and policy vocabulary: for the
    `auth:` shorthand core only maps the key, and auth's `policySchema` owns its
    shape (#710; see [the `auth` short form](#protecting-a-route-the-auth-short-form)).
@@ -945,7 +901,7 @@ internals. An add-on **must** follow them:
    documentation only: never executable code, provider wiring, credentials,
    customer data or application-specific configuration. The enforced file and
    manifest limits are in [artifacts](#artifacts).
-5. **Prove every new seam twice.** A new export, contribution, hook or policy
+5. **Prove every new seam twice.** A new export, hook or policy
    seam ships with a fixture for a second provider or consumer (not just the
    first-party pair that motivated it). External authors run their own package
    and consumer checks. In this repository, descriptor, build and add-on
@@ -957,9 +913,9 @@ internals. An add-on **must** follow them:
 
 - [ ] Configuration, mounts, policies and exports are declared in the
       definition; nothing reads another extension's configuration.
-- [ ] Every dependency is a `requires` or `uses` entry, a `ctx.get` export or a
-      `contributes`/`ctx.contributions` value, with a versioned shape.
-- [ ] Bodies, fields, cookies, JSON answers and origin checks go through core's
+- [ ] Every dependency is a `requires` or `uses` entry or a `ctx.get` export,
+      with a versioned shape.
+- [ ] JSON bodies, JSON answers and origin checks go through core's
       [request helpers](#request-helpers).
 - [ ] Core needs no change naming this extension or its policy keys.
 - [ ] `scaffold` writes only prerequisites; any demo is in `example()`.
@@ -1164,10 +1120,9 @@ URLCode ships two kinds of add-on with one shape:
 | Commands | `urlcode extensions …` | `urlcode artifacts …` |
 
 Every add-on is an npm-packable workspace carrying a static `urlcode.json`
-descriptor: `{kind, name, description, requires, contributes?, targets, schema?,
+descriptor: `{kind, name, description, requires, uses?, targets, schema?,
 policySchema?, hooks?, authoring?}`. For an extension the descriptor is written from its
-`defineExtension` definition by `npm run build:addons` (including
-`contributes`, the sorted names of the extensions it hands a value to), and CI fails when the
+`defineExtension` definition by `npm run build:addons`, and CI fails when the
 committed file differs, so tooling can read an extension's schemas and
 contracts without running any of its code. `targets` is required for an
 extension: the deployment targets (`node`, `aws`, `vercel`, in that order) its
@@ -1466,29 +1421,6 @@ so an extension's activation always runs after the activation of everything it
 requires or uses, and can read `active` on their exports. The order the extensions are declared in under `extensions` in YAML
 does not matter. They close in reverse order.
 
-A contribution is an optional edge too: an extension may contribute to one it
-does not require, and the value is simply unused when the target is not
-installed. The descriptor records the edge (`contributes: ["<target>"]`). No
-first-party extension contributes to another today.
-
-#### Contributions
-
-`ctx.contributions('<name>')` returns every installed extension's
-`contributes['<name>']` value, in host.mjs order, as `{from, value}`:
-
-- `from` is the contributing definition's registered `name`, **stamped by
-  core**. The contributor supplies only `value`, so a value that carries its
-  own `from` (or any other field) cannot change it: no contribution can claim
-  to come from another extension. This is the contribution analogue of the
-  principal's core-stamped `provider` ([request principal](#request-principal)).
-- Each entry is frozen, and each call returns a new frozen list. Core never
-  inspects, copies or freezes `value`; its shape and version belong to the
-  receiver.
-- A receiver that keys anything by extension name (a namespace, an owned
-  prefix) checks it against `from` and refuses a mismatch in `host()`, which
-  `composeHost` reports as a `ConfigError` for the receiving extension. The
-  error should name the claimed namespace and the contributing extension.
-
 Exports are typed and versioned (`version: 1`, plus `active`). `auth`
 exports nothing to other extensions; it reaches them only through the
 [request principal](#request-principal):
@@ -1499,7 +1431,6 @@ exports nothing to other extensions; it reaches them only through the
 | `StoreExports` | `store` | no first-party reader: an ownership-honouring records API for an operator's own extension |
 
 Two copies of one extension cannot exist in a site, so duplicate-instance bugs
-(such as a second copy that never received another extension's contributions)
 cannot happen.
 
 ### Audit log
@@ -1540,7 +1471,6 @@ export default defineExtension<MyHostOptions>({
   schema,                     // JSON Schema of extensions.<name>.config
   policySchema,               // optional: per-route policies.extensions.<name>
   hooks, authoring,           // optional project customization contracts
-  contributes: {},            // optional static values for another extension, e.g. {notifier: {...}}
   scaffold(request) { return { config, routes, files, env, notes }; },  // the capability
   example(request) { return { config, routes, notes }; },               // optional demo, only with --example
   host(ctx, options) { return { registration, exports, close }; },
@@ -1565,11 +1495,9 @@ above its routes. A scaffold may generate key material as `Uint8Array` file
 contents; core zeroes it after writing or on failure.
 
 `host(ctx, options)` builds the runtime registration from the operator's
-`host.mjs`. `ctx` is `{projectSha256, site, get, contributions}`: the reviewed
-revision pin, the site directory, the exports of a required or used extension
-(`undefined` for a used one that is not installed) and the values other
-extensions contribute to this one, each as a frozen `{from, value}` whose
-`from` core stamps ([contributions](#contributions)). It returns `{registration,
+`host.mjs`. `ctx` is `{projectSha256, site, get}`: the reviewed
+revision pin, the site directory and the exports of a required or used
+extension (`undefined` for a used one that is not installed). It returns `{registration,
 exports?, close?}`; `registration` is the `RuntimeExtension` described above,
 and `close` runs in reverse activation order. `composeHost` reads the
 revision pin once and refuses a host whose registration pins a different

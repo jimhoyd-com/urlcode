@@ -111,10 +111,10 @@ test('the scaffold writes the mount and a private secret; host() reads it; the C
   const file = scaffold.files![0]!;
   assert.equal(file.path, 'data/auth.secret');
   assert.equal(file.mode, 0o600);
-  await assert.rejects(async () => extension.definition.host({ projectSha256: 'a'.repeat(64), site, get: () => undefined, contributions: () => [] } as never, {}), /auth secret data\/auth\.secret is missing/);
+  await assert.rejects(async () => extension.definition.host({ projectSha256: 'a'.repeat(64), site, get: () => undefined } as never, {}), /auth secret data\/auth\.secret is missing/);
   await mkdir(join(site, 'data'), { recursive: true });
   await writeFile(join(site, file.path), file.content, { mode: 0o600 });
-  const hosted = await extension.definition.host({ projectSha256: 'a'.repeat(64), site, get: () => undefined, contributions: () => [] } as never, {});
+  const hosted = await extension.definition.host({ projectSha256: 'a'.repeat(64), site, get: () => undefined } as never, {});
   assert.equal(hosted.registration.name, 'auth');
   const run = (args: string[], input?: string) => spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--site', site], { encoding: 'utf8', input, env: { ...process.env, BETTER_AUTH_SECRET: '' } });
   assert.equal(run(['migrate']).status, 0);

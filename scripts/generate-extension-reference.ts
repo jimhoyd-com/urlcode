@@ -167,7 +167,6 @@ export function renderReference(source: ExtensionSource): string {
   const peers: string[] = [];
   if (descriptor.requires.length) peers.push(`requires ${descriptor.requires.map(peer => `\`${peer}\``).join(', ')} (\`urlcode extensions add ${name}\` installs them too)`);
   if (descriptor.uses?.length) peers.push(`uses ${descriptor.uses.map(peer => `\`${peer}\``).join(', ')} when installed (optional: the features that need one refuse to activate without it)`);
-  if (descriptor.contributes?.length) peers.push(`contributes to ${descriptor.contributes.map(peer => `\`${peer}\``).join(', ')} (read only when that extension is installed)`);
   out.push('', `**Peers.** ${peers.length ? `${peers.join('; ')}.` : 'none.'}`);
   const configRows = rows(descriptor.schema).filter(row => !(descriptor.hooks?.length && (row.path === 'hooks' || row.path.startsWith('hooks.'))));
   out.push('', `### Configuration: \`extensions.${name}.config\``, '');

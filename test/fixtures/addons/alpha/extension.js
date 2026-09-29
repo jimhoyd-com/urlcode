@@ -4,8 +4,6 @@ import { join } from 'node:path';
 const schema = { type: 'object', additionalProperties: false, properties: { greeting: { type: 'string' } } };
 const definition = {
   name: 'alpha', description: 'Fixture extension with a mount and a key file', requires: [], targets: ['node'], schema,
-  // The value names another extension on purpose: core stamps `from` itself, so the value can never set it.
-  contributes: { beta: { from: 'beta', greeting: 'hi' } },
   scaffold: ({ installed }) => ({
     config: { greeting: 'hello' },
     routes: { '/alpha/*': { extension: 'alpha', methods: ['GET', 'HEAD'] } },

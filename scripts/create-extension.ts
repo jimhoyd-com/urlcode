@@ -10,8 +10,8 @@
 //
 // <name> is the package slug (packages/<name>, @jimhoyd/urlcode-<name>) and the
 // extension name. --from <existing-package> forks the file *shape* of an
-// already-existing packages/<existing-package> (which optional docs it carries,
-// which workspace siblings it peers on and so requires) rather than its
+// already-existing packages/<existing-package> (which workspace siblings it
+// peers on and so requires, and whether it carries a .gitignore) rather than its
 // business logic: the generated source is still the same minimal example
 // handler, never a copy of the source package's implementation (#614, #615).
 //
@@ -73,11 +73,8 @@ async function loadCoreManifest(): Promise<CoreManifest> {
   return JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as CoreManifest;
 }
 
-/** Files an existing package may carry beyond the minimal shape; forking one reproduces which of these are present, as placeholders -- never their content. */
-const OPTIONAL_DOC_FILES = ['ACCEPTANCE.md', 'CONTRACT.md', 'IMPLEMENTATION-STATUS.md', 'THREAT-MODEL.md', 'THIRD_PARTY_NOTICES.md'] as const;
-
 /** `peers` are the workspace sibling extensions the source package peers on (directory name = extension name), with their versions. */
-interface ForkShape { peers: { name: string; version: string }[]; optionalDocs: string[]; hasGitignore: boolean; sourceDir: string }
+interface ForkShape { peers: { name: string; version: string }[]; hasGitignore: boolean; sourceDir: string }
 
 async function readForkShape(fromSlug: string): Promise<ForkShape> {
   const sourceDir = join(packagesDir, fromSlug);
@@ -93,10 +90,8 @@ async function readForkShape(fromSlug: string): Promise<ForkShape> {
     if (raw) { const parsed = JSON.parse(raw) as SourceManifest; if (parsed.name && parsed.version) dirByName.set(parsed.name, { name: entry.name, version: parsed.version }); }
   }
   const peers = peerNames.map(peer => dirByName.get(peer)).filter((value): value is { name: string; version: string } => value !== undefined);
-  const optionalDocs: string[] = [];
-  for (const file of OPTIONAL_DOC_FILES) if (existsSync(join(sourceDir, file))) optionalDocs.push(file);
   const hasGitignore = existsSync(join(sourceDir, '.gitignore'));
-  return { peers, optionalDocs, hasGitignore, sourceDir };
+  return { peers, hasGitignore, sourceDir };
 }
 
 /** Exact pins throughout: every extension is released with core at core's version, and so is every sibling it peers on. */
@@ -184,7 +179,7 @@ function urlcodeJson(name: string, description: string, fork: ForkShape | undefi
 }
 
 function readmeMd(name: string, camel: string, description: string, fork: ForkShape | undefined): string {
-  const forkNote = fork ? `\nGenerated with \`--from ${fork.sourceDir.split('/').pop()}\`: this package starts from that package's *file shape and conventions* (workspace peers, doc set), not its source code. Replace the placeholder handler in \`src/${name}.ts\` with this extension's own behavior.\n` : '';
+  const forkNote = fork ? `\nGenerated with \`--from ${fork.sourceDir.split('/').pop()}\`: this package starts from that package's *file shape and conventions* (workspace peers), not its source code. Replace the placeholder handler in \`src/${name}.ts\` with this extension's own behavior.\n` : '';
   return `# @jimhoyd/urlcode-${name}
 
 ${description}
@@ -527,16 +522,6 @@ test('registration requires an explicit projectSha256 pin', () => {
 `;
 }
 
-function optionalDocPlaceholder(file: string, name: string, fromSlug: string): string {
-  return `# ${file.replace(/\.md$/, '')}
-
-TODO: this file is a placeholder. \`packages/${fromSlug}\` (the \`--from\`
-source for this scaffold) carries a \`${file}\`, so this fork reproduces that
-it exists -- not its content, which is specific to ${fromSlug}'s own
-behavior. Fill this in for \`${name}\`, or delete it if it does not apply.
-`;
-}
-
 async function writeIfAbsent(path: string, content: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, { flag: 'wx' });
@@ -593,10 +578,7 @@ async function main(): Promise<void> {
   const licenseText = existsSync(licenseSource) ? await readFile(licenseSource, 'utf8') : await readFile(join(root, 'LICENSE'), 'utf8');
   files.set('LICENSE', licenseText);
 
-  if (fork) {
-    if (fork.hasGitignore) files.set('.gitignore', 'dist/\n');
-    for (const doc of fork.optionalDocs) files.set(doc, optionalDocPlaceholder(doc, name, args.from!));
-  }
+  if (fork?.hasGitignore) files.set('.gitignore', 'dist/\n');
 
   for (const [relativePath, content] of files) await writeIfAbsent(join(targetDir, relativePath), content);
 
@@ -621,7 +603,7 @@ minimal shape of packages/mcp and packages/store.
 
   <name>                 Package slug, e.g. "widgets" -> packages/widgets,
                           @jimhoyd/urlcode-widgets.
-  --from <package>        Fork the file shape (doc set, workspace peers) of
+  --from <package>        Fork the file shape (workspace peers) of
                           an existing packages/<package> -- never its source
                           code, which the scaffold never copies.
   --description "..."     One-line package.json/README/extension description.
