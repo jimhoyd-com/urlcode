@@ -342,15 +342,14 @@
             },
             "membership": {
               "type": "boolean",
-              "description": "true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member's key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, transfers, readers, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded."
+              "description": "true: a membership list. Its key property holds principal ids (one record per member); transitions and readers name it in members. It has no mount and no HTTP API: the operator maintains it with urlcode-store members or trusted extension code (StoreExports); a member's key cannot be changed, only removed and added. Needs key; takes no mount, ownership, transitions, transfers, readers, create, increments, idempotency, sortable, filterable or readOnly. With audit: true every added and removed member is recorded."
             },
             "readers": {
-              "description": "With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET <mount> (with the collection's limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner.",
+              "description": "With ownership: owner only: members of a membership collection list and read every owner's records, read-only, as GET <mount> (with the collection's limit, cursor, sort and filters) and GET <mount>/<id>. Owners keep their own view on the collection mount. The stored owner is shown only with showOwner. With properties, the mount shows only id and those properties, and members becomes optional: a directory every signed-in principal may search without seeing the rest of any record.",
               "type": "object",
               "additionalProperties": false,
               "required": [
-                "mount",
-                "members"
+                "mount"
               ],
               "properties": {
                 "mount": {
@@ -362,11 +361,37 @@
                 "members": {
                   "type": "string",
                   "pattern": "^[a-z][a-z0-9_-]{0,63}$",
-                  "description": "A membership collection: anyone it does not list gets 403 membership_required before any record is read."
+                  "description": "A membership collection: anyone it does not list gets 403 membership_required before any record is read. Required unless properties is given; without it every principal the route admits may read the listed properties."
                 },
                 "showOwner": {
                   "type": "boolean",
                   "description": "true: every record this mount answers carries _owner, the opaque principal id of the owner (for auth, the user id; never an email or name), so a member can tell requesters apart. Only this mount shows it: the owner's mount, transitions and StoreExports never do."
+                },
+                "properties": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+                  },
+                  "description": "A projection: the declared properties this mount shows. Each record is answered as id and these properties only (no createdAt, updatedAt or other property); sort and filters take only these; its ETag is of what it shows, so it changes only when a listed property does (it is not the record's own ETag, which If-Match takes); may lists only transitions whose from names only these. Use it for a directory (a wallet's name, never its balance)."
+                }
+              }
+            },
+            "create": {
+              "description": "Who may create a record. members: only principals a membership collection lists may POST <mount> (and create through StoreExports or a host transaction); anyone else gets 401 principal_required without a principal, or 403 membership_required inside the write transaction before the Idempotency-Key or anything else is read or written.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "members"
+              ],
+              "properties": {
+                "members": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+                  "description": "A membership collection (membership: true): only principals it lists may create."
                 }
               }
             },
@@ -428,6 +453,36 @@
                     ]
                   },
                   "description": "Only records holding exactly these values take part, for example {status: booked} so a cancelled booking frees its slot; each value must satisfy its property's schema. Without it every record takes part."
+                },
+                "length": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^P(?:([0-9]{1,5})D)?(?:T(?:([0-9]{1,6})H)?(?:([0-9]{1,8})M)?(?:([0-9]{1,10})S)?)?$",
+                      "maxLength": 40
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "description": "The exact length of every interval: an ISO 8601 duration in whole days, hours, minutes and seconds (PT1H, PT30M, P1D) for date-time bounds, a positive integer for integer bounds. A record whose end is not exactly start plus length answers 422 invalid_record. Applies to every record, whatever when says."
+                },
+                "step": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^P(?:([0-9]{1,5})D)?(?:T(?:([0-9]{1,6})H)?(?:([0-9]{1,8})M)?(?:([0-9]{1,10})S)?)?$",
+                      "maxLength": 40
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "description": "The grid the bounds sit on: start and end must each be a whole multiple of step, counted from 1970-01-01T00:00:00Z for date-times (PT1H: on the hour, UTC; PT15M: on the quarter hour) or from 0 for integers, or the write answers 422 invalid_record. Without length it makes every interval a whole number of steps; with length, length must be a multiple of step."
                 }
               }
             },
@@ -592,9 +647,16 @@
       {
         "kind": "configuration",
         "name": "intervals",
-        "description": "`intervals: {start, end, within?, scope?, when?}` on a collection: no two records it applies to (those holding the `when` values, such as `{status: booked}`) in one scope with equal `within` values (a room) may hold overlapping half-open `[start, end)` intervals; any create, PUT, PATCH or transition that would answers `409 interval_conflict` and writes nothing. Checked through an index in the write transaction, across owners on an owned collection without naming another owner's record. Bounds are both numbers or both `format: date-time` strings in UTC (`Z`).",
+        "description": "`intervals: {start, end, within?, scope?, when?}` on a collection: no two records it applies to (those holding the `when` values, such as `{status: booked}`) in one scope with equal `within` values (a room) may hold overlapping half-open `[start, end)` intervals; any create, PUT, PATCH or transition that would answers `409 interval_conflict` and writes nothing. Checked through an index in the write transaction, across owners on an owned collection without naming another owner's record. Bounds are both numbers or both `format: date-time` strings in UTC (`Z`). `length` (an ISO 8601 duration such as `PT1H`, or an integer) fixes every slot's length and `step` puts both bounds on a grid (`PT1H`: on the hour, UTC); a slot that breaks either answers `422 invalid_record`.",
         "path": "urlcode.yaml",
         "goals": [
+          "length",
+          "duration",
+          "hour",
+          "hourly",
+          "aligned",
+          "align",
+          "fixed-length",
           "book",
           "booking",
           "bookings",
@@ -653,11 +715,16 @@
       {
         "kind": "configuration",
         "name": "membership",
-        "description": "Permissions as data keyed by the principal id, never roles in auth: a `membership: true` collection with a `key` lists principal ids and has no mount (the operator maintains it with `urlcode-store members` or `addMember`/`removeMember`). A transition's `members` and a collection's `readers.members` name it.",
+        "description": "Permissions as data keyed by the principal id, never roles in auth: a `membership: true` collection with a `key` lists principal ids and has no mount (the operator maintains it with `urlcode-store members` or `addMember`/`removeMember`). A transition's or transfer's `members`, a collection's `create.members` (only members may create; `403` before anything is written) and `readers.members` name it.",
         "path": "urlcode.yaml",
         "goals": [
           "member",
           "members",
+          "members-only",
+          "invite",
+          "invited",
+          "restrict",
+          "restricted",
           "membership",
           "reviewer",
           "reviewers",
@@ -678,9 +745,17 @@
       {
         "kind": "configuration",
         "name": "readers",
-        "description": "An owned collection's `readers: {mount, members, showOwner?}` lets the members of a membership collection list (with the collection's limit, cursor, sort and filters) and read every owner's records read-only on a separate mount; owners keep their own view on the collection mount.",
+        "description": "An owned collection's `readers: {mount, members, showOwner?, properties?}` lets the members of a membership collection list (with the collection's limit, cursor, sort and filters) and read every owner's records read-only on a separate mount; owners keep their own view on the collection mount. `properties` makes it a projection (`id` and the listed properties only, sorted and filtered by those only) and `members` optional: a directory any signed-in principal searches, for example to find a transfer recipient's wallet id by name without seeing any balance.",
         "path": "urlcode.yaml",
         "goals": [
+          "directory",
+          "lookup",
+          "find",
+          "search",
+          "recipient",
+          "recipients",
+          "projection",
+          "public",
           "reviewer",
           "reviewers",
           "review",

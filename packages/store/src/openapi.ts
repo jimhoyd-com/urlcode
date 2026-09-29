@@ -95,8 +95,19 @@ function collectionSchemas(name: string, spec: NormalizedSpec): { schemas: Json;
       type: 'object', required: ['from'], additionalProperties: false, properties: { from: ref(names.record), to: ref(names.record) },
     };
   }
-  if (spec.readers?.showOwner) {
-    schemas[names.reader] = record({ _owner: { type: 'string', readOnly: true, description: 'The owner\'s opaque principal id.' } }, ['_owner']);
+  const owner = { _owner: { type: 'string', readOnly: true, description: 'The owner\'s opaque principal id.' } };
+  const shown = spec.readers?.properties;
+  if (shown) {
+    // A projection (#929): the id, the listed properties and (with showOwner) the owner, nothing else.
+    schemas[names.reader] = {
+      description: `What the readers mount shows of a ${name} record: its id and ${shown.join(', ')} only.`,
+      type: 'object', additionalProperties: false,
+      required: ['id', ...spec.readers!.showOwner ? ['_owner'] : [], ...records.required.filter(field => shown.includes(field))],
+      properties: { id: stored.id, ...spec.readers!.showOwner ? owner : {}, ...Object.fromEntries(shown.map(field => [field, annotated(field, true)])) },
+    };
+    schemas[names.readerList] = list(names.reader);
+  } else if (spec.readers?.showOwner) {
+    schemas[names.reader] = record(owner, ['_owner']);
     schemas[names.readerList] = list(names.reader);
   }
   return { schemas, names };
@@ -121,6 +132,14 @@ const unavailable = failure('storage_unavailable, or audit_backlog on an audited
 const badRequest = failure('A malformed header, query, JSON body or Idempotency-Key.');
 const notFound = failure('No such record in the caller\'s scope (another owner\'s record answers the same).');
 
+/** What an interval's declared length and step add to its 422 (#929). */
+function intervalRules(intervals: NonNullable<NormalizedSpec['intervals']>): string {
+  return [
+    ...(intervals.length ? [`, an end that is not exactly ${intervals.length.declared} after its start`] : []),
+    ...(intervals.step ? [`, a bound that is not a whole multiple of ${intervals.step.declared}${intervals.kind === 'date-time' ? ' from 1970-01-01T00:00:00Z' : ''}`] : []),
+  ].join('');
+}
+
 /** One collection mount: the list and create path, the record path, and its increments and transitions. */
 function collectionPaths(mount: string, name: string, spec: NormalizedSpec, names: ReturnType<typeof collectionSchemas>['names']): Record<string, Json> {
   const retry = spec.idempotency ? [idempotencyKey] : [];
@@ -132,7 +151,7 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
     ...(conflict ? { '409': failure(conflict) } : {}),
     '413': failure('record_too_large: the body or the resulting record exceeds maxRecordBytes.'),
     '415': failure('Send Content-Type: application/json.'),
-    '422': failure(`invalid_record: the record does not satisfy the collection schema${spec.intervals ? ' or its intervals (a bound that is not a UTC date-time, or an end not after its start)' : ''}${spec.idempotency ? '; or idempotency_key_reused' : ''}.`),
+    '422': failure(`invalid_record: the record does not satisfy the collection schema${spec.intervals ? ` or its intervals (a bound that is not a UTC date-time, an end not after its start${intervalRules(spec.intervals)})` : ''}${spec.idempotency ? '; or idempotency_key_reused' : ''}.`),
     '503': unavailable,
   });
   const listed = { parameters: listParameters(spec), responses: { '200': { description: 'One page of the caller\'s records.', content: json(ref(names.list)) }, '400': failure('invalid_query: an undeclared, repeated or invalid list parameter.'), '503': unavailable } };
@@ -145,7 +164,11 @@ function collectionPaths(mount: string, name: string, spec: NormalizedSpec, name
       head: { summary: `List ${name} (headers only)`, ...listed },
       ...(spec.readOnly ? {} : { post: {
         summary: `Create a ${name} record`, parameters: retry, requestBody: body(names.create),
-        responses: { ...recordAnswer('201', 'Created.', { Location: header('The new record\'s URL.', { type: 'string' }) }), ...writeErrors(conflicts) },
+        ...(spec.create ? { description: `Only a member of ${spec.create.members} may create; the membership is checked inside the write transaction before anything is read or written.` } : {}),
+        responses: {
+          ...recordAnswer('201', 'Created.', { Location: header('The new record\'s URL.', { type: 'string' }) }), ...writeErrors(conflicts),
+          ...(spec.create ? { '401': failure('principal_required: creating needs a signed-in principal.'), '403': failure('forbidden_origin: a cross-origin write; membership_required: the caller is not a member.') } : {}),
+        },
       } }),
     },
   };
@@ -224,10 +247,14 @@ export function describeStore(request: ExtensionDescribeRequest): ExtensionOpenA
     const owned = (): ExtensionOpenApi => { Object.assign(schemas, built.schemas); return { paths: {}, schemas }; };
     if (spec.mount === mount) { const out = owned(); out.paths = collectionPaths(mount, name, spec, built.names); return out; }
     if (spec.readers?.mount === mount) {
-      const out = owned(), item = spec.readers.showOwner ? built.names.reader : built.names.record, list = spec.readers.showOwner ? built.names.readerList : built.names.list;
-      const gate = failure('membership_required: the caller is not a member of the readers\' membership collection.');
-      const listed = { parameters: listParameters(spec), responses: { '200': { description: 'One page of every owner\'s records.', content: json(ref(list)) }, '400': failure('invalid_query: an undeclared, repeated or invalid list parameter.'), '403': gate, '503': unavailable } };
-      const read = { responses: { '200': { description: 'The record.', headers: { ETag: etag, 'Allow-Transitions': allowTransitions }, content: json(ref(item)) }, '403': gate, '404': notFound, '503': unavailable } };
+      const readers = spec.readers, shown = readers.properties, special = shown !== undefined || readers.showOwner;
+      const out = owned(), item = special ? built.names.reader : built.names.record, list = special ? built.names.readerList : built.names.list;
+      const gate = readers.members === undefined ? {} : { '403': failure('membership_required: the caller is not a member of the readers\' membership collection.') };
+      // A projection sorts and filters by what it shows only, and its ETag is of the projection.
+      const query = shown === undefined ? spec : { ...spec, sortable: spec.sortable.filter(field => shown.includes(field)), filterable: spec.filterable.filter(field => shown.includes(field)) };
+      const tag = shown === undefined ? etag : header('The strong ETag of what this mount shows: it changes only when a shown property does, and is not the record\'s own ETag (If-Match does not take it).', { type: 'string' });
+      const listed = { parameters: listParameters(query), responses: { '200': { description: 'One page of every owner\'s records.', content: json(ref(list)) }, '400': failure('invalid_query: an undeclared, repeated or invalid list parameter.'), ...gate, '503': unavailable } };
+      const read = { responses: { '200': { description: 'The record.', headers: { ETag: tag, 'Allow-Transitions': allowTransitions }, content: json(ref(item)) }, ...gate, '404': notFound, '503': unavailable } };
       out.paths = {
         [mount]: { summary: `Every owner's ${name} records, read-only`, get: { summary: `List every owner's ${name}`, ...listed }, head: { summary: `List every owner's ${name} (headers only)`, ...listed } },
         [`${mount}/{id}`]: { parameters: [idParameter], get: { summary: `Read any owner's ${name} record`, ...read }, head: { summary: `Read any owner's ${name} record (headers only)`, ...read } },
