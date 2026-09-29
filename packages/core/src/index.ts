@@ -52,5 +52,5 @@ export type {AddResult,RemoveResult,AddonReport,ListedAddon} from './addon-insta
 export {readAddonManifest,readAddonCatalog} from './addon-manifest.ts';
 export type {AddonManifest,AddonPin,AddonDescriptor,AddonKind,AddonCatalog,AddonCatalogEntry,AddonAgentTooling,AddonAgentReference} from './addon-manifest.ts';
 export {composeHost} from './host.ts';
-export {defineExtension} from './extensions.ts';
+export {defineExtension, extensionContract} from './extensions.ts';
 export type {ScaffoldRequest, ScaffoldResult, ScaffoldFile, ExtensionDefinition, DefinedExtension, ExtensionEntry, HostContext, HostedExtension} from './extensions.ts';

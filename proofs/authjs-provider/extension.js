@@ -82,6 +82,7 @@ function scaffold() {
 export default defineExtension({
   name: 'authjs',
   description: 'Auth.js on one mount; routes that name it receive the signed-in user id as their principal and identity capability',
+  contract: 1,
   requires: [],
   targets: ['node'],
   providesPrincipal: true,

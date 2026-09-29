@@ -2,16 +2,30 @@
   "kind": "artifact",
   "name": "store-schema",
   "description": "The store extension's configuration schema and a minimal example configuration, as inert JSON for tooling",
+  "contract": 1,
   "requires": [],
   "documents": [
-    {"path": "schemas/config.json", "mediaType": "application/schema+json"},
-    {"path": "config/example.json", "mediaType": "application/json"},
-    {"path": "README.md", "mediaType": "text/markdown"}
+    {
+      "path": "schemas/config.json",
+      "mediaType": "application/schema+json"
+    },
+    {
+      "path": "config/example.json",
+      "mediaType": "application/json"
+    },
+    {
+      "path": "README.md",
+      "mediaType": "text/markdown"
+    }
   ],
   "agent": {
     "description": "Inert store configuration material for local agent inspection.",
     "references": [
-      {"name": "configuration schema", "description": "JSON Schema for the store extension configuration.", "path": "schemas/config.json"}
+      {
+        "name": "configuration schema",
+        "description": "JSON Schema for the store extension configuration.",
+        "path": "schemas/config.json"
+      }
     ]
   }
 }

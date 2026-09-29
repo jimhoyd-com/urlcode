@@ -2,6 +2,7 @@
   "kind": "extension",
   "name": "mcp",
   "description": "Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers",
+  "contract": 1,
   "requires": [],
   "targets": [
     "node",
