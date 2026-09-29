@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,11 +17,29 @@ export interface OperatorHost {
  * policy's `projectSha256`, is set only while `loadOperatorHost` imports the host file, and no project file can set it.
  */
 export const operatorRevisionKey = Symbol.for('urlcode.host.operatorRevision');
-/** The pin `composeHost` uses: the verified policy revision when the CLI supplied one, otherwise `PROJECT_SHA256`; both set and different refuses. */
+/**
+ * Set (to `true`) only while `loadOperatorHost` imports the host file for a read-only inspection command (explain,
+ * plan-feature, context, review, report, studio, extensions, openapi, mcp). Like the revision key it is a
+ * `Symbol.for` key a second copy of core reads too, and no project file can set it (#910).
+ */
+export const inspectionHostKey = Symbol.for('urlcode.host.inspection');
+/**
+ * The revision an unpinned inspection composes its registrations with: the SHA-256 of a fixed label, never a project's
+ * revision, so every activation refuses it (`prepareExtensions` names it before any other check). Reading
+ * registrations never needs the pin; activating or serving always does. Every copy of core derives the same value.
+ */
+export const unpinnedInspectionRevision = createHash('sha256').update('urlcode:unpinned-inspection').digest('hex');
+/** Where the reviewed revision comes from, named with a command that prints it; shared by every pin refusal. */
+export const revisionPinGuidance = 'pass the reviewed operator policy with --policy (or URLCODE_POLICY), or set PROJECT_SHA256 to the reviewed revision (`urlcode permissions --project app` prints it as projectSha256). Read-only explain, plan-feature, context and review need no pin';
+/**
+ * The pin `composeHost` uses: the verified policy revision when the CLI supplied one, otherwise `PROJECT_SHA256`; both
+ * set and different refuses. With neither, an inspection load gets `unpinnedInspectionRevision`.
+ */
 export function hostRevisionPin(): string {
-  const fromPolicy = (globalThis as Record<symbol, unknown>)[operatorRevisionKey];
+  const slot = globalThis as Record<symbol, unknown>;
+  const fromPolicy = slot[operatorRevisionKey];
   const fromEnv = process.env.PROJECT_SHA256;
-  if (typeof fromPolicy !== 'string') return fromEnv ?? '';
+  if (typeof fromPolicy !== 'string') return fromEnv === undefined || fromEnv === '' ? slot[inspectionHostKey] === true ? unpinnedInspectionRevision : '' : fromEnv;
   assertRevisionsAgree(fromPolicy, fromEnv);
   return fromPolicy;
 }
@@ -30,8 +49,10 @@ function assertRevisionsAgree(policy: string, env: string | undefined): void {
 interface LoadOptions {
   /** The `projectSha256` of an operator policy the CLI already loaded and validated with `--policy`. */
   revision?: string | undefined;
+  /** A read-only command: without a pin the host composes unpinned registrations that cannot activate (#910). */
+  inspection?: boolean | undefined;
 }
-export async function loadOperatorHost(given: string | undefined, project: string, { revision }: LoadOptions = {}): Promise<OperatorHost> {
+export async function loadOperatorHost(given: string | undefined, project: string, { revision, inspection }: LoadOptions = {}): Promise<OperatorHost> {
   if (given === undefined) return {};
   // Always named explicitly; a relative name resolves against the working directory (a site's `--host-file host.mjs`).
   const file = resolve(given);
@@ -44,11 +65,15 @@ export async function loadOperatorHost(given: string | undefined, project: strin
   // Importing runs host.mjs, including composeHost and every extension's host() hook. Core's own refusals (and an
   // extension's, already named by composeHost) keep their message; anything else is reported as the host file's.
   if (revision !== undefined) assertRevisionsAgree(revision, process.env.PROJECT_SHA256);
-  const slot = globalThis as Record<symbol, unknown>, previous = slot[operatorRevisionKey];
+  const slot = globalThis as Record<symbol, unknown>, previous = slot[operatorRevisionKey], previousInspection = slot[inspectionHostKey];
   if (revision !== undefined) slot[operatorRevisionKey] = revision;
+  if (inspection === true) slot[inspectionHostKey] = true;
   try { module = await import(pathToFileURL(path).href) as Record<string, unknown>; }
   catch (error) { throw asConfigError(error) ?? hostLoadError(error); }
-  finally { if (previous === undefined) delete slot[operatorRevisionKey]; else slot[operatorRevisionKey] = previous; }
+  finally {
+    if (previous === undefined) delete slot[operatorRevisionKey]; else slot[operatorRevisionKey] = previous;
+    if (previousInspection === undefined) delete slot[inspectionHostKey]; else slot[inspectionHostKey] = previousInspection;
+  }
   const host: unknown = module.default;
   assert(host !== null && typeof host === 'object' && !Array.isArray(host), 'Host file must default-export an operator configuration object');
   assert(Object.keys(host).every(key => ['extensions', 'plugins', 'close'].includes(key)), 'Unknown operator host setting');

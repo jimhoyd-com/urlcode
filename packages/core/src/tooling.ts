@@ -19,7 +19,7 @@ import Ajv from 'ajv/dist/2020.js';
 import {dirname} from 'node:path';
 import type {LoadedDocument} from './types.ts';
 import type {RuntimeExtension} from './extensions.ts';
-import {loadOperatorHost} from './operator-host.ts';
+import {loadOperatorHost,unpinnedInspectionRevision} from './operator-host.ts';
 import {explainCompiledRoute,nearestRoutes} from './explain.ts';
 import type {RouteExplanation} from './explain.ts';
 export {getCapabilities} from './capabilities.ts';
@@ -132,10 +132,11 @@ export async function describeExtensions(project:string,registrations:RuntimeExt
   declared:Object.hasOwn(loaded.document.extensions??{},registration.name),revisionPinned:registration.projectSha256===projectSha256,
   mounts:mountsOf(registration.name),policyRoutes:policyRoutesOf(registration.name),
  }));
- return {format:1,projectSha256,hostLoaded:true,note:'Schemas describe operator-installed contracts; inspection activates nothing and grants no revision.',extensions,declared};
+ const unpinned=(registrations??[]).some(registration=>registration.projectSha256===unpinnedInspectionRevision);
+ return {format:1,projectSha256,hostLoaded:true,note:`Schemas describe operator-installed contracts; inspection activates nothing and grants no revision.${unpinned?' The host was composed without a revision pin (unpinned inspection): serve, dev, validate and test refuse until the reviewed revision is pinned.':''}`,extensions,declared};
 }
 /** Executes the trusted operator host file to read its registrations, then releases it. */
 export async function inspectExtensions(options:{project:string;hostFile?:string}):Promise<ExtensionInspection> {
- const host=await loadOperatorHost(options.hostFile,options.project);
+ const host=await loadOperatorHost(options.hostFile,options.project,{inspection:true});
  try{return await describeExtensions(options.project,options.hostFile===undefined?undefined:host.extensions??[]);}finally{await host.close?.();}
 }

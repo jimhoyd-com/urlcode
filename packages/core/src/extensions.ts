@@ -8,7 +8,8 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import type { HandlerResult } from './http-response.ts';
 import type { LogFn, ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
 import type { BodySchema } from './body-validation.ts';
-import { contractProblem, extensionContract, extensionTargetNames } from './addon-manifest.ts';
+import { contractProblem, extensionContract, extensionTargetNames, isAuthoringGoals } from './addon-manifest.ts';
+import { revisionPinGuidance, unpinnedInspectionRevision } from './operator-host.ts';
 import type { AddonAgentTooling, ExtensionTarget } from './addon-manifest.ts';
 /**
  * The URLCode extension contract this core implements (#844): an integer that moves only on a breaking change to
@@ -344,6 +345,11 @@ export interface ExtensionAuthoringSurface {
   path?:string;
   /** A bounded local command that discovers, previews or checks the surface. */
   command?:string;
+  /**
+   * Lowercase goal words (at most 32, each a word or hyphenated word) that `plan-feature` matches against a feature
+   * goal to name this surface. Descriptive only: a match suggests the surface, it never installs or enables anything.
+   */
+  goals?:readonly string[];
 }
 /**
  * Machine-readable guidance for changing an installed extension without
@@ -730,6 +736,8 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(registration.describe===undefined||typeof registration.describe==='function','Invalid extension describe hook');
     assert(registration.capabilities===undefined||(Array.isArray(registration.capabilities)&&registration.capabilities.length<=32&&registration.capabilities.every(name=>typeof name==='string'&&namePattern.test(name))&&new Set(registration.capabilities).size===registration.capabilities.length),'Invalid extension capabilities');
     assert(Array.isArray(registration.targets)&&registration.targets.every(target=>['node','aws','vercel'].includes(target)),'Extension targets must be node, aws or vercel');
+    // A host composed for read-only inspection without a pin (#910) never activates, whatever else agrees.
+    if(registration.projectSha256===unpinnedInspectionRevision)throw new ConfigError(`Extension ${registration.name} was composed for read-only inspection without a revision pin and cannot activate. The extension host needs the reviewed project revision: ${revisionPinGuidance}`,{code:'revision-pin-required',extension:registration.name});
     assert(typeof registration.projectSha256==='string'&&/^[a-f0-9]{64}$/.test(registration.projectSha256),'Extension requires an explicit operator revision pin');
     const hookNames=new Set<string>();
     for(const hook of registration.hooks??[]){
@@ -749,6 +757,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
         assert(typeof surface.description==='string'&&surface.description.length>=1&&surface.description.length<=1024,'Invalid extension authoring surface description');
         assert(surface.path===undefined||typeof surface.path==='string'&&surface.path.length>=1&&surface.path.length<=1024,'Invalid extension authoring surface path');
         assert(surface.command===undefined||typeof surface.command==='string'&&surface.command.length>=1&&surface.command.length<=2048,'Invalid extension authoring surface command');
+        assert(surface.goals===undefined||isAuthoringGoals(surface.goals),'Invalid extension authoring surface goals');
         surfaceNames.add(surface.name);
       }
       assert(authoring.fastChecks===undefined||Array.isArray(authoring.fastChecks)&&authoring.fastChecks.length<=32&&authoring.fastChecks.every(check=>typeof check==='string'&&check.length>=1&&check.length<=2048),'Invalid extension authoring fast checks');

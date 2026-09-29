@@ -298,12 +298,13 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With the #911/#916/#917 trial fixes on top of #919's main: measured on Node 26 at 990298 packed / 3912067 unpacked bytes, 515 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    // With #917's signal recorder (dist/signal-recorder.js, expectSignals, dev --signal-sink and their docs) on top of
-    // #919's main: measured on Node 26 at 996230 packed / 3929960 unpacked bytes, 517 entries
+    // With #910/#913 on top of #921's main: measured on Node 26 at 1000001 packed / 3946963 unpacked bytes, 515 entries
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 977 * 1024,
-    unpacked: 3841 * 1024,
-    entries: 519,
+    // With #917's signal recorder on top of #920's main: measured on Node 26 at 1006712 packed / 3966838 unpacked bytes, 517 entries
+    // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 987 * 1024,
+    unpacked: 3877 * 1024,
+    entries: 521,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
@@ -381,7 +382,8 @@ export const budgets: Record<string, Budget> = {
     // #835 transitions and retries, #863 membership gates: see the packed note above.
     // #866 membership follow-ups: see the packed note above.
     // #861/#881 record schema and OpenAPI description: see the packed note above.
-    unpacked: 372 * 1024,
+    // With #913 authoring goals and #916 README responses together: 386402 unpacked bytes (Node 26).
+    unpacked: 381 * 1024,
     // #859 online backup (dist/backup.js and dist/backup.d.ts, CLI usage, README) on top of #863 measures
     // 78786 packed and 317431 unpacked bytes in 32 entries: inside 80/315 KiB, one more entry.
     entries: 32,

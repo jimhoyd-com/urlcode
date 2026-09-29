@@ -8,6 +8,9 @@ export const hostFileCommands = ['serve','dev','validate','test','routes','audit
 // The inspection commands and the MCP server take it too: a verified policy pins their host to its reviewed revision,
 // their emitted commands repeat it, and the MCP runners forward it (#834). None of them creates or changes a grant.
 export const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment','report','studio','explain','context','plan-feature','review','bootstrap','mcp','openapi'] as const;
+// Read-only commands that may load the host file without a revision pin: their registrations are composed unpinned
+// and cannot activate, so reading them never needs approval while serving always does (#910).
+export const inspectionHostCommands = ['explain','context','plan-feature','review','report','studio','extensions','mcp','openapi'] as const;
 // Commands that activate the project locally and so accept the operator's `--alias-origin`.
 export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit','benchmark'] as const;
 

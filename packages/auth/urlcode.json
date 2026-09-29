@@ -19,19 +19,54 @@
     "properties": {}
   },
   "authoring": {
-    "description": "Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions (roles, ownership) are application data keyed by that id.",
+    "description": "Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions are data keyed by that id, never roles in auth: per-user records and membership lists are store declarations (ownership: owner, membership).",
     "surfaces": [
       {
         "kind": "extension",
         "name": "mount",
         "description": "Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404.",
-        "path": "urlcode.yaml#routes"
+        "path": "urlcode.yaml#routes",
+        "goals": [
+          "account",
+          "accounts",
+          "login",
+          "logout",
+          "signin",
+          "sign-in",
+          "password",
+          "passwords",
+          "session",
+          "sessions"
+        ]
       },
       {
         "kind": "configuration",
         "name": "route protection",
-        "description": "`auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header.",
-        "path": "urlcode.yaml#routes"
+        "description": "`auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.",
+        "path": "urlcode.yaml#routes",
+        "goals": [
+          "auth",
+          "authenticated",
+          "authentication",
+          "signed-in",
+          "logged-in",
+          "user",
+          "users",
+          "private",
+          "protected",
+          "own",
+          "owner",
+          "owners",
+          "their",
+          "mine",
+          "per-user",
+          "member",
+          "members",
+          "reviewer",
+          "reviewers",
+          "approver",
+          "approvers"
+        ]
       }
     ],
     "fastChecks": [

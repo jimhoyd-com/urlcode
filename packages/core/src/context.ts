@@ -70,7 +70,7 @@ function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefi
 /** The operator host for an inspection, pinned to the reviewed policy's revision when the operator gave one (#834). */
 async function inspectionHost(project:string,options:{hostFile?:string|undefined;policy?:string|undefined}):Promise<OperatorHost> {
  const policy=await loadOperatorPolicy(options.policy,project);
- return loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256});
+ return loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256,inspection:true});
 }
 export function prerequisitesFor(options:{hostFile?:string|undefined;origin?:string|undefined;policy?:string|undefined},extensions:number,bindings:number):Prerequisite[] {
  const needs:Prerequisite[]=[];

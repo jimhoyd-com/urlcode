@@ -112,7 +112,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:tooling": "tsc -p tsconfig.checkjs.json",
     "test": "node --conditions=development --test test/*.test.ts",
-    "test:shard": "node --conditions=development --test",
+    "test:shard": "node --no-wasm-code-gc --conditions=development --test",
     "lint": "eslint .",
     "check": "npm run check:code && npm run check:docs",
     "check:code": "node --disable-warning=ExperimentalWarning scripts/check.ts && node scripts/check-core-boundaries.ts && node scripts/check-workspace-links.ts && node scripts/check-issue-labels.ts && node scripts/release-bump.ts --check",

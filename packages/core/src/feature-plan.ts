@@ -3,8 +3,10 @@ import {getCapabilities,normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {listRecipes,runsProjectCode} from './recipes.ts';
 import {describeInstalledArtifacts} from './addon-install.ts';
-import {declaredExtensionTargets,readAddonCatalog} from './addon-manifest.ts';
-import type {RuntimeExtension} from './extensions.ts';
+import {dirname,resolve} from 'node:path';
+import {declaredExtensionTargets,installedProviders,readAddonCatalog} from './addon-manifest.ts';
+import type {AddonCatalog} from './addon-manifest.ts';
+import type {ExtensionAuthoringContract,RuntimeExtension} from './extensions.ts';
 
 /** The planner is deliberately a small, local projection. It never treats goal
  * text as instructions, opens a host, or reads extension/project source. */
@@ -18,10 +20,44 @@ export interface FeaturePlanOptions { target?:string; extensions?:readonly Runti
 export interface FeaturePlan {
  format:1; goalTerms:string[]; target:CapabilityTarget; project:{routes:number;extensions:string[]};
  applicable:{capabilities:{name:CapabilityName;support:string;reason:string}[];recipes:{name:string;description:string;matched:string[]}[]};
- extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'installed'|'unpinned'|'modified'|'invalid'}[];ordering:{status:'operator-resolved';names:string[];note:string}};
+ extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'installed'|'unpinned'|'modified'|'invalid'}[];surfaces:PlannedSurface[];ordering:{status:'operator-resolved';names:string[];note:string}};
  outline:{kind:string;note:string}[]; applicationCode:{requirement:string;reason:string}[]; unsupported:{requirement:string;reason:string}[]; next:string[]; estimatedTokens:number;
 }
 
+/**
+ * An extension authoring surface whose declared `goals` share words with the goal (#913). `source` says which contract
+ * named it: the loaded host's registration, the descriptor installed in the site, or this core's release catalog.
+ */
+export interface PlannedSurface {extension:string;surface:string;kind:string;source:'registered'|'installed'|'catalog';matched:string[]}
+type AuthoringSource=PlannedSurface['source'];
+/** The most surfaces one plan lists; each also adds one outline entry. */
+const plannedSurfaceLimit=12;
+/**
+ * Every extension's authoring contract the planner may read, by name: a registration from the loaded host wins, then the
+ * descriptor installed in the site around the project, then the release catalog. Data only; nothing is imported.
+ */
+async function authoringContracts(project:string,registrations:readonly RuntimeExtension[],catalog:AddonCatalog|undefined):Promise<Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>> {
+ const contracts=new Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>();
+ for(const registration of registrations)if(registration.authoring)contracts.set(registration.name,{source:'registered',authoring:registration.authoring});
+ try {
+  for(const provider of (await installedProviders(dirname(resolve(project)))).providers.values())
+   if(provider.descriptor.kind==='extension'&&provider.descriptor.authoring&&!contracts.has(provider.name))contracts.set(provider.name,{source:'installed',authoring:provider.descriptor.authoring});
+ } catch {/* no readable site is an ordinary absence */}
+ for(const entry of catalog?.addons??[])if(entry.kind==='extension'&&entry.authoring&&!contracts.has(entry.name))contracts.set(entry.name,{source:'catalog',authoring:entry.authoring});
+ return contracts;
+}
+/** The surfaces whose goals the goal terms name, in contract order, extensions by name. */
+function matchedSurfaces(goalTerms:readonly string[],contracts:Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>):(PlannedSurface&{description:string;path?:string|undefined})[] {
+ const found:(PlannedSurface&{description:string;path?:string|undefined})[]=[];
+ for(const name of [...contracts.keys()].sort()){
+  const {source,authoring}=contracts.get(name)!;
+  for(const surface of authoring.surfaces){
+   const matched=(surface.goals??[]).filter(goal=>goalTerms.includes(goal));
+   if(matched.length)found.push({extension:name,surface:surface.name,kind:surface.kind,source,matched,description:surface.description,path:surface.path});
+  }
+ }
+ return found.slice(0,plannedSurfaceLimit);
+}
 const stop=new Set(['a','an','and','the','with','for','to','of','in','on','that','my','i','want','need','from']);
 function terms(goal:string):string[] {
  // A hyphenated word also counts as its parts, so "hmac-signed" reaches both hmac and signed.
@@ -40,7 +76,7 @@ const tagFallbackMinimum=2;
 const recipeTerms:Record<string,readonly string[]>={
  'json-endpoint':['json','endpoint','api','validate','validates','validated','validation','schema','signup','register','registration','202','422','body','post','field','fields'],
  'webhook-receiver':['webhook','webhooks','hmac','signature','signatures','signing','callback'],
- 'contact-form':['contact','form','message','submit','submission','email'],
+ 'contact-form':['contact','form','message','submission','email'],
  'authenticated-json-api':['auth','authenticated','account','accounts','sign','signed','signin','login','logout','session','sessions','password','private','protected'],
  'store-crud':['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions',...listQueryTerms],
 };
@@ -63,22 +99,28 @@ function matchedTerms(goalTerms:string[],recipe:Recipe):string[] {
  const known=recipeTerms[recipe.name]??[];
  return goalTerms.filter(term=>known.includes(term)||tags.includes(term)||capabilities.includes(term)||id.includes(term));
 }
-function selectedRecipes(goalTerms:string[], recipes:Recipe[]) {
+/** A recipe that needs `<name> extension` as a service answers the goal terms that extension's matched surfaces named. */
+function extensionTerms(recipe:Recipe,surfaceTerms:ReadonlyMap<string,readonly string[]>):string[] {
+ return (recipe.services??[]).flatMap(service=>{const match=/\b([a-z][a-z0-9-]*) extension\b/i.exec(service.name);return match?surfaceTerms.get(match[1]!.toLowerCase())??[]:[];});
+}
+function selectedRecipes(goalTerms:string[], recipes:Recipe[], surfaceTerms:ReadonlyMap<string,readonly string[]>=new Map()) {
  const mapped=recipes.filter(recipe=>{
   const known=recipeTerms[recipe.name]??[];
   return known.some(term=>goalTerms.includes(term));
  });
+ // With no recipe of its own terms, the recipes built on an extension whose surfaces the goal named come next (#913).
+ const viaExtensions=mapped.length?mapped:recipes.filter(recipe=>extensionTerms(recipe,surfaceTerms).length>0);
  // The tag fallback needs several shared terms: a single generic word ("status", "list") never selects a recipe.
- const candidates=mapped.length?mapped:recipes.filter(recipe=>new Set(recipe.tags.map(tag=>tag.toLowerCase()).filter(tag=>goalTerms.includes(tag))).size>=tagFallbackMinimum);
+ const candidates=viaExtensions.length?viaExtensions:recipes.filter(recipe=>new Set(recipe.tags.map(tag=>tag.toLowerCase()).filter(tag=>goalTerms.includes(tag))).size>=tagFallbackMinimum);
  // Declarative first (docs/PROJECT-DIRECTION.md): a recipe that runs no project code outranks one that does, then more matched terms win.
- return candidates.map((recipe,index)=>({recipe,index,code:runsProjectCode(recipe),matched:matchedTerms(goalTerms,recipe).length}))
+ return candidates.map((recipe,index)=>({recipe,index,code:runsProjectCode(recipe),matched:new Set([...matchedTerms(goalTerms,recipe),...extensionTerms(recipe,surfaceTerms)]).size}))
   .sort((a,b)=>Number(a.code)-Number(b.code)||b.matched-a.matched||a.index-b.index).map(item=>item.recipe).slice(0,4);
 }
 
 /**
  * Plans only from the current compiled project, package-owned catalogs, locked
- * inert artifacts, and registrations passed by the already-opened operator
- * session. It intentionally has no filesystem path, host-file, binding, or
+ * inert artifacts, installed add-on descriptors, and registrations passed by the
+ * already-opened operator session. It intentionally has no filesystem path, host-file, binding, or
  * execution argument.
  */
 export async function planFeature(project:string,goal:string,options:FeaturePlanOptions={}):Promise<FeaturePlan> {
@@ -87,7 +129,13 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  // "signed" in a signature goal ("an HMAC-signed webhook") or "sign" in "sign-up" is not about signing a person in.
  const signatureGoal=goalTerms.some(term=>signatureTerms.includes(term)),signupGoal=goalTerms.includes('sign-up');
  const recipeGoalTerms=signatureGoal||signupGoal?goalTerms.filter(term=>term!=='sign'&&term!=='signed'):goalTerms;
- const context=await buildContext(project,{target,projectFlag:'.',origin:options.origin}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes());
+ let addonCatalog:AddonCatalog|undefined;
+ try {addonCatalog=await readAddonCatalog();} catch {/* a core without its catalog (an unbuilt checkout) plans from registrations and installed descriptors */}
+ // Extension authoring contracts name their own surfaces' goal words (#913); core keeps no per-extension vocabulary for them.
+ const surfaces=matchedSurfaces(recipeGoalTerms,await authoringContracts(project,options.extensions??[],addonCatalog));
+ const surfaceTerms=new Map<string,string[]>();
+ for(const surface of surfaces)surfaceTerms.set(surface.extension,[...new Set([...(surfaceTerms.get(surface.extension)??[]),...surface.matched])]);
+ const context=await buildContext(project,{target,projectFlag:'.',origin:options.origin}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes(),surfaceTerms);
  const listQuery=recipeGoalTerms.some(term=>listQueryTerms.includes(term));
  const capabilities=[...new Set([...recipes.flatMap(recipe=>recipe.capabilities??[]),...(listQuery?['parameters']:[])].filter((name):name is CapabilityName=>typeof name==='string'))].sort();
  const catalog=getCapabilities(target), rows=new Map(catalog.capabilities.map(row=>[row.capability,row]));
@@ -101,8 +149,8 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  // Per-owner records (store ownership: owner) sit behind a principal-providing policy such as auth: true.
  if(listQuery&&goalTerms.some(term=>['owner','owners','owned','ownership'].includes(term)))wanted.add('auth');
  if(goalTerms.some(term=>['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'].includes(term))||listQuery)wanted.add('store');
- let declaredTargets=new Map<string,string[]>();
- try {declaredTargets=declaredExtensionTargets(await readAddonCatalog());} catch {/* a core without its catalog (an unbuilt checkout) plans from registrations alone */}
+ for(const extension of surfaceTerms.keys())wanted.add(extension);
+ const declaredTargets=addonCatalog?declaredExtensionTargets(addonCatalog):new Map<string,string[]>();
  let artifacts:Awaited<ReturnType<typeof describeInstalledArtifacts>>['artifacts']=[];
  try {artifacts=(await describeInstalledArtifacts(project)).artifacts;} catch {/* no site is an ordinary absence, never a reason to read elsewhere */}
  const declared=new Set(context.project.extensions);
@@ -125,9 +173,9 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  if(!recipes.length)applicationCode.push({requirement:'Feature-specific behavior',reason:'No bundled declarative recipe matched the bounded goal terms. Check capability and extension contracts before writing focused application code.'});
  const plan:Omit<FeaturePlan,'estimatedTokens'>={
   format:1,goalTerms,target,project:{routes:context.project.routes,extensions:context.project.extensions},
-  applicable:{capabilities:capabilities.map(name=>{const decision=rows.get(name)?.targets[target];return {name,support:decision?.support??'unknown',reason:decision?.reason??'Not in this revision\'s capability catalog'};}),recipes:recipes.map(recipe=>({name:recipe.name,description:recipe.description,matched:matchedTerms(recipeGoalTerms,recipe).slice(0,8)}))},
-  extensions:{required,ordering:{status:'operator-resolved',names:[...wanted].sort(),note:'Extension package selection, prerequisites, and canonical activation order are resolved by the operator-approved init/host composition. Add one with `urlcode extensions add <name>`; this read-only plan installs nothing and never turns project YAML into an operator decision.'}},
-  outline:[...(listQuery?[listQueryOutline]:[]),...recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description})],applicationCode,unsupported,
+  applicable:{capabilities:capabilities.map(name=>{const decision=rows.get(name)?.targets[target];return {name,support:decision?.support??'unknown',reason:decision?.reason??'Not in this revision\'s capability catalog'};}),recipes:recipes.map(recipe=>({name:recipe.name,description:recipe.description,matched:[...new Set([...matchedTerms(recipeGoalTerms,recipe),...extensionTerms(recipe,surfaceTerms)])].slice(0,8)}))},
+  extensions:{required,surfaces:surfaces.map(({extension,surface,kind,source,matched})=>({extension,surface,kind,source,matched})),ordering:{status:'operator-resolved',names:[...wanted].sort(),note:'Extension package selection, prerequisites, and canonical activation order are resolved by the operator-approved init/host composition. Add one with `urlcode extensions add <name>`; this read-only plan installs nothing and never turns project YAML into an operator decision.'}},
+  outline:[...(listQuery?[listQueryOutline]:[]),...surfaces.map(surface=>({kind:`${surface.extension} ${surface.surface}`,note:`${surface.description}${surface.path?` (${surface.path})`:''}`})),...recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description})],applicationCode,unsupported,
   // get_extensions exists only when an operator host file was loaded (extensions passed, even empty).
   next:['get_context','search_recipes','get_capability',...(options.extensions===undefined?[]:['get_extensions']),'get_extension_artifacts'],
  };
