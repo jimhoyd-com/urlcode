@@ -4,7 +4,7 @@
 from it.** Declare an application's public URL surface in YAML, add JavaScript
 only where declarative handlers are not enough, and run the same
 project locally, in a container, on your own infrastructure or on a provider
-adapter. When the project gets serious, add accounts, data and forms as
+adapter. When the project gets serious, add accounts, data and tools as
 operator-installed extensions instead of building them again.
 **URL behavior as code.**
 
@@ -121,7 +121,7 @@ All of it lives in [`docs/`](docs/README.md) in this repository. See
 
 ## The framework
 
-Core plus eight extensions, one site shape. A project climbs from redirects to a
+Core plus five extensions, one site shape. A project climbs from redirects to a
 full application by adding YAML; the operator wires trusted extensions in one
 host file outside the project. The full map, the composition contract and the
 rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
@@ -131,11 +131,8 @@ rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
 | [ui](packages/ui) extension | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | add-on on core's GitHub Release |
 | [audit](packages/audit) extension | The durable audit log audited store collections record their writes in, through a transactional outbox | add-on on core's GitHub Release |
-| [abuse](packages/abuse) extension | Keyed budgets, backoff, a challenge provider and a honeypot helper for other extensions' flows | add-on on core's GitHub Release |
-| [mail](packages/mail) extension | Plain-text transactional email from contributed templates, through one operator transport | add-on on core's GitHub Release |
 | [auth](packages/auth) extension | Accounts and sessions from [Better Auth](https://better-auth.com/) on one mount; `auth: true` routes receive the signed-in user id | add-on on core's GitHub Release |
 | [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API, with optional audited writes | add-on on core's GitHub Release |
-| [forms](packages/forms) extension | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation, submission budgets and notifications | add-on on core's GitHub Release |
 | [mcp](packages/mcp) extension | Declarative MCP tool server over a project-declared tool map | add-on on core's GitHub Release |
 | [store-schema](artifacts/store-schema) artifact | Inert store configuration schema and example, for tooling | add-on on core's GitHub Release |
 
@@ -208,8 +205,8 @@ for the vocabulary these two paragraphs use.
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the `0.6.5` core release. The ui, audit, abuse, mail, auth, store,
-forms and mcp extensions and the store-schema artifact are workspace packages
+This checkout prepares the `0.6.5` core release. The ui, audit, auth, store
+and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or
 `npm view @jimhoyd/urlcode dist-tags`. A stable core

@@ -113,9 +113,9 @@ increasing a timeout also increases how long an attacker can occupy capacity.
 The CLI uses defaults. Keep settings identical across replicas unless testing a
 controlled rollout. See [operations](OPERATIONS.md).
 
-### Extension storage and delivery bounds
+### Extension storage bounds
 
-The first-party extensions that keep state or send mail bound it themselves.
+The first-party extensions that keep state bound it themselves.
 Each bound refuses rather than growing without limit:
 
 | Resource | Bound | When full |
@@ -125,15 +125,11 @@ Each bound refuses rather than growing without limit:
 | Store writes | one SQLite transaction at a time per database, each fsynced (`synchronous=FULL`) before it answers; statements are synchronous, so each commit blocks the event loop for its fsync | a write blocked by another process's lock for 2 s answers `503 storage_unavailable` |
 | Store sorted or filtered lists | read the `id` and the named fields of every record in scope (at most `maxRecords`), then the page | bounded by `maxRecords` and `pageSize` (at most 200) |
 | Audit outboxes | 1,000 undelivered events per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
-| Abuse counters | `extensions.abuse.config.maxKeys` keyed rows (default 100,000), each claimed scope at most an equal share | a new key answers 503; expired rows are swept |
-| Mail deliveries | `maxConcurrent` in flight across every consumer (default 8, 1 to 64), `deadlineMs` per message (default 5,000 ms, 1,000 to 30,000) | `send()` refuses `busy` at once |
-| Mail development outbox | 100 messages by default (at most 1,000), 32,768 bytes per message | the next message is refused |
 
-Mail's options and the store's database path are operator choices in
-`host.mjs`; the store, audit and abuse bounds are reviewed YAML. See the
-[store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee),
-[audit](../packages/audit/README.md), [abuse](../packages/abuse/README.md) and
-[mail](../packages/mail/README.md) packages. One local measurement of the store
+The store's database path is an operator choice in `host.mjs`; the store and
+audit bounds are reviewed YAML. See the
+[store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee)
+and [audit](../packages/audit/README.md) packages. One local measurement of the store
 follows; establish your own on your disk before relying on it.
 
 ### Measured: the SQLite store

@@ -49,17 +49,16 @@ test('ui alone: theme from the site name, the assets mount and the ui/ override 
 });
 
 /**
- * Installed extension packages on disk, as `urlcode extensions add` leaves them: `auth` and `forms` here contribute
- * ui templates, `store` contributes only screens (no templates), `mail` nothing to ui.
+ * Installed extension packages on disk, as `urlcode extensions add` leaves them: `auth` here contributes ui
+ * templates, `store` contributes only screens (no templates), `mcp` nothing.
  */
 async function installedSite(t: { after(fn: () => unknown): void }): Promise<string> {
     const site = await mkdtemp(join(tmpdir(), 'urlcode-ui-installed-'));
     t.after(() => rm(site, { recursive: true, force: true }));
     const contributions: Record<string, string> = {
         auth: "{ui: {templates: [{name: 'auth', templates: {'auth/sign-in': '<p>Sign in</p>'}}]}}",
-        forms: "{ui: {templates: [{name: 'forms', templates: {'forms/field': '<p>Field</p>'}}]}}",
         store: '{ui: {screens: () => []}}',
-        mail: '{mail: []}',
+        mcp: '{}',
     };
     for (const [name, contributes] of Object.entries(contributions)) {
         const pkg = join(site, 'node_modules', '@jimhoyd', `urlcode-${name}`);
@@ -72,9 +71,9 @@ async function installedSite(t: { after(fn: () => unknown): void }): Promise<str
 
 test('the generated commands name every installed extension that contributes ui templates, and only those', async t => {
     const site = await installedSite(t);
-    const result = await scaffold(['auth', 'forms', 'mail', 'store', 'ui'], site);
-    assert.ok(result.notes!.every(note => note.includes('--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-forms --') || note.endsWith('--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-forms')), result.notes!.join('\n'));
-    assert.ok(result.notes!.every(note => !note.includes('urlcode-store') && !note.includes('urlcode-mail')));
+    const result = await scaffold(['auth', 'mcp', 'store', 'ui'], site);
+    assert.ok(result.notes!.every(note => note.includes('--extensions @jimhoyd/urlcode-auth --') || note.endsWith('--extensions @jimhoyd/urlcode-auth')), result.notes!.join('\n'));
+    assert.ok(result.notes!.every(note => !note.includes('urlcode-store') && !note.includes('urlcode-mcp')));
     // Not installed in the site (or not loadable): left out rather than guessed.
     assert.ok((await scaffold(['admin', 'ui'], site)).notes!.every(note => !note.includes('--extensions')));
 });

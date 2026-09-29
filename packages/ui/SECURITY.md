@@ -7,7 +7,7 @@ with the consuming runtime/extension.
 
 The one cryptographic primitive here is the Node-only `./host` HMAC-SHA256
 helper (`signHmac`, `verifyHmac`, `createSignedToken`, `readSignedToken`) that
-auth and forms build their CSRF tokens on. It holds no key: the consumer
+consumers build signed tokens on. It holds no key: the consumer
 supplies the secret, decides what the token binds and when to check it.
 `verifyHmac` accepts only the canonical encoding (64 lowercase hex characters or
 43 unpadded base64url characters) and compares in constant time;

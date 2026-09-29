@@ -39,7 +39,7 @@ node /opt/urlcode/dist/cli.js serve --project /srv/my-links --origin https://lin
 ```
 
 It is one operator-set, site-wide list, never project YAML. Every extension's
-same-origin check (`mcp`, `forms`, `store`, `auth`) admits an alias
+same-origin check (`mcp`, `store`, `auth`) admits an alias
 origin exactly as it admits `--origin`; everything that builds an absolute URL
 (redirects, sitemaps, emails, links, HSTS) keeps using `--origin`. Startup
 refuses an entry that is not an `https:` origin (loopback `http:` is allowed),
@@ -310,26 +310,13 @@ production does not watch or refresh secret values automatically.
 
 ## Email delivery
 
-Every email a site sends through a first-party extension (form
-notifications) goes through the `mail` extension, which forms use. The operator chooses the one
-transport in `host.mjs`; project YAML never names a provider, credential or
-address:
-
-```js
-import mail from '@jimhoyd/urlcode-mail/extension';
-import { sesTransport } from '@jimhoyd/urlcode-mail';
-// in the composeHost list:
-mail({ transport: sesTransport({ region: 'eu-west-1' }), from: 'no-reply@site.example' }),
-```
-
-With no `transport`, mail writes each message to `data/outbox/` only while the
-activation origin is loopback (`urlcode dev`); on any other origin delivery is
-off. `sesTransport` needs the optional
-`@aws-sdk/client-sesv2` package installed in the site. Deliveries are bounded
-(8 in flight, 5 s each by default) and refused, never queued, when full. There
-is no HTML, attachment, Reply-To, SMTP or retry queue. See the
-[mail package](../packages/mail/README.md) for transports, recipients and
-translating messages.
+No first-party extension sends email. A site that sends one (a contact form, a
+notification) does it from a trusted function route that calls the mail
+provider's own SDK, HTTP API or nodemailer directly. The route receives the
+provider's endpoint, key or SMTP URL through an operator-granted `secrets`
+binding, so project YAML never holds a credential. Its provider setup,
+retries, sender and recipients are the application's code
+([sending mail from your own code](../recipes/contact-form/README.md#sending-mail-from-your-own-code-instead)).
 
 ## Health, logs and limits
 

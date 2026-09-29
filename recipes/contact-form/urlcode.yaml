@@ -1,5 +1,15 @@
 version: "1"
 routes:
+  /:
+    description: The contact page, served natively from public/index.html.
+    page:
+      file: public/index.html
+      cacheControl: no-cache
+  /assets/*:
+    description: The page's script, which posts the form as JSON to /contact.
+    static:
+      directory: public/assets
+      cacheControl: no-cache
   /contact:
     description: Validate a JSON contact message declaratively and notify an operator-granted hook after the response.
     methods: [POST]
@@ -17,7 +27,7 @@ routes:
             required: [name, email, message]
             properties:
               name: {type: string, minLength: 1, maxLength: 100, pattern: "\\S"}
-              email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^\\s@]+@[^\\s@]+$"}
+              email: {type: string, format: email}
               message: {type: string, minLength: 10, maxLength: 4000}
     respond:
       status: 202

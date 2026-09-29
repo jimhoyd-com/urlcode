@@ -52,7 +52,7 @@ function bounded(found: DocsSearch): void {
 }
 const corePaths: ReadonlySet<string> = new Set(coreDocs.map(doc => doc.file));
 
-test('the generated instructions name the bounded search fallback, and the command they name reaches the forms guide (#759)', async t => {
+test('the generated instructions name the bounded search fallback, and the command they name reaches the mcp guide (#759)', async t => {
   const guide = renderAgentsGuide({ routes: 0 });
   assert.match(guide, /Do not read or grep `llms-full\.txt` or whole packaged docs/);
   assert.match(guide, /bounded fallback `search_docs` \(`urlcode docs search TEXT --project app`\)/);
@@ -67,35 +67,35 @@ test('the generated instructions name the bounded search fallback, and the comma
   }
 
   // Run exactly what the guide tells an agent to run, from the site.
-  const root = await site(t, ['forms', 'ui']);
-  const run = spawnSync(process.execPath, [cli, 'docs', 'search', 'requiredWhen', '--project', 'app', '--json'], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  const root = await site(t, ['mcp', 'ui']);
+  const run = spawnSync(process.execPath, [cli, 'docs', 'search', 'serverVersion', '--project', 'app', '--json'], { cwd: root, encoding: 'utf8', timeout: 30000 });
   assert.equal(run.status, 0, run.stderr);
   const found = JSON.parse(run.stdout) as DocsSearch;
-  assert.equal(found.results[0]?.package, '@jimhoyd/urlcode-forms');
-  assert.equal(found.results[0]?.section, 'Conditionally required fields');
-  const text = spawnSync(process.execPath, [cli, 'docs', 'search', 'requiredWhen', '--project', 'app'], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  assert.equal(found.results[0]?.package, '@jimhoyd/urlcode-mcp');
+  assert.equal(found.results[0]?.section, 'Declare a server');
+  const text = spawnSync(process.execPath, [cli, 'docs', 'search', 'serverVersion', '--project', 'app'], { cwd: root, encoding: 'utf8', timeout: 30000 });
   assert.equal(text.status, 0, text.stderr);
   assert.match(text.stdout, /matched:/);
-  assert.match(text.stdout, /^searched: .*@jimhoyd\/urlcode-forms/m);
+  assert.match(text.stdout, /^searched: .*@jimhoyd\/urlcode-mcp/m);
   assert.match(text.stdout, /^not searched: /m);
 });
 
-test('requiredWhen reaches the forms guide section and the forms schema path', async t => {
-  const root = await site(t, ['forms', 'ui']);
-  const found = await searchDocs('requiredWhen', { project: join(root, 'app') });
+test('serverVersion reaches the mcp guide section and the mcp schema path', async t => {
+  const root = await site(t, ['mcp', 'ui']);
+  const found = await searchDocs('serverVersion', { project: join(root, 'app') });
   bounded(found);
-  const guide = found.results.find(result => result.id === 'forms:README.md');
-  assert.ok(guide, 'the forms guide is a result');
+  const guide = found.results.find(result => result.id === 'mcp:README.md');
+  assert.ok(guide, 'the mcp guide is a result');
   assert.equal(guide.source, 'installed');
-  assert.equal(guide.section, 'Conditionally required fields');
-  assert.match(guide.excerpt, /`requiredWhen: \{field, in\}`/);
-  assert.match(guide.next, /"Conditionally required fields" section of node_modules\/@jimhoyd\/urlcode-forms\/README\.md/);
-  const schema = found.results.find(result => result.id === 'forms:urlcode.json');
-  assert.ok(schema, 'the forms descriptor schema is a result');
-  assert.equal(schema.configPath, 'extensions.forms.config.flows.*.fields.*.requiredWhen');
-  assert.match(schema.excerpt, /^"requiredWhen": \{/);
+  assert.equal(guide.section, 'Declare a server');
+  assert.match(guide.excerpt, /serverVersion/);
+  assert.match(guide.next, /"Declare a server" section of node_modules\/@jimhoyd\/urlcode-mcp\/README\.md/);
+  const schema = found.results.find(result => result.id === 'mcp:urlcode.json');
+  assert.ok(schema, 'the mcp descriptor schema is a result');
+  assert.equal(schema.configPath, 'extensions.mcp.config.servers.*.serverVersion');
+  assert.match(schema.excerpt, /^"serverVersion": \{/);
   assert.match(schema.next, /get_extensions/);
-  assert.ok(found.coverage.searched.installed.some(item => item.package === '@jimhoyd/urlcode-forms' && item.files.includes('README.md') && item.files.includes('urlcode.json')));
+  assert.ok(found.coverage.searched.installed.some(item => item.package === '@jimhoyd/urlcode-mcp' && item.files.includes('README.md') && item.files.includes('urlcode.json')));
   assert.equal(found.note, undefined);
 });
 
@@ -115,7 +115,7 @@ test('an add-on named by the whole query reaches its own guide and schema first'
 });
 
 test('an unknown term is an honest no-match with the coverage limits, never "unsupported"', async t => {
-  const root = await site(t, ['forms', 'ui']);
+  const root = await site(t, ['mcp', 'ui']);
   const found = await searchDocs('zzqxnonexistent', { project: join(root, 'app') });
   bounded(found);
   assert.deepEqual(found.results, []);
@@ -124,17 +124,17 @@ test('an unknown term is an honest no-match with the coverage limits, never "uns
   assert.match(found.note ?? '', /not evidence the feature is unsupported/);
   assert.doesNotMatch(JSON.stringify(found).replace(/not evidence the feature is unsupported/g, ''), /unsupported/i, 'nothing else in the answer calls the term unsupported');
   assert.deepEqual(found.coverage.searched.core, [...corePaths]);
-  assert.deepEqual(found.coverage.searched.installed.map(item => item.package), ['@jimhoyd/urlcode-forms', '@jimhoyd/urlcode-ui']);
+  assert.deepEqual(found.coverage.searched.installed.map(item => item.package), ['@jimhoyd/urlcode-mcp', '@jimhoyd/urlcode-ui']);
   const notInstalled = found.coverage.notSearched.find(gap => gap.names !== undefined);
   assert.ok(notInstalled?.names?.includes('store') && notInstalled.names.includes('auth'), 'catalog add-ons that are not installed are listed as not searched');
-  assert.ok(!notInstalled?.names?.includes('forms'));
+  assert.ok(!notInstalled?.names?.includes('mcp'));
   for (const source of ['llms-full.txt', 'project files', 'operator host registrations']) assert.ok(found.coverage.notSearched.some(gap => gap.source.includes(source)), source);
   assert.ok(found.next.length > 0);
 });
 
 test('extension guides outside the fixed core corpus are covered only when installed; the catalog stays separate', async t => {
-  // Without a project only the core corpus is searched: requiredWhen is documented by forms alone.
-  const core = await searchDocs('requiredWhen');
+  // Without a project only the core corpus is searched: serverVersion is documented by mcp alone.
+  const core = await searchDocs('serverVersion');
   bounded(core);
   assert.deepEqual(core.results, []);
   assert.ok(core.coverage.notSearched.some(gap => /no project was given/.test(gap.reason)));
@@ -144,14 +144,14 @@ test('extension guides outside the fixed core corpus are covered only when insta
   assert.equal(named.catalog.find(match => match.name === 'store')?.installedInProject, null);
 
   // An installed artifact and an installed extension are both outside core's corpus.
-  const root = await site(t, ['store-schema', 'mail']);
+  const root = await site(t, ['store-schema', 'mcp']);
   const artifact = await searchDocs('store schema', { project: join(root, 'app') });
   bounded(artifact);
   const hit = artifact.results.find(result => result.package === '@jimhoyd/urlcode-store-schema');
   assert.ok(hit && !corePaths.has(hit.path) && hit.kind === 'artifact');
   assert.match(hit.next, /get_extension_artifact/);
-  const mail = await searchDocs('transport', { project: join(root, 'app') });
-  assert.ok(mail.results.some(result => result.package === '@jimhoyd/urlcode-mail'), 'the mail guide is searched');
+  const mcp = await searchDocs('serverVersion', { project: join(root, 'app') });
+  assert.ok(mcp.results.some(result => result.package === '@jimhoyd/urlcode-mcp'), 'the mcp guide is searched');
   // store is in the release catalog, not installed here: a catalog match, never a result.
   const absent = await searchDocs('store', { project: join(root, 'app') });
   assert.ok(absent.results.every(result => result.package !== '@jimhoyd/urlcode-store'));
@@ -161,29 +161,29 @@ test('extension guides outside the fixed core corpus are covered only when insta
 });
 
 test('only pin-verified add-ons are read, as data, never imported', async t => {
-  // A copy of forms whose module entry would leave a marker if anything imported it.
+  // A copy of mcp whose module entry would leave a marker if anything imported it.
   const scratch = await mkdtemp(join(tmpdir(), 'urlcode-docs-search-copy-'));
   t.after(() => rm(scratch, { recursive: true, force: true }));
   const marker = join(scratch, 'imported');
-  const copy = join(scratch, 'mail');
+  const copy = join(scratch, 'mcp');
   await mkdir(join(copy, 'dist'), { recursive: true });
-  for (const file of ['README.md', 'urlcode.json']) await cp(join(source('mail'), file), join(copy, file));
+  for (const file of ['README.md', 'urlcode.json']) await cp(join(source('mcp'), file), join(copy, file));
   const booby = `import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(marker)},'x');export default {};\n`;
   await writeFile(join(copy, 'dist', 'extension.js'), booby);
   await writeFile(join(copy, 'dist', 'index.js'), booby);
-  await writeFile(join(copy, 'package.json'), JSON.stringify({ name: '@jimhoyd/urlcode-mail', version: '0.6.1', type: 'module', main: 'dist/index.js', exports: { '.': './dist/index.js', './extension': './dist/extension.js' } }));
-  const root = await site(t, [], { unverified: ['forms'], copies: { mail: copy } });
-  const found = await searchDocs('transport requiredWhen', { project: join(root, 'app') });
+  await writeFile(join(copy, 'package.json'), JSON.stringify({ name: '@jimhoyd/urlcode-mcp', version: '0.6.1', type: 'module', main: 'dist/index.js', exports: { '.': './dist/index.js', './extension': './dist/extension.js' } }));
+  const root = await site(t, [], { unverified: ['store'], copies: { mcp: copy } });
+  const found = await searchDocs('serverVersion shortLinks', { project: join(root, 'app') });
   bounded(found);
   await assert.rejects(access(marker), { code: 'ENOENT' }, 'no add-on module was imported');
-  assert.ok(found.results.some(result => result.package === '@jimhoyd/urlcode-mail'));
-  assert.equal(found.coverage.searched.installed.find(item => item.package === '@jimhoyd/urlcode-mail')?.version, '0.6.1');
-  assert.ok(found.results.every(result => result.package !== '@jimhoyd/urlcode-forms'), 'an unverified install is not read');
-  assert.ok(found.coverage.notSearched.some(gap => gap.source === '@jimhoyd/urlcode-forms' && /not pin-verified/.test(gap.reason)));
+  assert.ok(found.results.some(result => result.package === '@jimhoyd/urlcode-mcp'));
+  assert.equal(found.coverage.searched.installed.find(item => item.package === '@jimhoyd/urlcode-mcp')?.version, '0.6.1');
+  assert.ok(found.results.every(result => result.package !== '@jimhoyd/urlcode-store'), 'an unverified install is not read');
+  assert.ok(found.coverage.notSearched.some(gap => gap.source === '@jimhoyd/urlcode-store' && /not pin-verified/.test(gap.reason)));
 });
 
 test('broad queries stay bounded', async t => {
-  const root = await site(t, ['forms', 'store', 'ui', 'auth', 'admin', 'mail', 'abuse', 'audit', 'mcp', 'store-schema']);
+  const root = await site(t, ['store', 'ui', 'auth', 'audit', 'mcp', 'store-schema']);
   for (const query of ['extension config schema route', 'form', 'the a of to', 'auth', 'sandbox', 'x'.repeat(200) + ' route']) {
     const found = await searchDocs(query, { project: join(root, 'app') });
     bounded(found);
@@ -192,14 +192,14 @@ test('broad queries stay bounded', async t => {
 });
 
 test('MCP search_docs searches the operator-selected site and states its coverage', async t => {
-  const root = await site(t, ['forms', 'ui']);
+  const root = await site(t, ['mcp', 'ui']);
   let text = '';
   const output = new Writable({ write(chunk, _encoding, callback) { text += String(chunk); callback(); } });
   const messages = [
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } } },
     { jsonrpc: '2.0', method: 'notifications/initialized' },
     { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'search_docs', arguments: { text: 'requiredWhen' } } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'search_docs', arguments: { text: 'serverVersion' } } },
   ];
   await serveMcp({ project: join(root, 'app'), input: Readable.from([messages.map(value => JSON.stringify(value) + '\n').join('')]), output });
   const replies = text.trim().split('\n').map(line => JSON.parse(line) as { result: { tools?: { name: string; description: string }[]; content?: { text: string }[] } }).sort(byReplyId);
@@ -207,7 +207,7 @@ test('MCP search_docs searches the operator-selected site and states its coverag
   assert.match(tool.description, /installed and pin-verified/);
   assert.match(tool.description, /not that a feature is unsupported/);
   const found = JSON.parse(replies[2]!.result.content![0]!.text) as DocsSearch;
-  assert.equal(found.results[0]?.id, 'forms:README.md');
+  assert.equal(found.results[0]?.id, 'mcp:README.md');
   assert.ok(found.coverage.notSearched.length > 0);
 });
 
