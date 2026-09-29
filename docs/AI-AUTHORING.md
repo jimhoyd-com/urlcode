@@ -277,7 +277,13 @@ expected and actual value, shortened to about 200 characters around the first
 difference. `urlcode test` exits nonzero when the project has an active route
 but no cases; a project with no routes yet passes with a warning. Ordered
 lifecycle fixtures (`steps`, `capture`, `restart`), coverage and the audit rules
-are in [readiness](READINESS.md).
+are in [readiness](READINESS.md). An `auth: true` route is covered by a `steps`
+fixture that signs in through the provider's own endpoint and sends
+`"origin":"{{origin}}"` on unsafe requests; see
+[authenticated routes](READINESS.md#authenticated-routes-auth-true). A case
+passing with a status below 400 counts toward coverage only when it also
+asserts `expectBody` or `expectHeaders`
+([coverage rules](READINESS.md#coverage-rules)).
 
 ### Reading errors
 

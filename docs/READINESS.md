@@ -75,7 +75,7 @@ required. The file is checked against the shipped
 request is sent: any other key (a `json`, `expectJson` or misspelled
 `expectBdy`) is refused with the fixture number and what to write instead,
 rather than ignored. A passing case needs at least one body/header assertion to count toward
-coverage; status-only successes appear in `unassertedCases`. Choose assertions
+coverage (see [coverage rules](#coverage-rules)); status-only successes appear in `unassertedCases`. Choose assertions
 that verify your intended business result, not just a generic header. Fixtures
 are limited to 10,000 cases/16 MiB; checked response bodies to 16 MiB. Requests have
 10-second transport timeouts. Failures do not stop subsequent checks. Status 0
@@ -87,7 +87,11 @@ author's own debugging loop, so a failing case there also prints the fixture's
 `method` and `path` as written and a `failures` list: for each failed assertion
 its `check` (`status`, `header` or `body`), the header `name`, and the
 `expected` and `actual` values, each cut to about 200 characters from just
-before the first difference (`firstDifference`). A value a `steps` fixture
+before the first difference (`firstDifference`). A `status` failure also
+carries the start of the response `body` (at most 1 KiB read, shown cut the same
+way), so a refusal names its reason: a `403` without an `Origin` shows
+`{"error":"cross_origin_refused"}`, a missing session
+`{"error":"authentication_required"}`. A value a `steps` fixture
 captured is printed as its `{{name}}`, never as the value, and a cookie value a
 response set is printed as `<cookie NAME>` (see [cookies](#cookies)). Keep
 secrets out of fixtures and test responses you would not want in a CI log.
@@ -97,13 +101,41 @@ exits nonzero once the project has an active route, because a run that checks
 nothing is not a pass. A project with no active route yet, such as a fresh
 `urlcode init`, passes with a `no-test-cases` warning.
 
-Coverage uses the route that actually matched. A literal route shadowing a
-parameter example cannot count toward parameter coverage. Each active route and
-allowed method needs a passing normal response (below 400); an intentionally
-error-valued native `respond` check can cover its declared outcome. A negative
-fixture alone cannot prove a function works normally. Disabled/expired routes
-are counted separately and excluded from active coverage requirements. Inactive
-parameter patterns still need explicit negative fixtures to exercise them.
+### Coverage rules
+
+Each active route and allowed method needs covering. A route/method pair is
+covered by a case (generated check, single fixture or step) that:
+
+1. **passes**;
+2. **matched that route**: coverage uses the route that actually matched, so a
+   literal route shadowing a parameter example cannot count toward parameter
+   coverage;
+3. **answered below 400**: a negative fixture alone cannot prove a route works
+   normally (a generated check of an intentionally error-valued native
+   `respond` is the one exception: it covers its declared outcome); and
+4. **asserts the response** with `expectBody` or `expectHeaders`. A status
+   alone does not count: a catch-all page, a wrong handler or a generic `200`
+   from somewhere else all pass a status check. Such passing cases appear in
+   `unassertedCases`, and a `coverageNotes` entry `unasserted-success` names
+   them.
+
+**HEAD is implied by GET.** When a route allows both and its GET is covered, its
+HEAD is covered too and listed in `impliedRouteMethods`: the runtime answers HEAD
+through the same handler and strips the body for every handler. A handler that
+deliberately answers HEAD differently from GET needs its own HEAD fixture
+(`"method":"HEAD","expectBody":""` or an `expectHeaders`), which counts as
+usual. Other methods are never implied.
+
+Disabled/expired routes are counted separately and excluded from active
+coverage requirements. Inactive parameter patterns still need explicit negative
+fixtures to exercise them.
+
+`coverageNotes` explains each kind of gap once, with fixed wording, the route
+patterns or case numbers, and what to write: `unasserted-success`,
+`gated-route-uncovered` (uncovered pairs on a route behind a sign-in gate; see
+[authenticated routes](#authenticated-routes-auth-true)) and
+`waiver-without-proof` (see [waivers](#waive-a-method-covered-elsewhere)). It
+never affects `ready`.
 
 `ready: true` requires a nonempty active project, matching expected count (when
 supplied), zero failed checks and no uncovered active route/method combinations.
@@ -143,12 +175,74 @@ that on the route in `urlcode.yaml`, per method, with a required non-empty reaso
 `coveredElsewhere: {POST: "why"}`. There is no CLI flag, so a reviewer sees every
 waiver in the diff. `audit` then lists each waived pair with its reason under
 `waivedRouteMethods`, even when `ready` is true: readiness means "tested, or
-explicitly waived with a reason". A waiver is honored only when the route has
-another passing normal-response fixture, so it never excuses an error-only
-function route or a route with no fixture (those pairs stay in `uncovered`, and
-`ignoredWaivers` names the waiver). A waiver whose pair already has a passing
-fixture appears under `redundantWaivers`; it never blocks `ready`. Example:
-[examples/coverage-waiver](../examples/coverage-waiver/README.md).
+explicitly waived with a reason". A waiver is honored only when the audit has seen the route served, and each
+waived pair's `basis` says how:
+
+- `route-covered`: another method of the same route is covered by the
+  [coverage rules](#coverage-rules).
+- `gate-refusal`: the route is behind a sign-in gate (its `gatedBy` in the
+  inventory names a principal-providing extension, such as `auth: true`) and a
+  passing fixture asserts that gate's anonymous `401` on it, with `expectBody`
+  or `expectHeaders`. This is for a fully gated route no fixture can sign in
+  to, for example one whose provider signs in only through an external
+  identity provider. The asserted refusal proves the route is mounted and gated;
+  the waiver's reason says where the signed-in behavior is tested. Prefer a
+  [signed-in fixture](#authenticated-routes-auth-true) wherever one can sign in.
+
+Nothing else is a basis, so a waiver never excuses an error-only function route
+(a `401` from the function itself is not a gate), or a route with no fixture:
+those pairs stay in `uncovered`, `ignoredWaivers` names the waiver and a
+`waiver-without-proof` note says what is missing. A waiver whose pair already
+has a passing fixture appears under `redundantWaivers`; it never blocks `ready`.
+Example: [examples/coverage-waiver](../examples/coverage-waiver/README.md).
+
+## Authenticated routes (`auth: true`)
+
+A route behind a sign-in gate is covered by signing in, inside a `steps`
+fixture, through the provider's own endpoints: the same request a browser
+sends. The fixture's [cookie jar](#cookies) keeps the session cookie the
+provider sets, so later steps are signed in; `audit` counts those steps like
+any other. There is no test principal, header or fixture key that skips the
+gate, so a fixture proves the gate and the signed-in behavior together and
+nothing in a project can grant itself an identity.
+
+```json
+{"steps":[
+  {"path":"/api/auth/sign-in/email","method":"POST",
+   "headers":{"content-type":"application/json","origin":"{{origin}}"},
+   "body":"{\"email\":\"ann@example.test\",\"password\":\"ann-local-demo-password\"}","status":200,
+   "expectHeaders":{"content-type":"application/json"}},
+  {"path":"/api/notes","method":"POST","headers":{"content-type":"application/json","origin":"{{origin}}"},
+   "body":"{\"title\":\"first\"}","status":201,
+   "expectHeaders":{"content-type":"application/json; charset=utf-8"},"capture":{"id":{"json":"id"}}},
+  {"path":"/api/notes/{{id}}","status":200,"expectHeaders":{"content-type":"application/json; charset=utf-8"}},
+  {"path":"/api/auth/sign-out","method":"POST","headers":{"content-type":"application/json","origin":"{{origin}}"},"body":"{}","status":200,"expectBody":"{\"success\":true}"}
+]}
+```
+
+- **Accounts.** The operator creates synthetic test accounts in the provider's
+  database, for Better Auth with `npx urlcode-auth create-user` (sign-up stays
+  off). Fixtures are project files: use synthetic local accounts only, never a
+  real user's password. `urlcode test` and `audit` use the provider database
+  `host.mjs` configures, not the temporary `URLCODE_DATA_DIR`.
+- **Origin.** `auth: true` refuses a `POST`, `PUT`, `PATCH` or `DELETE`
+  without a same-origin `Origin` (`403 {"error":"cross_origin_refused"}`)
+  before it checks the session, so an unsafe fixture request sends
+  `"origin":"{{origin}}"`. `{{origin}}` is the site origin the run serves (its
+  `--origin`, else the local runtime's own address; for `verify-deployment`,
+  the `--target`), so one fixture file works under any `--origin`. Write a
+  literal foreign origin only to test the refusal.
+- **Rate limits.** Better Auth allows 10 sign-in attempts per client address a
+  minute, per process; sign in once per fixture, not once per step.
+- **No fixture can sign in** (an external identity provider, say): assert the
+  anonymous `401` and waive the methods with `coveredElsewhere`; the waiver's
+  basis is then `gate-refusal` ([above](#waive-a-method-covered-elsewhere)).
+
+[`proofs/private-requests`](../proofs/private-requests/README.md) (Better Auth)
+and [`proofs/private-requests-authjs`](../proofs/private-requests-authjs/README.md)
+(Auth.js, with its CSRF token captured first) reach `ready` this way with every
+`auth: true` route covered, and their end-to-end tests audit the same fixtures
+under a second `--origin`.
 
 ## Multi-step fixtures
 
@@ -182,10 +276,12 @@ restart step `{"restart": true}`:
 - **Substitution.** `{{name}}` is replaced in a step's `path`, `body`, `headers`,
   `expectHeaders` and `expectBody`, and nowhere else. The value goes in as written,
   with no encoding, so capture URL-safe values (or a whole `location`) for a path.
-  A name must be captured by an earlier step of the same fixture; anything else is
-  rejected when the file is read. A path that is not local once filled in fails the
-  step. Single-request entries never substitute or capture, and `capture` is
-  rejected outside `steps`.
+  A name must be captured by an earlier step of the same fixture, or be the one
+  built-in reference `{{origin}}` (the site origin, see
+  [authenticated routes](#authenticated-routes-auth-true)), which cannot be
+  captured; anything else is rejected when the file is read. A path that is not
+  local once filled in fails the step. Single-request entries substitute only
+  `{{origin}}` and never capture, and `capture` is rejected outside `steps`.
 - **Restart.** The runtime is closed and started again on the same project and the
   same data directory, on a new port. `urlcode test` and `audit` create one empty
   temporary data directory per run, offer it to the project as `URLCODE_DATA_DIR`
@@ -273,10 +369,8 @@ afterwards is the server's business.
   `{{name}}`), including in a mismatched `set-cookie` header or a body that echoes
   it. This applies to single-request entries' `set-cookie` headers too.
 
-This is how a route behind a cookie session (`auth: true`) is covered: sign in
-within the fixture, then assert the protected responses. `audit` counts those
-steps like any other, so a signed-in step that passes and asserts a body or
-header covers its route and method.
+This is how a route behind a cookie session (`auth: true`) is covered; see
+[authenticated routes](#authenticated-routes-auth-true).
 [`proofs/private-requests/app/tests/requests.json`](../proofs/private-requests/app/tests/requests.json)
 tests a whole cookie-session lifecycle this way: Better Auth sign-in, signed-in
 reads and writes, a permission the user lacks refused, sign-out and the old
