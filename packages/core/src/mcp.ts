@@ -11,7 +11,9 @@ import {buildBootstrap} from './bootstrap.ts';
 import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
 import {runProjectTests} from './project-tests.ts';
 import {loadOperatorHost} from './operator-host.ts';
-import {loadOperatorPolicy} from './policy.ts';
+import {loadOperatorPolicy,prepareFunctionSnapshot} from './policy.ts';
+import {loadDocument} from './config.ts';
+import {localReviewNote,localReviewOrigin} from './cli-command-metadata.ts';
 import {buildManifest} from './manifest.ts';
 import {buildOpenApi} from './openapi.ts';
 import type {InterchangeFormat} from './interchange.ts';
@@ -38,7 +40,7 @@ const deployTargetEnum={enum:['self-hosted','cloudflare','aws','vercel','static'
 const deployTargetProps={deployTarget:deployTargetEnum};
 // Canonical, verb-first tool names.
 const definitions=[
- {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order. Pass `bootstrap: true` (optionally with `capabilities`, at most 8 catalog names) for the local bootstrap instead: site and route-project roots, entry and host file, pinned/installed runtime against this one, commands to run from the site root, the site/project path mapping and a packet of this runtime\'s schema fragments and one example per named capability; it never creates a site. Call this first.',properties:{...deployTargetProps,task:{enum:['redirects']},budget:{type:'integer',minimum:1},bootstrap:{type:'boolean'},capabilities:{type:'array',items:{type:'string',maxLength:64},maxItems:8}}},
+ {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project; its validate, test, audit and routes commands pass --local-review, as the generated npm scripts do. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order. Pass `bootstrap: true` (optionally with `capabilities`, at most 8 catalog names) for the local bootstrap instead: site and route-project roots, entry and host file, pinned/installed runtime against this one, commands to run from the site root, the site/project path mapping and a packet of this runtime\'s schema fragments and one example per named capability; it never creates a site. Call this first.',properties:{...deployTargetProps,task:{enum:['redirects']},budget:{type:'integer',minimum:1},bootstrap:{type:'boolean'},capabilities:{type:'array',items:{type:'string',maxLength:64},maxItems:8}}},
  {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{...deployTargetProps,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
  {name:'list_capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:deployTargetProps},
@@ -74,7 +76,7 @@ const definitions=[
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 // run_tests executes the project's code, so it is not a read tool: it is offered only under the operator's
 // --allow-authoring flag, alongside the authoring tools, and annotated as able to do anything Node can (#590).
-const runTestsDefinition={name:'run_tests',description:'Run this project\'s request fixtures (tests/requests.json) in-process against a temporary local server instance, the same behavior `urlcode test` uses. This EXECUTES the project\'s trusted function and middleware modules and its registered extensions with full Node access, so they may write or delete files, spawn processes or reach the network; the scratch data directory it creates and removes afterward is not confinement. Routes that declare `sandbox: true` still run in their isolated sandbox. Offered only when the operator starts the server with --allow-authoring. Bindings are granted only by the policy the operator passed to the server with --policy; without one, bindings that need a grant fail as usual. No tool argument can name, create or change a policy.',properties:{}};
+const runTestsDefinition={name:'run_tests',description:'Run this project\'s request fixtures (tests/requests.json) in-process against a temporary local server instance, the same behavior `urlcode test` uses. This EXECUTES the project\'s trusted function and middleware modules and its registered extensions with full Node access, so they may write or delete files, spawn processes or reach the network; the scratch data directory it creates and removes afterward is not confinement. Routes that declare `sandbox: true` still run in their isolated sandbox. Offered only when the operator starts the server with --allow-authoring. Bindings are granted only by the policy the operator passed to the server with --policy; without one, bindings that need a grant fail as usual. With neither that --policy nor PROJECT_SHA256, each run is a local review like the CLI\'s --local-review: it pins the operator host to the project\'s current revision for that run only, reads no policy and defaults the origin to http://localhost, and the result carries localReview and a local_review event, so an edited extension site is tested without a new pin; an operator pin always wins, so a stale one still refuses. No tool argument can name, create or change a policy.',properties:{}};
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
 const ajv=new Ajv({strict:false,allErrors:true});
 // A -32602 message an agent can act on: the offending argument by name, and
@@ -146,8 +148,13 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
    // Each run composes its own host on a fresh, empty data directory, as `urlcode test` does (RIM-EXT-HERMETIC-001):
    // never the site's live data, and never what an earlier run wrote.
-   case 'run_tests':{const runHost=options.hostFile===undefined?undefined:await loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256,hermetic:true});
-    try{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:runHost?.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,events};}
+   // The CLI runners' local review (#932, #964): with no operator pin (no --policy, no PROJECT_SHA256) this one run is
+   // pinned to the project's current revision, reads no policy (so no grant exists) and defaults the origin to
+   // loopback, and says so in a local_review event. An operator pin always wins, so a stale one still refuses.
+   case 'run_tests':{const events:unknown[]=[],review=policy===undefined&&!process.env.PROJECT_SHA256?{revision:(await prepareFunctionSnapshot(await loadDocument(project))).projectSha256,origin:options.origin||localReviewOrigin}:undefined;
+    if(review)events.push({event:'local_review',...review,note:localReviewNote});
+    const runHost=options.hostFile===undefined?undefined:await loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256??review?.revision,hermetic:true});
+    try{const result=await runProjectTests(project,{...base,...(review?{origin:review.origin}:{}),extensions:runHost?.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,...(review?{localReview:review}:{}),events};}
     finally{await runHost?.close?.();}}
    case 'list_capabilities':return getCapabilities(deployTargetOf(args));
    case 'get_capability':return getCapability(args.name as string);

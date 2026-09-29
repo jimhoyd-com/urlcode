@@ -33,7 +33,7 @@ import { access, readFile, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
-import { commandOptions as options, aliasOriginCommands, hermeticHostCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, localReviewOrigin, pinFreeReviewCommands, policyCommands } from './cli-command-metadata.ts';
+import { commandOptions as options, aliasOriginCommands, hermeticHostCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, localReviewNote, localReviewOrigin, pinFreeReviewCommands, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
 import { cliInvocation, shellWord } from './context.ts';
@@ -397,7 +397,7 @@ try {
         localReview = { revision: (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256 };
         values.origin ??= localReviewOrigin;
         supplied.origin = values.origin;
-        process.stderr.write(JSON.stringify({ event:'local_review', revision:localReview.revision, origin:values.origin, note:'Pinned to the current project revision for this run only. No operator policy was read, so no binding or egress grant applies, and extensions use a fresh temporary data directory, never the site\'s data/. serve and dev still need the reviewed pin (--policy or PROJECT_SHA256); with it, validate checks the data they will use.' }) + '\n');
+        process.stderr.write(JSON.stringify({ event:'local_review', revision:localReview.revision, origin:values.origin, note:localReviewNote }) + '\n');
       }
     }
     if (values['host-file'] !== undefined) {

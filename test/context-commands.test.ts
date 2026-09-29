@@ -37,7 +37,7 @@ test('context, task context and feature planning compile a sitemap project with 
  const context=await buildContext(root,{origin});
  assert.equal(context.project.routes,2);
  assert.ok(context.routes!.some(route=>route.path==='/sitemap.xml'));
- assert.ok(context.commands!.validate!.endsWith(` --origin ${origin}`));
+ assert.ok(context.commands!.validate!.endsWith(` --origin ${origin} --local-review`));
  assert.equal((await buildTaskContext(root,'redirects',{origin})).project?.routes,2);
  assert.equal((await planFeature(root,'redirect',{origin})).project.routes,2);
  // No origin supplied: the prerequisite is named, not guessed.
@@ -74,9 +74,9 @@ test('emitted commands quote a project path with spaces or an apostrophe and run
   for(const command of [context.commands!.validate!,task.commands!.validate!]) {const run=runEmitted(command,site);assert.equal(run.status,0,`${command}\n${run.stderr}`);}
   // A projectFlag override is quoted the same way.
   const relative=await buildContext(root,{projectFlag:name});
-  assert.equal(relative.commands!.validate,`urlcode validate --local --project ${shellWord(name)}`);
+  assert.equal(relative.commands!.validate,`urlcode validate --local --project ${shellWord(name)} --local-review`);
   const run=runEmitted(relative.commands!.validate!,site);assert.equal(run.status,0,run.stderr);
-  assert.equal((await buildTaskContext(root,'redirects',{projectFlag:name})).commands!.validate,`urlcode validate --local --project ${shellWord(name)}`);
+  assert.equal((await buildTaskContext(root,'redirects',{projectFlag:name})).commands!.validate,`urlcode validate --local --project ${shellWord(name)} --local-review`);
  }
 });
 
@@ -87,7 +87,7 @@ test('MCP get_context started from the site root with --project app --host-file 
  for(const reply of replies) {
   assert.equal(reply.result.isError,undefined,reply.result.content[0]!.text);
   const {commands}=JSON.parse(reply.result.content[0]!.text) as {commands:Record<string,string>};
-  assert.equal(commands.validate,`urlcode validate --local --project ${shellWord(resolve(app))} --host-file ${shellWord(hostFile)}`);
+  assert.equal(commands.validate,`urlcode validate --local --project ${shellWord(resolve(app))} --host-file ${shellWord(hostFile)} --local-review`);
   // The client's working directory is the site root, where the host file lives beside app/.
   const run=runEmitted(commands.validate!,site);assert.equal(run.status,0,`${commands.validate}\n${run.stderr}`);
  }

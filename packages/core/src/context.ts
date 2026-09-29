@@ -69,6 +69,11 @@ export function shellWord(value:string,platform:NodeJS.Platform=process.platform
 function operatorFlags(options:{hostFile?:string|undefined;origin?:string|undefined;policy?:string|undefined}):string {
  return `${options.hostFile===undefined?'':` --host-file ${shellWord(options.hostFile)}`}${options.origin===undefined?'':` --origin ${shellWord(options.origin)}`}${options.policy===undefined?'':` --policy ${shellWord(options.policy)}`}`;
 }
+/**
+ * The checks (validate, test, audit, routes) end with `--local-review`, as the generated npm scripts do (#964): with
+ * no operator pin the run is pinned to the current revision, and with one the flag changes nothing. Serving never takes it.
+ */
+export const localReviewFlag=' --local-review';
 /** The operator host for an inspection, pinned to the reviewed policy's revision when the operator gave one (#834). */
 async function inspectionHost(project:string,options:{hostFile?:string|undefined;policy?:string|undefined}):Promise<OperatorHost> {
  const policy=await loadOperatorPolicy(options.policy,project);
@@ -156,7 +161,7 @@ function expectRoutesFlag(project:string,count:number|string):string {
  * never do, so serving still needs the reviewed pin. audit carries no route count: it reads app/tests/audit.json (#955).
  */
 export function projectScripts():Record<string,string> {
- const site='--project app --host-file host.mjs',review=`${site} --local-review`;
+ const site='--project app --host-file host.mjs',review=`${site}${localReviewFlag}`;
  return {dev:`urlcode dev ${site}`,start:`urlcode serve ${site}`,validate:`urlcode validate --local ${review}`,test:`urlcode test ${review}`,routes:`urlcode routes ${review}`,audit:`urlcode audit ${review}`};
 }
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
@@ -216,10 +221,10 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    constraints:{...constraints},
    targets,
    commands:{
-    validate:`${cli} validate --local --project ${flag}${operator}`,
-    test:`${cli} test --project ${flag}${operator}`,
-    audit:`${cli} audit --project ${flag}${expectRoutesFlag(project,compiled.count)}${operator}`,
-    routes:`${cli} routes --project ${flag}${operator}`,
+    validate:`${cli} validate --local --project ${flag}${operator}${localReviewFlag}`,
+    test:`${cli} test --project ${flag}${operator}${localReviewFlag}`,
+    audit:`${cli} audit --project ${flag}${expectRoutesFlag(project,compiled.count)}${operator}${localReviewFlag}`,
+    routes:`${cli} routes --project ${flag}${operator}${localReviewFlag}`,
     capabilities:`${cli} capabilities${options.target===undefined?'':` --target ${selected[0]}`}`,
    },
    ...(prerequisites.length?{prerequisites}:{}),
@@ -331,7 +336,7 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const cli=await cliInvocation(project);
  context.recipe=`${cli} recipes show redirect`;
  const operator=operatorFlags(options);
- context.commands={validate:`${cli} validate --local --project ${flag}${operator}`,test:`${cli} test --project ${flag}${operator}`,audit:`${cli} audit --project ${flag}${expectRoutesFlag(project,context.project?context.project.routes:'N')}${operator}`,schema:`${cli} schema redirect`};
+ context.commands={validate:`${cli} validate --local --project ${flag}${operator}${localReviewFlag}`,test:`${cli} test --project ${flag}${operator}${localReviewFlag}`,audit:`${cli} audit --project ${flag}${expectRoutesFlag(project,context.project?context.project.routes:'N')}${operator}${localReviewFlag}`,schema:`${cli} schema redirect`};
  if(budget===undefined)return context;
  // Fixed order, like fitBudget: this project's facts, then commands, then the notes, then the shapes.
  const omitted:string[]=[];
