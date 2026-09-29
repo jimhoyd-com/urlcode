@@ -261,7 +261,7 @@ function gateResponses(method:string,chain:PolicyChain|undefined,signIn:string[]
   const out:Record<string,Json>={};
   if(signIn.length){
     out['401']={description:`No verified session: refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
-    out['503']={description:`The session could not be verified because ${extensionList(signIn)} could not reach its own storage; refused before the handler runs, never answered as a 401. Retry later; the body is extension-defined.`,headers:{'Retry-After':{schema:{type:'integer'}}}};
+    out['503']={description:`May be answered by ${extensionList(signIn)} before the handler runs when it cannot verify the session (for example, its own storage is unavailable), so that a storage failure is not reported as a 401. Whether it does is extension-defined, as is the body; retry later.`,headers:{'Retry-After':{schema:{type:'integer'}}}};
     if(unsafeMethods.includes(method))out['403']={description:`A request from another origin, refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
   }
   const throttle=chain?.describe.throttle,agents=chain?.describe.agents;
