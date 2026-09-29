@@ -284,16 +284,13 @@ export const budgets: Record<string, Budget> = {
     // and their llms-full.txt copies. Measured on Node 26: 945207 packed bytes (5175 over 918 KiB), 3740438 unpacked
     // bytes (30486 over 3623 KiB) and 505 entries (1 over 504). Packed raised to 927 KiB, unpacked to 3656 KiB and
     // entries to 510, keeping about 4 KiB, 3.3 KiB and 5 entries of headroom.
-    // Re-measured after merging main (#896-#899): 3747895 unpacked bytes.
-    // Raised for #845 named project schemas (top-level `schemas:` and schema files): dist/project-schemas.js with
-    // its declarations, the HTTP "Named schemas" and SPECIFICATION sections, RIM-SCHEMA-001, the mcp README
-    // section, schema descriptions and the body-validation example's two schema files, with their llms-full.txt and
-    // YAML-REFERENCE.md copies. Measured on Node 26: main at 4a095468 (#900 and #901 merged) packs to 954685 bytes,
-    // 3775407 unpacked, 507 entries, already over 927 KiB/3664 KiB; with this change 966246 packed, 3810690
-    // unpacked, 511 entries. Packed raised to 947 KiB, unpacked to 3726 KiB and entries to 515, keeping about
-    // 3.4 KiB, 4.6 KiB and 4 entries of headroom.
+    // Re-measured on main after #900 and #901 merged together (each measured alone): Node 26 954042 packed /
+    // 3768213 unpacked bytes, 507 entries; CI (Node 24) packed 954811. About 3 KiB of headroom on each.
+    // With #845 named project schemas on top of main, measured on Node 26: 966368 packed / 3810989 unpacked
+    // bytes, 511 entries; about 3 KiB of headroom on each.
     packed: 947 * 1024,
-    unpacked: 3726 * 1024,
+    // Re-measured after merging main (#896-#899): 3747895 unpacked bytes.
+    unpacked: 3725 * 1024,
     entries: 515,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
