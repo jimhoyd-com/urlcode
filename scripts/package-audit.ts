@@ -284,15 +284,11 @@ export const budgets: Record<string, Budget> = {
     // and their llms-full.txt copies. Measured on Node 26: 945207 packed bytes (5175 over 918 KiB), 3740438 unpacked
     // bytes (30486 over 3623 KiB) and 505 entries (1 over 504). Packed raised to 927 KiB, unpacked to 3656 KiB and
     // entries to 510, keeping about 4 KiB, 3.3 KiB and 5 entries of headroom.
-    // Raised for #844's extension contract: `extensionContract`/`contractProblem` checked at add, list, validate,
-    // defineExtension and composeHost, the EXTENSIONS "extension contract" section and rewritten descriptor-discovery
-    // prose, RIM-ADDON-001 and their llms-full.txt copies. Main at 4a095468 (#901 merged) already measured 954781-954811
-    // packed bytes in CI, over 927 KiB; on Node 26 (darwin) main measures 954041 packed / 3768168 unpacked bytes and
-    // this change 956672 / 3778319 (+2631 / +10151). Packed raised to 938 KiB and unpacked to 3694 KiB, keeping about
-    // 3.8 KiB and 4.2 KiB of headroom for the ~2 KiB cross-Node gzip variance above.
-    packed: 938 * 1024,
+    // Re-measured on main after #900 and #901 merged together (each measured alone): Node 26 954042 packed /
+    // 3768213 unpacked bytes, 507 entries; CI (Node 24) packed 954811. About 3 KiB of headroom on each.
+    packed: 935 * 1024,
     // Re-measured after merging main (#896-#899): 3747895 unpacked bytes.
-    unpacked: 3694 * 1024,
+    unpacked: 3690 * 1024,
     entries: 510,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
