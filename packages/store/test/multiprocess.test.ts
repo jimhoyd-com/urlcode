@@ -157,18 +157,46 @@ test('across real processes: a live peer on another host (another boot id) refus
   await container.close(); await here.close();
 });
 
-test('a peer lease from another host counts only while it is live, and a host without a boot id is compared by hostname', async t => {
+/** A joiner's monotonic clock, moved by its `sleep`, which then runs `during` (another host's heartbeat, say). */
+const watching = (during: () => void = () => {}) => { let now = 0; return { monotonic: () => now, sleep: async (ms: number) => { now += ms; during(); } }; };
+
+test('a peer lease from another host counts only while its heartbeat advances, and a host without a boot id is compared by hostname', async t => {
   const { database, activation } = await root(t);
   await initialize(database);
   const lease = (host: string, boot: string | null, expires: number) => execute(database, `INSERT INTO store_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('peer-${host}', '${host}', ${boot === null ? 'NULL' : `'${boot}'`}, 1, ${Date.now()}, ${expires})`);
-  lease('gone', 'boot-gone', Date.now() - 1);
-  const served = await serve(t, database, activation, v1, { probe: { bootId: async () => 'boot-here', hostname: () => 'here' } });
-  assert.deepEqual(served.warnings, [], 'an expired lease is no peer');
+  // A crashed host's row, with an expiry a day ahead (its clock was): silent for the TTL, so it is deleted.
+  lease('gone', 'boot-gone', Date.now() + 86_400_000);
+  const served = await serve(t, database, activation, v1, { probe: { bootId: async () => 'boot-here', hostname: () => 'here', ...watching() } });
+  assert.deepEqual(served.warnings, [], 'a dead lease is no peer');
   await served.close();
   lease('mac', null, Date.now() + SERVER_LEASE.ttlMs);
-  await assert.rejects(serve(t, database, activation, v1, { probe: { bootId: async () => undefined, hostname: () => 'other-mac' } }), /Another server on host "mac"/);
+  const beating = () => watching(() => execute(database, "UPDATE store_servers SET heartbeat_at = heartbeat_at + 1 WHERE host = 'mac'"));
+  await assert.rejects(serve(t, database, activation, v1, { probe: { bootId: async () => undefined, hostname: () => 'other-mac', ...beating() } }), /Another server on host "mac"/);
   const same = await serve(t, database, activation, v1, { probe: { bootId: async () => undefined, hostname: () => 'mac' } });
   assert.match(same.warnings.join('\n'), /another serving process uses this store database/);
+});
+
+test('a server whose lease another host took over answers 503 on every write and writes nothing until it holds it again (#978)', async t => {
+  const { database, activation } = await root(t);
+  let now = 0;
+  const served = await serve(t, database, activation, v1, { probe: { bootId: async () => 'boot-here', hostname: () => 'here', monotonic: () => now } });
+  const created = await served.call('POST', '/api/todos', { title: 'one' });
+  assert.equal(created.status, 201);
+  // This process stalled past the TTL; another host deleted its row and joined.
+  execute(database, "DELETE FROM store_servers; INSERT INTO store_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('other', 'web-9', 'boot-9', 1, 1, 1)");
+  now += SERVER_LEASE.writeMs;
+  const before = counts(database);
+  const refused = await served.call('POST', '/api/todos', { title: 'two' });
+  assert.deepEqual([refused.status, refused.body], [503, { error: { code: 'storage_unavailable', message: 'The store is not available' } }]);
+  assert.equal((await served.call('POST', `/api/todos/${created.body!.id as string}/finish`)).status, 503);
+  assert.throws(() => served.exports.transaction(tx => tx.records('todos').create(null, { title: 'x' })), { status: 503 });
+  assert.deepEqual(counts(database), before, 'nothing was written');
+  assert.equal((await served.call('GET', '/api/todos')).status, 200, 'reads keep working');
+  // The other host closes: once its row is gone, this process rejoins at its next heartbeat and writes again.
+  execute(database, 'DELETE FROM store_servers');
+  const hosts = (): unknown[] => { const db = new DatabaseSync(database, { readOnly: true }); try { return db.prepare('SELECT host FROM store_servers').all().map(row => row.host); } finally { db.close(); } };
+  await until(() => hosts().includes('here'), SERVER_LEASE.heartbeatMs + 3000);
+  assert.equal((await served.call('POST', '/api/todos', { title: 'two' })).status, 201);
 });
 
 test('a database directory on a network filesystem is refused on Linux and not checked elsewhere', async t => {

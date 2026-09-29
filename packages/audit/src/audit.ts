@@ -40,7 +40,8 @@ export async function createAudit(options: AuditOptions): Promise<Audit> {
   const isActive = (): boolean => activations > 0;
   const store = await openAuditStore(options.database, options.onPruned, options.probe);
   // The host lease (#941), joined by the first activation and held until close: a peer serving this database from
-  // another host refuses activation. A refused join is retried by the next activation.
+  // another host refuses activation. A refused join is retried by the next activation. Once joined, every ingest checks
+  // it (store.ts), so a process that lost it to another host stores nothing until it holds it again.
   let lease: Promise<HostLease> | undefined;
   const joinLease = (): Promise<HostLease> => lease ??= store.lease(options.probe).catch((error: unknown) => { lease = undefined; throw error; });
   const drain = createDrain({ ingest: events => { store.ingest(events, retention, now()); }, isActive, now, onDeliveryError: options.onDeliveryError });
@@ -75,8 +76,9 @@ export async function createAudit(options: AuditOptions): Promise<Audit> {
       if (closed) throw new Error('The audit host is closed');
       if (context.mounts.length > 0) throw new Error('audit serves no routes; remove every route with extension: audit');
       const nextRetention = config.retention === undefined ? baseRetention : retentionOf(config.retention);
-      await joinLease();
-      if (closed) throw new Error('The audit host is closed');
+      const joined = await joinLease();
+      // Closed while joining: release the lease here too, whichever of the two ran first (#979).
+      if (closed) { joined.close(); throw new Error('The audit host is closed'); }
       // Every activation sets retention, so removing the key from urlcode.yaml returns to the host default.
       retention = nextRetention;
       activations++;

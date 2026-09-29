@@ -468,6 +468,23 @@ restoring a backup taken before it started. The two instances must run on one
 host with the database on local disk: the store, auth and audit each refuse a
 live peer on another host and a database on a network filesystem.
 
+The host lease behind that refusal judges another host's row by whether its
+heartbeat advances, never by comparing clocks
+([store](STORE.md#several-serving-processes-on-one-host)). Two consequences
+for an operator:
+
+- A server that finds another host's lease row at startup waits up to 20
+  seconds watching it, and logs one line saying so. That row can come from a
+  host that crashed, or from this machine before a reboot, since a reboot
+  changes the Linux boot id. The row is deleted if it stays silent, and the
+  server starts. No manual clean-up is needed.
+- A serving process that finds another host serving the same database logs
+  `host lease is lost` naming that host. It then answers `503` to every write
+  (store `storage_unavailable`, every auth request `auth_unavailable`, and
+  audit stores nothing) until that host's row is gone. Treat that line as a
+  misconfiguration alarm: stop one of the two hosts. The survivor recovers by
+  itself.
+
 This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's
 state automatically. Plan those independently. Keep Git definitions backed up;

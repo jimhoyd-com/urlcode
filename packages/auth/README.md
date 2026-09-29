@@ -165,10 +165,24 @@ serves, with or without the store. Activation (and `urlcode-auth migrate`,
 `create-user` and `find-user`) refuses a database directory on a network
 filesystem by its Linux `statfs` type, the list the store refuses (not checked
 on macOS or Windows). Each activation also keeps a lease row in `auth_servers`
-in `auth.sqlite` (hostname, Linux boot id, pid; renewed every 5 seconds, live
-for 20) and is refused while a live peer runs on another host; processes and
-containers on one host are accepted ([several serving
-processes][store-several-processes]). Better Auth's base URL is the
+in `auth.sqlite` (hostname, Linux boot id, pid; renewed every 5 seconds) and is
+refused while a live peer runs on another host; processes and containers on one
+host are accepted ([several serving processes][store-several-processes]).
+Another host's row is judged by whether its heartbeat advances, never by
+comparing clocks: a row a crashed host left is deleted after 20 seconds of
+silence. A process that finds another host serving the database logs it and
+answers `503 auth_unavailable` to every auth request until that host is gone.
+The lease is checked once per request, before Better Auth runs.
+
+A storage failure answers `503 auth_unavailable`, never a false success or a
+false sign-out. Better Auth itself answers a sign-out whose session delete
+failed with `200` and a cleared cookie, and its session endpoints answer `401`
+when reading the session failed. So the mount confirms, against the database,
+that a successful `/sign-out` really removed the session, and that a `401` from
+`/list-sessions`, `/revoke-session`, `/revoke-sessions`,
+`/revoke-other-sessions` or `/change-password` means there is no session. When
+it cannot confirm, it answers `503`, sends no cookie, and the client keeps its
+session and retries. Better Auth's base URL is the
 operator's `--origin` and its base path is the mount.
 
 ## Not included

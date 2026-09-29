@@ -121,6 +121,9 @@ export async function openAuditStore(path: string, onPruned?: (removed: number) 
   } catch (error) { db.close(); throw error; }
   const insert = db.prepare('INSERT OR IGNORE INTO audit_events(id, source, action, actor, subject, at, reason, metadata, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const prune = db.prepare('DELETE FROM audit_events WHERE seq <= (SELECT max(seq) - ? FROM audit_events)');
+  // The serving process's host lease once joined: every ingest checks it under the write lock first (#978), so a process
+  // that lost it to another host stores nothing (503) and its producers keep the events until it holds it again.
+  let held: HostLease | undefined;
   return {
     ingest(events, retention, recordedAt) {
       if (closed) throw unavailable();
@@ -128,6 +131,7 @@ export async function openAuditStore(path: string, onPruned?: (removed: number) 
       try {
         db.exec('BEGIN IMMEDIATE');
         try {
+          held?.verify();
           for (const event of events)
             insert.run(event.id, event.source, event.action, event.actor, event.subject, event.at, event.reason ?? '', event.metadata === undefined ? null : JSON.stringify(event.metadata), recordedAt);
           removed = Number(prune.run(retention).changes);
@@ -143,7 +147,9 @@ export async function openAuditStore(path: string, onPruned?: (removed: number) 
     },
     async lease(probe) {
       if (closed) throw unavailable();
-      return joinHostLease(db, { table: 'audit_servers', what: 'audit', probe });
+      const lease = await joinHostLease(db, { table: 'audit_servers', what: 'audit', probe });
+      held = lease;
+      return { instance: lease.instance, peers: lease.peers, get held() { return lease.held; }, verify: () => lease.verify(), renew: () => lease.renew(), close() { if (held === lease) held = undefined; lease.close(); } };
     },
     close() { if (!closed) { closed = true; db.close(); } },
   };
