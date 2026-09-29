@@ -890,8 +890,8 @@ The #835 counterexamples, and what serves each:
 | Simulated credits: move value between records, conserving the total | a [declared transfer](#declared-transfers) (`409 insufficient_balance` below its floor, `If-Match`, `Idempotency-Key`, both records audited in one transaction; a members-gated issuer brings value in); the recipient's id from a [projected readers mount](#membership-gates-and-cross-owner-reads) that shows no balance, looked up by a [unique handle](#a-directory-by-a-unique-handle); no application code | holds (a second property on the same record, settled later) still need a [host transaction](#host-transactions), retry-safe with an idempotency key |
 | Consent/capture coordination | a host transaction | cancelling pending records on a membership change declaratively |
 
-[#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracks what is left
-of this contract: sorted lists in SQL are
+[#902](https://github.com/jimhoyd-com/urlcode/issues/902) tracked this contract;
+sorted lists are ordered in SQL since
 [#951](https://github.com/jimhoyd-com/urlcode/issues/951), and the plumbing the
 declared intervals and transfers save is
 [measured in the framework guide](FRAMEWORK.md#plumbing-removed-by-intervals-and-transfers).
@@ -1486,14 +1486,28 @@ filterable: [kind, done]         # <property>=<value>, equality only
   order, filtered or not; there a delete between pages can shift later records
   up by one.
 - An unsorted, unfiltered page is one counted `LIMIT`/`OFFSET` query. A sorted
-  or filtered page reads the `id` and only the named properties of every record in
-  scope (bounded by `maxRecords`, at most 10,000), orders and filters those in
-  memory by the rules above, and then reads the page's records. On a shared
+  or filtered page is one counted keyset query in SQL
+  ([#951](https://github.com/jimhoyd-com/urlcode/issues/951)): the page after
+  the cursor's position, read in order through an index. On a shared
   collection sorting and filtering apply to every record; on an
   [owned](#per-record-ownership) one they apply to the caller's own records
   only, and `total` and cursors count only those. At the 10,000-record maximum such
-  a page took about 9 ms of synchronous work in
-  [one local measurement](CAPACITY.md#measured-the-sqlite-store).
+  a page took about 0.6 ms, as long as an unsorted one, in
+  [one local measurement](CAPACITY.md#measured-sorted-lists-in-sql-951).
+- Each `sortable` or `filterable` property gets an index, derived from the
+  declaration and built when it activates (on an owned collection, one on the
+  owner and the property, and with readers mounts a second on the property
+  alone); an index nobody declares any more is dropped. Every write updates each
+  one, so declare only the properties requests use. The index keys a string so
+  that SQLite's byte order is the UTF-16 code unit order above (UTF-8 byte order
+  differs from it only between U+E000–U+FFFF and the code points above U+FFFF),
+  and a number, integer or boolean as a double, compared exactly as
+  JavaScript compares them. A stored value that key cannot order exactly, a
+  string holding a lone surrogate or a value of another type than declared (a
+  row written under another declaration), is found through one more index that
+  holds only such rows; while the collection holds one, its sorted and filtered
+  pages are ordered in memory instead, with the same results and cursors, and
+  cost what they did before #951.
 
 ## Per-record ownership
 
@@ -2318,10 +2332,8 @@ operations as one database transaction: see
 
 ## Not built yet
 
-SQL ordering for sorted lists is not
-built (a [declared transfer](#declared-transfers) moves value between two
-records; holds still need a host transaction)
-([#951](https://github.com/jimhoyd-com/urlcode/issues/951); the
+Holds are not built (a [declared transfer](#declared-transfers) moves value
+between two records; a hold still needs a host transaction; the
 [transition design](#what-is-not-covered) lists what each needs), nor are roles
 beyond a [membership collection](#membership-gates-and-cross-owner-reads). Recorded in
 [open decisions](OPEN-DECISIONS.md): ranges and text search. Owned collections

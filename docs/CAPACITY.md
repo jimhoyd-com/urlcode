@@ -194,8 +194,10 @@ ceiling there.** Where the fsync does bound writes, the operator can choose
 skip it, and the last ones before a power loss or OS crash can be lost (a
 process crash loses nothing). The default stays `full`.
 
-**Lists** (HTTP, concurrency 1, 400 requests each; the last row at
-concurrency 16):
+**Lists before #951** (HTTP, concurrency 1, 400 requests each; the last row at
+concurrency 16; the in-memory ordering the store used until
+[#951](https://github.com/jimhoyd-com/urlcode/issues/951), see
+[below](#measured-sorted-lists-in-sql-951) for what replaced it):
 
 | Records | Query | page 20: p50 / p99 ms | page 100: p50 / p99 ms |
 |---:|---|---:|---:|
@@ -207,15 +209,16 @@ concurrency 16):
 | 10,000 | `kind=b&sort=title` | 9.9 / 13.1 | 11.0 / 81 |
 | 10,000 | `sort=title`, concurrency 16 | — | 152 / 712 (80 lists/s) |
 
-A sorted or filtered list reads every record in scope and orders it in memory,
-synchronously: at the 10,000-record maximum each one holds the event loop for
-about 9 ms, so concurrent sorted lists queue behind each other (and behind
-every write) and one process serves about 100 of them a second. Unsorted
-lists stay under 1.3 ms at p99 at either size.
+A sorted or filtered list then read every record in scope and ordered it in
+memory, synchronously: at the 10,000-record maximum each one held the event
+loop for about 9 ms, so concurrent sorted lists queued behind each other (and
+behind every write) and one process served about 100 of them a second.
+Unsorted lists stay under 1.3 ms at p99 at either size.
 
 **Ordering in SQL instead** (in-process, no HTTP; the store's projection and
 `runList` path against `ORDER BY ... LIMIT` over the same rows; 50,000 is above
-the configurable `maxRecords` and shown only for the curve; p50 ms, page 100):
+the configurable `maxRecords` and shown only for the curve; p50 ms, page 100;
+measured before #951 built it):
 
 | Records | store (JS order) | SQL, no index | SQL, expression index on the sort field | filter + sort, SQL with that index |
 |---:|---:|---:|---:|---:|
@@ -229,6 +232,47 @@ two agree, so this measures cost, not a correct replacement. An `ORDER BY`
 without an index is about 3× faster; only an index on the sort expression
 removes the scan, and an equality filter it does not cover still scans (and
 counts) every record in scope.
+
+#### Measured: sorted lists in SQL (#951)
+
+Since [#951](https://github.com/jimhoyd-com/urlcode/issues/951) a sorted or
+filtered page is a counted keyset query through an index per `sortable` and
+`filterable` property, keyed in the documented UTF-16 order
+([how](STORE.md#sorting-and-filtering)). Same benchmark and machine as above
+(`npm run bench:store -- --lists`, which runs only the list parts), 2026-09-29,
+Node 26.10.0, SQLite 3.53.4. The before column is `main` just before the change,
+run in the same session as the after column, because the machine's load
+differed from the 2026-09-28 run (that run's 152 / 712 ms at concurrency 16 was
+169 / 386 ms here). A second after run agreed within about 10%.
+
+| Records | Query (HTTP, page 100) | before: p50 / p99 ms | after: p50 / p99 ms |
+|---:|---|---:|---:|
+| 1,000 | `sort=title` | 1.40 / 2.14 | 0.52 / 1.24 |
+| 1,000 | `sort=title`, concurrency 16 | 19.7 / 40 (769 lists/s) | 5.6 / 12.5 (2,625 lists/s) |
+| 10,000 | unsorted | 0.62 / 1.35 | 0.62 / 1.33 |
+| 10,000 | `sort=title` | 11.2 / 14.0 | 0.63 / 1.31 |
+| 10,000 | `sort=-priority` | 10.4 / 12.9 | 0.62 / 1.31 |
+| 10,000 | `kind=b&sort=title` | 10.4 / 13.0 | 0.73 / 1.53 |
+| 10,000 | `sort=title`, concurrency 16 | 169 / 386 (89 lists/s) | 7.7 / 18.1 (1,887 lists/s) |
+
+At the 10,000-record maximum a sorted page now costs what an unsorted one does,
+and the server's event-loop delay under 16 concurrent sorted lists fell from
+167 ms to 7.6 ms at p50. In process (no HTTP, p50 ms, page 100) the store's
+page is 0.29 at 10,000 records (8.35 in memory) and 1.53 at 50,000 (48.8);
+`kind=b&sort=title` is 0.36 and 1.08, since the filter has its own index.
+
+**What the indexes cost a write** (in process, 300 creates each, one
+`synchronous=FULL` commit per create, p50 / p95 ms): with the benchmark's two
+sortable and one filterable property (four indexes, counting the one for rows the
+key cannot order, which is normally empty), a create took 0.11 / 0.16 at 1,000
+records and 0.23 / 0.42 at 10,000; with the same collection declaring nothing
+to sort or filter by, 0.07 / 0.10 and 0.20 / 0.27. Each `sortable` or
+`filterable` property adds one index entry per write (two on an owned
+collection with readers mounts), so declare only the ones requests use.
+
+Not measured: Linux, a collection whose records have many owners, and the
+in-memory fallback, which serves a list only while a stored value is one the
+SQL key cannot order (see [the store guide](STORE.md#sorting-and-filtering)).
 
 **Caveats.** Loopback only, one client process on the same machine, no TLS,
 proxy or request logging; small records (about 150 bytes); one principal
