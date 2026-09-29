@@ -6,7 +6,7 @@ import {artifactSite,project,redirect} from './helpers.ts';
 import {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from '../packages/core/src/feature-plan.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 
-function extension(name:'ui'|'auth'|'store'|'forms',targets:RuntimeExtension['targets']=['node']):RuntimeExtension {
+function extension(name:'ui'|'auth'|'store',targets:RuntimeExtension['targets']=['node']):RuntimeExtension {
  return {name,version:'1',projectSha256:'0'.repeat(64),targets,schema:{type:'object'},activate(){throw new Error('planning must not activate an extension');}};
 }
 
@@ -41,13 +41,6 @@ test('without a host file, feature planning refuses a target the extension\'s re
  // The descriptor can refuse but never confirm: on node the answer still waits for the pinned registration.
  const node=await planFeature(root,'durable persisted record');
  assert.equal(node.extensions.required.find(item=>item.name==='store')!.target,'unknown');
-});
-
-test('feature planning discovers forms only from an already-loaded registration',async t=>{
- const root=await project(t,{});
- const plan=await planFeature(root,'multi-step contact form workflow',{extensions:[extension('forms')]});
- assert.ok(plan.extensions.required.some(item=>item.name==='forms'&&item.registered));
- assert.ok(!plan.unsupported.some(item=>item.requirement==='Declarative form flow'));
 });
 
 test('feature planning reports an artifact installed in the site around the project, and only a pinned one as installed',async t=>{

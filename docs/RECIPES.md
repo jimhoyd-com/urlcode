@@ -30,7 +30,7 @@ urlcode validate --local --project ./orders-hook
 | `static-plus-api` | intermediate | Page, static directory and one JSON endpoint declared with `respond`, no project code | nothing (self-hosted, AWS, Vercel) |
 | `streaming-progress` | intermediate | Progress lines sent while a trusted function works, with `stream: true` ([streamed responses](SPECIFICATION.md#streamed-responses)) | self-hosted runtime |
 | `cors-api` | intermediate | Preflight and CORS headers from route middleware around a declared `respond` | self-hosted runtime |
-| `contact-form` | intermediate | Message checked by `request.body.<METHOD>.schema`, `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |
+| `contact-form` | intermediate | Static page posting JSON; message checked by `request.body.<METHOD>.schema` (`format: email`), `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |

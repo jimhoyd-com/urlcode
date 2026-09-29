@@ -144,7 +144,7 @@ export function shardMatrix(event: string, paths: string[] | null): { include: {
  * source can change installed behavior even when its manifest is unchanged.
  */
 export function packageSmokeRelevant(paths: string[] | null): boolean {
-  return !paths?.length || paths.some(path => !/^packages\/(ui|audit|abuse|mail|auth|store|forms|mcp)\//.test(path));
+  return !paths?.length || paths.some(path => !/^packages\/(ui|audit|auth|store|mcp)\//.test(path));
 }
 
 /** Core tests, examples, drills, and dependency audit exercise the root
@@ -203,20 +203,18 @@ export function checksMatrix(event: string, paths: string[] | null): { include: 
 // One job per (leg, package) instead runs them in parallel; each still needs
 // its own install and the root build (packages import `@jimhoyd/urlcode`, the
 // workspace-linked root package, resolved through its built `dist/`).
-const WORKSPACE_PACKAGES = ['ui', 'audit', 'abuse', 'mail', 'auth', 'store', 'forms', 'mcp'] as const;
+const WORKSPACE_PACKAGES = ['ui', 'audit', 'auth', 'store', 'mcp'] as const;
 // Cross-package `@jimhoyd/urlcode-*` build dependencies, in the build order
 // each package's own typecheck/build needs. They are transitive, because a
 // package's emitted declarations import its dependencies' declarations:
-// `store` imports `ui` and `audit`;
-// `forms` imports `ui`, `abuse` and `mail`. `ui`, `audit`, `abuse`, `mail`,
-// `auth` and `mcp` only peer on core.
+// `store` imports `ui` and `audit`. `ui`, `audit`, `auth` and `mcp` only peer
+// on core.
 // The serial script used to get this for free from running packages in order;
 // a package's own job now has to build its declared dependencies first.
 const WORKSPACE_DEPS: Record<string, readonly string[]> = {
-  ui: [], audit: [], abuse: [], mail: [],
+  ui: [], audit: [],
   auth: [],
   store: ['ui', 'audit'],
-  forms: ['ui', 'abuse', 'mail'],
   mcp: [],
 };
 // The inverse of WORKSPACE_DEPS: a change to a package reverifies every
@@ -235,7 +233,7 @@ export function workspacePackages(paths: string[] | null): readonly string[] {
   if (!paths?.length) return WORKSPACE_PACKAGES;
   const changed = new Set<string>();
   for (const path of paths) {
-    const match = /^packages\/(ui|audit|abuse|mail|auth|store|forms|mcp)\//.exec(path);
+    const match = /^packages\/(ui|audit|auth|store|mcp)\//.exec(path);
     if (!match) return WORKSPACE_PACKAGES;
     changed.add(match[1]!);
   }
@@ -249,7 +247,7 @@ export function workspacePackages(paths: string[] | null): readonly string[] {
   return WORKSPACE_PACKAGES.filter(pkg => selected.has(pkg));
 }
 
-const EXTENSION_PATH = /^packages\/(?:ui|audit|abuse|mail|auth|store|forms|mcp)\//;
+const EXTENSION_PATH = /^packages\/(?:ui|audit|auth|store|mcp)\//;
 /**
  * The extension suites a pull request also runs on Windows Node 24 (#824).
  * Package tests used to run on Windows only in release coverage, so a Windows

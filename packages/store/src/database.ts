@@ -43,7 +43,7 @@ export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /** How long one statement waits for a lock another process holds before failing (it blocks this process meanwhile). */
 export const BUSY_TIMEOUT_MS = 2000;
 
-/** SQLite releases carrying the fixes URLCode's SQLite stores require (the same floor as audit and abuse). */
+/** SQLite releases carrying the fixes URLCode's SQLite stores require (the same floor as audit). */
 export function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
 
 /**

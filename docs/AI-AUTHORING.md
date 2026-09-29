@@ -75,8 +75,8 @@ for installation, host registration, discovery and validation. The managed
    reference stops at `extensions.<name>.config`, so each first-party
    extension's package README ends with a field reference generated from its
    `urlcode.json`: every configuration key, route-policy key and hook contract,
-   described. The page maps a capability (stored short links, a form's
-   `onSubmit` hook, per-user records) to the keys and a checked example.
+   described. The page maps a capability (stored short links, a validated
+   form submission, per-user records) to the keys and a checked example.
 
 The root [llms.txt](../llms.txt) is a compact discovery index; the generated
 [llms-full.txt](../llms-full.txt) concatenates the authoring documents above in
@@ -608,7 +608,7 @@ example) or verifies a signature must be a trusted route: declare
 the `webhook-receiver` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
-extension invokes (forms' `onSubmit`, ui's `transformView` and the like) — it is
+extension invokes (ui's `transformView`, an mcp tool handler and the like) — it is
 first-party project code with the same trusted-by-default rule as a
 `function`/`middleware` route. Extension hook contract v1 is trusted-only;
 `sandbox: true` is rejected rather than silently ignored. See

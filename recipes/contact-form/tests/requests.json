@@ -1,5 +1,24 @@
 [
   {
+    "path": "/",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache"
+    }
+  },
+  {
+    "path": "/assets/contact.js",
+    "status": 200,
+    "expectHeaders": {
+      "cache-control": "no-cache"
+    }
+  },
+  {
+    "path": "/assets/missing.js",
+    "status": 404
+  },
+  {
     "path": "/contact",
     "method": "POST",
     "headers": {
@@ -18,7 +37,7 @@
     "headers": {
       "content-type": "application/json"
     },
-    "body": "{\"name\":\"\",\"email\":\"not-an-address\",\"message\":\"short\"}",
+    "body": "{\"name\":\"Ada\",\"email\":\"not-an-address\",\"message\":\"Please send the brochure.\"}",
     "status": 422
   },
   {

@@ -15,8 +15,8 @@
 // Both failures are invisible to the test suites, which is why this is a check
 // rather than a comment. Each package declares `"@jimhoyd/urlcode":
 // "file:../.."` for core, and `"@jimhoyd/urlcode-<name>": "file:../<name>"`
-// for any workspace sibling it peers on (auth on ui, admin on ui and auth,
-// forms on ui, ...), and this asserts the result for all of them (#477).
+// for any workspace sibling it peers on (store on ui and audit), and this
+// asserts the result for all of them (#477).
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

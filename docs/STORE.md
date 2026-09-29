@@ -1015,7 +1015,7 @@ operator says made the change, not proof of it. Commands that change nothing
   `data/store.sqlite` beside `host.mjs`. It must be outside the project
   (checked after symlink resolution). Its directory is created `0700` and the
   file `0600`; a symlinked, hard-linked or group- or other-readable file is
-  refused. The store requires a SQLite with the fixes audit and abuse require
+  refused. The store requires a SQLite with the fixes audit requires
   too (3.44.6, 3.50.7, 3.51.3 or newer) and is Node only: its registration
   declares `targets: ['node']`, so the aws and vercel targets refuse it before
   serving.

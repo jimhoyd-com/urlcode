@@ -11,7 +11,7 @@
 //     as its siblings, so DOM/DOM.Iterable is included for all.
 //   - customConditions: ["development"]: auth was missing this (it resolves
 //     sibling `@jimhoyd/urlcode-ui` imports through their `development`
-//     condition, same as admin/forms); root's own exports map has no
+//     condition, same as store); root's own exports map has no
 //     "development" condition, so adding it here is a no-op for root.
 // `noEmit` is deliberately NOT here: the root's typecheck config sets it
 // directly, and each package's tsconfig.build.json (which must emit `dist/`)

@@ -53,7 +53,7 @@ const helpEntries: HelpEntry[] = [
     # --adopt: create the site around user files already there (for example a frontend/ or dist/ directory): only new files are written, nothing existing is changed or followed, and the entries left alone are listed. Refused, with nothing written, when an existing path collides with what init writes (app/, package.json, host.mjs, .gitignore, README.md, ...; with --with also node_modules and package-lock.json), inside an existing project or at an app/ directory
     # --no-mcp: write no MCP client configuration (.mcp.json, the only client config init writes); the site is complete and runnable, an existing .mcp.json or .claude/ is left untouched, and the output reports mcpRegistration: skipped. Use it where a sandbox forbids writing agent configuration
     # --with: then runs \`urlcode extensions add\` for those extensions (npm install of the add-on tarballs this runtime pins); a refusal undoes the whole init
-    # --example: with --with, also writes each extension's example (a Todo collection and screen, a contact form, a signed-in page); without it only the capabilities are installed
+    # --example: with --with, also writes each extension's example (a Todo collection and screen); without it only the capabilities are installed
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command
 ` },
   { name:'dev', group:'Start', text:
@@ -164,7 +164,7 @@ const helpEntries: HelpEntry[] = [
   urlcode extensions list [--strict] [--json] [--site directory]
   urlcode extensions [--project directory] [--host-file operator/host.mjs] [--json]  # without a subcommand: registered contracts and schemas; executes trusted host code, activates nothing
     # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json), or an operator's independent package (npm spec or local tarball carrying a urlcode.json descriptor, pinned by its package-lock sha512); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
-    # add installs the capability only (no sample endpoints); --example also writes each added extension's example, for example store's /api/todos collection or forms' /contact flow
+    # add installs the capability only (no sample endpoints); --example also writes each added extension's example, for example store's /api/todos collection
     # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
     # list --strict exits 1 on a pin mismatch, a nested copy or drift between package.json, app/urlcode.yaml and host.mjs; an extension neither declared nor imported is a library install, still pin-checked, not drift
 ` },

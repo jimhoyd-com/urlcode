@@ -119,13 +119,13 @@ test('a blank scaffold creates the new extension shape, and the generated packag
 test('--from forks an existing package\'s file shape (exact sibling peers become requires, optional docs) without copying its source', async t => {
   const out = await outputDir(t);
   const name = `scaff-fork-${randomUUID().slice(0, 8)}`;
-  const result = run([name, '--from', 'forms', '--packages-dir', out]);
+  const result = run([name, '--from', 'store', '--packages-dir', out]);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /forked from the file shape of packages\/forms/);
+  assert.match(result.stdout, /forked from the file shape of packages\/store/);
 
-  const forms = JSON.parse(await readFile(join(packagesDir, 'forms', 'package.json'), 'utf8')) as Manifest;
-  const siblings = Object.keys(forms.peerDependencies).filter(peer => peer.startsWith('@jimhoyd/urlcode-')).map(peer => peer.slice('@jimhoyd/urlcode-'.length));
-  assert.ok(siblings.length > 0, 'forms peers on at least one sibling extension');
+  const store = JSON.parse(await readFile(join(packagesDir, 'store', 'package.json'), 'utf8')) as Manifest;
+  const siblings = Object.keys(store.peerDependencies).filter(peer => peer.startsWith('@jimhoyd/urlcode-')).map(peer => peer.slice('@jimhoyd/urlcode-'.length));
+  assert.ok(siblings.length > 0, 'store peers on at least one sibling extension');
 
   const dir = join(out, name);
   const manifest = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as Manifest;
@@ -138,8 +138,8 @@ test('--from forks an existing package\'s file shape (exact sibling peers become
   assert.ok((await readFile(join(dir, 'src', 'extension.ts'), 'utf8')).includes(`requires: ${JSON.stringify(siblings)},`), 'the definition requires the sibling extensions');
 
   const extensionSource = await readFile(join(dir, 'src', `${name}.ts`), 'utf8');
-  assert.ok(!extensionSource.includes('csrfSecret'), 'forked source should not carry forms\' CSRF-specific logic');
-  assert.ok(!extensionSource.includes('CSRF_PURPOSE'));
+  assert.ok(!extensionSource.includes('maxRecords'), 'forked source should not carry the store\'s collection logic');
+  assert.ok(!extensionSource.includes('DatabaseSync'));
   for (const optional of ['ACCEPTANCE.md', 'CONTRACT.md', 'IMPLEMENTATION-STATUS.md', 'THREAT-MODEL.md']) {
     await assert.rejects(stat(join(dir, optional)));
   }
@@ -167,7 +167,7 @@ test('rejects an invalid name, a reserved name, an existing package, an unknown 
   assert.notEqual(reserved.status, 0);
   assert.match(reserved.stderr, /reserved name/);
 
-  const existing = run(['forms']);
+  const existing = run(['store']);
   assert.notEqual(existing.status, 0);
   assert.match(existing.stderr, /already exists/);
 
