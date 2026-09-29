@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- auth refuses a second host and a network filesystem without the store (#941). Activation and the `urlcode-auth`
+  commands refuse a database directory on a network filesystem by its Linux `statfs` type (NFS, SMB, SMB2, CIFS, FUSE,
+  9P, Ceph, AFS; not checked on macOS or Windows). Each activation joins a host lease, a new `auth_servers` table in
+  `auth.sqlite` created on first activation (heartbeat every 5 s, live 20 s), and is refused while a live peer runs on
+  another host (another Linux boot id, or another hostname when either has none). Both checks are core's
+  (`joinHostLease`, `refuseNetworkFilesystem`), shared with the store and audit. `createAuthExtension` takes a `probe`
+  test seam; operators never set it.
 - Several processes on one host can share `data/auth.sqlite` (#927). It opens with a 2-second busy timeout, WAL and
   `synchronous=FULL`, is created `0600` and refused unless private; `urlcode-auth create-user` beside a running server
   no longer fails with "database is locked". Better Auth's transactions begin `IMMEDIATE`: its sign-up reads, hashes,

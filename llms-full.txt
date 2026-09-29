@@ -309,6 +309,10 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#site-origins-and-same-origin-checks)).
+A SQLite-backed extension refuses a network filesystem and a live peer on
+another host through core's `refuseNetworkFilesystem` and `joinHostLease`, each
+with a lease table in its own database, so store, auth and audit enforce one
+topology rule ([request helpers](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
 an `extension_warning` event and never a response
@@ -5191,6 +5195,15 @@ parsing, JSON responses or origin checks; use these:
 | `isSameOriginRequest(request, site, {whenAbsent})` | The [one same-origin rule](#site-origins-and-same-origin-checks). |
 | `ExtensionHttpError` | What the readers throw: `status` 400, 413 or 415 and a `code`. Its message is fixed per code and never echoes request data, so it is safe to show. |
 | `clientKey(request.client)` | A stable key for the client address (an IPv6 address becomes its /64 network), for budgets and logs. |
+
+An extension that keeps a SQLite database runs two setup checks before it
+serves, the ones the store, auth and audit share
+([several serving processes](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#several-serving-processes-on-one-host)):
+
+| Helper | What it does |
+|---|---|
+| `refuseNetworkFilesystem(directory, what, probe?)` | Refuses a database directory on a network filesystem by its Linux `statfs` type (`NETWORK_FILESYSTEMS`); skipped on macOS and Windows. |
+| `joinHostLease(db, {table, what, probe?})` | Creates the extension's lease table in its own database when absent, refuses while a live peer (`SERVER_LEASE`: renewed every 5 s, live 20 s) runs on another host (another Linux boot id, or another hostname when either has none), and inserts this process's row. `close()` stops the heartbeat and deletes the row. `db` is a `node:sqlite` `DatabaseSync` or an object with `transaction`, `run` and `all`. |
 
 #### OpenAPI description
 

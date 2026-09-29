@@ -257,6 +257,10 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
+A SQLite-backed extension refuses a network filesystem and a live peer on
+another host through core's `refuseNetworkFilesystem` and `joinHostLease`, each
+with a lease table in its own database, so store, auth and audit enforce one
+topology rule ([request helpers](EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
 an `extension_warning` event and never a response

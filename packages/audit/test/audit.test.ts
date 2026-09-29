@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { AuditError, auditOutboxLimits, auditPermissions, createAudit, validateAuditEvent } from '../src/index.ts';
 import type { AuditEvent, AuditExports, AuditStoredEvent } from '../src/index.ts';
 import { activation, activeAudit, event, openAudit, pin, tempDir } from './support.ts';
-import { openAuditStore, refuseNetworkFilesystem } from '../src/store.ts';
+import { openAuditStore } from '../src/store.ts';
 
 const rejectsWith = (promise: Promise<unknown>, status: number, code: string) =>
   assert.rejects(promise, (error: unknown) => error instanceof AuditError && error.status === status && error.code === code);
@@ -238,7 +238,40 @@ test('an audit database directory on a network filesystem is refused on Linux an
   const linux = (type: number) => ({ platform: 'linux' as const, statfs: async () => ({ type }) });
   for (const [type, name] of [[0x6969, 'NFS'], [0xff534d42 - 2 ** 32, 'CIFS'], [0x65735546, 'FUSE']] as const)
     await assert.rejects(openAuditStore(join(dir, 'audit.sqlite'), undefined, linux(type)), new RegExp(`^Error: The audit database is on a ${name} filesystem`));
-  await refuseNetworkFilesystem(dir, { platform: 'darwin', statfs: async () => ({ type: 0x6969 }) });
+  (await openAuditStore(join(dir, 'audit.sqlite'), undefined, { platform: 'darwin', statfs: async () => ({ type: 0x6969 }) })).close();
   const local = await openAuditStore(join(dir, 'audit.sqlite'), undefined, linux(0xef53));
   local.close();
+});
+
+test('activation refuses while a live peer serves the audit database from another host, never one on this host (#941)', async t => {
+  const boot = (id: string) => ({ hostname: () => 'web-1', bootId: async () => id });
+  const here = boot('11111111-1111-4111-8111-111111111111');
+  // A first serving process creates the lease table and holds its row until it closes.
+  const { audit: first, dir, database } = await openAudit(t, { probe: here });
+  const firstInstance = await first.registration.activate({}, activation(dir));
+  const reader = new DatabaseSync(database, { readOnly: true });
+  const rows = reader.prepare('SELECT host, boot FROM audit_servers').all().map(row => ({ ...row }));
+  reader.close();
+  assert.deepEqual(rows, [{ host: 'web-1', boot: '11111111-1111-4111-8111-111111111111' }]);
+  // Another process on this host (another container on the same kernel) activates beside it.
+  const { audit: sameHost } = await openAudit(t, { database, probe: { hostname: () => 'web-2', bootId: here.bootId } });
+  (await sameHost.registration.activate({}, activation(dir))).close?.();
+  await sameHost.close();
+  // A process on another host is refused while the first one's lease is live, and nothing it does becomes active.
+  const { audit: elsewhere } = await openAudit(t, { database, probe: boot('22222222-2222-4222-8222-222222222222') });
+  await assert.rejects(Promise.resolve().then(() => elsewhere.registration.activate({}, activation(dir))), /^Error: Another server on host "web-1" holds a live lease on this audit database: an audit database is served from one host only/);
+  assert.equal(elsewhere.exports.active, false);
+  // Once the first process closes, its row is gone and the other host activates.
+  firstInstance.close?.();
+  await first.close();
+  const instance = await elsewhere.registration.activate({}, activation(dir));
+  assert.equal(elsewhere.exports.active, true);
+  instance.close?.();
+  await elsewhere.close();
+  // A lease left by a host that stopped heartbeating counts only until it expires.
+  const writer = new DatabaseSync(database, { timeout: 2000 });
+  try { writer.prepare("INSERT INTO audit_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('gone', 'gone', 'boot-gone', 1, 0, ?)").run(Date.now() - 1); }
+  finally { writer.close(); }
+  const { audit: after } = await openAudit(t, { database, probe: here });
+  (await after.registration.activate({}, activation(dir))).close?.();
 });

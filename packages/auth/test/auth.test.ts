@@ -93,6 +93,38 @@ test('activation refuses until Better Auth\'s tables exist', async t => {
   assert.throws(() => betterAuthOptions({ database: at.database, secret: 'short' }, origin, '/api/auth'), /at least 32 characters/);
 });
 
+test('an auth database directory on a network filesystem is refused on Linux and not checked elsewhere (#941)', async t => {
+  const at = await project(t); await withUser(at);
+  const start = (probe: object) => startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, probe })] });
+  for (const [type, name] of [[0x6969, 'NFS'], [0xff534d42 - 2 ** 32, 'CIFS'], [0x65735546, 'FUSE']] as const)
+    await assert.rejects(start({ platform: 'linux', statfs: async () => ({ type }) }), new RegExp(`The auth database is on a ${name} filesystem`));
+  const darwin = await start({ platform: 'darwin', statfs: async () => ({ type: 0x6969 }) });
+  at.defer(() => darwin.close());
+  const ext4 = await start({ platform: 'linux', statfs: async () => ({ type: 0xef53 }) });
+  at.defer(() => ext4.close());
+});
+
+test('activation refuses while a live peer serves the auth database from another host, never one on this host (#941)', async t => {
+  const at = await project(t); await withUser(at);
+  const boot = (id: string, host = 'web-1') => ({ hostname: () => host, bootId: async () => id });
+  const here = '11111111-1111-4111-8111-111111111111';
+  const start = (probe: object) => startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, probe })] });
+  const first = await start(boot(here));
+  // Another container on the same kernel: its own hostname, the same boot id.
+  const container = await start(boot(here, 'web-2'));
+  await container.close();
+  await assert.rejects(start(boot('22222222-2222-4222-8222-222222222222')), /Another server on host "web-1" holds a live lease on this auth database: an auth database is served from one host only/);
+  await first.close();
+  // Its lease went with it; a lease a vanished host left counts only until it expires.
+  const db = new DatabaseSync(at.database, { timeout: 5000 });
+  try {
+    assert.equal((db.prepare('SELECT count(*) AS n FROM auth_servers').get() as { n: number }).n, 0);
+    db.prepare("INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('gone', 'gone', 'boot-gone', 1, 0, ?)").run(Date.now() - 1);
+  } finally { db.close(); }
+  const elsewhere = await start(boot('22222222-2222-4222-8222-222222222222'));
+  at.defer(() => elsewhere.close());
+});
+
 test('a protected route sees the verified user id, never the session cookie, and sign-out ends it', async t => {
   const at = await project(t), userId = await withUser(at);
   const { call, jar } = await serve(at);

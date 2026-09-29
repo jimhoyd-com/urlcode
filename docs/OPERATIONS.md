@@ -465,8 +465,8 @@ activates. Rolling back to the previous instance therefore means restarting
 it (its activation records its declaration again), not only routing traffic
 back to it; a candidate that migrated the schema can only be rolled back by
 restoring a backup taken before it started. The two instances must run on one
-host with the database on local disk: the store refuses a live peer on another
-host and a database on a network filesystem.
+host with the database on local disk: the store, auth and audit each refuse a
+live peer on another host and a database on a network filesystem.
 
 This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's

@@ -1670,8 +1670,9 @@ on Linux: NFS (`0x6969`), SMB (`0x517b`), SMB2 (`0xfe534d42`), CIFS
 (`0xff534d42`), FUSE (`0x65735546`, which includes sshfs, s3fs and Docker
 Desktop's gRPC FUSE file sharing), 9P (`0x01021997`, WSL2's `/mnt` drives),
 Ceph (`0x00c36400`) and AFS (`0x5346414f`). On macOS and Windows Node exposes
-no filesystem type the check can trust, so it is skipped there. The audit
-extension refuses the same list for `audit.sqlite`. A serving process also
+no filesystem type the check can trust, so it is skipped there. The auth and
+audit extensions refuse the same list for `auth.sqlite` and `audit.sqlite`.
+A serving process also
 joins `store_servers`: a lease row with its instance id, hostname, Linux boot
 id (`/proc/sys/kernel/random/boot_id`, when readable) and pid, renewed every
 5 seconds and live for 20. Activation is refused while a live peer reports a
@@ -1695,16 +1696,20 @@ drained within the holder's 1 second poll. `audit.flush()` waits for its own
 process's drain only, so in a process that does not hold the lease it does
 not wait for a peer's delivery.
 
-**Only the store detects another host.** The `store_servers` lease lives in
-the store database, so it guards only a site that runs the store. The audit
-extension refuses a network filesystem by the same `statfs` list, and the auth
-extension checks neither; neither keeps a lease of its own. A site running
-audit or auth without the store on two hosts is therefore not refused when
-`auth.sqlite` is shared through any filesystem, or `audit.sqlite` through one
-that list does not name or on macOS or Windows, where the check is skipped.
-It is still unsupported, for the same WAL and locking reasons: keep those
-files on one host's local disk
-([#941](https://github.com/jimhoyd-com/urlcode/issues/941)).
+**Every SQLite extension detects another host.** The network filesystem check
+and the lease are one implementation in core
+(`@jimhoyd/urlcode/extensions`: `refuseNetworkFilesystem`, `joinHostLease`),
+and each extension keeps its lease in its own database: the store in
+`store_servers`, auth in `auth_servers` in `auth.sqlite` (one row per
+activation), and audit in `audit_servers` in `audit.sqlite` (from its first
+activation until the audit host closes). The rules above apply to each: a live
+peer on another host refuses activation, processes on one host never refuse
+each other, and a lease expires 20 seconds after its last heartbeat. So a site
+that runs auth or audit without the store is refused on a second host too
+([#941](https://github.com/jimhoyd-com/urlcode/issues/941)). Each lease guards
+only its own file: the check cannot see a second host that shares none of
+them, and on macOS and Windows a network filesystem is noticed only through
+the lease, when both hosts serve at once.
 
 **Per process, not per host.** Throttle counters, origin caches and metrics
 stay per process: a `throttle` quota across N processes allows up to N times

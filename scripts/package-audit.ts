@@ -312,8 +312,12 @@ export const budgets: Record<string, Budget> = {
     // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #927's test:multiprocess script in package.json on top: 1014165 packed / 4011284 unpacked bytes on Node 26,
     // inside these budgets with about 2.8 KiB of headroom on each once Node 24's ~800 extra packed bytes are counted.
-    packed: 994 * 1024,
-    unpacked: 3920 * 1024,
+    // #941 host lease: dist/host-lease.js and its declarations (the network filesystem check and lease that store, auth
+    // and audit share), with the STORE/EXTENSIONS/FRAMEWORK/OPERATIONS/CAPACITY sections and their llms-full.txt copies:
+    // measured on Node 26 at 1019347 packed / 4025827 unpacked bytes, 519 entries (CI's Node 24 packs ~800 bytes
+    // larger); ~3 KiB headroom.
+    packed: 1000 * 1024,
+    unpacked: 3935 * 1024,
     entries: 521,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

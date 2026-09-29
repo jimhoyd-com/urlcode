@@ -143,10 +143,15 @@ the write lock waits up to 2 seconds (blocking that process's event loop
 meanwhile) before failing, and Better Auth's transactions (sign-up, account
 creation) take the write lock when they begin, so one that reads and then
 writes cannot fail on a commit another process made in between. Network
-filesystems and several hosts are unsupported. auth checks neither: it keeps
-no lease and does not read the filesystem type, so without the store nothing
-refuses a second host or a network filesystem; the store's lease and its
-`statfs` check, which covers the store database's directory, are what detect them ([several serving processes][store-several-processes]). Better Auth's base URL is the
+filesystems and several hosts are unsupported, and auth refuses both before it
+serves, with or without the store. Activation (and `urlcode-auth migrate`,
+`create-user` and `find-user`) refuses a database directory on a network
+filesystem by its Linux `statfs` type, the list the store refuses (not checked
+on macOS or Windows). Each activation also keeps a lease row in `auth_servers`
+in `auth.sqlite` (hostname, Linux boot id, pid; renewed every 5 seconds, live
+for 20) and is refused while a live peer runs on another host; processes and
+containers on one host are accepted ([several serving
+processes][store-several-processes]). Better Auth's base URL is the
 operator's `--origin` and its base path is the mount.
 
 ## Not included
