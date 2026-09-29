@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lead",
+  "description": "An independently authored schema: a sales lead whose contact point is kept in its own file.",
+  "type": "object",
+  "required": ["name", "contact"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 100},
+    "contact": {"$ref": "contact-point.yaml"},
+    "source": {"$ref": "contact-point.yaml#/$defs/source"}
+  }
+}

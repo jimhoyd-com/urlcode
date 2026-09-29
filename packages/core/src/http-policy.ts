@@ -7,7 +7,12 @@ import { assertBodySchema, bodyIssues, bodySchemaLine, bodySchemaJson, bodySchem
 import type { BodySchema, CompiledBodySchema } from './body-validation.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
-export interface RequestBodyPolicy { maxBytes?: number; required?: boolean; contentTypes?: string[]; format?: 'json' | 'text'; schema?: BodySchema }
+/**
+ * One method's body policy. `schema` is a profile schema, or as authored the name of one of the project's named
+ * `schemas`; the router replaces a name with that schema and records it in `schemaName` (router.ts), so a compiled
+ * route's `schema` is always the schema itself.
+ */
+export interface RequestBodyPolicy { maxBytes?: number; required?: boolean; contentTypes?: string[]; format?: 'json' | 'text'; schema?: BodySchema | string; schemaName?: string }
 /**
  * `request.body`: one policy per HTTP method, keyed by an uppercase method the route declares (the OpenAPI shape:
  * each operation has its own request body). A method without an entry has no body policy (docs/HTTP.md).
@@ -68,6 +73,7 @@ export function compileHttp(route: HttpRoute): void {
     }
     if (policy.schema !== undefined) {
       assert(policy.format === 'json', `request.body.${method}.schema requires format json`);
+      assert(typeof policy.schema !== 'string', `request.body.${method}.schema names schema ${policy.schema}, which was not resolved against the project's schemas`);
       assertBodySchema(policy.schema);
     }
   }

@@ -214,9 +214,10 @@ function collectRefs(data: unknown, file: string, mode: Mode, dialect: Dialect, 
  * of an enclosing current-dialect schema (a relative `$id` stays inside the package; an absolute remote one makes the
  * references relative to it remote). A reference to a schema resource the same file identifies resolves there; any
  * other reference that is remote is reported and never fetched. `$ref` keys inside example, default, const and enum
- * data are data, not references.
+ * data are data, not references. With `parsed`, each file read is also recorded there, by package path, as parsed
+ * (project schema files are bundled from it: project-schemas.ts).
  */
-export async function inspectArtifactDocuments(directory: string, documents: readonly ArtifactDocument[], limits = artifactInspectionLimits): Promise<{ documents: InspectedFile[]; referencedFiles: InspectedFile[] }> {
+export async function inspectArtifactDocuments(directory: string, documents: readonly ArtifactDocument[], limits: Readonly<Record<keyof typeof artifactInspectionLimits, number>> = artifactInspectionLimits, parsed?: Map<string, unknown>): Promise<{ documents: InspectedFile[]; referencedFiles: InspectedFile[] }> {
   const root = await realpath(directory);
   const loaded = new Map<string, Loaded>(), queue: string[] = [];
   let totalBytes = 0, refCount = 0, refLimitReported = false;
@@ -260,6 +261,7 @@ export async function inspectArtifactDocuments(directory: string, documents: rea
   const remember = (path: string, record: InspectedFile, follows: boolean, data?: unknown): Loaded => {
     const item: Loaded = { record, follows, ...(data === undefined ? {} : { data }) };
     loaded.set(path, item);
+    if (data !== undefined) parsed?.set(path, data);
     return item;
   };
   const parse = (path: string, record: InspectedFile, bytes: Buffer): Loaded => {
