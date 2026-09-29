@@ -420,7 +420,10 @@ activates, whether a route, an extension or nothing names it yet. Every route
 that names it gets the same validator and the same 422, and an MCP tool whose
 `inputSchema` names it refuses the same invalid arguments at the same pointer
 with the same line (`/email must be an email`); see
-[packages/mcp](../packages/mcp/README.md#named-schemas).
+[packages/mcp](../packages/mcp/README.md#named-schemas). A store collection
+whose `schema` names it takes it as its record shape, so a write the schema
+refuses answers `422 invalid_record` with the same issues; see
+[a named schema as the record schema](STORE.md#a-named-schema-as-the-record-schema).
 
 **A schema file** (`{file: <path>}`, an object whose only key is `file`) is a
 project-relative `.json`, `.yaml` or `.yml` file holding an independently
@@ -462,13 +465,16 @@ shape of a JSON value and nothing else. It never carries:
 - display metadata: labels, placeholders and field order belong to the page or
   form that renders the value (`title` and `description` are annotations and
   change nothing);
-- stored defaults: the profile refuses `default` and `readOnly`, and a store
-  collection keeps its own record schema, where those are store facts. A store
-  collection cannot name a project schema yet.
+- stored defaults: the profile refuses `default` and `readOnly`. A store
+  collection that names the schema keeps its defaults and transition-only
+  properties beside it, as its own `defaults` and `readOnlyProperties`, since
+  those are things the store does, not facts about the value.
 
 **OpenAPI and Cloudflare.** The OpenAPI export writes each named schema an
 operation uses once, as `components.schemas.<name>` (its `$defs` beside it as
-`<name>_<def>`), and every operation that names it references that component.
+`<name>_<def>`), and every operation that names it references that component,
+including a described extension mount (a store collection naming the schema
+references it and its properties).
 `urlcode build --target cloudflare` compiles one standalone validator per
 named schema, shared by every route and method that names it.
 

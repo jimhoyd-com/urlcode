@@ -40,14 +40,15 @@ const schema = {
   type: 'object', additionalProperties: false, required: ['title'],
   properties: {
     title: { type: 'string', maxLength: 64 },
-    priority: { type: 'integer', minimum: 1, maximum: 5, default: 3 },
-    kind: { type: 'string', enum: ['a', 'b', 'c'], default: 'a' },
-    status: { type: 'string', enum: ['open', 'closed'], default: 'open', readOnly: true },
+    priority: { type: 'integer', minimum: 1, maximum: 5 },
+    kind: { type: 'string', enum: ['a', 'b', 'c'] },
+    status: { type: 'string', enum: ['open', 'closed'] },
   },
 };
 const collection = (mount: string, audit: boolean) => ({
   mount, ownership: 'owner', idempotency: { maxKeys: 1000 }, audit, maxRecords: 10_000, maxRecordBytes: 1024, pageSize: 100,
   sortable: ['title', 'priority'], filterable: ['kind'], schema,
+  defaults: { priority: 3, kind: 'a', status: 'open' }, readOnlyProperties: ['status'],
   transitions: { close: { from: { status: 'open' }, set: { status: 'closed' } }, reopen: { from: { status: 'closed' }, set: { status: 'open' } } },
 });
 const collections = { items: collection('/api/items', false), audited: collection('/api/audited', true) };

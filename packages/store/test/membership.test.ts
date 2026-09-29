@@ -23,7 +23,7 @@ import { counts, execute, outbox, records, seed, seedOutbox } from './rows.ts';
 const reviewers = { membership: true, key: 'userId', schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
 const requests = {
   mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 50 }, filterable: ['status'], sortable: ['title'],
-  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved'], default: 'pending', readOnly: true }, reviewedBy: { type: 'string', maxLength: 128, readOnly: true } } },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved'] }, reviewedBy: { type: 'string', maxLength: 128 } } }, defaults: { status: 'pending' }, readOnlyProperties: ['status', 'reviewedBy'],
   transitions: { approve: { from: { status: 'pending' }, set: { status: 'approved' }, stamp: { reviewedBy: 'actor' }, by: 'others', members: 'reviewers', mount: '/api/approvals' } },
   readers: { mount: '/api/review', members: 'reviewers' },
 };

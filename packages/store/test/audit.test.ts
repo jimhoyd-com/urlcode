@@ -23,7 +23,7 @@ import { counts, execute, lastDrain, outbox, records, seedOutbox } from './rows.
 const origin = 'https://store-audit.example.test', pin = 'a'.repeat(64);
 const notes = {
   mount: '/api/notes', key: 'code', increments: ['clicks'], idempotency: { maxKeys: 10 }, audit: true,
-  schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 256 }, title: { type: 'string', maxLength: 100 }, clicks: { type: 'integer', default: 0, minimum: 0 } } },
+  schema: { type: 'object', additionalProperties: false, required: ['code', 'destination'], properties: { code: { type: 'string', maxLength: 32 }, destination: { type: 'string', format: 'uri', maxLength: 256 }, title: { type: 'string', maxLength: 100 }, clicks: { type: 'integer', minimum: 0 } } }, defaults: { clicks: 0 },
 };
 const plain = { mount: '/api/plain', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 100 } } } };
 

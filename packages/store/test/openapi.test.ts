@@ -23,10 +23,10 @@ const links = {
     properties: {
       code: { type: 'string', minLength: 1, maxLength: 32 },
       destination: { type: 'string', format: 'uri' },
-      clicks: { type: 'integer', default: 0, minimum: 0 },
-      state: { type: 'string', enum: ['live', 'archived'], default: 'live', readOnly: true },
+      clicks: { type: 'integer', minimum: 0 },
+      state: { type: 'string', enum: ['live', 'archived'] },
     },
-  },
+  }, defaults: { clicks: 0, state: 'live' }, readOnlyProperties: ['state'],
   transitions: { archive: { from: { state: 'live' }, set: { state: 'archived' } } },
 };
 const reviewers = { membership: true, key: 'userId', schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
@@ -81,11 +81,11 @@ test('every store mount is described from the collection schema, and the documen
   assert.deepEqual(document['x-urlcode'].opaqueMounts, []);
   assert.deepEqual(Object.keys(document.paths), ['/api/links', '/api/links/{id}', '/api/links/{id}/increment/{field}', '/api/links/{id}/archive', '/api/notes', '/api/notes/{id}', '/api/review', '/api/review/{id}', '/go/{key}']);
   const schemas = document.components.schemas as Record<string, Json>;
-  // The record is the declared schema plus the store-owned names; readOnly and default are the declared annotations.
+  // The record is the declared schema plus the store-owned names; the collection's defaults and readOnlyProperties are its annotations.
   const record = schemas.StoreLinksRecord!;
   assert.equal(record.title, 'Link'); assert.equal(record.additionalProperties, false);
   assert.deepEqual(record.required, ['id', 'createdAt', 'updatedAt', 'code', 'destination']);
-  assert.deepEqual((record.properties as Json).state, links.schema.properties.state);
+  assert.deepEqual((record.properties as Json).state, { ...links.schema.properties.state, default: 'live', readOnly: true });
   assert.deepEqual((record.properties as Json).id, { type: 'string', format: 'uuid', readOnly: true, description: 'Store-owned: the record id.' });
   // A create leaves out readOnly properties and does not require a defaulted one; PATCH may clear an optional one.
   const create = schemas.StoreLinksCreate!;
@@ -113,7 +113,7 @@ test('every store mount is described from the collection schema, and the documen
 test('a by: others transition mount and a read-only collection are described as served', async t => {
   const requests = {
     mount: '/api/requests', ownership: 'owner', readOnly: false,
-    schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, status: { enum: ['pending', 'approved'], type: 'string', default: 'pending', readOnly: true } } },
+    schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, status: { enum: ['pending', 'approved'], type: 'string' } } }, defaults: { status: 'pending' }, readOnlyProperties: ['status'],
     transitions: { approve: { from: { status: 'pending' }, set: { status: 'approved' }, by: 'others', mount: '/api/approvals', members: 'reviewers' } },
   };
   const frozen = { mount: '/api/frozen', readOnly: true, schema: { type: 'object', additionalProperties: false, properties: { n: { type: 'integer' } } } };

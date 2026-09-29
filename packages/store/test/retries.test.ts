@@ -9,7 +9,7 @@ import { STORE_APPLICATION_ID, STORE_SCHEMA_VERSION } from '../src/index.ts';
 import { direct, race } from './direct.ts';
 import { counts, records } from './rows.ts';
 
-const todos = { mount: '/api/todos', idempotency: { maxKeys: 50 }, maxRecords: 100, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, done: { type: 'boolean', default: false }, votes: { type: 'integer', default: 0 } } }, increments: ['votes'] };
+const todos = { mount: '/api/todos', idempotency: { maxKeys: 50 }, maxRecords: 100, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, done: { type: 'boolean' }, votes: { type: 'integer' } } }, defaults: { done: false, votes: 0 }, increments: ['votes'] };
 const config = { collections: { todos } };
 const mounts = ['/api/todos'];
 const key = (value: string) => ({ 'idempotency-key': value });

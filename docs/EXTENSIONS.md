@@ -684,8 +684,9 @@ of an opaque mount (`RIM-OPENAPI-001` in
 [runtime implementation](RUNTIME-IMPLEMENTATION.md)). The export calls it only
 when the operator's host file is loaded (`urlcode openapi --host-file`, or
 `buildOpenApi(project, {extensions})`), once per mount of the extension, with
-`{mount, methods, config}`: the mount path, the route's declared methods and
-`extensions.<name>.config` as the project declares it. It is never called while
+`{mount, methods, config, schemas}`: the mount path, the route's declared
+methods, `extensions.<name>.config` as the project declares it and the
+project's [named schemas](HTTP.md#named-schemas). It is never called while
 serving and must be pure: no database, network, filesystem or clock.
 
 It returns `undefined` to leave the mount opaque, or an `ExtensionOpenApi`,
@@ -712,7 +713,7 @@ it is outside this contract:
 | Keys | `paths` and optional `schemas` only; JSON data (functions and `undefined` are dropped by serialization) of at most 256 KiB |
 | Paths | at most 64, each the mount itself or a path below it (`{name}` templating), not described by another route; a path item holds only `summary`, `description`, `parameters` and operations, and each operation has `responses` |
 | Schemas | at most 64 Schema Objects, each named with the extension's name in PascalCase as prefix (`store` → `StoreError`); two mounts of one extension may contribute the same schema only identically |
-| References | every `$ref` is `#/components/schemas/<name>` naming one of its schemas or a core `Urlcode...` component (for example `UrlcodeBodyValidationIssue`); nothing is fetched |
+| References | every `$ref` is `#/components/schemas/<name>` naming one of its schemas, a core `Urlcode...` component (for example `UrlcodeBodyValidationIssue`) or a project named schema, or `#/components/schemas/<named schema>/properties/<property>` naming one of a named schema's root properties; core writes a referenced named schema once, as a route body naming it would; nothing is fetched |
 
 Core then completes it: it drops each operation whose method the route does not
 declare (the runtime answers that method itself), assigns every `operationId`,

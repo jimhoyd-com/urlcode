@@ -177,7 +177,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       // A short link's destination property also takes only a redirectable URL, on every write path.
       const destinations = new Map<string, string[]>();
       for (const link of Object.values(declaredLinks)) destinations.set(link.collection, [...destinations.get(link.collection) ?? [], link.destination]);
-      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor, destinations.get(name)));
+      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor, destinations.get(name), context.schemas ?? {}));
       for (const collection of collections) if (collection.spec.audit && !audit?.active) throw new Error(`collection ${collection.name} declares audit: true; install the audit extension (urlcode extensions add audit)`);
       // A membership collection has no mount: it is never served over HTTP.
       const served = collections.filter((collection): collection is Collection & { spec: { mount: string } } => collection.spec.mount !== undefined);

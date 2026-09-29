@@ -28,7 +28,8 @@ export function assertValidOpenApi(document:OpenApiDocument):void {
 
 /** A value the schema accepts, for the contract run: the first enum/const/branch, the smallest string that fits. */
 export function sample(schema:Json,document:OpenApiDocument):unknown {
-  if(typeof schema.$ref==='string')return sample(document.components.schemas[schema.$ref.split('/').at(-1)!] as Json,document);
+  // A reference names a component, or a location inside one (`#/components/schemas/<name>/properties/<property>`).
+  if(typeof schema.$ref==='string')return sample(schema.$ref.slice(2).split('/').reduce<unknown>((node,key)=>(node as Json)[key.replace(/~1/g,'/').replace(/~0/g,'~')],document) as Json,document);
   if('const' in schema)return schema.const;
   if(Array.isArray(schema.enum))return schema.enum[0];
   for(const key of ['anyOf','oneOf'])if(Array.isArray(schema[key]))return sample((schema[key] as Json[])[0]!,document);

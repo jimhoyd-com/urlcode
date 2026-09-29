@@ -430,8 +430,10 @@ collection and its API mount with `auth: true`, which makes the collection
 per-user (`ownership: owner`). A collection's records are described by its
 `schema`, a JSON Schema 2020-12 object schema in the same profile as
 `request.body.<METHOD>.schema` (flat scalar properties,
-`additionalProperties: false`; `default` and `readOnly` are the store's two
-annotations), never a field list of the store's own ([record
+`additionalProperties: false`), written inline or named from the top-level
+`schemas:` map so a route body and an MCP tool share it; the collection's
+`defaults` and `readOnlyProperties` carry what the store does beyond value
+shape. It is never a field list of the store's own ([record
 schema](STORE.md#record-schema)). The example is API only; the frontend is the
 application's own code. The store example
 without `auth` refuses until the operator re-runs with `--ack

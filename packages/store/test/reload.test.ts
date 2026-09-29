@@ -14,7 +14,7 @@ import { cleanup } from './cleanup.ts';
 import { records } from './rows.ts';
 
 const origin = 'https://reload.example.test';
-const todos = { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 40 }, done: { type: 'boolean', default: false } } }, maxRecords: 10, maxRecordBytes: 512 };
+const todos = { mount: '/api/todos', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', minLength: 1, maxLength: 40 }, done: { type: 'boolean' } } }, defaults: { done: false }, maxRecords: 10, maxRecordBytes: 512 };
 const json = { 'content-type': 'application/json' };
 /** Activates after the store and throws on demand: a reload that fails after the store accepted its hand-off. */
 function breaker(projectSha256: string): RuntimeExtension {

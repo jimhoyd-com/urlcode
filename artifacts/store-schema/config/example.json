@@ -15,10 +15,12 @@
             "maxLength": 200
           },
           "done": {
-            "type": "boolean",
-            "default": false
+            "type": "boolean"
           }
         }
+      },
+      "defaults": {
+        "done": false
       },
       "sortable": [
         "title"

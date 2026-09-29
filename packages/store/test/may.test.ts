@@ -15,7 +15,7 @@ const collections = {
   reviewers: member, leads: member,
   requests: {
     mount: '/api/requests', ownership: 'owner', pageSize: 50,
-    schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved', 'withdrawn', 'escalated'], default: 'pending', readOnly: true } } },
+    schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 120 }, status: { type: 'string', enum: ['pending', 'approved', 'withdrawn', 'escalated'] } } }, defaults: { status: 'pending' }, readOnlyProperties: ['status'],
     transitions: {
       withdraw: { from: { status: 'pending' }, set: { status: 'withdrawn' } },
       approve: { from: { status: 'pending' }, set: { status: 'approved' }, by: 'others', members: 'reviewers', mount: '/api/approvals' },
@@ -24,7 +24,7 @@ const collections = {
     readers: { mount: '/api/review', members: 'reviewers' },
   },
   notes: {
-    mount: '/api/notes', schema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', maxLength: 64 }, state: { type: 'string', enum: ['draft', 'published', 'pinned'], default: 'draft', readOnly: true } } },
+    mount: '/api/notes', schema: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', maxLength: 64 }, state: { type: 'string', enum: ['draft', 'published', 'pinned'] } } }, defaults: { state: 'draft' }, readOnlyProperties: ['state'],
     transitions: { publish: { from: { state: 'draft' }, set: { state: 'published' } }, pin: { from: { state: 'published' }, set: { state: 'pinned' }, members: 'leads' } },
   },
 };

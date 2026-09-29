@@ -15,7 +15,7 @@ const json = { 'content-type': 'application/json' };
 const catalog = {
   mount: '/api/todos', pageSize: 7, maxRecords: 200, maxRecordBytes: 512,
   sortable: ['title', 'priority', 'done', 'score'], filterable: ['kind', 'done', 'priority', 'score'],
-  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, kind: { type: 'string', enum: ['a', 'b', 'c'] }, priority: { type: 'integer' }, score: { type: 'number' }, done: { type: 'boolean', default: false }, secret: { type: 'string', maxLength: 40 } } },
+  schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, kind: { type: 'string', enum: ['a', 'b', 'c'] }, priority: { type: 'integer' }, score: { type: 'number' }, done: { type: 'boolean' }, secret: { type: 'string', maxLength: 40 } } }, defaults: { done: false },
 };
 type Row = { id: string; title: string; kind?: string; priority?: number; score?: number; done: boolean };
 type Page = { items: Row[]; total: number; next?: string | number };

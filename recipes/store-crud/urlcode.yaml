@@ -13,7 +13,9 @@ extensions:
             required: [title]
             properties:
               title: {type: string, minLength: 1, maxLength: 200}
-              done: {type: boolean, default: false}
+              done: {type: boolean}
+          # What the store does beyond value shape sits beside the schema: here the value a create stores.
+          defaults: {done: false}
           maxRecords: 1000
           maxRecordBytes: 4096
 routes:

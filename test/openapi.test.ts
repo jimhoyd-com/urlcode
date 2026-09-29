@@ -129,7 +129,7 @@ test('an extension mount a loaded registration describes becomes real paths; the
   }});
   const document=await buildOpenApi(root,{extensions:[notes(good),registration('files',()=>undefined),registration('auth',undefined,true)]});
   assertValidOpenApi(document);
-  assert.deepEqual(seen,[{mount:'/api/notes',methods:['GET','HEAD','POST'],config:{limit:5}}]);
+  assert.deepEqual(seen,[{mount:'/api/notes',methods:['GET','HEAD','POST'],config:{limit:5},schemas:{}}],'the project\'s named schemas ride along (none here)');
   assert.deepEqual(document['x-urlcode'].describedMounts,[{path:'/api/notes/*',extension:'notes'}]);
   assert.deepEqual(document['x-urlcode'].opaqueMounts,[{path:'/files/*',handler:'extension',extension:'files',registered:true}],'undefined leaves a mount opaque');
   assert.deepEqual(Object.keys(document.paths),['/api/notes'],'a path left with no declared method is dropped');
@@ -153,6 +153,8 @@ test('an extension mount a loaded registration describes becomes real paths; the
     [()=>({paths:{'/elsewhere':{get:{responses:{'200':{description:'x'}}}}},schemas:{}}),/path \/elsewhere must be the mount or a path below it/],
     [(mount:string)=>({paths:{[mount]:{get:{responses:{'200':{description:'x'}}}}},schemas:{Note:note}}),/schema Note must be named Notes<Name>/],
     [(mount:string)=>({paths:{[mount]:{get:{responses:{'200':{description:'x',content:{'application/json':{schema:{$ref:'https://example.test/remote.json'}}}}}}}}}),/every \$ref must name one of its schemas/],
+    // A project named schema (or one of its root properties) may be referenced, but only one the project declares.
+    [(mount:string)=>({paths:{[mount]:{get:{responses:{'200':{description:'x',content:{'application/json':{schema:{$ref:'#/components/schemas/Contact/properties/email'}}}}}}}}}),/every \$ref must name one of its schemas, a core Urlcode component, or a project named schema/],
     [(mount:string)=>({paths:{[mount]:{trace:{responses:{}}}}}),/must be a path item of/],
     [(mount:string)=>({paths:{[mount]:{get:{}}}}),/get \/api\/notes needs responses/],
     [(mount:string)=>({paths:{[mount]:{}},servers:[]}),/an object of paths and optional schemas/],

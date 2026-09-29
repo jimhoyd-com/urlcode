@@ -16,7 +16,7 @@ import { records } from './rows.ts';
 // extension that requires store would, alongside a synthetic principal provider ("badge"), so the seam is proven
 // without auth.
 const origin = 'https://records.example.test';
-const notes = { mount: '/api/notes', ownership: 'owner', maxRecords: 3, pageSize: 2, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 20 }, pinned: { type: 'boolean', default: false }, rank: { type: 'integer', minimum: 1 } } } };
+const notes = { mount: '/api/notes', ownership: 'owner', maxRecords: 3, pageSize: 2, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 20 }, pinned: { type: 'boolean' }, rank: { type: 'integer', minimum: 1 } } }, defaults: { pinned: false } };
 const board = { mount: '/api/board', maxRecords: 5, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 20 } } } };
 
 function badge(projectSha256: string): RuntimeExtension {

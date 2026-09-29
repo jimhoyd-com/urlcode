@@ -17,7 +17,7 @@ import { cleanup } from './cleanup.ts';
 import { records } from './rows.ts';
 
 const origin = 'https://sqlite.example.test', pin = 'a'.repeat(64), json = { 'content-type': 'application/json' };
-const todos = { mount: '/api/todos', maxRecords: 3, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, done: { type: 'boolean', default: false } } } };
+const todos = { mount: '/api/todos', maxRecords: 3, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 40 }, done: { type: 'boolean' } } }, defaults: { done: false } };
 
 async function temp(t: TestContext): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'store-sqlite-'));

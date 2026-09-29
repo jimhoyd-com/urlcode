@@ -29,14 +29,17 @@ const usage = 'urlcode-store ownerless --database /absolute/data/store.sqlite --
   + 'and checks it opens as a store database before it appears. To restore, stop the server and put the copy in place.\n'
   + 'Every other command is one transaction on the store database. All of them may run while the server is serving.\n';
 
-/** The declared store collections, read through core's own project loader (the same validation `urlcode serve` applies). */
-async function declaredCollections(project: string): Promise<Record<string, CollectionSpec>> {
+/**
+ * The declared store collections and the project's named schemas (which `schema: <name>` resolves against), read
+ * through core's own project loader (the same validation `urlcode serve` applies).
+ */
+async function declaredCollections(project: string): Promise<{ collections: Record<string, CollectionSpec>; schemas: Record<string, unknown> }> {
   if (!isAbsolute(project)) throw new Error('--project must be an absolute path');
   const { loadDocument } = await import('@jimhoyd/urlcode');
-  const { document } = await loadDocument(project);
+  const { document, schemas } = await loadDocument(project);
   const collections = (document.extensions?.store?.config as { collections?: Record<string, CollectionSpec> } | undefined)?.collections;
   if (!collections) throw new Error('The project does not declare the store extension with collections');
-  return collections;
+  return { collections, schemas: schemas ?? {} };
 }
 
 try {
@@ -64,7 +67,7 @@ try {
       const action = positionals[1];
       if (action !== 'add' && action !== 'remove' && action !== 'list') throw new Error('Use members add, members remove or members list');
       if (!database || !values.project || !collection) throw new Error('--database, --project and --collection are required');
-      const options = { collections: await declaredCollections(values.project), collection };
+      const options = { ...await declaredCollections(values.project), collection };
       if (action === 'list') output = await listMembers(database, options);
       else {
         if (values.principal === undefined) throw new Error('--principal is required');
@@ -73,14 +76,14 @@ try {
     }
     else if (command === 'reassign') {
       if (!database || !values.project || values.from === undefined || values.to === undefined) throw new Error('--database, --project, --from and --to are required');
-      output = await reassignOwner(database, { from: values.from, to: values.to, collections: await declaredCollections(values.project), ...(collection === undefined ? {} : { collection }), dryRun: values['dry-run'] === true, ...actor });
+      output = await reassignOwner(database, { from: values.from, to: values.to, ...await declaredCollections(values.project), ...(collection === undefined ? {} : { collection }), dryRun: values['dry-run'] === true, ...actor });
     }
     else {
       if (!database || !collection) throw new Error('--database and --collection are required');
       if (command === 'ownerless') output = await reportOwnerless(database, collection);
       else if (command === 'ownerless-assign' || command === 'ownerless-delete') {
         if (!values.project) throw new Error('--project is required');
-        const options = { collections: await declaredCollections(values.project), collection, ...actor };
+        const options = { ...await declaredCollections(values.project), collection, ...actor };
         if (command === 'ownerless-delete') output = await deleteOwnerless(database, options);
         else { if (!values.owner) throw new Error('--owner is required'); output = await assignOwnerless(database, { ...options, owner: values.owner }); }
       }

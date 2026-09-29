@@ -234,7 +234,8 @@ extensions:
             required: [title]
             properties:
               title: { type: string, minLength: 1, maxLength: 200 }
-              done: { type: boolean, default: false }
+              done: { type: boolean }
+          defaults: { done: false }
 routes:
   /api/auth/*:  { extension: auth, methods: [GET, POST] }
   /api/todos/*:
@@ -1089,8 +1090,10 @@ collection and its API mount with `auth: true`, which makes the collection
 per-user (`ownership: owner`). A collection's records are described by its
 `schema`, a JSON Schema 2020-12 object schema in the same profile as
 `request.body.<METHOD>.schema` (flat scalar properties,
-`additionalProperties: false`; `default` and `readOnly` are the store's two
-annotations), never a field list of the store's own ([record
+`additionalProperties: false`), written inline or named from the top-level
+`schemas:` map so a route body and an MCP tool share it; the collection's
+`defaults` and `readOnlyProperties` carry what the store does beyond value
+shape. It is never a field list of the store's own ([record
 schema](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#record-schema)). The example is API only; the frontend is the
 application's own code. The store example
 without `auth` refuses until the operator re-runs with `--ack
@@ -3269,7 +3272,10 @@ activates, whether a route, an extension or nothing names it yet. Every route
 that names it gets the same validator and the same 422, and an MCP tool whose
 `inputSchema` names it refuses the same invalid arguments at the same pointer
 with the same line (`/email must be an email`); see
-[packages/mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#named-schemas).
+[packages/mcp](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md#named-schemas). A store collection
+whose `schema` names it takes it as its record shape, so a write the schema
+refuses answers `422 invalid_record` with the same issues; see
+[a named schema as the record schema](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md#a-named-schema-as-the-record-schema).
 
 **A schema file** (`{file: <path>}`, an object whose only key is `file`) is a
 project-relative `.json`, `.yaml` or `.yml` file holding an independently
@@ -3311,13 +3317,16 @@ shape of a JSON value and nothing else. It never carries:
 - display metadata: labels, placeholders and field order belong to the page or
   form that renders the value (`title` and `description` are annotations and
   change nothing);
-- stored defaults: the profile refuses `default` and `readOnly`, and a store
-  collection keeps its own record schema, where those are store facts. A store
-  collection cannot name a project schema yet.
+- stored defaults: the profile refuses `default` and `readOnly`. A store
+  collection that names the schema keeps its defaults and transition-only
+  properties beside it, as its own `defaults` and `readOnlyProperties`, since
+  those are things the store does, not facts about the value.
 
 **OpenAPI and Cloudflare.** The OpenAPI export writes each named schema an
 operation uses once, as `components.schemas.<name>` (its `$defs` beside it as
-`<name>_<def>`), and every operation that names it references that component.
+`<name>_<def>`), and every operation that names it references that component,
+including a described extension mount (a store collection naming the schema
+references it and its properties).
 `urlcode build --target cloudflare` compiles one standalone validator per
 named schema, shared by every route and method that names it.
 
@@ -5066,8 +5075,9 @@ of an opaque mount (`RIM-OPENAPI-001` in
 [runtime implementation](https://github.com/jimhoyd-com/urlcode/blob/main/docs/RUNTIME-IMPLEMENTATION.md)). The export calls it only
 when the operator's host file is loaded (`urlcode openapi --host-file`, or
 `buildOpenApi(project, {extensions})`), once per mount of the extension, with
-`{mount, methods, config}`: the mount path, the route's declared methods and
-`extensions.<name>.config` as the project declares it. It is never called while
+`{mount, methods, config, schemas}`: the mount path, the route's declared
+methods, `extensions.<name>.config` as the project declares it and the
+project's [named schemas](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md#named-schemas). It is never called while
 serving and must be pure: no database, network, filesystem or clock.
 
 It returns `undefined` to leave the mount opaque, or an `ExtensionOpenApi`,
@@ -5094,7 +5104,7 @@ it is outside this contract:
 | Keys | `paths` and optional `schemas` only; JSON data (functions and `undefined` are dropped by serialization) of at most 256 KiB |
 | Paths | at most 64, each the mount itself or a path below it (`{name}` templating), not described by another route; a path item holds only `summary`, `description`, `parameters` and operations, and each operation has `responses` |
 | Schemas | at most 64 Schema Objects, each named with the extension's name in PascalCase as prefix (`store` → `StoreError`); two mounts of one extension may contribute the same schema only identically |
-| References | every `$ref` is `#/components/schemas/<name>` naming one of its schemas or a core `Urlcode...` component (for example `UrlcodeBodyValidationIssue`); nothing is fetched |
+| References | every `$ref` is `#/components/schemas/<name>` naming one of its schemas, a core `Urlcode...` component (for example `UrlcodeBodyValidationIssue`) or a project named schema, or `#/components/schemas/<named schema>/properties/<property>` naming one of a named schema's root properties; core writes a referenced named schema once, as a route body naming it would; nothing is fetched |
 
 Core then completes it: it drops each operation whose method the route does not
 declare (the runtime answers that method itself), assigns every `operationId`,
