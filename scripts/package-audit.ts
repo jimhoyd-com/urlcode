@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parsePackJson } from './pack-json.ts';
 import { addons, repositoryRoot } from './workspaces.ts';
@@ -306,8 +306,12 @@ export const budgets: Record<string, Budget> = {
     // (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
     // With #902 declared transfers (STORE.md and llms-full.txt): measured on Node 26 at 1008512 packed / 3974160
     // unpacked bytes, 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
-    packed: 989 * 1024,
-    unpacked: 3885 * 1024,
+    // #931 installed-doc links: every relative link a packed Markdown file cannot follow becomes a reference
+    // definition pinned to this repository's current version (README, SECURITY, the shipped docs, examples and
+    // recipes, with their llms-full.txt copies): measured on Node 26 at 1013978 packed / 4010632 unpacked bytes,
+    // 517 entries (CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 994 * 1024,
+    unpacked: 3920 * 1024,
     entries: 521,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -368,7 +372,9 @@ export const budgets: Record<string, Budget> = {
     // #902 declared transfers (their config schema again in urlcode.json and the README field reference, the transfer
     // step in dist/collection.js, the OpenAPI path, StoreExports.transfer) with the README/CHANGELOG contract, on top
     // of the intervals slice: 123421 packed / 483179 unpacked bytes, 32 entries (Node 26); +3 KiB headroom.
-    packed: 124 * 1024,
+    // #931 installed-page pointers in the add output and the README's own Transfers and Intervals headings:
+    // 124734 packed / 487827 unpacked bytes, 32 entries (Node 26; CI's Node 24 packs ~800 bytes larger); ~3 KiB headroom.
+    packed: 126 * 1024,
     // Unpacked raised from 120 to 140 KiB: per-record ownership (#331) adds
     // the owner scoping in dist/collection.js and dist/store.js, the operator
     // step for legacy records (dist/ownership.js, the urlcode-store bin
@@ -435,6 +441,46 @@ export function packFileProblems(kind: PackageKind, paths: readonly string[]): s
     if (/(?:^|\/)node_modules(?:\/|$)/.test(path)) problems.push(`${path}: node_modules/ must never ship`);
     else if (/(?:^|\/)@jimhoyd\/urlcode(?:[/-]|$)/.test(path)) problems.push(`${path}: a copy of @jimhoyd/urlcode (core or a sibling add-on) must never ship inside a package`);
     else if (kind === 'artifact' && !isArtifactFile(path)) problems.push(`${path}: an artifact carries only package.json, notices, and JSON, YAML or Markdown data`);
+  }
+  return problems;
+}
+
+const INLINE_LINK = /\[[^\]]*\]\(([^()\s]+)\)/g;
+const REFERENCE_LINK = /^ {0,3}\[[^\]]+\]:\s+(\S+)/;
+
+/** Whether a packed path is documentation an installed reader follows links in: Markdown, and the llms.txt entrypoint. */
+export const isPackedDocument = (path: string): boolean => path.endsWith('.md') || path === 'llms.txt';
+
+/**
+ * Relative link targets in one packed document (`path`, its `source`) that name nothing in the packed file list
+ * (#931). An installed copy holds only what `npm pack` ships, so a link that resolves in this checkout but not in
+ * the tarball is dead there: ship the target, or link this repository's `blob/v<current version>/...` inside a
+ * urlcode-current-version block. Absolute, protocol-relative, mail and bare `#fragment` links are not checked, nor
+ * links inside fenced code blocks or code spans. A directory link resolves when anything under it ships.
+ */
+export function packedLinkProblems(path: string, source: string, packed: ReadonlySet<string>): string[] {
+  const directories = new Set<string>();
+  for (const file of packed) for (let index = file.indexOf('/'); index > 0; index = file.indexOf('/', index + 1)) directories.add(file.slice(0, index));
+  const problems: string[] = [];
+  let fence: string | undefined;
+  for (const [index, line] of source.split('\n').entries()) {
+    const trimmed = line.trim();
+    if (fence) { if (trimmed.startsWith(fence) && /^(`+|~+)$/.test(trimmed)) fence = undefined; continue; }
+    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (opening) { fence = opening[1]; continue; }
+    const text = line.replace(/(`+)[^`]*?\1/g, '');
+    const targets = [...text.matchAll(INLINE_LINK)].map(match => match[1] ?? '');
+    const reference = REFERENCE_LINK.exec(line)?.[1];
+    if (reference) targets.push(reference);
+    for (const target of targets) {
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(target)) continue;
+      const relativeTarget = target.replace(/[#?].*$/, '');
+      if (relativeTarget === '') continue;
+      let decoded = relativeTarget;
+      try { decoded = decodeURIComponent(relativeTarget); } catch { /* keep the raw target */ }
+      const resolved = posix.normalize(posix.join(posix.dirname(path), decoded)).replace(/\/$/, '');
+      if (!packed.has(resolved) && !directories.has(resolved)) problems.push(`${path}:${index + 1} links \`${target}\`, but \`${resolved}\` is not in the package`);
+    }
   }
   return problems;
 }
@@ -523,6 +569,9 @@ async function auditOne(target: string): Promise<void> {
     assert.deepEqual(ignored, [], `Gitignored paths present in packed release (nondeterministic local build artifacts, see #608):\n${ignored.join('\n')}`);
 
     const shipped = new Set(pack.files.map(file => file.path));
+    const deadLinks: string[] = [];
+    for (const path of [...shipped].filter(isPackedDocument).sort()) deadLinks.push(...packedLinkProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
+    assert.deepEqual(deadLinks, [], `Shipped documents link files ${pack.name} does not ship (#931); ship the target, or link this repository's blob/v<current version>/... inside a urlcode-current-version block:\n${deadLinks.join('\n')}`);
     // Core also carries its add-on pins and the release-wide add-on agent catalog beside them (#721).
     const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {}), ...(kind === 'core' ? ['dist/addons.json', 'dist/addon-catalog.json'] : [])]
       .map(path => path.replace(/^\.\//, ''));

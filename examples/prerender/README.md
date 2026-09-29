@@ -52,6 +52,10 @@ headers and a generated include — using the same helper.
 
 The recipe renders content that is already prepared. It is not a Markdown
 compiler, an HTML sanitizer, an asset pipeline or an incremental build, and it
-copies no static tree. [Prerendering](../../docs/PRERENDER.md) documents the
+copies no static tree. [Prerendering][docs/PRERENDER.md] documents the
 helper, its options and guarantees, the limits and how a larger site generates
 its source project.
+
+<!-- urlcode-current-version:start -->
+[docs/PRERENDER.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PRERENDER.md
+<!-- urlcode-current-version:end -->

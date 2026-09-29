@@ -28,9 +28,9 @@ function scaffold(): ScaffoldResult {
   return {
     config: { collections: {} },
     routes: {},
-    env: { STORE_DATABASE: 'Optional absolute path of the store\'s SQLite database (default data/store.sqlite beside host.mjs); must be outside app/.', STORE_DURABILITY: 'Optional commit durability: full (default; survives power loss) or normal (faster; the last commits can be lost on power loss). See docs/STORE.md, durability.' },
+    env: { STORE_DATABASE: 'Optional absolute path of the store\'s SQLite database (default data/store.sqlite beside host.mjs); must be outside app/.', STORE_DURABILITY: 'Optional commit durability: full (default; survives power loss) or normal (faster; the last commits can be lost on power loss). See durability in the store README, node_modules/@jimhoyd/urlcode-store/README.md.' },
     notes: [
-      'store is installed with no collections: declare one under extensions.store.config.collections and mount it with a route <mount>/* using extension: store (add auth: true to protect writes). See docs/STORE.md.',
+      'store is installed with no collections: declare one under extensions.store.config.collections and mount it with a route <mount>/* using extension: store (add auth: true to protect writes). The guide is the store README, node_modules/@jimhoyd/urlcode-store/README.md; urlcode docs search "<term>" --project <app> searches it.',
       'For a working demo, add the store to a fresh site with --example: a todos collection on /api/todos.',
     ],
   };
@@ -64,7 +64,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
     ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
     notes: [
       withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount: writes are admitted with the session cookie and same-origin provenance), and each user sees and changes only their own todos (ownership: owner).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
-      'Records live in the SQLite database data/store.sqlite, outside app/; back up data/ like any operator data (docs/STORE.md, backups). Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
+      'Records live in the SQLite database data/store.sqlite, outside app/; back up data/ like any operator data (urlcode-store backup; see the store README, node_modules/@jimhoyd/urlcode-store/README.md). Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
       ...(withAudit ? ['Every create, change and delete on the todos collection is recorded in the audit log (audit: true): field names and the signed-in user, never values. When the audit log falls 1000 events behind, writes answer 503 until it catches up.'] : []),
     ],
   };

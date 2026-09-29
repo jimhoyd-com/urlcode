@@ -18,4 +18,8 @@ output directory, then `urlcode validate --local --project ../hello-built` and
 TypeScript is transpiled ahead of time. The runtime executes only the emitted
 JavaScript, in QuickJS/WASM for a `sandbox: true` route and in-process for a
 trusted one. The build does not type-check or read tsconfig.json. See
-[TypeScript authoring](../../docs/TYPESCRIPT-AUTHORING.md).
+[TypeScript authoring][docs/TYPESCRIPT-AUTHORING.md].
+
+<!-- urlcode-current-version:start -->
+[docs/TYPESCRIPT-AUTHORING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md
+<!-- urlcode-current-version:end -->

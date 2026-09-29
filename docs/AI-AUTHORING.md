@@ -62,26 +62,26 @@ The reading order below is for that reference use.
 Check the installed version's primitives, YAML configuration, policies, supported
 extensions and recipes/templates before writing a custom function or middleware.
 Keep necessary custom code focused and report the capability gap; never invent
-fields or bypass target limits or operator grants. See [the design principle](PROJECT-DIRECTION.md#design-principle-declarative-first).
+fields or bypass target limits or operator grants. See [the design principle][docs/PROJECT-DIRECTION.md#design-principle-declarative-first].
 
 Prefer first-party extensions when suitable because they are tested with the
 runtime. External and private extensions are allowed when needed or requested;
-use the [external-extension workflow](EXTENSIONS.md#external-extensions-and-ai-tooling)
+use the [external-extension workflow][docs/EXTENSIONS.md#external-extensions-and-ai-tooling]
 for installation, host registration, discovery and validation. The managed
 `extensions add` command is for core's catalog, not arbitrary packages.
 
 ## Sources of truth and reading order
 
 1. [JSON Schema](../schemas/urlcode.schema.json): exact accepted structure.
-2. [Field reference](YAML-REFERENCE.md) and [implemented semantics](SPECIFICATION.md).
-3. [YAML cookbook](YAML-GUIDE.md) and [runnable files](../examples/cookbook/urlcode.yaml).
-4. [Routing](ROUTING.md), [HTTP](HTTP.md), [middleware](MIDDLEWARE.md), [assets](ASSETS.md).
+2. [Field reference](YAML-REFERENCE.md) and [implemented semantics][docs/SPECIFICATION.md].
+3. [YAML cookbook][docs/YAML-GUIDE.md] and [runnable files](../examples/cookbook/urlcode.yaml).
+4. [Routing][docs/ROUTING.md], [HTTP][docs/HTTP.md], [middleware][docs/MIDDLEWARE.md], [assets][docs/ASSETS.md].
 5. [Trust model, sandbox opt-in and operator grants](FUNCTION-SECURITY.md).
-6. [Readiness](READINESS.md), [capacity](CAPACITY.md), [DDoS/recovery](RESILIENCE.md).
-7. [The framework](FRAMEWORK.md) for sign-in, data and MCP tools:
+6. [Readiness][docs/READINESS.md], [capacity][docs/CAPACITY.md], [DDoS/recovery][docs/RESILIENCE.md].
+7. [The framework][docs/FRAMEWORK.md] for sign-in, data and MCP tools:
    `extensions.<name>` blocks and `extension` mounts are the only YAML those
    packages need.
-8. [Extension field references](EXTENSION-REFERENCE.md): core's field
+8. [Extension field references][docs/EXTENSION-REFERENCE.md]: core's field
    reference stops at `extensions.<name>.config`, so each first-party
    extension's package README ends with a field reference generated from its
    `urlcode.json`: every configuration key, route-policy key and hook contract,
@@ -101,13 +101,13 @@ server; see [hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp) for its
 anonymous remote endpoint. Its machine-readable entry point is
 [`https://urlcode.ai/llms.txt`](https://urlcode.ai/llms.txt).
 Every add-on's agent references for a release are in core's
-[release-wide add-on catalog](EXTENSIONS.md#the-release-wide-agent-catalog)
+[release-wide add-on catalog][docs/EXTENSIONS.md#the-release-wide-agent-catalog]
 (MCP `get_release_addon_catalog`, `readAddonCatalog()`), readable without
 installing any add-on. Treat it as discovery only: whether this project has an
 add-on installed comes from `get_addon_agent_tooling`,
 `get_extension_artifacts` or `urlcode extensions list`.
 
-Follow [organization and readability practices](BEST-PRACTICES.md): preserve local
+Follow [organization and readability practices][docs/BEST-PRACTICES.md]: preserve local
 conventions, use clear names, keep middleware focused and avoid needless layers.
 
 ## Hosted-assisted authoring (opt-in)
@@ -181,7 +181,7 @@ Treat core, installed extensions and the frontend as one application with
 different owners. Keep auth's sign-in and session behavior package-owned. The
 frontend, its components, styling and copy are the application's own: it calls
 JSON routes and store mounts with `fetch`, as the reference
-[private-requests client](../proofs/private-requests/client/main.js) does.
+[private-requests client][proofs/private-requests/client/main.js] does.
 URLCode ships no component kit. For shadcn/ui components, use the official
 shadcn tooling or [skill](https://ui.shadcn.com/docs/skills), and bring an
 item into the app's source with `urlcode artifacts stage` (above).
@@ -277,13 +277,13 @@ expected and actual value, shortened to about 200 characters around the first
 difference. `urlcode test` exits nonzero when the project has an active route
 but no cases; a project with no routes yet passes with a warning. Ordered
 lifecycle fixtures (`steps`, `capture`, `restart`), coverage and the audit rules
-are in [readiness](READINESS.md). An `auth: true` route is covered by a `steps`
+are in [readiness][docs/READINESS.md]. An `auth: true` route is covered by a `steps`
 fixture that signs in through the provider's own endpoint and sends
 `"origin":"{{origin}}"` on unsafe requests; see
-[authenticated routes](READINESS.md#authenticated-routes-auth-true). A case
+[authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]. A case
 passing with a status below 400 counts toward coverage only when it also
 asserts `expectBody` or `expectHeaders`
-([coverage rules](READINESS.md#coverage-rules)).
+([coverage rules][docs/READINESS.md#coverage-rules]).
 
 ### Reading errors
 
@@ -296,7 +296,7 @@ structured fields where they apply: `code` (for example `unknown-key`,
 `extension-host`, `host-load`), `file`,
 `line` and `column`, `route` (the pattern as written), `pointer` (an RFC 6901
 pointer into the YAML) and `extension` (the operator extension that failed; see
-[local development](LOCAL-DEVELOPMENT.md)). Configuration messages start
+[local development][docs/LOCAL-DEVELOPMENT.md]). Configuration messages start
 with `file:line:column:` where the location is known. Act on `code` and the
 location; the message says what to write instead.
 
@@ -305,7 +305,7 @@ A command that succeeds can still print
 before its result: an operator extension reporting, at activation, something
 the operator should act on. It is not a failure and not something to fix in
 YAML; report it to the operator (see
-[activation warnings](EXTENSIONS.md#activation-warnings)).
+[activation warnings][docs/EXTENSIONS.md#activation-warnings]).
 
 ## Feedback from real authoring work
 
@@ -341,10 +341,10 @@ maintainer to review; it is not a promise that the public contract will grow.
 | `stream: true` on a trusted `function` route (self-hosted only): the Response body is sent as it is produced, bounded by operator stream limits | Streaming from a `sandbox: true` route, on AWS/Cloudflare/static, WebSocket, or a route-level stream limit |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
-| Parameter validation, JSON body syntax checks and `request.body.<METHOD>.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP](HTTP.md#body-schema-and-input-patterns)) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, `date`, `time`, `date-time`, `email`, `uri`, `hostname`, `ipv4` and `ipv6`, OpenAPI documents as a body schema, response schemas (the reverse direction exists: `urlcode openapi` describes the project as OpenAPI 3.1) |
+| Parameter validation, JSON body syntax checks and `request.body.<METHOD>.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP][docs/HTTP.md#body-schema-and-input-patterns]) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, `date`, `time`, `date-time`, `email`, `uri`, `hostname`, `ipv4` and `ipv6`, OpenAPI documents as a body schema, response schemas (the reverse direction exists: `urlcode openapi` describes the project as OpenAPI 3.1) |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
-| File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store](STORE.md)) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
+| File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store][docs/STORE.md]) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
 | Optional top-level `site` (`robots`, `sitemap`, `favicon`, `securityTxt`, `llms`) generating native routes | Per-route `noindex` field, sitemap index files, `humans.txt`, signed `security.txt` |
 
@@ -353,13 +353,13 @@ Use only the five names above under top-level `policies`, `profiles.<name>` or
 `routes.<path>.policies`; `false` disables one on a route and `profile: hardened`
 is the only built-in profile. Do not put infrastructure (proxy ranges, storage
 URLs, vendor rule identifiers) in YAML; those are operator flags. Check the
-per-target table in [policies](POLICIES.md) before declaring `throttle`,
+per-target table in [policies][docs/POLICIES.md] before declaring `throttle`,
 `compression` or `cache` for a serverless or Cloudflare deployment, because an
 unsupported policy refuses activation rather than degrading.
 
 When the project declares an extension that provides the request principal
 (`extensions.auth`, or an independent sign-in package; see
-[extensions](EXTENSIONS.md#protecting-a-route-the-auth-short-form)), protect a
+[extensions][docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form]), protect a
 route with the short form `auth: true` rather than writing
 `policies.extensions.<name>: {}` by hand; the compiler expands it to that long
 form for the one declared provider and `routes`/`audit` show the expansion.
@@ -367,14 +367,14 @@ Do not use both forms on one route, and do not write `auth` in a project that
 declares no principal provider, or more than one; each refuses to load. The policy accepts no keys:
 there is no role, permission, verification, CSRF or bearer vocabulary. A
 protected route answers `401` without a verified session and `403` for a
-cross-origin write ([auth](../packages/auth/README.md#protect-a-route)).
+cross-origin write ([auth][packages/auth/README.md#protect-a-route]).
 Roles, ownership and approvals are application data keyed by the user id.
 
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
 declared route at the same path still wins. Count its generated routes in
 `--expect-routes`. `site.sitemap` needs `--origin` at every command that
-activates the project; see [site conventions](SITE.md).
+activates the project; see [site conventions][docs/SITE.md].
 
 ## Built-in features by task
 
@@ -389,25 +389,25 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 
 | I need | Declare | Reference |
 |---|---|---|
-| Fixed redirect (301/302/303/307/308, 302 default) | `redirect: {url, status}` | [redirects](yaml/redirects.md) |
-| Parameterized path redirect (`/users/{id}` to `/profiles/{id}`) | `{name}` placeholder in `redirect.url` naming a declared path parameter | [redirects](yaml/redirects.md) |
-| Root-relative redirect (`/users/{id}` to `/profiles/{id}`) | `redirect.url: /profiles/{id}`: one leading slash, path only, `{name}` placeholders | [redirects](yaml/redirects.md) |
-| Wildcard/suffix redirect (`/legacy/**` to `/modern/{**}`, any depth) | terminal `/**` route key with a literal prefix, `{**}` in the destination path; redirect only, not static or Cloudflare | [redirects](yaml/redirects.md) |
-| Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects](yaml/redirects.md) |
-| Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
-| 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
+| Fixed redirect (301/302/303/307/308, 302 default) | `redirect: {url, status}` | [redirects][docs/yaml/redirects.md] |
+| Parameterized path redirect (`/users/{id}` to `/profiles/{id}`) | `{name}` placeholder in `redirect.url` naming a declared path parameter | [redirects][docs/yaml/redirects.md] |
+| Root-relative redirect (`/users/{id}` to `/profiles/{id}`) | `redirect.url: /profiles/{id}`: one leading slash, path only, `{name}` placeholders | [redirects][docs/yaml/redirects.md] |
+| Wildcard/suffix redirect (`/legacy/**` to `/modern/{**}`, any depth) | terminal `/**` route key with a literal prefix, `{**}` in the destination path; redirect only, not static or Cloudflare | [redirects][docs/yaml/redirects.md] |
+| Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects][docs/yaml/redirects.md] |
+| Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects][docs/yaml/redirects.md] |
+| 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site][docs/SITE.md] |
 | Single-page app client routes answering `index.html` at any depth | no native SPA fallback: recipe `spa-shell`, a root `/*` static mount plus an operator plugin in `--host-file`; self-hosted only | [spa-shell](../recipes/spa-shell/README.md) |
-| Application rules that need the signed-in caller | an ordinary `function` route with `auth: true` (recipe `authenticated-json-api`); the function reads the verified user id from `context.capabilities.auth.identity.userId` | [auth](../packages/auth/README.md#protect-a-route), [authenticated-json-api](../recipes/authenticated-json-api/README.md) |
-| Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](OPEN-DECISIONS.md) |
-| Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
-| Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
-| A cache strategy on any route | `policies.cache` | [cache](policies/cache.md) |
-| Body size, required body, content types, JSON syntax and shape, per method (GET and POST on one path each with their own rules) | `request.body.<METHOD>.maxBytes`, `required`, `contentTypes`, `format`, `schema`; GET/HEAD/DELETE take only `maxBytes` (`0` refuses a body) | [HTTP](HTTP.md#per-method-body-rules) |
-| A uuid path id or a bounded string pattern | parameter `schema: {type: string, format: uuid}` or `pattern` with `maxLength` | [HTTP](HTTP.md#body-schema-and-input-patterns) |
-| Method gating | `methods` (default GET/HEAD; 405 with `Allow`) | [HTTP](HTTP.md) |
-| Rate limits, bot and crawler denial, compression | `policies.throttle`, `agents`, `compression` | [policies](POLICIES.md) |
-| Static JSON or text and fixed headers | `respond`, `response.headers` | [HTTP](HTTP.md) |
-| robots, sitemap, favicon, security.txt, llms.txt | top-level `site` | [site](SITE.md) |
+| Application rules that need the signed-in caller | an ordinary `function` route with `auth: true` (recipe `authenticated-json-api`); the function reads the verified user id from `context.capabilities.auth.identity.userId` | [auth][packages/auth/README.md#protect-a-route], [authenticated-json-api](../recipes/authenticated-json-api/README.md) |
+| Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision][docs/OPEN-DECISIONS.md] |
+| Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security][docs/policies/security.md] |
+| Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets][docs/yaml/assets.md] |
+| A cache strategy on any route | `policies.cache` | [cache][docs/policies/cache.md] |
+| Body size, required body, content types, JSON syntax and shape, per method (GET and POST on one path each with their own rules) | `request.body.<METHOD>.maxBytes`, `required`, `contentTypes`, `format`, `schema`; GET/HEAD/DELETE take only `maxBytes` (`0` refuses a body) | [HTTP][docs/HTTP.md#per-method-body-rules] |
+| A uuid path id or a bounded string pattern | parameter `schema: {type: string, format: uuid}` or `pattern` with `maxLength` | [HTTP][docs/HTTP.md#body-schema-and-input-patterns] |
+| Method gating | `methods` (default GET/HEAD; 405 with `Allow`) | [HTTP][docs/HTTP.md] |
+| Rate limits, bot and crawler denial, compression | `policies.throttle`, `agents`, `compression` | [policies][docs/POLICIES.md] |
+| Static JSON or text and fixed headers | `respond`, `response.headers` | [HTTP][docs/HTTP.md] |
+| robots, sitemap, favicon, security.txt, llms.txt | top-level `site` | [site][docs/SITE.md] |
 
 Which handler serves the response:
 
@@ -415,7 +415,7 @@ Which handler serves the response:
 |---|---|---|
 | Fixed text or JSON | `respond` | `health-page` |
 | A fixed answer to a POST whose JSON fields are validated | `respond` plus `request.body.<METHOD>.schema` | `json-endpoint` |
-| A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](HTTP.md) |
+| A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP][docs/HTTP.md] |
 | One HTML file | `page` | `static-page` |
 | A directory of files | `static` | `static-plus-api` |
 | An attachment | `download` | `protected-download` |
@@ -449,14 +449,14 @@ body declaration, protected with `auth: true`. Better Auth owns accounts,
 passwords and sessions; the browser signs in with Better Auth's own client
 against the auth mount. The trusted Node function reads the verified opaque
 caller id from `context.capabilities.auth.identity.userId` (a
-[request-bound capability](EXTENSIONS.md#request-bound-capabilities)) and
+[request-bound capability][docs/EXTENSIONS.md#request-bound-capabilities]) and
 implements only the application's rules; it never receives the cookie or an
 `Authorization` header. A `sandbox: true` route cannot name `auth`.
 Permissions are application data keyed by that id, and the store holds them
 declaratively before any function is needed: a
-[membership collection](STORE.md#membership-gates-and-cross-owner-reads) gates
+[membership collection][docs/STORE.md#membership-gates-and-cross-owner-reads] gates
 a transition or a read-only cross-owner mount.
-[proofs/private-requests](../proofs/private-requests/README.md) is an
+[proofs/private-requests][proofs/private-requests/README.md] is an
 end-to-end example with owners and a reviewer and no application code. A function that reads a session
 cookie, checks a password or compares a session token reimplements what auth
 already enforces.
@@ -514,8 +514,8 @@ for the cookbook, the single route that demonstrates it. `recipes add NAME --out
 NEW_DIRECTORY` and `examples add NAME --out NEW_DIRECTORY` create a standalone
 project whose listed commands run from that directory; neither merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
 converts strict redirect rows into deterministic 1,000-route include files with
-source fingerprints. Both support `--dry-run`. See [recipes](RECIPES.md),
-[bulk import and measured limits](BULK.md), and [interchange](INTERCHANGE.md).
+source fingerprints. Both support `--dry-run`. See [recipes][docs/RECIPES.md],
+[bulk import and measured limits][docs/BULK.md], and [interchange][docs/INTERCHANGE.md].
 Provider conversion requires explicit acknowledgment of semantic differences;
 do not describe an acknowledged migration candidate as lossless.
 
@@ -637,21 +637,21 @@ extension invokes (an mcp tool handler and the like) — it is
 first-party project code with the same trusted-by-default rule as a
 `function`/`middleware` route. Extension hook contract v1 is trusted-only;
 `sandbox: true` is rejected rather than silently ignored. See
-[EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks).
+[EXTENSIONS.md][docs/EXTENSIONS.md#project-level-lifecycle-hooks].
 
 Guest TypeScript needs `build-typescript --project SOURCE --out NEW_DIRECTORY`
 before serving. Only the emitted `.js`/`.mjs` executes, in QuickJS for a
 `sandbox: true` route and in-process for a trusted one. The build
 transpiles rather than type-checks and ignores project compiler configuration,
 plugins, package scripts and dotenv files. Apply operator grants to the built
-revision. See [TypeScript authoring](TYPESCRIPT-AUTHORING.md).
+revision. See [TypeScript authoring][docs/TYPESCRIPT-AUTHORING.md].
 
-Use [conditions](CONDITIONS.md) for exact query/header/cookie/host/method
+Use [conditions][docs/CONDITIONS.md] for exact query/header/cookie/host/method
 predicates. Cases must be provably disjoint, remain no-store and use only
 redirect/respond branches. Conditions are not authentication or grants.
 Cloudflare refuses conditions in this implementation.
 
-Use [proxy and signals](EGRESS.md) only with explicitly reviewed external
+Use [proxy and signals][docs/EGRESS.md] only with explicitly reviewed external
 origin grants pinned to the project revision. These are self-hosted features;
 providers refuse them. Signals are bounded best effort with drops, no retries
 or persistence. Never turn a user request into an implicit network grant.
@@ -704,7 +704,7 @@ does not replace the local project server. Its endpoint is in
 [hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp).
 Inspection is not activation/deployment readiness: real grants, asset snapshots
 and service availability still need normal runtime checks. Provider conformance replay is local evidence; only
-explicit live [deployment observations](PROVIDER-VERIFICATION.md) test ingress.
+explicit live [deployment observations][docs/PROVIDER-VERIFICATION.md] test ingress.
 
 ## Copyable task prompt
 
@@ -741,7 +741,54 @@ destination (only `GET` counts a click) and a missing code answers `404`. The
 store refuses short links on a collection scoped to its owners. Report a gap
 only for stored-link needs beyond `shortLinks`: a custom redirect status,
 non-HTTP(S) destinations, per-record ownership or a target other than Node
-([data store](STORE.md)).
+([data store][docs/STORE.md]).
 
-See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
+See [capabilities and normalized route representation][docs/CAPABILITIES.md] for the target catalog,
 programmatic compatibility analysis and provider verification limits.
+
+<!-- urlcode-current-version:start -->
+[docs/PROJECT-DIRECTION.md#design-principle-declarative-first]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROJECT-DIRECTION.md#design-principle-declarative-first
+[docs/EXTENSIONS.md#external-extensions-and-ai-tooling]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#external-extensions-and-ai-tooling
+[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
+[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
+[docs/ROUTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md
+[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md
+[docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md
+[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
+[docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
+[docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md
+[docs/RESILIENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RESILIENCE.md
+[docs/FRAMEWORK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
+[docs/EXTENSION-REFERENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSION-REFERENCE.md
+[docs/EXTENSIONS.md#the-release-wide-agent-catalog]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-release-wide-agent-catalog
+[docs/BEST-PRACTICES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BEST-PRACTICES.md
+[proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
+[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
+[docs/READINESS.md#coverage-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#coverage-rules
+[docs/LOCAL-DEVELOPMENT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/LOCAL-DEVELOPMENT.md
+[docs/EXTENSIONS.md#activation-warnings]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#activation-warnings
+[docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
+[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
+[docs/POLICIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md
+[docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form
+[packages/auth/README.md#protect-a-route]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#protect-a-route
+[docs/SITE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md
+[docs/yaml/redirects.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/redirects.md
+[docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
+[docs/policies/security.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/security.md
+[docs/yaml/assets.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/assets.md
+[docs/policies/cache.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/cache.md
+[docs/HTTP.md#per-method-body-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#per-method-body-rules
+[docs/EXTENSIONS.md#request-bound-capabilities]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-bound-capabilities
+[docs/STORE.md#membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads
+[proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md
+[docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
+[docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
+[docs/INTERCHANGE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md
+[docs/EXTENSIONS.md#project-level-lifecycle-hooks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#project-level-lifecycle-hooks
+[docs/TYPESCRIPT-AUTHORING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md
+[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+[docs/PROVIDER-VERIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROVIDER-VERIFICATION.md
+[docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md
+<!-- urlcode-current-version:end -->

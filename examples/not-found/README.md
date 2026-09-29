@@ -2,7 +2,7 @@
 
 `site.notFound` names an HTML file that answers every GET or HEAD matching no
 route, with status 404 and `text/html`. See
-[site conventions](../../docs/SITE.md#notfound--404html).
+[site conventions][docs/SITE.md#notfound--404html].
 
 Copy it with `urlcode examples add not-found --out not-found`, then from that directory:
 
@@ -10,3 +10,7 @@ Copy it with `urlcode examples add not-found --out not-found`, then from that di
 urlcode test --project .
 urlcode build --target static --project .   # writes 404.html
 ```
+
+<!-- urlcode-current-version:start -->
+[docs/SITE.md#notfound--404html]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md#notfound--404html
+<!-- urlcode-current-version:end -->

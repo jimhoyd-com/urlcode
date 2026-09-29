@@ -255,6 +255,15 @@ property in `readOnlyProperties` can only change through a transition (or a
 transfer). Transitions are not an expression language. See
 [conditional transitions and result-aware retries][store-conditional-transitions-and-result-aware-retries].
 
+A list carries each listed record's `ETag` in `etags` and the transitions the
+caller may run on it now in `may`, both keyed by id (one record's answer has
+them as the `ETag` and `Allow-Transitions` headers), so a client sends
+`If-Match` for the version it listed and offers only what the store would
+accept. `may` reads only the caller's own membership, once per gate; see
+[what the caller may run][store-what-the-caller-may-run].
+
+## Transfers
+
 A collection may declare `transfers: {<name>: {amount, min?, members?}}`
 (#902): `POST <mount>/transfers/<name>` with `{from, to, amount}` subtracts a
 positive whole `amount` from one record's integer property and adds it to
@@ -269,6 +278,8 @@ Amounts are integers (minor units for a currency): a fraction is
 `422 invalid_transfer`, never rounded. `If-Match` (on `from`),
 `Idempotency-Key` and audit apply. See [declared transfers][store-declared-transfers].
 
+## Intervals
+
 A scheduling collection declares `intervals: {start, end, within?, scope?,
 when?}` (#902): among the records holding the `when` values, no two in one
 scope with equal `within` values (a room) may hold overlapping half-open
@@ -280,12 +291,6 @@ refused move keeps its slot. On an owned collection the default
 it: `error.conflict.id` appears only for a record the caller may read. Bounds
 are both numbers or both UTC date-times (`Z`, at most millisecond precision).
 See [non-overlapping intervals][store-non-overlapping-intervals].
-A list carries each listed record's `ETag` in `etags` and the transitions the
-caller may run on it now in `may`, both keyed by id (one record's answer has
-them as the `ETag` and `Allow-Transitions` headers), so a client sends
-`If-Match` for the version it listed and offers only what the store would
-accept. `may` reads only the caller's own membership, once per gate; see
-[what the caller may run][store-what-the-caller-may-run].
 
 ## Membership gates
 

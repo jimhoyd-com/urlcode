@@ -4,7 +4,7 @@ A prebuilt single-page app (React, Vue, Svelte or plain JavaScript) routes in
 the browser: `/projects/42/settings` exists only in its client router. A
 reload or a shared link sends that path to the server, which must answer with
 the app's `index.html` so the router can take over. URLCode has no native SPA
-fallback ([assets](../../docs/ASSETS.md)), and no YAML route can answer a
+fallback ([assets][docs/ASSETS.md]), and no YAML route can answer a
 `page` at any depth. This recipe is the tested composition for it
 ([#809](https://github.com/jimhoyd-com/urlcode/issues/809)): native YAML for
 everything it can express, including the API's JSON errors (`site.errors`),
@@ -46,7 +46,7 @@ in its last segment (`/missing.png`, `/.env`) is a file request: the mount
 serves the file or answers 404. The plugin leaves `/api` alone (it is in
 `exclude`), so the mount answers there too, and `site.errors` makes every
 error the runtime writes under `/api/*` the fixed JSON envelope instead of a
-text line ([error format](../../docs/HTTP.md#error-format)). An API client gets
+text line ([error format][docs/HTTP.md#error-format]). An API client gets
 JSON, never HTML, for a path no route declares. Because `/*` matches every
 path, a method other than GET or HEAD on an undeclared API path is the mount's
 405 (with `Allow`), not a 404.
@@ -62,7 +62,7 @@ path gets the denial, not the shell.
 
 Save it as `/operator/host.mjs`: `--host-file` refuses a path inside the
 project. It is trusted operator code with the host's
-privileges, like every [host plugin](../../docs/PLUGINS.md). With no
+privileges, like every [host plugin][docs/PLUGINS.md]. With no
 extensions in the list, `composeHost` needs no project revision pin.
 
 ```js
@@ -128,10 +128,17 @@ or functions when the answer must be computed per request.
   with or without the host file.
 - A shell answer from the plugin short-circuits the `/*` route's own request
   policies (`throttle`, `agents`, `cache`), because unprotected-route plugins
-  run before them ([ordering](../../docs/PLUGINS.md#ordering)). Put policies you
+  run before them ([ordering][docs/PLUGINS.md#ordering]). Put policies you
   need on the client routes in the operator host, or protect the route.
 - The shell is sent whole: no ETag, conditional or range handling, unlike the
   native `/` page.
 - The exclusion and file-name rules are the plugin's, not the runtime's;
   review them for your app's URL scheme. Report a need for a native fallback
   on [#809](https://github.com/jimhoyd-com/urlcode/issues/809).
+
+<!-- urlcode-current-version:start -->
+[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
+[docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
+[docs/PLUGINS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PLUGINS.md
+[docs/PLUGINS.md#ordering]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PLUGINS.md#ordering
+<!-- urlcode-current-version:end -->

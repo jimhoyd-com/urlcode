@@ -74,7 +74,7 @@ const sections=[...grouped.values()].map(({area,rows})=>{
   return `## ${area.title}\n\nSee ${area.guide} for examples.\n\n| Field | Type | Required | Schema constraints | Description |\n|---|---|---|---|---|\n${body}\n`;
 }).join('\n');
 
-const output=`# YAML field reference
+const draft=`# YAML field reference
 
 Generated from the bundled JSON Schema by \`npm run docs:reference\`. Required
 means required within its containing object, not that the object itself must be
@@ -97,6 +97,17 @@ schema-valid combinations activate successfully.
 ${toc}
 
 ${sections}`;
+// The reference ships in the core package without the guide pages it links (#931), so every relative link becomes
+// a reference to this repository at the current version, defined in a urlcode-current-version block the release
+// bump moves.
+const version=(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version: string}).version;
+const pinned=new Map<string,string>();
+const linked=draft.replaceAll(/\]\(([^()#\s][^()\s]*)\)/g,(_whole,target: string)=>{
+  const label=`docs/${target}`;
+  pinned.set(label,`https://github.com/jimhoyd-com/urlcode/blob/v${version}/${label}`);
+  return `][${label}]`;
+});
+const output=`${linked.trimEnd()}\n\n<!-- urlcode-current-version:start -->\n${[...pinned].map(([label,url])=>`[${label}]: ${url}`).join('\n')}\n<!-- urlcode-current-version:end -->\n`;
 const target=new URL('../docs/YAML-REFERENCE.md',import.meta.url);
 if(process.argv.includes('--check')) {
  if(await readFile(target,'utf8')!==output)throw new Error('YAML reference is stale; run npm run docs:reference');
