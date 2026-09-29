@@ -8,8 +8,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
-import { clientKey, isSameOriginRequest, jsonResponse, principalIdPattern } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import { mkdir } from 'node:fs/promises';
+import { clientKey, isSameOriginRequest, joinHostLease, jsonResponse, principalIdPattern, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, HostLease, HostProbe, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 
 /** The Better Auth paths a mount serves by default: sign-in, sign-out and the session endpoints. */
 export const defaultPaths: readonly string[] = Object.freeze(['/sign-in/email', '/sign-out', '/get-session', '/list-sessions', '/revoke-session', '/revoke-sessions', '/revoke-other-sessions', '/change-password', '/ok']);
@@ -98,6 +99,17 @@ export function openAuthDatabase(path: string): DatabaseSync {
   return db;
 }
 
+/**
+ * Creates the auth database's directory (0700) when absent and refuses it on a network filesystem by its Linux `statfs`
+ * type, the list the store and audit refuse (core's `refuseNetworkFilesystem`; skipped on macOS and Windows). Serving
+ * and the operator commands run it before they open the database. `probe` is a test seam.
+ */
+export async function refuseRemoteAuthDatabase(path: string, probe?: Partial<HostProbe>): Promise<void> {
+  const directory = dirname(resolve(path));
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await refuseNetworkFilesystem(directory, 'auth', probe);
+}
+
 /** Everything the operator decides about the Better Auth instance. None of it is project YAML. */
 export interface AuthSettings {
   /** The SQLite file Better Auth owns. */
@@ -174,7 +186,7 @@ function databaseOf(options: BetterAuthOptions): DatabaseSync | undefined {
 }
 
 /** The URLCode registration for one Better Auth instance, pinned to the reviewed project revision. */
-export function createAuthExtension(settings: AuthSettings & { projectSha256: string }): RuntimeExtension {
+export function createAuthExtension(settings: AuthSettings & { projectSha256: string; /** A test seam; never set by an operator. */ probe?: Partial<HostProbe> | undefined }): RuntimeExtension {
   if (!/^[a-f0-9]{64}$/.test(settings.projectSha256)) throw new Error('auth extension requires an explicit operator revision pin');
   const served = new Set([...defaultPaths, ...(settings.signUp === true ? [signUpPath] : []), ...(settings.paths ?? [])]);
   for (const path of served) if (!pathPattern.test(path)) throw new Error(`auth: ${path} is not a Better Auth path such as /sign-in/email`);
@@ -187,14 +199,19 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
     async activate(_config, activation): Promise<ExtensionInstance> {
       if (activation.mounts.length !== 1) throw new Error(`auth serves exactly one mount (a route with extension: auth); found ${activation.mounts.length}`);
       const [mount] = activation.mounts as [string];
+      await refuseRemoteAuthDatabase(settings.database, settings.probe);
       const options = betterAuthOptions(settings, activation.origin, mount);
       const database = databaseOf(options);
+      let lease: HostLease | undefined;
       let auth: ReturnType<typeof betterAuth>;
       try {
         // A hermetic run starts from an empty database, so it creates the tables an operator creates with migrate.
         if (settings.hermetic === true) await migrate(options);
         const pending = await pendingMigrations(options);
         if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate`);
+        // The host lease (#941): `auth_servers` in the auth database, one row per activation. A live peer serving this
+        // database from another host refuses activation; processes on one host do not refuse each other.
+        if (database) lease = await joinHostLease(database, { table: 'auth_servers', what: 'auth', probe: settings.probe });
         auth = betterAuth(options);
         if (activation.seed !== undefined) await seedUsers(auth, activation.seed as AuthSeed);
       } catch (error) { database?.close(); throw error; }
@@ -236,7 +253,7 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
           if (capability !== 'identity' || !invocation.principal) return undefined;
           return Object.freeze({ userId: invocation.principal.id });
         },
-        close() { database?.close(); },
+        close() { lease?.close(); database?.close(); },
       };
     },
   };

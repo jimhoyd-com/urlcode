@@ -257,6 +257,10 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
+A SQLite-backed extension refuses a network filesystem and a live peer on
+another host through core's `refuseNetworkFilesystem` and `joinHostLease`, each
+with a lease table in its own database, so store, auth and audit enforce one
+topology rule ([request helpers](EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
 an `extension_warning` event and never a response
@@ -557,6 +561,91 @@ Nine gaps were found. The main five:
   installed, so `docs search` cannot find them.
 
 Each gap was drafted as an issue.
+
+### Third run
+
+On 2026-09-29 the method ran again on main `f850492a`, after the fixes for
+#928–#932, #936 and #938. This run changed three things:
+
+- It used the generated npm scripts (`npm run validate`, `npm test`,
+  `npm run audit`), which now pass `--local-review`, rather than
+  `PROJECT_SHA256` and `URLCODE_ORIGIN`.
+- Accounts and members came from `app/tests/seed.json`, with sign-in `steps`
+  fixtures against the real auth extension.
+- `npm test` ran twice after the last edit, to show that a rerun passes.
+
+It repeated the booking, credits and approval tasks. Booking and credits now
+use `intervals.length`/`step`, `create.members` and a projected `readers`
+directory, since #929 made them declarable.
+
+| Task | CLI runs (validate / test / audit) | Correction rounds (second run) | YAML lines (second run) | Fixture lines (requests + seed) | Code lines | Audit ready | `openapi --check` |
+|---|---:|---:|---:|---:|---:|---|---|
+| Room booking: one-hour slots, members-only create, `cancel` | 24 (3 / 4 / 2) | 3 (0) | 52 (56) | 35 + 10 | 0 | yes | passes |
+| Credits: an issuer, pay after a directory lookup, no overdraft | 16 (2 / 3 / 2) | 2 (1) | 53 (44) | 36 + 11 | 0 | yes | passes |
+| Request approval: `submit`/`withdraw`, `by: others` approve/reject, a reviewers queue | 23 (3 / 6 / 2) | 2 (0) | 77 (74) | 38 + 10 | 0 | yes | passes |
+
+The table counts one more booking round, not shown in it: `openapi --local-review` was refused
+([#958](https://github.com/jimhoyd-com/urlcode/issues/958)). Two approval test runs were
+deliberate probes and are included in its count.
+
+No correction round came from the YAML. All three projects were valid on
+their first edit. The credits and approval fixtures passed on their first
+run. The booking fixtures passed too; the audit then asked for one more
+success case. Every round was one of these:
+
+- `npm run validate` refused on each new site until `npx urlcode-auth migrate`
+  was run, though `test` and `audit` no longer read the site's database
+  ([#954](https://github.com/jimhoyd-com/urlcode/issues/954)).
+- `npm run audit` answered `route-count-mismatch` on each site until
+  `--expect-routes` was edited in `package.json`, `AGENTS.md` and the
+  workflow ([#955](https://github.com/jimhoyd-com/urlcode/issues/955)).
+- Booking only: `init --with` refused the version skew and named its fix,
+  and a `PATCH` with only a `422` case left that method uncovered. The
+  audit's note for it pointed at sign-in instead
+  ([#959](https://github.com/jimhoyd-com/urlcode/issues/959)).
+
+The rounds went up, from 0/1/0 to 3/2/2. That is mostly the method. The
+second run gave the pin, origin and route count on the command line, not
+through the generated scripts. This run counts the migrate and route-count
+fixes as rounds on every site. The fixes held:
+
+- A 12-hour booking and a 10:30 start answer `422`, and a non-member's
+  booking `403` (#929).
+- The credits and approval reruns pass on fresh seeded databases, and
+  `expectJson` asserts balances beside generated ids (#930).
+
+Two new store gaps came from behavior, not setup:
+
+- **Approval.** After a reviewer approves a request, its owner can still
+  `PATCH` the amount (`200`, still `approved`, still `reviewedBy` the
+  reviewer) or `DELETE` it (`204`). Edits can't be limited to a state
+  ([#952](https://github.com/jimhoyd-com/urlcode/issues/952)).
+- **Credits.** The recipient directory finds wallets by name, but names
+  can't be unique across owners. A second user's wallet named `bob` appears
+  in the same lookup ([#953](https://github.com/jimhoyd-com/urlcode/issues/953)).
+
+The remaining findings were tooling and docs:
+
+- The booking and credits recipes predate #929 and #930
+  ([#956](https://github.com/jimhoyd-com/urlcode/issues/956)).
+- There is no approval recipe, and `plan-feature` lists the booking and
+  credits recipes for an approval goal
+  ([#957](https://github.com/jimhoyd-com/urlcode/issues/957)).
+- Before any site existed, the add-ons packed without a build, and install
+  reported them as having "no ./extension entry"
+  ([#960](https://github.com/jimhoyd-com/urlcode/issues/960)).
+
+**Caveats.**
+
+- The agent knows this repository, and that biases the result. It read the
+  add-on install source once, to diagnose #960, and the store's `urlcode.json`
+  schema directly rather than through `docs search`.
+- It guessed some response shapes (`/items/0/id`, `/from/balance`) from
+  general REST convention. They were right.
+- It ran the tasks in order, so the credits and approval sites skipped the
+  `init --with` refusal it had already seen.
+- It is still one run by one agent, not a benchmark. The frontend and the
+  served (non-test) path were not exercised.
 
 ### Plumbing removed by intervals and transfers
 
