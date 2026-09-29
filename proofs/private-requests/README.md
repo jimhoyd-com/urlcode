@@ -76,7 +76,7 @@ npm pack --pack-destination /tmp/urlcode-pack
 cp -R proofs/private-requests /tmp/private-requests && cd /tmp/private-requests
 npm install /tmp/urlcode-pack/jimhoyd-urlcode-0*.tgz /tmp/urlcode-pack/jimhoyd-urlcode-auth-*.tgz /tmp/urlcode-pack/jimhoyd-urlcode-store-*.tgz
 npm run build     # bundles the Better Auth browser client into app/public/assets/app.js
-npm run setup     # data/: auth.secret, auth.sqlite (Better Auth schema), three accounts, store.sqlite with rita as a reviewer
+npm run setup     # data/ for npm start: auth.secret, auth.sqlite (Better Auth schema), three accounts, store.sqlite with rita as a reviewer
 npm run inventory # the Better Auth version, integrity and every endpoint, probed
 ```
 
@@ -94,10 +94,11 @@ npm run audit     # ready: every route and method covered, the auth: true ones b
 npm start         # http://localhost:4180
 ```
 
-The fixtures sign in through Better Auth, whose limit (10 sign-ins a minute per
-client address) is counted in `data/auth.sqlite` and so carries across these
-commands and the server. Running the fixtures a third time within a minute
-answers `429`; wait for the minute to pass.
+`npm test` and `npm run audit` need no `setup` and never touch `data/`: each
+run starts from a fresh, empty database holding only the three accounts and the
+reviewer membership `app/tests/seed.json` declares, and discards it afterwards,
+so a rerun behaves exactly like the first run (see
+[test data and seeds](../../docs/READINESS.md#test-data-and-seeds)).
 
 An authoring agent gets the same context from the operator's flags, with no
 `PROJECT_SHA256` export: `npx urlcode bootstrap --policy operator/policy.json
@@ -169,11 +170,9 @@ cannot do here (no server-side revocation) and where core keys on the name
 
 ## Limits
 
-- `npm test` and `npm run audit` sign in and create records in the same
-  `data/` directory the site serves. Point `PRIVATE_REQUESTS_DATA` at another
-  directory, and run `npm run setup` there, to keep them apart.
-- The authoring MCP runners pass their child process only `PATH`, so they
-  always use the site's own `data/`, whatever `PRIVATE_REQUESTS_DATA` says.
+- The authoring MCP runners pass their child process only `PATH`, so a server
+  they start uses the site's own `data/`, whatever `PRIVATE_REQUESTS_DATA` says
+  (their `run_tests`, like `npm test`, uses a fresh database of its own).
 - Reviewer membership is maintained by the operator (`addMember` in
   `scripts/setup.mjs`; `urlcode-store members add|remove|list` is the same
   operation from the command line). The proof does not install the audit

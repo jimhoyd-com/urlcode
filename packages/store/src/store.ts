@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { ExtensionHttpError, isSameOriginRequest, jsonResponse, readBody } from '@jimhoyd/urlcode/extensions';
+import { ExtensionHttpError, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, canonical, collectionSchema, etagOf, redirectable } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
@@ -14,6 +14,7 @@ import { describeStore } from './openapi.ts';
 import type { StoreExports } from './records.ts';
 import { hostProbe, joinServers } from './topology.ts';
 import type { HostProbe, ServerLease } from './topology.ts';
+import { OPERATOR_ACTOR } from './membership.ts';
 
 /** At most how often the drain's last-kept-up time is written (well inside the CLI's AUDIT_DRAIN_STALE_MS). */
 const AUDIT_DRAIN_MARK_MS = 10_000;
@@ -42,10 +43,38 @@ export interface StoreExtensionOptions {
    * real machine; an operator never sets it.
    */
   probe?: Partial<HostProbe> | undefined;
+  /**
+   * A hermetic run's throwaway store (`HostContext.hermetic`, RIM-EXT-HERMETIC-001): the registration accepts a test seed
+   * (`storeSeedSchema`). Never set for `serve`.
+   */
+  hermetic?: boolean | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
+/**
+ * The test seed a hermetic run accepts (`tests/seed.json` under `store`, RIM-EXT-HERMETIC-001): the members of
+ * membership collections, which nobody can add over HTTP. Written as `urlcode-store members add` writes them (actor
+ * `operator`), before the first fixture runs. Never accepted on `serve`.
+ */
+export const storeSeedSchema = {
+  type: 'object', additionalProperties: false, required: ['members'],
+  properties: {
+    members: {
+      type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: NAME.source },
+      description: 'Principal ids by membership collection (membership: true), such as {"tellers": ["alice"]}.',
+      additionalProperties: { type: 'array', maxItems: 1000, uniqueItems: true, items: { type: 'string', pattern: principalIdPattern.source } },
+    },
+  },
+} as const;
+interface StoreSeed { members: Record<string, string[]> }
+function seedMembers(collections: readonly Collection[], seed: StoreSeed): void {
+  for (const [name, principals] of Object.entries(seed.members)) {
+    const collection = collections.find(candidate => candidate.name === name);
+    if (!collection?.spec.membership) throw new Error(`seed: members names ${name}, which is not a declared membership collection (membership: true)`);
+    for (const principal of principals) collection.create({ [collection.spec.key!]: principal }, undefined, undefined, OPERATOR_ACTOR);
+  }
+}
 const FIELD = /^[a-z][A-Za-z0-9_]{0,63}$/;
 const json = (status: number, value: unknown, extra: [string, string][] = []): HandlerResult => jsonResponse(status, value, extra);
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
@@ -210,6 +239,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
     authoring: storeAuthoring,
     // The OpenAPI export's description of each store mount, from the declaration alone (packages/store/src/openapi.ts).
     describe: describeStore,
+    ...(options.hermetic === true ? { seedSchema: storeSeedSchema } : {}),
     async activate(config, context): Promise<ExtensionInstance> {
       const rel = relative(await realTarget(resolve(context.root)), await realTarget(database));
       if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('Store database must be outside the route project');
@@ -288,6 +318,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         // The newest activation wins the declaration fence (#927): from here on a write through an older declaration
         // of any of these collections, in this process or another, is refused.
         record(held.db, collections);
+        if (context.seed !== undefined) seedMembers(collections, context.seed as StoreSeed);
       } catch (error) { await held.release(); throw error; }
       if (held.lease.peers > 0 && !warnedPeers) {
         warnedPeers = true;

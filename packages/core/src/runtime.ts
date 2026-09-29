@@ -74,6 +74,10 @@ export interface RuntimeOptions {
    * runtime is never closed or changed by this call: the caller installs the new runtime, then closes the old one,
    * or keeps serving the old one when this call fails. Never supplied by project YAML or a tool argument. */
   replacing?: Runtime | undefined;
+  /** Test harness only (`startRestartable`'s first start, for `urlcode test` and `urlcode audit`): the project's parsed
+   * `tests/seed.json`, handed to each named extension's activation as `context.seed` (RIM-EXT-HERMETIC-001). Never
+   * supplied by project YAML, `dev`, `serve` or a reload. */
+  seed?: Readonly<Record<string, unknown>> | undefined;
 }
 /** The extension registry of each runtime `createRuntime` built, for a reload's hand-off (RIM-EXT-HANDOFF-001). */
 const extensionRegistries = new WeakMap<Runtime, ExtensionRegistry>();
@@ -151,7 +155,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
-  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',origins,target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root,schemas:loaded.schemas??{}},loaded.routeAuth,sink,options.acceptedExtensionPin);
+  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',origins,target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root,schemas:loaded.schemas??{}},loaded.routeAuth,sink,options.acceptedExtensionPin,options.seed);
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const notFoundPage = loaded.document.site?.notFound !== undefined && loaded.document.site.notFound !== null;
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.grantDataDir ? withDataDirGrant(loaded, snapshot.projectSha256, options.permissions) : options.permissions, snapshot.projectSha256, options.extensions);

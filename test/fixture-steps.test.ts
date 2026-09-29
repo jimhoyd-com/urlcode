@@ -61,8 +61,8 @@ test('a missing capture fails the step and names nothing from the response', asy
   assert.doesNotMatch(JSON.stringify(events), /tok-SECRET|top-secret/);
 });
 
-test('captured values never reach output, including the audit and deployment reports', async t => {
-  const fixtures = [{ steps: [{ path: '/token', status: 200, capture: { tok: { json: 'token' } } }, { path: '/secret?x={{tok}}', status: 500, headers: { 'x-t': '{{tok}}' } }] }];
+test('secret captured values never reach output, including the audit and deployment reports', async t => {
+  const fixtures = [{ steps: [{ path: '/token', status: 200, capture: { tok: { json: 'token', secret: true } } }, { path: '/secret?x={{tok}}', status: 500, headers: { 'x-t': '{{tok}}' } }] }];
   const root = await withoutBindings(t, fixtures);
   const events: object[] = [];
   const result = await runProjectTests(root, { log: e => events.push(e) });
