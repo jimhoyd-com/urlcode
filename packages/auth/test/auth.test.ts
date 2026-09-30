@@ -412,10 +412,11 @@ test('urlcode-auth create-user succeeds while a serving process commits continuo
 
 test('urlcode-auth create-user takes the write lock between the slow commits of a saturated server', async t => {
   const at = await project(t); await withUser(at);
-  // A writer that holds the write lock for 25 ms of every commit with only an event-loop turn between commits, as a
-  // saturated server does when each flush is slow (FlushFileBuffers on Windows). SQLite's busy handler, polling up to
-  // every 100 ms for 2 seconds, mostly found the lock held and failed with "database is locked".
-  const writer = spawn(process.execPath, [fileURLToPath(new URL('./slow-commit-writer.ts', import.meta.url)), at.database, '25'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  // A writer that holds the write lock for 100 ms of every commit and frees it for a 2 ms timer between commits (a
+  // request's response I/O), as a saturated server does when each flush is slow (FlushFileBuffers on Windows). SQLite's
+  // busy handler, polling up to every 100 ms for 2 seconds, mostly found the lock held and failed with "database is
+  // locked". A writer with no gap at all can still starve the operator command for its whole 10 seconds (README).
+  const writer = spawn(process.execPath, [fileURLToPath(new URL('./slow-commit-writer.ts', import.meta.url)), at.database, '100', '2'], { stdio: ['pipe', 'pipe', 'inherit'] });
   const exited = new Promise(resolve => writer.once('exit', resolve));
   let out = '';
   writer.stdout.setEncoding('utf8').on('data', (chunk: string) => { out += chunk; });
@@ -427,7 +428,7 @@ test('urlcode-auth create-user takes the write lock between the slow commits of 
   }
   writer.stdin.end(); await exited;
   const { commits } = JSON.parse(out.slice(out.indexOf('{'))) as { commits: number };
-  assert.ok(commits > 20, `the writer committed throughout (${commits} commits)`);
+  assert.ok(commits > 5, `the writer committed throughout (${commits} commits)`);
 });
 
 test('the scaffold writes the mount and a private secret; host() reads it; the CLI migrates and creates a user', async t => {

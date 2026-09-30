@@ -265,8 +265,11 @@ account creation) take the write lock when they begin, so one that reads and
 then writes cannot fail on a commit made in between. An operator command waits
 up to 10 seconds instead and tries for the write lock every millisecond, so it
 gets in between a busy server's commits even when each commit holds the lock
-for most of its time (a slow disk flush); only a lock held for the whole 10
-seconds fails it with `database is locked`. Activation and the
+for most of its time (a slow disk flush). Retrying is not a queue, though: a
+lock held for the whole 10 seconds, or a server that commits with literally no
+gap between commits (on Windows, a writer that releases and re-takes the lock
+at once wins nearly every retry), fails it with `database is locked`. A real
+server has a gap after each commit while it answers the request. Activation and the
 operator commands refuse a database directory on a network filesystem by its
 Linux `statfs` type, the list the store refuses (not checked on macOS or
 Windows). Several servers need a database server: pass it as
