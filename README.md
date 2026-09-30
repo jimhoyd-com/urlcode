@@ -121,7 +121,7 @@ All of it lives in [`docs/`](docs/README.md) in this repository. See
 
 ## The framework
 
-Core plus four extensions, one site shape. A project climbs from redirects to a
+Core plus three optional bundled extensions and one artifact, one site shape. A project climbs from redirects to a
 full application by adding YAML; the operator wires trusted extensions in one
 host file outside the project. The full map, the composition contract and the
 rules an AI agent must follow are in [the framework][docs/FRAMEWORK.md].

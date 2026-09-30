@@ -73,8 +73,11 @@ extensions and recipes/templates before writing a custom function or middleware.
 Keep necessary custom code focused and report the capability gap; never invent
 fields or bypass target limits or operator grants. See [the design principle][docs/PROJECT-DIRECTION.md#design-principle-declarative-first].
 
-Prefer first-party extensions when suitable because they are tested with the
-runtime. External and private extensions are allowed when needed or requested;
+Inspect the installed stack first and keep what the owner chose. First-party
+extensions are tested defaults, not requirements: a trusted function may call
+any npm library directly, and an independent extension may take a first-party
+name ([owner choice][docs/EXTENSIONS.md#native-independent-integration-or-bundled-default]).
+External and private extensions are allowed;
 use the [external-extension workflow][docs/EXTENSIONS.md#external-extensions-and-ai-tooling]
 for installation, host registration, discovery and validation. The managed
 `extensions add` command is for core's catalog, not arbitrary packages.
@@ -458,21 +461,24 @@ schema](STORE.md#record-schema)). The example is API only; the frontend is the
 application's own code. The store example
 without `auth` refuses until the operator re-runs with `--ack
 store:public-write`, and its collection stays shared. Report anything beyond
-that recipe (filtering, sorting, ownership beyond owner-only records, a
-database) as a gap. `urlcode context` lists the same built-ins so they are
+that recipe (filtering, sorting, ownership beyond owner-only records) as a
+store gap; an application that keeps its data in its own database calls that
+library from a trusted function route
+([native-storage proof][proofs/native-storage/README.md]). `urlcode context` lists the same built-ins so they are
 visible before you write code.
 
 For application rules that need the signed-in caller, `urlcode recipes show
 authenticated-json-api` shows the route shape. Each operation remains an
 ordinary YAML function route with its own methods, parameters and bounded
-body declaration, protected with `auth: true`. Better Auth owns accounts,
+body declaration, protected with `auth: true`. With the bundled auth
+extension, Better Auth owns accounts,
 passwords and sessions; the browser signs in with Better Auth's own client
 against the auth mount. The trusted Node function reads the verified opaque
 caller id from `context.capabilities.auth.identity.userId` (a
 [request-bound capability][docs/EXTENSIONS.md#request-bound-capabilities]) and
 implements only the application's rules; it never receives the cookie or an
 `Authorization` header. A `sandbox: true` route cannot name `auth`.
-Permissions are application data keyed by that id, and the store holds them
+Permissions are application data keyed by that id, and the bundled store holds them
 declaratively before any function is needed: a
 [membership collection][docs/STORE.md#membership-gates-and-cross-owner-reads] gates
 a transition or a read-only cross-owner mount.
@@ -780,6 +786,8 @@ programmatic compatibility analysis and provider verification limits.
 <!-- x-release-please-start-version -->
 [docs/PROJECT-DIRECTION.md#design-principle-declarative-first]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROJECT-DIRECTION.md#design-principle-declarative-first
 [docs/EXTENSIONS.md#external-extensions-and-ai-tooling]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#external-extensions-and-ai-tooling
+[docs/EXTENSIONS.md#native-independent-integration-or-bundled-default]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
+[proofs/native-storage/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/native-storage/README.md
 [docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
 [docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
 [docs/ROUTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md

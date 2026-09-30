@@ -4,7 +4,9 @@ Operator-installed authentication for URLCode. Accounts, passwords, sessions,
 cookies and their tables are [Better Auth](https://better-auth.com/)'s; this
 extension serves one Better Auth instance on one mount and lets routes require
 a signed-in user. Released with core and installed with
-`urlcode extensions add auth`. Apache-2.0.
+`urlcode extensions add auth`. Apache-2.0. It is the bundled default sign-in
+provider, not a requirement: an independent provider may stand in for it
+([owner choice][extensions-owner-choice]).
 
 It replaced URLCode's own account system (#841, proven in #843). What it does
 not do is listed [below](#not-included).
@@ -25,7 +27,8 @@ principal a protected route receives and what `urlcode-store members add
 
 `add` writes `extensions.auth` (empty config), a `/api/auth/*` mount route and
 a private `data/auth.secret`, and adds `auth()` to `host.mjs`. `migrate`
-creates Better Auth's tables in `data/auth.sqlite`, including the `rateLimit`
+creates Better Auth's tables in the bundled default database, `data/auth.sqlite`
+(or pass [your own database](#your-own-database)), including the `rateLimit`
 table its limiter counts in; the extension refuses to activate until they all
 exist, and until Better Auth's own schema check against the database has
 passed. Both files stay out of the route project; keep them private and backed
@@ -250,7 +253,7 @@ still reach the 429 past that bound. Only the operator host's hermetic flag
 raises it; nothing in `urlcode.yaml` or the environment can, and `serve` and
 `dev` always enforce the limits above.
 
-One process serves `data/auth.sqlite`. Each activation holds an OS lock on
+With the bundled file, one process serves `data/auth.sqlite`. Each activation holds an OS lock on
 `auth.sqlite.server-lock`, taken before the database is opened, and a second
 serving process is refused with or without the store; the lock is released
 when the process exits or is killed, so a restart never waits. The operator
@@ -262,8 +265,9 @@ account creation) take the write lock when they begin, so one that reads and
 then writes cannot fail on a commit made in between. Activation and the
 operator commands refuse a database directory on a network filesystem by its
 Linux `statfs` type, the list the store refuses (not checked on macOS or
-Windows). Several servers need a real database server, which URLCode does not
-provide; see [one serving process per database][store-one-process].
+Windows). Several servers need a database server: pass it as
+[your own database](#your-own-database); see
+[one serving process per database][store-one-process].
 
 A storage failure answers `503 auth_unavailable`, never a false success or a
 false sign-out. Better Auth itself answers a sign-out whose session delete
@@ -323,6 +327,7 @@ Fast checks: `urlcode validate --project app`, `urlcode validate --local --proje
 <!-- extension-reference:end -->
 
 <!-- x-release-please-start-version -->
+[extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
 [extensions-request-helpers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers
 [readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
