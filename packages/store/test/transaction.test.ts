@@ -1,20 +1,18 @@
 // StoreExports.transaction (#835): trusted host code runs several store operations as one database transaction. Proved
 // against the simulated-credit contract (value moves between records and the total never changes, even when a
 // transfer fails half way), the scheduling contract (a move that would overlap is refused and keeps its old slot), and
-// injected failures (nothing written, audit outbox included).
+// injected failures (nothing written, audit events included).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createAudit } from '@jimhoyd/urlcode-audit';
-import type { AuditExports } from '@jimhoyd/urlcode-audit';
 import { StoreError } from '../src/index.ts';
 import type { StoreExports, StoreTransaction } from '../src/records.ts';
 import { cleanup } from './cleanup.ts';
-import { direct, pin } from './direct.ts';
-import { counts, execute, outbox, records } from './rows.ts';
+import { direct } from './direct.ts';
+import { auditEvents, counts, execute, records } from './rows.ts';
 
 const accounts = {
   mount: '/api/accounts', audit: true, maxRecords: 100,
@@ -28,20 +26,10 @@ const tickets = { mount: '/api/tickets', audit: true, schema: { type: 'object', 
 const config = { collections: { accounts, bookings, tickets } };
 const mounts = ['/api/accounts', '/api/bookings', '/api/tickets'];
 
-/** A real audit database for event validation, with a drain that never runs, so undelivered events stay countable. */
-async function auditFor(t: TestContext, root: string): Promise<AuditExports & { woken(): number }> {
-  const log = await createAudit({ projectSha256: pin, database: join(root, 'audit.sqlite') });
-  cleanup(t, () => log.close());
-  await log.registration.activate({}, { origin: 'https://direct.example.test', target: 'node', projectSha256: pin, mounts: [], root });
-  let woken = 0;
-  return { ...log.exports, get active() { return log.exports.active; }, validate: value => log.exports.validate(value), attach: () => ({ notify() { woken++; }, async close() {} }), woken: () => woken };
-}
 async function site(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'store-audit-'));
   cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 5 }));
-  const audit = await auditFor(t, root);
-  const store = await direct(t, config, { mounts, audit });
-  return { ...store, audit };
+  return direct(t, config, { mounts });
 }
 const total = (database: string) => records(database, 'accounts').reduce((sum, record) => sum + (record.available as number) + (record.held as number), 0);
 
@@ -87,25 +75,22 @@ test('credits: concurrent transfers, holds and settlements conserve the total, a
   assert.ok(refused > 0, 'some operations overdrew and were refused');
   assert.equal(total(store.database), 400);
   assert.ok(records(store.database, 'accounts').every(record => (record.held as number) === 0), 'every hold was settled or cancelled');
-  const events = outbox(store.database).map(event => event.action);
+  const events = auditEvents(store.database).map(event => event.action);
   assert.deepEqual([events.filter(action => action === 'store.record.created').length, events.filter(action => action === 'store.record.updated').length], [4, ops.counted.updates], 'one event per committed change, none for a refused one');
 });
 
-test('credits: an injected failure on the second record rolls back the first, the audit outbox included', async t => {
+test('credits: an injected failure on the second record rolls back the first, its audit events included', async t => {
   const store = await site(t);
   const api = store.exports.records('accounts');
   const a = (await api.create(null, { name: 'a', available: 50 })).record.id as string, b = (await api.create(null, { name: 'b', available: 50 })).record.id as string;
-  const woken = store.audit.woken();
-  const before = { counts: counts(store.database), accounts: records(store.database, 'accounts'), outbox: outbox(store.database) };
+  const before = { counts: counts(store.database), accounts: records(store.database, 'accounts'), audit: auditEvents(store.database) };
   // The second account's update fails inside SQLite, after the first account and its audit event were written.
   execute(store.database, `CREATE TRIGGER fail_b BEFORE UPDATE ON store_records WHEN NEW.id = '${b}' BEGIN SELECT RAISE(ABORT, 'injected'); END;`);
   assert.throws(() => credits(store.exports).transfer(a, b, 10), (error: unknown) => error instanceof StoreError && error.status === 503 && error.code === 'storage_unavailable');
-  assert.deepEqual({ counts: counts(store.database), accounts: records(store.database, 'accounts'), outbox: outbox(store.database) }, before);
-  assert.equal(store.audit.woken(), woken, 'a rolled-back transaction wakes nothing');
+  assert.deepEqual({ counts: counts(store.database), accounts: records(store.database, 'accounts'), audit: auditEvents(store.database) }, before);
   execute(store.database, 'DROP TRIGGER fail_b');
   credits(store.exports).transfer(a, b, 10);
   assert.deepEqual(records(store.database, 'accounts').map(record => record.available), [40, 60]);
-  assert.equal(store.audit.woken(), woken + 1, 'one wake-up after the commit');
 });
 
 test('scheduling: a move that would overlap is refused and keeps its old slot; racing bookings never overlap', async t => {
@@ -164,7 +149,7 @@ test('a transition is audited with its name, and runs inside a host transaction 
   const closed = store.exports.transaction(tx => tx.records('tickets').transition({ id: 'rita' }, created.record.id as string, 'close', { ifMatch: created.etag }));
   assert.equal(closed.record.open, false);
   assert.throws(() => store.exports.transaction(tx => tx.records('tickets').transition({ id: 'rita' }, created.record.id as string, 'close')), (error: unknown) => error instanceof StoreError && error.code === 'transition_conflict');
-  const event = outbox(store.database, 'tickets').at(-1)!;
+  const event = auditEvents(store.database, 'tickets').at(-1)!;
   assert.deepEqual([event.action, event.actor, event.metadata], ['store.record.transitioned', 'rita', { collection: 'tickets', transition: 'close', fields: ['open'] }]);
   await assert.rejects(store.exports.records('tickets').transition({ id: 'rita' }, created.record.id as string, 'reopen'), (error: unknown) => error instanceof StoreError && error.status === 404);
 });

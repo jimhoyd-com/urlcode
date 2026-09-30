@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import type { ExtensionActivation, ExtensionRequest, HandlerResult } from '@jimhoyd/urlcode/extensions';
-import type { AuditExports } from '@jimhoyd/urlcode-audit';
 import { createStore } from '../src/index.ts';
 import { cleanup } from './cleanup.ts';
 
@@ -34,7 +33,7 @@ export function answer(result: HandlerResult): Answer {
  * `next` instead, the way an operator redeploys a changed project. Every handle is closed by the test's cleanup
  * before the directory is removed.
  */
-export async function direct(t: TestContext, config: Record<string, unknown>, options: { mounts: string[]; principalMounts?: string[]; audit?: AuditExports }) {
+export async function direct(t: TestContext, config: Record<string, unknown>, options: { mounts: string[]; principalMounts?: string[] }) {
   const root = await mkdtemp(join(tmpdir(), 'store-direct-'));
   cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 5 }));
   await mkdir(join(root, 'app'));
@@ -45,7 +44,7 @@ export async function direct(t: TestContext, config: Record<string, unknown>, op
   cleanup(t, close);
   const open = async (next: Record<string, unknown> = config) => {
     await close();
-    const store = createStore({ database, projectSha256: pin, ...(options.audit ? { audit: options.audit } : {}) });
+    const store = createStore({ database, projectSha256: pin });
     try { running = { store, instance: await store.registration.activate(next, activation) }; } catch (error) { await store.close(); throw error; }
     return running.store.exports;
   };

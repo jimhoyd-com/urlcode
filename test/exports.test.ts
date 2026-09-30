@@ -17,7 +17,7 @@ const expected: Record<string, string[]> = {
   './policies': ['registry','targets','builtinProfiles','effectivePolicies','compilePolicies','compileErrorPolicy','errorHeaders','closePolicies','policyRequest'],
   './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
-  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest','holdServerLock','hostProbe','NETWORK_FILESYSTEMS','refuseNetworkFilesystem','serverLockHeld','serverLockPath'],
+  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest','holdServerLock','hostProbe','NETWORK_FILESYSTEMS','refuseNetworkFilesystem','serverLockHeld','serverLockPath','AuditError','auditLimits','validateAuditEvent','validateAuditQuery'],
   './host': ['composeHost'],
   './sandbox': ['SandboxPool','functionFile'],
   './body-schema': ['assertBodySchema','compileBodySchema','bodyIssues','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaEnvelope','bodySchemaProfile','bodySchemaDialect','declaredBodyNames','holdsIllFormedString','illFormedMember','maxRequestBodyBytes','uuidFormat'],

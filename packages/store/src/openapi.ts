@@ -132,7 +132,7 @@ function listParameters(spec: NormalizedSpec): Json[] {
 }
 
 /** The answers every store operation may give, besides its success and what core adds. */
-const unavailable = failure('storage_unavailable, or audit_backlog on an audited collection: try again later.');
+const unavailable = failure('storage_unavailable: try again later.');
 const badRequest = failure('A malformed header, query, JSON body (invalid_unicode: a string or key with an unpaired surrogate escape) or Idempotency-Key.');
 const notFound = failure('No such record in the caller\'s scope (another owner\'s record answers the same).');
 

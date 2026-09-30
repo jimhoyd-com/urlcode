@@ -130,7 +130,7 @@
     "routes": "node packages/core/src/cli.ts routes --project starters/default/app",
     "audit:routes": "node packages/core/src/cli.ts audit --project starters/default/app",
     "measure:plumbing": "node scripts/docs/measure-plumbing.ts",
-    "bench:store": "npm run build --workspace @jimhoyd/urlcode-audit && node --conditions=development --disable-warning=ExperimentalWarning packages/store/bench/store-throughput.ts",
+    "bench:store": "node --conditions=development --disable-warning=ExperimentalWarning packages/store/bench/store-throughput.ts",
     "docs:reference": "node scripts/generate-yaml-reference.ts",
     "docs:plugin": "node scripts/generate-claude-plugin.ts",
     "docs:agents": "node scripts/generate-agent-assets.ts",

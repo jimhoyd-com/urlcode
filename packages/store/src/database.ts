@@ -1,6 +1,6 @@
 // The store's one SQLite database per site (#835): every collection's records, retained Idempotency-Key claims
-// (of HTTP writes and of host transactions) and undelivered audit events are rows in shared tables, so a record
-// write, its claim and its audit event commit in one transaction. Direct parameterized SQL through node:sqlite; no query builder. The schema only ever moves
+// (of HTTP writes and of host transactions) and the audit log are rows in shared tables, so a record write, its
+// claim and its audit event commit in one transaction. Direct parameterized SQL through node:sqlite; no query builder. The schema only ever moves
 // forward: an empty file is initialized to the newest version, an older store schema is upgraded step by step in
 // one transaction each, and a newer or foreign one is refused before anything is served.
 import { lstat, mkdir, open, realpath } from 'node:fs/promises';
@@ -69,6 +69,24 @@ const MIGRATIONS: readonly string[] = [
   `DROP TABLE store_servers;
    ALTER TABLE store_audit_drain DROP COLUMN holder;
    ALTER TABLE store_audit_drain DROP COLUMN lease_until;`,
+  // 6 -> 7. The audit log moves into the store (#1052): each event is a row of `store_audit_events`, written in the
+  // transaction of the change it records and pruned to the configured retention there, instead of an outbox a separate
+  // audit database drained. `forwarded` is the tap's acknowledgement (`AuditTap.ack`). Events still waiting in the
+  // outbox move across in their order; the outbox and the drain marker go.
+  `CREATE TABLE store_audit_events(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, source TEXT NOT NULL,
+     action TEXT NOT NULL, actor TEXT NOT NULL, subject TEXT NOT NULL, at INTEGER NOT NULL, reason TEXT NOT NULL,
+     metadata TEXT CHECK (metadata IS NULL OR json_valid(metadata)), forwarded INTEGER NOT NULL DEFAULT 0 CHECK (forwarded IN (0, 1)));
+   CREATE INDEX store_audit_actor ON store_audit_events(actor, seq);
+   CREATE INDEX store_audit_subject ON store_audit_events(subject, seq);
+   CREATE INDEX store_audit_action ON store_audit_events(action, seq);
+   CREATE INDEX store_audit_at ON store_audit_events(at);
+   CREATE INDEX store_audit_unforwarded ON store_audit_events(seq) WHERE forwarded = 0;
+   INSERT INTO store_audit_events(id, source, action, actor, subject, at, reason, metadata)
+     SELECT json_extract(event, '$.id'), json_extract(event, '$.source'), json_extract(event, '$.action'), json_extract(event, '$.actor'),
+       json_extract(event, '$.subject'), json_extract(event, '$.at'), coalesce(json_extract(event, '$.reason'), ''), json_extract(event, '$.metadata')
+     FROM store_audit_outbox ORDER BY seq;
+   DROP TABLE store_audit_outbox;
+   DROP TABLE store_audit_drain;`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /**
@@ -191,10 +209,22 @@ export async function openStoreDatabase(path: string, options: { create?: boolea
   return new StoreDatabase(db, file);
 }
 
-/** Records that the audit drain kept up with the outbox at `now` (epoch ms): after an ack, or a peek that found it empty. */
-export function markAuditDrained(db: StoreDatabase, now: number): void {
-  db.run('INSERT INTO store_audit_drain(id, drained_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET drained_at = max(coalesce(drained_at, 0), excluded.drained_at)', now);
+/**
+ * Opens an existing store database read-only (`urlcode-store audit`): it never creates, upgrades or writes the file,
+ * so it refuses one of another schema version rather than migrating it.
+ */
+export async function openStoreReader(path: string): Promise<StoreDatabase> {
+  if (!patched(process.versions.sqlite || '')) throw new Error(`The store requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
+  const file = await privateFile(path, false);
+  const db = new DatabaseSync(file, { readOnly: true, allowExtension: false });
+  try {
+    db.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}; PRAGMA trusted_schema=OFF; PRAGMA query_only=ON;`);
+    const version = versionOf(db);
+    if (version !== STORE_SCHEMA_VERSION) throw new Error(`The store database has schema version ${version}; this release reads ${STORE_SCHEMA_VERSION}. Serve it once with this release, which upgrades it`);
+  } catch (error) { db.close(); throw error; }
+  return new StoreDatabase(db, file);
 }
+
 /**
  * The declaration fence (#927). An activation records, per collection, the fingerprint of the declaration it serves
  * and the schema version it was built for, replacing whatever an earlier activation recorded (the one a dev reload
@@ -213,26 +243,4 @@ export function recordDeclarations(db: StoreDatabase, fingerprints: ReadonlyMap<
 /** The recorded declaration of `collection` and the file's schema version, or `undefined` when none is recorded. */
 export function declarationOf(db: StoreDatabase, collection: string): { fingerprint: string; schema_version: number; version: number } | undefined {
   return db.get('SELECT fingerprint, schema_version, (SELECT user_version FROM pragma_user_version) AS version FROM store_declarations WHERE collection = ?', collection);
-}
-
-/** How old the last drain may be before an operator command warns that its events are not being delivered. */
-export const AUDIT_DRAIN_STALE_MS = 60_000;
-/**
- * What an operator command reports after writing audit events (#875): the events still undelivered in each collection
- * it touched, when the drain last kept up (`null`: never), and a `warning` when some wait and no drain has kept up
- * within `AUDIT_DRAIN_STALE_MS`, so they are delivered only once a server with the audit extension serves again.
- */
-export interface AuditDelivery { undeliveredEvents: Record<string, number>; lastAuditDrain: string | null; warning?: string }
-export function auditDelivery(db: StoreDatabase, collections: readonly string[], now: number): AuditDelivery {
-  const undeliveredEvents: Record<string, number> = {};
-  for (const collection of [...new Set(collections)].sort())
-    undeliveredEvents[collection] = db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', collection)!.n;
-  const drainedAt = db.get<{ drained_at: number | null }>('SELECT drained_at FROM store_audit_drain WHERE id = 1')?.drained_at ?? undefined;
-  const report: AuditDelivery = { undeliveredEvents, lastAuditDrain: drainedAt === undefined ? null : new Date(drainedAt).toISOString() };
-  const waiting = Object.values(undeliveredEvents).reduce((sum, n) => sum + n, 0);
-  if (waiting && (drainedAt === undefined || now - drainedAt > AUDIT_DRAIN_STALE_MS)) {
-    const since = drainedAt === undefined ? 'No audit drain has run against this database' : `The audit drain last kept up ${Math.round((now - drainedAt) / 1000)} s ago`;
-    report.warning = `${since}: ${waiting} audit event${waiting === 1 ? '' : 's'} wait in the outbox and are delivered only while a server with the audit extension serves this project. Start it, or check that it is running.`;
-  }
-  return report;
 }

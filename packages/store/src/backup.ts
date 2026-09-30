@@ -1,5 +1,6 @@
-// Online backup of the store database (#859): a consistent copy through SQLite's own backup API, safe to take while
-// the server keeps serving, written to a new private file and checked before it appears at its destination.
+// Online backup and restore of the store database (#859), audit log included (#1052): a consistent copy through
+// SQLite's own backup API, safe to take while the server keeps serving, written to a new private file and checked
+// before it appears at its destination. A restore is the same copy from a backup file to a new path.
 import { link, lstat, mkdtemp, open, realpath, rm } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import * as sqlite from 'node:sqlite';
@@ -9,6 +10,12 @@ export interface StoreBackupOptions {
   /** Absolute path of the live store database (the host's `database`, `STORE_DATABASE` or `data/store.sqlite`). */
   database: string;
   /** Absolute path of the new backup file; it must not exist. */
+  destination: string;
+}
+export interface StoreRestoreOptions {
+  /** Absolute path of a backup `backupStore` wrote. */
+  backup: string;
+  /** Absolute path of the restored database; it must not exist. Stop the server and move it into place yourself. */
   destination: string;
 }
 export interface StoreBackupResult {
@@ -41,21 +48,28 @@ function verify(file: string, schemaVersion: number): void {
  * `integrity_check`), flushed, and then hard-linked into place, which fails rather than replace anything that appeared
  * there meanwhile. It never copies the live file byte by byte.
  */
-export async function backupStore(options: StoreBackupOptions): Promise<StoreBackupResult> {
+export function backupStore(options: StoreBackupOptions): Promise<StoreBackupResult> { return copyStore(options?.database, options?.destination, 'The store database', '--database'); }
+/**
+ * Restores a backup to a new path, with every check `backupStore` makes: it never replaces a file, so the live
+ * database is only ever swapped by the operator, with the server stopped.
+ */
+export function restoreStore(options: StoreRestoreOptions): Promise<StoreBackupResult> { return copyStore(options?.backup, options?.destination, 'The backup', '--backup'); }
+
+async function copyStore(database: string, destinationPath: string, what: string, flag: string): Promise<StoreBackupResult> {
   if (typeof sqlite.backup !== 'function') throw new Error(`Backup needs node:sqlite backup() (Node 22.16 or newer); this is Node ${process.versions.node}`);
   if (!patched(process.versions.sqlite || '')) throw new Error(`The store requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
-  if (!isAbsolute(options.database) || !isAbsolute(options.destination)) throw new Error('--database and --destination must be absolute paths');
+  if (typeof database !== 'string' || typeof destinationPath !== 'string' || !isAbsolute(database) || !isAbsolute(destinationPath)) throw new Error(`${flag} and --destination must be absolute paths`);
   // The directory is resolved, the file itself is not: a symlinked database is refused, as the store refuses it.
   let source: string, info: Awaited<ReturnType<typeof lstat>>;
-  try { source = join(await realpath(dirname(options.database)), basename(options.database)); info = await lstat(source); }
-  catch (error) { if (missing(error)) throw new Error('The store database does not exist', { cause: error }); throw error; }
+  try { source = join(await realpath(dirname(database)), basename(database)); info = await lstat(source); }
+  catch (error) { if (missing(error)) throw new Error(`${what} does not exist`, { cause: error }); throw error; }
   if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (process.platform !== 'win32' && (info.mode & 0o077) !== 0))
-    throw new Error('The store database must be a private regular file (mode 0600, one link)');
+    throw new Error(`${what} must be a private regular file (mode 0600, one link)`);
   let parent: string;
-  try { parent = await realpath(dirname(options.destination)); } catch (error) { if (missing(error)) throw new Error('The backup destination\'s directory does not exist', { cause: error }); throw error; }
-  const destination = join(parent, basename(options.destination));
-  if (destination === source) throw new Error('The backup cannot replace its source');
-  try { await lstat(destination); throw new Error('The backup destination already exists'); } catch (error) { if (!missing(error)) throw error; }
+  try { parent = await realpath(dirname(destinationPath)); } catch (error) { if (missing(error)) throw new Error('The backup destination\'s directory does not exist', { cause: error }); throw error; }
+  const destination = join(parent, basename(destinationPath));
+  if (destination === source) throw new Error('The copy cannot replace its source');
+  try { await lstat(destination); throw new Error('The destination already exists'); } catch (error) { if (!missing(error)) throw error; }
 
   const live = new sqlite.DatabaseSync(source, { readOnly: true, allowExtension: false });
   const temporary = await mkdtemp(join(parent, '.urlcode-store-backup-')), file = join(temporary, 'store.sqlite');

@@ -1,5 +1,5 @@
-// A full disk, deterministically and on every OS (#902): each SQLite database the extensions own (store.sqlite,
-// audit.sqlite, auth.sqlite) is capped at the pages it already has (`PRAGMA max_page_count`, which is per connection,
+// A full disk, deterministically and on every OS (#902): each SQLite database the extensions own (store.sqlite, whose
+// audit log is part of it, and auth.sqlite) is capped at the pages it already has (`PRAGMA max_page_count`, which is per connection,
 // so every connection to the file gets it) and its free space is used up by a filler table, so the next write that
 // needs a page fails with SQLITE_FULL exactly as it would on a full filesystem. The test then checks what a caller sees
 // (a documented refusal, never a false success), that nothing partial was written (a record, its Idempotency-Key claim
@@ -8,7 +8,7 @@
 // Everything is synthetic: example.test addresses, generated secrets, invented titles.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,7 +16,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
-import { AuditError, createAudit } from '../packages/audit/src/index.ts';
 import { betterAuthOptions, createAuthExtension, migrate } from '../packages/auth/src/index.ts';
 import { StoreError, createStore } from '../packages/store/src/index.ts';
 
@@ -25,7 +24,6 @@ const user = { email: 'filler@example.test', password: 'disk full harness passph
 const project = {
   version: '1',
   extensions: {
-    audit: { version: '1', config: {} },
     auth: { version: '1', config: {} },
     store: { version: '1', config: { collections: {
       notes: { mount: '/api/notes', audit: true, idempotency: { maxKeys: 1000 }, maxRecords: 10000, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 2000 } } } },
@@ -80,12 +78,8 @@ interface Answer { status: number; body: Record<string, unknown> | undefined; re
 const code = (answer: Answer): string | undefined => (answer.body?.error as { code?: string } | undefined)?.code ?? (typeof answer.body?.error === 'string' ? answer.body.error : undefined);
 const show = (answers: readonly Answer[]): string => JSON.stringify(answers.map(answer => `${answer.status}${code(answer) ? ` ${code(answer)}` : ''}`));
 const unavailable = (answer: Answer): boolean => answer.status === 503 && code(answer) === 'storage_unavailable';
-const until = async (what: string, check: () => boolean, ms: number): Promise<void> => {
-  const deadline = Date.now() + ms;
-  while (!check()) { if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`); await new Promise(resolve => setTimeout(resolve, 50)); }
-};
 
-test('a full store, audit or auth database answers a documented refusal, writes nothing partial and recovers', { timeout: 120_000 }, async t => {
+test('a full store or auth database answers a documented refusal, writes nothing partial and recovers', { timeout: 120_000 }, async t => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'urlcode-disk-full-')));
   const closers: (() => unknown)[] = [];
   t.after(async () => { while (closers.length) await closers.pop()!(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); });
@@ -93,7 +87,7 @@ test('a full store, audit or auth database answers a documented refusal, writes 
   await mkdir(app, { recursive: true }); await mkdir(data, { recursive: true, mode: 0o700 });
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify(project, null, 2));
   const projectSha256 = await inspectExtensionRevision(app);
-  const files = { store: join(data, 'store.sqlite'), audit: join(data, 'audit.sqlite'), auth: join(data, 'auth.sqlite') };
+  const files = { store: join(data, 'store.sqlite'), auth: join(data, 'auth.sqlite') };
 
   // Better Auth's tables and one account, as `urlcode-auth migrate` and `create-user` make them. Sign-in's limit is
   // raised so the auth phase below fills the database rather than the limiter.
@@ -102,11 +96,9 @@ test('a full store, audit or auth database answers a documented refusal, writes 
   const setup = betterAuthOptions({ database: files.auth, secret, betterAuth: betterAuthExtra }, origin, '/api/auth', true);
   try { await migrate(setup); await betterAuth(setup).api.signUpEmail({ body: user }); } finally { (setup.database as DatabaseSync).close(); }
 
-  const audit = await createAudit({ database: files.audit, projectSha256 });
-  closers.push(() => audit.close());
-  const store = createStore({ database: files.store, projectSha256, audit: audit.exports });
+  const store = createStore({ database: files.store, projectSha256 });
   const auth = createAuthExtension({ projectSha256, database: files.auth, secret, betterAuth: betterAuthExtra });
-  const server = await startServer({ project: app, origin, port: 0, log: () => {}, extensions: [audit.registration, auth, store.registration] });
+  const server = await startServer({ project: app, origin, port: 0, log: () => {}, extensions: [auth, store.registration] });
   closers.push(() => server.close());
   const base = `http://127.0.0.1:${server.address.port}`;
 
@@ -136,7 +128,7 @@ test('a full store, audit or auth database answers a documented refusal, writes 
   for (const name of ['a', 'b']) assert.equal((await call('POST', '/api/accounts/transfers/fund', { body: { from: ids.bank, to: ids[name], amount: 100 }, key: `fund-${name}` })).status, 200);
   const balances = () => count(files.store, "SELECT sum(json_extract(data, '$.balance')) AS n FROM store_records WHERE collection = 'accounts'");
 
-  // Each committed change is counted here; at the end audit.sqlite must hold exactly one event per change.
+  // Each committed change is counted here; at the end the store's audit log must hold exactly one event per change.
   const committed = { notes: 0, transfers: 2 };
   const title = (index: number): string => `note ${index} `.padEnd(1500, 'x');
 
@@ -150,7 +142,7 @@ test('a full store, audit or auth database answers a documented refusal, writes 
     assert.ok(refused >= 0, `the full database refused a create: ${show(creates)}`);
     assert.deepEqual(creates[refused]!.body, { error: { code: 'storage_unavailable', message: 'The store could not save this change' } });
     committed.notes += refused;
-    // Transfers until one is refused: each moves both balances, claims its key and queues two audit events, or none of it.
+    // Transfers until one is refused: each moves both balances, claims its key and records two audit events, or none of it.
     const transfers: Answer[] = [];
     for (let index = 0; index < 200 && !transfers.some(unavailable); index++) transfers.push(await call('POST', '/api/accounts/transfers/move', { body: { from: ids[index % 2 ? 'a' : 'b'], to: ids[index % 2 ? 'b' : 'a'], amount: 1 }, key: `move-${index}` }));
     assert.ok(transfers.every(answer => answer.status === 200 || unavailable(answer)), show(transfers));
@@ -163,15 +155,16 @@ test('a full store, audit or auth database answers a documented refusal, writes 
     // Reads keep working on a full disk.
     assert.equal((await call('GET', '/api/notes')).status, 200);
 
-    // Nothing partial: the rows, the claims and the queued or delivered events are exactly the committed changes.
+    // Nothing partial: the rows, the claims and the recorded events are exactly the committed changes.
     const facts = () => ({
+      events: count(files.store, "SELECT count(*) AS n FROM store_audit_events WHERE json_extract(metadata, '$.collection') = 'notes'"),
       notes: count(files.store, "SELECT count(*) AS n FROM store_records WHERE collection = 'notes'"),
       noteClaims: count(files.store, "SELECT count(*) AS n FROM store_idempotency WHERE collection = 'notes'"),
       transferClaims: count(files.store, "SELECT count(*) AS n FROM store_idempotency WHERE collection = 'accounts'"),
       hostClaims: count(files.store, 'SELECT count(*) AS n FROM store_transaction_results'),
       sum: balances(),
     });
-    assert.deepEqual(facts(), { notes: committed.notes, noteClaims: committed.notes, transferClaims: committed.transfers, hostClaims: 0, sum: 0 });
+    assert.deepEqual(facts(), { events: committed.notes, notes: committed.notes, noteClaims: committed.notes, transferClaims: committed.transfers, hostClaims: 0, sum: 0 });
 
     space.release();
     // The refused create and transfer, retried with their keys, now run for the first time (not replays).
@@ -181,31 +174,8 @@ test('a full store, audit or auth database answers a documented refusal, writes 
     assert.equal(retriedMove.status, 200); assert.equal(retriedMove.replayed, false);
     assert.equal(twoNotes(), 'both');
     committed.notes += 3; committed.transfers += 1;
-    assert.deepEqual(facts(), { notes: committed.notes, noteClaims: committed.notes - 2, transferClaims: committed.transfers, hostClaims: 1, sum: 0 });
+    assert.deepEqual(facts(), { events: committed.notes, notes: committed.notes, noteClaims: committed.notes - 2, transferClaims: committed.transfers, hostClaims: 1, sum: 0 });
     t.diagnostic(`store full after ${refused} creates and ${moved} transfers; recovered`);
-  });
-
-  await t.test('audit.sqlite full: record() answers 503 audit_unavailable, store events wait in the outbox, then drain once', async () => {
-    const outbox = () => count(files.store, 'SELECT count(*) AS n FROM store_audit_outbox');
-    await until('the outbox to drain', () => outbox() === 0, 20_000);
-    const logged = () => count(files.audit, 'SELECT count(*) AS n FROM audit_events');
-    const space = fill(files.audit);
-    // A direct record() of a batch is refused whole: no event of it is stored.
-    const event = (index: number) => ({ id: randomUUID(), source: 'diskfull', action: 'diskfull.recorded', actor: 'operator', subject: `batch-${index}`, at: Date.now() });
-    const before = logged();
-    await assert.rejects(audit.exports.record(Array.from({ length: 50 }, (_, index) => event(index))), (error: unknown) => error instanceof AuditError && error.status === 503 && error.code === 'audit_unavailable');
-    assert.equal(logged(), before, 'a refused batch stores none of its events');
-    // Store writes on an audited collection still commit: their events wait in the store's outbox for the drain.
-    const writes: Answer[] = [];
-    for (let index = 0; index < 40; index++) writes.push(await call('POST', '/api/notes', { body: { title: `audited while full ${index}` } }));
-    assert.ok(writes.every(answer => answer.status === 201), show(writes));
-    committed.notes += writes.length;
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    assert.ok(outbox() > 0, 'the drain could not store the events, so they stay queued');
-    assert.equal(logged() + outbox(), before + writes.length, 'every event is queued or stored, none twice');
-    space.release();
-    await until('the drain to deliver the queued events', () => outbox() === 0, 20_000);
-    assert.equal(logged(), before + writes.length);
   });
 
   await t.test('auth.sqlite full: sign-in answers 503 auth_unavailable and stores no session, a signed-in route is never a false 401, then recovery', async () => {
@@ -231,14 +201,13 @@ test('a full store, audit or auth database answers a documented refusal, writes 
   });
 
   await t.test('afterwards: integrity_check is ok on every file and each committed change was audited once', async () => {
-    await until('the outbox to drain', () => count(files.store, 'SELECT count(*) AS n FROM store_audit_outbox') === 0, 20_000);
     while (closers.length) await closers.pop()!();
     for (const file of Object.values(files)) assert.equal(read<{ integrity_check: string }>(file, 'PRAGMA integrity_check').integrity_check, 'ok', file);
     assert.equal(balances(), 0);
-    const events = (action: string, collection: string) => count(files.audit, `SELECT count(*) AS n FROM audit_events WHERE action = '${action}' AND json_extract(metadata, '$.collection') = '${collection}'`);
+    const events = (action: string, collection: string) => count(files.store, `SELECT count(*) AS n FROM store_audit_events WHERE action = '${action}' AND json_extract(metadata, '$.collection') = '${collection}'`);
     assert.equal(events('store.record.created', 'notes'), committed.notes);
     assert.equal(events('store.record.created', 'accounts'), 3);
     assert.equal(events('store.record.transferred', 'accounts'), 2 * committed.transfers);
-    assert.equal(count(files.audit, 'SELECT count(*) - count(DISTINCT id) AS n FROM audit_events'), 0, 'no event stored twice');
+    assert.equal(count(files.store, 'SELECT count(*) - count(DISTINCT id) AS n FROM store_audit_events'), 0, 'no event stored twice');
   });
 });

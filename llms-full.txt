@@ -9,7 +9,7 @@
 > stored links as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; this revision is `0.6.5`. `function`/`middleware`
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
-> audit, auth, store and mcp extensions are add-ons released with core and pinned by
+> auth, store and mcp extensions are add-ons released with core and pinned by
 > it; a site adds them with `urlcode extensions add <name>`. Only core is published to npm.
 <!-- urlcode-current-version:end -->
 
@@ -52,23 +52,22 @@ This file bundles exactly the pages listed under Contents, and nothing else. It 
 
 Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
 
-One page for people and AI agents. It says what the five workspace packages are, how a
+One page for people and AI agents. It says what the four workspace packages are, how a
 project grows from a handful of redirects into an application with accounts,
 data and tools, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-### Five workspace packages, one project shape
+### Four workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
-| `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract | `urlcode.yaml` with `version: "1"` |
-| `@jimhoyd/urlcode-audit` | [`packages/audit`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
+| `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract (the audit event contract and its tap included) | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
-| `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount |
+| `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes in the store's own audit log, in the transaction of each write, and `StoreExports.audit` is the tap a sink forwards them through | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All five are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The four extensions, and the inert `store-schema` artifact in
+All four are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The three extensions, and the inert `store-schema` artifact in
 [`artifacts/store-schema`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
@@ -157,10 +156,9 @@ above (see [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/do
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 6 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
-operator host. Auth and audit additionally need the Node/SQLite
-runtime their packages document; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
+operator host. Auth additionally needs the Node/SQLite
+runtime its package documents; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
 self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md),
-[audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md),
 [store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md),
 [mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md)) for the exact requirement.
 
@@ -275,19 +273,21 @@ call, for example `auth({signUp: true})`.
 The whole graph, as each extension declares it:
 
 ```
-audit    requires []
 auth     requires []
-store    requires []                  uses [audit]
+store    requires []
 mcp      requires []
 ```
 
 A `requires` entry must be installed and declared; a `uses` entry is optional,
-and the extension works without it (store refuses only a collection that asks
-for `audit: true` when audit is absent).
+and the extension works without it. The name is the role: an independent
+package may provide `auth`, `store` or another first-party name while the
+first-party package of that name is not installed (for example an owner's own
+`audit` sink that `requires: [store]` and pulls the store's audit tap, see
+[STORE.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes)).
 
 Treat that composition as one application with package ownership boundaries. Keep accounts, passwords and sessions in
 Better Auth behind the auth extension, roles and permissions in the
-application's own data, the durable log in audit and email delivery in the
+application's own data, the audit log in the store and email delivery in the
 application's own function code, through the provider's library, and the
 frontend, its components and styling in the application's own source.
 Apply product differences through the installed extensions' declared authoring
@@ -311,7 +311,7 @@ Activation likewise carries the canonical `origin` and the operator's full
 origins ([site origins](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks)).
 A SQLite-backed extension refuses a network filesystem and a second serving
 process through core's `refuseNetworkFilesystem` and `holdServerLock`, an OS
-lock on a file beside its own database, so store, auth and audit enforce one
+lock on a file beside its own database, so store and auth enforce one
 rule: one serving process per database ([request helpers](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
@@ -923,7 +923,7 @@ body that names it.
 | Write or change routes | [YAML guide](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md), [field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-REFERENCE.md), [cookbook](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/examples/cookbook/README.md) |
 | Configure an extension: every key it accepts | [extension field references](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
 | Add accounts | [auth README](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md), [auth security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md) |
-| Audit log | [audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md) |
+| Audit log | [audited writes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes) |
 | Rate limits, email | [`policies.throttle`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md), [contact-form recipe](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/recipes/contact-form/README.md) |
 | Build the frontend | [private-requests client](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js), [what the caller may run](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#what-the-caller-may-run), [staging source assets](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#staging-source-assets) |
 | Write an extension | [extensions](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md), [authoring rules](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#generic-add-on-authoring-rules) |
@@ -4883,8 +4883,8 @@ network authority under changed behavior.
 Source: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
 
 Extensions are trusted operator modules, separate from a project's own
-`function`/`middleware` code. The first-party extensions (`audit`,
-`auth`, `store`, `mcp`) are workspace packages in this repository
+`function`/`middleware` code. The first-party extensions (`auth`,
+`store`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
 a package: the operator's `host.mjs` does that (see
@@ -4900,11 +4900,9 @@ The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See
 [data store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md).
 
-The `audit` extension serves no route and exists for other extensions to use
-through its typed exports. It is the durable audit log: a producer (every store
-collection with `audit: true`) writes each event into its own outbox in the
-same transaction as the change it records, and audit drains the outboxes into
-one bounded SQLite log ([audit log](#audit-log)).
+The store also keeps the audit log: a collection with `audit: true` records
+each write's event in the store database, in the same transaction as the
+change ([audit log](#audit-log)).
 
 No extension renders or processes forms. A form is an ordinary frontend that
 posts JSON to a store mount, or to a route whose `request.body.POST.schema`
@@ -5348,8 +5346,7 @@ invocation. The first-party `auth` extension declares one capability,
 id as `context.capabilities.auth.identity.userId`, and a `sandbox: true` route
 cannot name `auth`. The core fixture `test/extension-capability.test.ts` proves
 the seam with a synthetic, non-first-party provider; naming the specific store
-and audit operations an application can reach this way is a later, separate
-decision for each package.
+operations an application can reach this way is a later, separate decision.
 
 `urlcode explain` and `urlcode report` show the capabilities a registration
 declares on every route that names it (`handler receives
@@ -5383,7 +5380,8 @@ token outlives sign-out until it expires). Its protected routes say
 `policies.extensions.authjs`, and `urlcode openapi` and `urlcode review` treat
 `authjs` as the sign-in gate. Capability names stay provider-specific: its
 handlers read `context.capabilities.authjs.identity`. An independent package
-still cannot name itself `auth`, a reserved first-party catalog name.
+may also name itself `auth` while the first-party `auth` is not installed
+([a name is a role](#audit-log)).
 
 #### Request context: route env and request id
 
@@ -5569,7 +5567,7 @@ string or key in a parsed value holds an unpaired surrogate, and
 error that names the argument (the MCP extension answers `-32602` with it).
 
 An extension that keeps a SQLite database is served by one process. The
-store, auth and audit share these helpers
+store and auth share these helpers
 ([one serving process per database](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database)):
 
 | Helper | What it does |
@@ -6216,7 +6214,7 @@ check it against core's pin.
 
 The first-party add-ons are:
 
-- Extensions: `audit`, `auth`, `store`, `mcp`.
+- Extensions: `auth`, `store`, `mcp`.
 - Artifacts: `store-schema`, the `store` extension's configuration schema and an
   example configuration. Its schema is generated from the store extension's
   definition by `npm run build:addons`, so the two cannot drift.
@@ -6426,8 +6424,8 @@ package was downloaded and extracted but never run: every npm call passes
 command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
-on `/api/todos` (per-user `ownership: owner` when `auth` is installed); audit,
-auth and mcp ship none.
+on `/api/todos` (per-user `ownership: owner` and `audit: true` when `auth` is
+installed); auth and mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
 the `store` example without `auth` would expose public write on its collection. The refusal
@@ -6591,7 +6589,8 @@ against its descriptor's schemas, and `remove` takes it out by name.
 
 `add` refuses a package with no valid extension descriptor, a descriptor of
 kind `artifact`, a descriptor or definition built for another
-[extension contract](#the-extension-contract), a name that a first-party add-on of this core already has,
+[extension contract](#the-extension-contract), a first-party name while that
+first-party add-on is installed ([a name is a role](#audit-log)),
 a `@jimhoyd/urlcode*` package (those install from core's pins), two installed
 packages providing the same name, an independent extension whose
 `requires` are not installed, and any package that brings a nested copy of
@@ -6614,9 +6613,7 @@ Each extension declares what it needs:
 
 | Extension | `requires` | `uses` (optional) | Contributes to |
 |---|---|---|---|
-| `audit`, `mcp` | none | none | |
-| `auth` | none | none | |
-| `store` | none | `audit` | |
+| `auth`, `mcp`, `store` | none | none | |
 
 A sibling add-on is an optional exact peer dependency, never a nested
 dependency, so every add-on is installed once at the top level of the site;
@@ -6639,27 +6636,41 @@ exports nothing to other extensions; it reaches them only through the
 
 | Export | From | Read by |
 |---|---|---|
-| `AuditExports` | `audit` | producers (`attach` an outbox, `validate` an event; the store's audited collections) and readers (`query`, `record`) |
-| `StoreExports` | `store` | no first-party reader: an ownership-honouring records API for an operator's own extension |
+| `StoreExports` | `store` | no first-party reader: an ownership-honouring records API and the audit log's tap (`audit`) for an operator's own extension |
 
 Two copies of one extension cannot exist in a site, so duplicate-instance bugs
 cannot happen.
 
 #### Audit log
 
-The `audit` extension keeps the one durable log of privileged actions. Its
-guarantee: an event is written into the producer's own outbox in the same
-transaction as the change it records (the `audit` array of an audited store
-collection's data file), so a change and its
-event are stored together or not at all. Audit drains every attached outbox
-into `data/audit.sqlite` while the host runs, at least once and deduplicated by
-event id, so nothing is lost across a crash. A producer fails closed: when its
-outbox reaches its cap (`auditOutboxLimits`: 1000 per store collection) the
-write answers 503 until audit catches up. The log keeps the newest `retention`
-events (default 100000). Events carry names, ids and field names, never
-submitted values or secrets. Operators read the log with `urlcode-audit list`.
-See the [audit package](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md)
-and its [security notes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/SECURITY.md).
+The store keeps the one durable log of privileged actions. A collection that
+declares `audit: true` records each write's event as a row of the store
+database, in the same transaction as the change, so an event exists exactly
+when its change committed. The newest `auditRetention` events are kept
+(default 100000). Events carry names, ids and field names, never submitted
+values or secrets. Operators read the log with `urlcode-store audit`; it is in
+every `urlcode-store backup`. See [audited writes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes).
+
+The event contract is core's: `@jimhoyd/urlcode/extensions` exports the event
+types, `validateAuditEvent`, `validateAuditQuery`, `AuditError`, `auditLimits`
+and the `AuditTap`, `AuditLog`, `AuditEvent`, `AuditStoredEvent`, `AuditQuery`
+and `AuditPage` types. `StoreExports.audit` is an `AuditLog`: an extension that
+`requires: [store]` forwards events anywhere by calling `peek(limit)`, writing
+the batch, then `ack(ids)`, at least once and deduplicated on the event id
+([forwarding events to a sink](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#forwarding-events-to-a-sink)). There
+is no first-party audit extension: a first-party sink would add a second
+database, a drain and a delivery guarantee to maintain, while the tap lets an
+owner forward to the destination they want in a few lines.
+
+**A name is a role.** Such a sink may be named `audit`. An independent package
+whose `urlcode.json` names itself `audit`, `store`, `auth` or any other
+first-party name installs with `urlcode extensions add <spec>` while the
+first-party package of that name is not installed, and stands in for it. While
+the first-party one is installed, `add` refuses the stand-in (`Refusing <pkg>:
+it names itself <name>, and the first-party <name> is installed; remove it
+first`); while a stand-in provides the name, `urlcode extensions add <name>`
+refuses the first-party one (`Refusing <name>: <pkg> provides <name>; remove it
+first`).
 
 #### Rate limits
 
@@ -7154,10 +7165,9 @@ Two distinctions hold throughout:
 
 | Extension | What it declares | Peers | Described fields | Field reference |
 |---|---|---|---|---|
-| `audit` | Durable, bounded audit log other extensions record privileged actions into | — | config 1 | [@jimhoyd/urlcode-audit](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md#field-reference) |
 | `auth` | Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id | — | config 0 | [@jimhoyd/urlcode-auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#field-reference) |
 | `mcp` | Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers | — | config 43 | [@jimhoyd/urlcode-mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#field-reference) |
-| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | uses audit | config 63 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference) |
+| `store` | SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code | — | config 64 | [@jimhoyd/urlcode-store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference) |
 <!-- extension-reference:end -->
 
 ### Capability to reference
@@ -7175,7 +7185,7 @@ full definition and a checked example live.
 | A permission such as "reviewer" | store: a `membership: true` collection keyed by principal id, named by a transition's `members` or a collection's `readers: {<name>: {mount, members}}`; the operator adds members with `addMember` | [membership gates](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) |
 | Sign-in and protected routes | auth: mount Better Auth at `/api/auth/*` with `extension: auth`; `auth: true` on a protected route; the function reads `context.capabilities.auth.identity.userId` | [auth extension guide](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md), [private-requests proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md) |
 | Submission rate limits | core: `policies.throttle` on the route; sign-in is throttled by Better Auth's own limiter, keyed by the admitted client address | [policies](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md), [auth security model](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md) |
-| An audit trail of writes | audit: `retention`; store: `audit: true` on a collection | [audit field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit/README.md#field-reference) |
+| An audit trail of writes | store: `audit: true` on a collection, `auditRetention` | [store field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md#field-reference), [audited writes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes) |
 | A frontend over the store's JSON mounts | your own code: `fetch` to the mounts, reading a list's `etags` and `may`; styling and components are the app's (for shadcn, the official tooling plus `urlcode artifacts stage`) | [the private-requests client](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js), [what the caller may run](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#what-the-caller-may-run) |
 | MCP tools, resources and prompts | mcp: `servers.<name>` with `tools`, each backed by a trusted handler module | [mcp field reference](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md#field-reference) |
 

@@ -1,53 +1,25 @@
 /**
- * The operator step for records that carry no owner on an `ownership: owner` collection (urlcode#331): records
- * written while the collection was still declared shared. An owned collection serves a record only to the principal
- * stamped on it, so such a record is served to nobody. The store never guesses an owner for it: the operator reports
- * such records and then either assigns them to one named principal or deletes them.
- *
- * Every command here is one SQLite transaction on its own connection to the store database, so it is safe to run
- * while the server is serving: the server reads the database on every request and sees the change on its next one.
- * The report only reads the database; assigning and deleting take the project's declared collections, to know that
- * the collection is owned and whether it is audited. Re-validation against the declared fields happens, as always,
- * when the store next activates.
- *
- * `reassignOwner` (urlcode#732) is the other operator step: it moves every record one principal owns to another (a
- * revoked or rotated API key's `apikey:<id>` to its replacement or to a user), and moves the principal's membership
- * in every membership collection with them (#866). It needs the declared collections to know which are owned or
+ * `reassignOwner` (urlcode#732), the operator step that moves every record one principal owns to another (a revoked
+ * or rotated API key's `apikey:<id>` to its replacement or to a user), and the principal's membership in every
+ * membership collection with them (#866). It needs the declared collections to know which are owned or
  * membership lists and each one's `maxRecordsPerOwner`, and is refused as a whole rather than leaving any principal
- * over its limit.
+ * over its limit. It is one SQLite transaction on its own connection to the store database, so it is safe to run
+ * while the server is serving: the server reads the database on every request and sees the change on its next one.
  *
- * Audit (#875): on a collection declared `audit: true`, every record an operator command moves or deletes writes one
- * outbox event in the same transaction, with the actor `operator` or the operator's `--actor` (operator-asserted, not
- * authenticated): `store.record.reassigned` (subject `<collection>/<id>`, metadata `{collection, from?, to}`, the
- * opaque principal ids as membership events carry them; `from` is absent for a record that had no owner) or
- * `store.record.deleted` (metadata `{collection, ownerless: true}`). The counts are known before anything is written,
- * so a change that would take a collection's outbox past its backlog (`AUDIT_BACKLOG` events waiting) is refused
- * whole with 503 `audit_backlog`, a dry run included, and nothing is written. One command can therefore change at most
- * `AUDIT_BACKLOG` records of one audited collection.
+ * Audit (#875): on a collection declared `audit: true`, every record it moves writes one event into the store's audit
+ * log in the same transaction, with the actor `operator` or the operator's `--actor` (operator-asserted, not
+ * authenticated): `store.record.reassigned` (subject `<collection>/<id>`, metadata `{collection, from, to}`, the opaque
+ * principal ids as membership events carry them). The count is known before anything is written, so a move that would
+ * record more events than `auditRetention` keeps (and so prune its own) is refused whole, a dry run included.
  */
 import { isAbsolute } from 'node:path';
-import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
-import { AUDIT_BACKLOG, StoreError, declarationFingerprint, membershipEvent, normalize, operatorFence, overlapping, refuseBalance, stamp, writeAuditEvent } from './collection.ts';
-import type { CollectionSpec, NormalizedSpec, StoredRecord } from './collection.ts';
-import { auditValidator, operatorActor } from './membership.ts';
-import { auditDelivery, openStoreDatabase } from './database.ts';
-import type { AuditDelivery, StoreDatabase } from './database.ts';
-
-const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
-
-/** On an `audit: true` collection, assigning and deleting also report the outbox delivery status (`AuditDelivery`). */
-export type OwnerlessReport = { collection: string; records: number; ownerless: number; ids: string[] } & Partial<AuditDelivery>;
-export interface OwnerlessOptions {
-  /** The project's declared store collections (`extensions.store.config.collections`). */
-  collections: Record<string, CollectionSpec>;
-  /** The project's named schemas (`loadDocument(project).schemas`), which a collection's `schema: <name>` resolves against. */
-  schemas?: Readonly<Record<string, unknown>>;
-  /** A declared collection with `ownership: owner`. */
-  collection: string;
-  /** The audit actor recorded on an `audit: true` collection (a principal id; default `operator`). Operator-asserted, not authenticated. */
-  actor?: string;
-}
+import { declarationFingerprint, membershipEvent, normalize, operatorFence, overlapping, stamp } from './collection.ts';
+import type { CollectionSpec, NormalizedSpec } from './collection.ts';
+import { AUDIT_RETENTION, recordAuditEvent } from './audit.ts';
+import { operatorActor } from './membership.ts';
+import { openStoreDatabase } from './database.ts';
+import type { StoreDatabase } from './database.ts';
 
 /** Opens an existing store database (never creates one), runs `work` in one write transaction and closes it. */
 async function transaction<T>(database: string, work: (db: StoreDatabase) => T): Promise<T> {
@@ -55,88 +27,20 @@ async function transaction<T>(database: string, work: (db: StoreDatabase) => T):
   const db = await openStoreDatabase(database, { create: false });
   try { return db.transaction(() => work(db)); } finally { db.close(); }
 }
-function named(collection: string): string { if (typeof collection !== 'string' || !NAME.test(collection)) throw new Error('Collection name is not valid'); return collection; }
 const total = (db: StoreDatabase, collection: string): number => db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ?', collection)!.n;
-const ownerlessIds = (db: StoreDatabase, collection: string): string[] => db.all<{ id: string }>('SELECT id FROM store_records WHERE collection = ? AND owner IS NULL ORDER BY seq', collection).map(row => row.id);
 const ownedIds = (db: StoreDatabase, collection: string, owner: string): string[] => db.all<{ id: string }>('SELECT id FROM store_records WHERE collection = ? AND owner = ? ORDER BY seq', collection, owner).map(row => row.id);
 
-type Validate = (value: unknown) => AuditEvent;
 /**
- * Refuses, before anything is written, giving `from`'s records (the ownerless ones when `from` is null) to `to` on a
- * collection whose `intervals` constrain each owner's records (`scope: owner`) when that would leave `to` holding two
- * overlapping intervals (#902). A `scope: collection` constraint does not depend on the owner, so a move keeps it.
+ * Refuses, before anything is written, giving `from`'s records to `to` on a collection whose `intervals` constrain
+ * each owner's records (`scope: owner`) when that would leave `to` holding two overlapping intervals (#902). A `scope: collection` constraint does not depend on the owner, so a move keeps it.
  */
-function refuseOverlap(db: StoreDatabase, collection: string, spec: NormalizedSpec, from: string | null, to: string): void {
+function refuseOverlap(db: StoreDatabase, collection: string, spec: NormalizedSpec, from: string, to: string): void {
   if (spec.intervals?.scope !== 'owner') return;
   const pair = overlapping(db, spec.intervals, { from, to });
   if (pair) throw new Error(`Nothing was moved: collection ${collection} would give ${to} records ${pair[0]} and ${pair[1]}, whose intervals overlap, which its intervals refuse. Move or delete one of them first.`);
 }
-/**
- * Refuses, before anything is written, a change that would record `planned` events in a collection past its backlog:
- * the same 503 `audit_backlog` a write at the cap answers, by the same count `writeAuditEvent` checks per event.
- */
-function assertBacklog(db: StoreDatabase, planned: ReadonlyMap<string, number>): void {
-  for (const [collection, events] of planned) {
-    if (!events) continue;
-    const waiting = db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', collection)!.n;
-    if (waiting + events <= AUDIT_BACKLOG) continue;
-    const advice = events > AUDIT_BACKLOG ? 'One command cannot record that many; change fewer records at a time.' : 'Let the serving process\'s audit drain deliver them, then run it again.';
-    throw new StoreError(503, 'audit_backlog', `Nothing was changed: collection ${collection} would record ${events} audit events with ${waiting} already waiting, over its audit backlog of ${AUDIT_BACKLOG}. ${advice}`);
-  }
-}
-const reassignedEvent = (collection: string, id: string, from: string | undefined, to: string, actor: string) =>
-  ({ action: 'store.record.reassigned', actor, subject: `${collection}/${id}`, metadata: { collection, ...(from === undefined ? {} : { from }), to } });
-
-/** The declared `ownership: owner` collection an ownerless command names, and audit's validator when it is audited. */
-async function ownedCollection(options: OwnerlessOptions): Promise<{ collection: string; spec: NormalizedSpec; validate: Validate | undefined; actor: string }> {
-  if (!options?.collections || typeof options.collections !== 'object') throw new Error('The project declares no store collections');
-  const collection = named(options.collection), actor = operatorActor(options.actor);
-  if (!Object.hasOwn(options.collections, collection)) throw new Error(`Collection ${collection} is not declared`);
-  const spec = normalize(collection, options.collections[collection]!, options.schemas);
-  if (spec.ownership !== 'owner') throw new Error(`Collection ${collection} is not declared with ownership: owner`);
-  return { collection, spec, validate: spec.audit ? await auditValidator(collection) : undefined, actor };
-}
-
-/** Counts (and lists the ids of) a collection's records that carry no owner. Changes nothing. */
-export async function reportOwnerless(database: string, collection: string): Promise<OwnerlessReport> {
-  named(collection);
-  return transaction(database, db => { const ids = ownerlessIds(db, collection); return { collection, records: total(db, collection), ownerless: ids.length, ids }; });
-}
-/**
- * Stamps `owner` (a principal id, exactly as the principal provider sets it: for auth, the user id, or
- * `apikey:<key id>` for a bearer key) on every record that has none. Records that already have an owner are untouched.
- */
-export async function assignOwnerless(database: string, options: OwnerlessOptions & { owner: string }): Promise<OwnerlessReport> {
-  const owner = options?.owner;
-  if (typeof owner !== 'string' || !principalIdPattern.test(owner)) throw new Error('Owner must be a principal id: 1 to 128 ASCII letters, digits, ".", "_", ":" or "-", starting with a letter or digit');
-  const { collection, spec, validate, actor } = await ownedCollection(options);
-  return transaction(database, db => {
-    operatorFence(db, collection, declarationFingerprint(spec));
-    const ids = ownerlessIds(db, collection);
-    if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
-    refuseOverlap(db, collection, spec, null, owner);
-    db.run('UPDATE store_records SET owner = ? WHERE collection = ? AND owner IS NULL', owner, collection);
-    if (validate) for (const id of ids) writeAuditEvent(db, collection, validate, reassignedEvent(collection, id, undefined, owner, actor));
-    return { collection, records: total(db, collection), ownerless: 0, ids, ...(validate ? auditDelivery(db, [collection], Date.now()) : {}) };
-  });
-}
-/**
- * Deletes every record that has no owner. Records that have one are untouched. On a collection declaring `transfers`,
- * one ownerless record still holding a balance refuses the whole command (409 `balance_not_zero`, #928) and nothing is
- * deleted: assign the records first and transfer the balance out.
- */
-export async function deleteOwnerless(database: string, options: OwnerlessOptions): Promise<OwnerlessReport> {
-  const { collection, spec, validate, actor } = await ownedCollection(options);
-  return transaction(database, db => {
-    operatorFence(db, collection, declarationFingerprint(spec));
-    const ids = ownerlessIds(db, collection);
-    if (Object.keys(spec.transfers).length) for (const row of db.all<{ data: string }>('SELECT data FROM store_records WHERE collection = ? AND owner IS NULL ORDER BY seq', collection)) refuseBalance(spec, JSON.parse(row.data) as StoredRecord);
-    if (validate) assertBacklog(db, new Map([[collection, ids.length]]));
-    db.run('DELETE FROM store_records WHERE collection = ? AND owner IS NULL', collection);
-    if (validate) for (const id of ids) writeAuditEvent(db, collection, validate, { action: 'store.record.deleted', actor, subject: `${collection}/${id}`, metadata: { collection, ownerless: true } });
-    return { collection, records: total(db, collection), ownerless: 0, ids, ...(validate ? auditDelivery(db, [collection], Date.now()) : {}) };
-  });
-}
+const reassignedEvent = (collection: string, id: string, from: string, to: string, actor: string) =>
+  ({ action: 'store.record.reassigned', actor, subject: `${collection}/${id}`, metadata: { collection, from, to } });
 
 const principalMessage = (flag: string) => `${flag} must be a principal id: 1 to 128 ASCII letters, digits, ".", "_", ":" or "-", starting with a letter or digit`;
 export interface ReassignCollectionReport { collection: string; moved: number; toBefore: number; toAfter: number; maxRecordsPerOwner: number | null }
@@ -147,9 +51,8 @@ export interface ReassignCollectionReport { collection: string; moved: number; t
 export interface ReassignMembershipReport { collection: string; toWasMember: boolean }
 /**
  * `auditEvents`: how many audit events the move records (or, on a dry run, would record) across the audited collections.
- * When it records any (not on a dry run), the report also carries the outbox delivery status of those collections.
  */
-export type ReassignReport = { from: string; to: string; dryRun: boolean; moved: number; auditEvents: number; collections: ReassignCollectionReport[]; memberships: ReassignMembershipReport[] } & Partial<AuditDelivery>;
+export interface ReassignReport { from: string; to: string; dryRun: boolean; moved: number; auditEvents: number; collections: ReassignCollectionReport[]; memberships: ReassignMembershipReport[] }
 export interface ReassignOptions {
   /** The principal id the records belong to now, exactly as stored (`apikey:<key id>`, a user id, ...). */
   from: string;
@@ -165,13 +68,15 @@ export interface ReassignOptions {
   dryRun?: boolean;
   /** The audit actor recorded on `audit: true` collections (a principal id; default `operator`). Operator-asserted, not authenticated. */
   actor?: string;
+  /** The project's `auditRetention` (default 100000): the audit log is pruned to it after the move's events. */
+  auditRetention?: number;
 }
 
 /**
  * Moves every record owned by `from` to `to` in the owned collections (or the one named), and `from`'s membership in
  * the membership collections, in one transaction. Counts are computed for every affected collection first; when any
- * move would leave `to` holding more than that collection's `maxRecordsPerOwner`, or would take an audited
- * collection's outbox past its backlog, the whole operation is refused, naming the collection, and nothing is written.
+ * move would leave `to` holding more than that collection's `maxRecordsPerOwner`, or would record more audit events
+ * than `auditRetention` keeps, the whole operation is refused, naming the collection, and nothing is written.
  * Otherwise every change commits together with its audit events: a failure part-way (a full disk, a lock held past
  * the busy timeout) rolls back all of it, so no collection is ever left moved while another is not. On an audited
  * owned collection each moved record is recorded as `store.record.reassigned`; on an audited membership collection
@@ -193,8 +98,7 @@ export async function reassignOwner(database: string, options: ReassignOptions):
   }
   if (!selected.length) throw new Error('The project declares no collection with ownership: owner or membership: true');
   const lists = selected.filter(entry => entry.spec.membership);
-  const audited = selected.find(entry => entry.spec.audit);
-  const validate = audited ? await auditValidator(audited.name) : undefined;
+  const retention = options.auditRetention ?? AUDIT_RETENTION.default;
   const specOf = (name: string) => selected.find(entry => entry.name === name)!.spec;
   return transaction(database, db => {
     for (const { name, spec } of selected) operatorFence(db, name, declarationFingerprint(spec));
@@ -213,8 +117,8 @@ export async function reassignOwner(database: string, options: ReassignOptions):
     const planned = new Map<string, number>();
     for (const report of collections) if (specOf(report.collection).audit) planned.set(report.collection, report.moved);
     for (const report of memberships) if (specOf(report.collection).audit) planned.set(report.collection, report.toWasMember ? 1 : 2);
-    assertBacklog(db, planned);
     const auditEvents = [...planned.values()].reduce((sum, events) => sum + events, 0);
+    if (auditEvents > retention) throw new Error(`Nothing was moved: the move would record ${auditEvents} audit events, more than the audit log keeps (auditRetention ${retention}), so it would prune its own. Move fewer records at a time (--collection), or raise auditRetention.`);
     const report = { from, to, dryRun: options.dryRun === true, moved: collections.reduce((sum, item) => sum + item.moved, 0), auditEvents, collections, memberships };
     if (options.dryRun) return report;
     // Membership: `from`'s entry becomes `to`'s (the key column and the key field together), or goes when `to` already
@@ -224,17 +128,16 @@ export async function reassignOwner(database: string, options: ReassignOptions):
       if (item.toWasMember) db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', item.collection, row.id);
       else db.run('UPDATE store_records SET key = ?, updated_at = ?, data = json_set(data, ?, ?) WHERE collection = ? AND id = ?', to, stamp(row.updated_at), `$.${spec.key!}`, to, item.collection, row.id);
       if (spec.audit) {
-        writeAuditEvent(db, item.collection, validate!, membershipEvent(item.collection, 'removed', from, actor));
-        if (!item.toWasMember) writeAuditEvent(db, item.collection, validate!, membershipEvent(item.collection, 'added', to, actor));
+        recordAuditEvent(db, membershipEvent(item.collection, 'removed', from, actor), retention);
+        if (!item.toWasMember) recordAuditEvent(db, membershipEvent(item.collection, 'added', to, actor), retention);
       }
     }
     for (const item of collections) {
       if (!item.moved) continue;
       const ids = specOf(item.collection).audit ? ownedIds(db, item.collection, from) : [];
       db.run('UPDATE store_records SET owner = ? WHERE collection = ? AND owner = ?', to, item.collection, from);
-      for (const id of ids) writeAuditEvent(db, item.collection, validate!, reassignedEvent(item.collection, id, from, to, actor));
+      for (const id of ids) recordAuditEvent(db, reassignedEvent(item.collection, id, from, to, actor), retention);
     }
-    const recorded = [...planned].filter(([, events]) => events > 0).map(([collection]) => collection);
-    return recorded.length ? { ...report, ...auditDelivery(db, recorded, Date.now()) } : report;
+    return report;
   });
 }

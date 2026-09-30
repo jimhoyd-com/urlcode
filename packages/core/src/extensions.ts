@@ -49,6 +49,12 @@ export type { ExtensionHttpErrorCode, ReadBodyOptions, SameOriginOptions } from 
  */
 export { holdServerLock, hostProbe, NETWORK_FILESYSTEMS, refuseNetworkFilesystem, serverLockHeld, serverLockPath } from './server-lock.ts';
 export type { HostProbe, ServerLock } from './server-lock.ts';
+/**
+ * The audit event contract (RIM-EXT-AUDIT-001): the event, its pure validator, the query, and the tap an audit log
+ * offers so a sink can forward its events. The store records and serves them; a sink named `audit` may consume them.
+ */
+export { AuditError, auditLimits, validateAuditEvent, validateAuditQuery } from './audit-events.ts';
+export type { AuditErrorCode, AuditEvent, AuditLog, AuditPage, AuditQuery, AuditStoredEvent, AuditTap, AuditValue, NormalizedAuditQuery } from './audit-events.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**

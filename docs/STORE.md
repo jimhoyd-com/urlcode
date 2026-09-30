@@ -86,9 +86,10 @@ declares the `todos` collection `ownership: owner`, so each signed-in user sees
 and changes only their own todos ([per-record ownership](#per-record-ownership));
 no acknowledgement is needed. `auth: true` admits the API's JSON writes with the
 session cookie and same-origin provenance, and refuses a cross-origin write with
-`403`. When `audit` is installed too, the example collection also declares
-`audit: true` ([audited writes](#audited-writes)). Without `auth` the example
-collection stays shared, because there is no principal to own a record.
+`403`. The example collection also declares `audit: true`, so every write is
+recorded in the store's own [audit log](#audited-writes). Without `auth` the
+example collection stays shared and unaudited, because there is no principal
+to own a record or to name in an event.
 
 Without `auth` the mount would be a public writable endpoint, so adding `store`
 refuses, rolls back, and names the two ways forward: add
@@ -452,8 +453,7 @@ requests:
   own rules: a transfer still moves a locked wallet's balance, and
   `submit`/`withdraw` are how the owner leaves and re-enters `draft`. A
   [short link](#bounded-keyed-transitions)'s click count, which the store keeps
-  on a redirect, and the operator's `urlcode-store ownerless-delete` are not
-  gated. A counter that must keep counting on a locked record (views on a
+  on a redirect, is not gated. A counter that must keep counting on a locked record (views on a
   published post) belongs in a collection that does not declare `editable`.
 - **The hint.** On a collection declaring either, a record's `GET`/`HEAD` and
   the answer to its `PUT`/`PATCH` carry `Allow` with the methods it takes now
@@ -528,14 +528,10 @@ still has no roles, and `auth` gains none.
   metadata `{collection}` and the actor of the change: `operator` (or the
   command's [`--actor`](#operator-attribution)) for `urlcode-store members`
   and `reassign`, or the principal a `StoreExports` caller passed
-  (`anonymous` for `null`). Whichever path makes the change, the
-  event is inserted into the outbox **in the same transaction** as the member
-  row, so a grant or revocation and its event commit or roll back together; at
-  the backlog cap the change is refused with `503 audit_backlog`. The operator
-  command validates the event with audit's own validator and needs the audit
-  package installed beside the store; the serving process's audit drain picks
-  the event up on its next poll (within a second), because nothing in the CLI
-  can wake it. *Why this shape:* the audited-write path already guarantees
+  (`anonymous` for `null`). Whichever path makes the change, the event is
+  written to the store's [audit log](#audited-writes) **in the same
+  transaction** as the member row, so a grant or revocation and its event
+  commit or roll back together. *Why this shape:* the audited-write path already guarantees
   "the change and its event together", and every path that changes membership
   (the CLI, the library functions and `StoreExports`) goes through it. Having
   only the CLI write events would miss changes made by trusted extension code
@@ -1057,8 +1053,8 @@ collections:
   180 µs without it; the check is not what a write pays for.
 - **Activation and operator commands.** Activation refuses stored records that
   break the rules or overlap, naming the two record ids, rather than serving
-  them. With `scope: owner`, `urlcode-store ownerless-assign` and
-  `urlcode-store reassign` (dry runs included) refuse, before anything is
+  them. With `scope: owner`, `urlcode-store reassign` (a dry run included)
+  refuses, before anything is
   written, a move that would give the target principal overlapping intervals.
   Changing the declaration changes the index: activation builds the new one
   and drops the one nobody declares any more.
@@ -1156,9 +1152,8 @@ Idempotency-Key: 5f0c...
   `422`, and `PUT` keeps the stored balance.
 - **Deleting.** A record still holding a nonzero amount cannot be deleted:
   `DELETE`, a host transaction's `remove` (the records export has no
-  delete) and the operator's `urlcode-store ownerless-delete` all answer
-  `409 balance_not_zero` and delete nothing (the operator command refuses as a
-  whole if any ownerless record holds a balance). The message names no amount.
+  delete) answer `409 balance_not_zero` and delete nothing. The message names
+  no amount.
   Transfer the balance to another record first; a record at `0` is deleted as
   usual. Together with the rules above, the sum over the collection is the
   same after every write, not only after every transfer.
@@ -1707,9 +1702,8 @@ notes:
   counted.
 - The counts are an indexed count of the principal's rows at create time;
   nothing extra is stored. Records with no owner (see below) count toward the
-  collection but toward no principal.
-  `ownerless-assign` can leave a principal above its limit, and lowering the
-  limit can too: the store still activates, the principal's existing records
+  collection but toward no principal. Lowering the limit can leave a principal
+  above it: the store still activates, the principal's existing records
   stay readable and changeable, and it cannot create more until it is back
   under the limit.
 
@@ -1718,31 +1712,9 @@ notes:
 Records written while a collection was shared carry no owner. After the
 collection is declared `ownership: owner` they are served to **nobody**: they
 are not listed, read, changed or deleted through the API, but they still count
-toward `maxRecords`. The store never guesses an owner. The operator reports
-them and then assigns them to one principal or deletes them. Each command is one
-transaction on its own connection to the database, so it may run while the
-server serves, which sees the change on its next request:
-
-```sh
-npx urlcode-store ownerless --database /srv/site/data/store.sqlite --collection notes
-npx urlcode-store ownerless-assign --database /srv/site/data/store.sqlite --project /srv/site/app \
-  --collection notes --owner <principal id>
-npx urlcode-store ownerless-delete --database /srv/site/data/store.sqlite --project /srv/site/app \
-  --collection notes
-```
-
-Each prints `{collection, records, ownerless, ids}` as JSON. `--owner` takes a
-principal id exactly as the provider sets it (for auth, the user's Better Auth
-id). Assigning and deleting read `--project` (the route project, as for
-`reassign`): the collection must be declared `ownership: owner`, and on an
-[audited](#audited-writes) collection each record they change is recorded
-(`store.record.reassigned` with metadata `{collection, to}`, or
-`store.record.deleted` with `{collection, ownerless: true}`), in the same
-transaction and within the [backlog](#operator-changes-in-the-audit-log). The
-same operations are exported from the package as
-`reportOwnerless(database, collection)`,
-`assignOwnerless(database, {collections, collection, owner, actor?})` and
-`deleteOwnerless(database, {collections, collection, actor?})`.
+toward `maxRecords`. The store never guesses an owner, and it has no command
+that assigns or deletes them: declare ownership before the collection holds
+records that must stay reachable, or keep it shared.
 
 Going back is refused: a collection declared shared whose database rows carry
 an owner fails activation, because serving them shared would hand every user's
@@ -1775,7 +1747,7 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   declared owned collection that holds no records yet has nothing to move and
   is left out of the report.
 - Only each record's owner changes. Records owned by anyone else, and records
-  with no owner (see below), are left alone.
+  with no owner, are left alone.
 - **Membership moves too** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
   In every [membership collection](#membership-gates-and-cross-owner-reads)
   that lists `--from`, its entry becomes `--to`'s (the key property and its
@@ -1797,11 +1769,11 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   naming the collection and the counts, and no collection is changed (a dry run
   is refused the same way). Delete or move some of `--to`'s records first, or
   raise the limit. `maxRecords` is unaffected, since no record is added.
-- It is one database transaction across every affected collection: all counts
-  and the audit backlog are checked, then every collection moves, and a failure
-  part-way (a full disk, a lock held past the busy timeout) rolls all of them
-  back, membership and every event included. Like the
-  `ownerless` commands it may run while the server serves.
+- It is one database transaction on its own connection across every affected
+  collection: all counts are checked, then every collection moves, and a
+  failure part-way (a full disk, a lock held past the busy timeout) rolls all
+  of them back, membership and every event included. It may run while the
+  server serves, which sees the change on its next request.
 - It does not touch `Idempotency-Key` retention, which is scoped by principal: a
   retry by `--to` with a key `--from` used is a new request, and a retry by
   `--from` of a write to a moved record replays as `404`.
@@ -1812,26 +1784,26 @@ declared `extensions.store.config.collections`.
 
 ## Audited writes
 
-A collection that declares `audit: true` records every write in the
-[audit log](EXTENSIONS.md#audit-log). It needs the `audit` extension installed
-and declared (the store `uses` it); without it, activation refuses:
-`collection <name> declares audit: true; install the audit extension (urlcode
-extensions add audit)`.
+A collection that declares `audit: true` records every write in the store's
+own audit log: rows of the store database, in the same transaction as the
+write. It needs no other extension.
 
-Audit's retention is one count shared by every audited collection, so writes
-that need no credentials must not be able to fill it. An audited collection's
-mount must therefore be guarded by a principal-providing policy (for example
-`auth: true`), or activation refuses: `Collection <name>: audit: true
-needs route <mount>/* guarded by a principal-providing policy`. A short-link
-click is never audited: it is anonymous and unthrottled, and the counter it
-bumps is not a privileged change.
+The log's retention is one count shared by every audited collection, so
+writes that need no credentials must not be able to fill it. An audited
+collection's mount must therefore be guarded by a principal-providing policy
+(for example `auth: true`), or activation refuses: `Collection <name>: audit:
+true needs route <mount>/* guarded by a principal-providing policy`. A
+[membership collection](#membership-gates-and-cross-owner-reads) has no mount
+(only operator commands and extension code change it), so it is audited
+without one. A short-link click is never audited: it is anonymous and unthrottled, and the
+counter it bumps is not a privileged change.
 
 ```yaml
 extensions:
-  audit: {version: "1", config: {}}
   store:
     version: "1"
     config:
+      auditRetention: 100000   # optional; the default
       collections:
         todos:
           mount: /api/todos
@@ -1851,24 +1823,111 @@ extensions:
 | `PUT` | `store.record.replaced` |
 | `PATCH` | `store.record.updated` |
 | `DELETE` | `store.record.deleted` |
-| increment (a keyed transition; never a short-link click) | `store.record.incremented` |
+| `POST <mount>/<id>/increment/<property>` (never a short-link click) | `store.record.incremented` |
+| [declared transition](#declared-transitions) | `store.record.transitioned` |
+| [declared transfer](#declared-transfers) | `store.record.transferred`, one per record |
+| membership added or removed | `store.membership.added` / `removed` ([membership](#membership-gates-and-cross-owner-reads)) |
+| [`reassign`](#moving-records-to-another-principal) | `store.record.reassigned` |
 
-Each event's subject is `<collection>/<id>` and its actor the request
-principal's id, or `anonymous` when the guarding policy set none. Its
-metadata is `{collection, fields}`: the names of the declared properties the write
-stored or changed, never their values, cut with `truncated: true` when the list
-would exceed audit's metadata bound.
+Each event's source is `store`, its subject `<collection>/<id>` and its actor
+the request principal's id, or `anonymous` when the guarding policy set none.
+Its metadata is `{collection, fields}`: the names of the declared properties
+the write stored or changed, never their values, cut with `truncated: true`
+when the list would exceed the event contract's metadata bound.
 
-The event is inserted into the store database's outbox table
-(`store_audit_outbox`) in the same transaction as the record, and audit drains
-it into its log while the host runs (oldest first across collections, deleted
-once audit has committed it). So a record and its event are stored together or
-not at all, and an event survives a crash until it is delivered. Audit keeps its
-own database: the store's transaction ends at its outbox, and delivery into the
-audit log is a separate, idempotent step (audit ignores an id it already
-holds). When 1000 events wait undelivered in one collection, the next write
-answers `503 audit_backlog` and changes nothing until audit catches up. Turning
-`audit` off keeps any undelivered events in the outbox.
+### Where the log is kept
+
+- **Atomic with the change.** The event is a row of `store_audit_events` in
+  `store.sqlite`, inserted in the write's own `BEGIN IMMEDIATE` transaction.
+  An event exists exactly when its change committed: a refused or rolled-back
+  write leaves neither, and there is no outbox, no delivery step and nothing
+  to catch up after a crash. A full disk refuses the write and its event
+  together (`503 storage_unavailable`).
+- **Retention.** `extensions.store.config.auditRetention` (an integer from
+  1,000 to 10,000,000, default 100,000) is how many of the newest events the
+  database keeps. Each audited write prunes older events in its own
+  transaction, whether or not a sink has forwarded them. The count is shared
+  by every audited collection and read on every activation.
+- **Backed up with the records.** [`urlcode-store backup`](#storage-and-concurrency-what-it-does-and-does-not-guarantee)
+  copies the log with everything else, and a restored database carries it.
+
+*Why the store keeps it.* A separate audit package once held the log in its
+own database, fed by an outbox the store drained into it. Everything that
+package did that remains useful now lives in core (the event contract,
+validation and query) and in the store (the log of record, retention, the
+CLI and backup). Keeping a first-party file sink would have kept a second
+database, a drain and a delivery guarantee to maintain, while
+[the tap](#forwarding-events-to-a-sink) lets an owner forward events to the
+destination they actually want in a few lines.
+
+### Reading the log
+
+```sh
+npx urlcode-store audit --database /srv/site/data/store.sqlite \
+  --action-prefix store.record --actor <principal id> --limit 100
+```
+
+It prints one page as JSON: `{events, next?, oldest?}`. Each event carries
+`id`, `source`, `action`, `actor`, `subject`, `at` (epoch milliseconds),
+`reason`, `metadata` and `seq` (its place in record order, an opaque decimal
+string). Pass `next` back as `--after` for the following page; `oldest` is the
+lowest retained `seq`, so an export can tell when pruning passed it. The
+filters are exact matches (`--source`, `--actor`, `--subject`, `--action`),
+`--action-prefix` (the action itself or any action under it), `--from` and
+`--to` (epoch milliseconds, inclusive), `--limit` (1 to 100, default 50) and
+`--order` (`asc`, record order, the default; or `desc`, newest first).
+
+The command opens the database read-only: it never creates or upgrades it,
+refuses one of another schema version (serve it once with this release to
+upgrade it), and may run beside the serving process. Extension code runs the
+same query through `StoreExports.audit.query(filter)`.
+
+### Forwarding events to a sink
+
+To send events elsewhere (a file, a log service, a SIEM), write a small
+extension that `requires: [store]` and reads the tap from
+`ctx.get('store').audit`. It is core's `AuditLog`:
+
+- `peek(limit)` (1 to 100) returns the oldest events not yet acknowledged, in
+  record order.
+- `ack(ids)` (at most 100 event ids) marks them forwarded and resolves with how
+  many it marked; unknown and already-forwarded ids are ignored.
+- `query(filter)` pages the log as `urlcode-store audit` does.
+
+Delivery is at least once: a sink that stops between writing a batch and
+acknowledging it sees the same events again, so it deduplicates on `id`. A
+sink must keep up within `auditRetention`; an event pruned before it was
+forwarded is gone. Every call rejects with a `503` `AuditError`, code
+`audit_inactive`, while the store is not active (`audit_unavailable` when the
+database fails); bad input is `400 invalid_audit_query`. The event types,
+`validateAuditEvent`, `validateAuditQuery`, `AuditError`, `auditLimits` and
+the `AuditTap`, `AuditLog`, `AuditEvent`, `AuditStoredEvent`, `AuditQuery` and
+`AuditPage` types come from `@jimhoyd/urlcode/extensions`, so a sink depends
+on core only.
+
+<!-- guidance-claims: ignore -->
+```js
+// the owner's own extension; it may be named audit
+import { defineExtension } from '@jimhoyd/urlcode/extensions';
+
+export default defineExtension({
+  name: 'audit', description: 'Forwards the store audit log', contract: 2,
+  targets: ['node'], requires: ['store'],
+  schema: { type: 'object', additionalProperties: false },
+  host(ctx) {
+    const tap = ctx.get('store').audit;
+    // in a loop: const batch = await tap.peek(100);
+    //   write batch to your destination, then
+    //   await tap.ack(batch.map(event => event.id));
+    return { registration: { /* ... */ } };
+  },
+});
+```
+
+A sink named `audit` is installed with `urlcode extensions add <spec>`
+([a name is a role](EXTENSIONS.md#audit-log)). The store's tests run such a
+sink against a served site as a conformance check
+([`packages/store/test/audit.test.ts`](../packages/store/test/audit.test.ts)).
 
 ### Operator changes in the audit log
 
@@ -1881,51 +1940,33 @@ collection too ([#866](https://github.com/jimhoyd-com/urlcode/issues/866),
 | `members add` / `members remove` | `store.membership.added` / `removed` (subject `<collection>/<principal id>`) | `{collection}` |
 | `reassign` (owned collection) | `store.record.reassigned` | `{collection, from, to}` |
 | `reassign` (membership collection) | `store.membership.removed`, then `added` unless `--to` already was a member | `{collection}` |
-| `ownerless-assign` | `store.record.reassigned` (no `from`: the record had no owner) | `{collection, to}` |
-| `ownerless-delete` | `store.record.deleted` | `{collection, ownerless: true}` |
 
 `from` and `to` are the opaque principal ids the provider set (never an email
 or a name), the same ids a request-made event carries as its actor and a
 membership event as its subject. They are the evidence of a move: who lost the
 records and who gained them.
 
-- **One event per record, bounded by the backlog.** Each command counts its
-  events before it writes anything. When they would take a collection past its
-  1000 undelivered events, the whole command is refused with the same
-  `503 audit_backlog` (on the command line, the message names the collection,
-  the events it needs and how many are waiting), a `--dry-run` included, and
-  nothing changes. So one command changes at most 1000 records of one audited
-  collection; with events already waiting, fewer. Wait for the serving
-  process's audit drain to deliver them and run it again.
 - **In the same transaction.** The records, the memberships and every event
-  commit or roll back together.
-- **Delivered by the serving process.** The CLI writes into the outbox; the
-  audit drain of a server running with audit delivers the events on its next
-  poll. While no such server runs, they wait in the outbox (and count toward
-  the backlog).
-- **Reported, with a warning when nothing is draining.** A command that
-  records events adds three fields to its JSON report: `undeliveredEvents`,
-  the events waiting in each audited collection it touched (its own
-  included); `lastAuditDrain`, when a serving process's drain last kept up
-  with the outbox (it acked events or found none waiting), or `null` if no
-  drain ever has; and `warning` when events are waiting and no drain has kept
-  up in the last 60 seconds. The drain records that time in the database at
-  most every 10 seconds, so a live server never trips the warning. A dry run,
-  and a collection without `audit: true`, add none of them. The warning is a
-  hint for the operator, not a delivery guarantee: start the server (or check
-  it is running) and its drain delivers the events.
+  commit or roll back together, and the command prunes the log to
+  `auditRetention` as a request does. The serving process needs nothing to
+  see them: they are rows of the database it already reads.
+- **Never past retention.** `reassign` counts its events before it writes
+  anything. When it would record more events than `auditRetention` keeps (and
+  so prune its own), the whole command is refused, a `--dry-run` included, and
+  nothing changes. Move fewer records at a time with `--collection`, or raise
+  `auditRetention`.
 
 ### Operator attribution
 
 Every command that changes records (`members add`, `members remove`,
-`reassign`, `ownerless-assign`, `ownerless-delete`) takes `--actor <principal
-id>`: the actor of the events it records. It defaults to `operator` and is
-validated like any principal id (1 to 128 ASCII letters, digits, `.`, `_`, `:`
-or `-`), refused unechoed otherwise; the library functions take it as
-`actor`. It is **operator-asserted, not authenticated**: whoever can run the
-command against the database can write any id there, so it records who the
-operator says made the change, not proof of it. Commands that change nothing
-(`ownerless`, `members list`, `backup`) refuse it.
+`reassign`) takes `--actor <principal id>`: the actor of the events it
+records. It defaults to `operator` and is validated like any principal id (1
+to 128 ASCII letters, digits, `.`, `_`, `:` or `-`), refused unechoed
+otherwise; the library functions take it as `actor`. It is
+**operator-asserted, not authenticated**: whoever can run the command against
+the database can write any id there, so it records who the operator says made
+the change, not proof of it. `members list` refuses it; `urlcode-store audit`
+takes `--actor` as a filter, not an attribution.
 
 ## Storage and concurrency: what it does and does not guarantee
 
@@ -1937,23 +1978,27 @@ operator says made the change, not proof of it. Commands that change nothing
   ([test data and seeds](READINESS.md#test-data-and-seeds)). It must be outside the project
   (checked after symlink resolution). Its directory is created `0700` and the
   file `0600`; a symlinked, hard-linked or group- or other-readable file is
-  refused. The store requires a SQLite with the fixes audit requires
-  too (3.44.6, 3.50.7, 3.51.3 or newer) and is Node only: its registration
+  refused. The store requires a SQLite with the fixes URLCode's SQLite stores
+  require (3.44.6, 3.50.7, 3.51.3 or newer) and is Node only: its registration
   declares `targets: ['node']`, so the aws and vercel targets refuse it before
   serving.
-- Every collection lives as rows of three shared tables, keyed by the
-  collection name: `store_records` (one row per record; the declared properties are
-  one JSON object, beside the `id`, timestamps, owner and unique key columns),
+- Every collection lives as rows of shared tables, keyed by the collection
+  name: `store_records` (one row per record; the declared properties are one
+  JSON object, beside the `id`, timestamps, owner and unique key columns) and
   `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
-  the request fingerprint, the status and the record id, never record values) and
-  `store_audit_outbox` (undelivered audit events), plus the one-row
-  `store_audit_drain` (when the audit drain last kept up, schema version 3),
-  `store_transaction_results` (retained
-  [host transaction](#host-transactions) keys and results; schema version 4)
-  and `store_declarations` (the [declaration fence](#one-serving-process-per-database):
-  each collection's served declaration fingerprint; schema version 5).
-  Schema version 6 dropped the previous release's `store_servers` lease table
-  and drain lease columns.
+  the request fingerprint, the status and the record id, never record values).
+  Beside them are `store_transaction_results` (retained
+  [host transaction](#host-transactions) keys and results; schema version 4),
+  `store_declarations` (the [declaration fence](#one-serving-process-per-database):
+  each collection's served declaration fingerprint; schema version 5) and
+  `store_audit_events` (the [audit log](#audited-writes): one row per event,
+  with its record order, a forwarded flag for [the tap](#forwarding-events-to-a-sink),
+  and indexes on actor, subject, action, time and the unforwarded events;
+  schema version 7). Schema version 6 dropped an earlier release's
+  `store_servers` lease table and drain lease columns. Version 7 moved any
+  events still waiting in the old `store_audit_outbox` into
+  `store_audit_events`, in order, and dropped `store_audit_outbox` and
+  `store_audit_drain`.
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   tables; the rows of a collection that is no longer declared stay untouched.
@@ -1979,10 +2024,11 @@ operator says made the change, not proof of it. Commands that change nothing
   operator setting that trades that for faster commits.
 - Every write is one `BEGIN IMMEDIATE` transaction that reads what it checks
   and writes everything it changes: the record, its unique key, the
-  `Idempotency-Key` claim and eviction, and the audit event. Any failure rolls
+  `Idempotency-Key` claim and eviction, and the audit event with its pruning.
+  Any failure rolls
   all of it back. `If-Match`, key uniqueness, `maxRecords`,
   `maxRecordsPerOwner`, increment bounds, declared intervals, retained keys
-  and the audit backlog are therefore checked against committed state and cannot be overshot by
+  are therefore checked against committed state and cannot be overshot by
   concurrent requests. Statements are synchronous: within the process no other
   request runs between a transaction's checks and its commit, and each commit's
   fsync blocks the event loop while it runs. [Capacity](CAPACITY.md#measured-the-sqlite-store)
@@ -2001,7 +2047,7 @@ operator says made the change, not proof of it. Commands that change nothing
   and [host transactions](#host-transactions) use that), but each HTTP request
   changes exactly one record: there is no multi-record or cross-collection
   operation in the HTTP API. Nothing is atomic across the store and another
-  extension's database (auth, audit); none is claimed. There is no query language beyond paginated listing with declared
+  extension's database (auth); none is claimed. There is no query language beyond paginated listing with declared
   sorting and equality filtering, and no history. Omitting `If-Match` remains
   last-write-wins for `PUT`/`PATCH`.
 - This is durable local state, not a distributed exactly-once or
@@ -2022,10 +2068,24 @@ operator says made the change, not proof of it. Commands that change nothing
   it writes the copy `0600` in a private temporary directory beside the
   destination, checks that it opens with the store's `application_id`, the
   source's `user_version` and a clean `integrity_check`, and only then links it
-  into place. It prints `{format, schemaVersion, bytes, destination}`. Keep
-  backups outside `app/` and off the host. To restore, stop the server, put the
-  copy in place as the database (mode `0600`) and start it again; a release
-  older than the copy's `schemaVersion` refuses it. Stopping the server and
+  into place. It prints `{format, schemaVersion, bytes, destination}`. The
+  [audit log](#audited-writes) is in the database, so it is in the copy. Keep
+  backups outside `app/` and off the host.
+
+  To restore, make a checked copy of the backup at a new path, stop the
+  server, move it into place as the database and start the server again:
+
+  ```sh
+  npx urlcode-store restore --backup /srv/backups/store-2026-09-28.sqlite \
+    --destination /srv/site/data/store-restored.sqlite
+  ```
+
+  `restore` makes the same checked copy as `backup` (`application_id`,
+  `user_version`, `integrity_check`, mode `0600`) and never replaces an
+  existing file, so it cannot overwrite the live database; the move is yours.
+  A release older than the copy's `schemaVersion` refuses it. The library
+  exports are `backupStore({database, destination})` and
+  `restoreStore({backup, destination})`. Stopping the server and
   copying `store.sqlite` also works (the last connection to close folds the
   write-ahead log into it), but copying the file with ordinary tools while the
   server runs is not a consistent backup.
@@ -2060,13 +2120,12 @@ need a real database server, which URLCode does not provide.
 A pinned `urlcode validate` or `urlcode routes` activates the site's own data,
 so it is refused the same way while the site is served. The lock file stays
 beside the database after the server stops, empty; do not delete it while a
-server runs, and a backup can leave it out. The auth and audit extensions take
-the same lock on `auth.sqlite` and `audit.sqlite`
-([below](#every-sqlite-extension-takes-the-lock)).
+server runs, and a backup can leave it out. The auth extension takes the same
+lock on `auth.sqlite` ([below](#every-sqlite-extension-takes-the-lock)).
 
-The `urlcode-store` operator commands (`members add|remove`, `reassign`,
-`ownerless-assign`, `ownerless-delete`, `backup`) never take the lock: they run
-beside the server through SQLite's own locking, as before. Reads are never
+The `urlcode-store` operator commands (`members`, `reassign`, `audit`,
+`backup`, `restore`) never take the lock: they run beside the server through
+SQLite's own locking (`audit` opens the database read-only). Reads are never
 blocked by a writer, and a write that finds the other connection holding the
 write lock waits up to 2 seconds (`busy_timeout`, blocking the server's event
 loop meanwhile) and then answers `503 storage_unavailable` with nothing written.
@@ -2111,18 +2170,12 @@ exposes no filesystem type the check can trust, so it is skipped there.
 The lock and the network filesystem check are one implementation in core
 (`@jimhoyd/urlcode/extensions`: `holdServerLock`, `serverLockHeld`,
 `refuseNetworkFilesystem`). Each extension locks its own database: the store
-when it opens its connection, auth on each activation (`auth.sqlite`), and
-audit on its first activation until the audit host closes (`audit.sqlite`).
-So a site that runs auth or audit without the store is refused a second
-server too. Holders in one process share the lock, so a dev reload's two
+when it opens its connection, and auth on each activation (`auth.sqlite`). So
+a site that runs auth without the store is refused a second server too. Holders in one process share the lock, so a dev reload's two
 activations never refuse each other. An activation that fails releases its
 share ([#979](https://github.com/jimhoyd-com/urlcode/issues/979)). The
-`urlcode-auth` (`migrate`, `create-user`, `find-user`) and `urlcode-audit`
-(`list`, `backup`, `restore`) commands do not take it.
-
-The serving process is the audit outbox's only drainer: it peeks and acks the
-outbox with no lease, and delivery stays at least once and stored once (audit
-inserts by event id and ignores a duplicate).
+`urlcode-auth` commands (`migrate`, `create-user`, `find-user`) do not take
+it. The audit log is part of `store.sqlite`, so it has no lock of its own.
 
 #### What the lock does not do
 
@@ -2160,8 +2213,7 @@ is `ok`, every answered write is stored, and a restart is accepted at once.
 The same file proves the declaration fence between two activations of one
 process, the operator commands' fence against a server in another process
 and in this one, and the upgrade that drops the previous release's lease
-tables. The auth and audit suites prove the same refusal and restart for
-their databases.
+tables. The auth suite proves the same refusal and restart for its database.
 
 These tests do not prove throughput, a power loss or long-running WAL
 growth; a full disk is covered by the tests [below](#what-the-disk-full-tests-prove).
@@ -2169,26 +2221,24 @@ growth; a full disk is covered by the tests [below](#what-the-disk-full-tests-pr
 #### What the disk-full tests prove
 
 A full disk makes a SQLite write fail with `SQLITE_FULL`. Two tests check
-what the store, auth and audit extensions then answer, what they leave behind
+what the store (with its audit log) and auth then answer, what they leave behind
 and how they recover ([#902](https://github.com/jimhoyd-com/urlcode/issues/902)).
 Every write in them is a documented refusal or a whole commit:
 
 | Database full | What a caller sees | Written |
 |---|---|---|
-| `store.sqlite` | an HTTP write, a transfer or a host transaction answers `503 storage_unavailable` (`The store could not save this change`); reads answer `200` | nothing of the refused write: no record, no `Idempotency-Key` claim, no audit event in the outbox, no host transaction result |
-| `audit.sqlite` | `AuditExports.record()` rejects with `503 audit_unavailable`; store writes on an audited collection still commit | none of a refused batch; the store's events wait in its outbox while the drain retries with backoff; once 1,000 wait, the collection's writes answer `503 audit_backlog` (that cap is tested in `packages/store/test/audit.test.ts`, not on a full disk) |
+| `store.sqlite` | an HTTP write, a transfer or a host transaction answers `503 storage_unavailable` (`The store could not save this change`); reads answer `200` | nothing of the refused write: no record, no `Idempotency-Key` claim, no audit event, no host transaction result |
 | `auth.sqlite` | a sign-in answers `503 {"error":"auth_unavailable"}` with `Retry-After: 1` and no `Set-Cookie`; a signed-in route still answers `200`, because verifying a session only reads | no session |
 
 Once space frees up, the service recovers without a restart: an
 `Idempotency-Key` whose write was refused runs for the first time (not a
-replay), the host transaction runs, sign-in works again, and the drain
-delivers every waiting event. Afterwards `PRAGMA integrity_check` is `ok` on
-all three files, and `audit.sqlite` holds exactly one event per committed
-change, each id once.
+replay), the host transaction runs, and sign-in works again. Afterwards
+`PRAGMA integrity_check` is `ok` on both files, and the store's audit log
+holds exactly one event per committed change, each id once.
 
 - **Deterministic, on every OS:**
   [`test/disk-full.test.ts`](../test/disk-full.test.ts), part of `npm test`,
-  serves one site composing audit, auth and store in one process. It fills
+  serves one site composing auth and store in one process. It fills
   each database in turn: it caps every connection to that file at the file's
   current size (`PRAGMA max_page_count`, a per-connection setting, so the test
   reaches each extension's own connection) and fills the remaining free pages
@@ -2237,8 +2287,9 @@ lost commit is lost whole, record, key claim and audit event alike. What it
 gives up is durability of the most recent writes, which may already have been
 answered `2xx`. An activation with `normal` writes one `extension_warning` to
 the operator log saying so. The `urlcode-store` operator commands (`members`,
-`reassign`, `ownerless-*`) always commit with `full`, whatever the serving
-process uses; `backup` reads the live database and writes a checked copy.
+`reassign`) always commit with `full`, whatever the serving process uses;
+`backup` reads the live database and writes a checked copy, and `audit` only
+reads.
 
 Choose `normal` only after measuring that the fsync bounds your writes. On the
 machine [Capacity](CAPACITY.md#measured-the-sqlite-store) measured it did not
@@ -2429,6 +2480,9 @@ the consumer handles CSRF and origins for the requests it serves.
 `transaction(work)` runs several of these
 operations as one database transaction: see
 [host transactions](#host-transactions).
+
+`audit` is the store's audit log as core's `AuditLog` (`peek`, `ack`,
+`query`): see [forwarding events to a sink](#forwarding-events-to-a-sink).
 
 ## Not built yet
 

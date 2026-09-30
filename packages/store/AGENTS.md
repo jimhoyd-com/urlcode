@@ -18,7 +18,9 @@
   `readOnly`) change every record in that collection. It owns one SQLite
   database per site (`src/database.ts`: forward-only schema, one transaction
   helper; `src/collection.ts`: every write one `BEGIN IMMEDIATE` transaction
-  over the record, its key, its idempotency claim and its audit event),
+  over the record, its key, its idempotency claim and its audit event;
+  `src/audit.ts`: the audit log in `store_audit_events`, its retention, query
+  and the `StoreExports.audit` tap),
   per-collection record/byte quotas, `sortable`/`filterable`
   query handling (`src/query.ts`) and the extension definition
   (`src/extension.ts`: the `urlcode extensions add store` scaffold and the

@@ -62,7 +62,7 @@ test('a transaction that throws or returns what JSON cannot keep retains nothing
   assert.throws(() => store.exports.transaction(tx => tx.records('accounts').update(null, '00000000-0000-4000-8000-000000000000', { available: 1 }), options), (error: unknown) => error instanceof StoreError && error.status === 404);
   assert.throws(() => store.exports.transaction(tx => ({ at: new Date(), id: tx.records('accounts').create(null, { name: 'x' }).record.id }), options), /must return a JSON value or undefined/);
   assert.throws(() => store.exports.transaction(tx => { tx.records('accounts').create(null, { name: 'x' }); return 'y'.repeat(TRANSACTION_RETRIES.resultBytes); }, options), RangeError);
-  assert.deepEqual(counts(store.database), { records: 0, idempotency: 0, outbox: 0 });
+  assert.deepEqual(counts(store.database), { records: 0, idempotency: 0, audit: 0 });
   assert.equal(claims(store.database), 0);
   assert.equal(open(store.exports, 'x', options).ran, true, 'the retry runs');
   assert.throws(() => store.exports.transaction(() => 1, { idempotencyKey: '' }), TypeError);

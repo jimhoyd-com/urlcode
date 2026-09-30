@@ -87,7 +87,7 @@ test('racing retries in one process run the mutation once and replay it to every
   assert.ok(answers.every(answer => answer.status === 201));
   assert.equal(answers.filter(answer => answer.header('idempotency-replayed') === undefined).length, 1);
   assert.equal(new Set(answers.map(answer => answer.body!.id)).size, 1);
-  assert.deepEqual(counts(store.database), { records: 1, idempotency: 1, outbox: 0 });
+  assert.deepEqual(counts(store.database), { records: 1, idempotency: 1, audit: 0 });
 });
 
 test('racing retries from separate connections run the mutation once', async t => {

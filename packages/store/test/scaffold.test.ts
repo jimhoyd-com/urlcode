@@ -18,8 +18,8 @@ const scaffold = (overrides: Partial<{ installed: readonly string[]; acknowledge
 test('the definition names the store, requires nothing and shares the runtime schema', () => {
   assert.equal(store.definition.name, 'store');
   assert.deepEqual(store.definition.requires, []);
-  // audit is optional: only a collection that declares `audit: true` needs it.
-  assert.deepEqual(store.definition.uses, ['audit']);
+  // The audit log is the store's own (#1052): it uses no other extension.
+  assert.equal(store.definition.uses, undefined);
   assert.equal(store.definition.schema, storeConfigSchema);
 });
 
@@ -100,11 +100,11 @@ test('host() registers the store through composeHost with the operator database'
   await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ database: 'relative/store.sqlite' })]), /absolute path/);
 });
 
-test('with audit installed the example collection records its writes, and says so', async () => {
-  const audited = await scaffold({ installed: ['audit', 'auth', 'store'], acknowledgements: [] });
+test('with auth the example collection records its writes in the store\'s audit log, and says so', async () => {
+  const audited = await scaffold({ installed: ['auth', 'store'], acknowledgements: [] });
   assert.equal((audited.config as { collections: { todos: { audit?: boolean } } }).collections.todos.audit, true);
-  assert.ok(audited.notes!.some(note => note.includes('audit: true') && note.includes('503')));
-  const plain = await scaffold({ installed: ['auth', 'store'], acknowledgements: [] });
-  assert.equal('audit' in (plain.config as { collections: { todos: object } }).collections.todos, false);
+  assert.ok(audited.notes!.some(note => note.includes('audit: true') && note.includes('urlcode-store audit')));
+  const plain = await scaffold({ installed: ['store'], acknowledgements: ['store:public-write'] });
+  assert.equal('audit' in (plain.config as { collections: { todos: object } }).collections.todos, false, 'an audited collection needs a principal on its mount');
   assert.ok(plain.notes!.every(note => !note.includes('audit')));
 });

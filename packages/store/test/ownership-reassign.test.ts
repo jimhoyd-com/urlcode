@@ -109,5 +109,5 @@ test('the reassign CLI reads the owned collections and limits from the project',
   assert.deepEqual((await read('tasks')).map(record => record._owner), ['apikey:old', 'alice', 'alice', 'alice']);
   for (const args of [['--from', 'bad id', '--to', 'alice'], ['--from', 'apikey:old'], ['--from', 'apikey:old', '--to', 'alice', '--owner', 'x'], ['--from', 'apikey:old', '--to', 'alice', '--project', 'relative/app']])
     assert.equal((await cliFailure('reassign', '--database', data, '--project', project, ...args))?.code, 1, args.join(' '));
-  assert.match((await cliFailure('ownerless', '--database', data, '--collection', 'notes', '--dry-run'))!.stderr, /apply to reassign only/);
+  assert.match((await cliFailure('members', 'list', '--database', data, '--collection', 'notes', '--dry-run'))!.stderr, /--dry-run does not apply to members/);
 });

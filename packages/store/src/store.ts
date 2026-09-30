@@ -4,9 +4,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { ExtensionHttpError, holdServerLock, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, HostProbe, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, canonical, collectionSchema, etagOf, redirectable } from './collection.ts';
-import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
-import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
-import { markAuditDrained, openStoreDatabase, recordDeclarations, storeDurability } from './database.ts';
+import type { CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
+import { AUDIT_RETENTION, auditLog } from './audit.ts';
+import { openStoreDatabase, recordDeclarations, storeDurability } from './database.ts';
 import type { StoreDatabase, StoreDurability } from './database.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
@@ -14,13 +14,10 @@ import { describeStore } from './openapi.ts';
 import type { StoreExports } from './records.ts';
 import { OPERATOR_ACTOR } from './membership.ts';
 
-/** At most how often the drain's last-kept-up time is written (well inside the CLI's AUDIT_DRAIN_STALE_MS). */
-const AUDIT_DRAIN_MARK_MS = 10_000;
-
 export interface StoreExtensionOptions {
   /**
    * Absolute path of the store's SQLite database, one per site (created 0600, its directory 0700, when absent). It
-   * must be outside the route project. Every collection, retained Idempotency-Key and undelivered audit event lives in it.
+   * must be outside the route project. Every collection, retained Idempotency-Key and audit event lives in it.
    */
   database: string;
   /**
@@ -31,11 +28,6 @@ export interface StoreExtensionOptions {
   durability?: StoreDurability | undefined;
   /** Exact project revision the operator reviewed (`inspectExtensionRevision`). */
   projectSha256: string;
-  /**
-   * The audit extension's exports when it is installed (`ctx.get('audit')`; store `uses` audit). A collection that
-   * declares `audit: true` refuses to activate without an active one.
-   */
-  audit?: AuditExports | undefined;
   /** Test seam for the network filesystem check: the platform and filesystem type the store reads. Never set by an operator. */
   probe?: Partial<HostProbe> | undefined;
   /**
@@ -111,23 +103,6 @@ async function realTarget(path: string): Promise<string> {
   catch { const parent = dirname(path); return parent === path ? path : join(await realTarget(parent), basename(path)); }
 }
 
-/**
- * Checks the whole outbox before audit may drain it: every row is a store event whose id matches its column, and
- * with audit installed each one passes audit's own validation. A database edited by hand refuses activation instead
- * of making the drain stop the producer mid-way.
- */
-function checkOutbox(db: StoreDatabase, auditor: CollectionAuditor | undefined): number {
-  const rows = db.all<{ id: string; event: string }>('SELECT id, event FROM store_audit_outbox ORDER BY seq');
-  for (const row of rows) {
-    let event: unknown;
-    try { event = JSON.parse(row.event); } catch { event = undefined; }
-    const valid = event !== null && typeof event === 'object' && (event as AuditEvent).id === row.id && (event as AuditEvent).source === 'store';
-    try { if (!valid) throw new Error('invalid'); auditor?.validate(event); }
-    catch { throw new Error('The store database holds invalid audit events'); }
-  }
-  return rows.length;
-}
-
 /** The `extensions.store.config` schema: the registration and the extension definition share this one object. */
 export const storeConfigSchema = { type: 'object', additionalProperties: false, required: ['collections'], properties: {
   collections: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema, description: 'Collections by name, each stored as rows of the site\'s store database (data/store.sqlite outside app/, chosen by the operator) and served as a bounded CRUD API at its mount.' },
@@ -139,6 +114,7 @@ export const storeConfigSchema = { type: 'object', additionalProperties: false, 
       clicks: { type: 'string', pattern: FIELD.source, description: 'A property listed in the collection\'s increments, raised by one on each GET (even when the collection is readOnly).' },
     },
   } },
+  auditRetention: { type: 'integer', minimum: AUDIT_RETENTION.min, maximum: AUDIT_RETENTION.max, description: 'How many of the newest audit events (from collections that declare audit: true) the store database keeps, default 100000; each audited write prunes the oldest past it in its own transaction. Read on every activation, so removing the key returns to the default.' },
 } };
 
 /** The operator-installed registration. Storage location and the revision pin are operator choices, never project YAML. */
@@ -158,18 +134,16 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
  * One serving process per database: before the connection opens, the registration takes the database's server lock
  * (core's `holdServerLock`, which also refuses a Linux network filesystem), so a second serving process is refused
  * before it writes anything. The lock is held until the last activation closes; the operating system drops it if the
- * process dies. That one process is also the audit outbox's only drainer.
+ * process dies.
  *
- * With `audit`, the store attaches itself as the audit producer `store` once, here: its outbox is the
- * `store_audit_outbox` table, which audit drains (peek, then ack in a transaction). `close` detaches it; the host
- * calls it before the store's database is released.
+ * Audited collections record their events in the same database, in the transaction of each write (`audit.ts`);
+ * `StoreExports.audit` is the log's tap and query.
  */
 export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; durability: StoreDurability; close(): Promise<void> } {
   if (typeof options.database !== 'string' || !isAbsolute(options.database)) throw new Error('Store database must be an absolute path');
   const database = resolve(options.database), durability = storeDurability(options.durability);
-  const shared = storeExports(), audit = options.audit, probe = options.probe;
-  // The live activations, oldest first, with their collections. The newest is the one being served; the producer
-  // drains only while one is live.
+  const probe = options.probe;
+  // The live activations, oldest first, with their collections. The newest is the one being served.
   const live: { token: symbol; collections: readonly Collection[] }[] = [];
   // The derived indexes (interval, #902; unique, #953; list, #951) each live activation reads through, so a reload drops only indexes nobody declares.
   const indexes = new Map<symbol, string[]>();
@@ -194,34 +168,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
     } };
   };
   const current = (): StoreDatabase | undefined => live.length && connection?.db?.open ? connection.db : undefined;
-  // When the drain last kept up (an ack, or a peek that found the outbox empty) is written to the database at most
-  // every AUDIT_DRAIN_MARK_MS, so the operator CLI can tell a live drain from none (#875) without a write per poll.
-  let marked = 0;
-  const drained = (db: StoreDatabase): void => {
-    const now = Date.now();
-    if (now - marked < AUDIT_DRAIN_MARK_MS) return;
-    marked = now;
-    try { markAuditDrained(db, now); } catch { marked = 0; } // Only a hint for the CLI; a busy lock retries next time.
-  };
-  const attachment: AuditAttachment | undefined = audit?.attach({
-    source: 'store',
-    // The oldest pending events across every collection: audit's flush settles once a peek holds only newer events,
-    // so an older event left behind would be missed. The serving process is the outbox's only drainer.
-    async peek(limit) {
-      const db = current();
-      if (!db) return [];
-      const events = db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent);
-      if (!events.length) drained(db);
-      return events;
-    },
-    async ack(ids) {
-      const db = current();
-      if (!db || !ids.length) return;
-      db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids));
-      drained(db);
-    },
-  });
-  const auditor: CollectionAuditor | undefined = audit && attachment ? { validate: value => audit.validate(value), notify: () => attachment.notify() } : undefined;
+  const shared = storeExports(auditLog(current));
   const registration: RuntimeExtension = {
     name: 'store', version: '1', projectSha256: options.projectSha256, targets: ['node'],
     schema: storeConfigSchema,
@@ -238,8 +185,9 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       // A short link's destination property also takes only a redirectable URL, on every write path.
       const destinations = new Map<string, string[]>();
       for (const link of Object.values(declaredLinks)) destinations.set(link.collection, [...destinations.get(link.collection) ?? [], link.destination]);
-      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, auditor, destinations.get(name), context.schemas ?? {}));
-      for (const collection of collections) if (collection.spec.audit && !audit?.active) throw new Error(`collection ${collection.name} declares audit: true; install the audit extension (urlcode extensions add audit)`);
+      const retention = (config as { auditRetention?: number }).auditRetention ?? AUDIT_RETENTION.default;
+      if (!Number.isSafeInteger(retention) || retention < 1) throw new Error('auditRetention must be a whole number of events');
+      const collections = Object.entries(declared).map(([name, spec]) => new Collection(name, spec, destinations.get(name), context.schemas ?? {}, retention));
       // A membership collection has no mount: it is never served over HTTP.
       const served = collections.filter((collection): collection is Collection & { spec: { mount: string } } => collection.spec.mount !== undefined);
       for (const collection of served) {
@@ -294,15 +242,13 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       // Fail closed at startup: an owned collection is only served on a mount where a request can carry a principal.
       const principalMounts = context.principalMounts ?? [];
       for (const collection of served) if (collection.spec.ownership === 'owner' && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: ownership: owner needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
-      // Audit retention is shared with auth's privileged events, so writes nobody has to authenticate for must not
+      // Audit retention is shared by every audited collection, so writes nobody has to authenticate for must not
       // be able to fill it: an audited collection is only served where a request can carry a principal.
       for (const collection of served) if (collection.spec.audit && !principalMounts.includes(collection.spec.mount)) throw new Error(`Collection ${collection.name}: audit: true needs route ${collection.spec.mount}/* guarded by a principal-providing policy (for example auth: true)`);
       for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount) && !transitionByMount.has(mount) && !readersByMount.has(mount)) throw new Error(`Mount ${mount} has no collection, transition, readers or short link declared`);
       const held = await acquire();
       if (durability === 'normal') context.warn?.('durability is normal (SQLite synchronous=NORMAL): the last committed writes can be lost on power loss or an OS crash; a process crash loses nothing');
-      let pending: number;
       try {
-        pending = checkOutbox(held.db, auditor);
         for (const collection of collections) collection.open(held.db);
         // The newest activation wins the declaration fence (#927): from here on a write through an older declaration
         // of any of these collections (a retiring activation during a reload) is refused.
@@ -313,8 +259,6 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       live.push({ token: exported, collections });
       indexes.set(exported, collections.flatMap(collection => collection.indexes));
       dropStaleIndexes(held.db, new Set([...indexes.values()].flat()));
-      // Events a previous run left in the outbox drain now rather than at the next write or poll.
-      if (pending > 0) attachment?.notify();
       let closed = false;
       return {
         handle: request => dispatch({ byMount, shortByMount, transitionByMount, readersByMount }, context, request),
@@ -335,7 +279,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       };
     },
   };
-  return { registration, exports: shared.exports, durability, close: async () => { await attachment?.close(); } };
+  return { registration, exports: shared.exports, durability, close: async () => undefined };
 }
 
 /**

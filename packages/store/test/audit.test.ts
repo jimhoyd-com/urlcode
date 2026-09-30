@@ -1,24 +1,23 @@
 import { cleanup } from './cleanup.ts';
-// The store as an audit producer: a collection declared `audit: true` inserts one event per record write into the
-// store database's outbox table, in the same transaction as the record, and a real audit drains it from there.
+// The store's audit log (#1052): a collection declared `audit: true` records one event per record write in the store
+// database, in the same transaction as the record, pruned to `auditRetention`; `StoreExports.audit` is its query and
+// its tap, which a sink named `audit` (or anything else) pulls to forward events, with core's types only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime, startServer } from '@jimhoyd/urlcode';
-import { defineExtension, inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionActivation, ExtensionRequest, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import { DatabaseSync } from 'node:sqlite';
+import { startServer } from '@jimhoyd/urlcode';
+import { AuditError, defineExtension, inspectExtensionRevision, validateAuditEvent } from '@jimhoyd/urlcode/extensions';
+import type { AuditStoredEvent, AuditTap, ExtensionActivation, ExtensionRequest, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { composeHost } from '@jimhoyd/urlcode/host';
-import audit from '@jimhoyd/urlcode-audit/extension';
-import { createAudit } from '@jimhoyd/urlcode-audit';
-import type { AuditExports, AuditProducer, AuditStoredEvent } from '@jimhoyd/urlcode-audit';
 import store from '../src/extension.ts';
-import { AUDIT_BACKLOG, StoreError, createStore } from '../src/index.ts';
-import { counts, execute, lastDrain, outbox, records, seedOutbox } from './rows.ts';
+import { STORE_SCHEMA_VERSION, StoreError, createStore } from '../src/index.ts';
+import type { StoreExports } from '../src/index.ts';
+import { auditEvents, counts, execute, initialize, records } from './rows.ts';
 
 const origin = 'https://store-audit.example.test', pin = 'a'.repeat(64);
 const notes = {
@@ -54,19 +53,32 @@ function badge(projectSha256: string): RuntimeExtension {
     },
   };
 }
-/** Reads the audit exports the way any extension that `uses` audit would, so the test can query the log. */
-function probe(seen: { audit?: AuditExports | undefined }) {
+
+/**
+ * The conformance sink (#1052, "name is the role"): an independent extension named `audit` that consumes the store's
+ * tap and forwards each event to its own destination (here an array standing in for a file), written against core's
+ * types only: nothing from the store package or any first-party audit package. `forward()` is one round: peek, write,
+ * then ack, so a crash between the two re-delivers and the sink deduplicates on id.
+ */
+function sink(forwarded: AuditStoredEvent[], rounds: { forward?: () => Promise<number> }) {
   return defineExtension({
-    name: 'probe', description: 'Reads the audit exports for the test', contract: 2, targets: ['node'], uses: ['audit'], schema: { type: 'object' },
+    name: 'audit', description: 'Forwards the store audit log to another destination', contract: 2, targets: ['node'], requires: ['store'],
+    schema: { type: 'object', additionalProperties: false },
     host(ctx) {
-      seen.audit = ctx.get<AuditExports | undefined>('audit');
-      return { registration: { name: 'probe', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema: { type: 'object' }, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } };
+      const tap = ctx.get<{ audit: AuditTap }>('store').audit;
+      const seen = new Set<string>();
+      rounds.forward = async () => {
+        const batch = await tap.peek(100);
+        for (const event of batch) if (!seen.has(event.id)) { seen.add(event.id); forwarded.push(event); }
+        return tap.ack(batch.map(event => event.id));
+      };
+      return { registration: { name: 'audit', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema: { type: 'object', additionalProperties: false }, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } };
     },
   });
 }
 
-/** A site whose YAML declares audit (unless `declareAudit` is false), the store with the given collections, and the badge provider. */
-async function site(t: TestContext, collections: Record<string, unknown>, declareAudit = true) {
+/** A served site: the badge provider, the store with the given collections, and the audit sink. */
+async function serve(t: TestContext, collections: Record<string, unknown>) {
   const root = await tempRoot(t), project = join(root, 'app');
   await mkdir(project);
   const guarded = { policies: { extensions: { badge: {} } } };
@@ -74,19 +86,14 @@ async function site(t: TestContext, collections: Record<string, unknown>, declar
   for (const spec of Object.values(collections) as { mount: string }[]) routes[`${spec.mount}/*`] = { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...guarded };
   if (collections.notes) routes['/go/*'] = { extension: 'store', methods: ['GET', 'HEAD'] };
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1',
-    extensions: { badge: { version: '1', config: {} }, ...(declareAudit ? { audit: { version: '1', config: { retention: 1000 } } } : {}), store: { version: '1', config: { collections, ...(collections.notes ? { shortLinks: { public: { mount: '/go', collection: 'notes', destination: 'destination', clicks: 'clicks' } } } : {}) } } },
+    extensions: { badge: { version: '1', config: {} }, audit: { version: '1', config: {} }, store: { version: '1', config: { collections, ...(collections.notes ? { shortLinks: { public: { mount: '/go', collection: 'notes', destination: 'destination', clicks: 'clicks' } } } : {}) } } },
     routes }));
   const sha = await inspectExtensionRevision(project);
   withSha(t, sha);
-  return { root, project, sha, hostUrl: pathToFileURL(join(root, 'host.mjs')) };
-}
-
-async function serve(t: TestContext, collections: Record<string, unknown>) {
-  const { root, project, sha, hostUrl } = await site(t, collections);
-  const seen: { audit?: AuditExports | undefined } = {};
-  const host = await composeHost(hostUrl, [store(), audit(), probe(seen)()]);
+  const forwarded: AuditStoredEvent[] = [], rounds: { forward?: () => Promise<number> } = {};
+  const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [sink(forwarded, rounds)(), store()]);
   cleanup(t, () => host.close?.());
-  assert.deepEqual(host.extensions!.map(extension => extension.name), ['audit', 'probe', 'store'], 'audit is hosted before the store that uses it');
+  assert.deepEqual(host.extensions!.map(extension => extension.name), ['store', 'audit'], 'the store is hosted before the sink that requires it');
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [...host.extensions!, badge(sha)] });
   cleanup(t, () => app.close());
   const call = (path: string, init: { method?: string; body?: unknown; who?: string; headers?: Record<string, string> } = {}) => fetch(`http://127.0.0.1:${app.address.port}${path}`, {
@@ -94,16 +101,12 @@ async function serve(t: TestContext, collections: Record<string, unknown>) {
     headers: { origin, ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...(init.who ? { authorization: `Badge ${init.who}` } : {}), ...init.headers },
     ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
   });
-  return { root, call, audit: seen.audit! };
-}
-async function storeEvents(exports: AuditExports): Promise<AuditStoredEvent[]> {
-  await exports.flush();
-  return [...(await exports.query({ source: 'store', limit: 100 })).events];
+  return { root, call, forwarded, forward: () => rounds.forward!() };
 }
 const databaseOf = (root: string) => join(root, 'data', 'store.sqlite');
 
-test('every write kind emits one event naming the changed fields only; an idempotent replay emits nothing', async t => {
-  const { root, call, audit: log } = await serve(t, { notes, plain });
+test('every write kind records one event naming the changed fields only, and a sink named audit forwards them through the tap', async t => {
+  const { root, call, forwarded, forward } = await serve(t, { notes, plain });
   const secret = 'Private title words';
   const created = await call('/api/notes', { method: 'POST', who: 'alice', headers: { 'idempotency-key': 'create-1' }, body: { code: 'first', destination: 'https://example.test/one', title: secret } });
   assert.equal(created.status, 201);
@@ -111,183 +114,136 @@ test('every write kind emits one event naming the changed fields only; an idempo
   const replay = await call('/api/notes', { method: 'POST', who: 'alice', headers: { 'idempotency-key': 'create-1' }, body: { code: 'first', destination: 'https://example.test/one', title: secret } });
   assert.equal(replay.status, 201, 'the retry replays the first answer');
   assert.equal(replay.headers.get('idempotency-replayed'), 'true');
-  assert.equal(((await replay.json()) as { id: string }).id, id, 'and names the same record');
   let etag = created.headers.get('etag')!;
   const put = await call(`/api/notes/${id}`, { method: 'PUT', who: 'bob', headers: { 'if-match': etag }, body: { code: 'first', destination: 'https://example.test/two', title: secret } });
   assert.equal(put.status, 200); etag = put.headers.get('etag')!;
-  const patch = await call(`/api/notes/${id}`, { method: 'PATCH', who: 'alice', headers: { 'if-match': etag }, body: { title: null } });
-  assert.equal(patch.status, 200);
+  assert.equal((await call(`/api/notes/${id}`, { method: 'PATCH', who: 'alice', headers: { 'if-match': etag }, body: { title: null } })).status, 200);
   assert.equal((await call(`/api/notes/${id}/increment/clicks`, { method: 'POST', who: 'carol' })).status, 200);
   assert.equal((await call('/go/first')).status, 302, 'the short-link redirect counts a click, unaudited');
   const latest = await call(`/api/notes/${id}`, { who: 'alice' });
   assert.equal((await call(`/api/notes/${id}`, { method: 'DELETE', who: 'alice', headers: { 'if-match': latest.headers.get('etag')! } })).status, 204);
   assert.equal((await call('/api/plain', { method: 'POST', who: 'alice', body: { title: 'not audited' } })).status, 201);
 
-  const events = await storeEvents(log);
-  assert.deepEqual(events.map(event => [event.action, event.actor]), [
+  assert.equal(await forward(), 5, 'one round forwards and acknowledges every event');
+  assert.equal(await forward(), 0, 'nothing is left to forward');
+  assert.deepEqual(forwarded.map(event => [event.action, event.actor]), [
     ['store.record.created', 'alice'], ['store.record.replaced', 'bob'], ['store.record.updated', 'alice'],
     ['store.record.incremented', 'carol'], ['store.record.deleted', 'alice'],
   ], 'one event per write, none for the replay, the anonymous short-link click or the unaudited collection');
-  assert.ok(events.every(event => event.source === 'store' && event.subject === `notes/${id}`));
-  assert.deepEqual(events.map(event => event.metadata), [
+  assert.ok(forwarded.every(event => event.source === 'store' && event.subject === `notes/${id}`));
+  assert.deepEqual(forwarded.map(event => event.metadata), [
     { collection: 'notes', fields: ['code', 'destination', 'title', 'clicks'] },
     { collection: 'notes', fields: ['destination'] },
     { collection: 'notes', fields: ['title'] },
     { collection: 'notes', fields: ['clicks'] },
     { collection: 'notes', fields: ['code', 'destination', 'clicks'] },
   ]);
-  const text = JSON.stringify(events);
+  const text = JSON.stringify(forwarded);
   for (const value of [secret, 'example.test', 'first']) assert.ok(!text.includes(value), `no value reaches the log: ${value}`);
-  assert.deepEqual(outbox(databaseOf(root)), [], 'the drained outbox is acked out of the database');
-  // The drain leaves when it last kept up, for the operator CLI's delivery warning (#875).
-  const drainedAt = lastDrain(databaseOf(root));
-  assert.ok(drainedAt !== undefined && Date.now() - drainedAt < 60_000, 'the drain marks when it last kept up');
+  assert.equal(auditEvents(databaseOf(root)).length, 5, 'forwarding keeps the store\'s own log: it is the log of record');
 });
 
-/** A store over a real (active) audit whose drain never runs for the store: what a process killed before draining leaves. */
-async function stalled(t: TestContext, root: string) {
-  const log = await createAudit({ projectSha256: pin, database: join(root, 'audit.sqlite') });
-  cleanup(t, () => log.close());
-  await log.registration.activate({}, { origin, target: 'node', projectSha256: pin, mounts: [], root });
-  const exports: AuditExports = { ...log.exports, get active() { return log.exports.active; }, validate: value => log.exports.validate(value), attach: () => ({ notify() {}, async close() {} }) };
-  return { log, exports };
-}
 function activation(root: string, mounts = ['/api/notes', '/go']): ExtensionActivation {
   return { origin, target: 'node', projectSha256: pin, mounts, principalMounts: mounts.filter(mount => mount !== '/go'), root: join(root, 'app') };
 }
 const config = { collections: { notes }, shortLinks: { public: { mount: '/go', collection: 'notes', destination: 'destination', clicks: 'clicks' } } };
+/** A store over `root/data/store.sqlite`, activated directly with `declared`; both are closed by the test's cleanup. */
+async function opened(t: TestContext, root: string, declared: Record<string, unknown> = config): Promise<{ exports: StoreExports; close(): Promise<void> }> {
+  const instance = createStore({ database: databaseOf(root), projectSha256: pin });
+  const served = await instance.registration.activate(declared, activation(root));
+  let open = true;
+  const close = async () => { if (open) { open = false; await served.close?.(); await instance.close(); } };
+  cleanup(t, close);
+  return { exports: instance.exports, close };
+}
 
-test('at the backlog cap a write is refused 503 audit_backlog and the database is unchanged', async t => {
-  const root = await tempRoot(t), database = databaseOf(root);
+test('the tap delivers at least once in record order: an unacknowledged event comes back after a restart, an acknowledged one never', async t => {
+  const root = await tempRoot(t);
   await mkdir(join(root, 'app'));
-  const { exports } = await stalled(t, root);
-  const pending = Array.from({ length: AUDIT_BACKLOG }, () => exports.validate({ id: randomUUID(), source: 'store', action: 'store.record.created', actor: 'alice', subject: `notes/${randomUUID()}`, at: Date.now(), metadata: { collection: 'notes', fields: ['code'] } }));
-  await seedOutbox(database, 'notes', pending);
-  const before = counts(database);
-  const instance = createStore({ database, projectSha256: pin, audit: exports });
-  cleanup(t, () => instance.close());
-  const served = await instance.registration.activate(config, activation(root));
-  cleanup(t, () => served.close?.());
-  await assert.rejects(instance.exports.records('notes').create({ id: 'alice' }, { code: 'late', destination: 'https://example.test/' }), (error: unknown) => error instanceof StoreError && error.status === 503 && error.code === 'audit_backlog');
-  assert.deepEqual(counts(database), before, 'nothing is written');
-  assert.equal(instance.exports.records('notes').list(null).total, 0);
-});
-
-test('a write between capture and drain survives a kill: a new store and attachment drain it exactly once', async t => {
-  const root = await tempRoot(t), database = databaseOf(root);
-  await mkdir(join(root, 'app'));
-  const { log, exports } = await stalled(t, root);
-  const first = createStore({ database, projectSha256: pin, audit: exports });
-  const served = await first.registration.activate(config, activation(root));
-  const records = first.exports.records('notes');
-  for (const code of ['a', 'b', 'c']) await records.create({ id: 'alice' }, { code, destination: 'https://example.test/' });
-  // The "kill": the store stops with its events captured in the database and never drained.
-  await served.close?.(); await first.close();
-  assert.equal(outbox(database, 'notes').length, 3);
-  assert.equal((await log.exports.query({ source: 'store' })).events.length, 0);
-
-  for (const round of [1, 2]) {
-    const next = createStore({ database, projectSha256: pin, audit: log.exports });
-    const again = await next.registration.activate(config, activation(root));
-    await log.exports.flush();
-    const events = (await log.exports.query({ source: 'store' })).events;
-    assert.equal(events.length, 3, `round ${round}: every captured event is stored once`);
-    assert.equal(new Set(events.map(event => event.id)).size, 3);
-    assert.deepEqual(outbox(database), []);
-    await again.close?.(); await next.close();
-  }
-});
-
-test('the producer peeks the oldest events across collections, so a flush never settles past an older one', async t => {
-  const root = await tempRoot(t), database = databaseOf(root);
-  await mkdir(join(root, 'app'));
-  const { exports } = await stalled(t, root);
-  let producer: AuditProducer | undefined;
-  const capturing: AuditExports = { ...exports, get active() { return exports.active; }, attach: attached => { producer = attached; return { notify() {}, async close() {} }; } };
-  const at = Date.now();
-  const pending = (name: string, count: number, from: number) => Array.from({ length: count }, (_, index) => exports.validate({ id: randomUUID(), source: 'store', action: 'store.record.created', actor: 'alice', subject: `${name}/${randomUUID()}`, at: from + index, metadata: { collection: name, fields: ['title'] } }));
-  await seedOutbox(database, 'alpha', pending('alpha', 120, at + 1000));
-  await seedOutbox(database, 'beta', pending('beta', 5, at));
-  const instance = createStore({ database, projectSha256: pin, audit: capturing });
-  cleanup(t, () => instance.close());
-  const collections = { alpha: { ...plain, mount: '/api/alpha', audit: true }, beta: { ...plain, mount: '/api/beta', audit: true } };
-  const served = await instance.registration.activate({ collections }, activation(root, ['/api/alpha', '/api/beta']));
-  cleanup(t, () => served.close?.());
-  const batch = await producer!.peek(100);
-  assert.equal(batch.length, 100);
-  assert.deepEqual(batch.slice(0, 5).map(event => event.subject.split('/')[0]), ['beta', 'beta', 'beta', 'beta', 'beta'], 'the older collection comes first');
-  assert.ok(batch.every((event, index) => index === 0 || batch[index - 1]!.at <= event.at));
+  const first = await opened(t, root);
+  const tap: AuditTap = first.exports.audit;
+  for (const code of ['a', 'b', 'c']) await first.exports.records('notes').create({ id: 'alice' }, { code, destination: 'https://example.test/' });
+  const batch = await tap.peek(2);
+  assert.deepEqual(batch.map(event => Number(event.seq)), [1, 2], 'oldest first, at most the limit');
+  assert.equal(await tap.ack([batch[0]!.id]), 1);
+  assert.equal(await tap.ack([batch[0]!.id, '00000000-0000-4000-8000-000000000000']), 0, 'an acknowledged or unknown id is ignored');
+  // The "kill": the store stops with b acknowledged by nobody.
+  await first.close();
+  await assert.rejects(tap.peek(1), (error: unknown) => error instanceof AuditError && error.status === 503 && error.code === 'audit_inactive');
+  const second = await opened(t, root);
+  const again = await second.exports.audit.peek(100);
+  const all = (await second.exports.audit.query()).events;
+  assert.equal(all.length, 3, 'the log keeps every event, forwarded or not');
+  assert.deepEqual(again.map(event => event.id), [all[1]!.id, all[2]!.id], 'b and c, never a');
+  assert.equal(again[0]!.id, batch[1]!.id);
+  for (const bad of [0, 101, 1.5]) await assert.rejects(second.exports.audit.peek(bad), { status: 400, code: 'invalid_audit_query' });
+  await assert.rejects(second.exports.audit.ack(['not-an-id']), { status: 400, code: 'invalid_audit_query' });
+  await assert.rejects(second.exports.audit.query({ limit: 500 }), { status: 400, code: 'invalid_audit_query' });
+  for (const event of again) validateAuditEvent({ id: event.id, source: event.source, action: event.action, actor: event.actor, subject: event.subject, at: event.at, ...(event.metadata ? { metadata: event.metadata } : {}) });
 });
 
 test('audit: true refuses a collection mount no principal-providing policy guards', async t => {
   const root = await tempRoot(t);
   await mkdir(join(root, 'app'));
-  const { exports } = await stalled(t, root);
-  const instance = createStore({ database: databaseOf(root), projectSha256: pin, audit: exports });
+  const instance = createStore({ database: databaseOf(root), projectSha256: pin });
   cleanup(t, () => instance.close());
   const unguarded = { ...activation(root), principalMounts: [] };
   await assert.rejects(Promise.resolve().then(() => instance.registration.activate(config, unguarded)), /Collection notes: audit: true needs route \/api\/notes\/\* guarded by a principal-providing policy/);
 });
 
-test('audit: true refuses activation without an active audit; the store runs without audit when nothing opts in', async t => {
-  // Absent: audit is not in host.mjs at all.
-  const absent = await site(t, { notes }, false);
-  const bare = await composeHost(absent.hostUrl, [store()]);
-  cleanup(t, () => bare.close?.());
-  await assert.rejects(createRuntime(absent.project, { origin, extensions: [...bare.extensions!, badge(absent.sha)] }), /collection notes declares audit: true; install the audit extension \(urlcode extensions add audit\)/);
-  // Hosted but not declared in the project, so never activated.
-  const undeclared = await site(t, { notes }, false);
-  const hosted = await composeHost(undeclared.hostUrl, [store(), audit()]);
-  cleanup(t, () => hosted.close?.());
-  await assert.rejects(createRuntime(undeclared.project, { origin, extensions: [...hosted.extensions!, badge(undeclared.sha)] }), /collection notes declares audit: true/);
-  // No collection opts in: the store serves with audit absent.
-  const quiet = await site(t, { plain }, false);
-  const without = await composeHost(quiet.hostUrl, [store()]);
-  cleanup(t, () => without.close?.());
-  const runtime = await createRuntime(quiet.project, { origin, extensions: [...without.extensions!, badge(quiet.sha)] });
-  cleanup(t, () => runtime.close?.());
-});
-
-test('events left in the outbox are kept when audit is later absent, and a write keeps them', async t => {
+test('recorded events are kept when a collection stops being audited, and an unaudited write adds none', async t => {
   const root = await tempRoot(t), database = databaseOf(root);
   await mkdir(join(root, 'app'));
-  const { exports } = await stalled(t, root);
-  const first = createStore({ database, projectSha256: pin, audit: exports });
-  const served = await first.registration.activate(config, activation(root));
+  const first = await opened(t, root);
   await first.exports.records('notes').create({ id: 'alice' }, { code: 'kept', destination: 'https://example.test/' });
-  await served.close?.(); await first.close();
-  const unaudited = createStore({ database, projectSha256: pin });
-  const again = await unaudited.registration.activate({ ...config, collections: { notes: { ...notes, audit: false } } }, activation(root));
-  cleanup(t, () => again.close?.());
+  await first.close();
+  const unaudited = await opened(t, root, { ...config, collections: { notes: { ...notes, audit: false } } });
   await unaudited.exports.records('notes').create({ id: 'alice' }, { code: 'plain', destination: 'https://example.test/' });
   assert.equal(records(database, 'notes').length, 2);
-  assert.deepEqual(outbox(database).map(event => event.action), ['store.record.created'], 'the undelivered event is kept; the unaudited write adds none');
+  assert.deepEqual(auditEvents(database).map(event => event.action), ['store.record.created']);
 });
 
 test('a record write and its audit event commit together: a failure after the record write rolls both back', async t => {
   const root = await tempRoot(t), database = databaseOf(root);
   await mkdir(join(root, 'app'));
-  const { exports } = await stalled(t, root);
-  let woken = 0;
-  const counting: AuditExports = { ...exports, get active() { return exports.active; }, attach: () => ({ notify() { woken++; }, async close() {} }) };
-  const instance = createStore({ database, projectSha256: pin, audit: counting });
-  cleanup(t, () => instance.close());
-  const served = await instance.registration.activate(config, activation(root));
-  cleanup(t, () => served.close?.());
-  const notesApi = instance.exports.records('notes');
+  const { exports } = await opened(t, root);
+  const notesApi = exports.records('notes');
   const kept = await notesApi.create({ id: 'alice' }, { code: 'kept', destination: 'https://example.test/' });
-  assert.equal(woken, 1, 'a committed audited write wakes the drain');
-  const before = { counts: counts(database), records: records(database, 'notes'), outbox: outbox(database) };
-  // The outbox insert is the last statement of every audited write; failing it proves the record write before it
+  const before = { counts: counts(database), records: records(database, 'notes'), audit: auditEvents(database) };
+  // The event insert is the last statement of every audited write; failing it proves the record write before it
   // is undone by the same rollback. Injected from outside, as a trigger, so the store code is exactly as shipped.
-  execute(database, "CREATE TRIGGER fail_outbox BEFORE INSERT ON store_audit_outbox BEGIN SELECT RAISE(ABORT, 'injected'); END;");
+  execute(database, "CREATE TRIGGER fail_event BEFORE INSERT ON store_audit_events BEGIN SELECT RAISE(ABORT, 'injected'); END;");
   const refused = (error: unknown) => error instanceof StoreError && error.status === 503 && error.code === 'storage_unavailable';
   await assert.rejects(notesApi.create({ id: 'alice' }, { code: 'lost', destination: 'https://example.test/' }), refused);
   await assert.rejects(notesApi.update({ id: 'alice' }, kept.record.id as string, { title: 'changed' }, { ifMatch: kept.etag }), refused);
-  assert.deepEqual({ counts: counts(database), records: records(database, 'notes'), outbox: outbox(database) }, before, 'neither the record nor the event was written');
-  assert.equal(woken, 1, 'a rolled-back write wakes nothing');
+  assert.deepEqual({ counts: counts(database), records: records(database, 'notes'), audit: auditEvents(database) }, before, 'neither the record nor the event was written');
   assert.equal(notesApi.get({ id: 'alice' }, kept.record.id as string).etag, kept.etag, 'the ETag still matches: nothing changed');
-  execute(database, 'DROP TRIGGER fail_outbox');
+  execute(database, 'DROP TRIGGER fail_event');
   assert.equal((await notesApi.update({ id: 'alice' }, kept.record.id as string, { title: 'changed' }, { ifMatch: kept.etag })).record.title, 'changed');
-  assert.deepEqual(outbox(database).map(event => event.action), ['store.record.created', 'store.record.updated']);
+  assert.deepEqual(auditEvents(database).map(event => event.action), ['store.record.created', 'store.record.updated']);
+});
+
+test('the version 7 upgrade moves events still waiting in the old outbox into the log, in order, and drops the outbox', async t => {
+  const root = await tempRoot(t), database = databaseOf(root);
+  await mkdir(join(root, 'app'));
+  await initialize(database);
+  // Rewind the fresh file to version 6: the outbox and the drain marker as that release left them, two events waiting.
+  const events = ['b', 'a'].map((name, index) => validateAuditEvent({ id: `00000000-0000-4000-8000-00000000000${index + 1}`, source: 'store', action: 'store.record.created', actor: name, subject: `notes/${name}`, at: 1000 - index, metadata: { collection: 'notes', fields: ['code'] } }));
+  const db = new DatabaseSync(database);
+  try {
+    db.exec(`DROP TABLE store_audit_events;
+      CREATE TABLE store_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, collection TEXT NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL CHECK (json_valid(event)));
+      CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER);
+      PRAGMA user_version=6;`);
+    for (const event of events) db.prepare('INSERT INTO store_audit_outbox(id, collection, at, event) VALUES (?, ?, ?, ?)').run(event.id, 'notes', event.at, JSON.stringify(event));
+  } finally { db.close(); }
+  const { exports } = await opened(t, root);
+  const page = await exports.audit.query();
+  assert.deepEqual(page.events.map(event => [event.actor, event.reason, event.metadata]), [['b', '', { collection: 'notes', fields: ['code'] }], ['a', '', { collection: 'notes', fields: ['code'] }]], 'in outbox order');
+  assert.equal((await exports.audit.peek(100)).length, 2, 'not yet forwarded');
+  const check = new DatabaseSync(database, { readOnly: true });
+  try {
+    assert.equal(check.prepare('PRAGMA user_version').get()!.user_version, STORE_SCHEMA_VERSION);
+    assert.deepEqual(check.prepare("SELECT name FROM sqlite_master WHERE name IN ('store_audit_outbox', 'store_audit_drain')").all(), []);
+  } finally { check.close(); }
 });

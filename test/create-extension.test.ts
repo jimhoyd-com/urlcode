@@ -126,7 +126,7 @@ test('--from forks an existing package\'s file shape (exact sibling peers become
 
   const store = JSON.parse(await readFile(join(packagesDir, 'store', 'package.json'), 'utf8')) as Manifest;
   const siblings = Object.keys(store.peerDependencies).filter(peer => peer.startsWith('@jimhoyd/urlcode-')).map(peer => peer.slice('@jimhoyd/urlcode-'.length));
-  assert.ok(siblings.length > 0, 'store peers on at least one sibling extension');
+  // No first-party extension peers on a sibling today (the store's audit log is its own, #1052), so this forks to requires: [].
 
   const dir = join(out, name);
   const manifest = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as Manifest;

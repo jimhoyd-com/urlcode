@@ -150,7 +150,7 @@ changes included, and `verify-complete` accepts its skip only in the docs
 lane. It builds core and every add-on, mounts a 16 MiB `tmpfs` with `sudo` and
 runs the disk-full harness (`npm run test:disk-full`, with
 `URLCODE_DISK_FULL_DIR` naming the mount), which fills it to `ENOSPC` under a
-`urlcode serve` process whose `host.mjs` composes audit, auth and store
+`urlcode serve` process whose `host.mjs` composes auth and store
 ([what it proves](STORE.md#what-the-disk-full-tests-prove)).
 
 Packaging tests use `npm pack --ignore-scripts` against the already-built core.
@@ -167,7 +167,7 @@ stack: Node runs separate `t.after()` hooks in registration order, so an earlier
 directory-removal hook would run while those later resources are still open.
 Filesystem retries cannot repair that ordering.
 
-The store and audit suites use a two-minute test-file timeout.
+The store suite uses a two-minute test-file timeout.
 Keep large suites split into focused files so a file can finish within its budget
 on supported CI runners, with fixtures isolated between files. Platform-sensitive Windows coverage is Node 24
 in the cross-workspace integration and in the Windows leg of a
