@@ -86,7 +86,7 @@ export default defineExtension<StoreHostOptions>({
   scaffold,
   example,
   host(context, options) {
-    // A hermetic run (test, audit, benchmark) uses a fresh database in the run's data directory, never the site's, and
+    // A hermetic run (test, audit) uses a fresh database in the run's data directory, never the site's, and
     // accepts the project's test seed (memberships).
     const database = context.hermetic ? join(context.data, 'store.sqlite') : options.database ?? process.env.STORE_DATABASE ?? join(context.data, 'store.sqlite');
     // `exports` is the StoreExports records API (version 1) an extension that requires store reads with ctx.get('store'),

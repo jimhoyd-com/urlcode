@@ -13,11 +13,11 @@ import type { InspectedFile, InspectionDiagnostic } from './artifact-inspect.ts'
 // ones, and that schema is admitted against the profile like any inline one. Only the config worker runs this.
 
 /** A schema name: a letter, then letters, digits or `_`; `Urlcode...` is reserved for the runtime's own OpenAPI components. */
-export const projectSchemaName = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const projectSchemaName = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 /** A schema file: a project-relative JSON or YAML path, without `..`, a leading `/` or a leading dot on any segment. */
 const schemaFilePath = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\/){0,7}[A-Za-z0-9][A-Za-z0-9._-]*\.(?:json|ya?ml)$/;
 /** The resolver's limits for schema files, across every file one project's `schemas:` reads. */
-export const projectSchemaFileLimits = {
+const projectSchemaFileLimits = {
   maxDocumentBytes: 256 * 1024, maxFiles: 64, maxTotalBytes: 2 * 1024 * 1024, maxRefs: 512, maxRefDepth: 16, maxNesting: 64,
 } as const;
 

@@ -42,7 +42,7 @@ export interface AddonManifest { format: 1; version: string; addons: Record<stri
  * The standard document media types an artifact descriptor may list (#844), each with the file extensions it may
  * carry. A closed set: OpenAPI (YAML or JSON), JSON Schema, Markdown and plain JSON or YAML data.
  */
-export const artifactMediaTypes = {
+const artifactMediaTypes = {
   'application/vnd.oai.openapi': ['.yaml', '.yml'],
   'application/vnd.oai.openapi+json': ['.json'],
   'application/schema+json': ['.json'],
@@ -53,7 +53,7 @@ export const artifactMediaTypes = {
 export type ArtifactMediaType = keyof typeof artifactMediaTypes;
 /** One standard document an artifact ships, by its path inside the package. */
 export interface ArtifactDocument { path: string; mediaType: ArtifactMediaType }
-export const MAX_ARTIFACT_DOCUMENTS = 32;
+const MAX_ARTIFACT_DOCUMENTS = 32;
 /** A relative path inside a package: at most eight segments, none of them empty, `.`, `..` or hidden. */
 export const packageDataPath = /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\/){0,7}[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** The static descriptor every add-on package carries as `urlcode.json`. */
@@ -119,7 +119,7 @@ export function contractProblem(declared: unknown, who: string): string | undefi
   return declared === extensionContract ? undefined : `${who} is built for URLCode extension contract ${declared}, but this core implements extension contract ${extensionContract}; install a version of it built for contract ${extensionContract}, or a core that implements contract ${declared}`;
 }
 /** A positive integer: the only shape a declared `contract` takes. */
-export const isContractVersion = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+const isContractVersion = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
 /**
  * The deployment targets an extension can declare (`ExtensionDefinition.targets`, `RuntimeExtension.targets`). A
  * Worker (cloudflare) and static hosting run no extension, so neither can be declared.
@@ -127,7 +127,7 @@ export const isContractVersion = (value: unknown): value is number => typeof val
 export const extensionTargetNames = ['node', 'aws', 'vercel'] as const;
 export type ExtensionTarget = typeof extensionTargetNames[number];
 /** A non-empty list of distinct extension targets, in `extensionTargetNames` order. */
-export function isExtensionTargets(value: unknown): value is ExtensionTarget[] {
+function isExtensionTargets(value: unknown): value is ExtensionTarget[] {
   return Array.isArray(value) && value.length > 0 && new Set(value).size === value.length
     && value.every(item => (extensionTargetNames as readonly unknown[]).includes(item))
     && value.every((item, index) => index === 0 || extensionTargetNames.indexOf(value[index - 1] as ExtensionTarget) < extensionTargetNames.indexOf(item as ExtensionTarget));
@@ -380,7 +380,7 @@ export async function readInstalledDescriptor(site: string, name: string): Promi
  * name's installed `urlcode.json` in the enclosing `site` (a site dependency carrying it, else the first-party install
  * location), else this core's release catalog. Reads data only; imports and activates nothing.
  */
-export async function declaredPrincipalSecurity(site: string, names: readonly string[]): Promise<Map<string, ExtensionOpenApiSecurity | undefined>> {
+async function declaredPrincipalSecurity(site: string, names: readonly string[]): Promise<Map<string, ExtensionOpenApiSecurity | undefined>> {
   const found = new Map<string, ExtensionOpenApiSecurity | undefined>();
   if (!names.length) return found;
   const { providers } = await installedProviders(site);

@@ -22,7 +22,7 @@ const MAX_SEED_BYTES = 1024 * 1024;
  * each entry that extension's seed (its registration's `seedSchema` checks the shape at activation). Undefined when the
  * project has none.
  */
-export async function readSeed(project: string): Promise<Record<string, unknown> | undefined> {
+async function readSeed(project: string): Promise<Record<string, unknown> | undefined> {
   const root = await realpath(project);
   try { await lstat(join(root, seedFile)); }
   catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined; throw error; }

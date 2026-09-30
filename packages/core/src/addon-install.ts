@@ -37,7 +37,7 @@ const hostOpener = 'export default await composeHost(import.meta.url, [';
 const reserved = new Set(['break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static', 'await', 'composeHost']);
 
 export interface Site { site: string; project: string; hostFile: string; packageFile: string }
-export function sitePaths(directory: string): Site {
+function sitePaths(directory: string): Site {
   const site = resolve(directory);
   return { site, project: join(site, PROJECT_DIRECTORY), hostFile: join(site, HOST_FILE), packageFile: join(site, 'package.json') };
 }
@@ -231,11 +231,11 @@ export function checkedYamlEdit(text: string, expected: unknown, edits: ((curren
  * blocklist, because npm keeps growing fields that install or run something (peerDependencies, workspaces,
  * overrides, bin, scripts…); anything not named here is refused.
  */
-export const artifactManifestKeys: ReadonlySet<string> = new Set(['name', 'version', 'description', 'keywords', 'homepage', 'bugs', 'license', 'author', 'contributors', 'repository', 'private', 'files']);
+const artifactManifestKeys: ReadonlySet<string> = new Set(['name', 'version', 'description', 'keywords', 'homepage', 'bugs', 'license', 'author', 'contributors', 'repository', 'private', 'files']);
 /** package-lock.json fields that mean an entry pulls something in or runs something; an artifact's entry has none. */
 const lockDependencyFields = ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'bundleDependencies', 'bundledDependencies', 'bin', 'hasInstallScript'];
 /** Why an artifact package's own lock entry (and, for a linked directory, its target's entry) is not inert, or undefined. */
-export function artifactLockProblem(lock: Record<string, LockEntry>, pkg: string): string | undefined {
+function artifactLockProblem(lock: Record<string, LockEntry>, pkg: string): string | undefined {
   const entry = lock[`node_modules/${pkg}`];
   if (!entry) return undefined;
   const target = entry.link && typeof entry.resolved === 'string' ? lock[entry.resolved] : undefined;
@@ -302,7 +302,7 @@ export async function assertInertArtifacts(site: string, lock: Record<string, Lo
  * installs: the catalog pins the add-on tarballs, but the site pins core by version, so a development catalog
  * (`URLCODE_ADDONS`, file: pins) beside a registry core of the same version still mixes two builds.
  */
-export async function addonLoadError(site: string, pkg: string, error: unknown, manifest: AddonManifest | undefined): Promise<ConfigError> {
+async function addonLoadError(site: string, pkg: string, error: unknown, manifest: AddonManifest | undefined): Promise<ConfigError> {
   const reason = boundedLine(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) || 'the module threw a non-Error value';
   const lock = await lockPackages(site).catch(() => ({} as Record<string, LockEntry>));
   const core = lock['node_modules/@jimhoyd/urlcode'];
@@ -344,9 +344,9 @@ async function loadDefinition(site: string, name: string, pkg = addonPackage(nam
   return definition;
 }
 /** An operator's npm package spec (a registry name, `name@version` or a local tarball path) rather than a catalog name. */
-export const isPackageSpec = (value: string): boolean => !addonNamePattern.test(value) && value.length <= 1024 && !/[\s\0]/.test(value) && !value.startsWith('-');
+const isPackageSpec = (value: string): boolean => !addonNamePattern.test(value) && value.length <= 1024 && !/[\s\0]/.test(value) && !value.startsWith('-');
 /** Why an independent package's lock entry is not a verified install, or undefined when npm recorded its integrity. */
-export function independentLockProblem(lock: Record<string, LockEntry>, pkg: string): string | undefined {
+function independentLockProblem(lock: Record<string, LockEntry>, pkg: string): string | undefined {
   const entry = lock[`node_modules/${pkg}`];
   if (!entry) return `${pkg} is not in package-lock.json`;
   if (entry.link) return undefined;
@@ -357,7 +357,7 @@ export function independentLockProblem(lock: Record<string, LockEntry>, pkg: str
  * sha512 integrity package-lock.json recorded: a replaced tarball means the lock is stale and `npm ci` would refuse
  * it. Offline; a registry or directory install is not re-verified here and returns undefined.
  */
-export async function localTarballProblem(site: string, lock: Record<string, LockEntry>, pkg: string): Promise<string | undefined> {
+async function localTarballProblem(site: string, lock: Record<string, LockEntry>, pkg: string): Promise<string | undefined> {
   const entry = lock[`node_modules/${pkg}`];
   if (!entry || entry.link || typeof entry.resolved !== 'string' || !entry.resolved.startsWith('file:') || typeof entry.integrity !== 'string') return undefined;
   const hash = createHash('sha512');

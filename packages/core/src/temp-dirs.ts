@@ -21,7 +21,7 @@ export const runDirectoryPattern = /^urlcode-(?:hermetic|data)-([1-9][0-9]{0,9})
  * container), which looks dead from here. A directory's own mtime changes only when an entry is added or removed, so
  * the age is that of its newest entry: a database written a minute ago keeps its directory (#977).
  */
-export const staleRunDirectoryMs = 60 * 60 * 1000;
+const staleRunDirectoryMs = 60 * 60 * 1000;
 /**
  * How far the age check looks inside a candidate: at most this many entries, this many levels deep. A directory with
  * more, or one the check cannot read, is kept: leaving a stale directory is cheap, removing a live one is not.

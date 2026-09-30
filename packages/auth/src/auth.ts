@@ -55,7 +55,7 @@ export const authOpenApiSecurity: ExtensionOpenApiSecurity = Object.freeze({ typ
  * The test seed a hermetic run accepts (`tests/seed.json` under `auth`, RIM-EXT-HERMETIC-001): accounts created with
  * the id a store membership or fixture can name, and a password a fixture signs in with. Never accepted on `serve`.
  */
-export const authSeedSchema = {
+const authSeedSchema = {
   type: 'object', additionalProperties: false, required: ['users'],
   properties: {
     users: {
@@ -122,7 +122,7 @@ class AuthDatabase extends DatabaseSync {
  * is locked". SQLite creates the `-wal` and `-shm` files with the database file's permissions. `operator` is the
  * operator commands' connection: it waits up to `OPERATOR_LOCK_WAIT_MS` and polls for the write lock (`AuthDatabase`).
  */
-export function openAuthDatabase(path: string, { operator = false }: { operator?: boolean } = {}): DatabaseSync {
+function openAuthDatabase(path: string, { operator = false }: { operator?: boolean } = {}): DatabaseSync {
   const requested = resolve(path);
   mkdirSync(dirname(requested), { recursive: true, mode: 0o700 });
   const database = join(realpathSync(dirname(requested)), basename(requested));
@@ -238,7 +238,7 @@ export function betterAuthOptions(settings: AuthSettings, origin: string, basePa
  * address within seconds, so a site whose fixtures sign in more than ten times would otherwise fail `urlcode test` with
  * 429. The limiter stays on, keyed and stored as for serving; only each rule's `max` is multiplied.
  */
-export const hermeticRateLimitFactor = 10;
+const hermeticRateLimitFactor = 10;
 type RateLimitOptions = NonNullable<BetterAuthOptions['rateLimit']>;
 type RateLimitRule = { window: number; max: number };
 const scaled = <Rule extends RateLimitRule>(rule: Rule): Rule => ({ ...rule, max: rule.max * hermeticRateLimitFactor });

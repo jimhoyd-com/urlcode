@@ -46,7 +46,7 @@ const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
  * membership collections, which nobody can add over HTTP. Written as `urlcode-store members add` writes them (actor
  * `operator`), before the first fixture runs. Never accepted on `serve`.
  */
-export const storeSeedSchema = {
+const storeSeedSchema = {
   type: 'object', additionalProperties: false, required: ['members'],
   properties: {
     members: {
